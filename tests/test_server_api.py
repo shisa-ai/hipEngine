@@ -50,6 +50,7 @@ from hipengine.server.api import (
     _coerce_generation_output,
     _GenerationBatcher,
     _QueuedBatchResult,
+    _QueuedGeneration,
     _SPECULATIVE_MTP_AUTO_ROUTE,
     _SPECULATIVE_MTP_BATCH_ROUTE,
     _SPECULATIVE_MTP_DEFAULT_ROUTE,
@@ -1059,7 +1060,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "guided_diff_default_fenced_policy": "optional",
         "guided_patch_fence_labels": ["diff", "patch"],
         "guided_diff_fence_labels": ["diff", "patch"],
-        "strict_decoding": False,
+        "strict_decoding": True,
+        "strict_decoding_scope": "root_object_json_syntax",
         "strict_result_validation": True,
         "decode_time_close_forcing": "host_json_object_parse_validated_suffix",
         "length_finish_structural_validation": "root_object_json_prefix",
@@ -1145,7 +1147,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     }
     assert body["features"]["tools"] == {
         "enabled": True,
-        "strict_decoding": False,
+        "strict_decoding": True,
+        "strict_decoding_scope": "tokenizer_aware_canonical_envelope_and_root_json_syntax",
         "strict_result_validation": True,
         "result_validation_failure_reasons": [
             "invalid_tool_call",
@@ -1434,6 +1437,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "post_thinking_forced_tokens_pending",
             "force_sequence_completion_token_sequences",
             "json_object_close_forcing",
+            "tool_call_constraint",
             "thinking_budget",
             "logprobs",
             "top_logprobs",
@@ -1454,6 +1458,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
             "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
             "json_object_close_forcing": "JSON object close forcing active",
+            "tool_call_constraint": "tokenizer-aware tool-call grammar active",
             "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",
@@ -4497,6 +4502,90 @@ def test_generation_batcher_limits_controlled_stream_active_requests() -> None:
         assert fake.max_active == 1
         assert batcher.active_requests() == 0
         assert batcher.queue_depth() == 0
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_releases_prestart_cancelled_controlled_reservation() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        fake.supports_controlled_streaming = True
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            max_active_requests=1,
+        )
+        item = _QueuedGeneration(
+            prompts=("cancel-before-start",),
+            sampling=SamplingParams(max_tokens=1),
+            stream_queue=asyncio.Queue(maxsize=2),
+        )
+
+        batcher._launch_controlled_stream(item, fake)
+        assert item.producer_task is not None
+        assert batcher.active_requests() == 1
+        item.producer_task.cancel()
+        await asyncio.gather(item.producer_task, return_exceptions=True)
+        await asyncio.sleep(0)
+
+        assert batcher.active_requests() == 0
+        assert batcher.active() is False
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_drains_pending_controlled_cancellation_on_exit() -> None:
+    class PendingCancellationLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.release = threading.Event()
+            self.token: GenerationCancellationToken | None = None
+            self.drain_calls = 0
+            self.drained = threading.Event()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            del prompt
+            token = sampling_params.cancellation_token
+            assert token is not None
+            token.set_cancel_dispatch(lambda _details: None)
+            self.token = token
+            yield GenerationStreamChunk(text="first")
+            assert self.release.wait(timeout=5.0)
+
+        def drain_generation_cancellations(self) -> int:
+            self.drain_calls += 1
+            assert self.token is not None
+            self.token.acknowledge_cancel()
+            self.drained.set()
+            return 1
+
+    async def run() -> None:
+        fake = PendingCancellationLLM()
+        token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            max_active_requests=1,
+        )
+        stream = batcher.stream(
+            ("cancel-me",),
+            SamplingParams(max_tokens=8, cancellation_token=token),
+        )
+
+        assert (await anext(stream)).text == "first"
+        token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert token.cancel_requested is True
+        assert token.cancelled is False
+        fake.release.set()
+        with pytest.raises(StopAsyncIteration):
+            await anext(stream)
+        assert await asyncio.to_thread(fake.drained.wait, 5.0)
+
+        assert fake.drain_calls == 1
+        assert token.cancelled is True
+        assert batcher.active_requests() == 0
 
     asyncio.run(run())
 
@@ -14285,6 +14374,69 @@ def test_chat_completion_tool_choice_none_rejects_tool_call() -> None:
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
+def test_chat_completion_auto_tool_builds_tokenizer_grammar_and_close_stop() -> None:
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={"</tool_call>": [88, 89]},
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "choose the right tool"}],
+            "tool_choice": "auto",
+            "enable_thinking": False,
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+                {"type": "function", "function": {"name": "grep", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == ["</tool_call>"]
+    params = fake.calls[-1][1]
+    assert params.tool_call_constraint.tool_names == ("read", "grep")
+    assert params.tool_call_constraint.mode == "auto"
+    assert params.tool_call_constraint.forbidden_text_prefixes == ("<think>",)
+    assert params.tool_call_constraint.thinking_start_marker is None
+    assert params.tool_call_constraint.thinking_end_marker is None
+    assert params.force_sequence_completion_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
+
+
+def test_chat_completion_tool_constraint_requires_tokenize_and_detokenize() -> None:
+    fake = FakeLLM(outputs=["ordinary answer"], token_map={"</tool_call>": [88, 89]})
+    fake.detokenize = None
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    capabilities = client.get("/v1/hipengine/capabilities")
+    assert capabilities.status_code == 200
+    assert capabilities.json()["features"]["tools"]["strict_decoding"] is False
+    assert capabilities.json()["features"]["structured_outputs"]["strict_decoding"] is False
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "choose the right tool"}],
+            "tool_choice": "auto",
+            "enable_thinking": False,
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.calls[-1][1].tool_call_constraint is None
+
+
 def test_chat_completion_tool_choice_none_suppresses_tool_call_start_token() -> None:
     fake = FakeLLM(outputs=["plain answer"], token_map={"<tool_call>": [77, 78]})
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -14349,6 +14501,8 @@ def test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix(too
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == (77, 78, 90, 91, 92)
     assert params.forced_token_reason == "tool_choice_required"
+    assert params.tool_call_constraint.thinking_start_marker == "<think>"
+    assert params.tool_call_constraint.thinking_end_marker == "</think>"
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
     assert params.stop_token_sequences == ((88, 89),)
@@ -14396,6 +14550,8 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     assert params.forced_tokens_pending == ()
     assert params.post_thinking_forced_tokens_pending == (77, 78, 90, 91, 92)
     assert params.post_thinking_forced_token_reason == "tool_choice_required"
+    assert params.tool_call_constraint.thinking_start_marker == "<think>"
+    assert params.tool_call_constraint.thinking_end_marker == "</think>"
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
     assert params.stop_token_sequences == ((88, 89),)
@@ -18265,6 +18421,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "post_thinking_forced_tokens_pending",
             "force_sequence_completion_token_sequences",
             "json_object_close_forcing",
+            "tool_call_constraint",
             "thinking_budget",
             "logprobs",
             "top_logprobs",
@@ -18285,6 +18442,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
             "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
             "json_object_close_forcing": "JSON object close forcing active",
+            "tool_call_constraint": "tokenizer-aware tool-call grammar active",
             "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",

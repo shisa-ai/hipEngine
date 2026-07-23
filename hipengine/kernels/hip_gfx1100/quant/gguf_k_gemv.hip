@@ -1,4 +1,4 @@
-// GGUF Q8_0/Q5_K/Q6_K raw-byte GEMV bring-up kernels.
+// GGUF Q8_0/Q5_K/Q6_K raw-byte GEMV and exact Q8 prefill kernels.
 // These preserve GGML quant math and are separate from PARO/AWQ kernels.
 
 #include <hip/hip_runtime.h>
@@ -291,6 +291,107 @@ __device__ inline int gguf_k_row_bytes(int qtype, int in_features) {
     return (in_features / QK_K) * Q5_K_BLOCK_BYTES;
   }
   return (in_features / QK_K) * Q6_K_BLOCK_BYTES;
+}
+
+template <typename scalar_t, typename out_t, int COL_TILE, int ROW_TILE>
+__launch_bounds__(128, (COL_TILE * ROW_TILE <= 32 ? 2 : 1))
+__global__ void gguf_q8_0_exact_prefill_tiled_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  static_assert(
+      COL_TILE * ROW_TILE == 16 || COL_TILE * ROW_TILE == 32 ||
+          COL_TILE * ROW_TILE == 64,
+      "exact Q8 prefill supports the bounded 16/32/64-accumulator candidates");
+  const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
+  const int row_base = static_cast<int>(blockIdx.y) * ROW_TILE;
+  const int tid = threadIdx.x;
+  if (out_col_base >= out_features || row_base >= rows) return;
+
+  const int row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  const uint8_t* weight_rows[COL_TILE];
+#pragma unroll
+  for (int col = 0; col < COL_TILE; ++col) {
+    weight_rows[col] = qweight + static_cast<int64_t>(out_col_base + col) * row_bytes;
+  }
+
+  const scalar_t* x_rows[ROW_TILE];
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+    const int safe_row = min(row_base + row, rows - 1);
+    x_rows[row] = x + static_cast<int64_t>(safe_row) * in_features;
+  }
+
+  float acc[ROW_TILE][COL_TILE];
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      acc[row][col] = 0.0f;
+    }
+  }
+
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float weights[COL_TILE];
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      weights[col] = q8_0_weight(weight_rows[col], k);
+    }
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      const float xv = scalar_to_float<scalar_t>(x_rows[row][k]);
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        acc[row][col] += xv * weights[col];
+      }
+    }
+  }
+
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        acc[row][col] += __shfl_down(acc[row][col], offset);
+      }
+    }
+  }
+
+  __shared__ float wave_sums[4][ROW_TILE][COL_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        wave_sums[wave][row][col] = acc[row][col];
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      if (row_base + row >= rows) continue;
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        float total = 0.0f;
+#pragma unroll
+        for (int group = 0; group < 4; ++group) {
+          total += wave_sums[group][row][col];
+        }
+        store_output<out_t>(
+            out,
+            static_cast<int64_t>(row_base + row) * out_features + out_col_base + col,
+            total);
+      }
+    }
+  }
 }
 
 template <typename scalar_t, typename out_t, int qtype>
@@ -899,6 +1000,36 @@ int launch_gguf_k_pack8_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t, typename out_t, int COL_TILE, int ROW_TILE>
+int launch_gguf_q8_0_exact_prefill_tiled_out(
+    const scalar_t* x,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 1 ||
+      in_features <= 0 || (in_features % Q8_0_BLOCK) != 0 || out_features <= 0 ||
+      (out_features % COL_TILE) != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / COL_TILE),
+      static_cast<unsigned int>((rows + ROW_TILE - 1) / ROW_TILE));
+  gguf_q8_0_exact_prefill_tiled_out_kernel<scalar_t, out_t, COL_TILE, ROW_TILE>
+      <<<grid, block, 0, stream>>>(
+          x,
+          qweight,
+          out,
+          static_cast<int>(rows),
+          static_cast<int>(in_features),
+          static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 int launch_gguf_k_selected_pack8_gemv_out(
     const scalar_t* x,
@@ -1251,3 +1382,42 @@ extern "C" int hipengine_##NAME##_selected_pack8_gemv_q8_1_dp4a_bf16_bf16_out( \
 
 HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(gguf_q6_k, 6)
+
+extern "C" int hipengine_gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_exact_prefill_tiled_out<uint16_t, uint16_t, 8, 2>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_exact_prefill_tiled_out<uint16_t, uint16_t, 8, 4>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_exact_prefill_tiled_out<uint16_t, uint16_t, 16, 4>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}

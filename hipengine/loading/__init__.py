@@ -102,6 +102,19 @@ from hipengine.loading.qwen35_gguf import (
     required_qwen35_gguf_tensor_names,
     validate_qwen35_gguf_tensor_map,
 )
+from hipengine.loading.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNMap,
+    Qwen35GGUFNextNValidation,
+    build_qwen35_gguf_nextn_tensor_map,
+    required_qwen35_gguf_nextn_tensor_names,
+    validate_qwen35_gguf_nextn_tensor_map,
+)
+from hipengine.loading.qwen35_gguf_nextn_materialize import (
+    Qwen35GGUFNextNMaterializationPlan,
+    Qwen35GGUFNextNResidentWeights,
+    materialize_qwen35_gguf_nextn_weights,
+    plan_qwen35_gguf_nextn_materialization,
+)
 from hipengine.loading.qwen35_gguf_expert_sidecar import (
     EXPERT_SIDECAR_LAYOUT,
     GGUFExpertPackedTensor,
@@ -128,8 +141,10 @@ from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFWeightSpec,
     gguf_decode_repack_enabled,
     gguf_lm_head_q6_x8_sidecar_enabled,
+    materialize_qwen35_gguf_weight_spec,
     materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_materialization,
+    plan_qwen35_gguf_weight_spec,
 )
 from hipengine.loading.qwen35_paro import (
     Qwen35ParoConfig,
@@ -246,6 +261,10 @@ __all__ = [
     "Qwen35GGUFMappingValidation",
     "Qwen35GGUFMaterializationPlan",
     "Qwen35GGUFModelMap",
+    "Qwen35GGUFNextNMap",
+    "Qwen35GGUFNextNMaterializationPlan",
+    "Qwen35GGUFNextNResidentWeights",
+    "Qwen35GGUFNextNValidation",
     "Qwen35GGUFResidentLayerWeights",
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
@@ -262,6 +281,7 @@ __all__ = [
     "dflash_drafter_tensor_requirements",
     "dflash_target_tensor_requirements",
     "build_laguna_gguf_tensor_map",
+    "build_qwen35_gguf_nextn_tensor_map",
     "build_qwen35_gguf_tensor_map",
     "discover_gguf_files",
     "discover_safetensor_shards",
@@ -291,6 +311,8 @@ __all__ = [
     "plan_laguna_gguf_materialization",
     "plan_laguna_memory_admission",
     "plan_qwen35_gguf_materialization",
+    "plan_qwen35_gguf_nextn_materialization",
+    "plan_qwen35_gguf_weight_spec",
     "qwen35_gguf_config_from_metadata",
     "qwen35_paro_config_from_hf",
     "float_array_to_bf16_bits",
@@ -307,6 +329,8 @@ __all__ = [
     "laguna_gguf_config_from_metadata",
     "build_or_load_qwen35moe_expert_sidecar",
     "dequantize_packed_expert_tensor",
+    "materialize_qwen35_gguf_nextn_weights",
+    "materialize_qwen35_gguf_weight_spec",
     "materialize_qwen35_gguf_weights",
     "read_config",
     "read_tensor_storage_bytes",
@@ -314,6 +338,7 @@ __all__ = [
     "required_full_attention_c1_tensor_names",
     "required_full_attention_moe_c1_tensor_names",
     "required_laguna_gguf_tensor_names",
+    "required_qwen35_gguf_nextn_tensor_names",
     "required_qwen35_gguf_tensor_names",
     "required_linear_attention_c1_tensor_names",
     "required_linear_attention_moe_c1_tensor_names",
@@ -326,6 +351,7 @@ __all__ = [
     "validate_qwen35_mtp_metadata",
     "validate_qwen35_mtp_model",
     "validate_laguna_gguf_tensor_map",
+    "validate_qwen35_gguf_nextn_tensor_map",
     "validate_qwen35_gguf_tensor_map",
     "validate_qwen35_paro_full_attention_dense_c1_layout",
     "validate_qwen35_paro_full_attention_moe_c1_layout",

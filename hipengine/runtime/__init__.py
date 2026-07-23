@@ -15,6 +15,20 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaHiddenCaptureTargets,
 )
 from hipengine.runtime.prefill import PrefillConfig
+from hipengine.runtime.qwen35_gguf_mtp import (
+    Qwen35GGUFMTPDecodeSession,
+    Qwen35GGUFMTPGenerationResult,
+    Qwen35GGUFPreparedVerify,
+    Qwen35GGUFTransactionalVerifier,
+    Qwen35GGUFVerifyGraphBucket,
+)
+from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNDraftModel,
+    Qwen35GGUFNextNDraftProvider,
+    Qwen35GGUFNextNExecutor,
+    Qwen35GGUFNextNStepExecutor,
+    Qwen35GGUFNextNStepResult,
+)
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFOneLayerProbe,
@@ -48,6 +62,16 @@ __all__ = [
     "LagunaHiddenCaptureTargets",
     "PrefillConfig",
     "Qwen35GGUFFullStackRunner",
+    "Qwen35GGUFMTPDecodeSession",
+    "Qwen35GGUFMTPGenerationResult",
+    "Qwen35GGUFPreparedVerify",
+    "Qwen35GGUFTransactionalVerifier",
+    "Qwen35GGUFVerifyGraphBucket",
+    "Qwen35GGUFNextNDraftModel",
+    "Qwen35GGUFNextNDraftProvider",
+    "Qwen35GGUFNextNExecutor",
+    "Qwen35GGUFNextNStepExecutor",
+    "Qwen35GGUFNextNStepResult",
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFResidentSession",
     "Qwen35ParoAttentionScratch",

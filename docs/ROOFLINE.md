@@ -1216,29 +1216,36 @@ globally.
 
 ### 9.7 Compiler Quality: LLVM-AMDGPU vs ACO
 
-The same RDNA3 ISA can have very different scheduling depending on the
-compiler:
+The same RDNA3 ISA can have different lowering and scheduling under ROCm
+LLVM-AMDGPU (HIP) and RADV/ACO (Vulkan), but current matched evidence does
+**not** support treating ACO as broadly superior. Keep compiler attribution
+shape- and mode-specific.
 
-- **ROCm LLVM-AMDGPU** (used by HIP/hipcc): general-purpose LLVM backend.
-  Tends to under-unroll tight loops, over-spill registers, and produce
-  suboptimal waitcnt placement on gfx1100.
-- **RADV/ACO** (used by Vulkan on open-source AMD drivers): purpose-built
-  compiler for GPU compute shaders. Better register allocation, waitcnt
-  scheduling, and VOPD pairing for this class of workload.
+**Current matched evidence (ROCm issue
+[#6409](https://github.com/ROCm/ROCm/issues/6409), timing contract v2):**
 
-**Measured evidence:**
-- `-mllvm -amdgpu-unroll-threshold-local=600` gave +166% on llama.cpp HIP
-  prefill for the same kernel (same ISA instructions, just better scheduling)
-- Vulkan's decode advantage over HIP is partly compiler-quality (same dp4a
-  instruction, better surrounding scheduling)
-- Our PARO v8 gets this flag automatically via the native extension build
-  profile, but it was neutral/negative for decode (decode is BW-bound, so
-  better scheduling doesn't help as much as for compute-bound prefill)
+- On gfx1100, Vulkan command-buffer replay has a real `2.44x-10.12x`
+  serialized tiny-dispatch advantage over HIP graph replay. This is a runtime /
+  submission result, not shader-compiler evidence.
+- Synthetic packed-integer loops favor Vulkan by only `1.05x-1.13x` when
+  serialized on gfx1100 (and more for genuinely independent work). Both
+  backends emit the expected dot4 instructions; the scalar no-dot4 control has
+  the same direction.
+- Production-shaped Q4 and Q6 quantize-plus-dot controls favor HIP on gfx1100.
+  Static controls also rule out a generic story based on missing HIP dot4,
+  HIP spills, RADV VOPD pairing, wave64, or runtime block indexing.
+- `-mllvm -amdgpu-unroll-threshold-local=600` remains a measured prefill win in
+  its original compute-bound llama.cpp kernel. hipEngine's decode profile uses
+  it, but it has been neutral/negative on bandwidth-bound decode controls.
 
-**Implication:** When a kernel appears to be at a fundamental hardware limit,
-check if the ISA output (`--save-temps` or `amdgcn-dis`) shows unnecessary
-spills, unrolling failures, or excessive waitcnt/nop insertion. The ceiling may
-be compiler-imposed, not hardware-imposed.
+**Implication:** Start from the shipped hot slice. Inspect saved LLVM/HSACO and
+RADV ISA for VGPR/SGPR allocation, scratch, loads/addressing, wait placement,
+and instruction count only after a matched correctness and timing result shows
+a transferable gap. Try a source rewrite or narrow builtin/inline-assembly
+sequence only for a concrete miss. Do not infer a Vulkan backend, wave64 sweep,
+or broad hand-ISA program from qwen-kernel's topline decode rate; model bytes,
+kernel geometry/fusion, and the Vulkan command-replay floor are separate
+contributors.
 
 ### 9.8 Pipe Parallelism (Largely Unused)
 
@@ -1465,6 +1472,338 @@ the W4 bucket is far below the ideal streaming roof and needs real counter
 validation. The likely losses are dequantization overhead, reduction stalls,
 workgroup geometry, access pattern inefficiency, and activation/scale/zero
 traffic.
+
+### 12.5 UD-Q3_K_M direct baseline: bytes do not explain the gap
+
+The first correctness-safe raw-IQ baseline is now measured on GPU1 (RX 7900
+XTX/gfx1100) with
+`Qwen3.6-35B-A3B-UD-Q3_K_M.gguf` (15.930 GiB), native-attention plus direct
+`x_rows` MoE prefill, BF16 KV, and one-step graph decode. The unprofiled
+512/128 run used one warmup plus three measured repetitions; graph capture is
+excluded from decode:
+
+| Metric | Result |
+| --- | ---: |
+| 512 prefill | **19.452 tok/s** median (`19.313-19.577`) |
+| 128-token graph decode | **99.015 tok/s** median (`98.927-99.929`) |
+| Decode cycle wall | **10.099 ms/token** |
+| Tracked / sampled peak | **15.805 / 16.297 GiB** |
+
+Selected-region `rocprofv3` separates the direct control's two very different
+regimes:
+
+| Window | Dispatches | Kernel sum | Trace span / host wall | IQ kernel time |
+| --- | ---: | ---: | ---: | ---: |
+| 512 direct prefill | 185,078 (361.48/token) | 4,396.145 ms | 30,432.076 / 30,433.417 ms | 994.668 ms |
+| 16 one-step graph replays | 11,328 (708/token) | 8.892 ms/token | 11.461 / 11.926 ms/token | 1.747 ms/token |
+
+The exact encoded-IQ ledger is 250,478,592 bytes/token for 39 IQ3_XXS fused
+gate/up launches plus 173,801,472 bytes/token for 37 IQ4_XS weighted-down and
+two IQ4_XS selected-single launches: **424,280,064 bytes/token**. Direct
+`x_rows=512` therefore streams **217,231,392,768 bytes (202.3125 GiB)** of IQ
+weights. Back-calculated *encoded-weight-only* bandwidth is 218.4 GB/s for the
+combined prefill IQ bucket and 242.8 GB/s for decode; these are not hardware
+counter measurements and exclude activations, metadata, outputs, overfetch,
+and all non-IQ weights.
+
+The profile changes the attribution:
+
+- **Prefill is primarily a scheduling/algorithm problem, not just an IQ
+  kernel problem.** The IQ kernels already use only 78 launches (one per
+  applicable layer) and consume 22.6% of summed kernel time, but only 3.3% of
+  the profiled 30.43 s host window. Most launches come from the parity-safe
+  row scheduler around dense Q8, GDN, attention, norms, and glue. Grouped IQ
+  reuse is still required, but it cannot close the 42.6x gap to the contextual
+  qwen-kernel 829.30 tok/s row unless it also enables a parity-safe broader
+  bulk schedule or removes synchronization.
+- **Decode is not submission overhead alone.** The selected graph window has
+  8.892 ms/token of summed kernels before its 11.461 ms trace span. The
+  same-model qwen-kernel row is already 5.264 ms/token, so even eliminating
+  hipEngine's entire traced inter-kernel gap would not close the 1.918x
+  topline difference.
+- **The smaller model file is not a same-model explanation.** UD-Q3_K_M is
+  1.325x smaller than the contextual 21.107 GiB hipEngine UD-Q4_K_M file, yet
+  current Q3 decode is 6.4% slower than that Q4 row. qwen-kernel uses the same
+  Q3 file, removing file size entirely from that comparison.
+- **No gross HIP occupancy failure is visible.** Active IQ kernels allocate
+  48/72/80 VGPRs with zero scratch. IQ3's four-byte aux reconstruction lowers
+  to packed dword loads. IQ4 weighted down still has 32 indexed i8 codebook
+  loads, a dense wait schedule, route serialization, and two barriers; that is
+  a targeted task-15 source/codegen hypothesis, not evidence for a broad ACO,
+  wave64, LDS, or hand-ISA campaign.
+
+Full commands, phase-specific byte footprints, per-family timings/resources,
+raw-trace hashes, and the contextual comparisons are in
+`benchmarks/results/2026-07-19-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-direct-baseline.json`.
+
+### 12.6 Grouped raw-IQ prefill: verified kernel win, flat headline
+
+The expert-major scalar path reuses the existing device-only
+count/prefix/scatter ABI and reads each active expert row once per chunk. It
+adds no resident weight layout, host scalar read, or private memory. On the
+same GPU1 model/shape, selected-region attribution moves:
+
+| 512 prefill window | Direct | Grouped scalar | Delta |
+| --- | ---: | ---: | ---: |
+| Raw-IQ kernel sum | 994.668 ms | 613.995 ms | **-38.27%** |
+| Total kernel sum | 4,396.145 ms | 4,078.667 ms | **-7.22%** |
+| Trace span | 30,432.076 ms | 29,882.217 ms | **-549.859 ms** |
+| MoE count/prefix/scatter | 0 | 2.663 ms | +2.663 ms |
+
+IQ3 dual improves `585.202 -> 280.833 ms` (-52.01%), while activation-heavy
+IQ4 down improves `396.751 -> 328.060 ms` (-17.31%). All grouped symbols have
+zero scratch; allocated VGPRs are 48/112/64 for IQ3 dual, blk.39 IQ4 dual, and
+IQ4 down. No memory-copy trace was emitted inside the selected region.
+
+The expensive formal 512/128 paired wall is deliberately not overstated:
+grouped five-run median is 16.685 tok/s versus direct three-run 16.648 tok/s
+(+0.22%), within 2.08%/1.60% sample spread. Decode is unchanged at 100.573
+versus 100.570 tok/s and peak allocation remains 15.805 GiB. A separate
+4096/1 pair is exact and non-regressive (`19.731 -> 20.005 tok/s`, +1.39%),
+but does not show a larger aggregate percentage because the parity-safe native
+scheduler and resolved chunk boundaries dominate the host wall.
+
+Correctness is stronger than repeated-token trajectory equality: a mixed
+64-token serial-versus-native-row-bulk probe gives KL 0, top-1 agreement 1.0,
+and zero max/mean logit difference. Therefore grouped scalar is default-on as
+an exact, non-regressive verified kernel/sub-window improvement; direct remains
+available with `HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0`. This is not evidence that
+P0 closes the broader prefill scheduler gap, and it has zero direct c=1 decode
+benefit. Decode optimization proceeds through tasks #20 and #15.
+
+Full evidence is in
+`benchmarks/results/2026-07-20-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-grouped-prefill.json`.
+
+### 12.7 Hierarchical exact top-k closes negative on HIP
+
+Task #20 implemented qwen-kernel's exact local-wave/global-candidate-union
+selector for 256/512 experts and top-k 1/8/10/16. After correcting a
+winner-broadcast bug, standalone and fused output buffers were bit-exact to the
+current selector and both code paths used 40 VGPR with zero scratch.
+
+The leaf result did not compose. The production hidden-2048 fused split router
+improved `16.1005 -> 13.36 us` median (-17.02%), but standalone 256x8 select
+regressed `14.10 -> 14.88 us` (+5.53%). More importantly, the 512/128 Q3 graph
+control moved decode `99.201 -> 98.057 tok/s` (-1.15%) and prefill
+`19.590 -> 19.352 tok/s` (-1.21%) with identical IDs and memory. The full-model
+stop gate therefore fired before 4K or cross-format expansion. Candidate code
+and its env selector were removed; the iterative selector remains unchanged.
+Task #15 can use this off/on pair to separate top-k from the raw-IQ D0 profile.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-hierarchical-topk-rejected.json`.
+
+### 12.8 D0 decode attribution supersedes the local64 premise
+
+The clean post-#11/#20 GPU1 selected decode trace contains 708 launches/token
+and 8.88584 ms/token of summed kernels:
+
+| Family | ms/token | Kernel share | Launches/token |
+| --- | ---: | ---: | ---: |
+| Dense Q8 projections | 2.8393 | 31.95% | 200 |
+| Full attention decode | 1.4207 | 15.99% | 10 |
+| Dense Q6 / lm-head | 1.0562 | 11.89% | 1 |
+| IQ4_XS weighted selected down | **1.0036** | **11.29%** | **37** |
+| IQ3_XXS selected dual gate/up | 0.7185 | 8.09% | 39 |
+| RMSNorm/add-RMSNorm | 0.4958 | 5.58% | 91 |
+| GDN decode | 0.3719 | 4.19% | 30 |
+| Router/shared gate/top-k | 0.3342 | 3.76% | 40 |
+
+This branch has moved beyond the source review's D1A geometry. Task #19's
+production IQ4 down kernel already consumes all top-8 slots in one launch per
+layer, rounds every slot projection to BF16, applies routing FMAs in slot
+order, and writes one selected-sum row. Its grid is 2,048 one-output local128
+blocks, not 4,096 `(slot, four-output)` local256 blocks. The family runs at
+24.48/25.12/27.124/60.6 us min/median/mean/max, VGPR 80, and zero scratch.
+All 37 expected layers are present; per-layer means span only 25.86-27.92 us.
+
+The old local64 D1A target would affect only the residual unweighted IQ4
+selected-single path, which now appears twice/token for blk.39 gate/up and
+costs just 0.0219 ms/token. It is therefore skipped. D1B is reframed against
+the actual default: use one wave per slot and a four-output tile to reduce the
+weighted-composite grid from 2,048 to 512 while preserving the existing wave32
+reduction, per-slot BF16, and routing-order contract. Its measured Amdahl ceiling
+is 1.0036 ms/token, not the review's isolated 3 ms extrapolation.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-decode-d0-profile.json`.
+
+### 12.9 IQ4 weighted tile4: cache-hot win, production loss
+
+The revised D1B candidate exactly matched the task-19 weighted composite while
+assigning one wave to each slot and computing four outputs per local256 block.
+It reduced the grid from 2,048 to 512 blocks, used 32 VGPR with zero scratch,
+and preserved model IDs/logits and peak memory.
+
+A 100-launch repeated-weight microbenchmark was misleadingly strong:
+
+| IQ4 weighted down | Current local128 | Tile4 local256 | Delta |
+| --- | ---: | ---: | ---: |
+| Cache-hot median | 46.7605 us | 28.2400 us | **-39.61%** |
+| Cache-hot mean | 46.6799 us | 26.6297 us | **-42.95%** |
+| Real 37-layer family | 16.0574 ms | 18.0649 ms | **+12.50%** |
+| Total decode16 kernels | 142.1735 ms | 145.5537 ms | **+2.38%** |
+
+The production A/B is authoritative. Each layer streams distinct selected IQ4
+weights; reducing the grid fourfold removes latency-hiding parallelism, while
+the repeated synthetic launch keeps the same small expert-weight set hot. The
+candidate therefore failed at the named family before formal full-wall runs.
+It was removed completely. Tile2 is not warranted: tile4 had no spill and lost
+on production work distribution, not register pressure.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-iq4-weighted-tile4-rejected.json`.
+
+### 12.10 IQ3 wave-uniform block bases: small retained D1C win
+
+The production IQ3 dual gate/up kernel maps exactly one 256-value super-block
+per wave at `K=2048`, but the original HIP source left `threadIdx.x >> 5` as a
+vector expression. The generated HSACO consequently repeated two 64-bit
+`v_mad_u64` weight-address chains in every lane. Aux reconstruction was already
+a packed dword load, and the four indexed codebook loads were already the
+expected irreducible traffic; neither was the remaining cleanup.
+
+One explicit `__builtin_amdgcn_readfirstlane` keeps the gate/up block bases in
+SGPRs. It changes no arithmetic or memory-load count:
+
+| IQ3 dual gate/up | Current | Wave-uniform base | Delta |
+| --- | ---: | ---: | ---: |
+| Logical / allocated VGPR | 42 / 48 | 37 / 40 | -5 / -8 |
+| Vector `mad_u64` address ops | 2 | 0 | -2 |
+| Global loads / function bytes | 11 / 2,788 | 11 / 2,788 | unchanged |
+| Real decode16 IQ3 family | 11.4966 ms | 11.2614 ms | **-2.05%** |
+| Total decode16 kernels | 142.1735 ms | 141.4640 ms | **-0.50%** |
+| Counterbalanced 512/128 graph wall | 100.334 tok/s | 100.536 tok/s | **+0.20%** |
+
+The family saves `0.01470 ms/token`. That predicts about `+0.148%` at the
+measured 512 wall and accounts for 73% of the observed `0.0201 ms/token` wall
+saving, so the small topline movement is Amdahl-consistent. One-run 1K and 4K
+controls are exact/non-regressive; eager wall is host-dominated noise while
+eager/graph logits remain bit-exact. This is a verified sub-window/default
+cleanup, not evidence for another broad IQ3 tile or thread sweep. W7900
+throughput was not rerun because current testing was explicitly pinned to
+GPU1/RX 7900 XTX.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-iq3-wave-base-retained.json`.
+
+### 12.11 MoE-tail plus next-input RMSNorm: retain the aggregate ABI only
+
+The post-D1 Q3 trace exposes 39 non-final MoE/input-norm boundaries, but only
+37 already have the stable BF16 selected-aggregate ABI. Layers 34 and 38 still
+carry eight slot rows plus F32 routing weights; layer 39 and `output_norm`
+remain final-layer boundaries. Production traces select the two schedules
+rather than forcing one fused body across both:
+
+| Q3 decode boundary / wall | Unfused | Retained / screened | Delta |
+| --- | ---: | ---: | ---: |
+| 37 aggregate combines + next norms, decode16 | 3.893327 ms | 3.696835 ms | **-5.05%** |
+| 2 slot-weighted combines + next norms, decode16 | 0.249685 ms | 0.446607 ms | **+78.87%** |
+| Dispatches per token | 708 | 671 | **-37** |
+| Counterbalanced 512/128 graph decode | 100.195 tok/s | 101.216 tok/s | **+1.02%** |
+| Counterbalanced 4K/128 graph decode | 107.366 tok/s | 108.383 tok/s | **+0.95%** |
+
+The retained local256 aggregate kernel is one block/token, uses 24 allocated
+VGPRs, 1 KiB LDS, and zero scratch. It stores the BF16 residual before reducing
+RMS squares, emits both residual and normalized output, and replaces 37 pairs
+of graph nodes with 37 fused nodes. The one-block slot-weighted specialization
+serializes all eight routes and loses cold production-layer parallelism, so
+those two Q3 boundaries and the slot-weighted Q4/PARO decode paths retain the
+exact feature-parallel combine followed by RMSNorm fallback.
+
+All three 512 pairs and both 4K pairs favor the retained route. IDs, final
+logits, and tracked memory are identical; layer-limit 1/4/40 hidden buffers are
+bit-exact, and eager/graph generation remains `[11,11,264]` with KL `0`. Bulk
+prefill does not enter this decode-only chain, so its noisy contemporaneous
+samples are not a prefill claim. The current headline is GPU1/RX 7900 XTX only;
+W7900 throughput remains unverified.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json`.
+
+### 12.12 Routed/shared stream overlap: two queues, zero concurrent kernels
+
+The stabilized Q3 decode graph leaves a real algorithmic fork: 39 IQ3 selected
+branches and their shared experts read the same normalized activation, write
+disjoint scratch, and join only at the MoE tail. Their shared gate/up, SiLU,
+and down kernels account for roughly `0.51 ms/token` in the serial graph trace,
+so the perfect-overlap bound was large enough to test rather than dismiss by
+Amdahl analysis.
+
+The required eager probe used a reusable nonblocking auxiliary HIP stream and
+explicit event fork/join. Rocprof assigned `1,872` shared dispatches (`624`
+branches over decode16) to queue 2 and kept `8,897` dispatches on queue 1, but
+found **zero** overlapping cross-queue kernel intervals (`0 ns`, `0/624`
+branches). The queues only interleaved work across Python/ctypes submission
+gaps. Matched selected-region results therefore moved in the wrong direction:
+
+| GPU1 512/16 eager decode | Serial | Two-stream | Delta |
+| --- | ---: | ---: | ---: |
+| Dispatches | 10,769 | 10,769 | 0 |
+| Summed kernels | 250.552 ms | 251.991 ms | +0.57% |
+| Trace span | 1,771.216 ms | 1,815.139 ms | **+2.48%** |
+| Wall | 110.790 ms/token | 113.538 ms/token | **+2.48%** |
+| Throughput | 9.0261 tok/s | 8.8077 tok/s | **-2.42%** |
+
+The generated sequence, final logit, and memory were identical; an independent
+eager-overlap versus serial-graph smoke remained exact `[11,11,264]`, KL `0`.
+This is a **decode rejection**, not a prefill result: the candidate was eager
+`c=1` only and never entered row-bulk prefill. The profiler-visible-overlap stop
+gate fired before graph-DAG integration, repeated 512/128 or 4K/128 runs, and
+Q4/PARO transfer. All experimental runtime/event/flag code was removed. Reopen
+only for a device-side or C submission design that first shows concurrent real
+kernel timestamps; distinct stream labels are insufficient. GPU0/W7900 was not
+used.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-moe-branch-overlap-rejected.json`.
+
+### 12.13 Source-shaped Q8 block serialization does not transfer exactly
+
+Task #32's final-tree D0 left raw dense Q8 first at `2.83934 ms/token`, 32.17%
+of summed decode kernels and 200 launches/token. The production mix is broad:
+40 `8192x2048`, 30 `4096x2048`, 80 `2048x{4096,512}`, and 50 dual
+`512x2048` projection launches per token. That justified one new algorithmic
+premise rather than another launch-bound/load tweak: adapt qwen-kernel
+`52e240f9` `shaders/gemv_q8_0.comp` rank 11a so a local256 block assigns 16
+physical lanes per output and computes 16 output rows while consuming raw Q8_0
+bytes directly.
+
+The source-shaped association looked compelling on three real model leaves:
+
+| Raw-Q8 c=1 leaf | Current pack8 | Source-shaped block-serial | Delta |
+| --- | ---: | ---: | ---: |
+| `8192x2048` | 24.539 us | 11.530 us | **-53.02%** |
+| `4096x2048` | 14.517 us | 6.567 us | **-54.76%** |
+| `2048x4096` | 13.143 us | 8.640 us | **-34.26%** |
+
+That form did not preserve hipEngine's reduction association. One representative
+`8192x2048` primitive row differed in one BF16 value, and the required real
+model gate found all 248,320 FP32 logits bit-different after one decode step at
+512/1K/4K. Maximum absolute differences were `3.2123/0.9094/3.8803`; top-1
+happened to remain equal, but task #32 requires exact logits and therefore
+rejects the route.
+
+A bounded salvage made each physical lane emulate the current local128 kernel's
+eight accumulator chains and reproduced its `16/8/4/2/1`, then wave0..3,
+association. It restored zero BF16 mismatches on all three real leaves and used
+local256, VGPR32, no LDS, and zero scratch. It also reversed every speed result:
+
+| Raw-Q8 c=1 leaf | Current pack8 | Exact block-serial | Delta |
+| --- | ---: | ---: | ---: |
+| `8192x2048` | 25.157 us | 32.580 us | **+29.51%** |
+| `4096x2048` | 14.541 us | 17.544 us | **+20.65%** |
+| `2048x4096` | 12.969 us | 23.378 us | **+80.26%** |
+
+The numerical contract and speedup are therefore inseparable for this mapping:
+the source association is fast but inexact, and the exact association serializes
+enough work to lose to the retained kernel. Both candidate forms, wrappers,
+registry entries, and tests were removed. Do not reopen this as a TPR8/16/32 or
+thread-count sweep; a future dense-Q8 decode pass needs a different algebra or
+resident layout with an explicit exact boundary.
+
+Evidence:
+`benchmarks/results/2026-07-22-gpu1-q3-q8-blockserial-decode-rejected.json`.
 
 ---
 

@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "status": "accepted_verified_subwindow_default",
+  "performance_claim": {
+    "headline_e2e": false,
+    "kernel_subwindow": true,
+    "reason": "Formal paired 512/128 wall is flat within spread, while selected-region raw-IQ and total-kernel reductions are exact, repeatable, resource-safe, and non-regressive."
+  },
+  "date": "2026-07-20",
+  "purpose": "Promote expert-major grouped scalar IQ3_XXS gate/up and IQ4_XS down to the default Q3 prefill route while retaining direct selected rollback.",
+  "hipengine_measurement_commit": "46688b8d3801c01df9e0cbb30d1e4950c6132884",
+  "kernel_commit": "8d860d08481a30d5c0f365d02b9fe6d937844f15",
+  "runtime_integration_commit": "73798cf62f8067f3c6b469f9b2db7054269fb118",
+  "profile_diagnosis_commit": "bb29be088449450803fff45dc2b70034148d6636",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "size_gib": 15.929716378450394,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "architecture": "qwen35moe",
+    "quant": "gguf_ud_q3_k_m",
+    "ar_layers": 40,
+    "nextn_layer_omitted": 40
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "physical_gpu": 1,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "compute_units": 96,
+    "wavefront_size": 32,
+    "note": "Concurrent MTP work was explicitly HIP_VISIBLE_DEVICES=0 on GPU0/W7900. Global rocm-smi KFD PID output was not used as a physical-GPU guard."
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git",
+    "compiler_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "kernel_build_profile": "prefill",
+    "require_cached_build": true
+  },
+  "commands": {
+    "formal_grouped_512_128": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_IQ_GROUPED_PREFILL=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-grouped-scalar512x128-formal-final.json",
+    "formal_direct_512_128": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-direct512x128-followup-final.json",
+    "grouped_selected_profile": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_IQ_GROUPED_PREFILL=1 PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-grouped-profile-20260719-233706/prefill -o q3-grouped-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>/bench.json",
+    "mixed64_parity": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_IQ_GROUPED_PREFILL=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bulk_parity.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --token-ids <9707,11,220,264,73,13,107561,13883 repeated 8x> --layer-limits 40 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-grouped-mixed64-parity.json"
+  },
+  "formal_512_128": {
+    "grouped": {
+      "warmup_runs": 1,
+      "measured_runs": 5,
+      "prefill_tok_s": {
+        "samples": [17.135660007107088, 16.685389629678106, 16.32648975541295, 16.945655509487928, 16.397675330120084],
+        "median": 16.685389629678106,
+        "min": 16.32648975541295,
+        "max": 17.135660007107088,
+        "stdev_pct_of_median": 2.07883707884768
+      },
+      "prefill_seconds": {
+        "samples": [29.87921094300691, 30.68552855902817, 31.360078477999195, 30.214233950013295, 31.223938131006435],
+        "median": 30.68552855902817
+      },
+      "decode_tok_s": {
+        "samples": [100.5714801529649, 100.66149924999095, 100.48018689059359, 100.57283592110352, 100.65256968835823],
+        "median": 100.57283592110352,
+        "stdev_pct_of_median": 0.07323085985138932
+      },
+      "final_token_ids": [220, 220, 220, 220, 220],
+      "finite_final_logits_all": true,
+      "tracked_peak_allocated_gib": 15.804706819355488,
+      "sampled_hip_peak_gib": 16.30078125
+    },
+    "direct": {
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "prefill_tok_s": {
+        "samples": [16.6482516924514, 16.396399785486025, 16.929612403104],
+        "median": 16.6482516924514,
+        "min": 16.396399785486025,
+        "max": 16.929612403104,
+        "stdev_pct_of_median": 1.6022244711183053
+      },
+      "prefill_seconds": {
+        "samples": [30.75398002495058, 31.226367171970196, 30.242866039043292],
+        "median": 30.75398002495058
+      },
+      "decode_tok_s": {
+        "samples": [100.5703696107275, 100.62848613822507, 100.4312480841669],
+        "median": 100.5703696107275,
+        "stdev_pct_of_median": 0.10077867926834763
+      },
+      "final_token_ids": [220, 220, 220],
+      "finite_final_logits_all": true,
+      "tracked_peak_allocated_gib": 15.804706819355488,
+      "sampled_hip_peak_gib": 16.296875
+    },
+    "delta": {
+      "prefill_tok_s_pct": 0.22307409758555163,
+      "prefill_seconds_pct": -0.2225775846471656,
+      "median_seconds_saved": 0.0684514659224078,
+      "decode_tok_s_pct": 0.0024523227713184606,
+      "interpretation": "Headline prefill is flat within sample spread; decode and memory are unchanged."
+    }
+  },
+  "selected_prefill_profile": {
+    "direct": {
+      "dispatches": 185078,
+      "summed_kernel_ms": 4396.14483,
+      "trace_span_ms": 30432.075941,
+      "iq_kernel_ms": 994.668454
+    },
+    "grouped": {
+      "dispatches": 185396,
+      "summed_kernel_ms": 4078.666531,
+      "trace_span_ms": 29882.216836,
+      "iq_kernel_ms": 613.995129,
+      "iq3_dual_ms": 280.832983,
+      "iq4_down_ms": 328.059775,
+      "iq4_dual_ms": 5.102371,
+      "scheduler_ms": 2.66267,
+      "selected_region_memory_copy_events": 0,
+      "resources": {
+        "iq3_dual": {"allocated_vgpr": 48, "scratch_bytes": 0, "lds_bytes": 512, "dispatches": 39},
+        "iq4_down": {"allocated_vgpr": 64, "scratch_bytes": 0, "lds_bytes": 512, "dispatches": 37},
+        "iq4_dual": {"allocated_vgpr": 112, "scratch_bytes": 0, "lds_bytes": 512, "dispatches": 1}
+      }
+    },
+    "delta": {
+      "iq_kernel_ms_pct": -38.27137811289227,
+      "summed_kernel_ms_pct": -7.22174339738485,
+      "trace_span_ms_saved": 549.859105
+    }
+  },
+  "long_context_4096_1": {
+    "direct": {"prefill_tok_s": 19.731330388904432, "prefill_seconds": 207.58863793103956, "preview_ids": [13883, 220], "final_token_id": 220, "final_logit": 12.492874145507812, "tracked_peak_gib": 16.950474798679352},
+    "grouped": {"prefill_tok_s": 20.004742733878103, "prefill_seconds": 204.75144591904245, "preview_ids": [13883, 220], "final_token_id": 220, "final_logit": 12.492874145507812, "tracked_peak_gib": 16.950474798679352},
+    "prefill_tok_s_pct": 1.3856761788724636,
+    "note": "Single expensive control pair; correctness/non-regression gate, not a formal 4K headline claim. Resolved MoE chunk size was 1024."
+  },
+  "correctness": {
+    "primitive_grouped_vs_direct_bf16_bit_exact": true,
+    "mixed64_native_row_bulk_vs_serial": {"token_id": 2860, "kl": 0.0, "top1_agreement": 1.0, "max_abs_logit": 0.0, "mean_abs_logit": 0.0, "finite": true},
+    "formal_final_ids_match": true,
+    "formal_logits_finite": true,
+    "long_context_ids_and_logit_match": true,
+    "fully_bulk_attention_remains_blocked": {"token_id": 12, "kl": 4.620900763638037, "max_abs_logit": 17.109676361083984}
+  },
+  "rejected_candidates": {
+    "raw_iq_wmma_runtime": "32/0 model smoke changed sampled token 73->13 and collapsed to 0.370 tok/s under static no-D2H upper-bound launch; kernels remain test-only.",
+    "grouped_scalar_rt2": "Bit-exact and spill-free, but matched IQ3/IQ4 leaf sums regressed about 50%; source/wrappers/tests removed before commit."
+  },
+  "decision": {
+    "accepted": true,
+    "promote_grouped_scalar_default": true,
+    "default_policy": "eligible selected_rows >= num_experts use grouped scalar; small assignments and unavailable grouped down formats retain direct selected fallback",
+    "rollback": "HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0",
+    "decode_effect": "none; c=1 route remains direct and proceeds through tasks #20 then #15",
+    "reason": "Exact/non-regressive verified sub-window improvement with no memory/resource/host-copy blocker; project policy promotes measured kernel/cycle-wall wins even when aggregate variance hides the headline ratio."
+  },
+  "raw_evidence": {
+    "grouped_formal_json": {"path": "/tmp/hipengine-q3-grouped-scalar512x128-formal-final.json", "sha256": "0e4c78d1d99a5d9700a6f08e9d7536041866ff2ac7bdd379b9eba364d5b6cc40"},
+    "direct_formal_json": {"path": "/tmp/hipengine-q3-direct512x128-followup-final.json", "sha256": "f4d8d87068451ee1247491ef52ecebe6e1f84d750e9ebede1b736cb2582cbd29"},
+    "grouped_profile_bench_json": {"path": "/tmp/hipengine-q3-grouped-profile-20260719-233706/prefill/bench.json", "sha256": "3533a4e671450e035cb8518824ee53315a954f1b9b49aa639a9611e9f6c1093b"},
+    "grouped_profile_trace_csv": {"path": "/tmp/hipengine-q3-grouped-profile-20260719-233706/prefill/q3-grouped-prefill_kernel_trace.csv", "sha256": "e5afa8acafdc90ecd82c827d1c0eb55aa01220e529d04ddb61ddca9cb165a76a"},
+    "grouped_profile_summary_json": {"path": "/tmp/hipengine-q3-grouped-profile-20260719-233706/prefill/summary.json", "sha256": "253e8386ab319694037afab5dc920634d651b69a65eb67c93f73e7d98d12ee80"},
+    "mixed64_parity_json": {"path": "/tmp/hipengine-q3-grouped-mixed64-parity.json", "sha256": "5985a541fe7f62dd9cd52f0a8695869e33d696585de07e84a770746b7f2910bf"},
+    "defaults_only_smoke_json": {"path": "/tmp/hipengine-q3-grouped-default512-smoke.json", "sha256": "715bb7d9ede6e010d0c4b31bb2abb6288ee567d9599a8912b20bcf8d43696294"}
+  }
+}

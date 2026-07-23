@@ -14,6 +14,9 @@
     "schema_version": {"const": 1},
     "created_at": {"type": "string", "minLength": 1},
     "performance_claim": {"const": false},
+    "hipengine_artifact_provenance": {
+      "$ref": "artifact-provenance.schema.json"
+    },
     "workload_suite": {
       "type": "object",
       "required": [
@@ -30,6 +33,18 @@
         "workload_sha256": {
           "type": "object",
           "additionalProperties": {"$ref": "#/$defs/sha256"}
+        },
+        "quality_oracle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "file_sha256", "kind", "schema_version", "suite"],
+          "properties": {
+            "path": {"type": "string", "minLength": 1},
+            "file_sha256": {"$ref": "#/$defs/sha256"},
+            "kind": {"const": "hipengine.agentic_quality_oracles"},
+            "schema_version": {"const": 1},
+            "suite": {"type": "string", "minLength": 1}
+          }
         }
       }
     },
@@ -50,7 +65,13 @@
         "concurrency": {"type": "integer", "minimum": 1},
         "agents": {"type": "integer", "minimum": 1},
         "turns": {"type": "integer", "minimum": 1},
-        "generated_tokens": {"type": "integer", "minimum": 1}
+        "generated_tokens": {"type": "integer", "minimum": 1},
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["repository", "general_en", "general_ja", "mixed_ja_en"]}
+        }
       }
     },
     "validation": {
@@ -84,6 +105,11 @@
         "outcomes": {
           "type": "object",
           "additionalProperties": {"type": "integer", "minimum": 1}
+        },
+        "external_oracle": {"$ref": "#/$defs/externalOracleRollup"},
+        "families": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/familyQuality"}
         }
       }
     },
@@ -98,6 +124,51 @@
     }
   },
   "$defs": {
-    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "externalOracleRollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempts", "passes", "pass_rate", "patch_attempts", "patch_successes",
+        "patch_success_rate", "test_attempts", "test_successes", "test_success_rate"
+      ],
+      "properties": {
+        "attempts": {"type": "integer", "minimum": 0},
+        "passes": {"type": "integer", "minimum": 0},
+        "pass_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "patch_attempts": {"type": "integer", "minimum": 0},
+        "patch_successes": {"type": "integer", "minimum": 0},
+        "patch_success_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "test_attempts": {"type": "integer", "minimum": 0},
+        "test_successes": {"type": "integer", "minimum": 0},
+        "test_success_rate": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "familyQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempts", "valid_calls", "correct_tools", "exact_arguments", "successes",
+        "valid_call_rate", "correct_tool_rate", "exact_arguments_rate", "success_rate",
+        "repair_attempts", "outcomes", "external_oracle"
+      ],
+      "properties": {
+        "attempts": {"type": "integer", "minimum": 1},
+        "valid_calls": {"type": "integer", "minimum": 0},
+        "correct_tools": {"type": "integer", "minimum": 0},
+        "exact_arguments": {"type": "integer", "minimum": 0},
+        "successes": {"type": "integer", "minimum": 0},
+        "valid_call_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "correct_tool_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "exact_arguments_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "success_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "repair_attempts": {"type": "integer", "minimum": 0},
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        },
+        "external_oracle": {"$ref": "#/$defs/externalOracleRollup"}
+      }
+    }
   }
 }

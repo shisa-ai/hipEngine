@@ -27,6 +27,10 @@ source-bound repacked cache and cold-start reduction,
 admission priority and the clean gfx1151 C8 server-ramp/SLO closure,
 `44c76674c2693f7dfc994b40b4cfc3880abbbeac` for the repeated W7900
 coding-agent A1 baseline,
+`414d6d9e0fc8a1333bbece4db851271f031936bf` for the clean W7900
+coding-agent A5 pressure/soak closure and corrected bounded stream lifecycle,
+`878d07a9ba8d3cd24cf44bd88d359be7b4921c2e` for the clean W7900
+coding-agent A6 broad external-oracle quality packet,
 `960d4a98d623c64073e40ffd061cbc25ee38a0fc` for the matched gfx1151
 PARO/GGUF/llama-server concurrency refresh and corrected PARO request-lifetime
 route validation,
@@ -545,6 +549,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Radeon RX 7900 XTX GPU1, gfx1100 | Qwen3.6-35B-A3B UD-Q3_K_M native prefill/decode, c2/c4/c8, and NextN diagnostic | 2026-07-22 | merged branch tip `5c76b408`; exact model/artifact identities and cached GPU1 traces retained | **Accepted direct-Q3 path / rejected MTP diagnostic**: exact fully-bulk prefill reaches **848.543/831.393 tok/s** at 512/4K; graph decode retains **101.216/108.383 tok/s** at c1 and native c8 reaches **207.780/211.177 aggregate tok/s** with exact IDs/full logits and no c>N serial fallback. The blk.40 NextN B1/B2/B3 row is exact but only **0.544x/0.346x/0.271x** AR and remains disabled. | Yes for the declared direct/native-Q3 scopes; no MTP promotion | Rerun after Q3 quant kernels, native-row ownership, MTP transaction/state, model, compiler/runtime, or GPU policy changes. |
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean profile-aware BF16 frontier `5a49b16d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; clean external-format screen `d0b56364`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness outcome**: on the physical 24 GB XTX, the automatic all-768 low-memory prefill profile makes **208 Ki BF16 the recommended safe cap** at **23.623 GiB whole-device peak / 0.361 GiB free**. **220 Ki physically completes** at 23.908 GiB but leaves only **0.076 GiB (~78 MiB)** and is edge-only; a 232 Ki low-profile screen exceeds capacity. Compact 256K INT8 fits at 22.971 GiB tracked but remains unsupported. External-format S1 lowers mean KL to **0.13342**, but the winning Hadamard group32 row rejects 4K/16 at **0.15512 KL** despite **94.12% top-1**. | Current diagnostic table | Rerun after chunk policy, model/runtime, or allocator changes; do not promote 220 Ki without more margin, and require matched-context plus broader task quality before INT8 support. |
 | Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV protocol/arithmetic isolation | 2026-07-13 | clean harness `a344d32a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Repeated-token pass superseded as representative quality evidence**: native Q8_0/F16 at 4K/16 is **0.000006 KL / 100% top-1** on repeated token 9707 but **0.075654/1.26009 mean/max KL / 94.12% top-1** on exact mixed `mixed_v1`, failing the KL gate; an exact rerun reproduces every row. Mixed K-only and V-only Q8 reach **0.09668** and **0.24322** mean KL, while full Q8 improves through non-additive K/V interaction. The old 128K repeated row remains a saturation control, not broad fidelity evidence. No performance claim. | Current diagnostic table | Require multiple mixed/natural prompt families after cache arithmetic, format, model/build, or protocol changes; do not promote from repeated-token rows. |
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | Native GGUF/PARO tail-four Hadamard-group32 mixed KV | 2026-07-15 | clean GGUF closure `c971262f`; therock HIP 7.15; exact Q4_K_M and prompt-suite identities; prior PARO/XTX outcome retained separately | **Quality-safe GGUF explicit diagnostic; no default promotion**: clean GGUF passes all 11 prompts at 512/8 and 4K/16 (**0.0001369/0.009926 mean/max KL, 99.47% aggregate and 94.12% minimum-prompt top-1** at 4K) plus bounded `mixed_v1` 128K/16. Persistent 128K K/V drops **2,689,597,440 -> 2,185,297,920 bytes (-18.75%)** with no persistent BF16 shadow, but production 4K prefill/decode regress **0.67%/0.75%**, 128K decode regresses **3.82%**, and a **1.002 GiB** prefill transient raises allocator high water **24.168 -> 24.700 GiB** despite lowering live owned memory by **0.470 GiB**. Prior PARO quality and 256 Ki capacity blockers remain. Explicit-only; unsupported/default status unchanged. [`clean GGUF gate`](results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json) · [`prior split outcome`](results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json). | Diagnostic link only | Remove the inferred four-layer BF16 prefill transient and optimize long-context group32 attention, then repeat the clean GGUF gate; PARO requires its own quality-safe layout. |
@@ -553,6 +558,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Radeon Pro W7900, gfx1100 | GGUF deterministic coding-agent A1, cache off, C1/C4/C8 | 2026-07-21 | clean measured source `44c76674`; system HIP 7.2.53211; exact UD-Q4_K_M/BF16-KV and workload fingerprints; real Uvicorn SSE; one complete warmup + three measurements/configuration | **Retained active-SSE baseline**: small 4K C1/C4/C8 is **16.239/15.995/16.020 exact tok/s**, growing 4K is **15.100/15.231/15.036**, and medium 10,240 is **4.127/4.629/4.339**. Medium C4 is **1.122x C1** and C8 is **0.937x C4**; short/growing scaling is flat. All **702 turns / 17,316 response-owned IDs** pass independent blocking/SSE, strict-tool, variance (<0.91%), and zero-ownership gates. The retained denominator sums measured SSE wave walls; the older first-to-last wall includes inter-turn validation oracles and is diagnostic only. Public timing is buffered tool-ready, not lower-loop TTFT/ITL. GPU0/W7900 is target-exclusive; pinned GPU1/XTX work is a separate device and allowed. Full-vocabulary host logits D2H reaches **1.473 GiB/run**, selecting prefix A/B then native sampling. [`artifact`](results/2026-07-21-w7900-agentic-a1-repeated-baseline.json). | Yes, for exact active-SSE wave goodput and buffered tool-ready latency only | Rerun after prefix/cache, sampled logits/sampler placement, batch/routing policy, tool-envelope streaming, model/quant/KV, compiler/runtime, or GPU0 policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF deterministic coding-agent A2 prefix decision | 2026-07-21 | clean C1 measurement `5d483f36`; prerequisite skip `496dbd60`; lifecycle closure `b8604358`; exact UD-Q4_K_M/BF16-KV and workload fingerprints; active-SSE wave scope | **Rejected; cache-off remains default**: radix versus paired off regresses C1 active-SSE goodput **64.19%/65.63%/26.64%** and worsens buffered tool-ready p50 **181.90%/196.09%/38.81%** for small/growing/medium. Hits are only **0/12, 3/24, 3/18**; all A1 guards fail and growing/medium variance exceeds 5%. C4/C8 is an intentional no-timing skip after the C1 prerequisite fails. Exact IDs/state/KV, lifecycle, cache bounds, and final ownership pass, but cannot override performance. Radix remains explicit diagnostic-only. [`decision`](results/2026-07-21-w7900-agentic-a2-prefix-decision.json). | Negative/default decision; no radix performance promotion | Reconsider only after a model-general LCP/snapshot redesign passes the full C1/C4/C8 suite without prompt-conditioned tuning. |
 | Radeon Pro W7900, gfx1100 | GGUF deterministic coding-agent A4 routing/SLO decision | 2026-07-22 | clean balanced screen `fb744f03`; frozen protocol `c445d0ca`; measurement publication `7cc2fee0`; system HIP 7.2.53211; exact UD-Q4_K_M/BF16-KV; real localhost Uvicorn SSE | **Blocked; package routing defaults unchanged**: all **8 candidates x 3 balanced delayed mixed-arrival repetitions** complete (**288 requests / 8,640 response-owned IDs**), but no candidate passes every gate. The exact package control misses TTFT p95 once (**10.983 s > 10 s**); faster alternatives produce **9 late `fixed-0011` p512/d48 mismatches** after 20-24 correct IDs. Native route/final ownership pass, but diagnostic goodput gains up to **+63.81%** cannot override correctness. C1/C2/C4/C8 promotion, strict-tool, and safety timing is intentionally skipped with no inference. [`decision`](results/2026-07-22-w7900-agentic-a4-routing-decision.json). | Negative/default decision; no A4 performance row | Localize and exactness-gate the late p512/d48 state/KV or width transition, then restart all eight frozen candidates. |
+| Radeon Pro W7900, gfx1100 | GGUF deterministic coding-agent A5 pressure/soak | 2026-07-22 | clean measured source `414d6d9e`; system HIP 7.2.53211; exact UD-Q4_K_M/BF16-KV; real localhost Uvicorn SSE; cache/native sampler off; `protect_decode:256/burst-1`, zero-ms window | **Accepted bounded correctness/SLO closure; no comparative performance claim**: all nine workloads pass over **122 requests / 2,482 exact observed IDs**: **108 completions / 2,480 completed IDs**, **12 exact retryable overload rejects**, one two-ID disconnect reclaimed in **44.5 ms**, and one distinct deadline. The 80-second soak is **40/40 exact at 11.151 SLO-goodput tok/s**; overload is **20 accepts / 12 rejects at 21.717**. Queue/stream depth stay within **16/1**, KV grows **3 -> 12 pages** then drains, graph/workspace/tracked memory recover, all final owners are zero, and 41 KFD samples show target GPU0 exclusivity. Cache eviction links to the exact A2 p2048/p8192 lifecycle packet because cache off remains the retained default. [`artifact`](results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json). | Correctness and absolute bounded-SLO evidence only; no tuning/default-speed claim | Rerun after cancellation/deadline, active/queue/stream admission, resident/KV/graph/workspace lifecycle, scheduler defaults, model/quant/KV, compiler/runtime, or device policy changes; a longer soak is required for multi-day reliability claims. |
+| Radeon Pro W7900, gfx1100 | GGUF coding-agent A6 broad automatic-tool quality | 2026-07-22 | clean measured source `878d07a9`; system HIP 7.2.53211; exact UD-Q4_K_M/BF16-KV; cache/native sampler off; real localhost blocking OpenAI; 6 committed workloads / 24 turns x 2 repeats; external result/patch/test oracle | **Completed synthetic quality diagnostic; no performance claim**: **10/48 complete turns** pass. Valid-call/correct-tool is **18/48**, exact arguments and independent-oracle pass are **16/48**, safe patch success is **0/6**, and independent test success is **8/8**. Family success is repository **2/16**, general English **4/16**, Japanese **0/8**, and mixed Japanese/English **4/8**. Outcomes are **10 passed / 20 invalid-tool-call / 10 no-tool-call / 6 content-alongside-tool-call / 2 wrong-arguments**. All **24/24** repeat pairs match response IDs/outcomes, all **4,538 IDs** are response-owned, no raw markup leaks, clean provenance/GPU0 exclusivity/final zero ownership pass, and no latency/tok/s/goodput fields exist. [`artifact`](results/2026-07-22-w7900-agentic-a6-broad-quality.json). | Quality diagnostic only; not a public benchmark, cross-model leaderboard, generated-patch execution, or performance row | Expand to independent public task suites and model-generated patch sandboxes before any broad quality claim; prioritize automatic tool envelopes, Japanese argument selection, and safe patch calls from this failure distribution. |
 | Radeon Pro W7900, gfx1100 | PARO W4/BF16-KV explicit direct native-c2 selected-batch decode | 2026-07-18 | clean measured `fcb65c47`; TheRock HIP 7.15; exact packed-PARO/prompt fingerprints; cached builds | **Retained for the direct c2 model-step scope**: p512/d128 selected-batch is **121.923 aggregate / 60.962 per-request tok/s**, **+5.09% vs c1 graph** and **+20.81% vs serial c2**. Three fresh processes are <=0.276% stdev/median; primitive, all-layer hidden/Conv/GDN/context/KV, uniform/ragged EOS+cancel immutability, auto-default, and a **10/10 prompt / 330/330 ID** category+heldout gate pass. The fresh L4 trace is `eq_ok`, has **1,306 dispatches**, and records the exact c2 context plus selected fused projection families. Public/OpenAI PARO remains width-1; c4/c8 and gfx1151 are not implied. [`artifact`](results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json). | Yes, for explicit direct native c2 only | Rerun after PARO c2 math/routing, model/prompt, compiler/runtime, KV policy, or device policy changes; require separate shared-loop and c4/c8 gates before broader production claims. |
 | Radeon Pro W7900, gfx1100 | GGUF final architecture-local prefill/decode/memory optimization | 2026-07-16 | clean right-sized rollup `28b37356`; therock HIP 7.15; exact Q4_K_M fingerprint; selector-unset BF16-KV package defaults | **Accepted final gfx1100 GGUF route**: six-shape prefill is **2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s**, beating llama.cpp HIP by **12.62-30.95%** everywhere and Vulkan from 512-64K; graph decode is **92.833/98.148/100.522/88.240/76.691/62.669 tok/s**, ahead of llama.cpp HIP everywhere and closest to Vulkan at 4K (**-2.47%**). Tracked memory is within **-0.378 to +0.079 GiB** of llama.cpp HIP whole-device readings. All 18 IDs are exact. [`artifact`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json). | Yes | Rerun after model/runtime/default-policy, compiler/runtime, or reference-engine changes; decode-to-Vulkan and 128K Vulkan prefill are the concrete residuals. |
 | Radeon Pro W7900, gfx1100 | GGUF pp512 request-scoped metadata reuse | 2026-07-15 | clean retained scheduler `e03e5a34`; matched HIP API/kernel traces around the identical source change; system HIP 7.2.53211; exact Q4_K_M fingerprint retained | **Retained scheduler / diagnostic GPF-9C row**: exactly **240 synchronous copies** are removed, matched queue idle falls **27.956 -> 15.163 ms (-45.76%)**, and clean `chain_peer_wave32` pp512 improves **2210.729 -> 2292.186 tok/s (+3.68%)** with stable IDs, unchanged **22.995 GiB** peak, and decode +0.51%. 4K is within -0.44%, but 512 remains **4.98% below** the frozen llama.cpp HIP floor, so exact direct-LDS32 remains production. [`artifact`](results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json). | Diagnostic link only; scheduler code retained | Superseded for the next queue boundary by the compact-WMMA no-read row below; retain as the isolated 240-copy attribution. |
@@ -1121,6 +1128,30 @@ The retained gfx1100 and gfx1151 HIP/Vulkan timing-contract v2 micro matrices
 are linked from the platform index and
 [`docs/HIP-vs-VULKAN.md`](../docs/HIP-vs-VULKAN.md); they are not
 model-throughput toplines.
+
+
+## Merged UD-Q3_K_M GPU1 Records
+
+These rows retain the branch's exact direct/native evidence under its original
+GPU1 RX 7900 XTX scopes. They do not replace the W7900 Q4_K_M or project-wide
+serving toplines above.
+
+| Model | Quant | Backend | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Correctness | Artifact | Last updated | Notes |
+| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=2 512/128 | 864.569 | 118.125 | 15.903 | all 129 sampled IDs (128 timed native decode steps) and stateful full logits are exact vs independent c=1 | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 59.062 tok/s/request; 16.865/17.543 ms p50/p95; aggregate is 1.167× retained c=1. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=4 512/128 | 864.549 | 151.772 | 16.059 | exact generated IDs/full logits vs independent c=1; varied-prompt confirmation 151.638 tok/s | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 37.943 tok/s/request; 26.124/27.964 ms p50/p95; aggregate is 1.499× c=1. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=8 512/128 | 863.901 | 207.780 | 16.372 | exact generated IDs/full logits vs independent c=1; rocprof shows indexed Conv/GDN, row-batched paged attention, selected-row MoE, row lm-head, and row argmax | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 25.973 tok/s/request; 38.547/39.917 ms p50/p95; 2.053× c=1; varied prompts confirm 210.640 tok/s. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=2 4K/128 | 900.310 | 130.276 | 17.226 | exact generated IDs vs independent c=1; native split-GQA attention path and full-logit boundary gates pass | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 65.138 tok/s/request; 15.188/16.056 ms p50/p95; aggregate is 1.202× c=1. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=4 4K/128 | 897.687 | 157.926 | 17.520 | exact generated IDs vs independent c=1; C=4 full-logit native-row gate passes | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 39.481 tok/s/request; 25.238/26.022 ms p50/p95; aggregate is 1.457× c=1. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=8 4K/128 | 894.036 | 211.177 | 18.107 | exact generated IDs vs independent c=1; C=8 full-logit gate and native graph provenance pass | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 26.397 tok/s/request; 37.888/38.365 ms p50/p95; aggregate is 1.948× c=1. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m | `hip_gfx1100` RX 7900 XTX GPU1 fully-bulk + guarded residual-D4 MMQ wide-Q8 + exact Q8 fallbacks + attention GQA-batch + IQ3 rowbatch4 + GDN LDS32 + IQ4-down wave32 defaults | 512/0 repeated-token prefill | 848.543 | — | 15.821 | Final 18-workload x 9-position continuation suite is logit-bit-exact to the exact-tile control (`KL=0`, top-1 `1.0`); all-queued sparse repair is BF16-bit exact | [`2026-07-20-gpu1-q3-guarded-d4x3-mmq-prefill.json`](results/2026-07-20-gpu1-q3-guarded-d4x3-mmq-prefill.json) | 2026-07-20 | Post-hardening official five-run median moves the prior retained `774.185 -> 848.543 tok/s` (+9.60%, 0.22% stdev); matched mixed-pattern A/B is `760.411 -> 837.417` (+10.13%). The bounded queue adds 16 MiB; non-admitted shapes retain exact fallbacks. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m | `hip_gfx1100` RX 7900 XTX GPU1 fully-bulk + guarded residual-D4 MMQ wide-Q8 + exact Q8 fallbacks + attention GQA-batch + IQ3 rowbatch4 + GDN LDS32 + IQ4-down wave32 defaults | 4K/0 mixed-pattern prefill | 831.393 | — | 17.080 | Matched mixed-pattern exact/candidate full logits preserve token `14626`, KL `0`, and top-1; the 18-workload continuation and focused primitive/full-model gates pass | [`2026-07-20-gpu1-q3-guarded-d4x3-mmq-prefill.json`](results/2026-07-20-gpu1-q3-guarded-d4x3-mmq-prefill.json) | 2026-07-20 | Post-hardening matched mixed-pattern A/B moves `743.906 -> 831.393 tok/s` (+11.76%; +12.17% vs prior retained 741.180); official repeated-token median is 828.003. Cached dense Q8 falls `2,052.066 -> 1,569.232 ms` (-23.53%), total kernel sum `5,350.508 -> 4,815.413 ms` (-10.00%), and trace span falls to 4,973.718 ms; the bounded queue adds 128 MiB. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m | `hip_gfx1100` RX 7900 XTX GPU1 historical native-attention control | 512/128 native-attention + grouped scalar MoE + one-step graph decode | 16.685 | 101.216 | 15.805 | Mixed-64 native-row-bulk vs serial: KL `0`, top-1 `1.0`, max abs `0`; current tail A/B IDs `[220]*6`; 4K IDs/logit exact across both pairs; selected IQ/tail symbols have zero scratch/copies | [`2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json`](results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json) | 2026-07-20 | Superseded as the prefill default by the exact fully-bulk rows above; its `101.216 tok/s` result remains the retained decode score. The grouped-prefill portion remains a verified sub-window/default promotion rather than a prefill headline: paired direct is 16.648 tok/s (+0.22%, within 2.08%/1.60% spread), while raw-IQ time is `994.668 -> 613.995 ms` (-38.27%) and total kernel sum `4396.145 -> 4078.667 ms` (-7.22%). `HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0` retains rollback. Task #20 hierarchical top-k was exact but rejected on graph wall (`99.201 -> 98.057 tok/s`, -1.15%); [`rejection artifact`](results/2026-07-20-gpu1-q3-hierarchical-topk-rejected.json). The final-tree task-#32 D0 records `8.82493 ms/token` and `671` launches/token after the retained tail/RMS fusion; dense Q8 remains first at `2.83934 ms/token` (32.17%), followed by attention at `1.42134` (16.11%), lm-head Q6 at `1.05068` (11.91%), weighted IQ4 down at `1.00066` (11.34%), and IQ3 gate/up at `0.70532` (7.99%); [`final D0 artifact`](results/2026-07-22-gpu1-q3-final-decode-d0-profile.json). Its single follow-up premise is also closed: source-shaped raw-Q8 block serialization cut three representative leaves 34–55% but changed every full logit at 512/1K/4K, while exact association regressed those leaves 21–80%; candidate code was removed and the retained wall row is unchanged; [`rejection artifact`](results/2026-07-22-gpu1-q3-q8-blockserial-decode-rejected.json). D1B output tile4 was removed after a 12.50% real-family regression. D1C's retained wave-uniform IQ3 block base reduces IQ3 `11.4966 -> 11.2614 ms` (-2.05%), VGPR `48 -> 40`, and counterbalanced graph decode `100.334 -> 100.536 tok/s` (+0.20%) with exact 512/1K/4K IDs/logits; that within-noise sample did not replace the prior `100.573 tok/s` headline. [`D1C artifact`](results/2026-07-20-gpu1-q3-iq3-wave-base-retained.json). Task #21 now fuses 37 already-weighted MoE tails with the next input RMSNorm, removes 37 graph nodes/token (`708 -> 671`), and moves same-suite graph decode `100.195 -> 101.216 tok/s` (+1.02%) at 512 and `107.366 -> 108.383 tok/s` (+0.95%) at 4K with all five pairs positive. The 16.685 prefill metric is intentionally retained from the grouped-prefill gate because this decode-only route does not touch bulk prefill; slot-weighted Q3/Q4/PARO boundaries retain the exact two-kernel fallback. [`Task-21 artifact`](results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json). |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m | `hip_gfx1100` RX 7900 XTX GPU1 raw-IQ direct session | 512/128 native-attention + direct `x_rows` MoE + one-step graph decode | 19.452 | 99.015 | 15.805 | Public first token matches pinned llama.cpp; resident eager/graph `[11,11,264]`, KL `0`, top-1 `1.0`; three benchmark IDs stable `[220]*3`; `performance_claim=false` | [`2026-07-19-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-direct-baseline.json`](results/2026-07-19-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-direct-baseline.json) | 2026-07-19 | Correctness/optimization control, not a speed promotion. Selected profiles show 185,078 prefill launches, 708 dispatches/decode token, exact IQ traffic `424,280,064 bytes/token`, and no IQ scratch; same-model qwen-kernel `829.30/189.96` is contextual and was not rerun. |
+
+| Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
+| --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
+| Qwen3.6-35B-A3B GGUF UD-Q3_K_M + blk.40 NextN | **diagnostic no-hold / default disabled** | GPU1 RX 7900 XTX/gfx1100, matched raw `code_python` prompt (21 tokens), D16, fixed B=1/2/3, exact eager shared verifier with stable shape buckets | 8.832 / 9.247 / 8.902 | 4.801 / 3.201 / 2.413 | **0.544x / 0.346x / 0.271x** | exact greedy IDs at every budget; B=1/2/3 full target logits equal scalar; GPU accept equals CPU oracle; reject/partial/full state and live-KV prefix are exact | [`2026-07-21-gpu1-q3-gguf-mtp-e2e-nohold.json`](results/2026-07-21-gpu1-q3-gguf-mtp-e2e-nohold.json) | One accepted draft token over 14 cycles (`1.071` visible/cycle) at every budget. The explicit diagnostic route uses candidate-only `DraftBatch`, root-prefixed `TargetVerifyBatch`, `KVLiveSpans(span_role=verify_chain)`, scheduler `KVTransaction`, GPU accept summary, and stable graph-shaped buffers. Wider B pays more exact target rows without density gain; no public/default promotion. |
 
 ## Platform Records And Diagnostics
 
@@ -2089,6 +2120,107 @@ systematically one code below the CPU/HIP oracle. The retained portable shader
 eliminates those scale mismatches; both the gfx1100-matched and current strict
 gfx1151 matrices now pass 22/22 comparisons and all 232 burst rows.
 
+The retained synthetic Laguna-shape IQ2_XS primitive packet is
+[`2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).
+At K=3072/N=128/E=16, rowbatch4 reduces event time by 7.24-58.82% versus
+row-at-a-time grouping across 1-16 rows/expert and remains BF16-bit exact;
+K=3072/N=1024 also passes exact selected/grouped gates. This is a kernel
+schedule result, not Laguna model throughput or quality evidence.
+
+The old/current narrow cross-format diagnostic is
+[`2026-07-23-gpu1-iq-cross-format-prefill-current.json`](results/2026-07-23-gpu1-iq-cross-format-prefill-current.json).
+At E16/K3072/N128 with equal 1/2/4/8/16 rows per expert, the fastest explicit
+exact scalar/rowbatch IQ2 leaf moves
+`20.452/22.584/25.977/48.428/97.458 -> 15.733/19.191/23.178/42.657/86.580 us`
+(-10.78% to -23.07%) from pre-optimization source `8addd867` to the current
+kernel tree. IQ3/IQ4 move by at most 2.22% between the two sessions, consistent
+with run variance and no relevant kernel change. These are complete dual gate/up
+dispatch latencies, not per-row or runtime-default timings, and remain a narrow
+synthetic diagnostic rather than model throughput evidence.
+
+The counterbalanced E256/K3072/N1024 tuning baseline is
+[`2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json`](results/2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json).
+Rotating-distinct top-10 selected single/fused-dual leaves are
+`57.881/106.136 us`; repeated-expert cache-hot leaves are 20-22% faster and are
+therefore diagnostic only. Rowbatch4 regresses balanced 16-token prefill by
+6.30%, wins 8.35-29.92% at 32 tokens depending on routing skew, and wins
+30.71-57.46% at 64-512 tokens. Full-shape fused decode and grouped prefill gates
+are BF16-bit exact. These are synthetic primitive/policy results, not Laguna
+model throughput or quality evidence.
+
+The retained exact branchless IQ2 decoder is
+[`2026-07-22-gpu1-iq2-xs-branchless-decode.json`](results/2026-07-22-gpu1-iq2-xs-branchless-decode.json).
+Replacing divergent selector ternaries with the exact arithmetic map and sign-bit
+OR moves rotating-distinct selected single/fused dual
+`57.881/106.136 -> 49.200/78.784 us` (-15.00/-25.77%). All hot/repeated decode
+controls improve 14.14-25.14%; all representative E256 prefill cases improve,
+with scalar -21.21% to -32.26% and rowbatch4 -13.90% to -27.21%. Fused decode
+and grouped prefill remain BF16-bit exact. The four kernels stay scratch-free;
+their increased VGPR40/64/80/88 allocation is accepted because every measured
+routing/size case wins. This remains primitive, not model-level, evidence.
+
+The retained decode geometry extension is
+[`2026-07-22-gpu1-iq2-xs-pair16-local64.json`](results/2026-07-22-gpu1-iq2-xs-pair16-local64.json).
+Pairing adjacent shared-scale selectors and selecting local64 moves the
+branchless-local256 rotating single/dual `49.200/78.784 -> 33.296/56.922 us`
+(-32.33/-27.75%); hot/repeated controls improve 16.40-28.10%. The full E256
+geometry sweep is BF16-bit exact to local256. Task32 regressed every matched
+pair16 leaf by 10.46-31.20% and was removed. Pair16 grouped prefill was also
+restored to group8 because short/sparse rows regressed up to 5.25%, despite
+large populated-expert scalar wins. The retained decode leaves are local64,
+VGPR64/96, LDS512B, and scratch0. This is synthetic primitive evidence.
+
+The retained sparse-prefill policy is
+[`2026-07-22-gpu1-iq2-xs-adaptive-rowbatch.json`](results/2026-07-22-gpu1-iq2-xs-adaptive-rowbatch.json).
+For K3072 below four compact rows/expert on average, each block selects batch1,
+batch2, or batch4 from its device-resident expert count; denser calls preserve
+the original rowbatch4 symbol. Versus unconditional rowbatch4, all nine
+16/32/64-token balanced/hot/Zipf leaves improve by 0.64-13.09%, including
+balanced 16 `1.378 -> 1.198 ms` (-13.09%) and balanced 32
+`2.179 -> 1.919 ms` (-11.91%). Outputs are BF16-bit exact; adaptive is
+local256/VGPR88/LDS512B/scratch0. Standalone rowbatch2 never won. Rowbatch8 won
+only the balanced five-row case (-4.15%) and regressed the other 14 leaves by
+12.25-96.50%, so it was removed. This remains synthetic primitive evidence.
+
+The retained selected-decode tile is
+[`2026-07-22-gpu1-iq2-xs-output-tile2.json`](results/2026-07-22-gpu1-iq2-xs-output-tile2.json).
+Sharing BF16 activation loads/conversions across two adjacent output columns
+moves tile1 -> tile2 rotating selected single/dual
+`33.569/57.176 -> 30.955/55.964 us` (-7.79/-2.12%); hot/repeated controls improve
+4.04-8.82%, and an independent full-protocol repeat also wins all six leaves.
+The full E256 output is BF16-bit exact. Tile2 is now default, while explicit
+tile1 four-axis variants remain for rollback. Tile2 is local64/LDS512B/scratch0
+at VGPR80/136. This remains synthetic primitive evidence.
+
+The rejected Q8_1/`sudot4` decode experiment is
+[`2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json`](results/2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json).
+Llama.cpp-shaped packed-byte expansion plus tile2 made prequantized fused decode
+1.47-4.83% faster, emitted `v_dot4_i32_iu8`, stayed scratch-free, and passed the
+primitive quality gate (projection/fused KL mean `0.000330/0.006713`, top-1
+`1.0`). Its 3.32-3.41 us activation quantizer nevertheless moves retained exact
+-> inclusive fused decode `54.299 -> 55.532 us` (+2.27%) for rotating-distinct,
+`51.338 -> 50.760 us` (-1.13%) for hot, and `47.461 -> 48.468 us` (+2.12%) for
+repeated experts. The representative cold/repeated regressions reject the lane;
+candidate code was removed and no Q8_1 sidecar or fusion is retained.
+
+The retained explicit integer-prefill primitive is
+[`2026-07-23-gpu1-iq2-xs-mmq32-prefill.json`](results/2026-07-23-gpu1-iq2-xs-mmq32-prefill.json).
+At E256/K3072/N1024/top-10, raw IQ2 signed-byte fragments are expanded once per
+32-column x K256 tile into LDS and reused across four 16x16 RDNA3 integer-WMMA
+minitiles. Exact auto -> D4-quantizer-inclusive MMQ32 moves the 256-token
+balanced/hot/Zipf cases `7.755/8.201/7.647 -> 5.528/5.842/5.927 ms`
+(-28.72/-28.76/-22.49%) and the 512-token cases
+`13.740/14.410/14.377 -> 6.889/7.726/7.902 ms`
+(-49.86/-46.38/-45.03%). The populated-expert fixture passes max-relative
+`<=0.05`; representative E256 quality has KL max `<=0.00453`, top-1
+`>=0.98125`, and finite outputs. Rocprof records local128/VGPR104/LDS10240B and
+scratch0; the D4 quantizer is local256/VGPR24/scratch0. Short padding remains a
+hard blocker: 16-64 tokens regress 45.92-129.45%, and 128-token hot/Zipf regress
+10.41-19.97%. The four-axis primitive and optional benchmark route are retained,
+but runtime default promotion waits on Laguna all-layer quality and ownership of
+Q8/tile scratch; exact adaptive/rowbatch remains unchanged. This is synthetic
+primitive evidence, not Laguna model throughput or quality evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.
@@ -2123,6 +2255,20 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
+- **W7900 coding-agent A5 pressure/soak closure, GGUF Q4_K_M:** clean pushed
+  `414d6d9e` runs the unchanged cache-off/native-sampler-off package defaults
+  through all nine real-Uvicorn pressure workloads. The packet handles **122
+  requests** as **108 exact completions / 12 exact retryable rejects / one
+  two-ID disconnect / one deadline**, with **2,482 exact observed IDs**. The
+  80-second soak is **40/40 exact at 11.151 SLO-goodput tok/s**; overload is
+  **20 accepts / 12 rejects at 21.717 tok/s**. Queue depth reaches its declared
+  16 cap, the slow-consumer stream queue peaks at 1/16, KV grows 3 -> 12 pages
+  and drains, graph/workspace/memory recover, final ownership is zero, and 41
+  KFD samples see no competing GPU0 process. Cache eviction is linked to the
+  passing A2 p2048/p8192 lifecycle closure because cache off remains the
+  performance-selected default. This is bounded correctness and absolute SLO
+  evidence, not a tuning comparison or multi-day reliability claim. [A5
+  artifact](results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json).
 - **W7900 coding-agent A4 routing/SLO decision, GGUF Q4_K_M:** clean pushed
   `fb744f03` runs all **8 predeclared candidates x 3 balanced repetitions** over
   12 delayed mixed-shape requests each (**288 requests / 8,640 response-owned
@@ -2188,14 +2334,24 @@ untracked experiment files as part of the rollup gate.
   pairs/workloads were stopped and the observed **13.268 vs 13.297 tok/s** and
   **1855.2 vs 1871.5 ms** tool-ready p50 are diagnostic-only, not an A/B result.
   [Blocked A2 artifact](results/2026-07-21-w7900-agentic-a2-c1-processed-argmax-blocked.json).
-- **W7900 coding-agent A1 capacity/A6 diagnostics, GGUF Q4_K_M:** clean
-  `56c91f87` closes logical-C8 capacity for all frozen families at guarded
+- **W7900 coding-agent A6 broad automatic-tool quality, GGUF Q4_K_M:** clean
+  `878d07a9` completes two repeats of **24 externally scored turns** over
+  repository, general-English, Japanese, and mixed Japanese/English families.
+  Complete success is **10/48**; valid-call/correct-tool is **18/48**, exact
+  arguments/external-oracle pass are **16/48**, safe patch success is **0/6**,
+  and independent test success is **8/8**. Outcomes are **10 passed / 20
+  invalid-tool-call / 10 no-tool-call / 6 content-alongside-tool-call / 2
+  wrong-arguments**. All 24 repeat pairs match response IDs/outcomes, all 4,538
+  IDs are response-owned, no raw markup leaks, GPU0 exclusivity and zero final
+  ownership pass, and no timing fields are present. This synthetic packet
+  supersedes the old four-turn A6 diagnostic but is not a public quality
+  benchmark or performance row. [Broad A6 artifact](results/2026-07-22-w7900-agentic-a6-broad-quality.json).
+- **W7900 coding-agent A1 capacity diagnostics, GGUF Q4_K_M:** clean `56c91f87`
+  closes logical-C8 capacity for all frozen families at guarded
   **4K/4K/10,240** contexts and registry-capped c4 residency. Those one-run
   artifacts remain correctness/capacity-only and are superseded for performance
-  by the retained repeated A1 row above. The separate natural A6 lane remains
-  **2/4 successes** over **274 response-owned IDs**. [C8 capacity matrix](results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json),
-  [repeated A1 baseline](results/2026-07-21-w7900-agentic-a1-repeated-baseline.json),
-  [A6 quality artifact](results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json).
+  by the retained repeated A1 row above. [C8 capacity matrix](results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json),
+  [repeated A1 baseline](results/2026-07-21-w7900-agentic-a1-repeated-baseline.json).
 - **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
   has `performance_claim=false`. Repetition of token `9707` is confirmed as
   valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900

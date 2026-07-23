@@ -1,0 +1,191 @@
+"""Device materialization for the separate trailing GGUF NextN draft block."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
+
+from hipengine.core.device import Device
+from hipengine.core.hip import HipRuntime
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import FULL_ATTENTION
+from hipengine.loading.qwen35_gguf_materialize import (
+    Qwen35GGUFDeviceWeight,
+    Qwen35GGUFResidentLayerWeights,
+    Qwen35GGUFResidentWeights,
+    Qwen35GGUFWeightSpec,
+    materialize_qwen35_gguf_weight_spec,
+    plan_qwen35_gguf_weight_spec,
+)
+from hipengine.loading.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNMap,
+    build_qwen35_gguf_nextn_tensor_map,
+)
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFNextNMaterializationPlan:
+    """Resident layout plan for one draft block and its target fallbacks."""
+
+    model_map: Qwen35GGUFNextNMap
+    layer_specs: Mapping[str, Qwen35GGUFWeightSpec]
+    nextn_specs: Mapping[str, Qwen35GGUFWeightSpec]
+    fallback_specs: Mapping[str, Qwen35GGUFWeightSpec]
+
+    @property
+    def draft_specs(self) -> tuple[Qwen35GGUFWeightSpec, ...]:
+        return tuple((*self.layer_specs.values(), *self.nextn_specs.values()))
+
+    @property
+    def specs(self) -> tuple[Qwen35GGUFWeightSpec, ...]:
+        specs: list[Qwen35GGUFWeightSpec] = []
+        seen: set[tuple[str, str]] = set()
+        for spec in (*self.draft_specs, *self.fallback_specs.values()):
+            key = (spec.source.name, spec.layout)
+            if key not in seen:
+                seen.add(key)
+                specs.append(spec)
+        return tuple(specs)
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFNextNResidentWeights:
+    """Owned draft weights plus target embedding/output fallback records."""
+
+    plan: Qwen35GGUFNextNMaterializationPlan
+    layer_weights: Mapping[str, Qwen35GGUFDeviceWeight]
+    nextn_weights: Mapping[str, Qwen35GGUFDeviceWeight]
+    fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight]
+    owned_weights: tuple[Qwen35GGUFDeviceWeight, ...]
+    backend: str
+
+    @property
+    def config(self):
+        return self.plan.model_map.config
+
+    @property
+    def block_id(self) -> int:
+        return int(self.plan.model_map.block_id)
+
+    def layer(self, slot: str) -> Qwen35GGUFDeviceWeight:
+        return self.layer_weights[slot]
+
+    def nextn(self, slot: str) -> Qwen35GGUFDeviceWeight:
+        return self.nextn_weights[slot]
+
+    def fallback(self, slot: str) -> Qwen35GGUFDeviceWeight:
+        return self.fallback_weights[slot]
+
+    def as_full_stack_weights(self) -> Qwen35GGUFResidentWeights:
+        """Adapt only blk.N to the existing one-layer full-attention executor."""
+
+        draft_config = replace(
+            self.config,
+            block_count=1,
+            declared_block_count=1,
+            ignored_block_ids=(),
+            layer_types=(FULL_ATTENTION,),
+        )
+        root_weights = MappingProxyType(
+            {
+                "token_embedding": self.fallback("token_embedding"),
+                "output_norm": self.fallback("output_norm"),
+                "lm_head": self.fallback("lm_head"),
+            }
+        )
+        layer = Qwen35GGUFResidentLayerWeights(
+            layer_id=0,
+            layer_type=FULL_ATTENTION,
+            weights=MappingProxyType(dict(self.layer_weights)),
+        )
+        return Qwen35GGUFResidentWeights(
+            config=draft_config,
+            root_weights=root_weights,
+            layers=(layer,),
+            backend=self.backend,
+        )
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for weight in reversed(self.owned_weights):
+            weight.free(runtime=runtime)
+
+
+def plan_qwen35_gguf_nextn_materialization(
+    model_map: Qwen35GGUFNextNMap,
+) -> Qwen35GGUFNextNMaterializationPlan:
+    """Plan blk.N independently from the unchanged AR weight plan."""
+
+    layer_specs = {
+        slot: plan_qwen35_gguf_weight_spec(f"draft.layer.{slot}", tensor)
+        for slot, tensor in model_map.layer_tensors.items()
+    }
+    nextn_specs = {
+        slot: plan_qwen35_gguf_weight_spec(f"draft.nextn.{slot}", tensor)
+        for slot, tensor in model_map.nextn_tensors.items()
+    }
+    fallback_specs = {
+        slot: plan_qwen35_gguf_weight_spec(f"root.{slot}", tensor)
+        for slot, tensor in model_map.fallback_tensors.items()
+    }
+    return Qwen35GGUFNextNMaterializationPlan(
+        model_map=model_map,
+        layer_specs=MappingProxyType(layer_specs),
+        nextn_specs=MappingProxyType(nextn_specs),
+        fallback_specs=MappingProxyType(fallback_specs),
+    )
+
+
+def materialize_qwen35_gguf_nextn_weights(
+    reader_or_path: GGUFReader | str | Path,
+    *,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    backend: str = "hip_gfx1100",
+) -> Qwen35GGUFNextNResidentWeights:
+    """Materialize the draft block without adding it to the 40-layer AR map."""
+
+    reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
+    model_map = build_qwen35_gguf_nextn_tensor_map(reader.info)
+    plan = plan_qwen35_gguf_nextn_materialization(model_map)
+    materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
+
+    def load(spec: Qwen35GGUFWeightSpec) -> Qwen35GGUFDeviceWeight:
+        key = (spec.source.name, spec.layout)
+        weight = materialized.get(key)
+        if weight is None:
+            weight = materialize_qwen35_gguf_weight_spec(
+                spec,
+                reader,
+                device=device,
+                runtime=runtime,
+                backend=backend,
+            )
+            materialized[key] = weight
+        return weight
+
+    try:
+        layer_weights = {slot: load(spec) for slot, spec in plan.layer_specs.items()}
+        nextn_weights = {slot: load(spec) for slot, spec in plan.nextn_specs.items()}
+        fallback_weights = {slot: load(spec) for slot, spec in plan.fallback_specs.items()}
+    except Exception:
+        for weight in reversed(tuple(materialized.values())):
+            weight.free(runtime=runtime)
+        raise
+    return Qwen35GGUFNextNResidentWeights(
+        plan=plan,
+        layer_weights=MappingProxyType(layer_weights),
+        nextn_weights=MappingProxyType(nextn_weights),
+        fallback_weights=MappingProxyType(fallback_weights),
+        owned_weights=tuple(materialized.values()),
+        backend=str(backend),
+    )
+
+
+__all__ = [
+    "Qwen35GGUFNextNMaterializationPlan",
+    "Qwen35GGUFNextNResidentWeights",
+    "materialize_qwen35_gguf_nextn_weights",
+    "plan_qwen35_gguf_nextn_materialization",
+]

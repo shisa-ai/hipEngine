@@ -129,6 +129,484 @@ class ForcedTokenQueue:
         return payload
 
 
+_TOOL_CALL_START_MARKER = "<tool_call>"
+_TOOL_CALL_END_MARKER = "</tool_call>"
+_TOOL_CALL_MODES = {"auto", "required"}
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallConstraintSpec:
+    """Model-independent contract for one tokenizer-constrained tool response."""
+
+    tool_names: tuple[str, ...]
+    mode: str = "auto"
+    forbidden_text_prefixes: tuple[str, ...] = ()
+    start_marker: str = _TOOL_CALL_START_MARKER
+    end_marker: str = _TOOL_CALL_END_MARKER
+    thinking_start_marker: str | None = None
+    thinking_end_marker: str | None = None
+
+    def __post_init__(self) -> None:
+        names = tuple(dict.fromkeys(str(name) for name in self.tool_names if str(name)))
+        if not names:
+            raise ValueError("tool_call_constraint requires at least one tool name")
+        mode = str(self.mode).strip().lower()
+        if mode not in _TOOL_CALL_MODES:
+            raise ValueError(f"tool_call_constraint mode must be one of {sorted(_TOOL_CALL_MODES)}")
+        forbidden = tuple(
+            dict.fromkeys(str(prefix) for prefix in self.forbidden_text_prefixes if str(prefix))
+        )
+        start_marker = str(self.start_marker)
+        end_marker = str(self.end_marker)
+        if not start_marker or not end_marker or start_marker == end_marker:
+            raise ValueError("tool_call_constraint markers must be non-empty and distinct")
+        thinking_start = (
+            None if self.thinking_start_marker is None else str(self.thinking_start_marker)
+        )
+        thinking_end = None if self.thinking_end_marker is None else str(self.thinking_end_marker)
+        if (thinking_start is None) != (thinking_end is None):
+            raise ValueError("thinking_start_marker and thinking_end_marker must be set together")
+        if thinking_start is not None and (
+            not thinking_start or not thinking_end or thinking_start == thinking_end
+        ):
+            raise ValueError("thinking markers must be non-empty and distinct")
+        object.__setattr__(self, "tool_names", names)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "forbidden_text_prefixes", forbidden)
+        object.__setattr__(self, "start_marker", start_marker)
+        object.__setattr__(self, "end_marker", end_marker)
+        object.__setattr__(self, "thinking_start_marker", thinking_start)
+        object.__setattr__(self, "thinking_end_marker", thinking_end)
+
+
+@dataclass(frozen=True, slots=True)
+class _ToolPrefixStatus:
+    valid: bool
+    complete: bool = False
+    branch: str = "invalid"
+
+
+@dataclass(slots=True)
+class ToolCallConstraintState:
+    """Incremental canonical tool-envelope constraint over decoded token text.
+
+    ``auto`` preserves normal API semantics: the model may choose a plain-text
+    response, but once it starts a tool marker it must finish exactly one valid
+    canonical envelope.  A plain-text branch cannot introduce a later tool
+    marker, which prevents content-plus-tool responses.  ``required`` admits
+    only the tool branch.
+    """
+
+    spec: ToolCallConstraintSpec
+    observed_text: str = field(default="", repr=False)
+    branch: str = "undecided"
+    complete: bool = False
+    invalid: bool = False
+    error_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.spec, ToolCallConstraintSpec):
+            if isinstance(self.spec, dict):
+                self.spec = ToolCallConstraintSpec(**self.spec)
+            else:
+                raise TypeError("spec must be ToolCallConstraintSpec")
+        self.observed_text = str(self.observed_text)
+        status = _tool_output_prefix_status(self.observed_text, self.spec)
+        self._apply_status(status)
+
+    @property
+    def allows_eos(self) -> bool:
+        return self.branch == "text" or self.complete
+
+    @property
+    def forced_close_suffix(self) -> str:
+        if self.invalid or self.complete or self.branch == "text":
+            return ""
+        body = _tool_answer_body(self.observed_text.lstrip(), self.spec)
+        if body is None:
+            return ""
+        suffixes = _tool_forced_close_suffixes(body, self.spec)
+        return next(iter(suffixes)) if len(suffixes) == 1 else ""
+
+    def accepts_text(self, text: str) -> bool:
+        if self.invalid or self.complete:
+            return bool(self.complete and not str(text).strip())
+        return _tool_output_prefix_status(f"{self.observed_text}{str(text)}", self.spec).valid
+
+    def observe_text(self, text: str) -> "ToolCallConstraintState":
+        if self.invalid:
+            return self
+        candidate = f"{self.observed_text}{str(text)}"
+        status = _tool_output_prefix_status(candidate, self.spec)
+        if not status.valid:
+            self.invalid = True
+            self.error_reason = "invalid_tool_call_prefix"
+            return self
+        self.observed_text = candidate
+        self._apply_status(status)
+        return self
+
+    def clone(self) -> "ToolCallConstraintState":
+        return ToolCallConstraintState(spec=self.spec, observed_text=self.observed_text)
+
+    def to_json_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "mode": self.spec.mode,
+            "tool_names": list(self.spec.tool_names),
+            "branch": self.branch,
+            "complete": bool(self.complete),
+            "invalid": bool(self.invalid),
+        }
+        if self.error_reason is not None:
+            payload["error_reason"] = self.error_reason
+        suffix = self.forced_close_suffix
+        if suffix:
+            payload["forced_close_suffix"] = suffix
+        return payload
+
+    def _apply_status(self, status: _ToolPrefixStatus) -> None:
+        self.branch = status.branch
+        self.complete = bool(status.complete)
+        self.invalid = not status.valid
+        self.error_reason = "invalid_tool_call_prefix" if self.invalid else None
+
+
+class _JsonPrefixIncomplete(Exception):
+    pass
+
+
+class _JsonPrefixInvalid(Exception):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class _JsonPrefixStatus:
+    valid: bool
+    complete: bool = False
+    consumed: int = 0
+
+
+class _JsonPrefixParser:
+    """Small strict JSON recursive-descent parser with incomplete-prefix state."""
+
+    def __init__(self, text: str) -> None:
+        self.text = str(text)
+        self.length = len(self.text)
+        self.index = 0
+
+    def parse_value(self, *, require_object: bool = False) -> int:
+        self._skip_whitespace()
+        if self.index >= self.length:
+            raise _JsonPrefixIncomplete
+        char = self.text[self.index]
+        if require_object and char != "{":
+            raise _JsonPrefixInvalid
+        if char == "{":
+            self._parse_object()
+        elif char == "[":
+            self._parse_array()
+        elif char == '"':
+            self._parse_string()
+        elif char == "t":
+            self._parse_literal("true")
+        elif char == "f":
+            self._parse_literal("false")
+        elif char == "n":
+            self._parse_literal("null")
+        elif char == "-" or _is_json_digit(char):
+            self._parse_number()
+        else:
+            raise _JsonPrefixInvalid
+        return self.index
+
+    def _parse_object(self) -> None:
+        self._expect("{")
+        self._skip_whitespace()
+        if self._take_if("}"):
+            return
+        while True:
+            if self.index >= self.length:
+                raise _JsonPrefixIncomplete
+            if self.text[self.index] != '"':
+                raise _JsonPrefixInvalid
+            self._parse_string()
+            self._skip_whitespace()
+            self._expect(":")
+            self.parse_value()
+            self._skip_whitespace()
+            if self._take_if("}"):
+                return
+            self._expect(",")
+            self._skip_whitespace()
+
+    def _parse_array(self) -> None:
+        self._expect("[")
+        self._skip_whitespace()
+        if self._take_if("]"):
+            return
+        while True:
+            self.parse_value()
+            self._skip_whitespace()
+            if self._take_if("]"):
+                return
+            self._expect(",")
+            self._skip_whitespace()
+
+    def _parse_string(self) -> None:
+        self._expect('"')
+        while True:
+            if self.index >= self.length:
+                raise _JsonPrefixIncomplete
+            char = self.text[self.index]
+            self.index += 1
+            if char == '"':
+                return
+            if ord(char) < 0x20:
+                raise _JsonPrefixInvalid
+            if char != "\\":
+                continue
+            if self.index >= self.length:
+                raise _JsonPrefixIncomplete
+            escape = self.text[self.index]
+            self.index += 1
+            if escape in {'"', "\\", "/", "b", "f", "n", "r", "t"}:
+                continue
+            if escape != "u":
+                raise _JsonPrefixInvalid
+            remaining = self.text[self.index : self.index + 4]
+            if len(remaining) < 4:
+                if all(char in "0123456789abcdefABCDEF" for char in remaining):
+                    raise _JsonPrefixIncomplete
+                raise _JsonPrefixInvalid
+            if any(char not in "0123456789abcdefABCDEF" for char in remaining):
+                raise _JsonPrefixInvalid
+            self.index += 4
+
+    def _parse_literal(self, literal: str) -> None:
+        remaining = self.text[self.index :]
+        if literal.startswith(remaining):
+            if len(remaining) < len(literal):
+                raise _JsonPrefixIncomplete
+            self.index += len(literal)
+            return
+        if not remaining.startswith(literal):
+            raise _JsonPrefixInvalid
+        self.index += len(literal)
+
+    def _parse_number(self) -> None:
+        start = self.index
+        if self._take_if("-") and self.index >= self.length:
+            raise _JsonPrefixIncomplete
+        if self.index >= self.length:
+            raise _JsonPrefixIncomplete
+        if self.text[self.index] == "0":
+            self.index += 1
+            if self.index < self.length and _is_json_digit(self.text[self.index]):
+                raise _JsonPrefixInvalid
+        elif self.text[self.index] in "123456789":
+            self.index += 1
+            while self.index < self.length and _is_json_digit(self.text[self.index]):
+                self.index += 1
+        else:
+            raise _JsonPrefixInvalid
+        if self._take_if("."):
+            if self.index >= self.length:
+                raise _JsonPrefixIncomplete
+            if not _is_json_digit(self.text[self.index]):
+                raise _JsonPrefixInvalid
+            while self.index < self.length and _is_json_digit(self.text[self.index]):
+                self.index += 1
+        if self.index < self.length and self.text[self.index] in "eE":
+            self.index += 1
+            if self.index >= self.length:
+                raise _JsonPrefixIncomplete
+            if self.text[self.index] in "+-":
+                self.index += 1
+                if self.index >= self.length:
+                    raise _JsonPrefixIncomplete
+            if not _is_json_digit(self.text[self.index]):
+                raise _JsonPrefixInvalid
+            while self.index < self.length and _is_json_digit(self.text[self.index]):
+                self.index += 1
+        if self.index == start:
+            raise _JsonPrefixInvalid
+
+    def _skip_whitespace(self) -> None:
+        while self.index < self.length and self.text[self.index] in " \t\r\n":
+            self.index += 1
+
+    def _expect(self, char: str) -> None:
+        if self.index >= self.length:
+            raise _JsonPrefixIncomplete
+        if self.text[self.index] != char:
+            raise _JsonPrefixInvalid
+        self.index += 1
+
+    def _take_if(self, char: str) -> bool:
+        if self.index < self.length and self.text[self.index] == char:
+            self.index += 1
+            return True
+        return False
+
+
+def _is_json_digit(char: str) -> bool:
+    return "0" <= char <= "9"
+
+
+def _json_value_prefix_status(text: str, *, require_object: bool) -> _JsonPrefixStatus:
+    parser = _JsonPrefixParser(text)
+    try:
+        consumed = parser.parse_value(require_object=require_object)
+    except _JsonPrefixIncomplete:
+        return _JsonPrefixStatus(valid=True, complete=False, consumed=parser.index)
+    except (_JsonPrefixInvalid, RecursionError):
+        return _JsonPrefixStatus(valid=False, complete=False, consumed=parser.index)
+    return _JsonPrefixStatus(valid=True, complete=True, consumed=consumed)
+
+
+def _json_document_prefix_status(text: str, *, require_object: bool) -> _JsonPrefixStatus:
+    status = _json_value_prefix_status(text, require_object=require_object)
+    if not status.valid or not status.complete:
+        return status
+    trailing = str(text)[status.consumed :]
+    if trailing.strip():
+        return _JsonPrefixStatus(valid=False, consumed=status.consumed)
+    return _JsonPrefixStatus(valid=True, complete=True, consumed=len(str(text)))
+
+
+def _tool_output_prefix_status(text: str, spec: ToolCallConstraintSpec) -> _ToolPrefixStatus:
+    body = str(text).lstrip()
+    answer_body = _tool_answer_body(body, spec)
+    if answer_body is None:
+        return _ToolPrefixStatus(valid=True, branch="thinking")
+    return _tool_answer_prefix_status(answer_body, spec)
+
+
+def _tool_answer_body(body: str, spec: ToolCallConstraintSpec) -> str | None:
+    start = spec.thinking_start_marker
+    end = spec.thinking_end_marker
+    if start is None or end is None:
+        return body
+    if start.startswith(body):
+        return None
+    if not body.startswith(start):
+        return body
+    remainder = body[len(start) :]
+    close_index = remainder.find(end)
+    if close_index < 0:
+        return None
+    return remainder[close_index + len(end) :].lstrip()
+
+
+def _tool_answer_prefix_status(body: str, spec: ToolCallConstraintSpec) -> _ToolPrefixStatus:
+    if not body:
+        return _ToolPrefixStatus(valid=True, branch="undecided")
+    if spec.start_marker.startswith(body):
+        return _ToolPrefixStatus(valid=True, branch="tool")
+    if body.startswith(spec.start_marker):
+        return _tool_envelope_prefix_status(body[len(spec.start_marker) :], spec)
+    if spec.mode == "required":
+        return _ToolPrefixStatus(valid=False)
+    if spec.start_marker in body:
+        return _ToolPrefixStatus(valid=False)
+    for forbidden in spec.forbidden_text_prefixes:
+        if forbidden in body or forbidden.startswith(body):
+            return _ToolPrefixStatus(valid=False)
+    return _ToolPrefixStatus(valid=True, complete=False, branch="text")
+
+
+def _tool_envelope_prefix_status(text: str, spec: ToolCallConstraintSpec) -> _ToolPrefixStatus:
+    prefix = '{"name":'
+    if prefix.startswith(text):
+        return _ToolPrefixStatus(valid=True, branch="tool")
+    if not text.startswith(prefix):
+        return _ToolPrefixStatus(valid=False)
+    remainder = text[len(prefix) :]
+    argument_prefix = ',"arguments":'
+    for name in spec.tool_names:
+        encoded_name = json.dumps(name, ensure_ascii=False, separators=(",", ":"))
+        if encoded_name.startswith(remainder):
+            return _ToolPrefixStatus(valid=True, branch="tool")
+        if not remainder.startswith(encoded_name):
+            continue
+        after_name = remainder[len(encoded_name) :]
+        if argument_prefix.startswith(after_name):
+            return _ToolPrefixStatus(valid=True, branch="tool")
+        if not after_name.startswith(argument_prefix):
+            continue
+        arguments_and_tail = after_name[len(argument_prefix) :]
+        status = _json_value_prefix_status(arguments_and_tail, require_object=True)
+        if not status.valid:
+            continue
+        if not status.complete:
+            return _ToolPrefixStatus(valid=True, branch="tool")
+        tail = arguments_and_tail[status.consumed :]
+        close = f"}}{spec.end_marker}"
+        if close.startswith(tail):
+            return _ToolPrefixStatus(
+                valid=True,
+                complete=len(tail) == len(close),
+                branch="tool",
+            )
+        if tail.startswith(close) and not tail[len(close) :].strip():
+            return _ToolPrefixStatus(valid=True, complete=True, branch="tool")
+    return _ToolPrefixStatus(valid=False)
+
+
+def _tool_forced_close_suffixes(body: str, spec: ToolCallConstraintSpec) -> set[str]:
+    completions: set[str] = set()
+    for name in spec.tool_names:
+        encoded_name = json.dumps(name, ensure_ascii=False, separators=(",", ":"))
+        canonical = (
+            f'{spec.start_marker}{{"name":{encoded_name},"arguments":{{}}}}'
+            f"{spec.end_marker}"
+        )
+        if canonical.startswith(body):
+            completions.add(canonical[len(body) :])
+
+    if not body.startswith(spec.start_marker):
+        return _validated_tool_suffixes(body, spec, completions)
+    envelope = body[len(spec.start_marker) :]
+    prefix = '{"name":'
+    if not envelope.startswith(prefix):
+        return _validated_tool_suffixes(body, spec, completions)
+    remainder = envelope[len(prefix) :]
+    argument_prefix = ',"arguments":'
+    for name in spec.tool_names:
+        encoded_name = json.dumps(name, ensure_ascii=False, separators=(",", ":"))
+        if not remainder.startswith(encoded_name):
+            continue
+        after_name = remainder[len(encoded_name) :]
+        if not after_name.startswith(argument_prefix):
+            continue
+        arguments_and_tail = after_name[len(argument_prefix) :]
+        status = _json_value_prefix_status(arguments_and_tail, require_object=True)
+        close = f"}}{spec.end_marker}"
+        if status.valid and status.complete:
+            tail = arguments_and_tail[status.consumed :]
+            if close.startswith(tail):
+                completions.add(close[len(tail) :])
+            continue
+        if not status.valid:
+            continue
+        structural = JsonObjectConstraintState().observe_text(arguments_and_tail).forced_close_suffix
+        if structural:
+            completions.add(f"{structural}{close}")
+    return _validated_tool_suffixes(body, spec, completions)
+
+
+def _validated_tool_suffixes(
+    body: str,
+    spec: ToolCallConstraintSpec,
+    suffixes: Iterable[str],
+) -> set[str]:
+    return {
+        suffix
+        for suffix in suffixes
+        if suffix and _tool_output_prefix_status(f"{body}{suffix}", spec).complete
+    }
+
+
 @dataclass(slots=True)
 class JsonObjectConstraintState:
     """Incremental, tokenizer-agnostic balance state for JSON-object output.
@@ -178,6 +656,18 @@ class JsonObjectConstraintState:
     @property
     def needs_close(self) -> bool:
         return bool(self.forced_close_suffix)
+
+    @property
+    def syntax_complete(self) -> bool:
+        return _json_document_prefix_status(self.observed_text, require_object=True).complete
+
+    def accepts_text(self, text: str) -> bool:
+        if self.invalid:
+            return False
+        return _json_document_prefix_status(
+            f"{self.observed_text}{str(text)}",
+            require_object=True,
+        ).valid
 
     def observe_text(self, text: str) -> "JsonObjectConstraintState":
         for char in str(text):
@@ -482,6 +972,8 @@ __all__ = [
     "JsonObjectConstraintState",
     "ThinkingBudgetState",
     "TokenSequenceDFAState",
+    "ToolCallConstraintSpec",
+    "ToolCallConstraintState",
     "normalize_token_sequences",
     "token_sequence_state_for_tokens",
 ]

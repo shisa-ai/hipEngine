@@ -71,6 +71,7 @@ class GenerationRequest:
     force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = ()
     force_sequence_completion_reason: str | None = None
     json_object_close_forcing: bool = False
+    tool_call_constraint: Any | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -126,6 +127,15 @@ class GenerationRequest:
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason),
         )
         object.__setattr__(self, "json_object_close_forcing", bool(self.json_object_close_forcing))
+        if self.tool_call_constraint is not None:
+            from hipengine.generation.constraints import ToolCallConstraintSpec
+
+            constraint = self.tool_call_constraint
+            if not isinstance(constraint, ToolCallConstraintSpec):
+                if not isinstance(constraint, Mapping):
+                    raise TypeError("tool_call_constraint must be ToolCallConstraintSpec or a mapping")
+                constraint = ToolCallConstraintSpec(**constraint)
+            object.__setattr__(self, "tool_call_constraint", constraint)
         object.__setattr__(
             self,
             "thinking_close_token_ids",

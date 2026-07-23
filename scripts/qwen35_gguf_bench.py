@@ -18,6 +18,7 @@ rows.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ import statistics
 import sys
 import time
 from pathlib import Path
+from types import TracebackType
 from typing import Any, Sequence
 
 import numpy as np
@@ -43,6 +45,7 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+_QUANT_ATTN_AOTRITON_MIN_TOKENS = {"gguf_ud_q3_k_m": 0}
 
 
 def main() -> int:
@@ -88,6 +91,15 @@ def main() -> int:
     parser.add_argument("--prefill-full-attn-post-chunk-size", type=int, default=0, help="Limit full-attention post/MoE chunk rows when query chunk is unset.")
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0, help="Limit full-attention RoPE chunk rows when query chunk is unset.")
     parser.add_argument(
+        "--prefill-attn-aotriton-min-tokens",
+        type=int,
+        default=None,
+        help=(
+            "AOTriton full-attention crossover; unset uses the quant policy "
+            "(UD-Q3_K_M keeps exact native GQA)."
+        ),
+    )
+    parser.add_argument(
         "--prefill-chunk-autotune",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -110,6 +122,15 @@ def main() -> int:
         ),
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
+    parser.add_argument(
+        "--rocprof-selected-region",
+        choices=("none", "prefill", "measured_decode_graph", "measured_decode"),
+        default="none",
+        help=(
+            "Call roctxProfilerResume/Pause around one timed phase for "
+            "rocprofv3 --selected-regions. Profiler-only; benchmark semantics are unchanged."
+        ),
+    )
     parser.add_argument(
         "--compiler-version-file",
         type=Path,
@@ -185,6 +206,11 @@ def main() -> int:
             raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
     if args.prefill_chunk_memory_budget_gib < 0.0:
         raise ValueError("--prefill-chunk-memory-budget-gib must be non-negative")
+    if (
+        args.prefill_attn_aotriton_min_tokens is not None
+        and int(args.prefill_attn_aotriton_min_tokens) < 0
+    ):
+        raise ValueError("--prefill-attn-aotriton-min-tokens must be non-negative")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
     argv_payload = _exact_command_payload(sys.argv)
@@ -198,16 +224,24 @@ def main() -> int:
         use_bulk_prefill = None
     prompt_tokens = [int(args.token_id)] * int(args.prompt_length)
     max_sequence_length = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
+    default_aotriton_threshold = PrefillConfig().attn_aotriton_min_tokens
+    aotriton_threshold = (
+        _QUANT_ATTN_AOTRITON_MIN_TOKENS.get(args.quant, default_aotriton_threshold)
+        if args.prefill_attn_aotriton_min_tokens is None
+        else int(args.prefill_attn_aotriton_min_tokens)
+    )
     prefill_config = PrefillConfig(
         linear_chunk_size=args.prefill_linear_chunk_size,
         moe_chunk_size=args.prefill_moe_chunk_size,
         full_attn_query_chunk_size=args.prefill_full_attn_query_chunk_size,
         full_attn_post_chunk_size=args.prefill_full_attn_post_chunk_size,
         full_attn_rope_chunk_size=args.prefill_full_attn_rope_chunk_size,
+        attn_aotriton_min_tokens=aotriton_threshold,
         auto_tune_chunk_sizes=args.prefill_chunk_autotune,
         chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
     )
     kv_policy = resolve_args_kv_policy(args, block_size=256)
+    roctx = _RoctxProfilerControl(enabled=args.rocprof_selected_region != "none")
 
     if args.persistent_session:
         runs, persistent_session_load_seconds, persistent_session_memory = _run_persistent_session(
@@ -234,6 +268,8 @@ def main() -> int:
             kv_policy=kv_policy,
             warmup_runs=args.warmup_runs,
             measured_runs=args.measured_runs,
+            roctx=roctx,
+            rocprof_selected_region=args.rocprof_selected_region,
         )
         session_mode = "persistent"
     else:
@@ -266,6 +302,8 @@ def main() -> int:
                 kv_policy=kv_policy,
                 measured=measured,
                 run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
+                roctx=roctx,
+                rocprof_selected_region=args.rocprof_selected_region,
             )
             runs.append(run)
         session_mode = "per_run"
@@ -345,6 +383,7 @@ def main() -> int:
         "max_sequence_length": int(max_sequence_length),
         "graph_replay_decode": bool(args.graph_replay_decode),
         "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
+        "rocprof_selected_region": args.rocprof_selected_region,
         "use_bulk_prefill": use_bulk_prefill,
         "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
         "requested_prefill_chunk_size": int(args.prefill_chunk_size),
@@ -386,6 +425,7 @@ def main() -> int:
             "--use-gemv-decode opts rows=1 GGUF decode into the P9 pack8 GEMV decode path, including graph-capture decode.",
             "GGUF prefill chunking uses the same PrefillConfig auto policy as PARO unless --prefill-chunk-size or explicit per-surface chunk flags override it.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
+            "--rocprof-selected-region wraps only the requested timed phase with ROCTX profiler resume/pause controls.",
             "--persistent-session creates one resident session and resets sequence state between warmup/measured runs, avoiding repeated GGUF load/decode-repack work. Historical artifacts used the default per-run session mode.",
         ],
     }
@@ -459,6 +499,66 @@ def _hash_fields(digest: Any, fields: Sequence[str]) -> None:
     digest.update(b";")
 
 
+class _RoctxProfilerControl:
+    """Open one timed phase for ``rocprofv3 --selected-regions``."""
+
+    def __init__(self, *, enabled: bool) -> None:
+        self._resume = None
+        self._pause = None
+        if not enabled:
+            return
+        try:
+            library = ctypes.CDLL("libroctx64.so")
+        except OSError as exc:
+            print(f"warning: selected-region profiling could not load libroctx64.so: {exc}", file=sys.stderr)
+            return
+        self._resume = getattr(library, "roctxProfilerResume", None)
+        self._pause = getattr(library, "roctxProfilerPause", None)
+        if self._resume is None or self._pause is None:
+            print(
+                "warning: libroctx64.so lacks roctxProfilerResume/Pause; "
+                "rocprofv3 --selected-regions will emit no kernel rows",
+                file=sys.stderr,
+            )
+            self._resume = None
+            self._pause = None
+            return
+        self._resume.argtypes = [ctypes.c_int]
+        self._resume.restype = None
+        self._pause.argtypes = [ctypes.c_int]
+        self._pause.restype = None
+
+    def region(self, name: str, *, selected: str) -> "_RoctxProfilerRegion":
+        return _RoctxProfilerRegion(self, enabled=(selected == name))
+
+    def resume(self) -> None:
+        if self._resume is not None:
+            self._resume(0)
+
+    def pause(self) -> None:
+        if self._pause is not None:
+            self._pause(0)
+
+
+class _RoctxProfilerRegion:
+    def __init__(self, control: _RoctxProfilerControl, *, enabled: bool) -> None:
+        self.control = control
+        self.enabled = bool(enabled)
+
+    def __enter__(self) -> None:
+        if self.enabled:
+            self.control.resume()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if self.enabled:
+            self.control.pause()
+
+
 def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk_attention_mode: str) -> str:
     if use_bulk_prefill is True:
         prefill = f"bulk_prefill_{bulk_attention_mode}_attention"
@@ -495,6 +595,8 @@ def _run_persistent_session(
     kv_policy,
     warmup_runs: int,
     measured_runs: int,
+    roctx: "_RoctxProfilerControl",
+    rocprof_selected_region: str,
 ) -> tuple[list[dict[str, Any]], float, dict[str, Any]]:
     """Run warmup/measured iterations inside one resident GGUF session.
 
@@ -529,6 +631,7 @@ def _run_persistent_session(
         kv_scale_granularity=kv_policy.scale_granularity,
     )
     load_seconds = time.perf_counter() - load_start
+    session.select_prefill_quant(quant)
     persistent_memory["after_load"] = _memory_snapshot("after_load", runtime, session)
 
     runs: list[dict[str, Any]] = []
@@ -562,6 +665,8 @@ def _run_persistent_session(
                 load_seconds=load_seconds,
                 persistent_session=True,
                 graph_holder=graph_holder,
+                roctx=roctx,
+                rocprof_selected_region=rocprof_selected_region,
             )
             runs.append(run)
     finally:
@@ -601,6 +706,8 @@ def _run_existing_session_once(
     load_seconds: float,
     persistent_session: bool,
     graph_holder: dict[str, Any] | None = None,
+    roctx: "_RoctxProfilerControl",
+    rocprof_selected_region: str,
 ) -> dict[str, Any]:
     """Run one prefill/decode iteration on an existing resident session."""
 
@@ -622,12 +729,13 @@ def _run_existing_session_once(
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
-        first = session.prefill(
-            prompt_tokens,
-            use_bulk=use_bulk_prefill,
-            bulk_attention_mode=bulk_attention_mode,
-            return_logits=False,
-        )
+        with roctx.region("prefill", selected=rocprof_selected_region):
+            first = session.prefill(
+                prompt_tokens,
+                use_bulk=use_bulk_prefill,
+                bulk_attention_mode=bulk_attention_mode,
+                return_logits=False,
+            )
         prefill_seconds = time.perf_counter() - prefill_start
         generated_token_ids.append(first.token_id)
         next_token = first.token_id
@@ -676,7 +784,8 @@ def _run_existing_session_once(
                     runtime.stream_destroy(stream)
             try:
                 decode_start = time.perf_counter()
-                graph.replay(decode_tokens)
+                with roctx.region("measured_decode_graph", selected=rocprof_selected_region):
+                    graph.replay(decode_tokens)
                 decode_seconds = time.perf_counter() - decode_start
                 if decode_graph_recorded_tokens:
                     generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
@@ -690,10 +799,11 @@ def _run_existing_session_once(
             decode_graph_reused = False
             decode_graph_recorded_tokens = False
             decode_start = time.perf_counter()
-            for step_index in range(decode_tokens):
-                final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
-                next_token = final.token_id
-                generated_token_ids.append(next_token)
+            with roctx.region("measured_decode", selected=rocprof_selected_region):
+                for step_index in range(decode_tokens):
+                    final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
+                    next_token = final.token_id
+                    generated_token_ids.append(next_token)
             decode_seconds = time.perf_counter() - decode_start
         memory_snapshots["after_decode"] = _memory_snapshot("after_decode", runtime, session)
         final_token_id = None if final is None else final.token_id
@@ -729,6 +839,7 @@ def _run_existing_session_once(
         "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "decode_graph_reused": bool(decode_graph_reused),
         "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
+        "rocprof_selected_region": rocprof_selected_region,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
@@ -784,6 +895,8 @@ def _run_once(
     kv_policy,
     measured: bool,
     run_index: int,
+    roctx: "_RoctxProfilerControl",
+    rocprof_selected_region: str,
 ) -> dict[str, Any]:
     runtime = get_hip_runtime()
     reset_memory_stats()
@@ -808,6 +921,7 @@ def _run_once(
         kv_scale_granularity=kv_policy.scale_granularity,
     )
     load_seconds = time.perf_counter() - load_start
+    session.select_prefill_quant(quant)
     fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
     resolved_backend = str(session.backend)
     target_arch = str(session.runner.target_arch)
@@ -820,12 +934,13 @@ def _run_once(
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
-        first = session.prefill(
-            prompt_tokens,
-            use_bulk=use_bulk_prefill,
-            bulk_attention_mode=bulk_attention_mode,
-            return_logits=False,
-        )
+        with roctx.region("prefill", selected=rocprof_selected_region):
+            first = session.prefill(
+                prompt_tokens,
+                use_bulk=use_bulk_prefill,
+                bulk_attention_mode=bulk_attention_mode,
+                return_logits=False,
+            )
         prefill_seconds = time.perf_counter() - prefill_start
         generated_token_ids.append(first.token_id)
         next_token = first.token_id
@@ -850,7 +965,8 @@ def _run_once(
             graph_capture_seconds = time.perf_counter() - capture_start
             try:
                 decode_start = time.perf_counter()
-                graph.replay(decode_tokens)
+                with roctx.region("measured_decode_graph", selected=rocprof_selected_region):
+                    graph.replay(decode_tokens)
                 decode_seconds = time.perf_counter() - decode_start
                 generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
                 final = graph.read_sample()
@@ -858,10 +974,11 @@ def _run_once(
                 graph.close()
         else:
             decode_start = time.perf_counter()
-            for step_index in range(decode_tokens):
-                final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
-                next_token = final.token_id
-                generated_token_ids.append(next_token)
+            with roctx.region("measured_decode", selected=rocprof_selected_region):
+                for step_index in range(decode_tokens):
+                    final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
+                    next_token = final.token_id
+                    generated_token_ids.append(next_token)
             decode_seconds = time.perf_counter() - decode_start
         memory_snapshots["after_decode"] = _memory_snapshot("after_decode", runtime, session)
         final_token_id = None if final is None else final.token_id

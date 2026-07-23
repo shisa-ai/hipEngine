@@ -72,6 +72,7 @@ class SamplingParams:
     force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = ()
     force_sequence_completion_reason: str | None = None
     json_object_close_forcing: bool = False
+    tool_call_constraint: Any | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -126,6 +127,15 @@ class SamplingParams:
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason),
         )
         object.__setattr__(self, "json_object_close_forcing", bool(self.json_object_close_forcing))
+        if self.tool_call_constraint is not None:
+            from hipengine.generation.constraints import ToolCallConstraintSpec
+
+            constraint = self.tool_call_constraint
+            if not isinstance(constraint, ToolCallConstraintSpec):
+                if not isinstance(constraint, Mapping):
+                    raise TypeError("tool_call_constraint must be ToolCallConstraintSpec or a mapping")
+                constraint = ToolCallConstraintSpec(**constraint)
+            object.__setattr__(self, "tool_call_constraint", constraint)
         object.__setattr__(
             self,
             "thinking_close_token_ids",
@@ -424,6 +434,15 @@ class LLM:
             return None
         payload = snapshot()
         return dict(payload) if isinstance(payload, dict) else None
+
+    def drain_generation_cancellations(self) -> int:
+        """Acknowledge queued resident cancellations without forcing model load."""
+
+        generator = self._text_generator
+        drainer = None if generator is None else getattr(generator, "drain_cancellations", None)
+        if not callable(drainer):
+            return 0
+        return int(drainer())
 
     @property
     def server_plain_ar_max_active_requests(self) -> int | None:
@@ -757,6 +776,7 @@ def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
         force_sequence_completion_token_sequences=params.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=params.force_sequence_completion_reason,
         json_object_close_forcing=params.json_object_close_forcing,
+        tool_call_constraint=params.tool_call_constraint,
         thinking_close_token_ids=params.thinking_close_token_ids,
         thinking_hard_token_cap=params.thinking_hard_token_cap,
         thinking_soft_close_window=params.thinking_soft_close_window,

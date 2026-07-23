@@ -1,4 +1,4 @@
-"""Raw-pointer wrappers for GGUF Q8_0/Q5_K/Q6_K GEMV kernels."""
+"""Raw GGUF Q8_0/Q5_K/Q6_K GEMV and exact Q8 prefill wrappers."""
 
 from __future__ import annotations
 
@@ -130,6 +130,15 @@ gguf_q8_0_dual_gemv_f32_f32_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_
 gguf_q8_0_dual_gemv_bf16_bf16_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "dual_gemv_bf16_bf16_out"))
 gguf_q8_0_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_f32_out"))
 gguf_q8_0_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_bf16_out"))
+gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out = _make_pack8_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile8x2_bf16_bf16_out")
+)
+gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out = _make_pack8_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile8x4_bf16_bf16_out")
+)
+gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out = _make_pack8_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out")
+)
 gguf_q8_0_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_gemv_bf16_bf16_out"))
 gguf_q8_0_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_pack8_gemv_bf16_bf16_out"))
 gguf_q8_0_prefill_f32_f32_out = gguf_q8_0_gemv_f32_f32_out
@@ -420,6 +429,9 @@ _WRAPPERS = {
         "dual_gemv_bf16_bf16_out": gguf_q8_0_dual_gemv_bf16_bf16_out,
         "pack8_gemv_bf16_f32_out": gguf_q8_0_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q8_0_pack8_gemv_bf16_bf16_out,
+        "exact_prefill_tile8x2_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out,
+        "exact_prefill_tile8x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out,
+        "exact_prefill_tile16x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q8_0_selected_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q8_0_selected_pack8_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q8_0_prefill_f32_f32_out,
@@ -533,6 +545,9 @@ __all__ = [
     "gguf_q8_0_gemv_bf16_bf16_out",
     "gguf_q8_0_dual_gemv_f32_f32_out",
     "gguf_q8_0_dual_gemv_bf16_bf16_out",
+    "gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out",
+    "gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out",
+    "gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out",
     "gguf_q8_0_prefill_f32_f32_out",
     "gguf_q8_0_prefill_f32_fp16_out",
     "gguf_q8_0_prefill_fp16_f32_out",

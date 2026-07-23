@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "kind": "qwen35_gguf_mtp_e2e_nohold",
+  "date": "2026-07-21",
+  "status": "diagnostic_nohold",
+  "performance_claim": false,
+  "decision": "Keep GGUF MTP disabled by default: exact shared-ABI integration is economically regressive at B=1/2/3.",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "logical_device": "GPU1 / HIP_VISIBLE_DEVICES=1",
+    "architecture": "gfx1100",
+    "vram_gib": 24,
+    "gpu0_w7900_rerun": false
+  },
+  "software": {
+    "hipengine_base_commit": "1299e9816b11eda5975523a8c3b8e81fd16b3478",
+    "hipengine_dirty_during_measurement": true,
+    "hip_version": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "mtime_ns": 1784436537717340668,
+    "architecture": "qwen35moe",
+    "tensor_count": 753,
+    "file_type": "MOSTLY_Q3_K_M",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "UD-Q3_K_M / gguf_ud_q3_k_m",
+    "ar_layers": 40,
+    "draft_block": "blk.40 separate NextN"
+  },
+  "workload": {
+    "prompt": "Write a Python function that returns the n-th Fibonacci number using memoization. Include a docstring.",
+    "prompt_tokens": [
+      7734,
+      264,
+      12654,
+      709,
+      421,
+      4523,
+      279,
+      307,
+      12,
+      337,
+      76938,
+      1324,
+      1608,
+      20781,
+      1954,
+      13,
+      28763,
+      264,
+      4479,
+      889,
+      13
+    ],
+    "prompt_length": 21,
+    "max_new_tokens": 16,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "runs": 1,
+    "max_sequence_length": 48,
+    "sampling": "exact greedy raw target top-1"
+  },
+  "commands": {
+    "economics": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_mtp_e2e.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --max-new-tokens 16 --candidate-budgets 1,2,3 --runs 1 --require-cached-build --json /tmp/q3-gguf-mtp-e2e-b123-final.json",
+    "profiler": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-q3-gguf-mtp-profile-final/gguf-mtp -- bash -lc 'cd /home/lhl/hipEngine && PYTHONPATH=. python3 scripts/qwen35_gguf_mtp_e2e.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --max-new-tokens 16 --candidate-budgets 1 --runs 1 --require-cached-build --json /tmp/hipengine-q3-gguf-mtp-profile-final/smoke.json'",
+    "correctness": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_mtp_e2e.py"
+  },
+  "contract": {
+    "draft_batch": "candidate-only DraftBatch",
+    "target_verify_batch": "root+candidate TargetVerifyBatch",
+    "accept_result": "GPU TargetAcceptSummary validated against CPU AcceptResult oracle",
+    "kv_spans": "KVLiveSpans(span_role=verify_chain)",
+    "commit": "scheduler-owned KVTransaction plus target state/KV append journal",
+    "graph_buckets": "BatchShapeKey scheduler buckets with stable TargetVerifyBuffers; eager target replay"
+  },
+  "correctness": {
+    "b1_b2_b3_full_target_logits_equal_scalar": true,
+    "gpu_accept_summary_equal_cpu_oracle": true,
+    "reject_partial_full_linear_state_exact": true,
+    "reject_partial_full_live_kv_prefix_exact": true,
+    "real_nextn_generated_ids_equal_mtp_disabled_ar": true,
+    "kv_span_role": "verify_chain",
+    "transactional_rollback_tested": true,
+    "graph_bucket_reuse_tested": true
+  },
+  "economics": {
+    "1": {
+      "runs": 1,
+      "exact_greedy_match": true,
+      "gpu_accept_match_cpu": true,
+      "ar_decode_tok_s_median": 8.831612335877784,
+      "mtp_decode_tok_s_median": 4.80125175315428,
+      "speedup_vs_ar_median": 0.5436438523970921,
+      "accepted_draft_tokens_mean": 1.0,
+      "cycles_mean": 14.0,
+      "visible_tokens_per_cycle": 1.0714285714285714,
+      "non_regressive": false
+    },
+    "2": {
+      "runs": 1,
+      "exact_greedy_match": true,
+      "gpu_accept_match_cpu": true,
+      "ar_decode_tok_s_median": 9.246839731561927,
+      "mtp_decode_tok_s_median": 3.2012465743862863,
+      "speedup_vs_ar_median": 0.34619898985159,
+      "accepted_draft_tokens_mean": 1.0,
+      "cycles_mean": 14.0,
+      "visible_tokens_per_cycle": 1.0714285714285714,
+      "non_regressive": false
+    },
+    "3": {
+      "runs": 1,
+      "exact_greedy_match": true,
+      "gpu_accept_match_cpu": true,
+      "ar_decode_tok_s_median": 8.902393488287549,
+      "mtp_decode_tok_s_median": 2.412947535296564,
+      "speedup_vs_ar_median": 0.2710448081711017,
+      "accepted_draft_tokens_mean": 1.0,
+      "cycles_mean": 14.0,
+      "visible_tokens_per_cycle": 1.0714285714285714,
+      "non_regressive": false
+    }
+  },
+  "peak_tracked_bytes": 18376595204,
+  "peak_tracked_gib": 17.114537958055735,
+  "profiler": {
+    "trace_path": "/tmp/hipengine-q3-gguf-mtp-profile-final/gguf-mtp_kernel_trace.csv",
+    "trace_sha256": "1f9128253f7004d935225191ddb38e154da93b3b013a5fb402939ddcbbe76295",
+    "trace_rows": 62231,
+    "total_kernel_duration_ns": 1264243042,
+    "symbols": {
+      "gpu_accept_summary": {
+        "kernel_name": "(anonymous namespace)::dflash_accept_chain_i32_kernel(int const*, int const*, int const*, int const*, unsigned char const*, int const*, int const*, int*, int*, int*, int*, int*, unsigned char*, int*, int*, int*, long*, long*, long, long, long)",
+        "launches": 14,
+        "duration_ns": 108520,
+        "duration_ns_min": 7200,
+        "duration_ns_max": 8320,
+        "workgroup_size_x": [
+          128
+        ],
+        "lds_block_size": [
+          0
+        ],
+        "scratch_size": [
+          0
+        ],
+        "vgpr_count": [
+          24
+        ]
+      },
+      "nextn_q3_gate_up": {
+        "kernel_name": "(anonymous namespace)::gguf_q3_k_selected_dual_silu_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "launches": 36,
+        "duration_ns": 4370312,
+        "duration_ns_min": 120242,
+        "duration_ns_max": 123162,
+        "workgroup_size_x": [
+          256
+        ],
+        "lds_block_size": [
+          512
+        ],
+        "scratch_size": [
+          0
+        ],
+        "vgpr_count": [
+          24
+        ]
+      },
+      "nextn_q4_down": {
+        "kernel_name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "launches": 36,
+        "duration_ns": 3964262,
+        "duration_ns_min": 107362,
+        "duration_ns_max": 110762,
+        "workgroup_size_x": [
+          128
+        ],
+        "lds_block_size": [
+          512
+        ],
+        "scratch_size": [
+          0
+        ],
+        "vgpr_count": [
+          16
+        ]
+      }
+    },
+    "note": "Matched D16 direct-child trace includes target AR control, target/draft prompt prefill, one fully accepted B1 tail advance, and MTP decode; expected shared accept and NextN Q3/Q4 symbols are present and scratch-free."
+  },
+  "notes": [
+    "Exactness does not imply promotion: B=1/2/3 are 0.544x/0.346x/0.271x AR on the matched raw prompt.",
+    "Acceptance is one draft token over 14 cycles (1.071 visible tokens/cycle) for every tested budget; wider budgets pay extra verifier rows without density gain.",
+    "The explicit diagnostic API remains available for correctness/profiling, but public GGUF generation stays MTP-disabled.",
+    "One-run economics is sufficient to reject a 48-74% regression; no retained speed row or README fastest-table replacement is made."
+  ]
+}

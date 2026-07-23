@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "single-run correctness-gated default-path promotion",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "8dafe07b",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "change": {
+    "summary": "Replace the Q3 native-attention quarantine with quant-axis exact GDN and full-attention bulk plugins.",
+    "gdn": "A state-parallel K2 recurrent kernel preserves the resident c=1 F32 reduction association, paired with a decode-order Q/K preparation kernel.",
+    "attention": "The bulk prefill plugin uses the resident 256-thread dense schedule below context 1024, row-batched warp split-K for contexts 1024..4095, and row-batched grouped-GQA split-K at 4096+.",
+    "fallbacks": "Generic gguf_qwen35 prefill kernels and token-serial/native attention remain available; no backend/quant conditional was added to engine/model dispatch."
+  },
+  "correctness": {
+    "public_e2e": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json --llama-tokenize /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-tokenize --json /tmp/hipengine-q3-exact-fastbulk-public-e2e.json",
+      "passed": true,
+      "outputs": [",", ","],
+      "generated_token_ids": [11],
+      "finite_logits": true,
+      "torch_loaded_by_generate": false
+    },
+    "mixed64_and_all_row_pytest": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py tests/test_qwen35_gguf_gdn_prefill_correctness.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_iq_dispatch.py tests/test_gguf_e2e_acceptance.py",
+      "passed": true,
+      "tests": 43,
+      "mixed64": {
+        "kl_serial_to_bulk": 0.0,
+        "top1_match": true,
+        "max_abs_logit": 0.0
+      },
+      "all_row_layer_limits": [0, 3, 4, 40],
+      "all_row_bit_equal": true
+    },
+    "attention_boundary_scans": {
+      "1024_rows": {
+        "layer_limits": [3, 4],
+        "bit_equal": true,
+        "mismatched_rows": []
+      },
+      "4096_rows": {
+        "layer_limits": [3, 4],
+        "bit_equal": true,
+        "mismatched_rows": []
+      }
+    },
+    "full_4096_serial_vs_bulk": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q3_fastbulk_4k_parity.py",
+      "script_sha256": "f125e8669eb36b779b5cb50ca5933f8ed14b848db80c13829a76943d3465fac5",
+      "procedure": "One Qwen35GGUFResidentSession runs session.prefill(tokens, use_bulk=False, return_logits=True), then session.prefill(tokens, use_bulk=True, bulk_attention_mode='bulk', return_logits=True), and compares the complete float32 logit vectors with scripts.qwen35_gguf_bulk_parity._logit_comparison.",
+      "prompt_tokens": 4096,
+      "token_pattern": [9707, 11, 220, 264, 73, 13, 107561, 13883],
+      "serial_token_id": 14626,
+      "bulk_token_id": 14626,
+      "kl_serial_to_bulk": 0.0,
+      "max_abs_logit": 0.0,
+      "mean_abs_logit": 0.0,
+      "finite": true
+    }
+  },
+  "measurements": {
+    "512_repeated_token_unprofiled": {
+      "prompt_tokens": 512,
+      "prefill_seconds": 2.342202989035286,
+      "prefill_tok_s": 218.59762044402657,
+      "final_token_id": 11,
+      "tracked_peak_gib": 15.804706819355488
+    },
+    "4096_mixed_serial_oracle": {
+      "prompt_tokens": 4096,
+      "seconds": 375.52857575996313,
+      "tok_s": 10.907292452274397
+    },
+    "4096_mixed_exact_fully_bulk": {
+      "prompt_tokens": 4096,
+      "seconds": 19.326579326065257,
+      "tok_s": 211.93610782823998,
+      "speedup_vs_token_serial_oracle": 19.43067986446507,
+      "tracked_peak_gib": 16.95465761423111
+    },
+    "prior_incorrect_fully_bulk_4096": {
+      "seconds": 20.054039890994318,
+      "tok_s": 204.2481226857135,
+      "token_id": 220,
+      "kl_serial_to_bulk": 0.16666318481674944,
+      "top1_match": false,
+      "disposition": "superseded; never promoted"
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-exact-fastbulk-4k-profile-20260720-130719 -o q3-exact-fastbulk-4k-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 212.15215073182597,
+    "trace_launches": 8705,
+    "trace_kernel_sum_ms": 19141.166627,
+    "trace_span_ms": 19305.117153,
+    "expected_symbols": {
+      "qwen35_gdn_prefill_recurrent_k2_decode_order_kernel": {
+        "count": 120,
+        "total_ms": 1224.461351,
+        "median_us": 10310.5255,
+        "vgpr": 32,
+        "scratch_bytes": 0,
+        "workgroup_x": 64
+      },
+      "qwen35_linear_attn_prefill_prepare_decode_order_kernel<unsigned short>": {
+        "count": 120,
+        "total_ms": 18.004856,
+        "median_us": 127.5015,
+        "vgpr": 24,
+        "scratch_bytes": 0,
+        "workgroup_x": 128
+      },
+      "qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<false>": {
+        "count": 10,
+        "total_ms": 98.321305,
+        "median_us": 9831.1185,
+        "vgpr": 40,
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      },
+      "qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel": {
+        "count": 1920,
+        "total_ms": 811.164529,
+        "median_us": 391.2045,
+        "vgpr": 40,
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      },
+      "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<8,16,2>": {
+        "count": 10,
+        "total_ms": 0.67029,
+        "median_us": 67.061,
+        "vgpr": 80,
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      },
+      "qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<hip_bfloat16>": {
+        "count": 1930,
+        "total_ms": 10.061678,
+        "median_us": 5.28,
+        "vgpr": 16,
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      }
+    }
+  },
+  "acceptance": {
+    "kl_max": 0.05,
+    "top1_min": 0.9,
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "all_history_rows_exact": true,
+    "expected_bulk_symbols_present": true,
+    "materially_above_safe_fallback": true,
+    "accepted": true
+  },
+  "notes": [
+    "The 512 and 4K throughput values are single-run correctness-gated promotion measurements, not a multi-run final optimization scoreboard.",
+    "The exact serial comparison is the resident token-serial oracle; the previous native-attention row-bulk default was approximately 17-20 tok/s in retained Q3 rows.",
+    "The 4K benchmark command uses a repeated token for rocprof while the strict serial-vs-bulk gate uses the listed mixed eight-token pattern.",
+    "Raw profiler CSV and transient parity JSON remain under /tmp and are intentionally not committed."
+  ]
+}

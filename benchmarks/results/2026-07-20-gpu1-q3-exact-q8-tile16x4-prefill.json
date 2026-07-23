@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "three-run exact default-path promotion",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "f5d2f8c0",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "diagnosis": {
+    "baseline_artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-iq4-wave32-prefill.json",
+    "baseline_total_kernel_ms": 6533.519662,
+    "baseline_dense_q8_ms": 2161.039238,
+    "baseline_dense_q8_share_pct": 33.07618787112483,
+    "conclusion": "The retained exact 8x4 leaf restored dense raw Q8 to first in the 4K Amdahl ledger. It still reread each activation row once per eight output columns, leaving an exact output-column reuse opportunity."
+  },
+  "change": {
+    "summary": "Widen exact raw-Q8 prefill from eight to sixteen output columns while retaining four-row activation reuse and every scalar dot association.",
+    "kernel": "gguf_q8_0_exact_prefill_tiled_out_kernel<bf16,bf16,16,4>",
+    "registry_variant": "exact_prefill_tile16x4_bf16_bf16_out",
+    "dispatch_thresholds": {
+      "out_features_le_512_rows_gte": 512,
+      "out_features_le_2048_rows_gte": 64,
+      "out_features_gt_2048_rows_gte": 32
+    },
+    "fallback": "Measured short-row shapes keep exact 8x4 (or the earlier 8x2/pack8 policy); widths not divisible by sixteen keep the existing exact route; explicit WMMA retains precedence.",
+    "exactness": "Each accumulator retains k=tid+128*n traversal, the same wave32 shuffle tree, and the same wave-0..3 cross-wave addition. Only independent output columns are interleaved.",
+    "rejected_candidate": "The exact 8x8 row-reuse candidate was 0.81% to 31.34% slower than 8x4 at every production shape and was removed before retention.",
+    "new_weight_layout": false,
+    "host_synchronization_added": false,
+    "scratch_allocation_added": false
+  },
+  "correctness": {
+    "primitive_and_dispatch": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_q8_0_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py",
+      "passed": true,
+      "tests": 70,
+      "candidate_shapes": [[5, 512, 256], [3, 2048, 512]],
+      "candidate_bit_mismatches_vs_exact_pack8": 0,
+      "dispatch_thresholds_covered": true
+    },
+    "full_model": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py",
+      "passed": true,
+      "tests": 2,
+      "mixed64_kl": 0.0,
+      "mixed64_top1": 1.0,
+      "all_row_layer_limits": [0, 3, 4, 40],
+      "all_row_bit_equal": true
+    },
+    "mixed_4096": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q3_pack8_4k_mixed.py",
+      "script_sha256": "7845c231d754b1401e61620ba63b479e82829e141fd6762ac47bf009ddab27d8",
+      "output_sha256": "abdb79f7f379f9269efd3effbde71f11ee6eed0b6f1703c13c37f56ae0e5a515",
+      "token_pattern": [9707, 11, 220, 264, 73, 13, 107561, 13883],
+      "seconds": 6.54232913593296,
+      "tok_s": 626.076725107456,
+      "token_id": 14626,
+      "logit": 10.020184516906738,
+      "finite": true,
+      "matches_strict_serial_token_and_logit": true
+    }
+  },
+  "microbench": {
+    "production_script_sha256": "31451d46fe4b8a508ac5c1b78074f635276c4db95487f019450ab22088becdc5",
+    "production_output_sha256": "bf97d291e70a2e0312219d31bd4f720b5254d0c28dc0fc901ef7f01518713a03",
+    "production_shapes": [[1024, 2048, 512], [1024, 2048, 2048], [1024, 2048, 4096], [1024, 2048, 8192], [4096, 2048, 512], [4096, 2048, 2048], [4096, 2048, 8192]],
+    "tile16x4_reduction_vs_tile8x4_pct_range": [-10.103279817294009, -2.800218857757597],
+    "tile8x8_delta_vs_tile8x4_pct_range": [0.8134588792233721, 31.344052217355035],
+    "all_candidate_bit_mismatches": 0,
+    "small_row_script_sha256": "59ebac6a5a2549016f8f564527dd71f2b68597bb78aa1d5e4a604ae625808464",
+    "small_row_output_sha256": "f28685e1137869bc081928ea39d7d70d3af5b2dc5cdb0e51bb77173a2939fe63",
+    "small_row_policy": "Keep 8x4 below rows 512/64/32 for output widths 512/2048/8192 respectively; select 16x4 at and above those measured crossovers."
+  },
+  "measurements": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "prefill_512": {
+      "samples_tok_s": [695.2985249015205, 707.4203859661214, 708.0261948054024],
+      "median_tok_s": 707.4203859661214,
+      "median_seconds": 0.7237563550006598,
+      "stdev_pct": 0.8286882966627581,
+      "iq4_wave32_baseline_tok_s": 693.3246622714963,
+      "delta_vs_iq4_wave32_pct": 2.033062497507276,
+      "tracked_peak_gib": 15.805444963276386,
+      "raw_json_sha256": "cba28b260694d44d50203f6f05da36563720a3556076ff0f6841f782c7120d8d"
+    },
+    "prefill_4096_repeated": {
+      "samples_tok_s": [626.0187367841592, 626.2705515358914, 626.2376798015114],
+      "median_tok_s": 626.2376798015114,
+      "median_seconds": 6.54064763605129,
+      "stdev_pct": 0.017847417091538736,
+      "iq4_wave32_baseline_tok_s": 615.5446948279623,
+      "delta_vs_iq4_wave32_pct": 1.7371581728175878,
+      "tracked_peak_gib": 16.95465761423111,
+      "raw_json_sha256": "8d5dd3aeca5eff6283ea5708f0d11495f28f82de5550fae366521705e00c4ba2"
+    },
+    "prefill_4096_mixed": {
+      "tok_s": 626.076725107456,
+      "seconds": 6.54232913593296,
+      "iq4_wave32_baseline_tok_s": 613.5764035046049,
+      "iq4_wave32_baseline_seconds": 6.675615256070159,
+      "delta_vs_iq4_wave32_pct": 2.037288515570723
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-q8-tile16x4-profile-20260720-150105 -o q3-q8-tile16x4-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 623.8088293471841,
+    "trace_path": "/tmp/hipengine-q3-q8-tile16x4-profile-20260720-150105/q3-q8-tile16x4-prefill_kernel_trace.csv",
+    "trace_sha256": "26bbf89bfbef6d30a40f67c5bea7a21b28fdfdc640a4ce26d6a4ce9c7e79c6a3",
+    "summary_sha256": "e247d3452a0737190a9c70b88d4a63cd179f3118c36d12ed3eb679051ba2a824",
+    "trace_launches": 8705,
+    "trace_kernel_sum_ms": 6413.593018,
+    "trace_span_ms": 6564.296085,
+    "delta_total_kernel_sum_vs_iq4_wave32_pct": -1.8355595483627751,
+    "dense_q8_exact_tile16x4": {
+      "count": 790,
+      "total_ms": 2056.866834,
+      "share_pct": 32.070429605173306,
+      "tile8x4_baseline_ms": 2161.039238,
+      "delta_vs_tile8x4_pct": -4.820477211529461,
+      "vgpr": 136,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "workgroup_x": 128
+    },
+    "postchange_bottlenecks_ms": {
+      "dense_q8_exact": 2056.866834,
+      "dense_q8_exact_share_pct": 32.070429605173306,
+      "exact_gdn": 1310.185725,
+      "exact_gdn_share_pct": 20.428264177706823,
+      "grouped_iq3": 1100.257376,
+      "grouped_iq3_share_pct": 17.155085658102792,
+      "full_attention": 940.030649,
+      "full_attention_share_pct": 14.656849076044695,
+      "grouped_iq4_down": 501.585061,
+      "grouped_iq4_down_share_pct": 7.820656215514173
+    }
+  },
+  "acceptance": {
+    "exact_primitive": true,
+    "exact_full_model": true,
+    "expected_tile16x4_symbol_present": true,
+    "unexpected_tile8x4_or_pack8_q8_symbol_present": false,
+    "scratch_bytes": 0,
+    "host_synchronization_added": false,
+    "memory_regression": false,
+    "accepted": true
+  },
+  "next_action": "Dense exact Q8 remains first at 32.07%, followed by exact GDN at 20.43% and grouped IQ3 at 17.16%. Commit this bounded exact step before opening the next profile-backed design; the approximately 3000 tok/s objective remains open."
+}

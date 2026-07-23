@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "status": "accepted_direct_path_fast_bulk_blocked",
+  "performance_claim": false,
+  "mode": "qwen36_35b_a3b_ud_q3km_ar_direct_correctness",
+  "hipengine_base_commit": "31acdd33",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "architecture": "qwen35moe",
+    "quant": "gguf_ud_q3_k_m",
+    "ar_layers": 40,
+    "nextn_layer_omitted": 40
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "architecture": "gfx1100"
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git",
+    "llama_cpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c"
+  },
+  "commands": {
+    "public_api": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json --llama-tokenize /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-tokenize --json /tmp/hipengine-q3-public-e2e-final.json",
+    "bulk_parity": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bulk_parity.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --token-ids 9419,11,271,40 --layer-limits 0,4,40 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-bulk-parity-final.json",
+    "focused_tests": "python3 -m pytest tests/test_qwen35_gguf_q3km_materialize.py tests/test_gguf_e2e_acceptance.py tests/test_qwen35_gguf_iq_dispatch.py -q",
+    "llama_first_token": "HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-completion -m /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf -p Hello -n 1 -c 256 -b 32 --temp 0 --top-k 1 --no-display-prompt --no-conversation --simple-io"
+  },
+  "oracle": {
+    "fixture": "tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json",
+    "prompt": "Hello",
+    "prompt_token_ids": [9419],
+    "llama_completion": ",",
+    "llama_completion_token_ids": [11],
+    "scope": "greedy_first_generated_token"
+  },
+  "materialization": {
+    "passed": true,
+    "rank3_expert_layout": "raw_gguf",
+    "rank3_expert_allocations": ["raw"],
+    "gate_up_quant_counts": {
+      "gguf_iq3_xxs": 78,
+      "gguf_iq4_xs": 2
+    },
+    "down_quant_counts": {
+      "gguf_iq4_xs": 37,
+      "gguf_q6_k": 3
+    },
+    "omitted_blk40_tensor_count": 20,
+    "ar_q3_k_tensor_count": 0,
+    "dense_expansion_of_rank3_iq": false
+  },
+  "one_layer_probe": {
+    "token_id": 9707,
+    "layer_limit": 1,
+    "hidden_shape": [1, 2048],
+    "finite": true,
+    "hidden_min": -23.125,
+    "hidden_max": 12.125,
+    "hidden_l2": 103.3856201171875,
+    "peak_allocated_bytes": 16691947764
+  },
+  "public_api": {
+    "passed": true,
+    "repeat": 2,
+    "outputs": [",", ","],
+    "generated_token_ids": [11],
+    "deterministic": true,
+    "finite_logits": true,
+    "argmax_token_id": 11,
+    "argmax_logit": 10.60208511352539,
+    "torch_preloaded": false,
+    "torch_loaded_by_generate": false,
+    "peak_allocated_bytes": 16781766656
+  },
+  "public_bulk_policy_probe": {
+    "prompt": "The answer is ",
+    "prompt_token_ids": [760, 4087, 369, 220],
+    "generated_text": " Wib",
+    "generated_token_ids": [221346],
+    "observed_bulk_calls": [
+      {
+        "rows": 4,
+        "mode": "native"
+      }
+    ],
+    "torch_loaded": false,
+    "passed": true
+  },
+  "resident_eager": {
+    "prompt_token_ids": [9419],
+    "repeats": 2,
+    "generated_token_ids": [
+      [11, 11, 264],
+      [11, 11, 264]
+    ],
+    "deterministic": true,
+    "finite": true
+  },
+  "weighted_composite_vs_unfused": {
+    "teacher_forced_contexts": [
+      [9419],
+      [9419, 11],
+      [9419, 11, 271]
+    ],
+    "rows": 3,
+    "kl_mean": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "max_abs_logit": 0.0,
+    "bit_equal": true,
+    "passed": true
+  },
+  "native_attention_row_bulk_moe": {
+    "prompt_token_ids": [9419, 11, 271, 40],
+    "serial_token_id": 1076,
+    "candidate_token_id": 1076,
+    "kl_mean": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "max_abs_logit": 0.0,
+    "bit_equal": true,
+    "x_rows_gt_1_exercised": true,
+    "passed": true
+  },
+  "blocked_fast_bulk": {
+    "enabled_by_bulk_attention_mode": "bulk",
+    "prompt_token_ids": [9419, 11, 271, 40],
+    "top1_agreement": 1.0,
+    "kl_serial_to_bulk": 0.9527109963531084,
+    "max_abs_logit": 6.58725643157959,
+    "first_hidden_drift_layer_limit": 4,
+    "passed_repository_gate": false,
+    "decision": "Do not use as the Q3 correctness baseline or make a Q3 prefill performance claim. The gguf_ud_q3_k_m generator plugin defaults to native-attention plus row-bulk MoE; explicit bulk mode remains diagnostic until task #11 is correct."
+  },
+  "validation": {
+    "focused_pytest": "54 passed",
+    "public_gpu_gate": "passed",
+    "bulk_gpu_gate": "native path passed; explicit fully-bulk path rejected",
+    "full_pytest": "100% complete, exit 0",
+    "fixture_runner": "7 passed",
+    "registry_smoke": "passed",
+    "cpu_fixture_smoke": "7 passed",
+    "smoke_add_plan": "passed",
+    "ruff": "passed",
+    "compileall": "passed",
+    "json_validation": "passed",
+    "diff_check": "passed"
+  },
+  "acceptance": {
+    "kl_threshold": 0.05,
+    "top1_threshold": 0.9,
+    "direct_ar_path_passed": true,
+    "public_first_token_matches_llama_cpp": true,
+    "public_q3_bulk_default": "native",
+    "native_row_bulk_passed": true,
+    "fully_bulk_path_passed": false,
+    "decode_graph_deferred_to_task": 10,
+    "grouped_compact_prefill_deferred_to_task": 11
+  }
+}

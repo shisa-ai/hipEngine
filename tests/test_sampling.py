@@ -14,6 +14,8 @@ from hipengine.generation.sampling import (
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     SamplingMode,
     ThinkingBudgetState,
+    ToolCallConstraintSpec,
+    ToolCallConstraintState,
     derive_row_seed,
     normalize_logit_bias_pairs,
     normalize_stop_token_sequences,
@@ -54,6 +56,7 @@ def _params(**overrides):
         "force_sequence_completion_token_sequences": (),
         "force_sequence_completion_reason": None,
         "json_object_close_forcing": False,
+        "tool_call_constraint": None,
         "thinking_close_token_ids": (),
         "thinking_hard_token_cap": None,
         "thinking_soft_close_window": 0,
@@ -87,6 +90,9 @@ def _speculative_mtp_blocker_cases():
             force_sequence_completion_token_sequences=((10, 11),),
         ),
         "json_object_close_forcing": _params(json_object_close_forcing=True),
+        "tool_call_constraint": _params(
+            tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="auto")
+        ),
         "thinking_budget": _params(thinking_close_token_ids=(10, 11), thinking_hard_token_cap=2),
         "logprobs": _params(logprobs=True),
         "top_logprobs": _params(top_logprobs=2),
@@ -109,6 +115,10 @@ def _native_gpu_sampler_guard_cases():
             force_sequence_completion_token_sequences=((10, 11),),
         ),
         "json_object_close_forcing": _params(temperature=0.7, json_object_close_forcing=True),
+        "tool_call_constraint": _params(
+            temperature=0.7,
+            tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="auto"),
+        ),
         "thinking_budget": _params(
             temperature=0.7,
             thinking_close_token_ids=(10, 11),
@@ -889,6 +899,347 @@ def test_json_object_constraint_reports_invalid_states(text: str, reason: str) -
     assert state.invalid is True
     assert state.error_reason == reason
     assert state.forced_close_suffix == ""
+
+
+def test_tool_call_constraint_accepts_only_declared_canonical_envelope() -> None:
+    spec = ToolCallConstraintSpec(
+        tool_names=("read", "grep"),
+        mode="auto",
+        forbidden_text_prefixes=("<think>",),
+    )
+    state = RowSamplingState(tool_call_constraint=spec)
+    token_text = {
+        0: "<think>",
+        1: "<tool_call>",
+        2: '{"name":"write","arguments":',
+        3: '{"name":"read","arguments":',
+        4: '{"path":"README.md"}',
+        5: "}</tool_call>",
+    }
+    decoder = token_text.__getitem__
+
+    first = select_token(
+        np.array([10.0, 9.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        _params(tool_call_constraint=spec),
+        state,
+        token_text_for_id=decoder,
+    )
+    assert first.token_id == 1
+    state.observe_selected_token_text(decoder(first.token_id), remaining_tokens=3, encode_text=lambda _text: ())
+
+    second = select_token(
+        np.array([0.0, 0.0, 10.0, 9.0, 0.0, 0.0], dtype=np.float32),
+        _params(tool_call_constraint=spec),
+        state,
+        token_text_for_id=decoder,
+    )
+    assert second.token_id == 3
+    state.observe_selected_token_text(decoder(second.token_id), remaining_tokens=2, encode_text=lambda _text: ())
+
+    third = select_token(
+        np.array([0.0, 0.0, 0.0, 0.0, 9.0, 0.0], dtype=np.float32),
+        _params(tool_call_constraint=spec),
+        state,
+        token_text_for_id=decoder,
+    )
+    assert third.token_id == 4
+    state.observe_selected_token_text(decoder(third.token_id), remaining_tokens=1, encode_text=lambda _text: ())
+
+    fourth = select_token(
+        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 9.0], dtype=np.float32),
+        _params(tool_call_constraint=spec),
+        state,
+        token_text_for_id=decoder,
+    )
+    assert fourth.token_id == 5
+    state.observe_selected_token_text(decoder(fourth.token_id), remaining_tokens=0, encode_text=lambda _text: ())
+    assert state.tool_call_constraint_state is not None
+    assert state.tool_call_constraint_state.complete is True
+    assert state.tool_call_constraint_state.invalid is False
+
+
+def test_tool_call_constraint_auto_text_branch_rejects_late_tool_markup() -> None:
+    state = ToolCallConstraintState(ToolCallConstraintSpec(tool_names=("read",), mode="auto"))
+
+    assert state.allows_eos is False
+    state.observe_text("plain answer")
+
+    assert state.branch == "text"
+    assert state.allows_eos is True
+    assert state.accepts_text(" continues") is True
+    assert state.accepts_text('<tool_call>{"name":"read","arguments":{}}</tool_call>') is False
+
+
+def test_tool_call_constraint_masks_before_top_k_sampling() -> None:
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    result = select_token(
+        np.array([10.0, 9.0, 8.0], dtype=np.float32),
+        _params(temperature=0.7, top_k=1, tool_call_constraint=spec),
+        RowSamplingState(seed=123, tool_call_constraint=spec),
+        token_text_for_id={0: "plain", 1: "<tool_call>", 2: "other"}.__getitem__,
+    )
+
+    assert result.token_id == 1
+    assert result.candidate_count == 1
+    assert result.mode is SamplingMode.HOST_LOGITS_SAMPLE
+
+
+def test_tool_call_constraint_allows_eos_after_complete_without_observing_special_text() -> None:
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    state = RowSamplingState(tool_call_constraint=spec)
+    envelope = '<tool_call>{"name":"read","arguments":{}}</tool_call>'
+    state.observe_selected_token_text(envelope, remaining_tokens=2, encode_text=lambda _text: ())
+
+    result = select_token(
+        np.array([1.0, 10.0], dtype=np.float32),
+        _params(tool_call_constraint=spec, eos_token_id=1),
+        state,
+        token_text_for_id={0: "other", 1: "<eos>"}.__getitem__,
+    )
+    assert result.token_id == 1
+
+    state.observe_selected_token_text("<eos>", remaining_tokens=1, encode_text=lambda _text: ())
+    assert state.tool_call_constraint_state is not None
+    assert state.tool_call_constraint_state.observed_text == envelope
+    assert state.tool_call_constraint_state.complete is True
+
+    ignored_eos = select_token(
+        np.array([1.0, 10.0], dtype=np.float32),
+        _params(tool_call_constraint=spec, eos_token_id=1, ignore_eos=True),
+        state,
+        token_text_for_id={0: " ", 1: "<eos>"}.__getitem__,
+    )
+    assert ignored_eos.token_id == 0
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        '{"name":"read","arguments":{"path":}}</tool_call>',
+        '{"name":"read","arguments":{"path":"README.md"}}}</tool_call>',
+        '{"name":"write","arguments":{}}</tool_call>',
+        '{"name":"read","arguments":{"value":1٢}}</tool_call>',
+        '{"arguments":{},"name":"read"}</tool_call>',
+    ],
+)
+def test_tool_call_constraint_rejects_malformed_or_undeclared_envelopes(suffix: str) -> None:
+    state = ToolCallConstraintState(ToolCallConstraintSpec(tool_names=("read",), mode="required"))
+
+    assert state.accepts_text(f"<tool_call>{suffix}") is False
+
+
+def test_tool_call_constraint_accepts_nested_json_and_escaped_strings() -> None:
+    state = ToolCallConstraintState(ToolCallConstraintSpec(tool_names=("read",), mode="required"))
+    text = (
+        '<tool_call>{"name":"read","arguments":'
+        '{"paths":["README.md","a\\\"b"],"options":{"raw":true,"limit":2}}'
+        '}</tool_call>'
+    )
+
+    assert state.accepts_text(text) is True
+    state.observe_text(text)
+    assert state.complete is True
+    assert state.invalid is False
+
+
+def test_tool_call_constraint_supports_model_specific_markers() -> None:
+    spec = ToolCallConstraintSpec(
+        tool_names=("read",),
+        mode="required",
+        start_marker="[CALL]",
+        end_marker="[/CALL]",
+    )
+    state = ToolCallConstraintState(spec)
+    text = '[CALL]{"name":"read","arguments":{}}[/CALL]'
+
+    assert state.accepts_text(text) is True
+    state.observe_text(text)
+    assert state.complete is True
+
+
+def test_tool_call_constraint_accepts_optional_unbudgeted_thinking_prefix() -> None:
+    spec = ToolCallConstraintSpec(
+        tool_names=("read",),
+        mode="required",
+        thinking_start_marker="<think>",
+        thinking_end_marker="</think>",
+    )
+    state = ToolCallConstraintState(spec)
+
+    state.observe_text("<think>inspect the request")
+    assert state.branch == "thinking"
+    assert state.allows_eos is False
+    assert state.forced_close_suffix == ""
+
+    envelope = '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+    assert state.accepts_text(f"</think>\n{envelope}") is True
+    state.observe_text(f"</think>\n{envelope}")
+    assert state.complete is True
+    assert state.invalid is False
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"thinking_start_marker": "<think>"},
+        {"thinking_end_marker": "</think>"},
+        {"thinking_start_marker": "<think>", "thinking_end_marker": "<think>"},
+    ],
+)
+def test_tool_call_constraint_rejects_invalid_thinking_marker_pairs(overrides) -> None:
+    with pytest.raises(ValueError, match="thinking"):
+        ToolCallConstraintSpec(tool_names=("read",), **overrides)
+
+
+def test_tool_call_constraint_required_rejects_plain_text_and_needs_tokenizer_callback() -> None:
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    params = _params(tool_call_constraint=spec)
+    state = RowSamplingState(tool_call_constraint=spec)
+
+    with pytest.raises(ValueError, match="token_text_for_id"):
+        select_token(np.array([2.0, 1.0], dtype=np.float32), params, state)
+
+    result = select_token(
+        np.array([2.0, 1.0], dtype=np.float32),
+        params,
+        state,
+        token_text_for_id={0: "plain", 1: "<tool_call>"}.__getitem__,
+    )
+    assert result.token_id == 1
+    assert result.active_processors == ("tool_call_constraint",)
+    assert result.fast_path_blockers == ("tool_call_constraint",)
+
+
+def test_tool_call_constraint_fails_closed_on_token_decode_errors_or_empty_text() -> None:
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    params = _params(tool_call_constraint=spec)
+
+    result = select_token(
+        np.array([3.0, 2.0], dtype=np.float32),
+        params,
+        RowSamplingState(tool_call_constraint=spec),
+        token_text_for_id={1: "<tool_call>"}.__getitem__,
+    )
+    assert result.token_id == 1
+
+    with pytest.raises(ValueError, match="no finite logits remain after token constraints"):
+        select_token(
+            np.array([3.0, 2.0], dtype=np.float32),
+            params,
+            RowSamplingState(tool_call_constraint=spec),
+            token_text_for_id=lambda _token_id: "",
+        )
+
+
+def test_tool_call_constraint_starts_after_tokenized_thinking_close() -> None:
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    params = _params(
+        tool_call_constraint=spec,
+        thinking_close_token_ids=(2,),
+        thinking_hard_token_cap=4,
+    )
+    state = RowSamplingState(
+        tool_call_constraint=spec,
+        thinking_budget=ThinkingBudgetState(close_sequence=(2,), hard_token_cap=4),
+    )
+    decoder = {0: "<think>", 1: "reason", 2: "</think>", 3: "<tool_call>", 4: "plain"}.__getitem__
+
+    for token_id in (0, 1, 2):
+        result = select_token(
+            np.eye(5, dtype=np.float32)[token_id] * 10.0,
+            params,
+            state,
+            token_text_for_id=decoder,
+        )
+        assert result.token_id == token_id
+        state.observe_selected_token_text(
+            decoder(token_id),
+            remaining_tokens=8,
+            encode_text=lambda _text: (),
+        )
+
+    assert state.thinking_budget is not None
+    assert state.thinking_budget.phase == "answer"
+    assert state.tool_call_constraint_state is not None
+    assert state.tool_call_constraint_state.observed_text == ""
+
+    result = select_token(
+        np.array([0.0, 0.0, 0.0, 9.0, 10.0], dtype=np.float32),
+        params,
+        state,
+        token_text_for_id=decoder,
+    )
+    assert result.token_id == 3
+
+
+def test_tool_call_constraint_queues_tokenizer_safe_close_and_validates_forced_tokens() -> None:
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    params = _params(tool_call_constraint=spec)
+    state = RowSamplingState(tool_call_constraint=spec)
+    prefix = '<tool_call>{"name":"read","arguments":{"path":"README'
+    state.observe_selected_token_text(prefix, remaining_tokens=2, encode_text=lambda text: (7, 8))
+
+    assert state.forced_tokens == (7, 8)
+    assert state.forced_token_reason == "tool_call_close_forcing"
+
+    decoder = {7: '"}', 8: "}</tool_call>"}.__getitem__
+    first = select_token(np.zeros(10, dtype=np.float32), params, state, token_text_for_id=decoder)
+    assert first.token_id == 7
+    assert first.forced is True
+    assert first.forced_reason == "tool_call_close_forcing"
+    state.observe_selected_token_text(decoder(7), remaining_tokens=1, encode_text=lambda _text: ())
+
+    second = select_token(np.zeros(10, dtype=np.float32), params, state, token_text_for_id=decoder)
+    assert second.token_id == 8
+    assert second.forced is True
+    assert second.forced_tokens_remaining == 0
+    state.observe_selected_token_text(decoder(8), remaining_tokens=0, encode_text=lambda _text: ())
+    assert state.tool_call_constraint_state is not None
+    assert state.tool_call_constraint_state.complete is True
+
+    invalid = RowSamplingState(tool_call_constraint=spec, forced_tokens_pending=(9,))
+    with pytest.raises(ValueError, match="violates tool_call_constraint"):
+        select_token(
+            np.zeros(10, dtype=np.float32),
+            params,
+            invalid,
+            token_text_for_id=lambda _token_id: "BAD",
+        )
+    assert invalid.forced_tokens == (9,)
+
+
+def test_json_object_constraint_masks_invalid_tokens_before_argmax() -> None:
+    params = _params(json_object_close_forcing=True)
+    state = RowSamplingState(json_object_close_forcing=True)
+    decoder = {0: "[]", 1: '{"ok":', 2: "true}"}.__getitem__
+
+    first = select_token(
+        np.array([10.0, 9.0, 0.0], dtype=np.float32),
+        params,
+        state,
+        token_text_for_id=decoder,
+    )
+    assert first.token_id == 1
+    state.observe_selected_token_text(decoder(1), remaining_tokens=1, encode_text=lambda _text: ())
+    second = select_token(
+        np.array([0.0, 0.0, 9.0], dtype=np.float32),
+        params,
+        state,
+        token_text_for_id=decoder,
+    )
+    assert second.token_id == 2
+
+
+def test_tool_call_constraint_forces_host_planner_and_native_fail_closed() -> None:
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="auto")
+    params = _params(temperature=0.7, top_k=8, tool_call_constraint=spec)
+
+    plan = plan_sampler(params, native_gpu_available=True, native_gpu_requested=True)
+
+    assert plan.mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert plan.active_processors == ("tool_call_constraint",)
+    assert plan.fallback_reason == "native_gpu_unsupported_request"
+    assert supports_native_gpu_sampling(params) is False
 
 
 def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:

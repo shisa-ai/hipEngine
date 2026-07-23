@@ -1,6 +1,6 @@
 # Sampling Design
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 This document defines how hipEngine should grow from the current greedy-only
 Qwen3.5/PARO and GGUF generation paths to normal server/library sampling
@@ -76,8 +76,9 @@ route, and unsupported native shapes fail closed to host logits sampling:
   the host sampler and report
   `sampler_fallback_reason="native_gpu_unsupported_request"` while native
   sampling is enabled. Deterministic `processed_argmax`, forced-token queues,
-  sequence repair, JSON close, thinking queues, `top_k > 64`, and unsupported
-  bounded logprob combinations therefore remain host-backed. Host decode-state
+  sequence repair, JSON/tool candidate constraints, thinking queues,
+  `top_k > 64`, and unsupported bounded logprob combinations therefore remain
+  host-backed. Host decode-state
   telemetry marks `full_vocab_logits_d2h=true` and reports the per-token
   full-vocabulary byte count; supported GGUF native rows instead report
   `sampler_mode="gpu_sample"`, `native_sampler_rows=true`,
@@ -132,8 +133,8 @@ before native execution:
   `top_logprobs`, and RNG step values use native row launches;
 - PARO c>N selection remains serial per slot;
 - `top_logprobs > top_k` for bounded top-k requests;
-- forced-token queues, sequence-completion repair, JSON object close forcing,
-  thinking-budget dynamic processors, and `top_k > 64`;
+- forced-token queues, sequence-completion repair, JSON object/tool-call
+  constraints, thinking-budget dynamic processors, and `top_k > 64`;
 - broader retained benchmarks/profiler coverage beyond the first W7900 promotion
   smoke.
 
@@ -229,7 +230,8 @@ logits level and record the memory blocker instead of weakening the test.
 
 ## Non-goals for the first functional milestone
 
-- Grammar / JSON-schema constrained decoding.
+- Full JSON Schema, regex, choice, and patch grammar decoding. Canonical
+  tool-envelope/name/root-object syntax masking is implemented on host logits.
 - Beam search or `best_of` ranking.
 - Prompt-token scoring for completion `echo+logprobs`, live per-token streaming
   logprobs without buffering, and broad native-GPU parity outside the scoped
@@ -269,7 +271,8 @@ models should either populate these fields or reject unsupported aliases.
 
 Compatibility rule: if `temperature <= 0` and the request has no active logit
 processors (`logit_bias`, penalties, suppressions, min-token/EOS policy,
-forced-token queues, etc.), `top_p` and `top_k` do not change the selected token
+forced-token queues, JSON/tool constraints, etc.), `top_p` and `top_k` do not
+change the selected token
 because the top logit remains included. Those requests should use the greedy
 fast path rather than failing merely because a client sent `top_p=0.95` with
 `temperature=0`.
@@ -280,8 +283,9 @@ same processed-logit policy as autoregressive generation.
 requests; `speculative_mtp_sampling_blockers()` reports the fields that require
 AR fallback today, including `logit_bias`, penalties, suppress-token ids,
 min-token/EOS policy, token stops, pending forced-token queues, post-thinking
-forced-token queues, token-sequence completion repair, `temperature > 0`, and
-requested logprobs. The resident scheduler applies this guard before emitting
+forced-token queues, token-sequence completion repair, JSON/tool constraints,
+`temperature > 0`, and requested logprobs. The resident scheduler applies this
+guard before emitting
 speculative target-verification work, so rows that need processed logits cannot
 silently enter the raw-argmax MTP path. Successful scheduler verify work and
 plans carry `target_sampling_policy="raw_target_top1"`,
@@ -332,7 +336,8 @@ Add a small sampler module, for example `hipengine.generation.sampling`, with:
   - prompt token history;
   - generated token history;
   - count table for penalties;
-  - stop-token rows if available.
+  - stop-token DFA state;
+  - JSON/tool prefix state and forced-close queues when configured.
 - `SampleResult` fields shared with existing autoregressive results:
   - `token_id`;
   - `token_text`;
@@ -416,15 +421,17 @@ Use one documented order across CPU and GPU paths:
 3. Apply repetition, presence, and frequency penalties using prompt + generated
    token history.
 4. Apply `suppress_token_ids` and `min_tokens` / `eos_token_id` suppression.
-5. If a forced token is pending, emit it through the normal decode path and
-   record forced metadata.
-6. If `temperature <= 0`, choose argmax over processed logits.
-7. If `temperature > 0`, divide logits by temperature.
-8. Apply `top_k` filter.
-9. Convert to probabilities with max-subtracted softmax.
-10. Apply `top_p` / `min_p` filters, always retaining at least one token.
-11. Renormalize and draw one token from the row RNG.
-12. Append the token to row history and update counts.
+5. Apply dynamic thinking-budget EOS/bias policy.
+6. Mask tokenizer-decoded candidates that violate active JSON/tool constraints.
+7. If a forced token is pending, validate and emit it through the normal decode
+   path, recording forced metadata.
+8. If `temperature <= 0`, choose argmax over processed/allowed logits.
+9. If `temperature > 0`, divide logits by temperature.
+10. Apply `top_k` over allowed candidates.
+11. Convert to probabilities with max-subtracted softmax.
+12. Apply `top_p` / `min_p` filters, always retaining at least one token.
+13. Renormalize and draw one token from the row RNG.
+14. Append the token to row history and update stop/constraint state.
 
 For `top_p`, sorting is by descending probability with deterministic tie-break on
 lower token id. For argmax, ties also pick the lower token id to match existing
@@ -601,10 +608,11 @@ fully vectorized at first:
 | S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Promoted for scoped PARO default; correctness-ready for explicit GGUF:** standalone FP32 processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` samplers pass CPU-reference filtering/logprob parity and fixed-seed determinism. Supported native rows report zero full-vocabulary D2H; unsupported rows report explicit host fallback. GGUF additionally passes a real W7900 c4 fixed-seed/same-shape state-KV/stop/EOS/ownership gate but awaits A3 performance evidence before promotion. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | **Promoted for scoped PARO default:** standalone correctness-first GPU top-p/min-p sampler matches CPU retain counts, selected tokens, logprobs, tie order, and fixed-seed determinism on boundary fixtures; the synthetic resident-session route smoke covers top-p dispatch. Performance-oriented full-vocab nucleus selection remains future work. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Done for host-logits server/library paths:** completion/chat response tests pass for selected logprob/top-logprobs cases, completion `echo+logprobs`, and buffered streaming logprobs. |
+| S9: tokenizer constraints | Mask host candidates for canonical tool envelopes and strict root-object JSON; validate dynamic/forced close queues and fail closed. | Medium/High | ~700-1200 Python/tests | S2/S3/S5 | **Done for host PARO/GGUF paths:** auto/required/specific tool branching, declared names, root-JSON syntax, structured root-object syntax, EOS, thinking transition, forced suffixes, scheduler plumbing, and native/MTP blockers pass focused gates. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.
-S3, S4, S5, and S8 are complete for the current host/PARO/GGUF scheduler
+S3, S4, S5, S8, and S9 are complete for the current host/PARO/GGUF scheduler
 scope. S6 and S7 are promoted for the scoped PARO native default. GGUF native
 sampling is a correctness-ready explicit candidate with dense compatible c>N
 batch selection; A3 performance measurement and broader heterogeneous/dynamic

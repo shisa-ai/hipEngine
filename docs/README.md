@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-07-20
+Last updated: 2026-07-22
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -39,6 +39,8 @@ working on.
 | [`ROOFLINE.md`](ROOFLINE.md) | RDNA3 / W7900 roofline model, occupancy rules, decision tree, and rejected hardware-level approaches. |
 | [`RELAXED.md`](RELAXED.md) | Strict/exact vs opt-in relaxed precision policy, per-kernel savings candidates, and relaxed-mode backlog. |
 | [`MARLIN.md`](MARLIN.md) | Marlin-K / PARO W4 layout plan and porting context. |
+| [`QUANTS.md`](QUANTS.md) | GGUF tensor-type coverage, Qwen3.5 quality cliffs, Laguna S 2.1 quant targets, hardware headroom, and BF16 K/V capacity math. |
+| [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) | Active IQ2_XS decode/prefill bottleneck analysis, priority list, tuning order, precedent, and Laguna acceptance gates. |
 | [`GGUF_DECODE_REPACK.md`](GGUF_DECODE_REPACK.md) | P9.H2 qwen35moe GGUF decode-side replacement layout, memory budget, and acceptance plan. |
 | [`TUNING-gguf.md`](TUNING-gguf.md) | Active GGUF performance tuning playbook, baseline refresh protocol, and lane backlog. |
 | [`source_lineage.json`](source_lineage.json) | Machine-readable parent-file manifest for `scripts/check_lineage.py`. |

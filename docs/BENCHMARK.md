@@ -855,6 +855,15 @@ Initial protocol shapes:
 | `c=4`, prompt 512 / decode 128 | first scheduler/graph bucket row | `python3 scripts/qwen35_batch_correctness.py --rows 4` plus generated-token equality vs four c=1 sessions |
 | `c=8`, prompt 512 / decode 128 | primary early concurrent target | `python3 scripts/qwen35_batch_correctness.py --rows 8` plus generated-token equality vs eight c=1 sessions |
 
+GGUF native rows use the model-level equivalent gate rather than the PARO
+primitive-only script: `tests/test_qwen35_gguf_target_rows.py` must prove full
+FP32 logits against independent c=1 at C=2/4/8, including variable prompt
+lengths and reclaim/compact/readmit, while
+`scripts/qwen35_batch_gguf_diagnostic.py` must preserve all generated IDs over
+the measured 512/128 and 4K/128 workloads. The artifact must additionally carry
+native indexed-state, `KVLiveSpans` attention, selected-row MoE, row lm-head,
+and row-sampler profiler symbols.
+
 Report both aggregate tok/s and per-request tok/s. Do not compare a c=N aggregate row against c=1 without explicitly showing `aggregate/c1` and `per_request/c1` ratios. SpecDec must be disabled for these rows; SpecDec has a separate acceptance protocol because generated-token equality depends on target verification and KV commit semantics.
 
 ### Production OpenAI load/SLO gate

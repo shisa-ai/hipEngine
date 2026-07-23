@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "counterbalanced exact default-path promotion with cache-only trace",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "7df5c17a",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "diagnosis": {
+    "baseline_artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-iq3-rowbatch4-prefill.json",
+    "baseline_total_kernel_ms": 5827.503013,
+    "baseline_full_attention_ms": 936.899961,
+    "baseline_full_attention_share_pct": 16.077211095557782,
+    "baseline_attention_breakdown": {
+      "dense_rows": {"count": 10, "total_ms": 111.600622},
+      "warp_split_producer": {"count": 1920, "total_ms": 814.612554},
+      "grouped_gqa_split_producer": {"count": 10, "total_ms": 0.666048},
+      "bf16_batch_reduce": {"count": 1930, "total_ms": 10.020737}
+    },
+    "new_premise": "The c=1 decode crossover keeps per-Q-head warp split below context 4096 for occupancy. Exact prefill processes up to 16 query rows per launch, so the existing grouped-GQA batch producer has enough independent blocks to reuse each K/V stream across eight Q heads without changing any Q-head arithmetic."
+  },
+  "change": {
+    "summary": "Select the existing exact grouped-GQA split producer for prefill query batches of at least two rows while retaining warp split for a singleton below context 4096.",
+    "dense_policy": "Resident 256-thread dense arithmetic remains below context 1024.",
+    "split_policy": "Grouped-GQA when batch_rows >= 2 or max_batch_context >= 4096; otherwise per-Q-head warp split.",
+    "producer": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<8,16,2>",
+    "reducer": "qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<hip_bfloat16>",
+    "exactness": "Grouped and warp producers retain the same per-head four-value dot order, wave32 shuffle tree, split-local softmax order, serial V accumulation, and unchanged BF16 batch reducer.",
+    "new_kernel_body": false,
+    "new_weight_layout": false,
+    "host_synchronization_added": false,
+    "global_scratch_allocation_added": false,
+    "launch_count_changed": false
+  },
+  "correctness": {
+    "red": {
+      "command": "PYTHONPATH=. uv run pytest -q tests/test_qwen35_paged_attn_decode_plan.py -k query_batch_gqa_crossover",
+      "result": "Failed because the 3-row split range still selected warp instead of grouped-GQA."
+    },
+    "focused": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_paged_attn_decode_direct_gate.py tests/test_qwen35_paged_attn_decode_plan.py",
+      "passed": true,
+      "tests": 7
+    },
+    "committed_primitive": {
+      "shapes": [
+        {"rows": 2, "max_context": 1280},
+        {"rows": 16, "max_context": 4095}
+      ],
+      "bf16_bit_mismatches_grouped_vs_warp": [0, 0]
+    },
+    "exploratory_primitive": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/q3_attention_split_gqa_micro.py",
+      "script_sha256": "279ccb61be2658b86effd98712a457029407b1126e31bcbb8ec9b8d584c12c33",
+      "output_sha256": "33279dfbe835c4ec5e65996ee168cf816a463f92226372c128459976b04093f1",
+      "contexts": [1280, 2048, 4095],
+      "rows": [1, 2, 4, 8, 16],
+      "total_shapes": 15,
+      "bf16_bit_mismatches": 0
+    },
+    "full_model": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py",
+      "passed": true,
+      "tests": 2,
+      "mixed64_kl": 0.0,
+      "mixed64_top1": 1.0,
+      "all_row_layer_limits": [0, 3, 4, 40],
+      "all_row_bit_equal": true
+    },
+    "full_logit_4096_ab": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/q3_attention_grouped_gqa_full_logit_ab.py",
+      "script_sha256": "a3793438fb730ed5ce596a41b2f526079043dc356bddfc1367dfa6a67548f53d",
+      "output_sha256": "4583a671d702420e557a02ec5ebed7d342264ebf8b0d9a5426ddefc26c8e7016",
+      "control_tok_s": 681.4272091723634,
+      "candidate_tok_s": 742.6089349735458,
+      "delta_pct": 8.978468276236207,
+      "f32_logit_bit_mismatches": 0,
+      "kl": 0.0,
+      "top1_match": true,
+      "token_id": 14626,
+      "logit": 10.020184516906738
+    },
+    "mixed_4096": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/q3_pack8_4k_mixed.py",
+      "script_sha256": "7845c231d754b1401e61620ba63b479e82829e141fd6762ac47bf009ddab27d8",
+      "token_pattern": [9707, 11, 220, 264, 73, 13, 107561, 13883],
+      "samples_tok_s": [741.5244706624219, 740.8350428599932],
+      "median_tok_s": 741.1797567612075,
+      "prior_retained_tok_s": 684.4987997786159,
+      "delta_vs_prior_pct": 8.280651039990673,
+      "token_id": 14626,
+      "logit": 10.020184516906738,
+      "finite": true,
+      "matches_strict_serial_token_and_logit": true
+    }
+  },
+  "microbench": {
+    "warmup": 3,
+    "iterations": 11,
+    "shape": "QH=16,KVH=2,D=256,split=256",
+    "results": {
+      "1280": {
+        "1": {"warp_ms": 0.190743, "gqa_ms": 0.188753, "delta_pct": -1.0432886134746688},
+        "2": {"warp_ms": 0.189403, "gqa_ms": 0.157542, "delta_pct": -16.821803244932767},
+        "4": {"warp_ms": 0.117452, "gqa_ms": 0.095151, "delta_pct": -18.987330994789364},
+        "8": {"warp_ms": 0.181972, "gqa_ms": 0.102191, "delta_pct": -43.842459279449585},
+        "16": {"warp_ms": 0.256244, "gqa_ms": 0.126502, "delta_pct": -50.632209924915315}
+      },
+      "2048": {
+        "1": {"warp_ms": 0.193513, "gqa_ms": 0.171653, "delta_pct": -11.296398691560771},
+        "2": {"warp_ms": 0.157452, "gqa_ms": 0.128542, "delta_pct": -18.36115133501005},
+        "4": {"warp_ms": 0.202983, "gqa_ms": 0.116842, "delta_pct": -42.437544030780906},
+        "8": {"warp_ms": 0.264384, "gqa_ms": 0.150232, "delta_pct": -43.17659162430404},
+        "16": {"warp_ms": 0.386106, "gqa_ms": 0.174733, "delta_pct": -54.744811010447904}
+      },
+      "4095": {
+        "1": {"warp_ms": 0.204723, "gqa_ms": 0.190223, "delta_pct": -7.082741069640431},
+        "2": {"warp_ms": 0.265604, "gqa_ms": 0.136462, "delta_pct": -48.62200870468818},
+        "4": {"warp_ms": 0.320855, "gqa_ms": 0.157712, "delta_pct": -50.846332455470545},
+        "8": {"warp_ms": 0.501287, "gqa_ms": 0.174603, "delta_pct": -65.16905485280887},
+        "16": {"warp_ms": 0.868043, "gqa_ms": 0.315515, "delta_pct": -63.65214626464357}
+      }
+    },
+    "measured_crossover": "Keep the resident warp producer only for a singleton below context 4096; grouped-GQA wins every tested multirow shape by 16.82% to 65.17%."
+  },
+  "measurements": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "sequence": "candidate 512x3 and 4096x3, forced-warp 4096x3 control, candidate 4096x3 repeat",
+    "prefill_512_guard": {
+      "samples_tok_s": [757.7387200930048, 777.897629914061, 772.1327971648159],
+      "median_tok_s": 772.1327971648159,
+      "prior_retained_tok_s": 774.1854456533248,
+      "delta_pct": -0.26513653802632264,
+      "stdev_pct": 1.3446797244637856,
+      "interpretation": "The changed split policy is inactive below context 1024; this is a non-regression guard and the prior retained 774.185 tok/s headline remains current."
+    },
+    "prefill_4096_repeated": {
+      "candidate_samples_tok_s": [740.6635235977313, 743.1728189466744, 744.8188373644791, 741.56958852352, 742.6496371803252, 743.975296438892],
+      "candidate_median_tok_s": 742.9112280634997,
+      "forced_warp_samples_tok_s": [683.2692054556436, 684.5644577895595, 683.5966311773602],
+      "forced_warp_median_tok_s": 683.5966311773602,
+      "counterbalanced_delta_pct": 8.676841602332331,
+      "prior_retained_median_tok_s": 679.6171614358568,
+      "delta_vs_prior_pct": 9.313194283369587,
+      "tracked_peak_gib": 16.95465761423111
+    },
+    "prefill_4096_mixed": {
+      "samples_tok_s": [741.5244706624219, 740.8350428599932],
+      "median_tok_s": 741.1797567612075,
+      "prior_retained_tok_s": 684.4987997786159,
+      "delta_vs_prior_pct": 8.280651039990673
+    },
+    "raw_json_sha256": {
+      "candidate_512": "2f342bd271fa35f3124a35489024fda95e9352bcd4130776d2b045620acda8a1",
+      "candidate_4096_first": "fccf8fd0ef2b3dc297250999d3e2a335581f71155fc82f8f51547135f4415311",
+      "forced_warp_4096_control": "22fe9ee6ba08e3296fb7a06b3456a8e0c6b2a2218526061b239127f14355452c",
+      "candidate_4096_repeat": "85e21faebfed9e19ed1fd8c4e2409d15272f88479c47fbcb74508df56e001ea7"
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:/opt/rocm/lib HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-attn-gqa-profile-20260720-163627 -o q3-attn-gqa-prefill -- uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 739.866596161423,
+    "trace_path": "/tmp/hipengine-q3-attn-gqa-profile-20260720-163627/q3-attn-gqa-prefill_kernel_trace.csv",
+    "trace_sha256": "eae05f283c2332b2e748f8f79b0ce9fd8755a7a9c652106e94a4e8570a737126",
+    "summary_sha256": "3e816117d27f57ec9738b5274897d65cd6a34cbe4515223dbe8a2392f17a94a6",
+    "trace_launches": 8705,
+    "trace_kernel_sum_ms": 5350.508295,
+    "trace_span_ms": 5534.072705,
+    "delta_total_kernel_sum_pct": -8.185233314095585,
+    "delta_trace_span_pct": -8.226226377471546,
+    "full_attention": {
+      "total_ms": 464.773025,
+      "baseline_ms": 936.899961,
+      "delta_pct": -50.39245977725043,
+      "dense": {"count": 10, "total_ms": 112.892588},
+      "grouped_gqa": {
+        "count": 1930,
+        "total_ms": 342.120089,
+        "vgpr": 80,
+        "rocprof_lds_block_bytes": 0,
+        "dynamic_lds_request_bytes": 17544,
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      },
+      "bf16_batch_reduce": {"count": 1930, "total_ms": 9.760348},
+      "warp_producer_count": 0
+    },
+    "postchange_bottlenecks_ms": {
+      "dense_q8_exact": 2052.066338,
+      "dense_q8_exact_share_pct": 38.352736316989485,
+      "grouped_iq3": 954.502209,
+      "grouped_iq3_share_pct": 17.839467885546004,
+      "exact_gdn_recurrent": 870.077961,
+      "exact_gdn_recurrent_share_pct": 16.261594469689538,
+      "grouped_iq4_down": 504.05123,
+      "grouped_iq4_down_share_pct": 9.420623279306588,
+      "full_attention": 464.773025,
+      "full_attention_share_pct": 8.686520969125981
+    }
+  },
+  "acceptance": {
+    "exact_primitive": true,
+    "exact_full_model": true,
+    "exact_4096_full_logits": true,
+    "expected_grouped_gqa_symbol_count": 1930,
+    "unexpected_warp_symbol_present": false,
+    "scratch_bytes": 0,
+    "host_synchronization_added": false,
+    "memory_regression": false,
+    "launch_count_regression": false,
+    "accepted": true
+  },
+  "next_action": "Dense exact Q8 remains first but its local schedules are closed. Grouped IQ3 remains second but known local output-tile/WMMA/repack lanes are closed. Continue task #24 with one new exact GDN premise from the refreshed profile rather than polishing attention below 9%. The approximately 3000 tok/s objective remains open."
+}

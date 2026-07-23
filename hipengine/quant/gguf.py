@@ -183,6 +183,7 @@ GGUF_QUANT_LAYOUTS: dict[GGMLQuantizationType, GGUFQuantLayout] = {
         256,
         2 + QK_K // 4 + QK_K // 8 + 12,
         "uint8_blocks",
+        dequant_supported=True,
     ),
     GGMLQuantizationType.Q4_K: _layout(
         GGMLQuantizationType.Q4_K,
@@ -216,12 +217,14 @@ GGUF_QUANT_LAYOUTS: dict[GGMLQuantizationType, GGUFQuantLayout] = {
         256,
         2 + QK_K // 4 + QK_K // 32,
         "uint8_blocks",
+        dequant_supported=True,
     ),
     GGMLQuantizationType.IQ3_XXS: _layout(
         GGMLQuantizationType.IQ3_XXS,
         256,
         2 + QK_K // 4 + QK_K // 8,
         "uint8_blocks",
+        dequant_supported=True,
     ),
     GGMLQuantizationType.IQ1_S: _layout(
         GGMLQuantizationType.IQ1_S,
@@ -306,6 +309,93 @@ _NUMPY_STORAGE_DTYPES = {
 
 _IQ4_NL_KVALUES = (-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113)
 _MXFP4_KVALUES = (0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12)
+
+# IQ2_XS codebook from llama.cpp@1ebf790cd gguf-py/gguf/quants.py. Each
+# little-endian u16 packs eight 2-bit selectors mapped through (8, 25, 43).
+_IQ2_XS_GRID_PACKED = np.frombuffer(
+    bytes.fromhex(
+        "00000200050008000a0011001400160019002000220025002800410044004600"
+        "49005000520055005800610064008000820085008800910094009900a0000101"
+        "04010601090110011201150118011a0121012401400142014501480151015401"
+        "6001680181018401900100020202050208021102140220024102440250025502"
+        "80028a0201040404060409041004120415041804210424044004420445044804"
+        "5104540456046004810484049004000502050505080511051405200541054405"
+        "500561058005010604061006260640064206840600080208050808080a081108"
+        "14082008250841084408500858088008a008aa08010904091009400981098909"
+        "000a200a280a960aa00a01100410061009101010121015101810211024104010"
+        "4210451048105110541060106a10811084109010001102110511081111111411"
+        "2011411144115011801194119611011204120612101240126012001402140514"
+        "0814111414142014411444144914501464148014011504151015401500161416"
+        "49160118041810181218401854188618001905196619511aa91a002002200520"
+        "08200a201120142020204120442050208020a020012104211021402148216521"
+        "002222228022a82201240424102429244024002541255225992501261a26a626"
+        "002808280a28202855288828a22868299029082a202a822a882a8a2a01400440"
+        "0640094010401240154018402140244040404240454048404a40514054406040"
+        "6540814084409040004102410541084111411441204141414441504180418541"
+        "a241014204421042124229424042004402440544084411441444194420444144"
+        "4444504480449444014504451045244540459a4500460a464446504601480448"
+        "1048404845485448624800491149444950496949044a00500250055008501150"
+        "145020502850415044505050805001510451105115514051425100524452aa52"
+        "0154045410542154405460548154a154005508558055885521566856a1560058"
+        "14584158505899581a5940594259855a0160046010604060546062608660a960"
+        "006124624a62926200641664106540654565a46501686a682569066a546a626a"
+        "00800280058008801180148020802a8041804480508080808280a880aa800181"
+        "0481068110814081518159810082208280828282a082a8820184048410841284"
+        "158440846084898400854485a58518866a860088088825885a8880888288a888"
+        "0689228a808a888a968aa88a0190049010904090569084900091229164915692"
+        "89920094059444945094589429959095929541965198a6984999159a609a00a0"
+        "02a008a00aa020a02aa0a0a051a159a1a6a100a202a208a22aa280a2a0a240a4"
+        "95a465a698a60aa820a822a828a8a0a8a8a804a984a986a928aa2aaa91aaaaaa"
+    ),
+    dtype="<u2",
+).copy()
+_IQ2_XS_GRID_MAGNITUDES = np.array([8, 25, 43, 0], dtype=np.uint8)
+
+# IQ3_XXS codebook from llama.cpp@1ebf790cd ggml-common.h (GGML_TABLE iq3xxs_grid).
+# Each u32 packs four unsigned grid magnitudes (little-endian byte order).
+_IQ3_XXS_GRID = np.array(
+    [
+        0x04040404, 0x04040414, 0x04040424, 0x04040c0c, 0x04040c1c, 0x04040c3e, 0x04041404, 0x04041414,
+        0x04041c0c, 0x04042414, 0x04043e1c, 0x04043e2c, 0x040c040c, 0x040c041c, 0x040c0c04, 0x040c0c14,
+        0x040c140c, 0x040c142c, 0x040c1c04, 0x040c1c14, 0x040c240c, 0x040c2c24, 0x040c3e04, 0x04140404,
+        0x04140414, 0x04140424, 0x04140c0c, 0x04141404, 0x04141414, 0x04141c0c, 0x04141c1c, 0x04141c3e,
+        0x04142c0c, 0x04142c3e, 0x04143e2c, 0x041c040c, 0x041c043e, 0x041c0c04, 0x041c0c14, 0x041c142c,
+        0x041c3e04, 0x04240c1c, 0x04241c3e, 0x04242424, 0x04242c3e, 0x04243e1c, 0x04243e2c, 0x042c040c,
+        0x042c043e, 0x042c1c14, 0x042c2c14, 0x04341c2c, 0x04343424, 0x043e0c04, 0x043e0c24, 0x043e0c34,
+        0x043e241c, 0x043e340c, 0x0c04040c, 0x0c04041c, 0x0c040c04, 0x0c040c14, 0x0c04140c, 0x0c04141c,
+        0x0c041c04, 0x0c041c14, 0x0c041c24, 0x0c04243e, 0x0c042c04, 0x0c0c0404, 0x0c0c0414, 0x0c0c0c0c,
+        0x0c0c1404, 0x0c0c1414, 0x0c14040c, 0x0c14041c, 0x0c140c04, 0x0c140c14, 0x0c14140c, 0x0c141c04,
+        0x0c143e14, 0x0c1c0404, 0x0c1c0414, 0x0c1c1404, 0x0c1c1c0c, 0x0c1c2434, 0x0c1c3434, 0x0c24040c,
+        0x0c24042c, 0x0c242c04, 0x0c2c1404, 0x0c2c1424, 0x0c2c2434, 0x0c2c3e0c, 0x0c34042c, 0x0c3e1414,
+        0x0c3e2404, 0x14040404, 0x14040414, 0x14040c0c, 0x14040c1c, 0x14041404, 0x14041414, 0x14041434,
+        0x14041c0c, 0x14042414, 0x140c040c, 0x140c041c, 0x140c042c, 0x140c0c04, 0x140c0c14, 0x140c140c,
+        0x140c1c04, 0x140c341c, 0x140c343e, 0x140c3e04, 0x14140404, 0x14140414, 0x14140c0c, 0x14140c3e,
+        0x14141404, 0x14141414, 0x14141c3e, 0x14142404, 0x14142c2c, 0x141c040c, 0x141c0c04, 0x141c0c24,
+        0x141c3e04, 0x141c3e24, 0x14241c2c, 0x14242c1c, 0x142c041c, 0x142c143e, 0x142c240c, 0x142c3e24,
+        0x143e040c, 0x143e041c, 0x143e0c34, 0x143e242c, 0x1c04040c, 0x1c040c04, 0x1c040c14, 0x1c04140c,
+        0x1c04141c, 0x1c042c04, 0x1c04342c, 0x1c043e14, 0x1c0c0404, 0x1c0c0414, 0x1c0c1404, 0x1c0c1c0c,
+        0x1c0c2424, 0x1c0c2434, 0x1c14040c, 0x1c14041c, 0x1c140c04, 0x1c14142c, 0x1c142c14, 0x1c143e14,
+        0x1c1c0c0c, 0x1c1c1c1c, 0x1c241c04, 0x1c24243e, 0x1c243e14, 0x1c2c0404, 0x1c2c0434, 0x1c2c1414,
+        0x1c2c2c2c, 0x1c340c24, 0x1c341c34, 0x1c34341c, 0x1c3e1c1c, 0x1c3e3404, 0x24040424, 0x24040c3e,
+        0x24041c2c, 0x24041c3e, 0x24042c1c, 0x24042c3e, 0x240c3e24, 0x24141404, 0x24141c3e, 0x24142404,
+        0x24143404, 0x24143434, 0x241c043e, 0x241c242c, 0x24240424, 0x24242c0c, 0x24243424, 0x242c142c,
+        0x242c241c, 0x242c3e04, 0x243e042c, 0x243e0c04, 0x243e0c14, 0x243e1c04, 0x2c040c14, 0x2c04240c,
+        0x2c043e04, 0x2c0c0404, 0x2c0c0434, 0x2c0c1434, 0x2c0c2c2c, 0x2c140c24, 0x2c141c14, 0x2c143e14,
+        0x2c1c0414, 0x2c1c2c1c, 0x2c240c04, 0x2c24141c, 0x2c24143e, 0x2c243e14, 0x2c2c0414, 0x2c2c1c0c,
+        0x2c342c04, 0x2c3e1424, 0x2c3e2414, 0x34041424, 0x34042424, 0x34042434, 0x34043424, 0x340c140c,
+        0x340c340c, 0x34140c3e, 0x34143424, 0x341c1c04, 0x341c1c34, 0x34242424, 0x342c042c, 0x342c2c14,
+        0x34341c1c, 0x343e041c, 0x343e140c, 0x3e04041c, 0x3e04042c, 0x3e04043e, 0x3e040c04, 0x3e041c14,
+        0x3e042c14, 0x3e0c1434, 0x3e0c2404, 0x3e140c14, 0x3e14242c, 0x3e142c14, 0x3e1c0404, 0x3e1c0c2c,
+        0x3e1c1c1c, 0x3e1c3404, 0x3e24140c, 0x3e24240c, 0x3e2c0404, 0x3e2c0414, 0x3e2c1424, 0x3e341c04,
+    ],
+    dtype=np.uint32,
+)
+
+# ksigns_iq2xs[i] = i | (parity(i) << 7): computed, matching llama.cpp.
+_KSIGNS_IQ2XS = np.array(
+    [i | ((bin(i).count("1") & 1) << 7) for i in range(128)], dtype=np.uint8
+)
+_IQ3_XXS_GRID_BYTES = _IQ3_XXS_GRID.view(np.uint8).reshape(256, 4)
 
 
 def ggml_type(type_id: int | GGMLQuantizationType) -> GGMLQuantizationType:
@@ -600,6 +690,114 @@ def _dequant_iq4_nl_blocks(blocks: np.ndarray) -> np.ndarray:
     return d * qs
 
 
+def _dequant_iq2_xs_blocks(blocks: np.ndarray) -> np.ndarray:
+    """Dequantize IQ2_XS blocks (74 bytes per 256 values).
+
+    Mirrors llama.cpp ``dequantize_row_iq2_xs``. Each 32-value group has four
+    grid/sign words and two 4-bit scales; one fp16 super-scale covers the full
+    256-value block.
+    """
+
+    n_blocks = blocks.shape[0]
+    d, rest = _split(blocks, [2])
+    qs_raw, scales = _split(rest, [2 * QK_K // 8])
+    d = d.view(np.float16).astype(np.float32).reshape(n_blocks, 1, 1)
+    qs = np.ascontiguousarray(qs_raw).view("<u2").reshape(
+        n_blocks, QK_K // 32, 4
+    )
+
+    scale_nibbles = (
+        scales[:, :, None]
+        >> np.array([0, 4], dtype=np.uint8).reshape(1, 1, 2)
+    ) & np.uint8(0x0F)
+    db = d * (np.float32(0.5) + scale_nibbles.astype(np.float32)) * np.float32(0.25)
+    db = np.repeat(db[:, :, :, None], 2, axis=2)
+
+    grid_idx = qs & np.uint16(511)
+    packed = _IQ2_XS_GRID_PACKED[grid_idx]
+    selectors = (
+        packed[:, :, :, None]
+        >> (2 * np.arange(8, dtype=np.uint16)).reshape(1, 1, 1, 8)
+    ) & np.uint16(3)
+    grid = _IQ2_XS_GRID_MAGNITUDES[selectors].astype(np.float32)
+
+    sign_bytes = _KSIGNS_IQ2XS[qs >> np.uint16(9)]
+    sign_bits = (
+        sign_bytes[:, :, :, None]
+        >> np.arange(8, dtype=np.uint8).reshape(1, 1, 1, 8)
+    ) & np.uint8(1)
+    signs = np.float32(1.0) - np.float32(2.0) * sign_bits.astype(np.float32)
+    return (db * grid * signs).reshape(n_blocks, QK_K)
+
+
+def _dequant_iq3_xxs_blocks(blocks: np.ndarray) -> np.ndarray:
+    """Dequantize IQ3_XXS blocks (98 bytes per 256 values).
+
+    Mirrors llama.cpp ``dequantize_row_iq3_xxs``: per 32-value group, an aux
+    u32 supplies four 7-bit sign selectors (via ``ksigns_iq2xs``) and a 4-bit
+    sub-scale; each 8-value sub-group reads two codebook grids and applies
+    the sign bits. All float ops follow the C reference order bit-exactly.
+    """
+
+    n_blocks = blocks.shape[0]
+    d, qs = _split(blocks, [2])
+    d = d.view(np.float16).astype(np.float32).reshape(n_blocks, 1)
+    grid_idx = qs[:, : QK_K // 4].reshape(n_blocks, QK_K // 32, 4, 2)
+    aux = np.ascontiguousarray(qs[:, QK_K // 4 :]).view(np.uint32).reshape(n_blocks, QK_K // 32)
+    db = (d * (0.5 + (aux >> np.uint32(28)).astype(np.float32)) * 0.5).reshape(n_blocks, QK_K // 32, 1, 1)
+    sel = (aux[:, :, None] >> (7 * np.arange(4, dtype=np.uint32))) & np.uint32(127)
+    sign_bytes = _KSIGNS_IQ2XS[sel]
+    bits = ((sign_bytes[:, :, :, None] >> np.arange(8, dtype=np.uint8)) & np.uint8(1)).astype(np.float32)
+    sgn = 1.0 - 2.0 * bits
+    grid_vals = _IQ3_XXS_GRID_BYTES[grid_idx].reshape(n_blocks, QK_K // 32, 4, 8).astype(np.float32)
+    return (db * grid_vals * sgn).reshape(n_blocks, QK_K)
+
+
+def _dequant_q3_k_blocks(blocks: np.ndarray) -> np.ndarray:
+    """Dequantize Q3_K blocks (110 bytes per 256 values).
+
+    Field order follows ``block_q3_K``: 32-byte hmask, 64 bytes of packed
+    2-bit quants, 12 bytes of packed 6-bit scales, then the fp16 super scale.
+    Mirrors llama.cpp ``dequantize_row_q3_K`` bit-exactly.
+    """
+
+    n_blocks = blocks.shape[0]
+    hm, rest = _split(blocks, [QK_K // 8])
+    q, rest = _split(rest, [QK_K // 4])
+    scales_raw, d = _split(rest, [12])
+    d = d.view(np.float16).astype(np.float32).reshape(n_blocks, 1)
+    s = np.ascontiguousarray(scales_raw).view(np.uint32).reshape(n_blocks, 3)
+    kmask1 = np.uint32(0x03030303)
+    kmask2 = np.uint32(0x0F0F0F0F)
+    tmp = s[:, 2]
+    aux0 = (s[:, 0] & kmask2) | ((tmp & kmask1) << np.uint32(4))
+    aux1 = (s[:, 1] & kmask2) | (((tmp >> np.uint32(2)) & kmask1) << np.uint32(4))
+    aux2 = ((s[:, 0] >> np.uint32(4)) & kmask2) | (((tmp >> np.uint32(4)) & kmask1) << np.uint32(4))
+    aux3 = ((s[:, 1] >> np.uint32(4)) & kmask2) | (((tmp >> np.uint32(6)) & kmask1) << np.uint32(4))
+    scales = (
+        np.stack([aux0, aux1, aux2, aux3], axis=1)
+        .astype(np.uint32)
+        .view(np.int8)
+        .reshape(n_blocks, 16)
+        .astype(np.float32)
+    )
+    dl = d * (scales - np.float32(32.0))
+
+    out = np.empty((n_blocks, QK_K), dtype=np.float32)
+    for h in range(2):
+        q_half = q[:, h * 32 : (h + 1) * 32]
+        for j in range(4):
+            shift = np.uint8(2 * j)
+            mask_bit = np.uint8(1 << (h * 4 + j))
+            for seg in range(2):
+                vals = ((q_half[:, seg * 16 : (seg + 1) * 16] >> shift) & np.uint8(0x03)).astype(np.float32)
+                hbit = (hm[:, seg * 16 : (seg + 1) * 16] & mask_bit) != 0
+                qv = vals - np.where(hbit, np.float32(0.0), np.float32(4.0))
+                col0 = h * 128 + j * 32 + seg * 16
+                out[:, col0 : col0 + 16] = dl[:, h * 8 + j * 2 + seg][:, None] * qv
+    return out
+
+
 def _dequant_iq4_xs_blocks(blocks: np.ndarray) -> np.ndarray:
     n_blocks = blocks.shape[0]
     d, rest = _split(blocks, [2])
@@ -647,9 +845,12 @@ _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] 
     GGMLQuantizationType.Q5_0: _dequant_q5_0_blocks,
     GGMLQuantizationType.Q5_1: _dequant_q5_1_blocks,
     GGMLQuantizationType.Q8_0: _dequant_q8_0_blocks,
+    GGMLQuantizationType.Q3_K: _dequant_q3_k_blocks,
     GGMLQuantizationType.Q4_K: _dequant_q4_k_blocks,
     GGMLQuantizationType.Q5_K: _dequant_q5_k_blocks,
     GGMLQuantizationType.Q6_K: _dequant_q6_k_blocks,
+    GGMLQuantizationType.IQ2_XS: _dequant_iq2_xs_blocks,
+    GGMLQuantizationType.IQ3_XXS: _dequant_iq3_xxs_blocks,
     GGMLQuantizationType.IQ4_NL: _dequant_iq4_nl_blocks,
     GGMLQuantizationType.IQ4_XS: _dequant_iq4_xs_blocks,
     GGMLQuantizationType.MXFP4: _dequant_mxfp4_blocks,

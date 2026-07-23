@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "guarded changed-algebra default promotion with matched wall gates and cache-only trace",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1,
+    "w7900_verified": false
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "2ba42c1c",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin",
+    "kernel_source_sha256": "e648f8f1977aa959c1ba310e6f0d13e74142a2e05cef4b9bf194eecb0d5da56e",
+    "wrapper_source_sha256": "61f8220fe9cb159175e755c3c8dec8c206007014cfeb9276fafa76d143373cae",
+    "linear_dispatch_source_sha256": "02059df93723d13e816333c703c8c26e31e06a5fbcc4f0aff88d10938da3a375",
+    "resident_runner_source_sha256": "7369b8c1c58991f524cba9547ddd004fc13a8e3aa3771078dadc77da5aba6dfa",
+    "cached_code_object": "/home/lhl/.cache/hipengine/build/gguf_q8_0_mmq_prefill-00cb5cb9f3c758bf/gguf_q8_0_mmq_prefill.so",
+    "cached_code_object_sha256": "48bb4c4a8e05217ad9d8b86a274ddb3a9cd58dfd4f53b726998622b82c3293cc"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "source_lineage": {
+    "repository": "/home/lhl/llama.cpp/llama.cpp-hip",
+    "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "clean_files": [
+      "ggml/src/ggml-cuda/quantize.cu",
+      "ggml/src/ggml-cuda/mmq.cuh",
+      "ggml/src/ggml-cuda/mma.cuh"
+    ],
+    "borrowed_dataflow": "D4 block_q8_1_mmq activation layout, padded raw-Q8_0 shared tile, 128x128 K256 MMQ mapping, and RDNA3 wave32 integer-WMMA fragments",
+    "hipengine_specific": "BF16 input packing, two residual D4 planes, BF16-boundary risk collection, exact sparse correction, four-axis model policy, bounded session workspace, and exact tiled fallbacks",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --file '*MMQ128*' --diff stat && python3 scripts/check_lineage.py --kind kernel --file '*D4*' --diff stat",
+    "lineage_result": "three selected files clean at the pinned commit"
+  },
+  "diagnosis": {
+    "baseline_artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json",
+    "baseline_prefill_512_tok_s": 774.1854456533248,
+    "baseline_prefill_4096_mixed_tok_s": 741.1797567612075,
+    "baseline_total_kernel_ms": 5350.508295,
+    "baseline_dense_q8_ms": 2052.066338,
+    "premise": "The closed exact 16x4 family remained 38.35% of the 4K trace. Source-faithful raw-Q8_0 x D4-Q8_1 MMQ changes activation algebra and matrix data reuse rather than retrying another exact local schedule.",
+    "source_leaf_screen": "At 4K production shapes, one-pass MMQ plus activation packing was 73% to 89% faster than the retained exact leaves, but it was not quality-safe as a full-model replacement."
+  },
+  "change": {
+    "summary": "Promote a registry-selected three-plane residual-D4 MMQ path with sparse exact BF16-boundary repair for two wide dense-Q8 projection shapes.",
+    "matrix_tile": {
+      "outputs": 128,
+      "tokens": 128,
+      "k": 256,
+      "workgroup": [32, 8, 1],
+      "threads": 256,
+      "dynamic_lds_bytes": 57856
+    },
+    "activation": {
+      "source_dtype": "bf16",
+      "planes": 3,
+      "plane_layout": "K-major block_q8_1_mmq D4, 144 bytes per 128 values",
+      "residual_rule": "each later plane quantizes the FP32 fma residual left by the preceding plane"
+    },
+    "numerical_policy": {
+      "risk_threshold_absolute": 0.00001,
+      "risk_test": "distance of the approximate FP32 MMQ value to the nearest BF16 rounding boundary",
+      "repair": "enqueue at-risk output indices and recompute those BF16 elements with the retained exact 128-thread raw-Q8 reduction",
+      "claim_scope": "Empirically bit-exact on the committed primitive/full-model gates and the 18-workload continuation suite; this is not a proof for every possible activation. Thresholds below 1e-5 are explicitly rejected.",
+      "required_repository_gate": {
+        "kl_max": 0.05,
+        "top1_agreement_min": 0.9
+      }
+    },
+    "admission": {
+      "max_rows": 4096,
+      "shape_min_rows": {
+        "2048x8192": 32,
+        "2048x4096": 48
+      },
+      "fallback": "exact raw-Q8 tile16x4/tile8x4/tile8x2/pack8 family for every other shape or row count"
+    },
+    "host_synchronization_added": false,
+    "duplicate_weight_allocation_added": false,
+    "default_on": true,
+    "dispatch_axis": "(hip_gfx1100, linear_prefill_policy, gguf_ud_q3_k_m, raw_q8_mmq128)"
+  },
+  "memory": {
+    "workspace": "reuses bulk_prefill_scratch.linear_qkv_f32 inside the scoped prefill session",
+    "d4x3_bytes_formula": "3 * (hidden / 128) * rows * 144",
+    "d4x3_bytes_at_4096x2048": 28311552,
+    "persistent_addition": "one int32 risk count plus an int32 queue with rows * 8192 entries",
+    "risk_queue_512_bytes": 16777216,
+    "risk_queue_4096_bytes": 134217728,
+    "tracked_peak": {
+      "512_gib": 15.821100484579802,
+      "512_baseline_gib": 15.805475484579802,
+      "512_delta_gib": 0.015625,
+      "4096_gib": 17.0796576179564,
+      "4096_baseline_gib": 16.95465761423111,
+      "4096_delta_gib": 0.1250000037252903
+    }
+  },
+  "correctness": {
+    "red_green": {
+      "red": "The initial test collection failed because hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill did not exist. The all-queued repair test then defined the exact BF16 output boundary before runtime promotion.",
+      "green_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_mmq_prefill.py -q",
+      "green_result": "19 passed"
+    },
+    "primitive": {
+      "all_outputs_queued": true,
+      "bf16_bit_mismatches_vs_exact_tile": 0,
+      "cpu_oracle_gate": "D4 byte layout, residual reconstruction, and Q8 projection quality tests pass"
+    },
+    "full_model_module": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py -q",
+      "result": "2 passed"
+    },
+    "text_continuation": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt PYTHONPATH=. python3 /tmp/q3_mmq_default_text_decode_512.py",
+      "script_sha256": "59402d385456fbc9e449593ec74a249aabd4ac0d61b4c312f319b46958c4b063",
+      "output_sha256": "f7f6741ec651af79dc509b851ce9ea4af0d70c89da5e44dba8e38881c7a0c8e0",
+      "prompt_fixture": "benchmarks/fixtures/llamacpp_mtp_bench_prompts.json",
+      "rows": 512,
+      "workloads": 18,
+      "positions_per_workload": 9,
+      "decode_steps": 8,
+      "all_logits_exact": true,
+      "kl_max": 0.0,
+      "top1_agreement_min": 1.0,
+      "max_abs_logit": 0.0
+    },
+    "production_endpoints": {
+      "512_mixed": {"token_id": 96150, "kl": 0.0, "top1_match": true},
+      "512_repeated": {"token_id": 107561, "kl": 0.0, "top1_match": true},
+      "4096_mixed": {"token_id": 14626, "kl": 0.0, "top1_match": true},
+      "4096_repeated": {"token_id": 13883, "kl": 0.0, "top1_match": true}
+    }
+  },
+  "rejected_branches": [
+    {
+      "branch": "one-pass D4 MMQ across all 258 dense-Q8 projections",
+      "reason": "full-model quality failure",
+      "evidence": {"kl": 6.76, "top1_match": false}
+    },
+    {
+      "branch": "one-pass tail-layer admission",
+      "reason": "continuation quality remained workload-fragile even at one tail layer",
+      "evidence": {"tail1_failing_workloads": 1, "tail1_kl_max": 0.09854, "workloads": 18, "decode_steps": 8}
+    },
+    {
+      "branch": "unguarded residual D4x2 and D4x3",
+      "reason": "small per-projection BF16 boundary mismatches still amplified through the model; shape-only admission did not pass"
+    },
+    {
+      "branch": "3e-6 sparse-repair threshold",
+      "reason": "failed 14 of 18 text workloads and failed the 4K endpoint",
+      "evidence": {"4096_kl": 0.905856966112129, "4096_top1_match": false}
+    },
+    {
+      "branch": "6e-6 sparse-repair threshold after wide-only admission",
+      "reason": "one rotated text workload diverged",
+      "evidence": {"top1_agreement": 0.4444444444444444, "kl_max": 0.4346224185544109, "max_abs_logit": 5.062229633331299}
+    },
+    {
+      "branch": "MMQ on 4096x2048, 512x2048, and 2048x512 projection shapes",
+      "reason": "boundary repair made these shapes slower than the exact fallback; policy now admits only the two wide K=2048 projections"
+    }
+  ],
+  "measurements": {
+    "official_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs <5|3> --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "official_512": {
+      "samples_tok_s": [850.5139306618862, 848.5434695375124, 849.6940905946743, 846.2533702398881, 846.735819094328],
+      "median_tok_s": 848.5434695375124,
+      "stdev_pct": 0.2167270429413379,
+      "prior_retained_tok_s": 774.1854456533248,
+      "delta_vs_prior_pct": 9.604678607906125,
+      "raw_json_sha256": "e320127c701c88082a5cadb665e424c19e075e0334bc436dd59707ce7be9806b"
+    },
+    "official_4096_repeated": {
+      "samples_tok_s": [827.1445842857731, 828.0031747569898, 829.2446678744378],
+      "median_tok_s": 828.0031747569898,
+      "stdev_pct": 0.12751685016868083,
+      "prior_retained_mixed_tok_s": 741.1797567612075,
+      "contextual_delta_vs_prior_pct": 11.714218744340975,
+      "raw_json_sha256": "eca9b0bd8dc5238fe8f7ae68da77f2e043fb2ad1bc2308aa656b8877a7a6cdeb"
+    },
+    "matched_ab": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q3_mmq_default_wall.py --rows <512|4096> --repetitions <6|4>",
+      "script_sha256": "05a877005c4999a2b0e6f921334fb9801b9ba979e3526c36bce214083bf3afc0",
+      "512_mixed": {"exact_tok_s": 760.4109233085961, "candidate_tok_s": 837.4173019098604, "throughput_delta_pct": 10.126942714894804, "raw_sha256": "0b4cac999a0b525708925265e9bc040ef61c1ddca60606185c0bf0814d6f894a"},
+      "4096_mixed": {"exact_tok_s": 743.9062182294364, "candidate_tok_s": 831.3931574274393, "throughput_delta_pct": 11.760479621507901, "raw_sha256": "da0d3a17cddd9ca1d685ff1e7e979d79fb6a1c96a1df6e5a18ded7ee60d65280"}
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:/opt/rocm/lib HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv --output-directory /tmp/q3-mmq-post-async-4k-profile-20260720-204755 --output-file q3-mmq-post-async-4k --log-level error -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 822.4790999832081,
+    "trace_path": "/tmp/q3-mmq-post-async-4k-profile-20260720-204755/q3-mmq-post-async-4k_kernel_trace.csv",
+    "trace_sha256": "94db86f7a56fda10721b4fb96182e0aed97ef53581500b28012817c040deecac",
+    "bench_sha256": "c49f0d67b4aaa01b05634aebefe16ce6d0822e8171b407cad8e20f0d598b9991",
+    "trace_launches": 9455,
+    "trace_kernel_sum_ms": 4815.413269,
+    "baseline_kernel_sum_ms": 5350.508295,
+    "kernel_sum_delta_pct": -10.000826024324482,
+    "trace_span_ms": 4973.717785,
+    "baseline_trace_span_ms": 5534.072705,
+    "trace_span_delta_pct": -10.125543155472505,
+    "dense_q8": {
+      "baseline_total_ms": 2052.066338,
+      "new_total_ms": 1569.232048,
+      "delta_pct": -23.52917549783422,
+      "exact_fallback": {"count": 540, "total_ms": 753.044643, "vgpr": 136, "lds_bytes": 1024, "scratch_bytes": 0},
+      "guarded_mmq": {"count": 250, "total_ms": 602.924245, "vgpr": 216, "rocprof_lds_block_bytes": 0, "dynamic_lds_request_bytes": 57856, "scratch_bytes": 0, "workgroup": [32, 8, 1]},
+      "sparse_exact_repair": {"count": 250, "total_ms": 207.577751, "vgpr": 24, "lds_bytes": 512, "scratch_bytes": 0, "workgroup": [128, 1, 1]},
+      "residual_quantize": {"count": 250, "total_ms": 5.685409, "vgpr": 24, "lds_bytes": 0, "scratch_bytes": 0, "workgroup": [256, 1, 1]}
+    },
+    "postchange_bottlenecks_ms": {
+      "dense_q8_total": 1569.232048,
+      "grouped_iq3": 1075.20976,
+      "exact_gdn_recurrent": 741.083169,
+      "grouped_iq4_down": 491.646406,
+      "full_attention": 445.168087
+    }
+  },
+  "acceptance": {
+    "primitive_gate_passed": true,
+    "full_model_gate_passed": true,
+    "text_continuation_gate_passed": true,
+    "repository_kl_top1_gate_passed": true,
+    "cache_only_expected_symbols_present": true,
+    "kernel_scratch_bytes": 0,
+    "memory_bounded": true,
+    "exact_fallback_registered": true,
+    "matched_512_and_4096_wall_positive": true,
+    "accepted": true
+  },
+  "next_action": "Task #27's first changed-algebra tranche is complete, but approximately 3,000 tok/s remains unmet. Do not weaken the 1e-5 guard or re-admit losing shapes. Proceed to the independent row-shaped GGUF target executor (#28); any future prefill reopening needs another genuinely new algebra/layout premise."
+}
