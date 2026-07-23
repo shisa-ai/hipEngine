@@ -7,6 +7,8 @@ Latest retained hipEngine revisions in this scoreboard:
 UD-Q2_K_XL B4 DFlash decode win,
 `09cca232f49e73f68fd09d4ace8509fa3201681e` for the first W7900 Laguna S 2.1
 UD-Q2_K_XL target-only AR baseline,
+`b2618b725a39dc199b0009c23a0ec3d5a6342fa1` for the matched Poolside
+llama.cpp Laguna S 2.1 128/512/1K/4K prefill-control harness,
 `7ded0d5f42b107d3bf10f1d096f8a93ae194be9b` for the current Laguna S 2.1
 128/512/1K/4K all-family prefill attribution,
 `8f8baf9a100bc9598b633cb040193dcfcdb80ebe` for the current merged-main
@@ -1390,6 +1392,31 @@ kernel time is below 0.001%, resources are recorded for all 26 symbols, and
 kernel-span residual is only **0.28-0.34%**. This is an attribution baseline,
 not a speedup claim, and ranks selected experts before source-F16 projections.
 [Current all-family profile](results/2026-07-23-gfx1151-laguna-prefill-current-main-all-family-profile.json).
+
+The first AR-O1 selected-expert screen rejects exact Q4T16 dual-SiLU fusion as
+a production route. In one resident session with counterbalanced split/fused
+order and three repetitions, all 36 next-token IDs match. Rows
+16/32/55/64/122/128 move **46.380/48.917/49.088/50.558/51.081/51.412 ->
+46.300/49.000/49.137/50.527/51.194/51.549 tok/s**. Aggregate measured wall is
+only **0.129%** better, while rows 16 and 64 regress **0.172%/0.060%**, failing
+the predeclared all-shape gate. Runtime selector code is removed; the existing
+registered leaf and bit-exact kernel test remain. The next AR-O1 screen is the
+inclusive Q8_1/dp4a gate/up path.
+[Rejected fused-SiLU screen](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json).
+
+A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
+Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
+Three alternating native `prompt_ms` samples measure
+**80.235/103.868/105.435/120.530 tok/s** at 128/512/1K/4K. Against hipEngine's
+balanced 512/1K/4K results this is a diagnostic **2.189/2.351/3.127x**. Every
+native prompt count is exact, all sampled IDs repeat, model/token hashes match,
+and source/binary identity, clocks, GTT/RSS, and load exclusion are recorded.
+This is not an eligible cross-engine speed claim: Poolside excludes sampling
+and HTTP while hipEngine includes final argmax bookkeeping, and Poolside rounds
+the requested 4,097-slot endpoint context to 4,352. It is nevertheless a
+same-model lower-bound control showing that hipEngine's long-prefill path has
+substantial implementation headroom.
+[Matched Poolside control](results/2026-07-23-gfx1151-poolside-laguna-prefill-matched-control.json).
 
 The exact adjacent-head global-attention follow-up is rejected: at the
 3,968-prior + 128-current 4K leaf it moves **86.429 -> 125.319 ms (+45.00%)**

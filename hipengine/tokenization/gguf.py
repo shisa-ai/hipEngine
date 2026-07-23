@@ -84,12 +84,14 @@ class Qwen35GGUFTokenizer:
         )
 
     def encode(self, text: str) -> list[int]:
-        return self._encode_text(text, _pretokenize_qwen35)
+        return self._encode_text(text, _pretokenize_qwen35, normalization_form="NFC")
 
     def _encode_text(
         self,
         text: str,
         pretokenize: Callable[[str], list[str]],
+        *,
+        normalization_form: str | None = None,
     ) -> list[int]:
         ids: list[int] = []
         segment_start = 0
@@ -107,13 +109,19 @@ class Qwen35GGUFTokenizer:
                 pos += 1
                 continue
             if segment_start < pos:
-                ids.extend(self._encode_chunks(pretokenize(text[segment_start:pos])))
+                segment = text[segment_start:pos]
+                if normalization_form is not None:
+                    segment = unicodedata.normalize(normalization_form, segment)
+                ids.extend(self._encode_chunks(pretokenize(segment)))
             token, token_id = match
             ids.append(token_id)
             pos += len(token)
             segment_start = pos
         if segment_start < len(text):
-            ids.extend(self._encode_chunks(pretokenize(text[segment_start:])))
+            segment = text[segment_start:]
+            if normalization_form is not None:
+                segment = unicodedata.normalize(normalization_form, segment)
+            ids.extend(self._encode_chunks(pretokenize(segment)))
         return ids
 
     def _encode_chunks(self, chunks: Sequence[str]) -> list[int]:

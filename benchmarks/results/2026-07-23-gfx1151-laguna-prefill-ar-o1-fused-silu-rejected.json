@@ -1,0 +1,462 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_selected_gate_up_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--repetitions",
+    "3",
+    "--warmups",
+    "1",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-prefill-ar-o1-fused-silu-balanced.json"
+  ],
+  "comparison": {
+    "correctness": {
+      "all_modes_and_repetitions_exact_next_token": true,
+      "pass": true
+    },
+    "promotion": {
+      "aggregate_speedup": 1.0012938639526516,
+      "all_measured_shapes_strictly_faster": false,
+      "failed_checks": [
+        "candidate_not_faster_at_every_shape"
+      ],
+      "fused_silu_seconds": 24.753850798937492,
+      "pass": false,
+      "split_seconds": 24.785878914175555,
+      "timed_tokens_per_mode": 1251
+    },
+    "shapes": {
+      "122": {
+        "exact_next_token": true,
+        "fused_silu": {
+          "max_seconds": 2.3845159190241247,
+          "median_seconds": 2.383095132885501,
+          "median_tok_s": 51.19392772720738,
+          "min_seconds": 2.3811995190335438,
+          "rows": 122,
+          "samples_seconds": [
+            2.3811995190335438,
+            2.3845159190241247,
+            2.383095132885501
+          ]
+        },
+        "fused_silu_vs_split_speedup": 1.0022044676736628,
+        "next_token_ids": {
+          "fused_silu": [
+            79,
+            79,
+            79
+          ],
+          "split": [
+            79,
+            79,
+            79
+          ]
+        },
+        "rows": 122,
+        "split": {
+          "max_seconds": 2.3885681960964575,
+          "median_seconds": 2.38834858906921,
+          "median_tok_s": 51.0813206072008,
+          "min_seconds": 2.3863050079671666,
+          "rows": 122,
+          "samples_seconds": [
+            2.3863050079671666,
+            2.3885681960964575,
+            2.38834858906921
+          ]
+        }
+      },
+      "128": {
+        "exact_next_token": true,
+        "fused_silu": {
+          "max_seconds": 2.484738413011655,
+          "median_seconds": 2.4830972470808774,
+          "median_tok_s": 51.54852479115607,
+          "min_seconds": 2.4813632320147008,
+          "rows": 128,
+          "samples_seconds": [
+            2.4813632320147008,
+            2.4830972470808774,
+            2.484738413011655
+          ]
+        },
+        "fused_silu_vs_split_speedup": 1.0026608293052524,
+        "next_token_ids": {
+          "fused_silu": [
+            81,
+            81,
+            81
+          ],
+          "split": [
+            81,
+            81,
+            81
+          ]
+        },
+        "rows": 128,
+        "split": {
+          "max_seconds": 2.4897467480041087,
+          "median_seconds": 2.4897043450037017,
+          "median_tok_s": 51.41172696142348,
+          "min_seconds": 2.487976251053624,
+          "rows": 128,
+          "samples_seconds": [
+            2.4897467480041087,
+            2.487976251053624,
+            2.4897043450037017
+          ]
+        }
+      },
+      "16": {
+        "exact_next_token": true,
+        "fused_silu": {
+          "max_seconds": 0.34616361802909523,
+          "median_seconds": 0.34556862397585064,
+          "median_tok_s": 46.30049978472041,
+          "min_seconds": 0.3449499160051346,
+          "rows": 16,
+          "samples_seconds": [
+            0.34616361802909523,
+            0.34556862397585064,
+            0.3449499160051346
+          ]
+        },
+        "fused_silu_vs_split_speedup": 0.998279224645482,
+        "next_token_ids": {
+          "fused_silu": [
+            638,
+            638,
+            638
+          ],
+          "split": [
+            638,
+            638,
+            638
+          ]
+        },
+        "rows": 16,
+        "split": {
+          "max_seconds": 0.3460904610110447,
+          "median_seconds": 0.3449739780044183,
+          "median_tok_s": 46.38030987889491,
+          "min_seconds": 0.34436670097056776,
+          "rows": 16,
+          "samples_seconds": [
+            0.3460904610110447,
+            0.3449739780044183,
+            0.34436670097056776
+          ]
+        }
+      },
+      "32": {
+        "exact_next_token": true,
+        "fused_silu": {
+          "max_seconds": 0.6534015130018815,
+          "median_seconds": 0.6530548069858924,
+          "median_tok_s": 49.000481518071545,
+          "min_seconds": 0.6524864989332855,
+          "rows": 32,
+          "samples_seconds": [
+            0.6524864989332855,
+            0.6534015130018815,
+            0.6530548069858924
+          ]
+        },
+        "fused_silu_vs_split_speedup": 1.0017117675262008,
+        "next_token_ids": {
+          "fused_silu": [
+            99,
+            99,
+            99
+          ],
+          "split": [
+            99,
+            99,
+            99
+          ]
+        },
+        "rows": 32,
+        "split": {
+          "max_seconds": 0.6544537720037624,
+          "median_seconds": 0.6541726849973202,
+          "median_tok_s": 48.91674741835344,
+          "min_seconds": 0.6535671231104061,
+          "rows": 32,
+          "samples_seconds": [
+            0.6541726849973202,
+            0.6535671231104061,
+            0.6544537720037624
+          ]
+        }
+      },
+      "55": {
+        "exact_next_token": true,
+        "fused_silu": {
+          "max_seconds": 1.119465003022924,
+          "median_seconds": 1.1193165419390425,
+          "median_tok_s": 49.13712782687998,
+          "min_seconds": 1.1188832289772108,
+          "rows": 55,
+          "samples_seconds": [
+            1.119465003022924,
+            1.1188832289772108,
+            1.1193165419390425
+          ]
+        },
+        "fused_silu_vs_split_speedup": 1.0010032068205053,
+        "next_token_ids": {
+          "fused_silu": [
+            83,
+            83,
+            83
+          ],
+          "split": [
+            83,
+            83,
+            83
+          ]
+        },
+        "rows": 55,
+        "split": {
+          "max_seconds": 1.1206096099922433,
+          "median_seconds": 1.12043944792822,
+          "median_tok_s": 49.08788252832341,
+          "min_seconds": 1.1190964400302619,
+          "rows": 55,
+          "samples_seconds": [
+            1.1206096099922433,
+            1.1190964400302619,
+            1.12043944792822
+          ]
+        }
+      },
+      "64": {
+        "exact_next_token": true,
+        "fused_silu": {
+          "max_seconds": 1.2693916379939765,
+          "median_seconds": 1.2666421899339184,
+          "median_tok_s": 50.52729216554749,
+          "min_seconds": 1.2665177570888773,
+          "rows": 64,
+          "samples_seconds": [
+            1.2666421899339184,
+            1.2665177570888773,
+            1.2693916379939765
+          ]
+        },
+        "fused_silu_vs_split_speedup": 0.9993964389216992,
+        "next_token_ids": {
+          "fused_silu": [
+            35403,
+            35403,
+            35403
+          ],
+          "split": [
+            35403,
+            35403,
+            35403
+          ]
+        },
+        "rows": 64,
+        "split": {
+          "max_seconds": 1.2667928918963298,
+          "median_seconds": 1.2658776940079406,
+          "median_tok_s": 50.557806889990545,
+          "min_seconds": 1.2647889730287716,
+          "rows": 64,
+          "samples_seconds": [
+            1.2647889730287716,
+            1.2658776940079406,
+            1.2667928918963298
+          ]
+        }
+      }
+    }
+  },
+  "correctness": {
+    "all_modes_and_repetitions_exact_next_token": true,
+    "pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T06:21:03.224515+00:00",
+  "decision": {
+    "default": "split",
+    "next_step": "screen inclusive Q8_1/dp4a gate/up only with activation quantization and full quality",
+    "runtime_candidate_removed": true
+  },
+  "failure_reason": "exact fused-SiLU was not faster at every natural one-chunk shape",
+  "kind": "hipengine_laguna_prefill_ar_o1_fused_silu_ab",
+  "memory": {
+    "gpu_free_after": 128694059008,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77125390396,
+      "peak_allocations": 1377,
+      "total_allocated_bytes": 77125390396,
+      "total_freed_bytes": 77125390396
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "The same-session run reuses one resident model, weights, scratch, token stream, and GPU process.",
+    "All 36 timed next-token IDs are exact between split and fused routes.",
+    "The existing kernel registry/leaf bit-exact test remains; only production selector wiring is removed."
+  ],
+  "pass": false,
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "process_ordered_screen": {
+    "aggregate_speedup": 1.0013011119704138,
+    "fused_silu_median_tok_s": {
+      "122": 51.176565,
+      "128": 51.407679,
+      "16": 46.470295,
+      "32": 49.11227,
+      "55": 49.220643,
+      "64": 50.682395
+    },
+    "reason": "separate-process ordering cannot promote a 0.13% effect",
+    "split_median_tok_s": {
+      "122": 51.070221,
+      "128": 51.297664,
+      "16": 46.448276,
+      "32": 49.043728,
+      "55": 49.158885,
+      "64": 50.557407
+    },
+    "status": "diagnostic_only_not_retained"
+  },
+  "protocol": {
+    "context_length": 4096,
+    "modes": [
+      "split",
+      "fused_silu"
+    ],
+    "one_physical_chunk": true,
+    "prefill_chunk_size": 128,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "rows": [
+      16,
+      32,
+      55,
+      64,
+      122,
+      128
+    ],
+    "timed_order": "counterbalanced by shape and reversed each repetition",
+    "timing_scope": "reset complete through synchronized first-token projection",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 128,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "baaa51ff256f4fbbdfb34b59681e57b5b9b842b94f11cb08660763c24019f422",
+    "warmups_per_shape_mode": 1
+  },
+  "provenance": {
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_selected_gate_up_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--repetitions",
+      "3",
+      "--warmups",
+      "1",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-prefill-ar-o1-fused-silu-balanced.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "5cc1ed21d24a841e815a393460aa68678408cbfd",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "repetitions": 3,
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_session_balanced_split_vs_exact_fused_silu",
+    "warmups": 12
+  },
+  "repo": {
+    "revision": "5cc1ed21d24a841e815a393460aa68678408cbfd",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "scope": "same-session exact Laguna selected-Q4 split versus fused-SiLU prefill; one physical chunk; load excluded",
+  "status": "rejected"
+}

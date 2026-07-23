@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from hipengine.loading.gguf import GGUFReader
-from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer, bytes_to_unicode
 from scripts.compare_prompt_token_inventories import compare_prompt_token_inventories
 from scripts.gguf_prompt_token_inventory import (
     build_prompt_token_inventory,
@@ -28,6 +28,32 @@ def _tokenizer() -> Qwen35GGUFTokenizer:
     if not MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {MODEL}")
     return Qwen35GGUFTokenizer.from_gguf_info(GGUFReader(MODEL).info)
+
+
+def _synthetic_nfc_tokenizer() -> Qwen35GGUFTokenizer:
+    byte_tokens = tuple(bytes_to_unicode()[byte] for byte in range(256))
+    return Qwen35GGUFTokenizer(
+        tokens=(*byte_tokens, "Ã©", "<e\u0301>"),
+        merges=("Ã ©",),
+        token_types=(*([1] * 257), 3),
+    )
+
+
+def test_qwen35_gguf_tokenizer_normalizes_text_segments_to_nfc() -> None:
+    tokenizer = _synthetic_nfc_tokenizer()
+
+    assert tokenizer.encode("e\u0301") == [256]
+    assert tokenizer.encode("é") == [256]
+    assert tokenizer.encode("<e\u0301>") == [257]
+
+
+def test_qwen35moe_gguf_tokenizer_matches_hf_nfc_oracle() -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(GGUFReader(MOE_MODEL).info)
+
+    assert tokenizer.encode("e\u0301 cafe") == [933, 39_579]
+    assert tokenizer.encode("é cafe") == [933, 39_579]
 
 
 def test_qwen35_gguf_tokenizer_matches_e2e_fixture() -> None:
