@@ -2366,6 +2366,11 @@ not matrix prefill as a class.
 - [ ] Develop a tiled matrix-core path for Q/K/V/gate and O at M=16..512.
   Compare separate GEMMs with a resident composite QKV+gate layout; packing
   should happen once at materialization/cache build, never during inference.
+  The first explicit leaf is registered: direct row-major source-F16 reads,
+  BF16->F16 register conversion, F16 16x16x16 WMMA, FP32 accumulation, and
+  FP32/BF16 output with no sidecar. Seeded M16/M17 CPU-quality and cached
+  gfx1151 execution gates pass; production-shape timing and full-model quality
+  remain open, so no runtime capability/default has changed.
 - [ ] Account for residency explicitly. Duplicating every source-F16 projection
   would cost about 5.61 GB; prefer a replacement/composite device layout with
   offsets usable by the exact rows=1 fallback, or justify the sidecar against
