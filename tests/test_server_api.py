@@ -206,6 +206,10 @@ class PromptPreparingFakeLLM(FakeLLM):
         return max(1, len(prompt.split()))
 
 
+class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
+    supports_resident_session_kv = True
+
+
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
 
@@ -5595,6 +5599,42 @@ def test_server_reuses_one_prepared_prompt_for_n_choices() -> None:
     assert prepared_rows[0] is prepared_rows[1]
     assert fake.tokenize_calls == ["duplicate prepared prompt"]
     assert response.json()["usage"]["prompt_tokens"] == 2 * len(prepared_rows[0])
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_chat_passes_auth_scoped_resident_session_key_to_capable_generator(
+    stream: bool,
+) -> None:
+    fake = ResidentSessionPromptFakeLLM(stream=stream)
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "stateful prompt"}],
+            "max_tokens": 1,
+            "stream": stream,
+            "stream_options": {"include_usage": True} if stream else None,
+            "session": {"id": "session-a", "commit": "append_visible_only"},
+        },
+    )
+
+    assert response.status_code == 200
+    sampling = fake.calls[0][1]
+    assert sampling.resident_session_key == hashlib.sha256(
+        b"anonymous\0session-a"
+    ).hexdigest()
+    assert sampling.resident_session_cache_action == "append_visible_only"
+    commit = client.get("/v1/hipengine/capabilities").json()["sessions"]["commit_policy"]
+    assert commit["resident_state_reuse"] is True
+    assert commit["resident_kv_commit"] is True
+    assert commit["resident_kv_capacity"] == 1
+    assert commit["supported_streaming"] is True
 
 
 def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
