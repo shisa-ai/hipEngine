@@ -175730,3 +175730,38 @@ python3 -m json.tool \
   benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json
 # clean; artifact promotion/correctness/lifecycle consistency passed
 ```
+
+## 2026-07-23 — Audit Laguna D5 public DFlash integration
+
+The thread completion audit found one product-boundary gap after D0-D4: target
+AR, Poolside-v1 parsing, resident B4 proposal/verify/commit, exact category
+economics, and lifecycle evidence are retained, but the exact B4 DFlash path is
+not reachable through `LLM` or the OpenAI server. D4's 0.9469x loss forbids an
+automatic/default route; it does not block the separately specified explicit
+D5 support boundary.
+
+Mapped the existing API/runtime surfaces before implementation:
+
+- `LagunaGGUFGenerator` owns target-only c=1 generation, shared resident target
+  weights, isolated sessions, stop semantics, streaming, and Poolside parsers;
+- `LagunaDFlashResidentDrafter` plus `LagunaDFlashResidentCycle` already own the
+  exact pinned 69-tensor B4 proposal and transactional target correction path;
+- `LLM` and the server currently expose only a model-attached
+  `generate_speculative_mtp_detailed` extension, whose MTP naming, attached
+  weights, non-streaming policy, and capability schema are not a truthful
+  DFlash public API;
+- the repacked target cache manifest carries and validates source SHA-256
+  `7da520c5...c5753f`; the pinned Hugging Face drafter's content-addressed
+  `model.safetensors` blob is `f24f0878...b62a1f4` under revision `b0486d1`.
+
+Froze D5 around a generic registry key
+`(dflash, laguna_gguf, hip_gfx1151, gguf_q4_k_m)`, explicit public/server
+configuration, one retained resettable target+drafter+cycle owner, generic
+blocking/streaming methods and request route, truthful identity/economics
+capabilities, and raw-greedy-only fail-closed sampling. Default `LLM.generate()`
+and ordinary server requests remain AR. The D4 rejection reason is advertised,
+not hidden, and no prompt/category/token-specific routing is allowed.
+
+`docs/LAGUNA.md` now records the exact ownership, hash, stop, capability, and RED
+matrix required for implementation. This is an architecture audit only; no D5
+support claim or performance measurement is made yet.

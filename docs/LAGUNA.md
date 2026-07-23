@@ -2223,6 +2223,42 @@ budget, exactness mode, and fallback reason. Sampling/processors must share the
 same processed target distribution; unsupported combinations fail closed. D4
 is still mandatory before any automatic/default promotion.
 
+The concrete D5 contract after the D4 rejection is:
+
+- register the adapter by `(provider=dflash, target_model=laguna_gguf,
+  backend=hip_gfx1151, quant=gguf_q4_k_m)` rather than adding a DFlash branch to
+  `LLM`, server dispatch, or the base Laguna generator;
+- configure the public owner explicitly with the pinned drafter path and B4.
+  `LLM.generate()` and ordinary OpenAI requests remain target-only AR; a generic
+  speculative method/request extension selects the provider and there is no
+  automatic route;
+- retain one target session, one 69-tensor drafter, and one fixed B+1 cycle under
+  the model lock, resetting request state without reloading either weight owner.
+  Close the cycle and drafter before the target weights and fail closed after a
+  partial cross-owner error;
+- bind the target to Q4_K_M SHA-256 `7da520c5...c5753f` through the validated
+  repacked-cache manifest and bind the drafter to revision `b0486d1` plus
+  safetensors SHA-256 `f24f0878...b62a1f4` before allocation;
+- expose blocking and streaming generation with the same stop/EOS/max-token
+  semantics and cumulative generated IDs as AR. Multi-token stops may discard a
+  now-dead staged suffix because the request owner closes/resets immediately,
+  but no suffix may be emitted or reused;
+- admit only c=1 BF16-KV raw greedy target top-1 with no processed-logit or
+  sampling modifiers. Explicit requests with temperature/top-p/top-k/min-p,
+  penalties, logit bias/suppression, forced tokens, thinking/structured-output
+  processors, custom EOS/ignore-EOS, logprobs, non-BF16 KV, another provider, or
+  a budget other than B4 fail before model/drafter allocation;
+- capability metadata reports provider, explicit-only policy, target and drafter
+  identities, `candidate_budget=4`, `exactness_mode=target_corrected_greedy`,
+  `processed_target_verification=false`, and the D4 fallback reason/evidence
+  (`0.9469x` full-suite true AR); response telemetry reports cycle/accept/verify
+  counts without claiming a throughput win;
+- RED coverage must prove registry resolution, default-AR isolation, config/hash
+  rejection, blocking/streaming equality, stop and output-limit boundaries,
+  fail-closed sampling/provider/budget behavior, truthful capabilities, request
+  route separation, cancellation/reset, and close ordering before the live
+  ten-prompt gate.
+
 Automatic routing is a later model-general policy. Never key route/budget to
 known prompt IDs, benchmark categories, candidate token IDs, or fixed-suite
 reranks. Any adaptive controller must use online, model-general economics and
