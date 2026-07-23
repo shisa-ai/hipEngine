@@ -1804,6 +1804,16 @@ maximum absolute error is **3.45e-8**, synthetic KL **1.11e-15**, and top-1
 backend default selects it; repeated full-model and complete category quality
 admission remain mandatory. [SWA online leaf screen](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json).
 
+The clean repeated full-model screen admits the SWA candidate to category
+quality testing. Exact -> online moves 512/1K/4K **71.354/68.156/63.995 ->
+76.226/74.538/70.885 tok/s (+6.828%/+9.364%/+10.766%)**, saving
+**0.459/1.286/6.221 seconds**. All nine full-vocabulary pairs are finite at
+maximum KL **0.016558**, top-1 is **9/9**, next IDs and cursors match, same-mode
+state repeats deterministically, and **91,364,226,692 allocated/freed bytes**
+return to zero. State hashes differ as declared for online softmax. No backend
+default changes before the complete ten-prompt gate.
+[SWA online model screen](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-screen.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row

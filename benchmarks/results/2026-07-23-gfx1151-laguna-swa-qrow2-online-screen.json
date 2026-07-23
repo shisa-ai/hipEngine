@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T19:46:28+00:00",
+  "kind": "hipengine_laguna_swa_qrow2_online_full_model_screen",
+  "status": "quality_lane_admitted",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Poolside Laguna S 2.1 Q4_K_M gfx1151 c=1 prefill exact SWA qrow2 versus online SWA qrow2",
+  "repo": {
+    "revision": "9f944a26d25228f04c2ed7309557fc4ccf45e53e",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "candidate": {
+    "variant": "swa_context_rows_qrow2_online_spans",
+    "baseline": "swa_context_rows_qrow2_m128_c128_exact_spans",
+    "leaf_artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json",
+    "default_selected": false
+  },
+  "protocol": {
+    "lengths": [512, 1024, 4096],
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "repetitions": 3,
+    "warmup_rows_per_mode": 512,
+    "timed_order": "counterbalanced exact/online by length and reversed next repetition",
+    "timing_scope": "prefill through device synchronize; shared resident model load and child session construction excluded",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "token_stream_sha256": "12f068e7d4d96062bcd911e14221d937037bc782c006f4502766fe9136cf0eb1"
+  },
+  "measurements": {
+    "512": {
+      "baseline_samples_seconds": [7.166012650937773, 7.175759276025929, 7.175521068973467],
+      "candidate_samples_seconds": [6.718582027941011, 6.71263506799005, 6.716893838951364],
+      "baseline_median_tok_s": 71.35370310789806,
+      "candidate_median_tok_s": 76.22570972179203,
+      "speedup": 1.0682796603636218,
+      "seconds_saved": 0.4586272300221026
+    },
+    "1024": {
+      "baseline_samples_seconds": [15.017318823025562, 15.024355303961784, 15.034711603075266],
+      "candidate_samples_seconds": [13.736694626975805, 13.73791882302612, 13.747641496011056],
+      "baseline_median_tok_s": 68.1560026558997,
+      "candidate_median_tok_s": 74.53821886643223,
+      "speedup": 1.0936412929431107,
+      "seconds_saved": 1.286436480935663
+    },
+    "4096": {
+      "baseline_samples_seconds": [63.95320263004396, 64.00493051402736, 64.02644892409444],
+      "candidate_samples_seconds": [57.74172904610168, 57.80071639805101, 57.78400868095923],
+      "baseline_median_tok_s": 63.99506986578663,
+      "candidate_median_tok_s": 70.88466330910161,
+      "speedup": 1.1076581908225767,
+      "seconds_saved": 6.220921833068132
+    }
+  },
+  "correctness": {
+    "pass": true,
+    "finite_logits": true,
+    "max_full_vocabulary_kl": 0.016558016241439575,
+    "top1_matches": 9,
+    "top1_total": 9,
+    "top1_agreement": 1.0,
+    "next_token_ids_exact": true,
+    "final_cursors_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "exact_full_state_pairs": 0,
+    "hash_differences_expected_for_online_softmax": true,
+    "boundary_fixture": "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+  },
+  "lifecycle": {
+    "pass": true,
+    "active_allocations_before": 0,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_before": 0,
+    "current_allocated_bytes_after": 0,
+    "total_allocated_bytes": 91364226692,
+    "total_freed_bytes": 91364226692,
+    "peak_allocated_bytes": 78130890472,
+    "peak_allocations": 1736
+  },
+  "load": {
+    "seconds_excluded": 49.82078603398986,
+    "resident_weight_nbytes": 76737907712
+  },
+  "promotion": {
+    "leaf_admitted": true,
+    "full_model_admitted": true,
+    "category_admitted": false,
+    "backend_default_changed": false,
+    "next": "complete ten-prompt/four-category teacher-forced, free-running, Poolside, performance, and lifecycle gate",
+    "policy": "finite logits; KL <=0.05; top-1 >=90%; deterministic repeats; exact cursor/lifecycle; every 512/1K/4K length faster"
+  },
+  "raw": {
+    "path": "/tmp/laguna-swa-qrow2-online-three-repeat-retry.json",
+    "sha256": "11efb76110a15901e0b1fe9cf9b1b31f58d90d7c14f97fa0522d1854d0a64988",
+    "script_sha256": "c86cc9c2daf9ffaef79665610d84332c692816828760d8c55ec9e95be04b77fb"
+  },
+  "limitations": [
+    "This admits only the complete category gate; it does not change a backend capability or default.",
+    "Online-softmax state hashes differ from the exact route as declared.",
+    "Decode, global attention, model weights, and quantization are identical between modes."
+  ]
+}

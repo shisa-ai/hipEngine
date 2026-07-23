@@ -2604,10 +2604,15 @@ remains deferred. Evidence:
   **8.676 -> 2.987 ms (2.904x)**, with maximum absolute error **3.45e-8**,
   synthetic KL **1.11e-15**, top-1 100%, and the 508..515 fixture passing.
   Cached tracing confirms **2.559 ms**, local32/VGPR56/LDS0/scratch0. This is an
-  explicit candidate only; require a clean repeated 512/1K/4K full-model quality,
-  performance, and lifecycle gate before category admission or any default.
-  Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json`.
+  explicit candidate only. The clean repeated full-model gate now admits it to
+  category testing: exact -> online moves 512/1K/4K
+  **71.354/68.156/63.995 -> 76.226/74.538/70.885 tok/s
+  (+6.828%/+9.364%/+10.766%)**, with maximum full-vocabulary KL **0.016558**,
+  top-1 **9/9**, exact IDs/cursors, deterministic state, and exact lifecycle.
+  The complete category gate remains mandatory before any default. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json`
+  and
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-screen.json`.
 - [x] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling. The wrapper/runtime is healthy but has no executable head-dim-128
   Laguna geometry, so direct adaptation is closed mechanically.
