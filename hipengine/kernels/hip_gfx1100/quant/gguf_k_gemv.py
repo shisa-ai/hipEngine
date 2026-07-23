@@ -115,6 +115,13 @@ def _make_unequal_dual_pack8_wrapper(quant: str, symbol: str):
     return wrapper
 
 
+def _make_pair_activation_pack8_wrapper(quant: str, symbol: str):
+    def wrapper(*args, **kwargs) -> None:
+        _launch_pair_activation(quant, symbol, *args, **kwargs)
+
+    return wrapper
+
+
 def _make_wave32x2_wrapper(symbol: str):
     def wrapper(*args, **kwargs) -> None:
         kwargs.setdefault("threads", 32)
@@ -199,6 +206,10 @@ gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out = _make_dual_pack8_wrapper(
 )
 gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out = _make_unequal_dual_pack8_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "pair_pack8_gemv_decode_bf16_f32_out")
+)
+gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out = _make_pair_activation_pack8_wrapper(
+    "gguf_q5_k",
+    _symbol("gguf_q5_k", "pair_pack8_gemv_decode_bf16_silu_bf16_out"),
 )
 gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out = _make_wave32x2_wrapper(
     _symbol("gguf_q5_k", "wave32x2_gemv_decode_bf16_bf16_out")
@@ -302,6 +313,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear_pair+activation",
+            "gguf_q5_k",
+            "pack8_gemv_decode_bf16_silu_bf16_out",
+        ),
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear_pair",
             "gguf_q5_k",
             "wave32x2_gemv_decode_bf16_f32_out",
@@ -363,6 +384,44 @@ def _launch_dual(
         qweight_b_ptr,
         out_a_ptr,
         out_b_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_pair_activation(
+    quant: str,
+    symbol: str,
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_pair_activation(quant, rows, in_features, out_features, threads)
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library,
+        symbol,
+        [_VOID, _VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID],
+    )
+    err = fn(
+        x_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
         rows,
         in_features,
         out_features,
@@ -628,6 +687,27 @@ def _validate(
         raise ValueError(f"threads must be one of {allowed}")
 
 
+def _validate_pair_activation(
+    quant: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    threads: int,
+) -> None:
+    if rows != 1:
+        raise ValueError("rows must be exactly 1 for GGUF pair+activation decode")
+    _validate(
+        quant,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        require_pack8=True,
+    )
+    if threads != 256:
+        raise ValueError("threads must be 256 for GGUF pair+activation decode")
+
+
 def _validate_wave32x2(
     rows: int,
     in_features: int,
@@ -751,6 +831,7 @@ __all__ = [
     "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out",
     "gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out",

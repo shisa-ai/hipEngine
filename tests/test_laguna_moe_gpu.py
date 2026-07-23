@@ -130,6 +130,8 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.grouped_prefix_active_key == KernelKey(
         "hip_gfx1151", "moe_group_prefix", "generic", "active_experts"
     )
+    assert plan.shared_pair_activation_enabled is False
+    assert plan.shared_pair_activation_key not in plan.kernel_keys
     assert set(plan.selected_weighted_down_keys) == {"gguf_iq3_xxs"}
     assert plan.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
         "selected_weighted_down_gemv_decode_bf16_bf16_out"
@@ -144,6 +146,35 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "selected_expert_mlp" in sparse_sequence
     assert "laguna_shared_expert" in sparse_sequence
     assert "laguna_routed_shared_combine" in sparse_sequence
+
+
+def test_laguna_d13_shared_pair_activation_is_explicit_and_gfx1100_only() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert default.shared_pair_activation_enabled is False
+    assert default.shared_pair_activation_key not in default.kernel_keys
+
+    candidate = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        use_shared_pair_activation=True,
+    )
+    assert candidate.shared_pair_activation_enabled is True
+    assert candidate.shared_pair_activation_key == KernelKey(
+        "hip_gfx1100",
+        "linear_pair+activation",
+        "gguf_q5_k",
+        "pack8_gemv_decode_bf16_silu_bf16_out",
+    )
+    assert candidate.shared_pair_activation_key in candidate.kernel_keys
+
+    unsupported = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1151",
+        use_shared_pair_activation=True,
+    )
+    assert unsupported.shared_pair_activation_enabled is False
+    assert unsupported.shared_pair_activation_key not in unsupported.kernel_keys
 
 
 def test_laguna_selected_down_default_is_backend_qualified() -> None:

@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_d13_q5_shared_silu_correctness",
+  "date": "2026-07-24",
+  "status": "correctness_admitted_default_off_pending_clean_retention_gate",
+  "performance_claim": false,
+  "baseline": {
+    "commit": "293ed8ddefef7b7079dc5e1c9857db45d13f2a36",
+    "name": "D12 retained raw-Q5 wave32x2",
+    "canonical_h32_decode_tok_s": 48.987,
+    "canonical_ms_per_token": 20.414,
+    "retained_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json"
+  },
+  "model": {
+    "id": "unsloth/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "candidate": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair+activation",
+      "gguf_q5_k",
+      "pack8_gemv_decode_bf16_silu_bf16_out"
+    ],
+    "symbol": "hipengine_gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out",
+    "kernel": "gguf_q5_k_pair_pack8_decode_silu_bf16_out_kernel",
+    "scope": {
+      "rows": 1,
+      "in_features": 3072,
+      "out_features": 1024,
+      "source_layout": "raw GGUF Q5_K",
+      "targeted_layers": 46
+    },
+    "schedule": [
+      "one local256 block owns one eight-column output pack",
+      "threads 0..127 preserve the retained gate local128 K order and reduction tree",
+      "threads 128..255 preserve the retained up local128 K order and reduction tree",
+      "gate and up round independently to BF16 before the existing SiLU expression",
+      "the final BF16 shared intermediate is written directly"
+    ],
+    "dispatch_effect_if_retained": {
+      "control_dispatches_per_token": 775,
+      "candidate_dispatches_per_token": 729,
+      "removed_dispatches_per_token": 46,
+      "removed_bf16_intermediate_write_read_bytes_per_token": 376832
+    },
+    "default": false,
+    "explicit_selector": "LagunaGGUFResidentSession(..., use_q5_shared_silu=True)"
+  },
+  "red_green": {
+    "red_command": "PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_laguna_moe_gpu.py --collect-only",
+    "red_result": "collection failed on missing pair+activation wrapper and runtime helper",
+    "synthetic_gate": {
+      "passed": true,
+      "coverage": [
+        "K256/N8 and K3072/N1024",
+        "association-sensitive large/small BF16 activations",
+        "signed zero, infinity, NaN, and FP16 Q5 coefficient classes",
+        "BF16-bit equality against registered pack8 pair plus separate SiLU"
+      ],
+      "quality_gate": {
+        "kl": 0.0,
+        "top1_agreement": 1.0
+      }
+    },
+    "dispatch_gate": {
+      "passed": true,
+      "coverage": [
+        "four-axis key resolves only through linear_pair+activation",
+        "rows greater than one fail closed",
+        "mixed Q5/Q6 pair fails closed",
+        "gfx1151 fails closed through backend capability metadata",
+        "registry miss fails closed"
+      ]
+    }
+  },
+  "actual_weight_micro": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_d13_shared_silu.py",
+    "protocol": {
+      "warmups_per_mode": 50,
+      "iterations_per_sample": 300,
+      "counterbalanced_repetitions": 15,
+      "control": "Q5 pair pack8 plus separate BF16 SiLU",
+      "candidate": "Q5 pair pack8 plus BF16 SiLU composite"
+    },
+    "rows": [
+      {
+        "layer": 1,
+        "exact_bf16_bits": true,
+        "event_us": {
+          "control": 21.714626948038738,
+          "candidate": 21.254653930664062,
+          "delta_pct": -2.118263502639728
+        },
+        "synchronized_wall_us": {
+          "control": 21.747953336065013,
+          "candidate": 21.284013443316024,
+          "delta_pct": -2.133257716622139
+        }
+      },
+      {
+        "layer": 46,
+        "exact_bf16_bits": true,
+        "event_us": {
+          "control": 21.531996726989746,
+          "candidate": 20.94199021657308,
+          "delta_pct": -2.740138399134673
+        },
+        "synchronized_wall_us": {
+          "control": 21.655649955694873,
+          "candidate": 21.01644330347578,
+          "delta_pct": -2.951685373225199
+        }
+      }
+    ],
+    "raw_sha256": "15ba74baa04919b61e32d288f4b3c9dab9fcfe08d8e4b0a41c230c49e347bf50",
+    "harness_sha256": "c2a94b8167a986cde4fe81c72c4e6206e7c93a84a4a2f063ed632d9da9a5eaf7"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-d13-shared-silu-trace --output-file d13 -- .venv/bin/python /tmp/trace_laguna_d13_shared_silu.py",
+    "candidate_row": {
+      "duration_ns": 26760,
+      "workgroup_size_x": 256,
+      "grid_size_x": 128,
+      "vgpr_count": 88,
+      "sgpr_count": 128,
+      "lds_block_size": 1536,
+      "scratch_size": 0
+    },
+    "resource_gate": {
+      "workgroup_size_x": 256,
+      "vgpr_count_max": 96,
+      "lds_block_size_max": 2048,
+      "scratch_size": 0,
+      "passed": true
+    },
+    "trace_sha256": "c72ae4a866d9c92474ccb8329f0b76b9d249b0434c7c23d33df752466fcbe5a4",
+    "harness_sha256": "2b4a8f61319e0112236512e8b89f56249643f5d962eb173c1bf59c26f6591c77"
+  },
+  "full_model_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_d13_correctness_gate.py",
+    "passed": true,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "decode_steps": 16,
+    "all_layer_hidden_checks": 48,
+    "full_logits_and_argmax_exact": true,
+    "final_and_post_layer_hidden_exact": true,
+    "full_kv_and_live_spans_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_peak_bytes": 40455911848,
+    "tracked_peak_allocations": 1496,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "54ee1647266b897b94b81870fc38de88bf7b94fbc6254bd993a34f88598bb154",
+    "harness_sha256": "df8bfdb55c98f1263952891c06170b997a59a41237ef53db97e31ef751a85e01"
+  },
+  "validation": {
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_laguna_moe_gpu.py",
+    "focused_result": "84 passed",
+    "broader_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py",
+    "broader_result": "147 passed; one Starlette deprecation warning",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --file hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip --diff stat",
+    "lineage_result": "no sources selected; new in-tree specialization"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "a1f1d3fa3967f81f23c26fccadb14bd7c2d6dc3e3368e2af076d993aaa4311dc",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "7dad26af63b662c2f91b0bfcd4cf07842a7898f2008e9c088a968d754f173dee",
+    "hipengine/runtime/gguf_linear.py": "2c32a1b29de6aae0fd3933dbf98c9a1b9977287a15f0f8b449cffdfd5948cd5d",
+    "hipengine/runtime/laguna_moe.py": "f0a151988f4803adead41c49fd012db51f1f13c3cf2b8997c16d6f9d9fdbf97f",
+    "hipengine/runtime/laguna_gguf_runner.py": "4486de34a819de6819cc66f5a6f36efb1224b17f5b8495a195e4daa4c84effc0"
+  },
+  "fallback": "registered Q5 pack8 linear_pair plus silu_mul_separate; mandatory for explicit disable, rows>1, gfx1151, Q6, mixed quant, registry miss, and alignment miss",
+  "decision": "Keep the candidate default-off for clean short/512/1K/near-4K mechanical measurement. Promote only if the frozen complete context and category gates pass; otherwise remove the route.",
+  "next_task": 296
+}

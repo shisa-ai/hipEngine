@@ -1070,6 +1070,152 @@ __global__ void gguf_q5_k_pair_pack8_decode_out_kernel(
       block_mins);
 }
 
+// Decode-only equal-width projection pair plus exact BF16 SiLU. One local256
+// block owns one output pack: the first local128 half executes the retained
+// gate schedule and the second half executes the retained up schedule. Each
+// half keeps the singleton's [t,t+128] K order, four wave32 reductions, and
+// serial wave 0..3 sum. Gate/up round independently to BF16 before the exact
+// separate-SiLU expression, so this writes the final intermediate without
+// materializing either projection output.
+__launch_bounds__(256, 2)
+__global__ void gguf_q5_k_pair_pack8_decode_silu_bf16_out_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int in_features,
+    int out_features) {
+  const int block_tid = threadIdx.x;
+  const int projection = block_tid >> 7;
+  const int tid = block_tid & 127;
+  const int out_pack = blockIdx.x;
+  const int out_col = out_pack << 3;
+  const int blocks_per_row = in_features / QK_K;
+  const int row_bytes = blocks_per_row * Q5_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ qweight = projection == 0 ? qweight_a : qweight_b;
+  const uint8_t* __restrict__ weight_rows[8];
+#pragma unroll
+  for (int channel = 0; channel < 8; ++channel) {
+    weight_rows[channel] =
+        qweight + static_cast<int64_t>(out_col + channel) * row_bytes;
+  }
+
+  __shared__ float block_scales[2 * 8 * 8];
+  __shared__ float block_mins[2 * 8 * 8];
+  __shared__ float xchg[2 * 4 * 8];
+  __shared__ uint16_t rounded_gate_up[2 * 8];
+  float* __restrict__ projection_scales = block_scales + projection * 8 * 8;
+  float* __restrict__ projection_mins = block_mins + projection * 8 * 8;
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+    if (tid < 64) {
+      const int channel = tid >> 3;
+      const int subblock = tid & 7;
+      const uint8_t* __restrict__ block =
+          weight_rows[channel] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ scales = block + 4;
+      projection_scales[tid] = fp16_bytes_to_float(block) *
+                               static_cast<float>(q4_k_scale(scales, subblock));
+      projection_mins[tid] = fp16_bytes_to_float(block + 2) *
+                             static_cast<float>(q4_k_min(scales, subblock));
+    }
+    __syncthreads();
+
+    const int k_base = block_idx * QK_K;
+    const uint8_t* __restrict__ b0 =
+        weight_rows[0] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b1 =
+        weight_rows[1] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b2 =
+        weight_rows[2] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b3 =
+        weight_rows[3] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b4 =
+        weight_rows[4] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b5 =
+        weight_rows[5] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b6 =
+        weight_rows[6] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b7 =
+        weight_rows[7] + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+    for (int k = tid; k < QK_K; k += 128) {
+      const int subblock = k >> 5;
+      const int lane = k & 31;
+      const float xv = bf16_bits_to_float(x[k_base + k]);
+      acc0 += xv * (projection_scales[0 * 8 + subblock] * static_cast<float>(q5_k_quant(b0, subblock, lane)) - projection_mins[0 * 8 + subblock]);
+      acc1 += xv * (projection_scales[1 * 8 + subblock] * static_cast<float>(q5_k_quant(b1, subblock, lane)) - projection_mins[1 * 8 + subblock]);
+      acc2 += xv * (projection_scales[2 * 8 + subblock] * static_cast<float>(q5_k_quant(b2, subblock, lane)) - projection_mins[2 * 8 + subblock]);
+      acc3 += xv * (projection_scales[3 * 8 + subblock] * static_cast<float>(q5_k_quant(b3, subblock, lane)) - projection_mins[3 * 8 + subblock]);
+      acc4 += xv * (projection_scales[4 * 8 + subblock] * static_cast<float>(q5_k_quant(b4, subblock, lane)) - projection_mins[4 * 8 + subblock]);
+      acc5 += xv * (projection_scales[5 * 8 + subblock] * static_cast<float>(q5_k_quant(b5, subblock, lane)) - projection_mins[5 * 8 + subblock]);
+      acc6 += xv * (projection_scales[6 * 8 + subblock] * static_cast<float>(q5_k_quant(b6, subblock, lane)) - projection_mins[6 * 8 + subblock]);
+      acc7 += xv * (projection_scales[7 * 8 + subblock] * static_cast<float>(q5_k_quant(b7, subblock, lane)) - projection_mins[7 * 8 + subblock]);
+    }
+    __syncthreads();
+  }
+
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    acc0 += __shfl_down(acc0, offset);
+    acc1 += __shfl_down(acc1, offset);
+    acc2 += __shfl_down(acc2, offset);
+    acc3 += __shfl_down(acc3, offset);
+    acc4 += __shfl_down(acc4, offset);
+    acc5 += __shfl_down(acc5, offset);
+    acc6 += __shfl_down(acc6, offset);
+    acc7 += __shfl_down(acc7, offset);
+  }
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+    const int base = (projection * 4 + wave) * 8;
+    xchg[base + 0] = acc0;
+    xchg[base + 1] = acc1;
+    xchg[base + 2] = acc2;
+    xchg[base + 3] = acc3;
+    xchg[base + 4] = acc4;
+    xchg[base + 5] = acc5;
+    xchg[base + 6] = acc6;
+    xchg[base + 7] = acc7;
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    float total0 = 0.0f, total1 = 0.0f, total2 = 0.0f, total3 = 0.0f;
+    float total4 = 0.0f, total5 = 0.0f, total6 = 0.0f, total7 = 0.0f;
+#pragma unroll
+    for (int group = 0; group < 4; ++group) {
+      const int base = (projection * 4 + group) * 8;
+      total0 += xchg[base + 0];
+      total1 += xchg[base + 1];
+      total2 += xchg[base + 2];
+      total3 += xchg[base + 3];
+      total4 += xchg[base + 4];
+      total5 += xchg[base + 5];
+      total6 += xchg[base + 6];
+      total7 += xchg[base + 7];
+    }
+    const int base = projection * 8;
+    rounded_gate_up[base + 0] = float_to_bf16_bits(total0);
+    rounded_gate_up[base + 1] = float_to_bf16_bits(total1);
+    rounded_gate_up[base + 2] = float_to_bf16_bits(total2);
+    rounded_gate_up[base + 3] = float_to_bf16_bits(total3);
+    rounded_gate_up[base + 4] = float_to_bf16_bits(total4);
+    rounded_gate_up[base + 5] = float_to_bf16_bits(total5);
+    rounded_gate_up[base + 6] = float_to_bf16_bits(total6);
+    rounded_gate_up[base + 7] = float_to_bf16_bits(total7);
+  }
+  __syncthreads();
+
+  if (block_tid < 8) {
+    const float gate = bf16_bits_to_float(rounded_gate_up[block_tid]);
+    const float up = bf16_bits_to_float(rounded_gate_up[8 + block_tid]);
+    const float sig = 1.0f / (1.0f + expf(-gate));
+    out[out_col + block_tid] = float_to_bf16_bits(gate * sig * up);
+  }
+}
+
 // Decode-only unequal-width projection pair. Flattening both output-pack
 // ranges avoids the idle workgroups that a rectangular projection grid would
 // create for Laguna's wide attention query plus tiny per-head gate.
@@ -1499,6 +1645,33 @@ int launch_gguf_q5_k_pair_pack8_decode_out(
           static_cast<int>(rows),
           static_cast<int>(in_features),
           static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_gguf_q5_k_pair_pack8_decode_silu_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || qweight_b == nullptr ||
+      out == nullptr || rows != 1 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % 8) != 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+  gguf_q5_k_pair_pack8_decode_silu_bf16_out_kernel<<<grid, dim3(256), 0, stream>>>(
+      x,
+      qweight_a,
+      qweight_b,
+      out,
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1999,6 +2172,15 @@ extern "C" int hipengine_gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out(
   return launch_gguf_q5_k_pair_pack8_decode_out<uint16_t>(
       x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features,
       threads, stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out(
+    const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,
+    uint16_t* out, int64_t rows, int64_t in_features, int64_t out_features,
+    int64_t threads, hipStream_t stream) {
+  return launch_gguf_q5_k_pair_pack8_decode_silu_bf16_out(
+      x, qweight_a, qweight_b, out, rows, in_features, out_features, threads,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out(
