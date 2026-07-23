@@ -121,7 +121,11 @@ def _device_digest(generator: LagunaGGUFGenerator) -> dict[str, Any]:
         for name in ("base_offsets", "live_counts", "token_positions", "evict_mask"):
             tensor = getattr(spans, name)
             if tensor is not None:
-                update(f"layer{layer.layer_id}.{name}", tensor.ptr, tensor.nbytes)
+                update(
+                    f"layer{layer.layer_id}.{name}",
+                    tensor.ptr,
+                    tensor.numel * tensor.dtype.itemsize,
+                )
     digest.update(int(session.position).to_bytes(8, "little", signed=True))
     digest.update(int(session.kv_cache.position).to_bytes(8, "little", signed=True))
     return {
