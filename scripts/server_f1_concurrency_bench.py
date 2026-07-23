@@ -1771,6 +1771,14 @@ def _run_oracle(
         )
         return oracle, records, server_metadata
     finally:
+        if (
+            sampler is not None
+            and process is not None
+            and bool(args.memory_sample_through_shutdown)
+        ):
+            _stop_server(process)
+            process = None
+            time.sleep(max(0.05, 2.0 * float(args.memory_poll_ms) / 1000.0))
         if sampler is not None:
             sampler.stop()
             server_metadata["memory"] = sampler.result().to_dict()
@@ -2037,6 +2045,14 @@ def _run_width(
         }
         return result
     finally:
+        if (
+            sampler is not None
+            and process is not None
+            and bool(args.memory_sample_through_shutdown)
+        ):
+            _stop_server(process)
+            process = None
+            time.sleep(max(0.05, 2.0 * float(args.memory_poll_ms) / 1000.0))
         if sampler is not None:
             sampler.stop()
             memory = sampler.result().to_dict()
@@ -2356,6 +2372,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-domain", choices=("vram", "gtt"), default="gtt")
     parser.add_argument("--drm-card-index", type=int, default=0)
     parser.add_argument("--memory-poll-ms", type=float, default=10.0)
+    parser.add_argument(
+        "--memory-sample-through-shutdown",
+        action="store_true",
+        help="Keep the UMA sampler active through child-server teardown for lifecycle evidence",
+    )
     parser.add_argument("--no-memory-sampling", action="store_true")
     parser.add_argument("--work-dir", type=Path, default=Path("/tmp/hipengine-gfx1151-f1-server"))
     parser.add_argument("--json", type=Path, required=True)
