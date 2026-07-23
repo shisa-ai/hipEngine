@@ -654,7 +654,10 @@ __global__ void gguf_iq3_xxs_selected_gemv_kernel(
     const int groups8 = in_features / 8;
     for (int group8_linear = threadIdx.x; group8_linear < groups8;
          group8_linear += blockDim.x) {
-      const int block_idx = group8_linear >> 5;
+      // Every wave owns one 256-value super-block at a time. Match the
+      // selected-dual path's uniform base so the compiler keeps it in SGPRs.
+      const int block_idx =
+          __builtin_amdgcn_readfirstlane(group8_linear >> 5);
       const int group8 = group8_linear & 31;
       const int x_offset = block_idx * QK_K + group8 * 8;
       float x_values[8];
