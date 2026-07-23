@@ -1198,6 +1198,7 @@ def _hipengine_route_expectation_passes(
     native_values: Sequence[Any],
     shape_passed: bool,
     resident_capacity: float | None,
+    execution_paths: Sequence[str] = (),
     native_false_records_expected: int = 0,
 ) -> bool:
     rows = int(concurrency)
@@ -1214,9 +1215,12 @@ def _hipengine_route_expectation_passes(
             value is False for value in native_values
         )
     if str(expectation) == "scheduler-c1":
-        return bool(shape_passed) and all(
-            value is False for value in serial_values
-        ) and all(value is False for value in native_values)
+        return (
+            set(str(path) for path in execution_paths)
+            == {"laguna_resident_scheduler_c1"}
+            and all(value is False for value in serial_values)
+            and all(value is False for value in native_values)
+        )
     if str(expectation) != "native" or not bool(shape_passed):
         return False
     if rows == 1:
@@ -1975,6 +1979,7 @@ def _run_width(
                 native_values=native_values,
                 shape_passed=bool(shape_evidence["passed"]),
                 resident_capacity=resident_capacity,
+                execution_paths=route_paths,
                 native_false_records_expected=sum(
                     int(run["native_false_records_expected"])
                     for run in shape_runs

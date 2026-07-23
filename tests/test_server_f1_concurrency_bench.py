@@ -597,8 +597,9 @@ def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() ->
         expectation="scheduler-c1",
         serial_values=[False] * 6,
         native_values=[False] * 6,
-        shape_passed=True,
+        shape_passed=False,
         resident_capacity=2.0,
+        execution_paths=["laguna_resident_scheduler_c1"],
     )
     assert not SCRIPT._hipengine_route_expectation_passes(
         concurrency=4,
