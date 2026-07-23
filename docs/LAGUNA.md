@@ -2323,9 +2323,10 @@ repeat either experiment unchanged.
   **1.249-1.313x** at every 32-128-row shape (**1.265x** aggregate GPU span),
   while the five-repeat complete-model screen is non-regressive at **0.99972x**
   aggregate with all 60 next IDs exact and shape ratios **0.99863-1.00102x**.
-  This is a launch/traffic claim, not a standalone model-wall win. The complete
-  ten-prompt category non-regression gate is now the only blocker to gfx1151
-  default promotion. Evidence:
+  This is a launch/traffic claim, not a standalone model-wall win. The checked-in
+  category harness now compares unfused/fused grouped modes with exact h16/h32,
+  teacher-forced KL/top-1, per-category non-regression, and lifecycle gates; its
+  clean hardware run is the only blocker to gfx1151 default promotion. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-screen.json`.
   Do not introduce order-dependent atomics across ten experts.
 
