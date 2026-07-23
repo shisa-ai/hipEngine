@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T11:12:24.642616+00:00",
+  "kind": "hipengine_laguna_prefill_grouped_combine_retained",
+  "status": "retained_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "Exact production-shape grouped weighted-reduction plus shared-add GPU sub-window and one removed launch/round trip; complete-model and category wall are explicitly classified as non-regressive, not faster.",
+  "promotion_revision": "ac83c6e1f01358db65b8cb1c0fd94d6dd31a528f",
+  "measured_revisions": {
+    "micro_and_shape_screen": "d5f9e888ab439919020403712beec2fb73dfc6c9",
+    "category_gate": "dbc6682a656cd79df288f84eeada9c5c9f4ce731"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "hip_version": "7.15.0-0000000",
+    "hip_total_bytes": 128849018880
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "context_length": 4096,
+    "chunk_size": 128
+  },
+  "default_policy": {
+    "gfx1151_rows_at_least_32": "adaptive_grouped_smallm_fused",
+    "gfx1151_short_rows": "direct",
+    "unmeasured_backends": "direct",
+    "explicit_unfused_rollback": "adaptive_grouped_smallm",
+    "removed_rejected_routes": ["wmma16_down", "adaptive_wmma16_down"]
+  },
+  "micro": {
+    "protocol": "12 counterbalanced repetitions of 200 launches at top-k 10, N=3072",
+    "rows": [32, 55, 64, 122, 128],
+    "all_shapes_bf16_bit_exact": true,
+    "aggregate_gpu_span_speedup": 1.2651786985719489,
+    "gpu_span_speedup_by_rows": {
+      "32": 1.3128133842063614,
+      "55": 1.2659819485440835,
+      "64": 1.2848332464956334,
+      "122": 1.2491368074733697,
+      "128": 1.2499714592674738
+    },
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "d9e26e411bf8ad40ad585e249c309a09a6ff9e421a195a8407d680d4071d7ee8"
+  },
+  "complete_model_screen": {
+    "protocol": "one warmup and five counterbalanced repetitions at 16/32/55/64/122/128 rows",
+    "effective_speedup": 0.9997164506403992,
+    "shape_speedup_range": [0.9986264544232307, 1.0010222104719215],
+    "all_60_next_ids_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "ff537f83110719498cbe140c8a1913ad0132fc4d9254dc1398dee53f4bd0b821"
+  },
+  "category_gate": {
+    "protocol": {
+      "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+      "repetitions": 3,
+      "output_horizons": [16, 32],
+      "teacher_forced_tokens_per_prompt": 32,
+      "timed_order": "counterbalanced by prompt and repetition",
+      "model_load_seconds_excluded": 48.848026320920326
+    },
+    "baseline": {
+      "mode": "adaptive_grouped_smallm",
+      "prefill_tok_s": 53.18802772602893,
+      "median_ttft_seconds": 1.5321737425401807,
+      "h16_decode_tok_s": 16.516890591916027,
+      "h32_decode_tok_s": 16.37610762848175,
+      "h16_e2e_output_tok_s": 6.317650773565792,
+      "h32_e2e_output_tok_s": 9.097557955238061
+    },
+    "candidate": {
+      "mode": "adaptive_grouped_smallm_fused",
+      "prefill_tok_s": 53.18398104118193,
+      "median_ttft_seconds": 1.5325285120052285,
+      "h16_decode_tok_s": 16.508496275196908,
+      "h32_decode_tok_s": 16.37596794955671,
+      "h16_e2e_output_tok_s": 6.316190839563292,
+      "h32_e2e_output_tok_s": 9.097196526317436
+    },
+    "ratios": {
+      "prefill": 0.9999239173735142,
+      "ttft": 0.9997685071029552,
+      "h16_decode": 0.9994917737892368,
+      "h32_decode": 0.9999914705662536,
+      "h16_e2e": 0.9997689118859484,
+      "h32_e2e": 0.9999602718748918,
+      "category_prefill_min": 0.9983229934402048,
+      "category_prefill_max": 1.0019616636337663,
+      "category_e2e_min": 0.9987621869069148,
+      "category_e2e_max": 1.0009719890527338
+    },
+    "correctness": {
+      "teacher_forced_steps": 320,
+      "max_kl_divergence": 0.0,
+      "top1_agreement": 1.0,
+      "free_running_pairs": 30,
+      "all_h16_h32_pairs_exact": true,
+      "same_mode_repeats_deterministic": true,
+      "poolside_first_token_kl": 0.000006621408380303441,
+      "poolside_top1_agreement": 1.0,
+      "finite": true,
+      "tracked_returned_to_baseline": true
+    },
+    "memory": {
+      "tracked_peak_bytes": 77900544428,
+      "tracked_final_bytes": 0,
+      "tracked_final_allocations": 0
+    },
+    "raw_sha256": "78a065de1dbc12965722bc558bf047841fcde64427620c39aa8361133c23e9b7"
+  },
+  "decision": {
+    "retained": true,
+    "headline_wall_changed": false,
+    "reason": "The candidate is exact, removes one launch and selected-output traffic, improves the isolated production family at every shape, and passes every complete-model/category non-regression gate.",
+    "cleanup": "Quality-rejected M16 runtime selectors, dispatch/scratch bindings, and harnesses were removed; the registered leaf oracle remains."
+  },
+  "category_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 /home/lhl/hipEngine-main/.venv/bin/python -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy --shape-screen /tmp/2026-07-23-gfx1151-laguna-grouped-combine-fullmodel-clean.json --comparison grouped_combine --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-23-gfx1151-laguna-grouped-combine-category-clean.json"
+}

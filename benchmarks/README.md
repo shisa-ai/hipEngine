@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`ac83c6e1f01358db65b8cb1c0fd94d6dd31a528f` for the exact gfx1151 Laguna
+grouped routing/shared combine default,
 `804e9484f3da0031628805f5bbef62a43badffaa` for exact bounded Laguna
 stateful-session KV continuation,
 `71f2af038cf5eea88f1997d178d815cfaad15681` for prefix-aware exact Laguna
@@ -1389,8 +1391,9 @@ HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 
 **Status: retained for exact target-only c=1 AR and loader startup; LPF-1's
-exact tile, LPF-4's 128-row chunks, and LPF-5's wave32-exact SWA reader are
-default. The current merged-main matched B4 DFlash row is exact and reaches
+exact tile, LPF-4's 128-row chunks, LPF-5's wave32-exact SWA reader, and the
+exact grouped routing/shared combine are default. The current merged-main
+matched B4 DFlash row is exact and reaches
 **0.9477x** true-AR decode, but fails aggregate, heldout, and non-code economics,
 so DFlash remains off by default and performance-ineligible. Its exact B4 path
 is supported only as an explicit library/OpenAI opt-in.** The AR protocol uses the
@@ -1592,6 +1595,22 @@ Poolside oracle passes, and lifecycle returns to zero. gfx1100 and rows below
 [Retained grouped-down shape gate](results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json).
 [Retained grouped-down category gate](results/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json).
 
+The exact grouped-combine follow-up removes the grouped path's final add launch
+and selected-output round trip while preserving both BF16 boundaries and all ten
+slot-order FMAs. Its clean production-shape micro improves GPU span
+**1.249-1.313x** at every 32-128-row shape (**1.265x aggregate**). Five-repeat
+complete-model wall is neutral at **0.999716x** with all 60 IDs exact. The
+three-repeat ten-prompt gate is likewise non-regressive: prefill
+**53.1880 -> 53.1840 tok/s (0.999924x)**, h16/h32 E2E
+**0.999769/0.999960x**, and per-category prefill **0.998323-1.001962x**. All
+320 teacher-forced comparisons have `KL=0`/100% top-1, all 30 free-running
+pairs and repeats are exact, Poolside KL/top-1 remains `6.6214e-6/1.0`, and
+lifecycle recovers. gfx1151 now defaults fused combine from 32 rows; explicit
+unfused grouped and direct fallbacks remain. The quality-rejected M16 runtime
+route/harness debt is removed while its kernel oracle remains. This is a
+retained launch/traffic result, not a changed model-wall headline.
+[Retained grouped-combine artifact](results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-retained.json).
+
 The follow-up untimed 256/512 routing replay closes the matrix-padding input.
 At 256 rows, natural M2/M4/M8/M16/M32 factors are
 **1.043/1.134/1.334/1.803/2.924x**; at 512 they are
@@ -1621,7 +1640,8 @@ top-1 is 90%, and code/mixed category top-1 is only **87.5%/75%**. Twenty-three
 unique shape/prompt/horizon free-running mismatches reproduce in all three
 repetitions. M32 shares the same reassociated arithmetic and has worse measured
 natural/Zipf padding, so it is closed without another category run. Exact
-adaptive grouped-small-M remains the gfx1151 production default.
+adaptive grouped-small-M plus fused grouped combine remains the gfx1151
+production default.
 [Rejected M16 category gate](results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category-rejected.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
