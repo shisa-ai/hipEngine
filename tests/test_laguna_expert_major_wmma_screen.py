@@ -90,8 +90,24 @@ def test_summary_rejects_quality_or_missing_positive_threshold() -> None:
 
     assert summary["pass"] is False
     assert summary["threshold"]["selected_rows"] is None
-    assert "full_model_quality_or_determinism_failed" in summary["failed_checks"]
-    assert "no_nonregressive_adaptive_threshold" in summary["failed_checks"]
+    assert summary["failed_checks"] == [
+        "no_quality_safe_nonregressive_adaptive_threshold"
+    ]
+
+
+def test_summary_falls_back_past_a_quality_failing_shape() -> None:
+    records, comparisons = _records()
+    for comparison in comparisons:
+        if comparison["rows"] == 122:
+            comparison["top1_agreement"] = False
+    summary = _summarize(records, comparisons)
+
+    assert summary["pass"] is True
+    assert summary["explicit_candidate_quality"]["pass"] is False
+    assert summary["threshold"]["policies"]["122"]["quality"]["pass"] is False
+    assert summary["threshold"]["selected_rows"] == 128
+    assert summary["quality"]["pass"] is True
+    assert summary["quality"]["top1_agreement"] == 1.0
 
 
 def test_quality_reports_finite_kl_and_top1() -> None:
