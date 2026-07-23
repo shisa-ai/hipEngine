@@ -673,6 +673,7 @@ def resolve_gguf_linear_dispatch(
 # this collapses the ~18us-per-launch dispatch-resolve chain to a dict lookup.
 _DISPATCH_RESOLVE_CACHE: dict[tuple, tuple] = {}
 _PAIR_DISPATCH_RESOLVE_CACHE: dict[tuple, str] = {}
+_PAIR_ACTIVATION_DISPATCH_RESOLVE_CACHE: dict[tuple, KernelKey | None] = {}
 
 
 def clear_gguf_linear_dispatch_cache() -> None:
@@ -684,6 +685,7 @@ def clear_gguf_linear_dispatch_cache() -> None:
 
     _DISPATCH_RESOLVE_CACHE.clear()
     _PAIR_DISPATCH_RESOLVE_CACHE.clear()
+    _PAIR_ACTIVATION_DISPATCH_RESOLVE_CACHE.clear()
 
 
 def launch_gguf_linear(
@@ -1118,6 +1120,124 @@ def launch_gguf_linear_pair(
         )
         return True
     return False
+
+
+def launch_gguf_linear_pair_activation(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    threads: int = 0,
+    registered_variant: str = "pack8_gemv_decode_bf16_silu_bf16_out",
+) -> bool:
+    """Launch one registered equal-width raw pair+activation composite.
+
+    Resolution is entirely through the four-axis ``linear_pair+activation``
+    key. Unsupported backends, layouts, dtypes, rows, alignments, quant pairs,
+    and registry misses return ``False`` so callers keep the exact pair plus
+    separately registered activation fallback.
+    """
+
+    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
+    cache_key = (
+        generation(),
+        weight_a.spec.layout,
+        weight_a.spec.quant_key,
+        weight_b.spec.layout,
+        weight_b.spec.quant_key,
+        rows,
+        in_features,
+        out_features,
+        activation_dtype,
+        output_dtype,
+        resolved_backend,
+        registered_variant,
+    )
+    if cache_key in _PAIR_ACTIVATION_DISPATCH_RESOLVE_CACHE:
+        candidate_key = _PAIR_ACTIVATION_DISPATCH_RESOLVE_CACHE[cache_key]
+    else:
+        dispatch_a = _pack8_decode_dispatch(
+            resolve_gguf_linear_dispatch(
+                weight_a,
+                activation_dtype=activation_dtype,
+                output_dtype=output_dtype,
+                backend=resolved_backend,
+                rows=rows,
+            ),
+            rows=rows,
+            out_features=out_features,
+        )
+        dispatch_b = _pack8_decode_dispatch(
+            resolve_gguf_linear_dispatch(
+                weight_b,
+                activation_dtype=activation_dtype,
+                output_dtype=output_dtype,
+                backend=resolved_backend,
+                rows=rows,
+            ),
+            rows=rows,
+            out_features=out_features,
+        )
+        block_size = _ROWTILE_QUANT_BLOCKS.get(dispatch_a.key.quant)
+        resolved_key = KernelKey(
+            resolved_backend,
+            "linear_pair+activation",
+            dispatch_a.key.quant,
+            registered_variant,
+        )
+        candidate_key = (
+            resolved_key
+            if rows == 1
+            and activation_dtype == GGUF_ACTIVATION_BF16
+            and output_dtype == GGUF_OUTPUT_BF16
+            and dispatch_a.abi == "raw"
+            and dispatch_b.abi == "raw"
+            and dispatch_a.key == dispatch_b.key
+            and block_size is not None
+            and in_features > 0
+            and in_features % block_size == 0
+            and out_features > 0
+            and out_features % 8 == 0
+            and is_registered(resolved_key)
+            else None
+        )
+        _PAIR_ACTIVATION_DISPATCH_RESOLVE_CACHE[cache_key] = candidate_key
+
+    if candidate_key is None:
+        return False
+    candidate_fn = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    kwargs = {"stream": stream, "runtime": runtime}
+    library = None if libraries is None else libraries.get(candidate_key.quant)
+    if library is not None:
+        kwargs["library"] = library
+    if threads:
+        kwargs["threads"] = threads
+    candidate_fn(
+        x_ptr,
+        weight_a.allocation("raw").tensor.ptr,
+        weight_b.allocation("raw").tensor.ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+    return True
 
 
 def _resolve_gguf_linear_pair_kind(
@@ -1978,6 +2098,7 @@ __all__ = [
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",
+    "launch_gguf_linear_pair_activation",
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",

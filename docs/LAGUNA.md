@@ -3497,7 +3497,7 @@ Evidence:
 Frozen design and source/traffic accounting:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-design.json`.
 
-### D13 raw-Q5 shared pair + SiLU (exact, selected)
+### D13 raw-Q5 shared pair + SiLU (exact, correctness-admitted)
 
 The retained D12 traces leave one stable block-local post-op boundary that does
 not require another global producer counter. In every sparse token, 46 Q5
@@ -3529,18 +3529,29 @@ and avoids **376,832 bytes/token** of gate/up BF16 write-read traffic. The
 registered Q5 pair plus separate SiLU remains the mandatory rows>1, gfx1151,
 registry/shape-miss, explicit-rollback, and Q6 fallback.
 
-The measured opportunity is material but is not yet a performance claim. If
-the fused body pays the same SiLU arithmetic cost, removing only the measured
-submission gaps saves **0.175 ms/token**, closes **42.30%** of D12's 0.414-ms
-gap, and models **49.41 tok/s**. The strict zero-increment post-op ceiling is
-**0.259 ms/token**, **62.54%** of the gap and **49.62 tok/s**. D13 cannot claim
-50 tok/s by itself. Implementation requires BF16-bit synthetic and actual
-layer-1/layer-46 parity, local256/VGPR<=96/LDS<=2048/scratch0, positive
-inclusive event and wall micros for both layers, all-layer hidden/logit/KV/state
-parity, improved clean traces at all four contexts, and the complete category
-non-regression gate. Any failure removes the candidate rather than leaving a
-default-off route. Design evidence:
-`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-design.json`.
+The design bound was material but deliberately not a performance claim. If the
+fused body paid the same SiLU arithmetic cost, removing only the measured
+submission gaps modeled **0.175 ms/token** saved and **49.41 tok/s**; the strict
+zero-increment post-op ceiling was **0.259 ms** and **49.62 tok/s**. D13 could
+not claim 50 tok/s from that model.
+
+The implementation clears correctness and resource admission but shows a much
+smaller isolated gain than the gap model. Synthetic/adversarial K256/N8 and
+K3072/N1024 outputs plus actual layer-1/layer-46 weights are BF16-bit exact to
+the registered pair+separate-SiLU chain. A 50-warmup, 15x300 counterbalanced
+actual-weight gate moves inclusive HIP-event time **21.715 -> 21.255 us
+(-2.12%)** and **21.532 -> 20.942 us (-2.74%)**; synchronized wall improves
+**2.13%/2.95%**. Cached tracing records local256/VGPR88/SGPR128/LDS1536/scratch0.
+The shared-weight model gate matches bulk prefill, all 48 post-layer hidden
+rows, 17 full-logit/argmax checkpoints, final/post-layer hidden, complete K/V
+and `KVLiveSpans`, reset/re-prefill, and lifecycle through 16 decode steps.
+
+`LagunaGGUFResidentSession(..., use_q5_shared_silu=True)` remains explicitly
+default-off for task #296. Clean short/512/1K/near-4K kernel-sum/span/child
+measurement now decides whether the 46-launch reduction compounds or disappears
+inside noise; only a passing complete category gate may promote it. Failure
+removes the route rather than retaining default-off experiment debt. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-{design,correctness}.json`.
 
 ## Laguna DFlash Follow-on Plan
 

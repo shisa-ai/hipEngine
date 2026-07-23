@@ -14,6 +14,10 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    build_paro_silu,
+    silu_mul_separate_out_bf16,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q5_k_pack8_gemv_bf16_bf16_out,
@@ -22,6 +26,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out,
     gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out,
+    gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out,
     gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out,
     gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out,
     gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out,
@@ -82,6 +87,12 @@ def _run(
 
 def test_q5_k_pack8_decode_registry_keys_resolve() -> None:
     register_gguf_k_gemv_kernels()
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear_pair+activation",
+        quant="gguf_q5_k",
+        variant="pack8_gemv_decode_bf16_silu_bf16_out",
+    ) is gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear_pair",
@@ -168,6 +179,40 @@ def test_q5_k_pack8_decode_wrapper_rejects_unaligned_shape() -> None:
             in_features=256,
             out_features=8,
             out_features_b=7,
+        )
+
+
+def test_q5_k_pair_silu_wrapper_rejects_out_of_scope_shapes() -> None:
+    with pytest.raises(ValueError, match="rows must be exactly 1"):
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out(
+            1,
+            2,
+            3,
+            4,
+            rows=2,
+            in_features=256,
+            out_features=8,
+        )
+    with pytest.raises(ValueError, match="divisible by 8"):
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out(
+            1,
+            2,
+            3,
+            4,
+            rows=1,
+            in_features=256,
+            out_features=7,
+        )
+    with pytest.raises(ValueError, match="threads must be 256"):
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out(
+            1,
+            2,
+            3,
+            4,
+            rows=1,
+            in_features=256,
+            out_features=8,
+            threads=128,
         )
 
 
@@ -449,6 +494,138 @@ def test_q5_k_pack8_decode_pair_is_bit_exact_to_two_singletons() -> None:
 
     np.testing.assert_array_equal(actual_a, expected_a)
     np.testing.assert_array_equal(actual_b, expected_b)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("in_features,out_features", [(256, 8), (3072, 1024)])
+def test_q5_k_pair_silu_is_bit_exact_to_pair_plus_separate_silu(
+    in_features: int,
+    out_features: int,
+) -> None:
+    rng = np.random.default_rng(20260801 + in_features + out_features)
+    values = rng.normal(0.0, 0.2, size=(1, in_features)).astype(np.float32)
+    values[0, ::17] *= np.float32(2.0**8)
+    values[0, 1::19] *= np.float32(2.0**-8)
+    x = _f32_to_bf16_u16(values)
+    qweight_a = make_q5_k_weight(out_features, in_features)
+    qweight_b = np.roll(qweight_a, 17, axis=0).copy()
+    q5_library = build_gguf_k_gemv(load=True)
+    silu_library = build_paro_silu(load=True)
+
+    arrays = (x, qweight_a, qweight_b)
+    buffers = [malloc(array.nbytes) for array in arrays]
+    gate_buf = malloc(out_features * np.dtype(np.uint16).itemsize)
+    up_buf = malloc(out_features * np.dtype(np.uint16).itemsize)
+    expected_buf = malloc(out_features * np.dtype(np.uint16).itemsize)
+    actual_buf = malloc(out_features * np.dtype(np.uint16).itemsize)
+    expected = np.empty((1, out_features), dtype=np.uint16)
+    actual = np.empty_like(expected)
+    try:
+        for array, buffer in zip(arrays, buffers, strict=True):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            gate_buf.ptr,
+            up_buf.ptr,
+            1,
+            in_features,
+            out_features,
+            library=q5_library,
+        )
+        silu_mul_separate_out_bf16(
+            gate_buf.ptr,
+            up_buf.ptr,
+            expected_buf.ptr,
+            1,
+            out_features,
+            library=silu_library,
+        )
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            actual_buf.ptr,
+            1,
+            in_features,
+            out_features,
+            library=q5_library,
+        )
+        copy_device_to_host(host_array_ptr(expected), expected_buf, expected.nbytes)
+        copy_device_to_host(host_array_ptr(actual), actual_buf, actual.nbytes)
+    finally:
+        for buffer in reversed((*buffers, gate_buf, up_buf, expected_buf, actual_buf)):
+            free(buffer)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q5_k_pair_silu_preserves_adversarial_classes_and_defined_bits() -> None:
+    in_features, out_features = 256, 8
+    x = _f32_to_bf16_u16(
+        np.linspace(-0.5, 0.5, in_features, dtype=np.float32).reshape(1, -1)
+    )
+    x[0, :8] = np.asarray(
+        [0x0000, 0x8000, 0x7F80, 0xFF80, 0x7FC1, 0x3F80, 0xBF80, 0x0001],
+        dtype=np.uint16,
+    )
+    qweight_a = make_q5_k_weight(out_features, in_features)
+    qweight_b = np.roll(qweight_a, 3, axis=0).copy()
+    qweight_a[0, 0:2] = np.asarray([0x00, 0x80], dtype=np.uint8)
+    qweight_a[1, 2:4] = np.asarray([0x00, 0x7C], dtype=np.uint8)
+    qweight_b[2, 0:2] = np.asarray([0x01, 0x7E], dtype=np.uint8)
+    q5_library = build_gguf_k_gemv(load=True)
+    silu_library = build_paro_silu(load=True)
+
+    arrays = (x, qweight_a, qweight_b)
+    buffers = [malloc(array.nbytes) for array in arrays]
+    outputs = [malloc(out_features * np.dtype(np.uint16).itemsize) for _ in range(4)]
+    expected = np.empty((1, out_features), dtype=np.uint16)
+    actual = np.empty_like(expected)
+    try:
+        for array, buffer in zip(arrays, buffers, strict=True):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            outputs[0].ptr,
+            outputs[1].ptr,
+            1,
+            in_features,
+            out_features,
+            library=q5_library,
+        )
+        silu_mul_separate_out_bf16(
+            outputs[0].ptr,
+            outputs[1].ptr,
+            outputs[2].ptr,
+            1,
+            out_features,
+            library=silu_library,
+        )
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_silu_bf16_out(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            outputs[3].ptr,
+            1,
+            in_features,
+            out_features,
+            library=q5_library,
+        )
+        copy_device_to_host(host_array_ptr(expected), outputs[2], expected.nbytes)
+        copy_device_to_host(host_array_ptr(actual), outputs[3], actual.nbytes)
+    finally:
+        for buffer in reversed((*buffers, *outputs)):
+            free(buffer)
+
+    expected_nan = (expected & 0x7FFF) > 0x7F80
+    actual_nan = (actual & 0x7FFF) > 0x7F80
+    np.testing.assert_array_equal(actual_nan, expected_nan)
+    np.testing.assert_array_equal(actual[~expected_nan], expected[~expected_nan])
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
