@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_qwen36_q3_prefill_correctness_gate",
+  "status": "accepted",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "8ece5a57",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "candidate": {
+    "scope": "correctness-first selected-expert bulk prefill for raw resident IQ3_XXS/IQ4_XS",
+    "route": "reuse the accepted four-row fused IQ gate/up kernel with rows=tokens*top_k, then reuse selected IQ4_XS/Q6_K down and the existing shared/combine chain",
+    "resident_repack": false,
+    "grouped_weight_reuse": false
+  },
+  "correctness": {
+    "red": "bulk MoE skipped fused raw-IQ gate/up and reached the unsupported split IQ3 projection path",
+    "microkernel": {
+      "coverage": "IQ3_XXS and IQ4_XS gate/up, x_rows=3, selected_rows=24, in=512, out=11 tail",
+      "result": "both match the canonical CPU dequant/GEMV oracle"
+    },
+    "bulk_vs_serial": {
+      "prompt_tokens": [760, 4087, 369, 220],
+      "serial_token_id": 16,
+      "bulk_token_id": 16,
+      "token_match": true,
+      "serial_prefill_s": 0.14511207304894924,
+      "bulk_prefill_s": 0.03982589102815837,
+      "max_abs_logits": 0.5395932197570801,
+      "kl_divergence": 0.0005716181057670571,
+      "bulk_logits_finite": true
+    },
+    "focused_guard_command": "HIP_VISIBLE_DEVICES=0 python3 -m pytest -q tests/test_gguf_iq_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen36_q3_selected_moe_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_selected_moe_stage_timing.py tests/test_qwen35_gguf_verify_f32_moe_combine.py tests/test_qwen36_q3_gguf_materialize.py tests/test_model_quant_and_imports.py",
+    "focused_guard_result": "67 passed"
+  },
+  "prompt_acceptance": {
+    "protocol": "one fresh resident session per length, forced bulk prefill, repeated valid token id 9707, return_logits=false; times are one-shot functional observations and not benchmark claims",
+    "rows": [
+      {
+        "prompt_tokens": 512,
+        "prefill_s": 2.484218235942535,
+        "token_id": 9707,
+        "final_position": 512
+      },
+      {
+        "prompt_tokens": 1024,
+        "prefill_s": 2.5587122270371765,
+        "token_id": 9707,
+        "final_position": 1024
+      },
+      {
+        "prompt_tokens": 4096,
+        "prefill_s": 10.276416528970003,
+        "token_id": 9707,
+        "final_position": 4096
+      }
+    ],
+    "result": "512, 1K, and 4K complete without unsupported kernels, non-finite sampling, or cursor mismatch"
+  },
+  "decision": {
+    "result": "accept_correctness_first_prefill",
+    "reason": "all required prompt lengths execute, the selected kernels match the host oracle, and short bulk output remains close to token-serial execution",
+    "next": "profile the full Q3 benchmark before deciding whether grouped expert reuse is worth a separate optimized prefill kernel"
+  }
+}
