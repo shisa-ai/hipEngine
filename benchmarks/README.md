@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`60a1e8f104993b5d50374170959659080151f4e1` for the quality-gated gfx1151
+Laguna global qrow2 online-softmax prefill default,
 `afdede4286bab27a691e8e137b16229d1baba194` for the post-qrow2 Laguna
 512/1K/4K all-family attribution and global AOTriton screen,
 `c0dfb324eba69f61b981af57c5af6815af92a6f5` for the exact context-qualified
@@ -1761,6 +1763,22 @@ screens are byte-exact, but prior-context 0/128/384/896/1920/3968 regresses
 score/shared state defeats the halved workgroup count. All candidate code is
 removed; key tiling without duplicated full score rows remains untested.
 [Rejected global qrow2](results/2026-07-23-gfx1151-laguna-global-qrow2-rejected.json).
+
+The replacement online-softmax route is retained on gfx1151. One wave streams
+BF16 K/V across two adjacent global query rows and carries online max,
+denominator, and output state without whole-context score LDS. The production
+M128/4K leaf moves **86.752 -> 14.807 ms (5.859x)**, local32/VGPR48 with zero
+LDS/scratch. The clean repeated full-model gate improves 512/1K/4K
+**69.751/64.756/52.584 -> 71.475/68.281/64.076 tok/s
+(+2.472%/+5.444%/+21.854%)** at maximum KL **0.007589** and top-1 **9/9**.
+The complete ten-prompt gate then improves weighted prefill **69.310 -> 69.529
+tok/s (+0.315%)**, TTFT **+0.331%**, and h16/h32 E2E **+0.184%/+0.125%**;
+every category is positive and decode is neutral. All 320 teacher-forced logits
+are finite at maximum KL **0.030836**, top-1 is **317/320 (99.0625%)**, each
+category is at least 96.875%, and the frozen Poolside oracle, deterministic
+repeats, and lifecycle pass. gfx1151 now selects online global prefill by backend
+capability; exact global prefill remains explicit rollback and the default on
+unmeasured backends. [Retained global online gate](results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json).
 
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure

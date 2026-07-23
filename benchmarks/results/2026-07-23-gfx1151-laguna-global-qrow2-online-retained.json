@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T19:06:31+00:00",
+  "kind": "hipengine_laguna_prefill_global_qrow2_online_retained",
+  "status": "retained",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Poolside Laguna S 2.1 Q4_K_M gfx1151 c=1 global-attention online-softmax prefill default",
+  "repo": {
+    "category_revision": "6a277911f290601337bbdc18955815f22e38e71b",
+    "promotion_revision": "60a1e8f104993b5d50374170959659080151f4e1",
+    "tracked_clean_during_category_gate": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "route": {
+    "capability": "LAGUNA_GLOBAL_PREFILL_VARIANT",
+    "default": "global_context_rows_qrow2_online_spans",
+    "exact_fallback": "global_context_rows_spans",
+    "scope": "gfx1151 full-attention prefill; SWA and decode unchanged",
+    "unmeasured_backends": "exact fallback"
+  },
+  "long_context_screen": {
+    "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-screen.json",
+    "lengths": [512, 1024, 4096],
+    "baseline_median_tok_s": [69.75063066923515, 64.75597878022997, 52.584107937170195],
+    "candidate_median_tok_s": [71.47453889092733, 68.28103936999234, 64.07579281140043],
+    "speedups": [1.024715306587938, 1.0544360637606263, 1.2185391237968897],
+    "max_full_vocabulary_kl": 0.0075887621250003146,
+    "top1_matches": 9,
+    "top1_total": 9,
+    "deterministic": true,
+    "exact_cursors": true,
+    "lifecycle_pass": true
+  },
+  "category_protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "repetitions": 3,
+    "chunk_size": 128,
+    "output_horizons": [16, 32],
+    "teacher_forced_tokens_per_prompt": 32,
+    "timed_order": "counterbalanced exact/online per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded"
+  },
+  "category_performance": {
+    "baseline_prefill_tok_s": 69.31027465425346,
+    "candidate_prefill_tok_s": 69.52893717632294,
+    "prefill_speedup": 1.0031548356020843,
+    "baseline_ttft_median_seconds": 1.1845442710327916,
+    "candidate_ttft_median_seconds": 1.1806328524835408,
+    "ttft_speedup": 1.0033129846768392,
+    "h16": {
+      "baseline_e2e_output_tok_s": 7.434626182861718,
+      "candidate_e2e_output_tok_s": 7.448283302682874,
+      "e2e_speedup": 1.0018369611982159,
+      "decode_speedup": 1.0000283937298762
+    },
+    "h32": {
+      "baseline_e2e_output_tok_s": 10.21044610498123,
+      "candidate_e2e_output_tok_s": 10.223208836149803,
+      "e2e_speedup": 1.0012499680266023,
+      "decode_speedup": 0.999995875658803
+    },
+    "categories": {
+      "code": {"prefill_speedup": 1.0027550969462264, "h16_e2e_speedup": 1.0015478950177286, "h32_e2e_speedup": 1.0010461310008132},
+      "general_en": {"prefill_speedup": 1.0024133228587364, "h16_e2e_speedup": 1.0012917785079842, "h32_e2e_speedup": 1.0007726728312059},
+      "general_ja": {"prefill_speedup": 1.0040045807405646, "h16_e2e_speedup": 1.0024699782556705, "h32_e2e_speedup": 1.0016722758267844},
+      "mixed_ja_en": {"prefill_speedup": 1.0034774206690742, "h16_e2e_speedup": 1.0021447643092136, "h32_e2e_speedup": 1.0015929071012089}
+    }
+  },
+  "quality": {
+    "pass": true,
+    "finite": true,
+    "teacher_forced_steps": 320,
+    "max_kl_divergence": 0.030835657418180357,
+    "top1_matches": 317,
+    "top1_total": 320,
+    "top1_agreement": 0.990625,
+    "categories": {
+      "code": {"max_kl": 0.030835657418180357, "top1_matches": 128, "steps": 128, "top1_agreement": 1.0},
+      "general_en": {"max_kl": 0.014878840215900621, "top1_matches": 63, "steps": 64, "top1_agreement": 0.984375},
+      "general_ja": {"max_kl": 0.019526438240559253, "top1_matches": 64, "steps": 64, "top1_agreement": 1.0},
+      "mixed_ja_en": {"max_kl": 0.029573722341003965, "top1_matches": 62, "steps": 64, "top1_agreement": 0.96875}
+    },
+    "poolside_oracle": {
+      "pass": true,
+      "kl_divergence": 0.00006979882359643476,
+      "candidate_top1": 94557,
+      "reference_top1": 94557
+    },
+    "free_running": {
+      "same_mode_repeat_deterministic": true,
+      "complete_h32_pairs_exact": 24,
+      "complete_pairs_total": 30,
+      "h16_pairs_exact": 27,
+      "h32_pairs_exact": 24,
+      "differing_prompts": ["general_en_explain", "mixed_ja_en_translate"]
+    }
+  },
+  "lifecycle": {
+    "pass": true,
+    "active_allocations_before": 0,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_before": 0,
+    "current_allocated_bytes_after": 0,
+    "total_allocated_bytes": 109290522128,
+    "total_freed_bytes": 109290522128
+  },
+  "kernel_trace": {
+    "symbol": "laguna_global_attention_prefill_qrow2_online_bf16_kernel",
+    "baseline_median_ms": 86.751983,
+    "candidate_median_ms": 14.807291,
+    "speedup": 5.859,
+    "workgroup": 32,
+    "vgpr": 48,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "raw_sha256": "9230c9367ef085bfeb8830130c7f3eb8247e15944c5c1f7c27f154bf4a100daf"
+  },
+  "decision": {
+    "accepted": true,
+    "reason": "all long-context and complete category quality/performance/lifecycle conditions pass",
+    "fallback_retained": true,
+    "backend_default_changed": true
+  },
+  "raw_category": {
+    "path": "/tmp/laguna-global-qrow2-online-category.raw.json",
+    "sha256": "d15919a492ca8817e550f906a2efb27d1ca979048d3b9eb978b08c28b2f982d0"
+  }
+}
