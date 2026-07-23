@@ -1,6 +1,6 @@
 # hipEngine Serving-Latency Optimization Plan
 
-Status: 2026-07-23 (active; S0-S2 complete, S3-S5 pending).
+Status: 2026-07-23 (active; S0-S3 complete, S4-S5 pending).
 
 Scope: resident Poolside Laguna S 2.1 Q4_K_M serving on the local Ryzen AI
 MAX+ 395 / Radeon 8060S (`gfx1151`) host, starting with exact greedy `c=1`.
@@ -197,8 +197,8 @@ stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
 | S0 | #17 | Document path, definitions, evidence, telemetry, and gates | process only | **complete** |
 | S1 | #18 | Pool/reset one generator-owned Laguna resident session | **31.800 ms setup and 34.877 ms direct TTFT saved** | **complete** |
 | S2 | #19 | Render/encode once into request-local prepared prompt ownership | **6 -> 1 prompt encodes; 8.17/8.70 ms isolated 4K blocking/streaming TTFT saved** | **complete** |
-| S3 | #20 | Prefix-aware stop-safe streaming holdback | workload-dependent; up to 61 ms per avoidable held token | pending |
-| S4 | #21 | Exact stateful Laguna KV continuation | seconds on guaranteed-hit follow-up turns | pending, blocked by S3 |
+| S3 | #20 | Prefix-aware stop-safe streaming holdback | **184.536/123.243 ms useful-content delay removed in deterministic nonmatch/failed-prefix lanes** | **complete** |
+| S4 | #21 | Exact stateful Laguna KV continuation | seconds on guaranteed-hit follow-up turns | pending |
 | S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | seconds under contention; c=1 exact first | pending, blocked by S4 |
 
 The separate model-prefill campaign runs in parallel. S1-S5 may consume its
@@ -411,6 +411,38 @@ Tests must cover:
   the avoided token intervals rather than merely changing chunk count.
 
 No user-selected stop string or fixed token ID may be special-cased.
+
+### Retained result (2026-07-23)
+
+Revision `71f2af038cf5eea88f1997d178d815cfaad15681` precomputes the
+bounded set of all proper configured stop-token prefixes. On each nonterminal
+step it retains only the longest pending suffix in that set and emits every
+preceding token through the existing incremental UTF-8 decoder. Complete stop
+matches still terminate and suppress the exact matched suffix before this path;
+blocking output semantics are unchanged.
+
+The clean host-only integration probe compares baseline
+`a95adcac82d8ae0b018fe1167b5108422afa47a9` with the candidate through the
+production Laguna streaming generator. A deterministic fake resident session
+replays four exact IDs with 61 ms between decode tokens, approximating the
+retained 16.384 tok/s rate. It has two warmups and 20 measured samples per arm.
+No GPU, model execution, or tokenizer wall is included; this measures emission
+timing, not throughput.
+
+| Four-token workload with four-token stop | Baseline useful TTFT | Prefix-aware useful TTFT | Saved | Complete E2E |
+| --- | ---: | ---: | ---: | ---: |
+| First token cannot match stop | 184.738 ms | **0.203 ms** | **184.536 ms (99.89%)** | 184.832 -> 184.108 ms |
+| First token is a prefix, second disproves it | 184.695 ms | **61.452 ms** | **123.243 ms (66.73%)** | 184.776 -> 184.029 ms |
+| Exact stop | no visible content | no visible content | exact suppression retained | 184.767 -> 183.955 ms |
+
+All visible text, generated IDs, and terminal finish details match baseline.
+The complete 30-case Laguna generation file covers nonmatch, partial failure,
+exact/shared/overlapping/suffix-contained stops, request order, `min_tokens`,
+max-length flush, split byte-BPE UTF-8, EOT, cancellation/abandonment, and
+blocking/stream reconstruction. Artifact:
+[`2026-07-23-laguna-prefix-aware-stop-streaming.json`](../benchmarks/results/2026-07-23-laguna-prefix-aware-stop-streaming.json).
+Raw SHA-256 values are `e36a0079...d2c0099f` and
+`adfcd691...a78bd32`; exact commands are recorded in the artifact.
 
 ---
 
