@@ -124,13 +124,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "gguf_q4_k_t16_v1",
         "gguf_q6_k_t16_v1",
     }
-    assert set(plan.grouped_wmma16_down_keys) == {
-        "gguf_q4_k_t16_v1",
-        "gguf_q6_k_t16_v1",
-    }
-    assert plan.grouped_wmma_tile_map_key == KernelKey(
-        "hip_gfx1151", "moe_wmma_tile_map", "generic", "tile16"
-    )
     assert plan.grouped_weighted_sum_shared_add_key == KernelKey(
         "hip_gfx1151", "weighted_lanes_sum+shared_add", "bf16", "out"
     )
@@ -157,12 +150,12 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151")
-        == "adaptive_grouped_smallm"
+        == "adaptive_grouped_smallm_fused"
     )
     assert resolve_laguna_selected_down_mode("hip_gfx1151", "direct") == "direct"
     assert (
-        resolve_laguna_selected_down_mode("hip_gfx1151", "adaptive_wmma16_down")
-        == "adaptive_wmma16_down"
+        resolve_laguna_selected_down_mode("hip_gfx1151", "adaptive_grouped_smallm")
+        == "adaptive_grouped_smallm"
     )
     assert (
         resolve_laguna_selected_down_mode(
@@ -170,8 +163,9 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
         )
         == "adaptive_grouped_smallm_fused"
     )
-    with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
-        resolve_laguna_selected_down_mode("hip_gfx1151", "invalid")
+    for rejected in ("wmma16_down", "adaptive_wmma16_down", "invalid"):
+        with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
+            resolve_laguna_selected_down_mode("hip_gfx1151", rejected)
 
 
 def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> None:
@@ -242,7 +236,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     bulk_scratch = None
     grouped_scratch = None
     fused_scratch = None
-    wmma_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -404,21 +397,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(fused_actual),
             _f32_to_bf16_u16(grouped_actual),
         )
-        wmma_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
-        wmma_output = run_laguna_moe_rows(
-            bulk_hidden_buffer.ptr,
-            layer,
-            wmma_scratch,
-            rows=3,
-            selected_down_mode="wmma16_down",
-        )
-        wmma_actual = _read_bf16(wmma_output, (3, h))
-        wmma_relative_l2 = float(
-            np.linalg.norm(wmma_actual.astype(np.float64) - bulk_actual.astype(np.float64))
-            / max(np.linalg.norm(bulk_actual.astype(np.float64)), 1.0e-12)
-        )
-        assert np.isfinite(wmma_actual).all()
-        assert wmma_relative_l2 <= 0.02
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -436,11 +414,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert bulk_scratch.selected_experts.nbytes == 3 * k * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
-        assert wmma_scratch.grouped_wmma_tile_capacity == 3 * k
-        assert wmma_scratch.grouped_wmma_tile_expert.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
-        if wmma_scratch is not None:
-            wmma_scratch.free()
         if fused_scratch is not None:
             fused_scratch.free()
         if grouped_scratch is not None:

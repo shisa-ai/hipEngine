@@ -618,7 +618,6 @@ class LagunaEagerLibraries:
     router_logits: object
     router_select: object
     selected_experts: object
-    selected_wmma_prefill: object
     iq_selected_experts: object
     moe_group: object
     routed_sum: object
@@ -668,7 +667,6 @@ class LagunaEagerLibraries:
             "grouped_metadata": self.moe_group,
             "grouped_gather": self.moe_group,
             "grouped_down": self.selected_experts,
-            "grouped_wmma_down": self.selected_wmma_prefill,
             "grouped_weighted_sum": self.routed_sum,
             "grouped_weighted_sum_shared_add": self.routed_sum,
             "routed_sum": self.routed_sum,
@@ -1152,10 +1150,6 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
     )
-    from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
-        build_gguf_k_t16_selected_prefill,
-    )
-
     kwargs = {
         "compiler_version": compiler_version,
         "require_cached": require_cached,
@@ -1181,7 +1175,6 @@ def load_laguna_eager_libraries(
             router_logits=build_qwen35_router(**kwargs),
             router_select=build_laguna_router(**kwargs),
             selected_experts=build_gguf_t16_selected_gemv(**kwargs),
-            selected_wmma_prefill=build_gguf_k_t16_selected_prefill(**kwargs),
             iq_selected_experts=build_gguf_iq_gemv(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),

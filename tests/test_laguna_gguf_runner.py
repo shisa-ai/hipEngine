@@ -518,7 +518,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     )
     assert session.prefill_chunk_size == 128
     assert session.swa_prefill_variant == "swa_context_rows_wave32_exact_spans"
-    assert session.selected_down_mode == "adaptive_grouped_smallm"
+    assert session.selected_down_mode == "adaptive_grouped_smallm_fused"
     assert session.verifier_scratch is None
     session.close()
     session.close()

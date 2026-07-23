@@ -2307,28 +2307,34 @@ repeat either experiment unchanged.
   grouped-small-M therefore remains the gfx1151 default. M32 uses the same
   reassociated WMMA arithmetic while natural/Zipf padding is still
   2.924/3.421x at 256 and 1.867/2.134x at 512, so no M32 category run is
-  warranted. The natural M16/M32 lane is closed; retain the explicit M16 route
-  only as a diagnostic through the following fusion bisection, then remove its
-  positive selector. Evidence:
+  warranted. The natural M16/M32 lane is closed. After the following exact
+  fusion passed, the M16 runtime selectors, route scratch, and benchmark
+  harnesses were removed; the separately registered kernel leaf/oracle remains
+  as diagnostic evidence. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json`
   and
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category-rejected.json`.
-- [ ] After gate/up, evaluate fused SiLU and routing-weighted down/combine to
-  remove the largest expert intermediates. The exact grouped-combine candidate
-  is now wired explicitly: it preserves all ten slot-order FMAs, rounds selected
-  output to BF16, adds the BF16 shared output, and rounds again while removing
-  one add launch and the routed-output round trip. The unfused registered chain
-  remains. Clean detached evidence retains the physical candidate: the
-  production-shape combine sub-window is BF16-bit exact and improves
-  **1.249-1.313x** at every 32-128-row shape (**1.265x** aggregate GPU span),
-  while the five-repeat complete-model screen is non-regressive at **0.99972x**
-  aggregate with all 60 next IDs exact and shape ratios **0.99863-1.00102x**.
-  This is a launch/traffic claim, not a standalone model-wall win. The checked-in
-  category harness now compares unfused/fused grouped modes with exact h16/h32,
-  teacher-forced KL/top-1, per-category non-regression, and lifecycle gates; its
-  clean hardware run is the only blocker to gfx1151 default promotion. Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-screen.json`.
-  Do not introduce order-dependent atomics across ten experts.
+- [x] After gate/up, evaluate fused SiLU and routing-weighted down/combine to
+  remove the largest expert intermediates. The exact grouped-combine default
+  preserves all ten slot-order FMAs, rounds selected output to BF16, adds the
+  BF16 shared output, and rounds again while removing one launch and the
+  routed-output round trip. The registered unfused grouped chain remains the
+  rollback. Clean production-shape GPU span improves **1.249-1.313x** at every
+  32-128-row shape (**1.265x** aggregate); five-repeat complete-model wall is
+  non-regressive at **0.99972x** with all 60 IDs exact.
+
+  The clean three-repeat category gate is also exact and non-regressive:
+  aggregate prefill **53.1880->53.1840 tok/s (0.999924x)**, h16/h32 E2E
+  **0.999769/0.999960x**, and per-category prefill **0.998323-1.001962x**.
+  All 320 teacher-forced logits are identical (`KL=0`, top-1 100%), all 30
+  h16/h32 pairs and repeats are exact, Poolside KL/top-1 is
+  `6.6214e-6/1.0`, and tracked ownership returns to zero. gfx1151 therefore
+  defaults to adaptive fused combine from 32 rows; gfx1100/short rows retain
+  direct and explicit unfused grouped selection remains the rollback. This is
+  a launch/traffic promotion, not a standalone model-wall headline. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-screen.json`
+  and the retained category artifact. Do not introduce order-dependent atomics
+  across ten experts.
 
 Stop rule: remove a candidate that is slower inclusively at every natural
 shape, or whose best applicable family speedup is below 2x with no material
