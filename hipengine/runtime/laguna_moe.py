@@ -812,7 +812,7 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=True,
     )
     launch_gguf_linear(
         shared_up,
@@ -826,7 +826,7 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=True,
     )
     plan.shared_silu(
         scratch.shared_gate.ptr,
@@ -848,7 +848,7 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=True,
     )
     plan.add(
         scratch.routed_output.ptr,
@@ -953,7 +953,7 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=tokens == 1,
     )
     launch_gguf_linear(
         shared_up,
@@ -967,7 +967,7 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=tokens == 1,
     )
     plan.shared_silu(
         scratch.shared_gate.ptr,
@@ -989,7 +989,7 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=tokens == 1,
     )
     plan.add(
         scratch.routed_output.ptr,
