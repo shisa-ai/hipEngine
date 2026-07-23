@@ -67,12 +67,22 @@ def test_extract_hipengine_response_retains_exact_ids_and_route() -> None:
 
 
 def test_greedy_requests_keep_one_compatible_seed() -> None:
-    args = type("Args", (), {"served_model_name": "model", "decode_tokens": 2, "seed": 12345})()
+    args = type(
+        "Args",
+        (),
+        {
+            "served_model_name": "model",
+            "decode_tokens": 2,
+            "seed": 12345,
+            "hipengine_top_k": 0,
+        },
+    )()
 
     first = SCRIPT._request_payload(args, "hipengine", [1, 2], 0)
     eighth = SCRIPT._request_payload(args, "hipengine", [3, 4], 7)
 
     assert first["seed"] == eighth["seed"] == 12345
+    assert first["top_k"] == eighth["top_k"] == 0
 
 
 def test_generation_shape_requires_one_real_backend_group() -> None:
@@ -262,6 +272,30 @@ def test_stream_route_summary_requires_native_nonserial_hipengine_cn() -> None:
     sample["records"][0]["serial_decode_fallback"] = True
     assert SCRIPT._stream_route_summary(
         "hipengine", concurrency=13, samples=[sample]
+    )["passed"] is False
+
+
+def test_stream_route_summary_accepts_laguna_scheduler_owned_c1_model_steps() -> None:
+    sample = {
+        "records": [
+            {
+                "execution_path": "laguna_resident_scheduler_c1",
+                "serial_decode_fallback": False,
+                "native_caware_decode": False,
+            }
+            for _ in range(2)
+        ]
+    }
+
+    summary = SCRIPT._stream_route_summary(
+        "hipengine", concurrency=2, samples=[sample]
+    )
+
+    assert summary["passed"] is True
+    assert summary["route_policy"] == "scheduler_native_model_c1"
+    sample["records"][0]["serial_decode_fallback"] = True
+    assert SCRIPT._stream_route_summary(
+        "hipengine", concurrency=2, samples=[sample]
     )["passed"] is False
 
 
@@ -557,6 +591,14 @@ def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() ->
         native_values=[False] * 8,
         shape_passed=False,
         resident_capacity=8.0,
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=2,
+        expectation="scheduler-c1",
+        serial_values=[False] * 6,
+        native_values=[False] * 6,
+        shape_passed=True,
+        resident_capacity=2.0,
     )
     assert not SCRIPT._hipengine_route_expectation_passes(
         concurrency=4,

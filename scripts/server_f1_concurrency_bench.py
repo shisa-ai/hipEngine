@@ -708,7 +708,7 @@ def _request_payload(args: argparse.Namespace, engine: str, prompt: Sequence[int
             "prompt": [int(token) for token in prompt],
             "max_tokens": int(args.decode_tokens),
             "temperature": 0.0,
-            "top_k": 1,
+            "top_k": int(args.hipengine_top_k),
             "top_p": 1.0,
             "seed": int(args.seed),
             "ignore_eos": True,
@@ -1008,6 +1008,22 @@ def _stream_route_summary(
     native_expected = False if int(concurrency) == 1 else True
     paro_native_path = "paro_resident_native_width_decode"
     paro_serial_path = "paro_resident_serial_decode"
+    laguna_scheduler_path = "laguna_resident_scheduler_c1"
+    if paths == [laguna_scheduler_path]:
+        return {
+            "passed": bool(records)
+            and all(value is False for value in serial)
+            and all(value is False for value in native),
+            "route_policy": "scheduler_native_model_c1",
+            "paths": paths,
+            "serial_decode_fallback_values": sorted(
+                {value for value in serial if isinstance(value, bool)}
+            ),
+            "native_caware_decode_values": sorted(
+                {value for value in native if isinstance(value, bool)}
+            ),
+            "native_caware_decode_expected": False,
+        }
     if paths and set(paths).issubset({paro_native_path, paro_serial_path}):
         if int(concurrency) == 1:
             records_consistent = all(
@@ -1197,6 +1213,10 @@ def _hipengine_route_expectation_passes(
         return all(value is True for value in serial_values) and all(
             value is False for value in native_values
         )
+    if str(expectation) == "scheduler-c1":
+        return bool(shape_passed) and all(
+            value is False for value in serial_values
+        ) and all(value is False for value in native_values)
     if str(expectation) != "native" or not bool(shape_passed):
         return False
     if rows == 1:
@@ -2101,7 +2121,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 f"{args.prompt_length}-token rows filled with {args.prompt_token_id}; final token cycles "
                 f"{args.prompt_token_id}..{args.prompt_token_id + 3}"
             ),
-            "sampling": "temperature=0, top_k=1, top_p=1, ignore_eos=true, MTP disabled",
+            "sampling": (
+                f"temperature=0, top_k={args.hipengine_top_k if engine == 'hipengine' else 1}, "
+                "top_p=1, ignore_eos=true, MTP disabled"
+            ),
             "concurrencies": concurrencies,
             "warmup_runs_per_width": int(args.warmup_runs),
             "measured_runs_per_width": int(args.measured_runs),
@@ -2225,9 +2248,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hipengine-python", type=Path, default=Path(sys.executable))
     parser.add_argument(
         "--hipengine-route-expectation",
-        choices=("native", "serial"),
+        choices=("native", "serial", "scheduler-c1"),
         default="native",
-        help="Expected hipEngine c>N route; serial also disables PARO native batch decode in child servers",
+        help=(
+            "Expected hipEngine model route; scheduler-c1 is native scheduler "
+            "ownership with exact serial c=1 physical model transitions"
+        ),
+    )
+    parser.add_argument(
+        "--hipengine-top-k",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="hipEngine request top_k; Laguna exact greedy serving requires 0",
     )
     parser.add_argument(
         "--hipengine-prefill-decode-policy",
