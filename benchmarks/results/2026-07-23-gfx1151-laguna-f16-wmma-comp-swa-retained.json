@@ -1,0 +1,311 @@
+{
+  "created_at": "2026-07-23T14:26:40.771826+00:00",
+  "decision": {
+    "failed_checks": [],
+    "pass": true,
+    "policy": {
+      "free_running_ids": "report complete pair equality; same-mode repeats deterministic",
+      "lifecycle": "tracked allocations return exactly to baseline",
+      "performance": "aggregate and every-category prefill faster; aggregate E2E faster; each-category E2E >= 0.98x; decode within 2%",
+      "quality": "KL <= 0.05 and top-1 >= 90% suite-wide and per category",
+      "shape_screen": "every M16-512 full/SWA family faster and M128 weighted >=2x"
+    },
+    "reason": "Every declared quality, category performance, decode-neutrality, oracle, determinism, shape-screen, and lifecycle gate passed."
+  },
+  "evidence": {
+    "category_gate": {
+      "command": [
+        "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+        "scripts/laguna_grouped_down_category_bench.py",
+        "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+        "--comparison",
+        "f16_wmma_comp_swa",
+        "--shape-screen",
+        "benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-screen.json",
+        "--prompts",
+        "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "--template",
+        "tests/fixtures/laguna_poolside_v1_template.json",
+        "--oracle",
+        "tests/fixtures/laguna_poolside_v1_oracle.json",
+        "--oracle-logprobs",
+        "tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy",
+        "--backend",
+        "hip_gfx1151",
+        "--context-length",
+        "4096",
+        "--chunk-size",
+        "128",
+        "--output-horizons",
+        "16,32",
+        "--repetitions",
+        "3",
+        "--warmup-output-tokens",
+        "2",
+        "--teacher-forced-tokens",
+        "32",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--repacked-cache",
+        "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+        "--model-sha256",
+        "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+        "--output",
+        "/tmp/2026-07-23-gfx1151-laguna-f16-wmma-comp-swa-category.raw.json"
+      ],
+      "load_seconds_excluded": 49.59075080102775,
+      "raw_nbytes": 273158,
+      "raw_not_committed": true,
+      "raw_sha256": "ae2c949df4a8cc856915ccc55f7ea749b231c2e647fcbbb16405ea15587c82ef",
+      "resident_nbytes": 77125438836
+    },
+    "shape_screen": {
+      "aggregate_speedup": 6.285032619807045,
+      "candidate_variant": "wmma_comp",
+      "comparison": "f16_wmma_comp_swa",
+      "grouped_min_rows": null,
+      "model_sha256": null,
+      "pass": true,
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-screen.json",
+      "revision": "dae2afaad425ca3df32cd5b390bae6178b1e82dd",
+      "sha256": "35ac7774bf72d73a6280b3dbf99f520c656e63637ec6e463178daa393ead14d9"
+    }
+  },
+  "kind": "hipengine_laguna_f16_wmma_comp_swa_retained",
+  "lifecycle": {
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77900501084,
+      "peak_allocations": 2077,
+      "total_allocated_bytes": 109290522128,
+      "total_freed_bytes": 109290522128
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "limitations": [
+    "Quality-gated reassociation: free-running IDs need not equal exact tiled when KL/top-1 and all other declared gates pass.",
+    "The custom M128 leaf remains below the retained inclusive hipBLASLt ceiling; the library is diagnostic and not a runtime dependency.",
+    "Only Radeon 8060S/gfx1151 Q4_K_M is promoted; gfx1100 and other quants are unchanged."
+  ],
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "pass": true,
+  "performance": {
+    "speedup": {
+      "categories": {
+        "code": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.1576043934261875
+            },
+            "32": {
+              "e2e_speedup": 1.1062218588854875
+            }
+          },
+          "prefill_speedup": 1.2829658339127374
+        },
+        "general_en": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.1509061424864353
+            },
+            "32": {
+              "e2e_speedup": 1.1003293970930794
+            }
+          },
+          "prefill_speedup": 1.2820632402496581
+        },
+        "general_ja": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.1797014762613671
+            },
+            "32": {
+              "e2e_speedup": 1.1243416878624615
+            }
+          },
+          "prefill_speedup": 1.3014419884076631
+        },
+        "mixed_ja_en": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.1954346469100188
+            },
+            "32": {
+              "e2e_speedup": 1.1401763169254973
+            }
+          },
+          "prefill_speedup": 1.3072903828031366
+        }
+      },
+      "horizons": {
+        "16": {
+          "decode_speedup": 1.0001564183969374,
+          "e2e_speedup": 1.1700376278462306
+        },
+        "32": {
+          "decode_speedup": 0.9998197253911588,
+          "e2e_speedup": 1.1166318153230523
+        }
+      },
+      "prefill_speedup": 1.2931263204350816,
+      "ttft_speedup": 1.2882747741528795
+    },
+    "tiled": {
+      "h16_decode_tok_s": 16.539475323954594,
+      "h16_e2e_output_tok_s": 6.335978613172248,
+      "h32_decode_tok_s": 16.39712882453155,
+      "h32_e2e_output_tok_s": 9.119628701916174,
+      "prefill_tok_s": 53.38804296108752,
+      "ttft_median_seconds": 1.5290025559952483
+    },
+    "wmma_comp_swa": {
+      "h16_decode_tok_s": 16.542062402170952,
+      "h16_e2e_output_tok_s": 7.413333386640506,
+      "h32_decode_tok_s": 16.394172838546588,
+      "h32_e2e_output_tok_s": 10.183267552492868,
+      "prefill_tok_s": 69.03748354950116,
+      "ttft_median_seconds": 1.1868605880299583
+    }
+  },
+  "performance_claim": true,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "protocol": {
+    "activation_quantization_included": true,
+    "chunk_size": 128,
+    "comparison": "f16_wmma_comp_swa",
+    "decode_route": "identical exact c=1 path for both modes",
+    "modes": [
+      "tiled",
+      "wmma_comp_swa"
+    ],
+    "output_horizons": [
+      16,
+      32
+    ],
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "teacher_forced_tokens_per_prompt": 32,
+    "timed_order": "alternating tiled/wmma_comp_swa per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
+    "warmup_output_tokens_per_mode": 2
+  },
+  "quality": {
+    "free_running": {
+      "exact_pairs": 24,
+      "mismatch_prompt_ids": [
+        "mixed_ja_en_review",
+        "mixed_ja_en_translate"
+      ],
+      "pair_equality_reported_not_required": true,
+      "pairs": 30,
+      "same_mode_repeat_deterministic": true
+    },
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 4.295086910063869e-05,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_v1_oracle.json",
+      "oracle_distribution": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "teacher_forced": {
+      "categories": {
+        "code": {
+          "finite": true,
+          "max_kl_divergence": 0.011019779597675198,
+          "steps": 128,
+          "top1_agreement": 1.0,
+          "top1_matches": 128
+        },
+        "general_en": {
+          "finite": true,
+          "max_kl_divergence": 0.010981806559808292,
+          "steps": 64,
+          "top1_agreement": 1.0,
+          "top1_matches": 64
+        },
+        "general_ja": {
+          "finite": true,
+          "max_kl_divergence": 0.015359204399778998,
+          "steps": 64,
+          "top1_agreement": 1.0,
+          "top1_matches": 64
+        },
+        "mixed_ja_en": {
+          "finite": true,
+          "max_kl_divergence": 0.043887929421586015,
+          "steps": 64,
+          "top1_agreement": 0.96875,
+          "top1_matches": 62
+        }
+      },
+      "failed_checks": [],
+      "finite": true,
+      "max_kl_divergence": 0.043887929421586015,
+      "pass": true,
+      "steps": 320,
+      "thresholds": {
+        "max_kl_divergence": 0.05,
+        "minimum_each_category_top1_agreement": 0.9,
+        "minimum_suite_top1_agreement": 0.9
+      },
+      "top1_agreement": 0.99375,
+      "top1_matches": 318
+    }
+  },
+  "repo": {
+    "measured_route_revision": "99ce69780cd9271522dfdf33328c55381a641474",
+    "measured_tracked_clean": true,
+    "promotion_revision": "2ec20c8a0"
+  },
+  "route": {
+    "backend": "hip_gfx1151",
+    "backend_capability": "LAGUNA_F16_PREFILL_STRATEGY=wmma_comp_swa",
+    "candidate_scope": "source-F16 Q/K/V/gate/O projections on the 36 sliding-attention layers only",
+    "full_attention": "exact tiled for all 12 layers",
+    "minimum_rows": 16,
+    "rollback": [
+      "HIPENGINE_LAGUNA_F16_PREFILL=tiled",
+      "HIPENGINE_LAGUNA_F16_PREFILL=gemv"
+    ],
+    "rows_1": "exact GEMV",
+    "rows_2_to_15": "exact tiled",
+    "unmeasured_backends": "unchanged"
+  },
+  "schema": 1,
+  "scope_closure": {
+    "all_layer_compensated_wmma": "rejected at max KL 0.060389",
+    "broader_component_and_full_swa_slices": "rejected by the complete one-load bisection",
+    "dense_shared_current_residency": "LPF-3 exact pair route rejected at 0.9929x; real WMMA requires a different low-ceiling residency project",
+    "direct_all_layer_wmma": "rejected at max KL 0.097062",
+    "qkv_gate_composite": "same N-tile count and activation loads; only three launch removals remain and are handed to task 63"
+  },
+  "status": "retained_default"
+}
