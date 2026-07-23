@@ -2796,9 +2796,14 @@ Proceed in measured Amdahl order:
    **94 dispatches/token (869 -> 775)** while preserving both BF16 add
    boundaries. Every clean context profile improves, every category's decode
    and E2E rows improve, and D9 promotes h32 decode to **47.132 tok/s**; and
-15. **NEXT:** reprofile retained D9 before selecting another quant, SWA, or
-   submission candidate. Token8 SWA needs a score/value split rather than an
-   assumed 2x, while near-4K remains a separate global-attention problem.
+15. **DONE:** reprofile retained D9; short Q5 output, selected IQ2, retained Q5
+   query/gate, token4 SWA, and weighted IQ3 rank at
+   **2.659/2.358/2.189/2.153/2.131 ms/token**, while SWA dominates from 512
+   tokens and near-4K remains global-attention led; and
+16. **SELECTED (D10):** screen an exact local256 token8 SWA sibling. It halves
+   score/value loop batches and modeled block barriers without changing K/V
+   loads or arithmetic order. Task #283 implements/gates it and task #284 owns
+   clean context/category retention.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D9 must reduce the
 canonical **21.217 ms to 20 ms**, another **1.217 ms / 5.74% wall** or **6.08%
@@ -3093,13 +3098,67 @@ and tracked ownership returns to zero. Retention evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json`.
 
 Canonical D9 is **47.132 tok/s / 21.217 ms/token**, still **1.217 ms** above
-20 ms and requiring another **6.084% throughput** to reach 50 tok/s. A
-local256 token8 SWA sibling remains a separate later screen. Token4 already
-eliminates the second key pass, so token8 needs a measured score/value
-breakdown rather than an assumed 2x. Fusing attention with its softplus gate is
-also deferred: the current gate family is only **0.117 ms/token** and 48
-launches, below D9's measured boundary. Reprofile D9 before selecting either;
-near-4K global attention remains a separate requirement.
+20 ms and requiring another **6.084% throughput** to reach 50 tok/s. The D10
+residual analysis below selects local256 token8 SWA rather than assuming it is
+2x faster. Fusing attention with its softplus gate remains deferred: the gate
+family is only **0.121 ms/token** and 48 launches. Near-4K global attention
+remains a separate requirement.
+
+### D10 token8 exact SWA decode (selected design)
+
+The retained clean D9 traces are runtime-code-identical to current `216bb0c4a`.
+Short Q5 attention output, selected IQ2 dual+SiLU, retained Q5 query/gate pair,
+token4 SWA, and weighted IQ3 down rank at
+**2.659/2.358/2.189/2.153/2.131 ms/token**. The Q5 tile16 traffic premise was
+already rejected on both production shapes; IQ2 already carries retained
+branchless/pair16/local64/tile2 work and rejected inclusive dp4a; both Q5 pairs,
+the Q6 pair, weighted IQ3, and D9 are already exact specialized schedules. SWA
+is therefore the largest fresh context-sensitive family, and it dominates at
+512+ tokens: token4 costs **2.153/13.099/13.118/13.132 ms/token** at
+short/512/1K/near-4K. Global attention grows
+**0.518/2.987/5.900/22.637 ms/token**, remaining the separate near-4K owner.
+The complete candidate kernel sums are **17.289/30.534/33.452/50.236 ms**,
+spans are **20.389/33.798/36.712/53.618 ms**, and span-minus-sum residuals are
+**3.100/3.265/3.260/3.382 ms/token** across those contexts.
+
+D10 adds a separately registered
+`(hip_gfx1100, laguna_attention_decode, bf16,
+swa_context_token8_exact_spans)` sibling. One local256 block still owns one
+query head. Eight wave32 units compute eight independent 128-D dots using the
+retained exact `((p0+p64)+(p32+p96))` then offsets 16..1 tree. Thread 0 updates
+max and denominator for slots 0..7 in increasing logical order. Threads 0..127
+then load and FMA the eight value rows in that same order while threads
+128..255 stay arithmetic-idle but participate in every block barrier. Scores
+remain unscaled in LDS so max and exponential paths retain their separate
+`dot*scale` rounding; final denominator clamp and F32 context output are
+unchanged. Complete `KVLiveSpans`, BF16 K/V, wrap, and eviction semantics remain
+the ABI. The current token4 key remains the registry/backend/shape fallback.
+Dynamic LDS rises only **4,120 -> 4,136 B** for eight batch weights; current
+token4 is local128/VGPR24/scratch0.
+
+For the stable short slots 72..85, token4 executes mean **20.000 batches / 81
+block barriers per layer**; token8 models **10.286 / 42.143**, a **47.97%**
+barrier reduction. At the full 512-token window, batches/barriers move
+**128/513 -> 64/257 (-49.90% barriers)**. This is not a 2x throughput claim:
+all BF16 K/V loads, dot arithmetic, exponentials, denominator additions, and
+value FMAs remain; token8 doubles duplicated query-register loads and leaves
+half the block idle during value accumulation. Actual cached leaves decide.
+
+The Amdahl bound is explicit. D9 needs **1.217 ms** to reach 20 ms, or
+**56.52%** of the measured short SWA family. Removing SWA entirely reaches
+**52.46 tok/s**, while the planning-only half-SWA case saves **1.076 ms** and
+reaches just **49.65 tok/s**, still **0.140 ms** above 20 ms. D10 cannot be
+assumed to close 50 alone and must compound with later exact work.
+
+RED requires token4/token8 output-bit identity at empty/short/full, 510..513
+wrap, reversed physical offsets, explicit eviction, and adversarial scores.
+GREEN requires the expected local256/token8 symbol, 4,136 B dynamic LDS, no
+scratch, and faster cached actual short plus full-window leaves. Promotion then
+requires clean short/512/1K/near-4K kernel-sum/span wins and the complete
+category/state/KV/lifecycle gate. Do not widen to local512 token16 unless
+token8 is exact and positive but leaves a measured synchronization share;
+barrier arithmetic alone does not admit a larger block. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-residual-profile.json`.
 
 ## Laguna DFlash Follow-on Plan
 

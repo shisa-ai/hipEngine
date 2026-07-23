@@ -1,0 +1,1065 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_d9_residual_profile",
+  "date": "2026-07-24",
+  "status": "diagnostic_next_candidate",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "source": {
+    "profiled_revision": "30cf6f0755ee53afc1c72e9106fbab887ea067bc",
+    "current_revision": "216bb0c4aea46aab6355ade0a03961e12b3f5373",
+    "profiled_runtime_code_identical_to_current": true,
+    "retained_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json",
+    "profile_commands": [
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-short-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-short-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-512-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 512 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-512-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 1024 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 3968 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-candidate/bench.json"
+    ],
+    "warmup_steps_excluded": 2,
+    "profile_summary_sha256": "db32f653ca3f31cfec135366b179a32c49bb9905f53d3a883d337a65b8bc43e5"
+  },
+  "contexts": [
+    {
+      "label": "short",
+      "prompt_tokens": 69,
+      "stable_steps": 14,
+      "dispatches_per_token": 775,
+      "kernel_sum_ms_per_token": 17.28889692857143,
+      "span_median_ms_per_token": 20.388559,
+      "span_minus_kernel_sum_ms_per_token": 3.099662071428572,
+      "profiled_child_tok_s": 45.15791344206131,
+      "families": [
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.659412071428571,
+          "kernel_sum_share_pct": 15.382196344948174,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.3584291428571427,
+          "kernel_sum_share_pct": 13.64129332600526,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.1885023571428572,
+          "kernel_sum_share_pct": 12.658426770571834,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "swa_attention_decode_token4",
+          "ms_per_token": 2.1529605,
+          "kernel_sum_share_pct": 12.452850571640823,
+          "calls_per_token": 36.0,
+          "median_us_per_call": 59.7805,
+          "resources": [
+            [
+              128,
+              24,
+              128,
+              0,
+              0,
+              9216,
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.1306495,
+          "kernel_sum_share_pct": 12.323802431136677,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9451904285714285,
+          "kernel_sum_share_pct": 5.467037211665123,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.90494,
+          "kernel_sum_share_pct": 5.2342263577528,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.6014591428571429,
+          "kernel_sum_share_pct": 3.478875172557588,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 0.5182608571428572,
+          "kernel_sum_share_pct": 2.9976513787087558,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.3951195,
+          "kernel_sum_share_pct": 2.2853945027980944,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.3938002857142857,
+          "kernel_sum_share_pct": 2.2777640895267064,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "d9_moe_tail_next_rmsnorm",
+          "ms_per_token": 0.38920528571428575,
+          "kernel_sum_share_pct": 2.2511863383897537,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.3825281428571428,
+          "kernel_sum_share_pct": 2.212565350106179,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.32261071428571425,
+          "kernel_sum_share_pct": 1.8659994077040947,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "head_rmsnorm_rotary",
+          "ms_per_token": 0.20543278571428572,
+          "kernel_sum_share_pct": 1.1882353545343307,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "kv_write",
+          "ms_per_token": 0.16453835714285714,
+          "kernel_sum_share_pct": 0.951699566621529,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "selected_iq4_fallback",
+          "ms_per_token": 0.12605785714285714,
+          "kernel_sum_share_pct": 0.7291260840044422,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "attention_softplus_gate",
+          "ms_per_token": 0.12121514285714285,
+          "kernel_sum_share_pct": 0.7011155388220525,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.11690078571428571,
+          "kernel_sum_share_pct": 0.676161042530694,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.09238635714285715,
+          "kernel_sum_share_pct": 0.5343681411517962,
+          "calls_per_token": 4.0
+        },
+        {
+          "family": "silu_mul",
+          "ms_per_token": 0.08544907142857143,
+          "kernel_sum_share_pct": 0.4942424712322699,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.014437142857142857,
+          "kernel_sum_share_pct": 0.08350528617753632,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "argmax",
+          "ms_per_token": 0.006691428571428571,
+          "kernel_sum_share_pct": 0.03870361769795964,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "weighted_sum_fallback",
+          "ms_per_token": 0.006237142857142857,
+          "kernel_sum_share_pct": 0.036076002320514895,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "embedding",
+          "ms_per_token": 0.0037315,
+          "kernel_sum_share_pct": 0.02158321618444822,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.0027514285714285718,
+          "kernel_sum_share_pct": 0.015914425210561543,
+          "calls_per_token": 1.0
+        }
+      ],
+      "generated_ids_exact": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "f05753a116363498cffeab41b13bb1ec81b8996186cb4300dbf1124d484caf5b",
+      "bench_sha256": "4d80755a92690984e0394b379b0302650ef99e69b9ad5a9bbb7615c311f374b6"
+    },
+    {
+      "label": "512",
+      "prompt_tokens": 512,
+      "stable_steps": 6,
+      "dispatches_per_token": 775,
+      "kernel_sum_ms_per_token": 30.533592833333334,
+      "span_median_ms_per_token": 33.798195,
+      "span_minus_kernel_sum_ms_per_token": 3.2646021666666662,
+      "profiled_child_tok_s": 27.89378101744484,
+      "families": [
+        {
+          "family": "swa_attention_decode_token4",
+          "ms_per_token": 13.098926833333334,
+          "kernel_sum_share_pct": 42.9000507894155,
+          "calls_per_token": 36.0,
+          "median_us_per_call": 364.002,
+          "resources": [
+            [
+              128,
+              24,
+              128,
+              0,
+              0,
+              9216,
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 2.9871096666666666,
+          "kernel_sum_share_pct": 9.783027116958399,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.6343136666666664,
+          "kernel_sum_share_pct": 8.627591522052402,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.3144711666666664,
+          "kernel_sum_share_pct": 7.580081319942056,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.1642305,
+          "kernel_sum_share_pct": 7.088030916680473,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.1127091666666664,
+          "kernel_sum_share_pct": 6.919294359490623,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9308001666666667,
+          "kernel_sum_share_pct": 3.048446253106899,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.8897208333333334,
+          "kernel_sum_share_pct": 2.913908095224322,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.5943976666666666,
+          "kernel_sum_share_pct": 1.946700704077531,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.3915823333333333,
+          "kernel_sum_share_pct": 1.282463991285838,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.3902353333333333,
+          "kernel_sum_share_pct": 1.2780524567266642,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "d9_moe_tail_next_rmsnorm",
+          "ms_per_token": 0.3850756666666667,
+          "kernel_sum_share_pct": 1.2611541287282837,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.37614966666666666,
+          "kernel_sum_share_pct": 1.231920752725917,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.3166031666666667,
+          "kernel_sum_share_pct": 1.0369011219702682,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "head_rmsnorm_rotary",
+          "ms_per_token": 0.2001145,
+          "kernel_sum_share_pct": 0.6553912639508844,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "kv_write",
+          "ms_per_token": 0.17180133333333333,
+          "kernel_sum_share_pct": 0.5626633402466116,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "selected_iq4_fallback",
+          "ms_per_token": 0.12611466666666668,
+          "kernel_sum_share_pct": 0.41303579095673304,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "attention_softplus_gate",
+          "ms_per_token": 0.1249875,
+          "kernel_sum_share_pct": 0.40934422844452134,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.11469433333333333,
+          "kernel_sum_share_pct": 0.37563327040937755,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.09025366666666668,
+          "kernel_sum_share_pct": 0.29558809917756323,
+          "calls_per_token": 4.0
+        },
+        {
+          "family": "silu_mul",
+          "ms_per_token": 0.08600733333333332,
+          "kernel_sum_share_pct": 0.281681012132446,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.014307,
+          "kernel_sum_share_pct": 0.04685658866971311,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "argmax",
+          "ms_per_token": 0.006526666666666667,
+          "kernel_sum_share_pct": 0.02137536418426837,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "weighted_sum_fallback",
+          "ms_per_token": 0.00606,
+          "kernel_sum_share_pct": 0.01984699289427982,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "embedding",
+          "ms_per_token": 0.0036266666666666665,
+          "kernel_sum_share_pct": 0.011877628310768122,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.0027733333333333334,
+          "kernel_sum_share_pct": 0.00908289223764621,
+          "calls_per_token": 1.0
+        }
+      ],
+      "generated_ids_exact": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "e6f00b935866af25a64d365449b1bc1592118f314c869d519ff27a085c1d272b",
+      "bench_sha256": "7bbecca6dc2dfd3d5724479813e77d60dde0c69c4e88374eeeba588a7e33647f"
+    },
+    {
+      "label": "1024",
+      "prompt_tokens": 1024,
+      "stable_steps": 6,
+      "dispatches_per_token": 775,
+      "kernel_sum_ms_per_token": 33.451754666666666,
+      "span_median_ms_per_token": 36.712002,
+      "span_minus_kernel_sum_ms_per_token": 3.260247333333332,
+      "profiled_child_tok_s": 25.730003320363895,
+      "families": [
+        {
+          "family": "swa_attention_decode_token4",
+          "ms_per_token": 13.117680833333335,
+          "kernel_sum_share_pct": 39.21373023342353,
+          "calls_per_token": 36.0,
+          "median_us_per_call": 364.4045,
+          "resources": [
+            [
+              128,
+              24,
+              128,
+              0,
+              0,
+              9216,
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 5.899896166666667,
+          "kernel_sum_share_pct": 17.63703048003541,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.640728,
+          "kernel_sum_share_pct": 7.894138966143322,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.2995623333333337,
+          "kernel_sum_share_pct": 6.874265210442774,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.1533338333333334,
+          "kernel_sum_share_pct": 6.437132684938181,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.1225201666666664,
+          "kernel_sum_share_pct": 6.345018931941626,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9338253333333334,
+          "kernel_sum_share_pct": 2.7915585972650128,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.9009508333333334,
+          "kernel_sum_share_pct": 2.693284230710608,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.5765665,
+          "kernel_sum_share_pct": 1.7235762540567876,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.3916928333333333,
+          "kernel_sum_share_pct": 1.170918647575876,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.3869245,
+          "kernel_sum_share_pct": 1.1566642881832288,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "d9_moe_tail_next_rmsnorm",
+          "ms_per_token": 0.386111,
+          "kernel_sum_share_pct": 1.1542324277080274,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.3757713333333333,
+          "kernel_sum_share_pct": 1.1233232369355333,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.31562433333333334,
+          "kernel_sum_share_pct": 0.9435210095207363,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "head_rmsnorm_rotary",
+          "ms_per_token": 0.198863,
+          "kernel_sum_share_pct": 0.594477037098921,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "kv_write",
+          "ms_per_token": 0.17433583333333336,
+          "kernel_sum_share_pct": 0.5211560202761263,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "attention_softplus_gate",
+          "ms_per_token": 0.1307085,
+          "kernel_sum_share_pct": 0.3907373508578484,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "selected_iq4_fallback",
+          "ms_per_token": 0.121215,
+          "kernel_sum_share_pct": 0.36235767363433974,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.1143015,
+          "kernel_sum_share_pct": 0.34169059631989007,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.090481,
+          "kernel_sum_share_pct": 0.27048207456262585,
+          "calls_per_token": 4.0
+        },
+        {
+          "family": "silu_mul",
+          "ms_per_token": 0.08709483333333333,
+          "kernel_sum_share_pct": 0.26035953629696995,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.014286833333333334,
+          "kernel_sum_share_pct": 0.0427087711113988,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "argmax",
+          "ms_per_token": 0.006640166666666667,
+          "kernel_sum_share_pct": 0.019849980166461424,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "weighted_sum_fallback",
+          "ms_per_token": 0.006066666666666667,
+          "kernel_sum_share_pct": 0.01813557084559112,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "embedding",
+          "ms_per_token": 0.0038533333333333336,
+          "kernel_sum_share_pct": 0.011519076866760075,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.00272,
+          "kernel_sum_share_pct": 0.008131113082418876,
+          "calls_per_token": 1.0
+        }
+      ],
+      "generated_ids_exact": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "857b19467aa82fac7274eedd06bc7c12d34e4c67ee325b0d732bfbb693aa15ef",
+      "bench_sha256": "b628cf552ea7ad767e976a006a4c89542b004b4e541834cc74c97937e1ec4505"
+    },
+    {
+      "label": "3968",
+      "prompt_tokens": 3968,
+      "stable_steps": 6,
+      "dispatches_per_token": 775,
+      "kernel_sum_ms_per_token": 50.235568666666666,
+      "span_median_ms_per_token": 53.617888,
+      "span_minus_kernel_sum_ms_per_token": 3.382319333333335,
+      "profiled_child_tok_s": 17.954302734855435,
+      "families": [
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 22.63681233333333,
+          "kernel_sum_share_pct": 45.06132394665968,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "swa_attention_decode_token4",
+          "ms_per_token": 13.13158,
+          "kernel_sum_share_pct": 26.140004679022045,
+          "calls_per_token": 36.0,
+          "median_us_per_call": 364.645,
+          "resources": [
+            [
+              128,
+              24,
+              128,
+              0,
+              0,
+              9216,
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.646009,
+          "kernel_sum_share_pct": 5.267202243807253,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.3285535,
+          "kernel_sum_share_pct": 4.6352685195043675,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.1383431666666666,
+          "kernel_sum_share_pct": 4.256631752007107,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.1132821666666666,
+          "kernel_sum_share_pct": 4.206744788118453,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.9262135,
+          "kernel_sum_share_pct": 1.8437404504083583,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9214465,
+          "kernel_sum_share_pct": 1.8342511580075276,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.5909206666666666,
+          "kernel_sum_share_pct": 1.1762993479533685,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.39123933333333333,
+          "kernel_sum_share_pct": 0.7788094048051186,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.3880975,
+          "kernel_sum_share_pct": 0.7725552040132839,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "d9_moe_tail_next_rmsnorm",
+          "ms_per_token": 0.38473816666666666,
+          "kernel_sum_share_pct": 0.7658680430584157,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.3761388333333333,
+          "kernel_sum_share_pct": 0.7487500257619591,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.3198513333333333,
+          "kernel_sum_share_pct": 0.6367029215010512,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "head_rmsnorm_rotary",
+          "ms_per_token": 0.20297,
+          "kernel_sum_share_pct": 0.4040364335214121,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "kv_write",
+          "ms_per_token": 0.170636,
+          "kernel_sum_share_pct": 0.3396716799052061,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "attention_softplus_gate",
+          "ms_per_token": 0.12379583333333333,
+          "kernel_sum_share_pct": 0.24643063992122552,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "selected_iq4_fallback",
+          "ms_per_token": 0.12263533333333333,
+          "kernel_sum_share_pct": 0.244120523740994,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.1139685,
+          "kernel_sum_share_pct": 0.22686813949738907,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.090348,
+          "kernel_sum_share_pct": 0.17984866579195224,
+          "calls_per_token": 4.0
+        },
+        {
+          "family": "silu_mul",
+          "ms_per_token": 0.084575,
+          "kernel_sum_share_pct": 0.16835680822325186,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.014427166666666666,
+          "kernel_sum_share_pct": 0.028719027274074983,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "argmax",
+          "ms_per_token": 0.00652,
+          "kernel_sum_share_pct": 0.01297885178380848,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "weighted_sum_fallback",
+          "ms_per_token": 0.005933333333333333,
+          "kernel_sum_share_pct": 0.011811020539457612,
+          "calls_per_token": 2.0
+        },
+        {
+          "family": "embedding",
+          "ms_per_token": 0.0038001666666666665,
+          "kernel_sum_share_pct": 0.007564693239330704,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.0027333333333333333,
+          "kernel_sum_share_pct": 0.00544103193390744,
+          "calls_per_token": 1.0
+        }
+      ],
+      "generated_ids_exact": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "c1f1d8e8d93b4129d92991911574735ad1878d62f9491348afe962d1213bfbaf",
+      "bench_sha256": "6ba78f6fb2af9b72bcca5b97eea07680286e381a7ee8ec4446bab9bf79c13854"
+    }
+  ],
+  "short_context_ranking": [
+    {
+      "family": "q5_attention_output",
+      "ms_per_token": 2.659412071428571,
+      "kernel_sum_share_pct": 15.382196344948174,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "selected_iq2_dual_silu",
+      "ms_per_token": 2.3584291428571427,
+      "kernel_sum_share_pct": 13.64129332600526,
+      "calls_per_token": 46.0
+    },
+    {
+      "family": "q5_query_gate_pair",
+      "ms_per_token": 2.1885023571428572,
+      "kernel_sum_share_pct": 12.658426770571834,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "swa_attention_decode_token4",
+      "ms_per_token": 2.1529605,
+      "kernel_sum_share_pct": 12.452850571640823,
+      "calls_per_token": 36.0,
+      "median_us_per_call": 59.7805,
+      "resources": [
+        [
+          128,
+          24,
+          128,
+          0,
+          0,
+          9216,
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "family": "selected_iq3_weighted_down",
+      "ms_per_token": 2.1306495,
+      "kernel_sum_share_pct": 12.323802431136677,
+      "calls_per_token": 45.0
+    },
+    {
+      "family": "q6_attention_pair",
+      "ms_per_token": 0.9451904285714285,
+      "kernel_sum_share_pct": 5.467037211665123,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "q5_shared_pair",
+      "ms_per_token": 0.90494,
+      "kernel_sum_share_pct": 5.2342263577528,
+      "calls_per_token": 46.0
+    },
+    {
+      "family": "q6_bf16_projection",
+      "ms_per_token": 0.6014591428571429,
+      "kernel_sum_share_pct": 3.478875172557588,
+      "calls_per_token": 50.0
+    },
+    {
+      "family": "global_attention_decode",
+      "ms_per_token": 0.5182608571428572,
+      "kernel_sum_share_pct": 2.9976513787087558,
+      "calls_per_token": 12.0
+    },
+    {
+      "family": "add_rmsnorm",
+      "ms_per_token": 0.3951195,
+      "kernel_sum_share_pct": 2.2853945027980944,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "router_select",
+      "ms_per_token": 0.3938002857142857,
+      "kernel_sum_share_pct": 2.2777640895267064,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "d9_moe_tail_next_rmsnorm",
+      "ms_per_token": 0.38920528571428575,
+      "kernel_sum_share_pct": 2.2511863383897537,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "q4_lm_head",
+      "ms_per_token": 0.3825281428571428,
+      "kernel_sum_share_pct": 2.212565350106179,
+      "calls_per_token": 1.0
+    },
+    {
+      "family": "router_projection",
+      "ms_per_token": 0.32261071428571425,
+      "kernel_sum_share_pct": 1.8659994077040947,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "head_rmsnorm_rotary",
+      "ms_per_token": 0.20543278571428572,
+      "kernel_sum_share_pct": 1.1882353545343307,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "kv_write",
+      "ms_per_token": 0.16453835714285714,
+      "kernel_sum_share_pct": 0.951699566621529,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "selected_iq4_fallback",
+      "ms_per_token": 0.12605785714285714,
+      "kernel_sum_share_pct": 0.7291260840044422,
+      "calls_per_token": 2.0
+    },
+    {
+      "family": "attention_softplus_gate",
+      "ms_per_token": 0.12121514285714285,
+      "kernel_sum_share_pct": 0.7011155388220525,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "q5_layer0_mlp",
+      "ms_per_token": 0.11690078571428571,
+      "kernel_sum_share_pct": 0.676161042530694,
+      "calls_per_token": 2.0
+    },
+    {
+      "family": "all_other",
+      "ms_per_token": 0.09238635714285715,
+      "kernel_sum_share_pct": 0.5343681411517962,
+      "calls_per_token": 4.0
+    },
+    {
+      "family": "silu_mul",
+      "ms_per_token": 0.08544907142857143,
+      "kernel_sum_share_pct": 0.4942424712322699,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "rmsnorm",
+      "ms_per_token": 0.014437142857142857,
+      "kernel_sum_share_pct": 0.08350528617753632,
+      "calls_per_token": 2.0
+    },
+    {
+      "family": "argmax",
+      "ms_per_token": 0.006691428571428571,
+      "kernel_sum_share_pct": 0.03870361769795964,
+      "calls_per_token": 2.0
+    },
+    {
+      "family": "weighted_sum_fallback",
+      "ms_per_token": 0.006237142857142857,
+      "kernel_sum_share_pct": 0.036076002320514895,
+      "calls_per_token": 2.0
+    },
+    {
+      "family": "embedding",
+      "ms_per_token": 0.0037315,
+      "kernel_sum_share_pct": 0.02158321618444822,
+      "calls_per_token": 1.0
+    },
+    {
+      "family": "bf16_add",
+      "ms_per_token": 0.0027514285714285718,
+      "kernel_sum_share_pct": 0.015914425210561543,
+      "calls_per_token": 1.0
+    }
+  ],
+  "selected_candidate": {
+    "name": "exact_swa_token8_decode_screen",
+    "registry_key": [
+      "hip_gfx1100",
+      "laguna_attention_decode",
+      "bf16",
+      "swa_context_token8_exact_spans"
+    ],
+    "scope": "36 Laguna c=1 SWA layers with head_dim=128, capacity/window=512, complete KVLiveSpans, and BF16 KV",
+    "current": {
+      "variant": "swa_context_token4_exact_spans",
+      "kernel": "laguna_swa_attention_decode_token4_exact_bf16_kernel",
+      "workgroup_size_x": 128,
+      "waves_per_block": 4,
+      "dynamic_lds_bytes": 4120,
+      "vgpr_count": 24,
+      "scratch_bytes": 0,
+      "short_ms_per_token": 2.1529605,
+      "calls_per_token": 36.0
+    },
+    "design": "one local256 block still owns one query head; eight wave32 units compute eight independent exact 128-D dots, thread 0 consumes max/denominator weights in logical-slot order, and threads 0..127 consume eight value rows in logical-slot order while all 256 threads participate in each barrier",
+    "exactness_contract": [
+      "preserve complete base_offsets/live_counts/token_positions/evict_mask/row_positions visibility and wrap semantics",
+      "preserve each dot as ((p0+p64)+(p32+p96)) followed by wave offsets 16..1",
+      "store unscaled dots and preserve separate dot*scale rounding in max and exp paths",
+      "update max, denominator, and each output FMA in increasing logical-slot order",
+      "preserve final denominator clamp and F32 context output; softplus gating remains the registered unfused next stage"
+    ],
+    "synchronization_model": {
+      "formula": "one initialization barrier plus two score/max and two weight/value barriers per ceil(scan_slots/group) batch",
+      "token4_short": {
+        "group": 4,
+        "scan_slots": [
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85
+        ],
+        "mean_batches_per_layer": 20.0,
+        "mean_block_barriers_per_layer": 81.0,
+        "full_window_batches_per_layer": 128,
+        "full_window_block_barriers_per_layer": 513
+      },
+      "token8_short": {
+        "group": 8,
+        "scan_slots": [
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85
+        ],
+        "mean_batches_per_layer": 10.285714285714286,
+        "mean_block_barriers_per_layer": 42.142857142857146,
+        "full_window_batches_per_layer": 64,
+        "full_window_block_barriers_per_layer": 257
+      },
+      "short_barrier_reduction_pct": 47.97178130511463,
+      "full_window_barrier_reduction_pct": 49.902534113060426,
+      "unchanged_work": "all BF16 K/V loads, dot multiplies/adds, exponentials, denominator additions, and value FMAs remain; token8 doubles per-block query-register loads and idles threads 128..255 during value accumulation",
+      "caveat": "barrier-count and wave-scheduling model only; no runtime speedup is claimed before cached actual-kernel and full-model measurement"
+    },
+    "red_gate": "token4 versus token8 output bits must match at empty/short/full, 510..513 wrap, reversed physical offsets, explicit eviction, and adversarial scores; registry/backend/shape misses retain token4",
+    "performance_gate": "cached actual short and full-window leaves must both improve without scratch; complete short/512/1K/near-4K kernel sum/span and canonical category decode/E2E must improve with exact IDs/state/KV/lifecycle",
+    "secondary_screen": "do not widen to local512 token16 unless token8 is exact and positive but leaves a measured synchronization share; larger blocks are not admitted from barrier arithmetic alone"
+  },
+  "target_assessment": {
+    "canonical_d9_h32_decode_tok_s": 47.132308286752306,
+    "canonical_d9_ms_per_token": 21.216868775363473,
+    "remaining_ms_to_20ms": 1.2168687753634728,
+    "additional_speedup_required_pct": 6.084343876817355,
+    "short_kernel_sum_ms": 17.28889692857143,
+    "short_span_median_ms": 20.388559,
+    "short_span_minus_kernel_sum_ms": 3.099662071428572,
+    "short_swa_ms_per_token": 2.1529605,
+    "fraction_of_short_swa_required_to_reach_20ms_pct": 56.52071997435498,
+    "zero_cost_swa_ceiling_tok_s": 52.45514117859623,
+    "planning_half_swa_savings_ms": 1.07648025,
+    "planning_half_swa_tok_s": 49.65147513121041,
+    "planning_half_swa_remaining_ms_to_20ms": 0.14038852536347335,
+    "conclusion": "token8 cannot be assumed to close 50 tok/s alone; it is selected because SWA is the largest fresh context-sensitive family after the rejected Q5 tile and already-retained quant schedules, dominates from 512 tokens, and its two-pass-free token4 body still exposes a measured synchronization contraction. Later exact launch/family work must compound with any retained win."
+  },
+  "references": {
+    "retained_token4_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json",
+    "kernel_source": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "runtime_wrapper": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.py",
+    "cpu_oracle": "hipengine/kernels/cpu_reference/laguna.py"
+  },
+  "notes": [
+    "The rejected D7 Q5 tile16 path remains removed; its nominal traffic reduction was not cache-visible.",
+    "IQ2, Q5/Q6 pairs, IQ3 weighted down, and the D9 tail already use retained exact specialized schedules; this task does not reopen rejected local64/pair/tile traffic hypotheses without new evidence.",
+    "Near-4K remains global-attention dominated and is not evidence for changing the short/default SWA selection gate."
+  ]
+}
