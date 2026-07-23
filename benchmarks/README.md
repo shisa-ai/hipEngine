@@ -3,9 +3,11 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`8f8baf9a100bc9598b633cb040193dcfcdb80ebe` for the current merged-main
+Laguna S 2.1 B4 DFlash economics confirmation,
 `c4ac3c60a47ce474ce5aa160d7c3ff8eda1009b5` for the exact explicit-only
 Laguna S 2.1 B4 DFlash library/OpenAI route,
-`871a22dda42cc612a3a77b2110ac0d1397b5426c` for the current post-prefill
+`871a22dda42cc612a3a77b2110ac0d1397b5426c` for the original post-prefill
 Laguna S 2.1 B4 DFlash economics decision,
 `bd8877fdf029a6c23880cc8fb4fb04401adf93a7` for the exact Laguna S 2.1
 LPF-5 wave32 SWA full-model gate,
@@ -1164,10 +1166,10 @@ recoverable from the linked compact artifacts, changelog, and
 
 **Status: retained for exact target-only c=1 AR and loader startup; LPF-1's
 exact tile, LPF-4's 128-row chunks, and LPF-5's wave32-exact SWA reader are
-default. The refreshed matched B4 DFlash row is exact and reaches **0.9469x**
-true-AR decode, but fails aggregate, heldout, and non-code economics, so DFlash
-remains off by default and performance-ineligible. Its exact B4 path is now
-supported only as an explicit library/OpenAI opt-in.** The AR protocol uses the
+default. The current merged-main matched B4 DFlash row is exact and reaches
+**0.9477x** true-AR decode, but fails aggregate, heldout, and non-code economics,
+so DFlash remains off by default and performance-ineligible. Its exact B4 path
+is supported only as an explicit library/OpenAI opt-in.** The AR protocol uses the
 full ten-prompt `mtpbench-code-general-ja` suite (`code`, `general_en`,
 `general_ja`, and
 `mixed_ja_en`), prompt lengths 68-122, greedy 16/32-token horizons, two
@@ -1294,29 +1296,32 @@ remains the default. [Public D5 artifact](results/2026-07-23-gfx1151-laguna-dfla
 
 #### Current post-prefill matched B4 DFlash economics
 
-The current-default clean run alternates true AR and pinned `b0486d1` B4 DFlash
-over all ten prompts, two repetitions, and 32 visible outputs. All **20/20**
-pairs are exact/finite/state-aligned and both routes repeat deterministically;
-the Poolside gate and lifecycle pass.
+The tracked-clean merged-main `8f8baf9a1` confirmation alternates true AR and
+pinned `b0486d1` B4 DFlash over all ten prompts, two repetitions, and 32 visible
+outputs. All **20/20** pairs are exact/finite/state-aligned and both routes repeat
+deterministically; the Poolside gate and lifecycle pass. Every weighted
+throughput metric is within 0.32% of the original post-prefill packet, so the
+small movement is confirmation-scale variance rather than a new kernel win.
 
 | Scope | True AR decode tok/s | DFlash B4 decode tok/s | DFlash / AR | Draft acceptance | Target rows/output |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Full 10 prompts | **16.347** | 15.479 | **0.9469x** | 50.48% | 1.6935 |
-| Train, 6 prompts | 16.403 | 17.115 | 1.0434x | 58.33% | 1.5323 |
-| Heldout, 4 prompts | 16.263 | 13.538 | 0.8325x | 41.15% | 1.9355 |
-| `code` | 16.514 | **20.933** | **1.2676x** | 78.23% | 1.2500 |
-| `general_en` | 16.684 | 12.647 | 0.7580x | 36.54% | 2.0968 |
-| `general_ja` | 16.218 | 13.619 | 0.8398x | 40.63% | 1.9355 |
-| `mixed_ja_en` | 15.832 | 13.339 | 0.8425x | 39.58% | 1.9355 |
+| Full 10 prompts | **16.384** | 15.527 | **0.9477x** | 50.48% | 1.6935 |
+| Train, 6 prompts | 16.441 | 17.180 | 1.0450x | 58.33% | 1.5323 |
+| Heldout, 4 prompts | 16.299 | 13.569 | 0.8325x | 41.15% | 1.9355 |
+| `code` | 16.562 | **21.020** | **1.2692x** | 78.23% | 1.2500 |
+| `general_en` | 16.707 | 12.690 | 0.7595x | 36.54% | 2.0968 |
+| `general_ja` | 16.245 | 13.647 | 0.8401x | 40.63% | 1.9355 |
+| `mixed_ja_en` | 15.873 | 13.372 | 0.8424x | 39.58% | 1.9355 |
 
-LPF-1/5 cut target verification **50.493 -> 32.688 s (-35.26%)** and improve
-DFlash decode **10.715 -> 15.479 tok/s (+44.46%)** at unchanged 424/840 draft
+Weighted prefill is **50.389 tok/s AR** versus **16.906 tok/s DFlash**. LPF-1/5
+cut target verification **50.493 -> 32.644 s (-35.35%)** and improve DFlash
+decode **10.715 -> 15.527 tok/s (+44.91%)** at unchanged 424/840 draft
 acceptance. Full-suite decode still misses the >1.10x gate. Median TTFT moves
-**1.619 -> 4.783 s** and E2E **8.860 -> 4.489 output tok/s (0.5066x)** because
+**1.620 -> 4.767 s** and E2E **8.872 -> 4.503 output tok/s (0.5075x)** because
 DFlash prompt capture remains serial. Code wins, but heldout and all non-code
 categories regress; AR remains default and automatic/performance promotion stays
 deferred, while the exact explicit-only route is supported by the separate D5
-public gate above. [Current diagnostic artifact](results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json).
+public gate above. [Current-main compact confirmation](results/2026-07-23-gfx1151-laguna-dflash-current-main-confirmation.json); [original full diagnostic](results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json).
 
 #### Pre-LPF-1 matched B4 DFlash economics (historical)
 

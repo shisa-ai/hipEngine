@@ -7,8 +7,9 @@ Q4_K_M target has all-resident torch-free loading, exact chunked prefill/B+1
 rows, public blocking/streaming generation, Poolside-v1 reasoning/XML tools, and
 canonical target-AR evidence. The pinned BF16 DFlash drafter is supported through
 B4 only as an explicit library/OpenAI opt-in; its ten-prompt public gate is exact
-against true AR. DFlash remains off by default because the current full-suite
-ratio is **0.9469x**, with heldout and all non-code categories regressive.
+against true AR. DFlash remains off by default because the current merged-main
+full-suite ratio is **0.9477x**, with heldout and all non-code categories
+regressive.
 
 The support boundary does not claim exact Poolside free-running greedy-32
 identity after the documented low-margin token-30 split, contexts above 4K,
@@ -85,7 +86,7 @@ owner as an explicit opt-in. “Complete” below does not broaden that boundary
 | Deliverable | Implementation and focused gates | Retained evidence | Audit verdict |
 | --- | --- | --- | --- |
 | Source-bound resident load | `hipengine/loading/laguna_gguf*.py`, `hipengine/runtime/laguna_gguf_runner.py`; config/map/materialization/device/lifecycle suites | `2026-07-22-gfx1151-laguna-s21-repacked-cache-startup-retained.json` | Complete; cache/source trajectories agree and tracked ownership returns to zero. |
-| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, bulk/serial, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, and qualified Poolside artifacts under `benchmarks/results/` | Complete for c=1/4K. Current D4 true-AR control is 16.347 decode tok/s; 512/1K/4K prefill is exact at 47.395/44.855/38.552 tok/s. |
+| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, bulk/serial, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, and qualified Poolside artifacts under `benchmarks/results/` | Complete for c=1/4K. Current D4 true-AR control is 16.384 decode tok/s; 512/1K/4K prefill is exact at 47.395/44.855/38.552 tok/s. |
 | Poolside-v1 reasoning and tools | `hipengine/chat/poolside_v1.py`; frozen renderer/reasoning/tool fixtures plus generic server conformance | `2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json` | Complete: 5/5 live blocking/streaming cases and 7/7 deterministic tool fixtures, including multiple calls and escaped UTF-8. |
 | B4 DFlash correctness and public route | `hipengine/speculative/laguna_dflash.py`, `hipengine/generation/laguna_dflash.py`, provider registry/server route; drafter, B+1, rollback, API, and public-gate suites | drafter-B4, verify-commit, post-prefill economics, and `2026-07-23-gfx1151-laguna-dflash-public-e2e.json` | Complete as explicit-only: 10/10 AR, 10/10 blocking, and 10/10 streaming public rows are exact. AR remains default. |
 | Ownership and truthful capability surface | shared target weights with isolated target/drafter/cycle request state; finish/cancel/close and fail-before-load gates | parser peak 77,022,439,484 bytes and public DFlash peak 79,817,890,405 bytes both recover to zero | Complete for the supported boundary; identity, revision, budget, exactness, fallback, and no-performance-claim metadata pass. |
@@ -2261,31 +2262,33 @@ The artifact explicitly records an offline repair to the derived fixed-horizon
 state predicate using its exact raw cursors; no measurement value changed and
 the complete >5-minute GPU run was not repeated under the focused-repair rule.
 
-D4 is now refreshed after LPF-1/4/5. The clean current-default run again uses all
-ten prompts, two repetitions, B4, and 32 visible outputs, with exact paired IDs,
-finite logits, deterministic repeats, valid target/drafter cursors, the frozen
-Poolside gate, and exact lifecycle. Current economics are:
+D4 is now confirmed on merged main `8f8baf9a1` after LPF-1/4/5. The clean
+current-default run again uses all ten prompts, two repetitions, B4, and 32
+visible outputs, with exact paired IDs, finite logits, deterministic repeats,
+valid target/drafter cursors, the frozen Poolside gate, and exact lifecycle.
+Current economics are:
 
 | Scope | AR decode tok/s | DFlash B4 tok/s | Ratio | Draft acceptance | Target rows/output |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| full | 16.347 | 15.479 | **0.9469x** | 50.48% | 1.6935 |
-| train | 16.403 | 17.115 | 1.0434x | 58.33% | 1.5323 |
-| heldout | 16.263 | 13.538 | 0.8325x | 41.15% | 1.9355 |
-| code | 16.514 | 20.933 | **1.2676x** | 78.23% | 1.2500 |
-| general English | 16.684 | 12.647 | 0.7580x | 36.54% | 2.0968 |
-| general Japanese | 16.218 | 13.619 | 0.8398x | 40.63% | 1.9355 |
-| mixed Japanese/English | 15.832 | 13.339 | 0.8425x | 39.58% | 1.9355 |
+| full | 16.384 | 15.527 | **0.9477x** | 50.48% | 1.6935 |
+| train | 16.441 | 17.180 | 1.0450x | 58.33% | 1.5323 |
+| heldout | 16.299 | 13.569 | 0.8325x | 41.15% | 1.9355 |
+| code | 16.562 | 21.020 | **1.2692x** | 78.23% | 1.2500 |
+| general English | 16.707 | 12.690 | 0.7595x | 36.54% | 2.0968 |
+| general Japanese | 16.245 | 13.647 | 0.8401x | 40.63% | 1.9355 |
+| mixed Japanese/English | 15.873 | 13.372 | 0.8424x | 39.58% | 1.9355 |
 
-LPF-1/5 reduce target verification **50.493 -> 32.688 s (-35.26%)** and move
-full DFlash decode **10.715 -> 15.479 tok/s (+44.46%)** without changing the
-424/840 accepted drafts. That is a major verifier win, but the same-session true
-AR denominator remains **16.347 tok/s** and the required >1.10x full-suite gate
-still fails. Median TTFT is **1.619 -> 4.783 s** and fixed-horizon E2E is
-**8.860 -> 4.489 output tok/s (0.5066x)** because DFlash prompt capture remains
-serial. Code benefits materially; heldout and every non-code category regress.
-Keep AR default; D5 may expose this exact path only as an explicit opt-in with
-no performance claim. Evidence:
-`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json`.
+Weighted prefill is **50.389 tok/s AR** versus **16.906 tok/s DFlash** because
+DFlash still seeds hidden captures through the serial path. LPF-1/5 reduce target
+verification **50.493 -> 32.644 s (-35.35%)** and move full DFlash decode
+**10.715 -> 15.527 tok/s (+44.91%)** without changing the 424/840 accepted
+drafts. That is a major verifier win, but the same-session true AR denominator
+remains **16.384 tok/s** and the required >1.10x full-suite gate still fails.
+Median TTFT is **1.620 -> 4.767 s** and fixed-horizon E2E is **8.872 -> 4.503
+output tok/s (0.5075x)**. Code benefits materially; heldout and every non-code
+category regress. Keep AR default; D5 may expose this exact path only as an
+explicit opt-in with no performance claim. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-current-main-confirmation.json`.
 
 ### D5 — Opt-in public/server integration
 
@@ -2359,8 +2362,8 @@ comparison. Artifact:
 
 D5 is therefore **supported as an explicit opt-in** for the pinned target and B4
 drafter on gfx1151. AR remains default, and DFlash remains ineligible for
-automatic or performance promotion because the separate D4 full-suite ratio is
-`0.9469x` with heldout/non-code regressions.
+automatic or performance promotion because the current merged-main D4
+full-suite ratio is `0.9477x` with heldout/non-code regressions.
 
 Automatic routing is a later model-general policy. Never key route/budget to
 known prompt IDs, benchmark categories, candidate token IDs, or fixed-suite
