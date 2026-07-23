@@ -2295,23 +2295,24 @@ repeat either experiment unchanged.
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json`
   and
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json`.
-- [ ] Add an M16/M32 integer-MMQ/WMMA route only where measured occupancy pays
-  for padding. The first M16 control is now wired over resident Q4T16/Q6T16:
-  device compact/gather, one exact padded-row scalar read per sparse layer,
-  bounded tile metadata, single-output WMMA down, and ordered weighted combine.
-  The clean three-repeat counterbalanced screen passes: retained grouped-small-M
-  -> M16 moves **54.591->59.773 tok/s (+9.493%)** at 256 rows and
-  **51.754->56.596 tok/s (+9.356%)** at 512, with **+9.378%** aggregate wall,
-  identical next IDs/top-1, maximum final-logit KL `1.3054e-4`, and exact
-  lifecycle recovery. This admits but does not replace the complete category
-  quality/E2E gate before promotion. Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json`.
-  The retained replay reports
-  natural/Zipf overhead of 1.803/2.049x at 256 and 1.379/1.465x at 512.
-  Natural/Zipf M32 remains 2.924/3.421x and 1.867/2.134x, so it is hot-only
-  unless an inclusive timing result overturns that bound. Use the landed IQ2
-  MMQ32 work as a scheduling reference, not as a quant-format shortcut;
-  Laguna Q4_K/Q6_K decode and scales keep their own CPU-reference oracle.
+- [x] Screen M16/M32 integer-MMQ/WMMA only where measured occupancy pays for
+  padding. The first M16 control over resident Q4T16/Q6T16 passed the narrow
+  screen but **failed the complete quality lane**. Across three repetitions of
+  all ten prompts at both 256/512 rows, retained grouped-small-M -> M16 improves
+  weighted prefill **52.486->57.421 tok/s (+9.404%)**, h16/h32 E2E
+  **+7.994%/+6.878%**, every shape/category wall row, and neutral decode.
+  However, maximum final-logit KL is **1.10017** (>0.05), suite top-1 is only
+  90%, category top-1 falls to **87.5% code / 75% mixed**, and 23 unique
+  shape/prompt/horizon trajectory mismatches repeat in all three runs. Exact
+  grouped-small-M therefore remains the gfx1151 default. M32 uses the same
+  reassociated WMMA arithmetic while natural/Zipf padding is still
+  2.924/3.421x at 256 and 1.867/2.134x at 512, so no M32 category run is
+  warranted. The natural M16/M32 lane is closed; retain the explicit M16 route
+  only as a diagnostic through the following fusion bisection, then remove its
+  positive selector. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json`
+  and
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category-rejected.json`.
 - [ ] After gate/up, evaluate fused SiLU and routing-weighted down/combine to
   remove the largest expert intermediates. Keep the unfused staged chain
   registered and do not introduce order-dependent atomics across ten experts.

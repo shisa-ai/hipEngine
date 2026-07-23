@@ -1612,6 +1612,18 @@ to zero. This is a positive diagnostic rather than a promotion claim; the full
 ten-prompt category quality/E2E gate remains mandatory.
 [Positive M16 down screen](results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json).
 
+That complete three-repeat gate **rejects M16 on quality despite a consistent
+wall win**. Across all ten prompts at both 256/512 rows, grouped-small-M -> M16
+moves weighted prefill **52.486 -> 57.421 tok/s (+9.404%)**, h16/h32 E2E
+**+7.994%/+6.878%**, every shape/category prefill and E2E row positive, and
+decode within 0.08%. But maximum final-logit KL is **1.10017** (>0.05), overall
+top-1 is 90%, and code/mixed category top-1 is only **87.5%/75%**. Twenty-three
+unique shape/prompt/horizon free-running mismatches reproduce in all three
+repetitions. M32 shares the same reassociated arithmetic and has worse measured
+natural/Zipf padding, so it is closed without another category run. Exact
+adaptive grouped-small-M remains the gfx1151 production default.
+[Rejected M16 category gate](results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category-rejected.json).
+
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
 Three alternating native `prompt_ms` samples measure
