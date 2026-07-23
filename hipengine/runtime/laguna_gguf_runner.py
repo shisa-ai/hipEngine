@@ -349,6 +349,17 @@ class LagunaPrefillChunkPolicy:
             raise ValueError("Laguna prefill attention rows must be within matrix capacity")
         return cls(matrix_rows=matrix, attention_rows=attention)
 
+    def attention_ranges(self, rows: int) -> tuple[tuple[int, int], ...]:
+        """Return resident-position-backed ``(offset, rows)`` attention slices."""
+
+        count = int(rows)
+        if count <= 0 or count > self.matrix_rows:
+            raise ValueError("Laguna prefill rows must fit matrix capacity")
+        return tuple(
+            (start, min(self.attention_rows, count - start))
+            for start in range(0, count, self.attention_rows)
+        )
+
 
 @dataclass
 class LagunaRowsScratch:
@@ -2238,16 +2249,43 @@ class LagunaGGUFResidentSession:
             library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
-        self.kv_cache.attend_prefill(
-            layer_id,
-            scratch.query_rotated.ptr,
-            scratch.key_rotated.ptr,
-            scratch.value.ptr,
-            scratch.context.ptr,
-            rows,
-            stream=stream,
-            library=self.libraries.kv_attention,
-        )
+        attention_ranges = self.prefill_chunk_policy.attention_ranges(rows)
+        if stage_verifier_kv and len(attention_ranges) != 1:
+            raise ValueError("Laguna staged verifier rows must fit one attention tile")
+        for row_offset, attention_rows in attention_ranges:
+            q_offset = row_offset * q_width * _F32_NBYTES
+            kv_offset = row_offset * kv_width * _F32_NBYTES
+            position_offset = row_offset * _I64_NBYTES
+            sliced = row_offset != 0 or attention_rows != rows
+            slice_kwargs = (
+                {
+                    "row_offset": row_offset,
+                    "row_positions_ptr": scratch.positions.ptr + position_offset,
+                }
+                if sliced
+                else {}
+            )
+            self.kv_cache.attend_prefill(
+                layer_id,
+                scratch.query_rotated.ptr + q_offset,
+                scratch.key_rotated.ptr + kv_offset,
+                scratch.value.ptr + kv_offset,
+                scratch.context.ptr + q_offset,
+                attention_rows,
+                stream=stream,
+                library=self.libraries.kv_attention,
+                **slice_kwargs,
+            )
+            if not stage_verifier_kv:
+                self.kv_cache.append_rows(
+                    layer_id,
+                    scratch.key_rotated.ptr + kv_offset,
+                    scratch.value.ptr + kv_offset,
+                    attention_rows,
+                    stream=stream,
+                    library=self.libraries.kv_attention,
+                    **slice_kwargs,
+                )
         if stage_verifier_kv:
             assert self.verifier_scratch is not None
             row_nbytes = rows * kv_width * _F32_NBYTES
@@ -2264,15 +2302,6 @@ class LagunaGGUFResidentSession:
                 row_nbytes,
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 stream,
-            )
-        else:
-            self.kv_cache.append_rows(
-                layer_id,
-                scratch.key_rotated.ptr,
-                scratch.value.ptr,
-                rows,
-                stream=stream,
-                library=self.libraries.kv_attention,
             )
         self.kernel_plan.attention_gate(
             scratch.context.ptr,
