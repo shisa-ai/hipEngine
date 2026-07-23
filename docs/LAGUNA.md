@@ -2374,14 +2374,19 @@ not matrix prefill as a class.
   1.800/2.474 ms (7.094x/7.479x)**, while the weighted 12-full/36-SWA sum is
   **819.423 -> 110.681 ms (7.403x)**. It remains below the inclusive library
   ceiling and full-model quality stays open, so no runtime capability/default
-  has changed. Evidence:
+  has changed. The explicit `f16_wmma` quality route and full ten-prompt
+  category/state/KV/E2E harness are now wired from M16 while `auto` remains
+  exact. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json`.
 - [x] Account for residency explicitly. The candidate directly consumes the
   existing 5.61-GB row-major source-F16 allocations and allocates no persistent
   sidecar; only 4,096/10,240/17,408 B bounded per-block LDS is used at
   M128/M256/M512. Rows=1 therefore keeps the same bytes and exact GEMV ABI.
-- [ ] Select the row threshold from measured shapes. Rows=1 must remain on the
-  current exact GEMV, so decode performance and arithmetic stay unchanged.
+- [x] Select the row threshold from measured shapes. Explicit `wmma` starts at
+  M16, the first declared production shape and a clean **1.803/1.364x**
+  full/SWA win. M2-15 stays on exact `tiled`; rows=1 stays on exact GEMV, so
+  decode performance and arithmetic are unchanged. `auto` remains exact until
+  the complete quality lane decides promotion or removal.
 
 A reassociated matrix path may be admitted without byte identity only through
 the quality lane below. A library control is a ceiling/diagnostic and must not

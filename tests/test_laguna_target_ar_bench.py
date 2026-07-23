@@ -157,6 +157,11 @@ def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
     assert forced["effective_strategy"] == "tiled"
     assert forced["effective_min_rows"] == 2
 
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "wmma")
+    matrix = _laguna_f16_prefill_configuration("hip_gfx1151")
+    assert matrix["effective_strategy"] == "wmma"
+    assert matrix["effective_min_rows"] == 16
+
     monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "gemv")
     disabled = _laguna_f16_prefill_configuration("hip_gfx1151")
     assert disabled["effective_strategy"] == "gemv"

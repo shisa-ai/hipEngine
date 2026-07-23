@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import statistics
@@ -57,6 +59,9 @@ class CategoryComparison:
     screen_status: str
     screen_decision_key: str
     require_positive_wall: bool
+    execution_mode: str = "selected_down"
+    require_exact_free_running: bool = True
+    screen_requires_model: bool = True
 
 
 GROUPED_DOWN_COMPARISON = CategoryComparison(
@@ -77,9 +82,25 @@ GROUPED_COMBINE_COMPARISON = CategoryComparison(
     screen_decision_key="screen",
     require_positive_wall=False,
 )
+F16_WMMA_COMPARISON = CategoryComparison(
+    name="f16_wmma",
+    modes=("tiled", "wmma"),
+    aggregate_key="wmma_vs_tiled",
+    screen_kind="hipengine_laguna_f16_wmma_screen",
+    screen_status="quality_lane_admitted",
+    screen_decision_key="summary",
+    require_positive_wall=True,
+    execution_mode="f16_prefill",
+    require_exact_free_running=False,
+    screen_requires_model=False,
+)
 _COMPARISONS = {
     comparison.name: comparison
-    for comparison in (GROUPED_DOWN_COMPARISON, GROUPED_COMBINE_COMPARISON)
+    for comparison in (
+        GROUPED_DOWN_COMPARISON,
+        GROUPED_COMBINE_COMPARISON,
+        F16_WMMA_COMPARISON,
+    )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
 MODES = GROUPED_DOWN_COMPARISON.modes
@@ -141,6 +162,31 @@ def _mode_order(
     )
 
 
+@contextmanager
+def _f16_prefill_mode(mode: str):
+    previous = os.environ.get("HIPENGINE_LAGUNA_F16_PREFILL")
+    os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] = mode
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("HIPENGINE_LAGUNA_F16_PREFILL", None)
+        else:
+            os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] = previous
+
+
+def _prefill_for_mode(
+    session: LagunaGGUFResidentSession,
+    token_ids: Sequence[int],
+    mode: str,
+    comparison: CategoryComparison,
+):
+    if comparison.execution_mode == "f16_prefill":
+        with _f16_prefill_mode(mode):
+            return session.prefill(token_ids, use_bulk=True)
+    return session.prefill(token_ids, use_bulk=True)
+
+
 def _session_for_mode(
     owner: LagunaGGUFResidentSession,
     args: argparse.Namespace,
@@ -149,9 +195,12 @@ def _session_for_mode(
     comparison: CategoryComparison = GROUPED_DOWN_COMPARISON,
 ) -> LagunaGGUFResidentSession:
     if mode not in comparison.modes:
-        raise ValueError(f"unknown Laguna selected-down mode {mode!r}")
+        raise ValueError(f"unknown Laguna {comparison.name} mode {mode!r}")
     session = _session(owner, args)
-    session.set_selected_down_mode(mode)
+    if comparison.execution_mode == "selected_down":
+        session.set_selected_down_mode(mode)
+    elif comparison.execution_mode != "f16_prefill":
+        raise ValueError(f"unknown Laguna execution mode {comparison.execution_mode!r}")
     return session
 
 
@@ -168,7 +217,12 @@ def _run_target_mode(
     session = _session_for_mode(owner, args, mode, comparison=comparison)
     try:
         prefill_started = time.perf_counter()
-        result = session.prefill(prompt["token_ids"], use_bulk=True)
+        result = _prefill_for_mode(
+            session,
+            prompt["token_ids"],
+            mode,
+            comparison,
+        )
         prefill_seconds = time.perf_counter() - prefill_started
         generated = [int(result.next_token_id)]
         decode_steps: list[float] = []
@@ -263,7 +317,11 @@ def _paired_free_running(
         "all_pairs_exact": bool(all(item["pass"] for item in comparisons)),
         "same_mode_repeat_deterministic": bool(deterministic),
         "pairs": comparisons,
-        "admission_role": "exact mode pairs and deterministic repeats are required",
+        "admission_role": (
+            "exact mode pairs and deterministic repeats are required"
+            if comparison.require_exact_free_running
+            else "complete pair equality is reported; deterministic repeats are required"
+        ),
     }
 
 
@@ -438,7 +496,12 @@ def _teacher_forced_prompt(
     }
     try:
         results = {
-            mode: sessions[mode].prefill(prompt["token_ids"], use_bulk=True)
+            mode: _prefill_for_mode(
+                sessions[mode],
+                prompt["token_ids"],
+                mode,
+                comparison,
+            )
             for mode in comparison.modes
         }
         steps = []
@@ -509,7 +572,7 @@ def _promotion_gate(
         failed.append("poolside_oracle_failed")
     if not free_running["same_mode_repeat_deterministic"]:
         failed.append("free_running_repeat_not_deterministic")
-    if not free_running["all_pairs_exact"]:
+    if comparison.require_exact_free_running and not free_running["all_pairs_exact"]:
         failed.append("free_running_pairs_not_exact")
     if not recovered:
         failed.append("tracked_lifecycle_not_recovered")
@@ -549,12 +612,20 @@ def _promotion_gate(
         "failed_checks": failed,
         "policy": {
             "shape_screen": (
-                "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
-                if comparison.require_positive_wall
-                else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                "every M16-512 full/SWA family faster and M128 weighted >=2x"
+                if comparison.name == "f16_wmma"
+                else (
+                    "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
+                    if comparison.require_positive_wall
+                    else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                )
             ),
             "quality": "KL <= 0.05 and top-1 >= 90% suite-wide and per category",
-            "free_running_ids": "all mode pairs exact and same-mode repeats deterministic",
+            "free_running_ids": (
+                "all mode pairs exact and same-mode repeats deterministic"
+                if comparison.require_exact_free_running
+                else "report complete pair equality; same-mode repeats deterministic"
+            ),
             "performance": performance_policy,
             "lifecycle": "tracked allocations return exactly to baseline",
         },
@@ -575,7 +646,10 @@ def _load_shape_screen(
         and artifact.get("pass")
         and decision.get("pass")
         and not decision.get("regressed_rows")
-        and model.get("sha256") == args.model_sha256
+        and (
+            not comparison.screen_requires_model
+            or model.get("sha256") == args.model_sha256
+        )
     )
     if comparison.require_positive_wall:
         passed = bool(passed and not decision.get("non_improving_grouped_rows"))
@@ -718,7 +792,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 file=sys.stderr,
                 flush=True,
             )
-        oracle = _oracle_gate(owner, args)
+        if comparison.execution_mode == "f16_prefill":
+            with _f16_prefill_mode(comparison.modes[1]):
+                oracle = _oracle_gate(owner, args)
+        else:
+            oracle = _oracle_gate(owner, args)
         resident_nbytes = owner.resident_nbytes
     finally:
         if owner is not None:
@@ -803,7 +881,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
             "prompt_suite": str(args.prompts.resolve()),
             "prompt_suite_sha256": _sha256_bytes(prompt_payload),
-            "activation_quantization_included": False,
+            "activation_quantization_included": bool(
+                comparison.execution_mode == "f16_prefill"
+            ),
             "decode_route": "identical exact c=1 path for both modes",
         },
         "shape_screen": shape_screen,
@@ -829,11 +909,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "notes": [
             "Both modes share resident weights and use isolated bounded request sessions.",
             (
-                "Adaptive grouped down stays BF16 throughout and falls back to direct "
-                "below 32 rows."
-                if comparison.require_positive_wall
-                else "The candidate preserves both BF16 boundaries while removing one "
-                "launch and the selected-output round trip for rows >=32."
+                "WMMA converts BF16 activations to F16 in registers from M16; rows "
+                "2-15 retain the exact tiled route and rows==1 retains GEMV."
+                if comparison.name == "f16_wmma"
+                else (
+                    "Adaptive grouped down stays BF16 throughout and falls back to "
+                    "direct below 32 rows."
+                    if comparison.require_positive_wall
+                    else "The candidate preserves both BF16 boundaries while removing "
+                    "one launch and the selected-output round trip for rows >=32."
+                )
             ),
             "Teacher forcing feeds baseline-route top-1 IDs to both routes and compares "
             "full logits.",
