@@ -36,7 +36,7 @@ _SWA_PREFILL_VARIANTS = frozenset(
         _BASELINE_SWA_PREFILL_VARIANT,
         "swa_context_rows_wave32_exact_spans",
         "swa_context_rows_qrow2_exact_spans",
-        "swa_context_rows_qrow2_32_exact_spans",
+        "swa_context_rows_qrow2_32_c128_exact_spans",
     }
 )
 
@@ -386,6 +386,7 @@ class LagunaKVCache:
                 _LAGUNA_HEAD_DIM,
                 scale,
                 sliding_window=self.sliding_window,
+                start_position=int(self._pending_positions[int(row_offset)]),
                 stream=stream,
                 library=library,
                 runtime=self.runtime,

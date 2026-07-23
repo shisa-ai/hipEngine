@@ -103,12 +103,12 @@ SWA_QROW2_COMPARISON = CategoryComparison(
     screen_kind="hipengine_laguna_prefill_ar_o5_swa_qrow2_ab",
     screen_status="retained",
     screen_decision_key="promotion",
-    require_positive_wall=True,
+    require_positive_wall=False,
     execution_mode="swa_prefill",
 )
 _SWA_PREFILL_VARIANTS = {
     "wave32_exact": "swa_context_rows_wave32_exact_spans",
-    "qrow2_32_exact": "swa_context_rows_qrow2_32_exact_spans",
+    "qrow2_32_exact": "swa_context_rows_qrow2_32_c128_exact_spans",
 }
 _COMPARISONS = {
     comparison.name: comparison

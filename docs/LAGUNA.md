@@ -2547,13 +2547,17 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
   logical-slot order, reduction tree, max/denominator order, BF16 boundaries,
   and complete `KVLiveSpans`. The 508..515 fixture is byte-exact; direct qrow2
   is slower at M16 but improves an actual full-window M32/M55/M64/M122/M128 leaf
-  by **1.118/1.217/1.145/1.092/1.163x**. A registered threshold wrapper keeps
-  wave32 below 32 rows. This remains an explicit candidate until a clean
-  matrix512/attention128 full-model screen and complete category/state/KV/
-  lifecycle gate pass; gfx1151's default is unchanged. The first clean
-  one-repeat model screen is exact for complete logits/hidden/KV/span/cursor and
-  improves 512/1K/4K prefill **1.339%/1.253%/1.079%**. It admits the required
-  repeated/context/category gates but is not by itself a retained claim.
+  by **1.118/1.217/1.145/1.092/1.163x**. A first clean three-repeat full-model
+  screen using only the M32 threshold is exact and improves 512/1K/4K by
+  **1.057%/1.199%/1.040%**, but the first category repetition exposes the missing
+  context axis: every empty-context canonical prompt loses **0.08-0.72%**.
+  Dedicated M128 leaf timing crosses over only after 128 prior tokens
+  (**0.876/0.979/1.048/1.089/1.120/1.145/1.165x** at prior context
+  0/64/128/192/256/320/384). The revised registered policy therefore requires
+  both M>=32 and absolute chunk start>=128, preserving wave32 for canonical
+  first chunks. Rerun repeated long-context and complete non-regressive category
+  gates before changing the gfx1151 default; the prior M-only screen is
+  diagnostic rather than final evidence.
 - [ ] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling, then implement/adapt a tiled causal GQA route only if the measured
   threshold warrants it. The rejected paired-head exact kernel is not a Flash
