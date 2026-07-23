@@ -43,6 +43,9 @@ LAGUNA_F16_PREFILL_MIN_ROWS = 2
 # reduction-order-exact wave32 SWA reader. Other backends retain the registered
 # 128-thread baseline until measured independently.
 LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_wave32_exact_spans"
+# Clean AR-O1 shape and ten-prompt category gates admit exact grouped Q4/Q6
+# selected down from 32 bulk rows. Other backends retain direct selected GEMV.
+LAGUNA_SELECTED_DOWN_MODE = "adaptive_grouped_smallm"
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -255,6 +258,7 @@ __all__ = [
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
     "LAGUNA_F16_PREFILL_STRATEGY",
+    "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SWA_PREFILL_VARIANT",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",

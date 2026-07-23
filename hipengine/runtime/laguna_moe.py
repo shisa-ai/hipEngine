@@ -10,7 +10,10 @@ from typing import Callable
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
-from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.backends import (
+    backend_package_capability,
+    load_backend_kernel_package,
+)
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.laguna_gguf import LagunaGGUFConfig, SPARSE_MOE
 from hipengine.loading.laguna_gguf_materialize import (
@@ -41,7 +44,29 @@ _ADD_VARIANT = "add"
 _SELECTED_DOWN_MODES = frozenset(
     {"direct", "grouped_smallm", "adaptive_grouped_smallm"}
 )
+_BASELINE_SELECTED_DOWN_MODE = "direct"
 _GROUPED_SMALLM_MIN_ROWS = 32
+
+
+def resolve_laguna_selected_down_mode(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve an explicit rollback or the architecture-qualified down default."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_SELECTED_DOWN_MODE",
+            _BASELINE_SELECTED_DOWN_MODE,
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _SELECTED_DOWN_MODES:
+        raise ValueError("unsupported Laguna selected-down mode")
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -1237,6 +1262,7 @@ __all__ = [
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",
     "resolve_laguna_moe_plan",
+    "resolve_laguna_selected_down_mode",
     "run_laguna_moe_c1",
     "run_laguna_moe_rows",
     "validate_laguna_moe_layer",

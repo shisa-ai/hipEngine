@@ -34,6 +34,7 @@ from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
+    resolve_laguna_selected_down_mode,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
@@ -136,6 +137,17 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "selected_expert_mlp" in sparse_sequence
     assert "laguna_shared_expert" in sparse_sequence
     assert "laguna_routed_shared_combine" in sparse_sequence
+
+
+def test_laguna_selected_down_default_is_backend_qualified() -> None:
+    assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
+    assert (
+        resolve_laguna_selected_down_mode("hip_gfx1151")
+        == "adaptive_grouped_smallm"
+    )
+    assert resolve_laguna_selected_down_mode("hip_gfx1151", "direct") == "direct"
+    with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
+        resolve_laguna_selected_down_mode("hip_gfx1151", "invalid")
 
 
 def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> None:

@@ -1,0 +1,602 @@
+{
+  "aggregate": {
+    "adaptive_grouped_smallm": {
+      "categories": {
+        "code": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 180,
+              "decode_seconds": 10.808312635985203,
+              "decode_tok_s": 16.653848390793943,
+              "e2e_output_tok_s": 6.7935596926103505,
+              "output_tokens": 192,
+              "total_seconds": 28.262061229674146
+            },
+            "32": {
+              "decode_forward_calls": 372,
+              "decode_seconds": 22.5229591288371,
+              "decode_tok_s": 16.516479822747296,
+              "e2e_output_tok_s": 9.605593403671508,
+              "output_tokens": 384,
+              "total_seconds": 39.976707722526044
+            }
+          },
+          "prefill_seconds": 17.453748593688942,
+          "prefill_tok_s": 52.59615119768239,
+          "prompt_tokens": 918,
+          "runs": 12,
+          "ttft_median_seconds": 1.4477107094135135
+        },
+        "general_en": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 90,
+              "decode_seconds": 5.353716872748919,
+              "decode_tok_s": 16.810750762355614,
+              "e2e_output_tok_s": 7.235348659648034,
+              "output_tokens": 96,
+              "total_seconds": 13.268192662973888
+            },
+            "32": {
+              "decode_forward_calls": 186,
+              "decode_seconds": 11.159294199664146,
+              "decode_tok_s": 16.66772079596198,
+              "e2e_output_tok_s": 10.066179895310576,
+              "output_tokens": 192,
+              "total_seconds": 19.073769989889115
+            }
+          },
+          "prefill_seconds": 7.914475790224969,
+          "prefill_tok_s": 51.551108476939646,
+          "prompt_tokens": 408,
+          "runs": 6,
+          "ttft_median_seconds": 1.3174241385422647
+        },
+        "general_ja": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 90,
+              "decode_seconds": 5.506167745450512,
+              "decode_tok_s": 16.34530660173998,
+              "e2e_output_tok_s": 5.984066193786315,
+              "output_tokens": 96,
+              "total_seconds": 16.042603288660757
+            },
+            "32": {
+              "decode_forward_calls": 186,
+              "decode_seconds": 11.483343644998968,
+              "decode_tok_s": 16.19737297341995,
+              "e2e_output_tok_s": 8.719433485636813,
+              "output_tokens": 192,
+              "total_seconds": 22.019779188209213
+            }
+          },
+          "prefill_seconds": 10.536435543210246,
+          "prefill_tok_s": 53.81326518581313,
+          "prompt_tokens": 567,
+          "runs": 6,
+          "ttft_median_seconds": 1.7563172640511766
+        },
+        "mixed_ja_en": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 90,
+              "decode_seconds": 5.634150267811492,
+              "decode_tok_s": 15.97401484198597,
+              "e2e_output_tok_s": 5.197190502198713,
+              "output_tokens": 96,
+              "total_seconds": 18.47151840198785
+            },
+            "32": {
+              "decode_forward_calls": 186,
+              "decode_seconds": 11.742741208407097,
+              "decode_tok_s": 15.839572438744982,
+              "e2e_output_tok_s": 7.81119389356712,
+              "output_tokens": 192,
+              "total_seconds": 24.580109342583455
+            }
+          },
+          "prefill_seconds": 12.837368134176359,
+          "prefill_tok_s": 54.45041325402854,
+          "prompt_tokens": 699,
+          "runs": 6,
+          "ttft_median_seconds": 2.1429329575039446
+        }
+      },
+      "horizons": {
+        "16": {
+          "decode_forward_calls": 450,
+          "decode_seconds": 27.302347521996126,
+          "decode_tok_s": 16.4820991908281,
+          "e2e_output_tok_s": 6.312103904045118,
+          "output_tokens": 480,
+          "total_seconds": 76.04437558329664
+        },
+        "32": {
+          "decode_forward_calls": 930,
+          "decode_seconds": 56.90833818190731,
+          "decode_tok_s": 16.342069189004572,
+          "e2e_output_tok_s": 9.086575221046312,
+          "output_tokens": 960,
+          "total_seconds": 105.65036624320783
+        }
+      },
+      "prefill_seconds": 48.742028061300516,
+      "prefill_tok_s": 53.17792679328332,
+      "prompt_tokens": 2592,
+      "runs": 30,
+      "ttft_median_seconds": 1.5349527554935776
+    },
+    "adaptive_grouped_smallm_vs_direct": {
+      "categories": {
+        "code": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.035817782540499
+            },
+            "32": {
+              "e2e_speedup": 1.0254631519886652
+            }
+          },
+          "prefill_speedup": 1.0576721917178535
+        },
+        "general_en": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.032538181936542
+            },
+            "32": {
+              "e2e_speedup": 1.0228628043314694
+            }
+          },
+          "prefill_speedup": 1.0533972644301246
+        },
+        "general_ja": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.0391653852830758
+            },
+            "32": {
+              "e2e_speedup": 1.028202963326288
+            }
+          },
+          "prefill_speedup": 1.0595960086411622
+        },
+        "mixed_ja_en": {
+          "horizons": {
+            "16": {
+              "e2e_speedup": 1.045674496902725
+            },
+            "32": {
+              "e2e_speedup": 1.0342798621616385
+            }
+          },
+          "prefill_speedup": 1.0655910362776981
+        }
+      },
+      "horizons": {
+        "16": {
+          "decode_speedup": 1.0006170240310734,
+          "e2e_speedup": 1.0383460217343456
+        },
+        "32": {
+          "decode_speedup": 1.0003248305466603,
+          "e2e_speedup": 1.0276159822697706
+        }
+      },
+      "prefill_speedup": 1.0594795331601696,
+      "ttft_speedup": 1.0602478614770257
+    },
+    "direct": {
+      "categories": {
+        "code": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 180,
+              "decode_seconds": 10.814001064165495,
+              "decode_tok_s": 16.64508806055776,
+              "e2e_output_tok_s": 6.5586436216108615,
+              "output_tokens": 192,
+              "total_seconds": 29.274345592944883
+            },
+            "32": {
+              "decode_forward_calls": 372,
+              "decode_seconds": 22.534296178491786,
+              "decode_tok_s": 16.50817034858454,
+              "e2e_output_tok_s": 9.367078071058453,
+              "output_tokens": 384,
+              "total_seconds": 40.994640707271174
+            }
+          },
+          "prefill_seconds": 18.460344528779387,
+          "prefill_tok_s": 49.72821599124829,
+          "prompt_tokens": 918,
+          "runs": 12,
+          "ttft_median_seconds": 1.5333880700054578
+        },
+        "general_en": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 90,
+              "decode_seconds": 5.362828382989392,
+              "decode_tok_s": 16.782189093627395,
+              "e2e_output_tok_s": 7.00734247529522,
+              "output_tokens": 96,
+              "total_seconds": 13.699915529810824
+            },
+            "32": {
+              "decode_forward_calls": 186,
+              "decode_seconds": 11.172762714209966,
+              "decode_tok_s": 16.6476282328486,
+              "e2e_output_tok_s": 9.841182857254946,
+              "output_tokens": 192,
+              "total_seconds": 19.509849861031398
+            }
+          },
+          "prefill_seconds": 8.337087146821432,
+          "prefill_tok_s": 48.93795552509639,
+          "prompt_tokens": 408,
+          "runs": 6,
+          "ttft_median_seconds": 1.3879842649912462
+        },
+        "general_ja": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 90,
+              "decode_seconds": 5.506552980514243,
+              "decode_tok_s": 16.34416309413137,
+              "e2e_output_tok_s": 5.758531104417238,
+              "output_tokens": 96,
+              "total_seconds": 16.670918027404696
+            },
+            "32": {
+              "decode_forward_calls": 186,
+              "decode_seconds": 11.476437166216783,
+              "decode_tok_s": 16.207120494462224,
+              "e2e_output_tok_s": 8.480264886058109,
+              "output_tokens": 192,
+              "total_seconds": 22.640802213107236
+            }
+          },
+          "prefill_seconds": 11.164365046890453,
+          "prefill_tok_s": 50.78658729077686,
+          "prompt_tokens": 567,
+          "runs": 6,
+          "ttft_median_seconds": 1.862279573455453
+        },
+        "mixed_ja_en": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 90,
+              "decode_seconds": 5.635811298852786,
+              "decode_tok_s": 15.969306853535036,
+              "e2e_output_tok_s": 4.970180029820683,
+              "output_tokens": 96,
+              "total_seconds": 19.31519571202807
+            },
+            "32": {
+              "decode_forward_calls": 186,
+              "decode_seconds": 11.743327689589933,
+              "decode_tok_s": 15.83878138433306,
+              "e2e_output_tok_s": 7.552302021274758,
+              "output_tokens": 192,
+              "total_seconds": 25.422712102765217
+            }
+          },
+          "prefill_seconds": 13.679384413175285,
+          "prefill_tok_s": 51.09879062443474,
+          "prompt_tokens": 699,
+          "runs": 6,
+          "ttft_median_seconds": 2.282864282547962
+        }
+      },
+      "horizons": {
+        "16": {
+          "decode_forward_calls": 450,
+          "decode_seconds": 27.319193726521917,
+          "decode_tok_s": 16.471935610717996,
+          "e2e_output_tok_s": 6.078998495609425,
+          "output_tokens": 480,
+          "total_seconds": 78.96037486218847
+        },
+        "32": {
+          "decode_forward_calls": 930,
+          "decode_seconds": 56.92682374850847,
+          "decode_tok_s": 16.33676250950795,
+          "e2e_output_tok_s": 8.842384098558032,
+          "output_tokens": 960,
+          "total_seconds": 108.56800488417502
+        }
+      },
+      "prefill_seconds": 51.64118113566656,
+      "prefill_tok_s": 50.19250030688795,
+      "prompt_tokens": 2592,
+      "runs": 30,
+      "ttft_median_seconds": 1.6274303764803335
+    }
+  },
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_grouped_down_category_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--chunk-size",
+    "128",
+    "--output-horizons",
+    "16,32",
+    "--repetitions",
+    "3",
+    "--warmup-output-tokens",
+    "2",
+    "--teacher-forced-tokens",
+    "32",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--shape-screen",
+    "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json",
+    "--output",
+    "/tmp/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json"
+  ],
+  "created_at": "2026-07-23T09:06:38.817624+00:00",
+  "kind": "hipengine_laguna_prefill_grouped_down_category",
+  "load": {
+    "resident_nbytes": 77125438836,
+    "seconds_excluded": 49.33340122003574
+  },
+  "memory": {
+    "gpu_free_after": 128693690368,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77900501084,
+      "peak_allocations": 2077,
+      "total_allocated_bytes": 109290522128,
+      "total_freed_bytes": 109290522128
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "Both modes share resident weights and use isolated bounded request sessions.",
+    "Adaptive grouped down stays BF16 throughout and falls back to direct below 32 rows.",
+    "Teacher forcing feeds direct-route top-1 IDs to both routes and compares full logits.",
+    "Complete free-running IDs are reported, while KL/top-1 thresholds remain authoritative.",
+    "AR decode uses the identical exact c=1 route in both modes."
+  ],
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "same-owner Laguna direct versus exact adaptive grouped-small-M down over all ten canonical category prompts at h16/h32; model load excluded",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "promotion": {
+    "failed_checks": [],
+    "pass": true,
+    "policy": {
+      "free_running_ids": "all mode pairs exact and same-mode repeats deterministic",
+      "lifecycle": "tracked allocations return exactly to baseline",
+      "performance": "aggregate and every-category prefill faster; aggregate E2E faster; each-category E2E >= 0.98x; decode within 2%",
+      "quality": "KL <= 0.05 and top-1 >= 90% suite-wide and per category",
+      "shape_screen": "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
+    }
+  },
+  "protocol": {
+    "activation_quantization_included": false,
+    "chunk_size": 128,
+    "decode_route": "identical exact c=1 path for both modes",
+    "modes": [
+      "direct",
+      "adaptive_grouped_smallm"
+    ],
+    "output_horizons": [
+      16,
+      32
+    ],
+    "prompt_suite": "/tmp/hipengine-laguna-grouped-category-a95adcac8/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "teacher_forced_tokens_per_prompt": 32,
+    "timed_order": "alternating direct/adaptive_grouped_smallm per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
+    "warmup_output_tokens_per_mode": 2
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_grouped_down_category",
+    "collected_at": "2026-07-23T09:00:56.057718+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_grouped_down_category_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--chunk-size",
+      "128",
+      "--output-horizons",
+      "16,32",
+      "--repetitions",
+      "3",
+      "--warmup-output-tokens",
+      "2",
+      "--teacher-forced-tokens",
+      "32",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--shape-screen",
+      "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json",
+      "--output",
+      "/tmp/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "a95adcac82d8ae0b018fe1167b5108422afa47a9",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/tmp/hipengine-laguna-grouped-category-a95adcac8",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_owner_balanced_direct_vs_adaptive_grouped_down_category_h16_h32",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 2
+  },
+  "quality": {
+    "free_running": {
+      "admission_role": "exact mode pairs and deterministic repeats are required",
+      "all_pairs_exact": true,
+      "pair_count": 30,
+      "same_mode_repeat_deterministic": true
+    },
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 6.621408380303441e-06,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/tmp/hipengine-laguna-grouped-category-a95adcac8/tests/fixtures/laguna_poolside_v1_oracle.json",
+      "oracle_distribution": "/tmp/hipengine-laguna-grouped-category-a95adcac8/tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "teacher_forced": {
+      "categories": {
+        "code": {
+          "finite": true,
+          "max_kl_divergence": 0.0,
+          "steps": 128,
+          "top1_agreement": 1.0,
+          "top1_matches": 128
+        },
+        "general_en": {
+          "finite": true,
+          "max_kl_divergence": 0.0,
+          "steps": 64,
+          "top1_agreement": 1.0,
+          "top1_matches": 64
+        },
+        "general_ja": {
+          "finite": true,
+          "max_kl_divergence": 0.0,
+          "steps": 64,
+          "top1_agreement": 1.0,
+          "top1_matches": 64
+        },
+        "mixed_ja_en": {
+          "finite": true,
+          "max_kl_divergence": 0.0,
+          "steps": 64,
+          "top1_agreement": 1.0,
+          "top1_matches": 64
+        }
+      },
+      "failed_checks": [],
+      "finite": true,
+      "max_kl_divergence": 0.0,
+      "pass": true,
+      "steps": 320,
+      "thresholds": {
+        "max_kl_divergence": 0.05,
+        "minimum_each_category_top1_agreement": 0.9,
+        "minimum_suite_top1_agreement": 0.9
+      },
+      "top1_agreement": 1.0,
+      "top1_matches": 320
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "raw_output": {
+    "bytes": 243217,
+    "committed": false,
+    "omitted_fields": [
+      "rows",
+      "quality.teacher_forced_prompts",
+      "quality.free_running.pairs"
+    ],
+    "sha256": "d406e75b5a282c68773f21b15acd9081e22c11c90cde90feebf7839935d08276"
+  },
+  "repo": {
+    "revision": "a95adcac82d8ae0b018fe1167b5108422afa47a9",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "shape_screen": {
+    "aggregate_speedup": 1.054606702555473,
+    "grouped_min_rows": 32,
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "pass": true,
+    "path": "/tmp/hipengine-laguna-grouped-category-a95adcac8/benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json",
+    "revision": "1686d52ba9c12c2c463d3e266f52f8534a76ca7b",
+    "sha256": "f7fe3a32b117f8ce0aec810a664c4bed12830bba575be3aeac59a0c30f51ff8e"
+  },
+  "status": "retained_category_gate"
+}

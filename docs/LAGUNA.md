@@ -2210,14 +2210,15 @@ Laguna scheduler and a useful small-M selected layout do not.
 | contiguous prefill metadata | The helper writes Qwen attention/GDN metadata, not Laguna's span/ring contract. Kernel-span residual is only 0.28-0.34%. | Do not port. Only the grouped-expert count/prefix/scatter metadata is relevant now. |
 | AOTriton | Torch-free adapter exists, but it does not directly consume Laguna's global/SWA `KVLiveSpans`, physical ring, eviction, and separate gate ABI. | Keep as an AR-O5 global-attention ceiling after matrix work; not an AR-O1 dependency. |
 
-The first ranked item is now closed: exact fused Q4 dual-SiLU failed its strict
-same-session full-model screen and did not become a runtime route. The remaining
-AR-O1 order is therefore: (1) inclusive direct Q8_1/dp4a gate/up A/B through the
-quality lane; (2) preserve and extend the natural-routing replay to 256/512,
-then add a generic no-D2H grouping substrate and small-M Q4/Q6 kernels; and (3)
-admit M16/M32 only at a measured crossover. This deliberately excludes the rejected
-compact-pair route, raw-Q4 duplication, Q8T16 substitution, router retuning,
-metadata work, and attention work.
+The first two screens are closed: exact fused Q4 dual-SiLU failed its strict
+same-session full-model screen, and inclusive direct Q8_1/dp4a failed the full
+quality lane. The exact no-D2H grouped-small-M Q4/Q6 down route is now promoted
+on gfx1151 after passing shape and category gates. The remaining AR-O1 order is
+therefore: (1) extend the natural-routing replay to 256/512; (2) admit an
+M16/M32 integer-MMQ/WMMA route only at a measured crossover; and (3) evaluate
+exact intermediate fusion after gate/up. This deliberately excludes the
+rejected compact-pair route, raw-Q4 duplication, Q8T16 substitution, router
+retuning, unrelated metadata work, and attention work.
 
 Lineage status is bounded and explicit. Poolside Laguna source/layout is clean
 at `04b2b72c`; llama.cpp HIP `mmq.cuh`, `mma.cuh`, and `quantize.cu` are clean
@@ -2271,13 +2272,20 @@ repeat either experiment unchanged.
   boundary. The exact BF16 route needs no activation quantization; a deterministic
   one-pass compact-active kernel emits starts, active experts, lane order, and
   routing weights, with staged count/prefix/scatter kept as the unfused fallback.
-- [x] Implement adaptive small-M grouped Q4/Q6 schedules for the measured
-  1/2/4/8-row populations. C16xR4 reuses each decoded T16 tile across up to four
-  packed rows and falls back to direct below 32 token rows. Clean rows
-  32/55/64/122/128 improve 2.63-6.92%, aggregate wall improves 5.461%, and all
-  36 IDs agree; the category gate remains mandatory before default promotion.
-  Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json`.
+- [x] Implement and promote adaptive small-M grouped Q4/Q6 schedules for the
+  measured 1/2/4/8-row populations. C16xR4 reuses each decoded T16 tile across
+  up to four packed rows and falls back to direct below 32 token rows. Clean
+  rows 32/55/64/122/128 improve 2.63-6.92% and aggregate shape wall improves
+  5.461%. The full three-repeat ten-prompt gate moves weighted prefill
+  **50.193->53.178 tok/s (+5.948%)**, median TTFT **1.627->1.535 s
+  (-5.682%)**, and h16/h32 E2E **+3.835%/+2.762%**. Every category improves;
+  decode is neutral within 0.062%; all 320 teacher-forced logits are identical
+  (`KL=0`, top-1 100%); all free-running pairs/repeats, the Poolside oracle,
+  and lifecycle pass. gfx1151 now selects adaptive grouped down by backend
+  capability; gfx1100 and rows below 32 retain direct selected GEMV. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json`
+  and
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json`.
 - [ ] Add an M16/M32 integer-MMQ/WMMA route only where measured occupancy pays
   for padding. Use the landed IQ2 MMQ32 work as a scheduling reference, not as
   a quant-format shortcut; Laguna Q4_K/Q6_K decode and scales need their own
