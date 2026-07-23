@@ -734,11 +734,16 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         repacked_cache="/synthetic/laguna-repacked-v1",
         model_sha256="synthetic-sha256",
         safety_reserve_nbytes=4 * 2**30,
+        global_prefill_variant="global_context_rows_qrow2_online_spans",
     )
     assert session.prefill_chunk_size == 512
     assert session.prefill_attention_chunk_size == 128
     assert session.prefill_scratch_plan.total_nbytes == 411_953_168
     assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
+    assert (
+        session.global_prefill_variant
+        == "global_context_rows_qrow2_online_spans"
+    )
     assert (
         session.swa_prefill_variant
         == "swa_context_rows_qrow2_m128_c128_exact_spans"

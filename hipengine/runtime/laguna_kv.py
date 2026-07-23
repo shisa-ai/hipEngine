@@ -23,6 +23,13 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 _GLOBAL_BLOCK_SIZE = 256
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
+_BASELINE_GLOBAL_PREFILL_VARIANT = "global_context_rows_spans"
+_GLOBAL_PREFILL_VARIANTS = frozenset(
+    {
+        _BASELINE_GLOBAL_PREFILL_VARIANT,
+        "global_context_rows_qrow2_online_spans",
+    }
+)
 _BASELINE_SWA_DECODE_VARIANT = "swa_context_spans"
 _SWA_DECODE_VARIANTS = frozenset(
     {
@@ -497,6 +504,27 @@ class LagunaKVCache:
             raise RuntimeError("Laguna KV cache is closed")
 
 
+def resolve_laguna_global_prefill_variant(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve an explicit rollback or the architecture-qualified global default."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_PREFILL_VARIANT",
+            _BASELINE_GLOBAL_PREFILL_VARIANT,
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _GLOBAL_PREFILL_VARIANTS:
+        raise ValueError("unsupported Laguna global prefill variant")
+    return parsed
+
+
 def resolve_laguna_swa_decode_variant(
     backend: str,
     requested: str | None = None,
@@ -546,6 +574,7 @@ def allocate_laguna_kv_cache(
     backend: str = "hip_gfx1100",
     device: Device | None = None,
     runtime: HipRuntime | None = None,
+    global_prefill_variant: str | None = None,
     swa_decode_variant: str | None = None,
     swa_prefill_variant: str | None = None,
 ) -> LagunaKVCache:
@@ -554,6 +583,10 @@ def allocate_laguna_kv_cache(
     context = int(context_length)
     if context <= 0:
         raise ValueError("context_length must be positive")
+    parsed_global_prefill_variant = resolve_laguna_global_prefill_variant(
+        backend,
+        global_prefill_variant,
+    )
     parsed_swa_decode_variant = resolve_laguna_swa_decode_variant(
         backend,
         swa_decode_variant,
@@ -647,7 +680,7 @@ def allocate_laguna_kv_cache(
                 write_variant = "global_f32_spans"
                 write_rows_variant = "global_f32_rows_spans"
                 attention_variant = "global_context_spans"
-                attention_prefill_variant = "global_context_rows_spans"
+                attention_prefill_variant = parsed_global_prefill_variant
             else:
                 capacity = sliding_window
                 physical_capacity = sliding_window
@@ -770,6 +803,7 @@ __all__ = [
     "LagunaKVCache",
     "LagunaKVLayerState",
     "allocate_laguna_kv_cache",
+    "resolve_laguna_global_prefill_variant",
     "resolve_laguna_swa_decode_variant",
     "resolve_laguna_swa_prefill_variant",
 ]

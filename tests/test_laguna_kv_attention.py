@@ -342,6 +342,7 @@ def _production_config() -> SimpleNamespace:
 def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -> None:
     from hipengine.runtime.laguna_kv import (
         allocate_laguna_kv_cache,
+        resolve_laguna_global_prefill_variant,
         resolve_laguna_swa_decode_variant,
         resolve_laguna_swa_prefill_variant,
     )
@@ -372,6 +373,11 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert all(layer.spans.token_positions is not None for layer in cache.layers)
     assert all(layer.spans.evict_mask is not None for layer in cache.layers)
     assert all(
+        layer.attention_prefill_variant == "global_context_rows_spans"
+        for layer in cache.layers
+        if layer.attention_type == FULL_ATTENTION
+    )
+    assert all(
         layer.attention_variant == "swa_context_spans"
         for layer in cache.layers
         if layer.attention_type == SLIDING_ATTENTION
@@ -383,6 +389,17 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
         if layer.attention_type == SLIDING_ATTENTION
     )
     assert cache.allocation_count == 243
+    assert (
+        resolve_laguna_global_prefill_variant("hip_gfx1151")
+        == "global_context_rows_spans"
+    )
+    assert (
+        resolve_laguna_global_prefill_variant(
+            "hip_gfx1151",
+            "global_context_rows_qrow2_online_spans",
+        )
+        == "global_context_rows_qrow2_online_spans"
+    )
     assert (
         resolve_laguna_swa_prefill_variant("hip_gfx1151")
         == "swa_context_rows_qrow2_m128_c128_exact_spans"
@@ -506,6 +523,15 @@ def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
 
 def test_laguna_kv_owner_cleans_partial_allocation_failure() -> None:
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    with pytest.raises(ValueError, match="global prefill variant"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1151",
+            runtime=_FakeRuntime(),
+            global_prefill_variant="missing",
+        )
 
     with pytest.raises(ValueError, match="SWA prefill variant"):
         allocate_laguna_kv_cache(
