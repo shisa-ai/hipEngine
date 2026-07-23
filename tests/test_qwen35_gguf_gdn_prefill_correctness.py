@@ -88,6 +88,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
+    qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16,
     qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16,
@@ -1331,6 +1332,34 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="bf16",
         )
         is qwen35_gdn_prefill_rmsnorm_gate_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_attn_prefill_prepare",
+            quant="gguf_ud_q3_k_m",
+            variant="f32_bf16",
+        )
+        is qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_ud_q3_k_m",
+            variant="f32_k2",
+        )
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_ud_q3_k_m",
+            variant="f32_k2_segments",
+            missing="none",
+        )
+        is None
     )
 
 

@@ -1,0 +1,183 @@
+{
+  "cases": {
+    "general_en_bandwidth": {
+      "expected_result_sha256": "28555d27b3c623bb8a0e10a535420dd6d7eb2c70076eecec89412000195d6be3",
+      "kind": "lookup"
+    },
+    "general_en_calculate": {
+      "expected_result_sha256": "83c201d3544f4b86baafb85ef883a12505891b6ef8ca9a5bd7732e207bdbe95b",
+      "kind": "calculate"
+    },
+    "general_en_cutover": {
+      "expected_result_sha256": "4ae646988e6ae047503f1fba32b01ba3043c32ad5c0a58dc81fd8464fc0e9064",
+      "kind": "lookup"
+    },
+    "general_en_share": {
+      "expected_result_sha256": "e4317a532a4165cdbd619de4f288a4e463f224181bf72fd8906b940632307871",
+      "kind": "calculate"
+    },
+    "general_ja_calculate": {
+      "expected_result_sha256": "a97b993a82f175fa601ead086300fa767da22981afa9279c3858933e00ece12b",
+      "kind": "calculate"
+    },
+    "general_ja_grep": {
+      "expected_result_sha256": "d571b517546d12e2edf63060d53fcb17313bf8608fc7b427584226b34f335374",
+      "kind": "grep"
+    },
+    "general_ja_lookup": {
+      "expected_result_sha256": "72e8e0e42ca78fb1052789ecf754920804af823d57e8581d6e667b2d1280d06e",
+      "kind": "lookup"
+    },
+    "general_ja_read": {
+      "expected_result_sha256": "aafa5c61593fc947f263565e01608993a3588632a50c9ca8f62ec71494087800",
+      "kind": "read"
+    },
+    "general_release_full_test": {
+      "expected_result_sha256": "7848dd3d59453257f50fca80a1d083b3a3a92919cd269170f32d2da72a7ee402",
+      "kind": "test",
+      "setup_patches": [
+        "scheduler_engine_busy",
+        "cache_zero_ref_only",
+        "release_backward_compatible"
+      ]
+    },
+    "general_release_grep": {
+      "expected_result_sha256": "9ff4381f979592e7e085deb831f125a7cef749188bc1191c562325e382efe9f6",
+      "kind": "grep"
+    },
+    "general_release_lookup": {
+      "expected_result_sha256": "b7220d8e69bd3bdf44d103f9d580b63bf470711b9e4617f6dfc3c3744e751b45",
+      "kind": "lookup"
+    },
+    "general_release_read": {
+      "expected_result_sha256": "4a107c2378b8cbc369494aaf7b73902a7d9be16581356cd75631af93f1750265",
+      "kind": "read"
+    },
+    "mixed_release_calculate": {
+      "expected_result_sha256": "be78dcf7bce27b4b83286efc5abb78f52e38e93052fb964bf01edaf7d9ed4448",
+      "kind": "calculate"
+    },
+    "mixed_release_grep": {
+      "expected_result_sha256": "9ce183aa83af372e1e219ef5e1ce60b36ffc64a43fe60acdb102f39c29141e7d",
+      "kind": "grep"
+    },
+    "mixed_release_patch": {
+      "expected_result_sha256": "e274bcf2501b4e11014beb8ee1fb8b72501140eb67baa4d1ec4f5bf33abf5a53",
+      "kind": "patch"
+    },
+    "mixed_release_test": {
+      "expected_result_sha256": "23455ff7c81756495d0bfb3f25ae52b3b34caf73e747b4b47e054a87e70f8f14",
+      "kind": "test",
+      "setup_patches": [
+        "release_backward_compatible"
+      ]
+    },
+    "repo_cache_grep": {
+      "expected_result_sha256": "a7a43312ff124f2af7f1e8c5f999d0025ae6fa6dc3ab79ef1941ab3d5926fa18",
+      "kind": "grep"
+    },
+    "repo_cache_patch": {
+      "expected_result_sha256": "fc6677c90f54c28d2aaea558afbc027a61206ac093c2fd9a03d499514728ae5c",
+      "kind": "patch"
+    },
+    "repo_cache_read": {
+      "expected_result_sha256": "3175791c9223d7a630a0a87d3b67f6fc039c77d2cfce73a9a10d3102491dadb9",
+      "kind": "read"
+    },
+    "repo_cache_test": {
+      "expected_result_sha256": "42f3b0cffcbfaa85a949a3c8d4c40863d0daf58894985ac21653d1f869269b4b",
+      "kind": "test",
+      "setup_patches": [
+        "cache_zero_ref_only"
+      ]
+    },
+    "repo_scheduler_grep": {
+      "expected_result_sha256": "ca414da7674a192c7f4b719f8d8e8fd43c1c324db79fc52387ecca5b659f39f2",
+      "kind": "grep"
+    },
+    "repo_scheduler_patch": {
+      "expected_result_sha256": "7afa281c9233699b6411e60bd2c89bea202495eb88761723980c0952f92bd17d",
+      "kind": "patch"
+    },
+    "repo_scheduler_read": {
+      "expected_result_sha256": "e5e50b0eb9771ddbd86d82727888718794fa1a9bad8b0b6dcfe9e33a527bfbea",
+      "kind": "read"
+    },
+    "repo_scheduler_test": {
+      "expected_result_sha256": "aeabcdb85b804c447bbc66095e0c47f5743fe45c11f61dcaf35e8aed2f89aea4",
+      "kind": "test",
+      "setup_patches": [
+        "scheduler_engine_busy"
+      ]
+    }
+  },
+  "description": "Independent deterministic file, lookup, calculator, patch, and test oracles for A6 quality tasks.",
+  "files": {
+    "config/migration.json": "{\"source\":\"sqlite\",\"target\":\"postgresql\",\"dual_write\":true}\n",
+    "docs/release.md": "Release checklist\n- Preserve backward compatibility for API responses.\n- Validate cache-off behavior and structured logs.\n- Run scheduler, cache, and release tests before cutover.\n",
+    "docs/release_ja.md": "リリース確認\n- APIの後方互換性を確認する。\n- キャッシュ無効化とログ形式を検証する。\n- API behavior may change.\n",
+    "src/cache.py": "def can_evict(refcount: int) -> bool:\n    return refcount <= 1\n",
+    "src/scheduler.py": "class EngineBusy(RuntimeError):\n    pass\n\n\ndef admit(pending: int, cap: int) -> str:\n    if pending >= cap:\n        raise ValueError(\"full\")\n    return \"admitted\"\n"
+  },
+  "kind": "hipengine.agentic_quality_oracles",
+  "lookups": {
+    "bilingual_release": "Keep Japanese product terms unchanged and validate the English compatibility statement.",
+    "gpu_bandwidth": "Decode throughput rises when quantization lowers weight bytes or batching reuses each weight load.",
+    "postgres_cutover": "Backfill, enable dual write, compare checksums, cut reads over, then retain a rollback window.",
+    "release_check_ja": "後方互換性、キャッシュ無効化、構造化ログ、ロールバック手順を確認する。",
+    "release_validation": "Run scheduler, cache, and release suites; verify backward-compatible API envelopes."
+  },
+  "patches": {
+    "cache_zero_ref_only": {
+      "new": "    return refcount == 0",
+      "old": "    return refcount <= 1",
+      "path": "src/cache.py",
+      "test_suite": "cache"
+    },
+    "release_backward_compatible": {
+      "new": "- API responses remain backward compatible.",
+      "old": "- API behavior may change.",
+      "path": "docs/release_ja.md",
+      "test_suite": "release"
+    },
+    "scheduler_engine_busy": {
+      "new": "        raise EngineBusy(\"full\")",
+      "old": "        raise ValueError(\"full\")",
+      "path": "src/scheduler.py",
+      "test_suite": "scheduler"
+    }
+  },
+  "schema_version": 1,
+  "suite": "agentic-quality-v2",
+  "summaries": {
+    "config/migration.json": "The migration moves SQLite to PostgreSQL with dual write enabled.",
+    "docs/release.md": "The English checklist covers API compatibility, cache-off logs, and three test groups.",
+    "docs/release_ja.md": "日本語の確認項目は後方互換性、キャッシュ無効化、ログ形式を扱うが、英語の末尾文が互換性を曖昧にしている。",
+    "src/cache.py": "can_evict currently permits refcount one, which violates unreferenced-only eviction.",
+    "src/scheduler.py": "Admission raises ValueError when pending reaches the cap; EngineBusy is already declared."
+  },
+  "test_suites": {
+    "cache": {
+      "required_file_sha256": {
+        "src/cache.py": "548c04c23a51b53c2e4e0552481b30a7db9262907acb3efea1608ce41e30716e"
+      }
+    },
+    "full": {
+      "required_file_sha256": {
+        "docs/release_ja.md": "389682750356dc83c5a264ffd477faf031b4a58e21781ca6e4b49de45d2f25d9",
+        "src/cache.py": "548c04c23a51b53c2e4e0552481b30a7db9262907acb3efea1608ce41e30716e",
+        "src/scheduler.py": "8d15a0684b9cf5ba544995114abd5ce7f9e377fd80a44d85b9b2e0a337fe0221"
+      }
+    },
+    "release": {
+      "required_file_sha256": {
+        "docs/release_ja.md": "389682750356dc83c5a264ffd477faf031b4a58e21781ca6e4b49de45d2f25d9"
+      }
+    },
+    "scheduler": {
+      "required_file_sha256": {
+        "src/scheduler.py": "8d15a0684b9cf5ba544995114abd5ce7f9e377fd80a44d85b9b2e0a337fe0221"
+      }
+    }
+  }
+}

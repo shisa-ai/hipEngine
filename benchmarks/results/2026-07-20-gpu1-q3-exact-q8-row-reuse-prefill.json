@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "three-run exact default-path promotion",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "fd80959a3fbd2990fc72dfd15c396fc6b7b73245",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "diagnosis": {
+    "baseline_artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-q8-pack8-prefill.json",
+    "baseline_total_kernel_ms": 11832.588143,
+    "baseline_dense_q8_pack8_ms": 5958.32779,
+    "baseline_dense_q8_share_pct": 50.36,
+    "conclusion": "After eight-column packing, dense raw Q8 still led the 4K Amdahl ledger because every prompt row reread the same encoded weight rows."
+  },
+  "change": {
+    "summary": "Compute exact raw-Q8 projections in bounded row/output tiles while preserving every scalar dot-product association.",
+    "kernel": "gguf_q8_0_exact_prefill_tiled_out_kernel<bf16,bf16,COL_TILE,ROW_TILE>",
+    "retained_tiles": {
+      "8x2": "rows 8-31 with out_features <= 512",
+      "8x4": "rows >= 8 for wider outputs, and all rows >= 32"
+    },
+    "fallback": "The prior exact pack8 kernel remains selected below eight rows; explicit WMMA still has precedence; unaligned and non-Q8 shapes keep existing fallbacks.",
+    "exactness": "Each thread visits k=tid+128*n in the old order, each accumulator uses the same wave32 shuffle tree and wave-0..3 cross-wave sum, and only independent rows/columns are interleaved.",
+    "new_weight_layout": false,
+    "host_synchronization_added": false,
+    "scratch_allocation_added": false
+  },
+  "red_green": {
+    "primitive_red": "Imports for the missing exact tile8x2 and tile8x4 wrappers failed during test collection before their kernels and registry keys existed.",
+    "dispatch_red": "The rows=8 package policy still selected pack8/tile4x4 instead of the measured 8x2/8x4 crossover.",
+    "retained_scope": "The measured but inferior exact tile4x4 candidate was removed before retention."
+  },
+  "correctness": {
+    "primitive": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q8_0_pack8_gemv_decode.py",
+      "passed": true,
+      "tests": 28,
+      "candidate_shapes": [[5, 512, 256], [3, 2048, 512]],
+      "candidate_tiles": ["8x2", "8x4"],
+      "bit_mismatches_vs_exact_pack8": 0
+    },
+    "full_model": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py",
+      "passed": true,
+      "tests": 2,
+      "mixed64_kl": 0.0,
+      "mixed64_top1": 1.0,
+      "all_row_layer_limits": [0, 3, 4, 40],
+      "all_row_bit_equal": true
+    },
+    "mixed_4096": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q3_pack8_4k_mixed.py",
+      "script_sha256": "7845c231d754b1401e61620ba63b479e82829e141fd6762ac47bf009ddab27d8",
+      "output_sha256": "ecd952f6a0dc93077c43345b7f2c811593c11886b5eb7b1f38a85cbe20fa47f4",
+      "token_pattern": [9707, 11, 220, 264, 73, 13, 107561, 13883],
+      "seconds": 7.826942648040131,
+      "tok_s": 523.3205587657704,
+      "token_id": 14626,
+      "logit": 10.020184516906738,
+      "finite": true,
+      "matches_strict_serial_token_and_logit": true
+    }
+  },
+  "microbench": {
+    "production_shapes_output_sha256": "743af96f23549a03603e6086fc51dadbaea0ffb5720e4edcc2ddf953ff72b1ac",
+    "small_row_output_sha256": "ed19f7fcb27dda404aedc969a7eaf5a284fada8352de9a650c03eae622815d71",
+    "production_tile8x4_reduction_vs_pack8_pct_range": [-59.65, -55.9],
+    "all_candidate_bit_mismatches": 0,
+    "small_row_policy": "Keep pack8 below 8 rows; use 8x2 for narrow rows 8-31; otherwise use 8x4.",
+    "resource_trace": {
+      "path": "/tmp/hipengine-q8-exact-rowtile-leaf-20260720-140501/q8-exact-rowtile_kernel_trace.csv",
+      "tile8x2_vgpr": 48,
+      "tile8x4_vgpr": 72,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "workgroup_x": 128
+    }
+  },
+  "measurements": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "prefill_512": {
+      "samples_tok_s": [557.9501813079141, 573.2877846793573, 579.7765809677834],
+      "median_tok_s": 573.2877846793573,
+      "median_seconds": 0.8930942079750821,
+      "stdev_pct": 1.9550684701872836,
+      "pack8_baseline_tok_s": 364.413966353105,
+      "delta_vs_pack8_pct": 57.317731374724666,
+      "tracked_peak_gib": 15.805444963276386,
+      "raw_json_sha256": "c47d35ed3f005d846c6dcab968c3a2065a6f2914c04f29e7d5af476a41b303ef"
+    },
+    "prefill_4096_repeated": {
+      "samples_tok_s": [523.8121476508968, 523.8376188658999, 524.012491634399],
+      "median_tok_s": 523.8376188658999,
+      "median_seconds": 7.819216971984133,
+      "stdev_pct": 0.020819790250140115,
+      "pack8_baseline_tok_s": 342.7328139164148,
+      "delta_vs_pack8_pct": 52.84139644523582,
+      "tracked_peak_gib": 16.95465761423111,
+      "raw_json_sha256": "6f29b06f196803cd769c969bcb66185072717133dfd8c1e4ab9ffd96e9dadf4e"
+    },
+    "prefill_4096_mixed": {
+      "tok_s": 523.3205587657704,
+      "seconds": 7.826942648040131,
+      "pack8_baseline_tok_s": 342.90200608492324,
+      "pack8_baseline_seconds": 11.945103636942804,
+      "delta_vs_pack8_pct": 52.61519311035021
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-exact-rowtile8x4-profile-20260720-141117 -o q3-exact-rowtile8x4-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 520.2374347986712,
+    "trace_path": "/tmp/hipengine-q3-exact-rowtile8x4-profile-20260720-141117/q3-exact-rowtile8x4-prefill_kernel_trace.csv",
+    "trace_sha256": "9e379482647dfe580608f650e709e77537a74ea2f1540e898a01b2790e5c3e29",
+    "summary_sha256": "8fb823e35c9c9e3d96a6da6bac1ffb3f5982a0547e6a27f75b64b33a9abd722e",
+    "trace_launches": 8705,
+    "trace_kernel_sum_ms": 7714.184254,
+    "trace_span_ms": 7871.46596,
+    "delta_total_kernel_sum_vs_pack8_pct": -34.805604988764806,
+    "dense_q8_exact": {
+      "count": 790,
+      "total_ms": 2216.704668,
+      "share_pct": 28.74,
+      "delta_vs_pack8_pct": -62.79653040035249,
+      "vgpr": 72,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "workgroup_x": 128
+    },
+    "postchange_bottlenecks_ms": {
+      "grouped_iq3_iq4": 2803.860947,
+      "grouped_iq3_iq4_share_pct": 36.35,
+      "dense_q8_exact": 2216.704668,
+      "dense_q8_exact_share_pct": 28.74,
+      "exact_gdn": 1260.753313,
+      "exact_gdn_share_pct": 16.34,
+      "full_attention": 926.151284,
+      "full_attention_share_pct": 12.01
+    }
+  },
+  "acceptance": {
+    "exact_primitive": true,
+    "exact_full_model": true,
+    "expected_exact_symbol_present": true,
+    "unexpected_pack8_or_scalar_q8_symbol_present": false,
+    "scratch_bytes": 0,
+    "host_synchronization_added": false,
+    "memory_regression": false,
+    "accepted": true
+  },
+  "next_action": "Grouped IQ3+IQ4 is now the largest 4K family at 36.35%, so the next Amdahl tranche moves to a compact/repacked selected-IQ design; the approximately 3000 tok/s target remains open."
+}

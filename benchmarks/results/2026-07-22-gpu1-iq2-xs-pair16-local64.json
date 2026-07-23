@@ -1,0 +1,432 @@
+{
+  "schema": "hipengine.iq2_xs_tuning_bench.v1",
+  "created_at": "2026-07-22T17:14:51.039882+00:00",
+  "scope": "synthetic Laguna-shaped raw IQ2_XS primitives; no model throughput",
+  "command": "PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode decode --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --decode-threads 64,128,256 --decode-patterns rotating,hot,repeated --route-sets 32 --warmup-ms 250 --decode-iters 200 --repeats 5 --json /tmp/iq2-xs-decode-pair16-final-sweep.json",
+  "hardware": {
+    "gpu_index": "1",
+    "name": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "shape": {
+    "experts": 256,
+    "in_features": 3072,
+    "out_features": 1024,
+    "top_k": 10
+  },
+  "timing": {
+    "warmup_ms_per_case": 250.0,
+    "decode_iterations": 200,
+    "prefill_iterations": 10,
+    "repeats": 5,
+    "counterbalanced": true
+  },
+  "source_lineage": {
+    "llama_cpp": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "qwen_kernel": "52e240f9c6d91750d0e5e692976cfb67fd9bc603"
+  },
+  "decode": {
+    "cases": [
+      {
+        "pattern": "rotating",
+        "route_sets": 32,
+        "warmup_launches": 5178,
+        "selected_single_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.030747439861297608,
+            0.03362706899642944,
+            0.033258066177368165,
+            0.033409674167633054,
+            0.033295664787292484
+          ],
+          "median_ms": 0.033295664787292484,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 273.10222090746333
+        },
+        "selected_dual_silu_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.05450183391571045,
+            0.057005453109741214,
+            0.05671985626220703,
+            0.056921658515930174,
+            0.05693325519561768
+          ],
+          "median_ms": 0.056921658515930174,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 319.4959611886638
+        },
+        "selected_single_t128": {
+          "threads": 128,
+          "samples_ms": [
+            0.035160880088806155,
+            0.036600494384765626,
+            0.036534290313720706,
+            0.03672809600830078,
+            0.03645669460296631
+          ],
+          "median_ms": 0.036534290313720706,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 248.8927503974264
+        },
+        "selected_dual_silu_t128": {
+          "threads": 128,
+          "samples_ms": [
+            0.0589406681060791,
+            0.058811068534851074,
+            0.05918528079986572,
+            0.058796477317810056,
+            0.05938807010650635
+          ],
+          "median_ms": 0.0589406681060791,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 308.55164327742466
+        },
+        "selected_single_t256": {
+          "threads": 256,
+          "samples_ms": [
+            0.04436135292053223,
+            0.043615350723266604,
+            0.044272756576538085,
+            0.043924355506896974,
+            0.044108953475952145
+          ],
+          "median_ms": 0.044108953475952145,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 206.1513430591251
+        },
+        "selected_dual_silu_t256": {
+          "threads": 256,
+          "samples_ms": [
+            0.06902695178985596,
+            0.06974095344543457,
+            0.06855935096740723,
+            0.06937895774841309,
+            0.06821594715118408
+          ],
+          "median_ms": 0.06902695178985596,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 263.46578442817184
+        }
+      },
+      {
+        "pattern": "hot",
+        "route_sets": 32,
+        "warmup_launches": 5100,
+        "selected_single_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.031136844158172607,
+            0.03183346033096313,
+            0.03197906494140625,
+            0.031831459999084474,
+            0.03190747022628784
+          ],
+          "median_ms": 0.03183346033096313,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 285.64660911699525
+        },
+        "selected_dual_silu_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.053222031593322755,
+            0.054426045417785646,
+            0.05403404235839844,
+            0.054109840393066405,
+            0.05394225597381592
+          ],
+          "median_ms": 0.05403404235839844,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 336.57004373971915
+        },
+        "selected_single_t128": {
+          "threads": 128,
+          "samples_ms": [
+            0.03416647434234619,
+            0.03453507900238037,
+            0.03445727586746216,
+            0.03443308115005493,
+            0.03445807933807373
+          ],
+          "median_ms": 0.03445727586746216,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 263.89549873228924
+        },
+        "selected_dual_silu_t128": {
+          "threads": 128,
+          "samples_ms": [
+            0.05662985801696777,
+            0.05618465900421143,
+            0.05646805763244629,
+            0.05564825534820557,
+            0.05648725986480713
+          ],
+          "median_ms": 0.05646805763244629,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 322.06243250609475
+        },
+        "selected_single_t256": {
+          "threads": 256,
+          "samples_ms": [
+            0.041582136154174804,
+            0.041581735610961915,
+            0.041630940437316896,
+            0.04121693611145019,
+            0.04145393371582031
+          ],
+          "median_ms": 0.041581735610961915,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 218.68062663557606
+        },
+        "selected_dual_silu_t256": {
+          "threads": 256,
+          "samples_ms": [
+            0.061418895721435544,
+            0.06199509620666504,
+            0.06130589962005615,
+            0.0618859052658081,
+            0.06112110614776611
+          ],
+          "median_ms": 0.061418895721435544,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 296.1017091952192
+        }
+      },
+      {
+        "pattern": "repeated",
+        "route_sets": 32,
+        "warmup_launches": 5364,
+        "selected_single_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.02962103605270386,
+            0.03019444465637207,
+            0.03025264501571655,
+            0.03012744426727295,
+            0.030469250679016114
+          ],
+          "median_ms": 0.03019444465637207,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 301.15208620275246
+        },
+        "selected_dual_silu_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.05165502071380615,
+            0.05214222908020019,
+            0.05188262462615967,
+            0.05201662540435791,
+            0.05222583770751953
+          ],
+          "median_ms": 0.05201662540435791,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 349.62360319661127
+        },
+        "selected_single_t128": {
+          "threads": 128,
+          "samples_ms": [
+            0.03211266040802002,
+            0.032307264804840086,
+            0.03204086065292358,
+            0.03226306438446045,
+            0.03210106611251831
+          ],
+          "median_ms": 0.03211266040802002,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 283.1630853521257
+        },
+        "selected_dual_silu_t128": {
+          "threads": 128,
+          "samples_ms": [
+            0.054037647247314455,
+            0.05396344184875488,
+            0.05381844043731689,
+            0.054083642959594724,
+            0.0542234468460083
+          ],
+          "median_ms": 0.054037647247314455,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 336.5475909187333
+        },
+        "selected_single_t256": {
+          "threads": 256,
+          "samples_ms": [
+            0.037590510845184326,
+            0.03786630392074585,
+            0.037545905113220215,
+            0.037629709243774415,
+            0.03769371032714844
+          ],
+          "median_ms": 0.037629709243774415,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 241.64736275511873
+        },
+        "selected_dual_silu_t256": {
+          "threads": 256,
+          "samples_ms": [
+            0.058192873001098634,
+            0.05874547958374023,
+            0.05791367530822754,
+            0.05793467521667481,
+            0.058236274719238285
+          ],
+          "median_ms": 0.058192873001098634,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 312.5166203713066
+        }
+      }
+    ]
+  },
+  "correctness": {
+    "decode": {
+      "passed": true,
+      "bf16_bit_mismatches": 0,
+      "elements": 10240,
+      "oracle": "selected-single gate/up plus BF16-boundary SiLU",
+      "geometry_vs_threads256": {
+        "64": {
+          "passed": true,
+          "projection_bf16_bit_mismatches": 0,
+          "dual_bf16_bit_mismatches": 0,
+          "projection_kl_max": 0.0,
+          "projection_top1": 1.0,
+          "dual_kl_max": 0.0,
+          "dual_top1": 1.0
+        },
+        "128": {
+          "passed": true,
+          "projection_bf16_bit_mismatches": 0,
+          "dual_bf16_bit_mismatches": 0,
+          "projection_kl_max": 0.0,
+          "projection_top1": 1.0,
+          "dual_kl_max": 0.0,
+          "dual_top1": 1.0
+        },
+        "256": {
+          "passed": true,
+          "projection_bf16_bit_mismatches": 0,
+          "dual_bf16_bit_mismatches": 0,
+          "projection_kl_max": 0.0,
+          "projection_top1": 1.0,
+          "dual_kl_max": 0.0,
+          "dual_top1": 1.0
+        }
+      }
+    }
+  },
+  "status": "accepted_exact_decode_improvement",
+  "measured_base_commit": "f53c35cc6ea2c385ee33d7da7be4df34ed175b30",
+  "measured_script_sha256": "38ac0961ca213b2db0bb80b4acd703415d65b06c4a1dca470866a2a1ace66e41",
+  "baseline_artifact": "benchmarks/results/2026-07-22-gpu1-iq2-xs-branchless-decode.json",
+  "exact_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode decode --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --decode-threads 64,128,256 --decode-patterns rotating,hot,repeated --route-sets 32 --warmup-ms 250 --decode-iters 200 --repeats 5 --json /tmp/iq2-xs-decode-pair16-final-sweep.json",
+  "change": {
+    "summary": "Decode adjacent shared-scale group pairs with one 32-bit selector load and default IQ2 selected launches to local64.",
+    "native_values_per_task": 16,
+    "default_threads_before_after": [
+      256,
+      64
+    ],
+    "strict_math": true
+  },
+  "comparison": {
+    "production_before_after_us": {
+      "rotating": {
+        "selected_single": [
+          49.2,
+          33.296
+        ],
+        "selected_dual_silu": [
+          78.784,
+          56.922
+        ]
+      },
+      "hot": {
+        "selected_single": [
+          44.273,
+          31.833
+        ],
+        "selected_dual_silu": [
+          72.684,
+          54.034
+        ]
+      },
+      "repeated": {
+        "selected_single": [
+          39.921,
+          30.194
+        ],
+        "selected_dual_silu": [
+          62.223,
+          52.017
+        ]
+      }
+    },
+    "pair16_vs_group8_same_local64_percent": {
+      "rotating": {
+        "selected_single": -13.5,
+        "selected_dual_silu": -8.86
+      },
+      "hot": {
+        "selected_single": -10.2,
+        "selected_dual_silu": -5.61
+      },
+      "repeated": {
+        "selected_single": -10.67,
+        "selected_dual_silu": -4.48
+      }
+    }
+  },
+  "rejected_experiments": {
+    "task32": {
+      "verdict": "rejected and removed",
+      "reason": "Regressed every matched task16 geometry.",
+      "single_regression_percent_range": [
+        10.46,
+        18.45
+      ],
+      "dual_regression_percent_range": [
+        17.98,
+        31.2
+      ],
+      "source": "/tmp/iq2-xs-decode-quad32-sweep.json"
+    },
+    "pair16_grouped_prefill": {
+      "verdict": "rejected and restored to group8",
+      "reason": "Large-population scalar wins did not offset short/sparse rowbatch regressions.",
+      "base_balanced_16_percent": 5.25,
+      "rowbatch4_short_regression_percent_range": [
+        0.57,
+        3.61
+      ],
+      "rowbatch4_64_to_512_improvement_percent_range": [
+        -7.24,
+        -0.36
+      ],
+      "source": "/tmp/iq2-xs-laguna-pair16-local64.json"
+    }
+  },
+  "device_code": {
+    "disassembly_sha256": "658decbc01c83e80c4f5ebb2814be38cfa87f5c12de1def4404a227cb73f2917",
+    "rocprof_trace_sha256": "60199257cfe09e1e5113a08123f654196f5efa1d77dbd8cb08d00e9509d6eae6",
+    "resources": {
+      "selected_single": {
+        "workgroup_x": 64,
+        "vgpr": 64,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "selected_dual_silu": {
+        "workgroup_x": 64,
+        "vgpr": 96,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    }
+  },
+  "limitations": [
+    "Synthetic valid IQ2_XS bytes and deterministic routing, not Laguna model throughput.",
+    "The retained pair16 schedule applies only to selected decode; grouped prefill remains on its branchless group8 schedule.",
+    "Full-model quality/performance remains blocked on Laguna runner integration."
+  ]
+}

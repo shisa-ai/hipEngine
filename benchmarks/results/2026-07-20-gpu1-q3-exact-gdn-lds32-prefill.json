@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "three-run exact default-path promotion",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "3bb65323",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "diagnosis": {
+    "baseline_artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-q8-tile16x4-prefill.json",
+    "baseline_total_kernel_ms": 6413.593018,
+    "baseline_gdn_ms": 1310.185725,
+    "baseline_gdn_share_pct": 20.428264177706823,
+    "prior_closed_designs": "The full-column local-array design spilled at 256 VGPR plus about 1 KiB private scratch/thread; ordinary K2 value2 tiling regressed 40.993 to 43.842 ms in its historical 512 profile. Neither design was repeated.",
+    "new_premise": "Adapt the previously spill-free scalar exact LDS32 state schedule to the corrected Q3 decode-order Q/K and recurrence contract. One lane owns one value column and keeps its 128 state rows in a conflict-free 128x32 LDS tile while preserving every scalar contraction and update."
+  },
+  "change": {
+    "summary": "Replace Q3's exact 4096-block state-parallel K2 recurrent leaf with a 128-block, 32-value-column LDS schedule while retaining the exact fused-decode arithmetic contract.",
+    "kernel": "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_kernel",
+    "wrapper": "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32",
+    "registry": "hip_gfx1100/gdn_prefill_recurrent/gguf_ud_q3_k_m/f32_k2",
+    "source_schedule_lineage": "In-tree nonvolatile direct-LDS32 schedule retained historically by 666a72db, re-derived here for the corrected grouped-head and rsqrt-epsilon Q3 contract introduced by 6768bb6e.",
+    "grid": "(num_v_heads, head_v_dim/32) = 128 workgroups at Qwen3.6 shape, local32",
+    "state_residency": "16 KiB [128][32] LDS tile per workgroup across the serial token loop",
+    "exactness": "KV contraction rounds key*previous_state then executes 128 ordered decay FMAs; state updates use the same explicit FMA; output preserves the decode compiler's eight-term grouping and group accumulation.",
+    "generic_fallback": "The previous exact K2 wrapper remains registered under f32_k2_decode_order and the fused decode-order kernel remains the numerically equivalent fallback.",
+    "new_weight_layout": false,
+    "host_synchronization_added": false,
+    "global_scratch_allocation_added": false
+  },
+  "correctness": {
+    "red": {
+      "command": "PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py --collect-only",
+      "result": "Collection failed on the missing qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32 import."
+    },
+    "focused_gdn": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_linear_attn_gdn_plan.py",
+      "passed": true,
+      "tests": 22
+    },
+    "primitive": {
+      "rows": [64, 512, 4096],
+      "recurrent_output_f32_bit_mismatches_vs_k2_decode_order": [0, 0, 0],
+      "final_state_f32_bit_mismatches_vs_k2_decode_order": [0, 0, 0]
+    },
+    "full_model": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py",
+      "passed": true,
+      "tests": 2,
+      "mixed64_kl": 0.0,
+      "mixed64_top1": 1.0,
+      "all_row_layer_limits": [0, 3, 4, 40],
+      "all_row_bit_equal": true
+    },
+    "mixed_4096": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q3_pack8_4k_mixed.py",
+      "script_sha256": "7845c231d754b1401e61620ba63b479e82829e141fd6762ac47bf009ddab27d8",
+      "output_sha256": "764307855d88fe92881591360eec9d955fccad1e43faba1538919d15e4be2472",
+      "token_pattern": [9707, 11, 220, 264, 73, 13, 107561, 13883],
+      "seconds": 6.109629731043242,
+      "tok_s": 670.4170596768051,
+      "token_id": 14626,
+      "logit": 10.020184516906738,
+      "finite": true,
+      "matches_strict_serial_token_and_logit": true
+    }
+  },
+  "microbench": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/hipengine_q3_gdn_lds32_micro.py",
+    "script_sha256": "cc87395100cabda52581a642e01a06535e336d8f14dba72006c8f3271ee364f3",
+    "output_sha256": "fc7a3c05c7c4d7793ca8831522f81d26ec2bd134bb1e6376e9dd9eabc4981779",
+    "warmup": 2,
+    "iterations": 7,
+    "rows": {
+      "64": {
+        "k2_median_ms": 0.583748,
+        "lds32_median_ms": 0.441406,
+        "delta_pct": -24.38415206561736
+      },
+      "512": {
+        "k2_median_ms": 4.65896,
+        "lds32_median_ms": 3.203351,
+        "delta_pct": -31.243217370400266
+      },
+      "4096": {
+        "k2_median_ms": 39.01795,
+        "lds32_median_ms": 30.436689,
+        "delta_pct": -21.993110863077113
+      }
+    }
+  },
+  "measurements": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "prefill_512": {
+      "samples_tok_s": [742.384663063037, 767.325583655104, 763.2213892265611],
+      "median_tok_s": 763.2213892265611,
+      "median_seconds": 0.6708407379919663,
+      "stdev_pct": 1.7522112729554071,
+      "q8_tile16x4_baseline_tok_s": 707.4203859661214,
+      "delta_vs_baseline_pct": 7.887955219756981,
+      "tracked_peak_gib": 15.805444963276386,
+      "raw_json_sha256": "c6cea8e6321b1d9bb8d135b2812f04f7ae69466aad9c4e331b3609eaa4b315d8"
+    },
+    "prefill_4096_repeated": {
+      "samples_tok_s": [672.7119749795295, 671.0139820153552, 671.5078415729744],
+      "median_tok_s": 671.5078415729744,
+      "median_seconds": 6.099705389002338,
+      "stdev_pct": 0.1300661953405085,
+      "q8_tile16x4_baseline_tok_s": 626.2376798015114,
+      "delta_vs_baseline_pct": 7.2289105608930315,
+      "tracked_peak_gib": 16.95465761423111,
+      "raw_json_sha256": "58682a88804fa142a733c775ff1924bd1a721b573e8b5941c75f7d4d040c23aa"
+    },
+    "prefill_4096_mixed": {
+      "tok_s": 670.4170596768051,
+      "seconds": 6.109629731043242,
+      "q8_tile16x4_baseline_tok_s": 626.076725107456,
+      "q8_tile16x4_baseline_seconds": 6.54232913593296,
+      "delta_vs_baseline_pct": 7.082252508546594
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-gdn-lds32-profile-20260720-1542 -o q3-gdn-lds32-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 667.3075534410966,
+    "trace_path": "/tmp/hipengine-q3-gdn-lds32-profile-20260720-1542/q3-gdn-lds32-prefill_kernel_trace.csv",
+    "trace_sha256": "dc463a34050346a52ac33c7edd6f8c52b2256df98716b1ebc9ab9a29b81c2593",
+    "summary_sha256": "6232760d57867328002c253f8ca12ed6d6c5365b0572694c399b5084082ec208",
+    "trace_launches": 8705,
+    "trace_kernel_sum_ms": 5971.05855,
+    "trace_span_ms": 6136.359257,
+    "delta_total_kernel_sum_pct": -6.899946204226081,
+    "delta_trace_span_pct": -6.519157918209595,
+    "exact_gdn_lds32": {
+      "count": 120,
+      "total_ms": 882.715785,
+      "share_pct": 14.78323780630153,
+      "k2_baseline_ms": 1310.185725,
+      "delta_vs_k2_pct": -32.62666749021403,
+      "vgpr": 248,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0,
+      "workgroup_x": 32
+    },
+    "postchange_bottlenecks_ms": {
+      "dense_q8_exact": 2062.08856,
+      "dense_q8_exact_share_pct": 34.534723495551724,
+      "grouped_iq3": 1093.855516,
+      "grouped_iq3_share_pct": 18.31928973464847,
+      "full_attention": 936.894558,
+      "full_attention_share_pct": 15.690594057229604,
+      "exact_gdn": 882.715785,
+      "exact_gdn_share_pct": 14.78323780630153,
+      "grouped_iq4_down": 490.903511,
+      "grouped_iq4_down_share_pct": 8.22138163424976
+    }
+  },
+  "acceptance": {
+    "exact_primitive": true,
+    "exact_full_model": true,
+    "expected_lds32_symbol_present": true,
+    "unexpected_k2_exact_symbol_present": false,
+    "scratch_bytes": 0,
+    "host_synchronization_added": false,
+    "memory_regression": false,
+    "accepted": true
+  },
+  "next_action": "Dense exact Q8 remains first but its local schedules are closed. Grouped IQ3 is now second at 18.32%, followed by full attention at 15.69% and exact GDN at 14.78%; continue task #24 with one new profile-backed IQ3 premise. The approximately 3000 tok/s objective remains open."
+}

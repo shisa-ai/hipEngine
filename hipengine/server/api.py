@@ -62,7 +62,7 @@ from hipengine.generation import (
     speculative_mtp_sampling_blockers,
     supports_speculative_mtp_sampling,
 )
-from hipengine.generation.constraints import JsonObjectConstraintState
+from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kvcache import resolve_prefix_cache_mode
 from hipengine.tokenization.identity import token_ids_sha256
@@ -70,6 +70,7 @@ from hipengine.tokenization.identity import token_ids_sha256
 
 _LOGGER = logging.getLogger("uvicorn.error")
 _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
+_THINKING_START_MARKER = "<think>"
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
@@ -1044,11 +1045,22 @@ def _tool_schema_subset() -> list[str]:
 def _tools_capability(
     *,
     tokenizer_backed: bool,
+    strict_decoding_backed: bool | None = None,
     tool_parser: Any | None = None,
 ) -> dict[str, Any]:
+    strict_backed = (
+        bool(tokenizer_backed)
+        if strict_decoding_backed is None
+        else bool(strict_decoding_backed)
+    )
     capability = {
         "enabled": True,
-        "strict_decoding": False,
+        "strict_decoding": strict_backed,
+        "strict_decoding_scope": (
+            "tokenizer_aware_canonical_envelope_and_root_json_syntax"
+            if strict_backed
+            else "none"
+        ),
         "strict_result_validation": True,
         "result_validation_failure_reasons": list(_TOOL_RESULT_VALIDATION_FAILURE_REASONS),
         "invalid_tool_call_error_mode_field": "invalid_tool_call_error_mode",
@@ -1104,7 +1116,7 @@ def _tools_capability(
     return capability
 
 
-def _structured_outputs_capability() -> dict[str, Any]:
+def _structured_outputs_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
     return {
         "response_format": True,
         "json_object": True,
@@ -1124,9 +1136,12 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "guided_diff_default_fenced_policy": "optional",
         "guided_patch_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
         "guided_diff_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
-        "strict_decoding": False,
+        "strict_decoding": tokenizer_backed,
+        "strict_decoding_scope": "root_object_json_syntax" if tokenizer_backed else "none",
         "strict_result_validation": True,
-        "decode_time_close_forcing": "host_json_object_parse_validated_suffix",
+        "decode_time_close_forcing": (
+            "host_json_object_parse_validated_suffix" if tokenizer_backed else "none"
+        ),
         "length_finish_structural_validation": "root_object_json_prefix",
         "result_validation_failure_reasons": list(
             _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS
@@ -1305,6 +1320,7 @@ def _speculative_provider_capability(
 def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
     tokenizer_caps = _tokenizer_capability_flags(engine)
     tokenizer_backed = tokenizer_caps["tokenize"]
+    strict_decoding_backed = tokenizer_backed and tokenizer_caps["detokenize"]
     return {
         "model": _server_model_identity(config, engine),
         "context": {
@@ -1317,9 +1333,14 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
             "completions": True,
             "streaming": True,
             "choice_telemetry": _choice_telemetry_capability(),
-            "structured_outputs": _structured_outputs_capability(),
+            "structured_outputs": _structured_outputs_capability(
+                tokenizer_backed=strict_decoding_backed
+            ),
             "grammars": _grammar_capability(),
-            "tools": _tools_capability(tokenizer_backed=tokenizer_backed),
+            "tools": _tools_capability(
+                tokenizer_backed=tokenizer_backed,
+                strict_decoding_backed=strict_decoding_backed,
+            ),
             "reasoning_controls": {
                 "enabled": True,
                 "fields": _reasoning_control_fields(),
@@ -2364,10 +2385,15 @@ class _GenerationBatcher:
         self._stream_items[id(item)] = item
 
         def finished(done: asyncio.Task[None]) -> None:
+            self._release_controlled_stream(item)
             self._stream_tasks.discard(done)
             self._stream_items.pop(id(item), None)
 
         task.add_done_callback(finished)
+
+    def _release_controlled_stream(self, item: _QueuedGeneration) -> None:
+        if self._active_items.pop(id(item), None) is not None:
+            self._active_requests = max(0, self._active_requests - 1)
 
     async def _run_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
         try:
@@ -2382,8 +2408,16 @@ class _GenerationBatcher:
         except Exception as exc:
             await _finish_stream_queued_generation(item, exception=exc)
         finally:
-            self._active_items.pop(id(item), None)
-            self._active_requests = max(0, self._active_requests - 1)
+            token = item.sampling.cancellation_token
+            if (
+                token is not None
+                and bool(getattr(token, "cancel_requested", False))
+                and not bool(getattr(token, "cancelled", False))
+            ):
+                drain_cancellations = getattr(engine, "drain_generation_cancellations", None)
+                if callable(drain_cancellations):
+                    await run_in_threadpool(drain_cancellations)
+            self._release_controlled_stream(item)
 
     async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
         if not group:
@@ -4045,6 +4079,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else ((), False)
         )
+        tool_call_constraint = (
+            _tool_call_sampling_constraint(
+                request,
+                engine,
+                chat_default_max_tokens=config.chat_default_max_tokens,
+            )
+            if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
+            else None
+        )
         force_sequence_completion_token_sequences = (
             _tool_call_sequence_completion_token_sequences(
                 request,
@@ -4100,6 +4143,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "tool_call_sequence_completion" if force_sequence_completion_token_sequences else None
             ),
             json_object_close_forcing=_json_object_close_forcing(request),
+            tool_call_constraint=tool_call_constraint,
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -5271,7 +5315,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "response_identity": "hipengine.prompt_token_accounting",
                     "generated_id_oracle": "hipengine.token_accounting.choice_generated_token_ids",
                 },
-                "structured_outputs": _structured_outputs_capability(),
+                "structured_outputs": _structured_outputs_capability(
+                    tokenizer_backed=(
+                        tokenizer_caps["tokenize"] and tokenizer_caps["detokenize"]
+                    )
+                ),
                 "grammars": _grammar_capability(),
                 "finish_details": True,
                 "token_diagnostics": {
@@ -5283,6 +5331,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 },
                 "tools": _tools_capability(
                     tokenizer_backed=tokenizer_caps["tokenize"],
+                    strict_decoding_backed=(
+                        tokenizer_caps["tokenize"] and tokenizer_caps["detokenize"]
+                    ),
                     tool_parser=chat_tool_parser,
                 ),
                 "reasoning_controls": {
@@ -10253,6 +10304,45 @@ def _no_tool_sampling_suppress_token_ids(
     return (int(token_ids[0]),)
 
 
+def _tool_call_sampling_constraint(
+    request: ChatCompletionRequest,
+    engine: Any,
+    *,
+    chat_default_max_tokens: int | None,
+) -> ToolCallConstraintSpec | None:
+    tokenizer_caps = _tokenizer_capability_flags(engine)
+    if not request.tools or not tokenizer_caps["tokenize"] or not tokenizer_caps["detokenize"]:
+        return None
+    mode, requested_name = _tool_choice_mode(request.tool_choice)
+    if mode == "none":
+        return None
+    if mode == "function":
+        names = () if requested_name is None else (str(requested_name),)
+        constraint_mode = "required"
+    else:
+        names = tuple(
+            str(name)
+            for tool in request.tools
+            if isinstance((name := _tool_function(tool).get("name")), str) and name
+        )
+        constraint_mode = "required" if mode == "required" else "auto"
+    if not names:
+        return None
+    thinking = _thinking_control_from_request(
+        request,
+        chat_default_max_tokens=chat_default_max_tokens,
+    )
+    thinking_enabled = thinking.enabled is not False
+    forbidden = (_THINKING_START_MARKER,) if not thinking_enabled else ()
+    return ToolCallConstraintSpec(
+        tool_names=names,
+        mode=constraint_mode,
+        forbidden_text_prefixes=forbidden,
+        thinking_start_marker=_THINKING_START_MARKER if thinking_enabled else None,
+        thinking_end_marker=_THINKING_CLOSE_MARKER if thinking_enabled else None,
+    )
+
+
 def _required_tool_sampling_forced_prefix(
     request: ChatCompletionRequest,
     engine: Any,
@@ -10370,7 +10460,7 @@ def _tool_call_close_repair_token_sequences(
     if not request.tools:
         return ()
     mode, _name = _tool_choice_mode(request.tool_choice)
-    if mode not in {"required", "function"}:
+    if mode not in {"auto", "required", "function"}:
         return ()
     try:
         marker_ids = _tokenize_text(engine, _TOOL_CALL_END_MARKER)

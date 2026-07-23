@@ -1,0 +1,800 @@
+{
+  "schema": "hipengine.iq2_xs_tuning_bench.v1",
+  "created_at": "2026-07-22T16:51:09.394861+00:00",
+  "scope": "synthetic Laguna-shaped raw IQ2_XS primitives; no model throughput",
+  "command": "PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode all --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --hardware-gpu 'AMD Radeon RX 7900 XTX' --warmup-ms 250 --decode-iters 200 --prefill-iters 10 --repeats 5 --json /tmp/iq2-xs-laguna-branchless-signbit.json",
+  "hardware": {
+    "gpu_index": "1",
+    "name": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "shape": {
+    "experts": 256,
+    "in_features": 3072,
+    "out_features": 1024,
+    "top_k": 10
+  },
+  "timing": {
+    "warmup_ms_per_case": 250.0,
+    "decode_iterations": 200,
+    "prefill_iterations": 10,
+    "repeats": 5,
+    "counterbalanced": true
+  },
+  "source_lineage": {
+    "llama_cpp": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "qwen_kernel": "52e240f9c6d91750d0e5e692976cfb67fd9bc603"
+  },
+  "decode": {
+    "cases": [
+      {
+        "pattern": "rotating",
+        "route_sets": 32,
+        "warmup_launches": 3470,
+        "selected_single": {
+          "samples_ms": [
+            0.04707634449005127,
+            0.04914016723632812,
+            0.04973977088928223,
+            0.0491999626159668,
+            0.04961236953735351
+          ],
+          "median_ms": 0.0491999626159668,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 184.8196526281307
+        },
+        "selected_dual_silu": {
+          "samples_ms": [
+            0.07556296348571777,
+            0.07765878200531005,
+            0.079024395942688,
+            0.07878418445587158,
+            0.07921659469604492
+          ],
+          "median_ms": 0.07878418445587158,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 230.8361776618559
+        }
+      },
+      {
+        "pattern": "hot",
+        "route_sets": 32,
+        "warmup_launches": 3928,
+        "selected_single": {
+          "samples_ms": [
+            0.04304152488708496,
+            0.04427333831787109,
+            0.04439513683319092,
+            0.044232940673828124,
+            0.04435413837432861
+          ],
+          "median_ms": 0.04427333831787109,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 205.3859127295474
+        },
+        "selected_dual_silu": {
+          "samples_ms": [
+            0.07070734024047852,
+            0.07473937034606934,
+            0.07233835220336914,
+            0.07448777198791504,
+            0.07268375396728516
+          ],
+          "median_ms": 0.07268375396728516,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 250.21052171005914
+        }
+      },
+      {
+        "pattern": "repeated",
+        "route_sets": 32,
+        "warmup_launches": 4230,
+        "selected_single": {
+          "samples_ms": [
+            0.03825169086456299,
+            0.04003331184387207,
+            0.04022211074829102,
+            0.03985869884490967,
+            0.03992090463638306
+          ],
+          "median_ms": 0.03992090463638306,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 227.77840539497006
+        },
+        "selected_dual_silu": {
+          "samples_ms": [
+            0.06102227210998535,
+            0.062223081588745115,
+            0.062246875762939455,
+            0.06223127841949463,
+            0.06220667839050293
+          ],
+          "median_ms": 0.062223081588745115,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 292.27482046291834
+        }
+      }
+    ]
+  },
+  "prefill": {
+    "cases": [
+      {
+        "tokens": 16,
+        "compact_rows": 160,
+        "distribution": "balanced",
+        "active_experts": 160,
+        "count_min": 0,
+        "count_max": 1,
+        "count_mean_active": 1.0,
+        "warmup_launches": 194,
+        "base": {
+          "samples_ms": [
+            1.200085163116455,
+            1.195045280456543,
+            1.1951571464538575,
+            1.1972091674804688,
+            1.1924052238464355
+          ],
+          "median_ms": 1.1951571464538575,
+          "raw_weight_bytes_per_dispatch": 290979840,
+          "approx_effective_gb_s": 243.4657575059182
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            1.3735506057739257,
+            1.3801588058471679,
+            1.3742426872253417,
+            1.3727347373962402,
+            1.376358699798584
+          ],
+          "median_ms": 1.3742426872253417,
+          "raw_weight_bytes_per_dispatch": 290979840,
+          "approx_effective_gb_s": 211.73832155330692
+        },
+        "rowbatch4_vs_base_percent": 14.984267240742998
+      },
+      {
+        "tokens": 16,
+        "compact_rows": 160,
+        "distribution": "hot",
+        "active_experts": 88,
+        "count_min": 0,
+        "count_max": 10,
+        "count_mean_active": 1.8181818181818181,
+        "warmup_launches": 228,
+        "base": {
+          "samples_ms": [
+            1.1656331062316894,
+            1.1679370880126954,
+            1.1688092231750489,
+            1.1642969131469727,
+            1.168601131439209
+          ],
+          "median_ms": 1.1679370880126954,
+          "raw_weight_bytes_per_dispatch": 290979840,
+          "approx_effective_gb_s": 249.139994770709
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            1.0145159721374513,
+            1.0138998985290528,
+            1.0105559349060058,
+            1.011371898651123,
+            1.0148999214172363
+          ],
+          "median_ms": 1.0138998985290528,
+          "raw_weight_bytes_per_dispatch": 189136896,
+          "approx_effective_gb_s": 186.54395396862776
+        },
+        "rowbatch4_vs_base_percent": -13.188825927751358
+      },
+      {
+        "tokens": 16,
+        "compact_rows": 160,
+        "distribution": "zipf",
+        "active_experts": 82,
+        "count_min": 0,
+        "count_max": 26,
+        "count_mean_active": 1.951219512195122,
+        "warmup_launches": 234,
+        "base": {
+          "samples_ms": [
+            1.1689169883728028,
+            1.1672090530395507,
+            1.1714051246643067,
+            1.1676530838012695,
+            1.1702731132507325
+          ],
+          "median_ms": 1.1689169883728028,
+          "raw_weight_bytes_per_dispatch": 290979840,
+          "approx_effective_gb_s": 248.93114129948617
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            0.9685355186462402,
+            0.9729315757751464,
+            0.9670955657958984,
+            0.9639715194702149,
+            0.965339469909668
+          ],
+          "median_ms": 0.9670955657958984,
+          "raw_weight_bytes_per_dispatch": 174587904,
+          "approx_effective_gb_s": 180.52807827354474
+        },
+        "rowbatch4_vs_base_percent": -17.265676227175973
+      },
+      {
+        "tokens": 32,
+        "compact_rows": 320,
+        "distribution": "balanced",
+        "active_experts": 256,
+        "count_min": 1,
+        "count_max": 2,
+        "count_mean_active": 1.25,
+        "warmup_launches": 114,
+        "base": {
+          "samples_ms": [
+            2.2040212631225584,
+            2.2189374923706056,
+            2.203457260131836,
+            2.187313270568848,
+            2.2128414154052733
+          ],
+          "median_ms": 2.2040212631225584,
+          "raw_weight_bytes_per_dispatch": 581959680,
+          "approx_effective_gb_s": 264.0444943691267
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            2.165941047668457,
+            2.1939571380615233,
+            2.1703889846801756,
+            2.1678529739379884,
+            2.177861213684082
+          ],
+          "median_ms": 2.1703889846801756,
+          "raw_weight_bytes_per_dispatch": 465567744,
+          "approx_effective_gb_s": 214.50889554187685
+        },
+        "rowbatch4_vs_base_percent": -1.5259507249369308
+      },
+      {
+        "tokens": 32,
+        "compact_rows": 320,
+        "distribution": "hot",
+        "active_experts": 168,
+        "count_min": 0,
+        "count_max": 20,
+        "count_mean_active": 1.9047619047619047,
+        "warmup_launches": 128,
+        "base": {
+          "samples_ms": [
+            2.1353008270263674,
+            2.141604995727539,
+            2.1378448486328123,
+            2.1183008193969726,
+            2.140496826171875
+          ],
+          "median_ms": 2.1378448486328123,
+          "raw_weight_bytes_per_dispatch": 581959680,
+          "approx_effective_gb_s": 272.2179209460279
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            1.7719459533691406,
+            1.8015264511108398,
+            1.7790460586547852,
+            1.771902084350586,
+            1.7703819274902344
+          ],
+          "median_ms": 1.7719459533691406,
+          "raw_weight_bytes_per_dispatch": 363724800,
+          "approx_effective_gb_s": 205.2685632473278
+        },
+        "rowbatch4_vs_base_percent": -17.11531571141237
+      },
+      {
+        "tokens": 32,
+        "compact_rows": 320,
+        "distribution": "zipf",
+        "active_experts": 131,
+        "count_min": 0,
+        "count_max": 52,
+        "count_mean_active": 2.4427480916030535,
+        "warmup_launches": 136,
+        "base": {
+          "samples_ms": [
+            2.117808723449707,
+            2.1409767150878904,
+            2.1255367279052733,
+            2.119552803039551,
+            2.1364288330078125
+          ],
+          "median_ms": 2.1255367279052733,
+          "raw_weight_bytes_per_dispatch": 581959680,
+          "approx_effective_gb_s": 273.7942244703172
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            1.564920425415039,
+            1.5828405380249024,
+            1.565228271484375,
+            1.5604443550109863,
+            1.5647563934326172
+          ],
+          "median_ms": 1.564920425415039,
+          "raw_weight_bytes_per_dispatch": 300072960,
+          "approx_effective_gb_s": 191.74966031925644
+        },
+        "rowbatch4_vs_base_percent": -26.375281834942665
+      },
+      {
+        "tokens": 64,
+        "compact_rows": 640,
+        "distribution": "balanced",
+        "active_experts": 256,
+        "count_min": 2,
+        "count_max": 3,
+        "count_mean_active": 2.5,
+        "warmup_launches": 76,
+        "base": {
+          "samples_ms": [
+            4.093124771118164,
+            4.146728897094727,
+            4.12016487121582,
+            4.049407958984375,
+            4.139536666870117
+          ],
+          "median_ms": 4.12016487121582,
+          "raw_weight_bytes_per_dispatch": 1163919360,
+          "approx_effective_gb_s": 282.4933944103404
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            2.5051002502441406,
+            2.560256576538086,
+            2.49454402923584,
+            2.4940797805786135,
+            2.5019157409667967
+          ],
+          "median_ms": 2.5019157409667967,
+          "raw_weight_bytes_per_dispatch": 465567744,
+          "approx_effective_gb_s": 186.0845017187086
+        },
+        "rowbatch4_vs_base_percent": -39.27631977920083
+      },
+      {
+        "tokens": 64,
+        "compact_rows": 640,
+        "distribution": "hot",
+        "active_experts": 256,
+        "count_min": 1,
+        "count_max": 40,
+        "count_mean_active": 2.5,
+        "warmup_launches": 72,
+        "base": {
+          "samples_ms": [
+            4.070884323120117,
+            4.07906494140625,
+            4.0729328155517575,
+            4.032360076904297,
+            4.088660812377929
+          ],
+          "median_ms": 4.0729328155517575,
+          "raw_weight_bytes_per_dispatch": 1163919360,
+          "approx_effective_gb_s": 285.76934919127183
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            2.9479995727539063,
+            3.009988021850586,
+            2.9634836196899412,
+            2.9479995727539063,
+            2.9472475051879883
+          ],
+          "median_ms": 2.9479995727539063,
+          "raw_weight_bytes_per_dispatch": 596508672,
+          "approx_effective_gb_s": 202.3435408583743
+        },
+        "rowbatch4_vs_base_percent": -27.619734813756246
+      },
+      {
+        "tokens": 64,
+        "compact_rows": 640,
+        "distribution": "zipf",
+        "active_experts": 204,
+        "count_min": 0,
+        "count_max": 104,
+        "count_mean_active": 3.1372549019607843,
+        "warmup_launches": 76,
+        "base": {
+          "samples_ms": [
+            4.0143798828125,
+            4.027992248535156,
+            4.052500534057617,
+            4.009712219238281,
+            4.0574687957763675
+          ],
+          "median_ms": 4.027992248535156,
+          "raw_weight_bytes_per_dispatch": 1163919360,
+          "approx_effective_gb_s": 288.9576960887345
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            2.7142498016357424,
+            2.742013931274414,
+            2.7044818878173826,
+            2.720381736755371,
+            2.7142656326293944
+          ],
+          "median_ms": 2.7142656326293944,
+          "raw_weight_bytes_per_dispatch": 525582336,
+          "approx_effective_gb_s": 193.63703009821182
+        },
+        "rowbatch4_vs_base_percent": -32.61492413207894
+      },
+      {
+        "tokens": 128,
+        "compact_rows": 1280,
+        "distribution": "balanced",
+        "active_experts": 256,
+        "count_min": 5,
+        "count_max": 5,
+        "count_mean_active": 5.0,
+        "warmup_launches": 40,
+        "base": {
+          "samples_ms": [
+            7.846995544433594,
+            7.8574668884277346,
+            7.8660835266113285,
+            7.836175537109375,
+            7.8694511413574215
+          ],
+          "median_ms": 7.8574668884277346,
+          "raw_weight_bytes_per_dispatch": 2327838720,
+          "approx_effective_gb_s": 296.25816475642785
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            4.92962417602539,
+            4.976908111572266,
+            4.931412124633789,
+            4.940299987792969,
+            4.939812088012696
+          ],
+          "median_ms": 4.939812088012696,
+          "raw_weight_bytes_per_dispatch": 931135488,
+          "approx_effective_gb_s": 188.4961353610111
+        },
+        "rowbatch4_vs_base_percent": -37.13225702181554
+      },
+      {
+        "tokens": 128,
+        "compact_rows": 1280,
+        "distribution": "hot",
+        "active_experts": 256,
+        "count_min": 2,
+        "count_max": 80,
+        "count_mean_active": 5.0,
+        "warmup_launches": 42,
+        "base": {
+          "samples_ms": [
+            7.828599548339843,
+            7.8333992004394535,
+            7.835771179199218,
+            7.829792022705078,
+            7.8501838684082035
+          ],
+          "median_ms": 7.8333992004394535,
+          "raw_weight_bytes_per_dispatch": 2327838720,
+          "approx_effective_gb_s": 297.16840166519387
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            4.174765777587891,
+            4.197605895996094,
+            4.156409454345703,
+            4.1584735870361325,
+            4.167610168457031
+          ],
+          "median_ms": 4.167610168457031,
+          "raw_weight_bytes_per_dispatch": 741998592,
+          "approx_effective_gb_s": 178.03934677381525
+        },
+        "rowbatch4_vs_base_percent": -46.79691329629635
+      },
+      {
+        "tokens": 128,
+        "compact_rows": 1280,
+        "distribution": "zipf",
+        "active_experts": 256,
+        "count_min": 1,
+        "count_max": 209,
+        "count_mean_active": 5.0,
+        "warmup_launches": 42,
+        "base": {
+          "samples_ms": [
+            7.818524169921875,
+            7.830928039550781,
+            7.8226676940917965,
+            7.8013160705566404,
+            7.820240020751953
+          ],
+          "median_ms": 7.820240020751953,
+          "raw_weight_bytes_per_dispatch": 2327838720,
+          "approx_effective_gb_s": 297.6684492832443
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            4.4981689453125,
+            4.5361286163330075,
+            4.506356811523437,
+            4.512744903564453,
+            4.4997295379638675
+          ],
+          "median_ms": 4.506356811523437,
+          "raw_weight_bytes_per_dispatch": 840204288,
+          "approx_effective_gb_s": 186.44868197109253
+        },
+        "rowbatch4_vs_base_percent": -42.37572248977942
+      },
+      {
+        "tokens": 512,
+        "compact_rows": 5120,
+        "distribution": "balanced",
+        "active_experts": 256,
+        "count_min": 20,
+        "count_max": 20,
+        "count_mean_active": 20.0,
+        "warmup_launches": 12,
+        "base": {
+          "samples_ms": [
+            30.338882446289062,
+            29.982330322265625,
+            29.44294128417969,
+            29.432781982421876,
+            29.485491943359374
+          ],
+          "median_ms": 29.485491943359374,
+          "raw_weight_bytes_per_dispatch": 9311354880,
+          "approx_effective_gb_s": 315.79445572374357
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            13.704701232910157,
+            13.73289794921875,
+            13.701686096191406,
+            13.707257080078126,
+            13.828224182128906
+          ],
+          "median_ms": 13.707257080078126,
+          "raw_weight_bytes_per_dispatch": 2327838720,
+          "approx_effective_gb_s": 169.82527623146706
+        },
+        "rowbatch4_vs_base_percent": -53.51185896301374
+      },
+      {
+        "tokens": 512,
+        "compact_rows": 5120,
+        "distribution": "hot",
+        "active_experts": 256,
+        "count_min": 10,
+        "count_max": 320,
+        "count_mean_active": 20.0,
+        "warmup_launches": 12,
+        "base": {
+          "samples_ms": [
+            29.074066162109375,
+            29.371820068359376,
+            29.344766235351564,
+            29.368692016601564,
+            29.384097290039062
+          ],
+          "median_ms": 29.368692016601564,
+          "raw_weight_bytes_per_dispatch": 9311354880,
+          "approx_effective_gb_s": 317.05037714095226
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            14.414398193359375,
+            14.412338256835938,
+            14.404933166503906,
+            14.412571716308594,
+            14.40790252685547
+          ],
+          "median_ms": 14.412338256835938,
+          "raw_weight_bytes_per_dispatch": 2516975616,
+          "approx_effective_gb_s": 174.6403374071636
+        },
+        "rowbatch4_vs_base_percent": -50.92618272312258
+      },
+      {
+        "tokens": 512,
+        "compact_rows": 5120,
+        "distribution": "zipf",
+        "active_experts": 256,
+        "count_min": 3,
+        "count_max": 836,
+        "count_mean_active": 20.0,
+        "warmup_launches": 12,
+        "base": {
+          "samples_ms": [
+            29.248226928710938,
+            29.484780883789064,
+            29.5083740234375,
+            29.49549255371094,
+            29.492657470703126
+          ],
+          "median_ms": 29.492657470703126,
+          "raw_weight_bytes_per_dispatch": 9311354880,
+          "approx_effective_gb_s": 315.7177303961009
+        },
+        "rowbatch4": {
+          "samples_ms": [
+            14.368678283691406,
+            14.383755493164063,
+            14.344984436035157,
+            14.338783264160156,
+            14.379360961914063
+          ],
+          "median_ms": 14.368678283691406,
+          "raw_weight_bytes_per_dispatch": 2480603136,
+          "approx_effective_gb_s": 172.63961841330314
+        },
+        "rowbatch4_vs_base_percent": -51.28048973557334
+      }
+    ]
+  },
+  "correctness": {
+    "decode": {
+      "passed": true,
+      "bf16_bit_mismatches": 0,
+      "elements": 10240,
+      "oracle": "selected-single gate/up plus BF16-boundary SiLU"
+    },
+    "prefill": {
+      "passed": true,
+      "cases": [
+        {
+          "tokens": 16,
+          "distribution": "balanced",
+          "passed": true,
+          "bf16_bit_mismatches": 0,
+          "elements": 327680,
+          "oracle": "grouped scalar"
+        }
+      ]
+    }
+  },
+  "status": "accepted_exact_performance_improvement",
+  "measured_base_commit": "ba6392d14e07bb6dc75ff0598b397e09f1f5ffd1",
+  "measured_script_sha256": "f8edd9471bc70b5d4a793ea5c67c6146f1415a4d46f1c1a62c2901e4f35bcfa3",
+  "baseline_artifact": "benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json",
+  "exact_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode all --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --hardware-gpu 'AMD Radeon RX 7900 XTX' --warmup-ms 250 --decode-iters 200 --prefill-iters 10 --repeats 5 --json /tmp/iq2-xs-laguna-branchless-signbit.json",
+  "change": {
+    "summary": "Replace nested IQ2_XS selector ternaries with exact 8+17*code+(code>>1) magnitude and sign-bit OR.",
+    "grid_selector_census": {
+      "0": 2114,
+      "1": 1142,
+      "2": 840,
+      "3": 0
+    },
+    "strict_math": true
+  },
+  "comparison": {
+    "decode_percent": {
+      "rotating": {
+        "selected_single": -15.0,
+        "selected_dual_silu": -25.77
+      },
+      "hot": {
+        "selected_single": -14.5,
+        "selected_dual_silu": -21.11
+      },
+      "repeated": {
+        "selected_single": -14.14,
+        "selected_dual_silu": -25.14
+      }
+    },
+    "prefill_percent_ranges": {
+      "base_all_cases": [
+        -32.26,
+        -21.21
+      ],
+      "rowbatch4_all_cases": [
+        -27.21,
+        -13.9
+      ]
+    }
+  },
+  "device_code": {
+    "direct_disassembly_sha256": "64dce7600bb33b360a2c94ffc6f953adab382623e5ec521c91ed11474f7ad344",
+    "prefill_disassembly_sha256": "ba1622210537607d2f3187979f3d3bdb262da91b7019b1cbde065f9a8749feb8",
+    "instruction_counts_before_after": {
+      "selected_single": {
+        "instructions": [
+          502,
+          406
+        ],
+        "v_cmpx": [
+          19,
+          3
+        ],
+        "s_cbranch_exec": [
+          14,
+          5
+        ]
+      },
+      "selected_dual_silu": {
+        "instructions": [
+          784,
+          595
+        ],
+        "v_cmpx": [
+          35,
+          3
+        ],
+        "s_cbranch_exec": [
+          22,
+          5
+        ]
+      },
+      "grouped_base": {
+        "instructions": [
+          1305,
+          951
+        ],
+        "v_cmpx": [
+          65,
+          1
+        ],
+        "s_cbranch_exec": [
+          41,
+          8
+        ]
+      },
+      "rowbatch4": {
+        "instructions": [
+          1026,
+          841
+        ],
+        "v_cmpx": [
+          32,
+          0
+        ],
+        "s_cbranch_exec": [
+          20,
+          4
+        ]
+      }
+    },
+    "rocprof_trace_sha256": "ab5ac4c256ad433ea81785b42f35ff158d1efa9e60425dd419a8578aa7a3ebcb",
+    "resources": {
+      "selected_single": {
+        "vgpr": 40,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "selected_dual_silu": {
+        "vgpr": 64,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "grouped_base": {
+        "vgpr": 80,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "rowbatch4": {
+        "vgpr": 88,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    }
+  },
+  "limitations": [
+    "Synthetic valid IQ2_XS bytes and deterministic routing, not Laguna model weights or model throughput.",
+    "The exact branchless path raises allocated VGPR versus the old branchy kernels but stays scratch-free and wins every representative case.",
+    "Model-level quality and throughput remain blocked on runner integration."
+  ]
+}

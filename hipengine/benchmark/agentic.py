@@ -168,6 +168,9 @@ class AgenticWorkloadSuite:
     canonical_sha256: str
     tools: Mapping[str, Mapping[str, Any]]
     workloads: Mapping[str, Mapping[str, Any]]
+    quality_oracle_path: Path | None
+    quality_oracle_file_sha256: str | None
+    quality_oracle: Mapping[str, Any] | None
 
     @property
     def kind(self) -> str:
@@ -196,7 +199,7 @@ class AgenticWorkloadSuite:
         return token_ids_sha256(token_ids)
 
     def identity(self) -> dict[str, Any]:
-        return {
+        identity = {
             "path": str(self.path),
             "kind": self.kind,
             "schema_version": self.schema_version,
@@ -208,6 +211,15 @@ class AgenticWorkloadSuite:
                 for workload_id in sorted(self.workloads)
             },
         }
+        if self.quality_oracle_path is not None:
+            identity["quality_oracle"] = {
+                "path": str(self.quality_oracle_path),
+                "file_sha256": self.quality_oracle_file_sha256,
+                "kind": str(self.quality_oracle["kind"]),
+                "schema_version": int(self.quality_oracle["schema_version"]),
+                "suite": str(self.quality_oracle["suite"]),
+            }
+        return identity
 
 
 def load_agentic_workload_suite(
@@ -233,6 +245,132 @@ def load_agentic_workload_suite(
         raise AgenticBenchmarkError("repository_context.expansion_blocks must be non-empty")
     for index, block in enumerate(expansion):
         _nonempty_string(block, label=f"repository_context.expansion_blocks[{index}]")
+
+    quality_oracle_path: Path | None = None
+    quality_oracle_file_hash: str | None = None
+    quality_oracle_payload: Mapping[str, Any] | None = None
+    raw_quality_oracle = root.get("quality_oracle")
+    if raw_quality_oracle is not None:
+        quality_oracle_ref = _mapping(raw_quality_oracle, label="quality_oracle")
+        raw_oracle_path = _nonempty_string(
+            quality_oracle_ref.get("path"), label="quality_oracle.path"
+        )
+        quality_oracle_path = Path(raw_oracle_path)
+        if not quality_oracle_path.is_absolute() and not quality_oracle_path.exists():
+            quality_oracle_path = fixture_path.parent / quality_oracle_path
+        quality_oracle_path = quality_oracle_path.resolve()
+        quality_oracle_file_hash = _sha256_string(
+            quality_oracle_ref.get("file_sha256"), label="quality_oracle.file_sha256"
+        )
+        if not quality_oracle_path.is_file():
+            raise AgenticBenchmarkError("quality_oracle.path must reference a file")
+        if file_sha256(quality_oracle_path) != quality_oracle_file_hash:
+            raise AgenticBenchmarkError("quality_oracle file hash mismatch")
+        oracle = _mapping(
+            json.loads(quality_oracle_path.read_text(encoding="utf-8")),
+            label=str(quality_oracle_path),
+        )
+        if oracle.get("kind") != "hipengine.agentic_quality_oracles":
+            raise AgenticBenchmarkError("quality_oracle kind is unsupported")
+        if oracle.get("schema_version") != 1:
+            raise AgenticBenchmarkError("quality_oracle schema_version is unsupported")
+        if oracle.get("suite") != root.get("suite"):
+            raise AgenticBenchmarkError("quality_oracle suite differs from workload suite")
+        files = _mapping(oracle.get("files"), label="quality_oracle.files")
+        if not files:
+            raise AgenticBenchmarkError("quality_oracle.files must be non-empty")
+        for path, content in files.items():
+            _nonempty_string(path, label="quality_oracle file path")
+            if not isinstance(content, str):
+                raise AgenticBenchmarkError("quality_oracle file content must be a string")
+        summaries = _mapping(oracle.get("summaries"), label="quality_oracle.summaries")
+        for path, summary in summaries.items():
+            if path not in files:
+                raise AgenticBenchmarkError("quality_oracle summary references an unknown file")
+            _nonempty_string(summary, label=f"quality_oracle.summaries.{path}")
+        lookups = _mapping(oracle.get("lookups"), label="quality_oracle.lookups")
+        for key, value in lookups.items():
+            _nonempty_string(key, label="quality_oracle lookup key")
+            _nonempty_string(value, label=f"quality_oracle.lookups.{key}")
+        patches = _mapping(oracle.get("patches"), label="quality_oracle.patches")
+        for patch_id, raw_patch in patches.items():
+            patch = _mapping(raw_patch, label=f"quality_oracle.patches.{patch_id}")
+            path = _nonempty_string(
+                patch.get("path"), label=f"quality_oracle.patches.{patch_id}.path"
+            )
+            if path not in files:
+                raise AgenticBenchmarkError("quality_oracle patch references an unknown file")
+            old = _nonempty_string(
+                patch.get("old"), label=f"quality_oracle.patches.{patch_id}.old"
+            )
+            new = _nonempty_string(
+                patch.get("new"), label=f"quality_oracle.patches.{patch_id}.new"
+            )
+            if old == new or files[path].count(old) != 1:
+                raise AgenticBenchmarkError(
+                    "quality_oracle patch must replace one unique source region"
+                )
+            _nonempty_string(
+                patch.get("test_suite"),
+                label=f"quality_oracle.patches.{patch_id}.test_suite",
+            )
+        test_suites = _mapping(
+            oracle.get("test_suites"), label="quality_oracle.test_suites"
+        )
+        for suite_id, raw_suite in test_suites.items():
+            test_suite = _mapping(
+                raw_suite, label=f"quality_oracle.test_suites.{suite_id}"
+            )
+            required = _mapping(
+                test_suite.get("required_file_sha256"),
+                label=f"quality_oracle.test_suites.{suite_id}.required_file_sha256",
+            )
+            if not required:
+                raise AgenticBenchmarkError(
+                    "quality_oracle test suite must contain at least one file check"
+                )
+            for path, expected_hash in required.items():
+                if path not in files:
+                    raise AgenticBenchmarkError(
+                        "quality_oracle test suite references an unknown file"
+                    )
+                _sha256_string(
+                    expected_hash,
+                    label=f"quality_oracle.test_suites.{suite_id}.{path}",
+                )
+        cases = _mapping(oracle.get("cases"), label="quality_oracle.cases")
+        if not cases:
+            raise AgenticBenchmarkError("quality_oracle.cases must be non-empty")
+        for case_id, raw_case in cases.items():
+            case = _mapping(raw_case, label=f"quality_oracle.cases.{case_id}")
+            if case.get("kind") not in {
+                "read",
+                "grep",
+                "lookup",
+                "calculate",
+                "patch",
+                "test",
+            }:
+                raise AgenticBenchmarkError("quality_oracle case kind is unsupported")
+            _sha256_string(
+                case.get("expected_result_sha256"),
+                label=f"quality_oracle.cases.{case_id}.expected_result_sha256",
+            )
+            setup_patches = case.get("setup_patches", [])
+            if not _is_sequence(setup_patches):
+                raise AgenticBenchmarkError(
+                    "quality_oracle case setup_patches must be an array"
+                )
+            if any(patch_id not in patches for patch_id in setup_patches):
+                raise AgenticBenchmarkError(
+                    "quality_oracle case references an unknown setup patch"
+                )
+        for patch_id, raw_patch in patches.items():
+            if raw_patch["test_suite"] not in test_suites:
+                raise AgenticBenchmarkError(
+                    f"quality_oracle patch {patch_id!r} references an unknown test suite"
+                )
+        quality_oracle_payload = copy.deepcopy(dict(oracle))
 
     raw_tools = root.get("tools")
     if not _is_sequence(raw_tools) or not raw_tools:
@@ -263,6 +401,20 @@ def load_agentic_workload_suite(
             workload.get("target_prefix_tokens"),
             label=f"workloads[{workload_index}].target_prefix_tokens",
         )
+        family = workload.get("family")
+        if family is not None and family not in {
+            "repository",
+            "general_en",
+            "general_ja",
+            "mixed_ja_en",
+        }:
+            raise AgenticBenchmarkError(
+                f"workloads[{workload_index}].family is unsupported"
+            )
+        if quality_oracle_payload is not None and family is None:
+            raise AgenticBenchmarkError(
+                f"workloads[{workload_index}].family is required with quality_oracle"
+            )
         if workload.get("history_mode") not in {"stable_prefix", "growing_tool_results"}:
             raise AgenticBenchmarkError(f"workloads[{workload_index}].history_mode is unsupported")
         turns = workload.get("turns")
@@ -292,6 +444,33 @@ def load_agentic_workload_suite(
                 turn.get("tool_result"),
                 label=f"{workload_id}.turns[{turn_index}].tool_result",
             )
+            oracle_case = turn.get("oracle_case")
+            if quality_oracle_payload is not None:
+                oracle_case = _nonempty_string(
+                    oracle_case,
+                    label=f"{workload_id}.turns[{turn_index}].oracle_case",
+                )
+                case = quality_oracle_payload["cases"].get(oracle_case)
+                if case is None:
+                    raise AgenticBenchmarkError(
+                        f"{workload_id}.turns[{turn_index}] references unknown oracle case"
+                    )
+                expected_oracle_tool = {
+                    "read": "read",
+                    "grep": "grep",
+                    "lookup": "lookup",
+                    "calculate": "calculate",
+                    "patch": "apply_patch",
+                    "test": "run_tests",
+                }[str(case["kind"])]
+                if expected_tool != expected_oracle_tool:
+                    raise AgenticBenchmarkError(
+                        f"{workload_id}.turns[{turn_index}] tool differs from oracle case"
+                    )
+            elif oracle_case is not None:
+                raise AgenticBenchmarkError(
+                    f"{workload_id}.turns[{turn_index}] has oracle_case without quality_oracle"
+                )
         workloads[workload_id] = copy.deepcopy(dict(workload))
 
     exact_file_hash = file_sha256(fixture_path)
@@ -305,6 +484,9 @@ def load_agentic_workload_suite(
         canonical_sha256=exact_file_hash,
         tools=tools,
         workloads=workloads,
+        quality_oracle_path=quality_oracle_path,
+        quality_oracle_file_sha256=quality_oracle_file_hash,
+        quality_oracle=quality_oracle_payload,
     )
 
 

@@ -43,8 +43,12 @@ also closed before timing: native-eligible auto-tool sampling fails the frozen
 turn-1 strict-envelope oracle, while valid specific/required tool forcing remains
 explicit host fallback. The GGUF native sampler therefore stays default-off.
 A4 routing is also closed without promotion: every candidate fails a balanced
-mixed-arrival SLO or exact-ID gate. The next independent measured unit is A5
-pressure/soak on unchanged package defaults.
+mixed-arrival SLO or exact-ID gate. A5 now closes pressure/soak on unchanged
+package defaults: all nine workloads pass exactness, SLO, bounded-resource, and
+final-ownership gates across 122 requests. A6 now closes the first broad
+external-oracle quality packet: 10/48 complete tool turns pass across four
+families, with no performance claim. The queued A0-A6 measurement program is
+complete; follow-on work should target the observed quality and A4 blockers.
 
 ## Current status report
 
@@ -88,6 +92,8 @@ fail-safe envelopes; they do not prove broad live-model tool-use quality.
 | Same-loop serial C13 control | **31.708 aggregate tok/s** | same F1 artifact |
 | Coding-agent A1 active SSE | Small **16.239/15.995/16.020**, growing **15.100/15.231/15.036**, medium **4.127/4.629/4.339 tok/s** at C1/C4/C8 | `benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json` |
 | Coding-agent A4 routing/SLO | **Blocked, no performance row**: 8 candidates x 3 balanced mixed-arrival passes; control misses one TTFT SLO and alternatives produce 9 late p512/d48 ID mismatches | `benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json` |
+| Coding-agent A5 pressure/soak | **Passed correctness/SLO; no comparative performance claim**: 122 requests, 108 completions, 12 exact retryable rejects, one disconnect, one deadline; 80 s soak is 40/40 exact and final ownership is zero | `benchmarks/results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json` |
+| Coding-agent A6 broad automatic-tool quality | **10/48 successful turns; no performance claim**: valid call/correct tool 18/48, exact arguments/external-oracle pass 16/48, safe patch success 0/6, external test success 8/8; 24/24 repeat pairs exact and ownership zero | `benchmarks/results/2026-07-22-w7900-agentic-a6-broad-quality.json` |
 | PARO direct selected-batch c2 | **121.923 aggregate tok/s**, +5.09% vs c1 and +20.81% vs serial c2 | `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json` |
 | PARO MTP N4 after parallel router | **66.303/66.259 tok/s**, about **0.592x true AR** | `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json` |
 
@@ -125,7 +131,7 @@ resident-session semantics.
    package control misses TTFT p95 once; alternatives produce nine late
    `fixed-0011` p512/d48 trajectory mismatches after 20-24 exact IDs. A4 must
    localize that state/KV or physical-width transition before any C1/C2/C4/C8
-   promotion timing. Long-context pressure remains separate A5 coverage.
+   promotion timing. Long-context pressure is covered separately by the A5 closure.
 3. **GGUF has no promotable native sampled tool route.** The explicit candidate
    removes full-vocabulary D2H for supported c1 and dense compatible c>N rows,
    but specific/required tool forcing, close queues, and other dynamic processors
@@ -170,10 +176,12 @@ resident-session semantics.
 6. **No OpenAI Responses API.** Chat Completions supports pi and the checked-in
    local-agent adapter. `/v1/responses` should be added only when a target
    harness requires it and supplies conformance traces.
-7. **Live-model quality coverage is narrow.** The gfx1151 sampled gate proves
-   one bounded strict tool schema and one structured failure. It does not claim
-   broad coding-agent quality, BFCL-style tool selection, patch correctness, or
-   autonomous repository success.
+7. **Live-model quality remains weak and synthetic.** The broad W7900 A6 packet
+   now covers 24 repeated repository/general/English/Japanese tasks with external
+   result, patch, and test oracles, but only **10/48** complete turns pass and no
+   patch turn succeeds. This is materially broader than one strict schema, yet
+   it is not BFCL-style public evaluation, generated-patch execution, autonomous
+   repository success, or a cross-model quality leaderboard.
 
 ### Maintainability
 
@@ -309,11 +317,35 @@ cancellation/backpressure/overload promotion rows. No timing is inferred, no
 runtime default changes, and gfx1100 remains on
 `protect_decode:256/burst-1` with the zero-ms package window. A4 can rerun only
 after a model-general exactness gate localizes and repairs the late state/KV or
-physical-width transition. A5 pressure/soak may proceed independently on the
-unchanged default. Artifacts:
+physical-width transition. A5 pressure/soak proceeded independently on the
+unchanged default and is closed below. Artifacts:
 `benchmarks/results/2026-07-22-w7900-agentic-a4-routing-screen-blocked.json`
 and
 `benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json`.
+
+The independent A5 pressure/soak packet is now complete on those unchanged
+defaults. One clean W7900 process serves all nine real-Uvicorn workloads over
+**122 requests**: **108 complete**, **12** overload rows receive exact retryable
+`429 engine_busy`, one row disconnects after two exact IDs with **44.5 ms**
+reclaim acknowledgement, and one deadline returns the distinct timeout path.
+All **2,482** observed generated IDs are exact, including the disconnected pair;
+completed rows own **2,480** IDs. The bounded 80-second soak completes **40/40**
+requests at **11.151 exact SLO-goodput tok/s**, while the overload wave completes
+**20** and rejects **12** at **21.717 tok/s**.
+
+Queue depth reaches its declared **16** cap, the slow consumer's stream queue
+peaks at **1/16**, resident active/pending rows peak at **4/3**, and the dynamic
+KV pool grows **3 -> 12 pages** then records **15 grow / 15 shrink** events with
+zero failures. The packet records **28 graph captures / 998 replays / 28
+invalidations**, releases **7,245,205,456 workspace bytes**, returns tracked
+memory below baseline, and closes with zero request, queue, KV ref/pin,
+graph-entry, workspace, or model owners. Forty-one KFD samples see only the
+target process on GPU0 and zero GPU1 activity. Cache remains off by the A2
+performance decision; cache-pressure/eviction coverage is cryptographically
+linked to the exact p2048/p8192 A2 lifecycle closure, whose explicit eviction
+ends with zero refs. This is valid bounded reliability and absolute SLO evidence,
+not a tuning comparison or multi-day soak claim. Artifact:
+`benchmarks/results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json`.
 
 ### P3 — Integrate native GGUF GPU sampling
 
@@ -523,10 +555,12 @@ Every retained comparison requires:
   three balanced delayed mixed-arrival passes, but the control misses one TTFT
   SLO and every faster alternative has at least one late p512/d48 ID mismatch;
   no occupancy/promotion timing or default change exists.
-- **A5 — pressure/soak (next):** cancellation, slow consumer, queue/KV/cache pressure,
-  eviction, and final ownership.
-- **A6 — quality lane:** automatic tool selection and repository-task oracles,
-  reported separately from deterministic engine performance.
+- **A5 — pressure/soak (complete):** all nine workloads pass cancellation,
+  slow-consumer, queue/KV/cache pressure, eviction-link, SLO, GPU-exclusivity,
+  and final-ownership gates across 122 requests; no tuning comparison.
+- **A6 — quality lane (complete):** 2 repeats of 24 externally scored turns
+  complete on clean W7900 source across repository, general-English, Japanese,
+  and mixed Japanese/English families; 10/48 pass, with no performance claim.
 
 ### Current implementation status
 
@@ -1021,3 +1055,77 @@ target. Concurrent work explicitly pinned to the separate ROCm GPU1/XTX is not
 target contention and is recorded but allowed.
 
 [Retained artifact](../benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json).
+
+## 2026-07-22 — Freeze broad A6 external-oracle quality packet
+
+The A6 lane now has a committed broad protocol instead of extrapolating the
+four-turn `small_repo` diagnostic. `benchmarks/prompts/agentic-quality-v2.json`
+contains **6 workloads / 24 turns**: 8 repository turns, 8 general-English
+turns, 4 Japanese turns, and 4 mixed Japanese/English turns. Prompts cover file
+inspection/search, operations lookup, bounded arithmetic, three safe patch
+selections, and four focused/full test selections. The quality system message
+asks the model to choose an appropriate declared tool; unlike the deterministic
+A1 policy, it does not say that the user specifically requested a tool name.
+
+`benchmarks/oracles/agentic-quality-v2.json` is a separately hashed external
+oracle over committed synthetic files, summaries, knowledge entries, exact
+rational arithmetic, one-region patch definitions, and post-patch file-hash
+test suites. It executes selected arguments rather than deriving success from
+fixture equality: for example, `19 * 37` passes the same result oracle as the
+canonical `37 * 19` while remaining a non-exact argument row. Patch output is
+never arbitrary model code; models select one of three committed safe patch IDs,
+and the oracle applies it to an in-memory file before checking scheduler, cache,
+release, or full expected hashes.
+
+The artifact contract still reports valid-call, correct-tool, schema-valid and
+exact arguments, repair counts, and outcomes. V2 additionally reports external
+result-oracle, patch, and test pass rates plus per-family distributions. Every
+turn continues to require response-owned generated IDs; final ownership must be
+zero. The multi-workload live collector uses independent canonical valid
+histories, supports repeated `--workload` or `--all-workloads`, and can attach
+clean canonical source/model/hardware provenance. Quality artifacts remain
+`performance_claim=false` and contain no TTFT, latency, tok/s, or goodput rollup.
+
+The predeclared first measurement is cache-off/native-sampler-off W7900 c1,
+all six workloads, **2 complete runs / 48 turns**, temperature zero, 128-token
+cap, and real localhost blocking OpenAI responses. It reports failures rather
+than aborting on invalid model envelopes; it makes no model-quality leaderboard
+claim beyond this committed synthetic packet. RED failed on the missing external
+oracle module. GREEN passes **27/27** broad/legacy quality, live-normalization,
+and deterministic artifact tests; all **24/24** committed oracle cases execute
+successfully with targeted Ruff, JSON parsing, Python compilation, and diff
+checks. No GPU result is claimed by this protocol unit.
+
+The clean live packet then ran from pushed `878d07a9` with the W7900 pinned as
+GPU0, cache and the native sampler off, exact GDN prefill, packed AR, a 4,096
+context cap, and one active request. Both complete runs are response-exact for
+all **24/24** task pairs after excluding random call IDs. Prompt lengths are
+**1,420-1,751 tokens**, all **4,538** generated IDs come directly from blocking
+responses, no raw tool markup leaks, and final request/session/KV/graph/workspace
+ownership is zero.
+
+The broad result is intentionally sobering:
+
+| Family | Attempts | Valid call / correct tool | Exact arguments / oracle pass | Complete success |
+| --- | ---: | ---: | ---: | ---: |
+| Repository | 16 | 6 | 6 | 2 |
+| General English | 16 | 6 | 6 | 4 |
+| Japanese | 8 | 2 | 0 | 0 |
+| Mixed Japanese/English | 8 | 4 | 4 | 4 |
+| **Total** | **48** | **18** | **16** | **10** |
+
+Outcomes are **10 passed / 20 invalid-tool-call / 10 no-tool-call / 6
+content-alongside-tool-call / 2 wrong-arguments**. The independent oracles pass
+**16/48** selected results. Safe patch selection is **0/6**; independent test
+selection is **8/8**, although two exact test calls still fail the complete-turn
+gate because public assistant content accompanies the call. The protocol makes
+no repair request, so repair attempts are exactly zero rather than inferred.
+Japanese is the weakest family at 0/8 complete turns; the two valid `lookup`
+calls choose the wrong key.
+
+Fifty KFD samples at five-second intervals from startup through collection see
+only the target server PID on GPU0; GPU1 remains at 0% throughout. Canonical
+provenance is clean, model/source/hardware fingerprints are bound, and the
+artifact contains no latency, TTFT, wall, tok/s, or goodput fields. This remains a committed synthetic
+quality diagnostic, not a public benchmark or performance row. Artifact:
+`benchmarks/results/2026-07-22-w7900-agentic-a6-broad-quality.json`.

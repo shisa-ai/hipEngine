@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +9,7 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
+import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -27,13 +27,13 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
+    q8_mmq_prefill_session,
     resolve_gguf_linear_dispatch,
+    resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
-
-import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -248,6 +248,22 @@ def _reset_wmma_prefill_state(monkeypatch):
 _WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_bf16_bf16_out")
 _PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out")
 _DECODE_PACK8_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
+_PREFILL_PACK8_BF16 = _DECODE_PACK8_BF16
+_PREFILL_TILE8X2_BF16 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile8x2_bf16_bf16_out"
+)
+_PREFILL_TILE8X4_BF16 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile8x4_bf16_bf16_out"
+)
+_PREFILL_TILE16X4_BF16 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out"
+)
+_PREFILL_MMQ128_X3_GUARDED_BF16 = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q8_0",
+    "mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
+)
 _Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
 _Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
 _Q4_GEMV_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out")
@@ -266,6 +282,7 @@ def _capture_launch(
     layout: str = LAYOUT_RAW_GGUF,
     output_dtype: str = GGUF_OUTPUT_BF16,
     threads: int = 0,
+    runtime: object = "runtime-sentinel",
     extra_keys: tuple[KernelKey, ...] = (),
 ) -> tuple[KernelKey, tuple, dict]:
     """Drive ``launch_gguf_linear`` against a fake kernel + capture the call.
@@ -282,6 +299,9 @@ def _capture_launch(
         _WMMA_BF16,
         _PREFILL_BF16,
         _DECODE_PACK8_BF16,
+        _PREFILL_TILE8X2_BF16,
+        _PREFILL_TILE8X4_BF16,
+        _PREFILL_TILE16X4_BF16,
         _Q4_WMMA_BF16,
         _Q4_PREFILL_BF16,
         _Q4_GEMV_BF16,
@@ -310,7 +330,7 @@ def _capture_launch(
             output_dtype=output_dtype,
             threads=threads,
             stream=7,
-            runtime="runtime-sentinel",
+            runtime=runtime,
             use_wmma_prefill=use_wmma_prefill,
         )
     finally:
@@ -332,11 +352,172 @@ def test_prefill_config_exposes_wmma_prefill_field() -> None:
     assert coerced.use_wmma_prefill is True
 
 
-def test_wmma_prefill_off_by_default_for_q8_0_rows_gt_1() -> None:
-    """Without any opt-in, rows>1 Q8_0 still goes through the decode-shaped alias."""
+def test_exact_pack8_prefill_is_default_for_q8_0_rows_gt_1() -> None:
+    """Without WMMA opt-in, raw Q8_0 prefill uses the exact pack8 kernel."""
 
-    key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16  # decode-shaped prefill alias, NOT WMMA
+    key, args, kwargs = _capture_launch(rows=4)
+    assert key == _PREFILL_PACK8_BF16
+    assert args == (100, 10, 200, 4, 1024, 2048)
+    assert kwargs == {"stream": 7, "runtime": "runtime-sentinel"}
+
+
+def test_exact_pack8_prefill_requires_eight_output_columns() -> None:
+    key, _, _ = _capture_launch(rows=4, out_features=2049)
+    assert key == _PREFILL_BF16
+
+
+def test_exact_q8_prefill_reuses_weights_across_rows() -> None:
+    narrow, _, _ = _capture_launch(rows=8, out_features=512)
+    wide, _, _ = _capture_launch(rows=8, out_features=2048)
+    large_narrow, _, _ = _capture_launch(rows=32, out_features=512)
+    small, _, _ = _capture_launch(rows=7, out_features=2048)
+
+    assert narrow == _PREFILL_TILE8X2_BF16
+    assert wide == _PREFILL_TILE8X4_BF16
+    assert large_narrow == _PREFILL_TILE8X4_BF16
+    assert small == _PREFILL_PACK8_BF16
+
+
+def test_exact_q8_prefill_widens_columns_at_measured_row_thresholds() -> None:
+    narrow, _, _ = _capture_launch(rows=512, out_features=512)
+    medium, _, _ = _capture_launch(rows=64, out_features=2048)
+    wide, _, _ = _capture_launch(rows=32, out_features=8192)
+    narrow_control, _, _ = _capture_launch(rows=256, out_features=512)
+    medium_control, _, _ = _capture_launch(rows=32, out_features=2048)
+    wide_control, _, _ = _capture_launch(rows=16, out_features=8192)
+
+    assert narrow == _PREFILL_TILE16X4_BF16
+    assert medium == _PREFILL_TILE16X4_BF16
+    assert wide == _PREFILL_TILE16X4_BF16
+    assert narrow_control == _PREFILL_TILE8X4_BF16
+    assert medium_control == _PREFILL_TILE8X4_BF16
+    assert wide_control == _PREFILL_TILE8X4_BF16
+
+
+def test_q3_mmq_prefill_policy_is_registry_selected() -> None:
+    q3_policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert q3_policy is not None
+    assert q3_policy(512, 2048, 8192)
+    assert not q3_policy(512, 512, 2048)
+    assert not q3_policy(4097, 2048, 8192)
+    assert q3_policy.risk_threshold == 1.0e-5
+    assert q3_policy.risk_indices_nbytes(512) == 16_777_216
+    assert resolve_q8_mmq_prefill_policy("gguf_qwen35") is None
+
+
+def test_q3_mmq_prefill_session_uses_bounded_workspace(monkeypatch) -> None:
+    quantize_calls = []
+    correction_calls = []
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.memset_calls = []
+
+        def memset_async(self, *args) -> None:
+            self.memset_calls.append(args)
+
+    def fake_quantize(*args, **kwargs):
+        quantize_calls.append((args, kwargs))
+
+    def fake_correct(*args, **kwargs):
+        correction_calls.append((args, kwargs))
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_0_mmq128_quantize_bf16_d4x3",
+        fake_quantize,
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_0_mmq128_sparse_exact_correct_bf16",
+        fake_correct,
+    )
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert policy is not None
+    library = object()
+    runtime = FakeRuntime()
+    with q8_mmq_prefill_session(
+        workspace_ptr=10_000_000,
+        workspace_nbytes=3_538_944,
+        risk_count_ptr=14_000_000,
+        risk_count_nbytes=4,
+        risk_indices_ptr=15_000_000,
+        risk_indices_nbytes=16_777_216,
+        policy=policy,
+        library=library,  # type: ignore[arg-type]
+    ):
+        key, args, kwargs = _capture_launch(
+            rows=512,
+            in_features=2048,
+            out_features=8192,
+            runtime=runtime,
+            extra_keys=(_PREFILL_MMQ128_X3_GUARDED_BF16,),
+        )
+    assert key == _PREFILL_MMQ128_X3_GUARDED_BF16
+    assert runtime.memset_calls == [(14_000_000, 0, 4, 7)]
+    common_kwargs = {"stream": 7, "runtime": runtime, "library": library}
+    assert quantize_calls == [((100, 10_000_000, 512, 2048), common_kwargs)]
+    assert args == (
+        10_000_000,
+        10,
+        200,
+        14_000_000,
+        15_000_000,
+        4_194_304,
+        1.0e-5,
+        512,
+        2048,
+        8192,
+    )
+    assert kwargs == common_kwargs
+    assert correction_calls == [
+        (
+            (100, 10, 200, 14_000_000, 15_000_000, 4_194_304, 512, 2048, 8192),
+            common_kwargs,
+        )
+    ]
+
+
+def test_q3_mmq_prefill_session_keeps_exact_below_crossover() -> None:
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert policy is not None
+    with q8_mmq_prefill_session(
+        workspace_ptr=10_000_000,
+        workspace_nbytes=3_538_944,
+        risk_count_ptr=14_000_000,
+        risk_count_nbytes=4,
+        risk_indices_ptr=15_000_000,
+        risk_indices_nbytes=16_777_216,
+        policy=policy,
+    ):
+        key, _, _ = _capture_launch(
+            rows=31,
+            in_features=2048,
+            out_features=8192,
+            extra_keys=(_PREFILL_MMQ128_X3_GUARDED_BF16,),
+        )
+    assert key == _PREFILL_TILE8X4_BF16
+
+
+def test_q3_mmq_prefill_session_rejects_undersized_workspace() -> None:
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert policy is not None
+    with q8_mmq_prefill_session(
+        workspace_ptr=10_000_000,
+        workspace_nbytes=3_538_943,
+        risk_count_ptr=14_000_000,
+        risk_count_nbytes=4,
+        risk_indices_ptr=15_000_000,
+        risk_indices_nbytes=16_777_216,
+        policy=policy,
+    ):
+        with pytest.raises(ValueError, match="workspace is too small"):
+            _capture_launch(
+                rows=512,
+                in_features=2048,
+                out_features=8192,
+                extra_keys=(_PREFILL_MMQ128_X3_GUARDED_BF16,),
+            )
 
 
 def test_wmma_prefill_kwarg_opts_in_q8_0_rows_gt_1() -> None:
@@ -356,7 +537,7 @@ def test_wmma_prefill_kwarg_can_force_off_even_with_session_on() -> None:
 
     set_wmma_prefill_enabled(True)
     key, _, _ = _capture_launch(rows=4, use_wmma_prefill=False)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_env_var_opts_in(monkeypatch) -> None:
@@ -374,11 +555,11 @@ def test_wmma_prefill_env_var_accepts_common_truthy_values(monkeypatch) -> None:
         assert key == _WMMA_BF16, f"env value {value!r} should enable WMMA"
 
 
-def test_wmma_prefill_env_var_falsy_values_keep_decode_path(monkeypatch) -> None:
+def test_wmma_prefill_env_var_falsy_values_keep_exact_pack8_path(monkeypatch) -> None:
     for value in ("", "0", "false", "no", "off"):
         monkeypatch.setenv("HIPENGINE_GGUF_WMMA_PREFILL", value)
         key, _, _ = _capture_launch(rows=4)
-        assert key == _PREFILL_BF16, f"env value {value!r} should keep decode path"
+        assert key == _PREFILL_PACK8_BF16, f"env value {value!r} should keep exact pack8"
 
 
 def test_wmma_prefill_session_toggle_persists_until_cleared() -> None:
@@ -389,11 +570,11 @@ def test_wmma_prefill_session_toggle_persists_until_cleared() -> None:
     assert key == _WMMA_BF16
     set_wmma_prefill_enabled(False)
     key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
     set_wmma_prefill_enabled(None)
-    # back to env default (unset in this fixture) -> decode path
+    # Back to the env default (unset in this fixture) -> exact pack8.
     key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_session_context_manager_restores_previous_state() -> None:
@@ -401,9 +582,9 @@ def test_wmma_prefill_session_context_manager_restores_previous_state() -> None:
     with wmma_prefill_session(True):
         key, _, _ = _capture_launch(rows=4)
         assert key == _WMMA_BF16
-    # Restored to the previous explicit-off session state
+    # Restored to the previous explicit-off session state.
     key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_decode_path_unaffected_by_opt_in() -> None:
@@ -554,11 +735,11 @@ def test_wmma_prefill_q5_k_not_yet_supported_keeps_decode_path() -> None:
     assert key == q5_prefill
 
 
-def test_wmma_prefill_unaligned_in_features_falls_back_to_decode_path() -> None:
-    """Q8_0 requires in_features % 32 == 0; unaligned shapes skip the WMMA path."""
+def test_wmma_prefill_unaligned_in_features_falls_back_to_exact_pack8_path() -> None:
+    """Q8_0 shapes outside WMMA policy retain the exact pack8 schedule."""
 
     key, _, _ = _capture_launch(rows=4, in_features=1000, use_wmma_prefill=True)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_threads_silently_dropped_on_wmma_path() -> None:
@@ -567,9 +748,9 @@ def test_wmma_prefill_threads_silently_dropped_on_wmma_path() -> None:
     key, _, kwargs = _capture_launch(rows=4, use_wmma_prefill=True, threads=128)
     assert key == _WMMA_BF16
     assert "threads" not in kwargs
-    # And confirm threads still flows through on the decode path:
+    # And confirm threads still flows through on the exact pack8 path:
     key2, _, kwargs2 = _capture_launch(rows=4, threads=128)
-    assert key2 == _PREFILL_BF16
+    assert key2 == _PREFILL_PACK8_BF16
     assert kwargs2.get("threads") == 128
 
 

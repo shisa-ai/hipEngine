@@ -1,0 +1,298 @@
+{
+  "schema": 1,
+  "status": "accepted_default_graph_decode",
+  "performance_claim": {
+    "q3_graph_decode": true,
+    "bulk_prefill": false,
+    "q4_or_paro_speed": false,
+    "w7900": false
+  },
+  "date": "2026-07-20",
+  "purpose": "Retain the exact already-weighted MoE-tail plus next-layer input RMSNorm chain for Qwen3.6-35B-A3B UD-Q3_K_M decode, while rejecting the slower slot-weighted specialization from runtime dispatch.",
+  "implementation_base_commit": "ed176bef",
+  "source_reference": "qwen-kernel@52e240f9c6d91750d0e5e692976cfb67fd9bc603 shaders/add_rms3.comp and src/main.cpp scheduling; arithmetic was adapted to preserve hipEngine's low-precision rounding boundaries.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "size_gib": 15.929716378450394,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "layers": 40,
+    "hidden_size": 2048,
+    "activation_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "physical_gpu": 1,
+    "rocprof_agent": 2,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "compute_units": 96,
+    "wavefront_size": 32,
+    "cross_card_status": "GPU0/W7900 was not used; no W7900 throughput claim is made."
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-q3.txt",
+    "require_cached_build": true
+  },
+  "runtime_route": {
+    "env": "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS",
+    "default": true,
+    "opt_out": "0",
+    "decode_only_batch_policy": "The row-bulk prefill path is unchanged. Serial c=1 prompt processing shares the exact decode chain.",
+    "first_layer_input_norm": "separate",
+    "fused_boundaries": {
+      "count": 37,
+      "layers": "MoE tails 0..33 and 35..37 feed input norms 1..34 and 36..38",
+      "selected_abi": "already-weighted BF16 selected aggregate"
+    },
+    "unfused_nonfinal_boundaries": {
+      "count": 2,
+      "moe_tail_layers": [34, 38],
+      "reason": "These Q6_K down outliers expose eight BF16 slot rows plus F32 routing weights; their one-block weighted composite regressed production-layer time."
+    },
+    "final_boundaries": {
+      "moe_tail_layer": 39,
+      "output_norm": "separate"
+    },
+    "dispatches_per_token": {
+      "control": 708,
+      "retained": 671,
+      "delta": -37,
+      "delta_pct": -5.225988700564972
+    }
+  },
+  "numerical_contract": {
+    "selected_aggregate": "Consume the existing BF16 selected aggregate without changing slot projection or routing association.",
+    "combine_order": "residual + selected + sigmoid(shared_gate) * shared",
+    "rounding_boundary": "Store the combined residual to BF16 first, then reread that rounded value for sum-of-squares and normalized output.",
+    "outputs": ["raw BF16 residual", "next-layer BF16 normalized activation"],
+    "fallback": "The existing combine then RMSNorm chain remains registered and is selected for slot-weighted Q3/Q4/PARO decode boundaries."
+  },
+  "selected_decode16_profile": {
+    "control_source": {
+      "artifact": "benchmarks/results/2026-07-20-gpu1-q3-iq3-wave-base-retained.json",
+      "trace": "/tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554/q3-iq3-wavebase-decode16_kernel_trace.csv",
+      "dispatches": 11328,
+      "summed_kernel_ms": 141.46397,
+      "kernel_ms_per_token": 8.841498125,
+      "aggregate_combine_dispatches": 592,
+      "aggregate_combine_ms": 0.932732,
+      "corresponding_next_norm_dispatches": 592,
+      "corresponding_next_norm_ms": 2.960595,
+      "aggregate_boundary_ms": 3.893327,
+      "aggregate_boundary_ms_per_token": 0.2433329375,
+      "slot_weighted_nonfinal_combine_dispatches": 32,
+      "slot_weighted_nonfinal_combine_ms": 0.091522,
+      "slot_weighted_corresponding_norm_dispatches": 32,
+      "slot_weighted_corresponding_norm_ms": 0.158163,
+      "slot_weighted_boundary_ms": 0.249685
+    },
+    "retained": {
+      "trace": "/tmp/hipengine-q3-moe-tail-next-rms-retained-decode16-20260720-043448/q3-moe-tail-next-rms-retained-decode16_kernel_trace.csv",
+      "dispatches": 10736,
+      "summed_kernel_ms": 141.11526,
+      "kernel_ms_per_token": 8.81970375,
+      "fused_dispatches": 592,
+      "fused_ms": 3.696835,
+      "fused_ms_per_token": 0.2310521875,
+      "duration_us": {
+        "median": 6.0,
+        "mean": 6.244653716216216
+      },
+      "allocated_vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "workgroup_size": 256,
+      "blocks_per_dispatch": 1,
+      "selected_region_memory_copy_events": 0,
+      "final_token_id": 68,
+      "final_logit": 11.941744804382324
+    },
+    "delta": {
+      "dispatches": -592,
+      "dispatches_per_token": -37,
+      "aggregate_boundary_ms": -0.196492,
+      "aggregate_boundary_pct": -5.046891771484907,
+      "aggregate_boundary_ms_saved_per_token": 0.01228075,
+      "summed_kernel_ms": -0.34871,
+      "summed_kernel_pct": -0.24650092882306796,
+      "summed_kernel_ms_saved_per_token": 0.021794375
+    },
+    "interpretation": "The aggregate body removes one residual reread and 37 graph nodes/token. Total-profile comparisons are secondary to the counterbalanced unprofiled wall because rocprof runs showed broader clock variance."
+  },
+  "slot_weighted_stop_gate": {
+    "candidate_trace": "/tmp/hipengine-q3-moe-tail-next-rms-decode16-20260720-041639/q3-moe-tail-next-rms-decode16_kernel_trace.csv",
+    "candidate_dispatches": 32,
+    "candidate_ms": 0.446607,
+    "candidate_mean_us": 13.95646875,
+    "control_combine_plus_norm_ms": 0.249685,
+    "regression_pct": 78.86817389911288,
+    "regression_ms_per_token": 0.012307625,
+    "decision": "Do not route the slot-weighted specialization. Keep its exact kernel registration/tests, but use the feature-parallel combine then RMSNorm fallback in production.",
+    "transfer": "Default Q4 GGUF and PARO c=1 paths are slot-weighted, so no Q4/PARO speed claim or runtime fusion promotion is made."
+  },
+  "graph_wall_512_128": {
+    "sequence": ["control", "candidate", "candidate", "control", "control", "candidate"],
+    "control": {
+      "decode_tok_s_samples": [100.51415558487096, 100.1950209962023, 100.01713520339774],
+      "median": 100.1950209962023,
+      "mean": 100.24210392815701,
+      "stdev_pct_of_median": 0.2513429414079245,
+      "latency_ms_per_token": 9.980535859540396,
+      "prefill_tok_s_median": 19.928525235706196
+    },
+    "candidate": {
+      "decode_tok_s_samples": [101.09477146798241, 101.33862167766532, 101.21645606552306],
+      "median": 101.21645606552306,
+      "mean": 101.21661640372359,
+      "stdev_pct_of_median": 0.12045984284667163,
+      "latency_ms_per_token": 9.879816374450456,
+      "prefill_tok_s_median": 20.080372500455304
+    },
+    "paired_candidate_delta_tok_s": [0.5806158831114487, 1.1436006814630133, 1.1993208621253189],
+    "median_decode_delta_pct": 1.0194469337547973,
+    "latency_ms_saved_per_token": 0.10071948508993955,
+    "prefill_delta_pct_not_claimed": 0.7619593670536107,
+    "final_ids_all": [220, 220, 220, 220, 220, 220],
+    "final_logit_all": 13.923458099365234,
+    "tracked_peak_gib_all": 15.804706819355488
+  },
+  "graph_wall_4096_128": {
+    "sequence": ["candidate", "control", "control", "candidate"],
+    "control": {
+      "decode_tok_s_samples": [107.61919845108078, 107.11364117712122],
+      "median": 107.366419814101,
+      "stdev_pct_of_median": 0.3329560371985461,
+      "latency_ms_per_token": 9.313899091833784,
+      "prefill_tok_s_median": 20.133784246470245
+    },
+    "candidate": {
+      "decode_tok_s_samples": [108.83084742321778, 107.93470453327534],
+      "median": 108.38277597824656,
+      "stdev_pct_of_median": 0.5846581328730609,
+      "latency_ms_per_token": 9.226558288198019,
+      "prefill_tok_s_median": 20.0385110975959
+    },
+    "paired_candidate_delta_tok_s": [1.2116489721369987, 0.821063356154113],
+    "median_decode_delta_pct": 0.946623875421504,
+    "latency_ms_saved_per_token": 0.08734080363576524,
+    "prefill_delta_pct_not_claimed": -0.47320040638185734,
+    "final_ids_all": [1510, 1510, 1510, 1510],
+    "final_logit_all": 11.430221557617188,
+    "tracked_peak_gib_all": 16.950474798679352
+  },
+  "benchmark_rollup": {
+    "workload": "512/128 native-attention + grouped scalar MoE + one-step graph decode",
+    "prefill_tok_s": 16.685,
+    "prefill_source": "benchmarks/results/2026-07-20-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-grouped-prefill.json; retained because the new route does not touch bulk prefill",
+    "decode_tok_s": 101.21645606552306,
+    "decode_source": "current task-21 counterbalanced candidate median",
+    "tracked_peak_gib": 15.804706819355488
+  },
+  "correctness": {
+    "q3_layer_boundaries": {
+      "layer_limits": [1, 4, 40],
+      "bf16_bit_mismatches": [0, 0, 0]
+    },
+    "q3_graph_smoke": {
+      "eager_ids": [11, 11, 264],
+      "graph_ids": [11, 11, 264],
+      "expected_ids": [11, 11, 264],
+      "final_logit_max_abs": 0.0,
+      "kl_eager_to_graph": 0.0,
+      "top1_agreement": 1.0,
+      "passed": true
+    },
+    "q3_graph_symbol_coverage": {
+      "passed": true,
+      "expected_groups": 11,
+      "missing_groups": [],
+      "tail_symbol": "moe_tail_next_rmsnorm_out_kernel<unsigned short, float, false, false>"
+    },
+    "q4_teacher_forced_fallback_ab": {
+      "prompt_ids": [9419, 11, 271, 40],
+      "control_ids": [7, 7, 696],
+      "candidate_ids": [7, 7, 696],
+      "logit_bit_equal": true,
+      "max_abs": 0.0,
+      "finite": true,
+      "tracked_peak_gib": 20.708789825439453
+    },
+    "cross_format_kernel_gate": {
+      "test": "tests/test_moe_tail_next_rmsnorm.py",
+      "cases": "GGUF BF16/F32 weight, PARO BF16/BF16 weight, and PARO FP16/FP16 weight; aggregate and slot-weighted ABIs; residual and norm outputs bit-exact to unfused",
+      "profile": "All six specializations observed at local256, 1 KiB LDS, zero scratch, and 16-56 allocated VGPRs."
+    },
+    "paro_runtime": "Unchanged: PARO c=1 remains on the exact slot-weighted combine then RMSNorm path because the production slot-weighted stop gate rejected fusion."
+  },
+  "commands": {
+    "focused_tests": "python3 -m pytest tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_gguf_moe_tail_next_rms_routing.py tests/test_qwen35_gguf_iq_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_rocprof_summary.py tests/test_moe_tail_next_rmsnorm.py -q",
+    "selected_profile": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-direct:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS=1 PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-moe-tail-next-rms-retained-decode16-20260720-043448 -o q3-moe-tail-next-rms-retained-decode16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>/bench.json",
+    "wall_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS=<0|1> PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>.json",
+    "q3_graph_smoke": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_decode_graph_smoke.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-moe-tail-next-rms-retained-graph-smoke.json",
+    "graph_coverage": "python3 scripts/qwen35_gguf_decode_graph_smoke.py --coverage-only --coverage-csv /tmp/hipengine-q3-moe-tail-next-rms-retained-decode16-20260720-043448/q3-moe-tail-next-rms-retained-decode16_kernel_trace.csv --coverage-json /tmp/hipengine-q3-moe-tail-next-rms-retained-graph-smoke.json --json /tmp/hipengine-q3-moe-tail-next-rms-retained-coverage.json",
+    "full_suite": "env -u HIPENGINE_HIP_ARCH -u HIPENGINE_REQUIRE_CACHED_BUILD -u HIPENGINE_COMPILER_VERSION_FILE HIP_VISIBLE_DEVICES=1 PYTHONPATH=. python3 -m pytest -q"
+  },
+  "validation": {
+    "focused_tests": "135 passed",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "compileall": "passed",
+    "cpu_fixture_registry_plan_bundle": "passed",
+    "lineage_check": "reviewed; only previously documented parent drift",
+    "json": "passed",
+    "git_diff_check": "passed",
+    "full_suite": "100%, exit 0"
+  },
+  "decision": {
+    "accepted": true,
+    "default_on": true,
+    "retain_opt_out": true,
+    "opt_out_removal_trigger": "One Q3/Q4 defaults-only milestone and task-16 overlap bisection window.",
+    "reason": "Exact raw and normalized buffers, exact Q3/Q4 trajectories, intended graph symbol, zero scratch, 37 fewer graph nodes/token, and positive counterbalanced graph-wall results at both required contexts.",
+    "scope_limit": "Only the already-weighted aggregate runtime ABI is promoted. The slot-weighted kernel variants remain correctness-tested but are not runtime-selected."
+  },
+  "excluded_attempts": {
+    "all_39_fused_wall": "The first 512/4K wall samples were launched before the slot-weighted fallback edit and are excluded from the retained-route claim. They motivated the production-symbol split but are not the reported wall numbers.",
+    "fresh_profile_control": "A later opt-out rocprof control had 153.520 ms total kernels versus the retained D0 control's 141.464 ms, indicating run-wide clock variance. The accepted profile comparison therefore uses the retained D0 control and the current retained candidate, while the unprofiled wall is counterbalanced."
+  },
+  "raw_evidence": {
+    "control_decode16": {
+      "bench": {"path": "/tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554/bench.json", "sha256": "b11b8fd724b1d8b2bf4409782fda4970d93fd5e7bb930c9b07cda989c70f6419"},
+      "trace": {"path": "/tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554/q3-iq3-wavebase-decode16_kernel_trace.csv", "sha256": "0882983436de7926f91e8ee4e7cca08120cf570e520511e924fbadd2df626c9d"}
+    },
+    "retained_decode16": {
+      "bench": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-retained-decode16-20260720-043448/bench.json", "sha256": "a785e88d5cd30a0c4eb38ebe0a149d95e3ab332afaa35fae849caba6624479e9"},
+      "trace": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-retained-decode16-20260720-043448/q3-moe-tail-next-rms-retained-decode16_kernel_trace.csv", "sha256": "9c410c7bf6240b2eaab777c5aed650339f9dc5b44bcc63af1726078be2ba92bb"},
+      "agent": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-retained-decode16-20260720-043448/q3-moe-tail-next-rms-retained-decode16_agent_info.csv", "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00"}
+    },
+    "slot_weighted_candidate": {
+      "bench": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-decode16-20260720-041639/bench.json", "sha256": "4e67968db8668a963696d0c83d3562d709a1ab72bdcf318609c0bcb1a8ed5726"},
+      "trace": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-decode16-20260720-041639/q3-moe-tail-next-rms-decode16_kernel_trace.csv", "sha256": "fb169c09056d8a3de018c40ec1037942f0b3292558a6f602137c2895e242f2b2"}
+    },
+    "wall_512_dir": "/tmp/hipengine-q3-moe-tail-next-rms-retained-wall512-20260720-044031",
+    "wall_512_sha256": {
+      "1-control.json": "52af65d0cee05da40e6cacff526323aea77d8747fafe6267761296a34a03e101",
+      "2-candidate.json": "02c5ca5434d6eb90c690ce67029db39a9cf80acaac873713bc3434083d3f4eec",
+      "3-candidate.json": "d376908abe42bec88d114c815096ef2c21bf58a4584b9cb52e41a257a74cf095",
+      "4-control.json": "8fdce91a6cf51c90b2446043e8ff52f0c7daae34821d0d5a52fb377f9885ee9e",
+      "5-control.json": "a43f30afc57d209c1606404db2b537f40c730be1e4dc91e5fa528299978da878",
+      "6-candidate.json": "2d6671e129ff6568cba9f44cca0d0b13311f5402ba7d5d6449362f03279b18bf"
+    },
+    "wall_4096_dir": "/tmp/hipengine-q3-moe-tail-next-rms-retained-wall4k-20260720-044640",
+    "wall_4096_sha256": {
+      "1-candidate.json": "92cd21c5ab32e15aa8c12f4a411ef68ee82d9645ea8dbe87cf49136223de0bc2",
+      "2-control.json": "9a3bd5abf0fbcf7ba2dc91a6fba655232359d379e804136ab9f800f991f10aca",
+      "3-control.json": "c09241ed81eed978bc88bd409cc08b157b0a9931217a06538ba8cc7b8b3846e0",
+      "4-candidate.json": "510daa4f7dd9693de6a842fcec68e19a6c600be57bb1b7bf3447b65b931e615c"
+    },
+    "q3_graph_smoke": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-retained-graph-smoke.json", "sha256": "6c10e3c7e180b8dca270a9dd8c312900abdea5b14cec2d7b368464e0f53840cd"},
+    "q3_layer_boundaries": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-retained-layer-boundaries.json", "sha256": "ca5f0be9aec774b5d9fc5f19f65e39bfc2eb878fece5d0d3e8c6367fdaad5c36"},
+    "q3_graph_coverage": {"path": "/tmp/hipengine-q3-moe-tail-next-rms-retained-coverage.json", "sha256": "0748361ca9bf1c0f45a2386dd708d7582decd1cd0dde388161b6ee923578fb0c"},
+    "q4_teacher_forced_ab": {"path": "/tmp/hipengine-q4-moe-tail-next-rms-retained-teacher-ab.json", "sha256": "f8750b8604e5a56d2f9d3eb04caa0a928ed01ea70e0abaf2b5c43e8f7d80f498"}
+  }
+}

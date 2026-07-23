@@ -6,7 +6,10 @@
 > evidence: current production uses the correctness-certified fused
 > decode-order recurrence, and retained runs already have WMMA prefill enabled.
 
-Date: 2026-05-17
+Date: 2026-05-17; current Q3 status updated 2026-07-22
+
+> The merged UD-Q3_K_M implementation, exactness gates, retained GPU1 rows,
+> and rejected alternatives are recorded in [`GGUF-Q3-OPT.md`](GGUF-Q3-OPT.md).
 Target repo: `~/hipENGINE`
 
 Primary references: local llama.cpp checkouts under `~/llama.cpp/` and parent evidence in `~/amd-gpu-tuning/`

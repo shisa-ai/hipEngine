@@ -13,6 +13,7 @@ from scripts.gguf_production_load_gate import (
     build_parser,
     _distribution,
     _evaluate_workload,
+    _force_disconnect,
     _http_json,
     _LocalUvicorn,
     _openai_error_fields,
@@ -68,6 +69,33 @@ def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None
     assert parser.parse_args([]).prefix_cache == "off"
     assert parser.parse_args(["--prefix-cache", "radix"]).prefix_cache == "radix"
     assert "HIPENGINE_PREFIX_CACHE" in _PROVENANCE_ENV_KEYS
+
+
+def test_force_disconnect_shutdowns_socket_before_closing_http_wrappers() -> None:
+    calls: list[object] = []
+
+    class FakeSocket:
+        def setsockopt(self, level, option, value) -> None:
+            calls.append(("setsockopt", level, option, value))
+
+        def shutdown(self, how) -> None:
+            calls.append(("shutdown", how))
+
+    class FakeResponse:
+        def close(self) -> None:
+            calls.append("response.close")
+
+    class FakeConnection:
+        sock = FakeSocket()
+
+        def close(self) -> None:
+            calls.append("connection.close")
+
+    _force_disconnect(FakeResponse(), FakeConnection())
+
+    assert calls[0][0] == "setsockopt"
+    assert calls[1] == ("shutdown", 2)
+    assert calls[2:] == ["response.close", "connection.close"]
 
 
 def test_workload_selector_is_ordered_unique_and_fail_closed() -> None:
@@ -136,10 +164,12 @@ def _result(
     e2e: float = 0.5,
     error_code: str | None = None,
     http_protocol_exact: bool = True,
+    action: str = "complete",
+    cancellation_latency_seconds: float | None = None,
 ) -> RequestResult:
     return RequestResult(
         label=label,
-        action="complete",
+        action=action,
         outcome=outcome,
         status_code=200 if outcome != "rejected" else 429,
         error_code=error_code,
@@ -152,6 +182,7 @@ def _result(
         end_to_end_seconds=e2e,
         finish_reason="length" if outcome == "completed" else outcome,
         http_protocol_exact=http_protocol_exact,
+        cancellation_latency_seconds=cancellation_latency_seconds,
     )
 
 
@@ -183,6 +214,36 @@ def test_workload_evaluation_derives_exact_generated_token_goodput_and_slos() ->
     assert summary["slo"]["passed"] is False
     assert summary["correctness"]["passed"] is False
     assert "generated_token_mismatch" in summary["failure_reasons"]
+
+
+def test_workload_evaluation_reports_disconnect_cancellation_ack_latency() -> None:
+    summary = _evaluate_workload(
+        "cancellation_disconnect",
+        [
+            _result("survivor"),
+            _result(
+                "disconnected",
+                generated=1,
+                outcome="disconnected",
+                action="disconnect",
+                cancellation_latency_seconds=0.125,
+            ),
+        ],
+        wall_seconds=1.0,
+        slos=SLOThresholds(5.0, 5.0, 1.0, 20.0),
+    )
+
+    assert summary["passed"] is True
+    assert summary["latency_seconds"]["cancellation_ack"] == {
+        "count": 1,
+        "p50": pytest.approx(0.125),
+        "p95": pytest.approx(0.125),
+        "p99": pytest.approx(0.125),
+        "min": pytest.approx(0.125),
+        "max": pytest.approx(0.125),
+        "mean": pytest.approx(0.125),
+        "stdev": pytest.approx(0.0),
+    }
 
 
 def test_openai_error_fields_reads_canonical_nested_status() -> None:

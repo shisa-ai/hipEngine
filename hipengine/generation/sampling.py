@@ -21,6 +21,8 @@ from hipengine.generation.constraints import (
     JsonObjectConstraintState,
     ThinkingBudgetState,
     TokenSequenceDFAState,
+    ToolCallConstraintSpec,
+    ToolCallConstraintState,
     normalize_token_sequences,
 )
 
@@ -37,6 +39,7 @@ NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES: tuple[str, ...] = (
     "post_thinking_forced_tokens_pending",
     "force_sequence_completion_token_sequences",
     "json_object_close_forcing",
+    "tool_call_constraint",
     "thinking_budget",
 )
 SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
@@ -55,6 +58,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "post_thinking_forced_tokens_pending",
     "force_sequence_completion_token_sequences",
     "json_object_close_forcing",
+    "tool_call_constraint",
     "thinking_budget",
     "logprobs",
     "top_logprobs",
@@ -75,6 +79,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
     "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
     "json_object_close_forcing": "JSON object close forcing active",
+    "tool_call_constraint": "tokenizer-aware tool-call grammar active",
     "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
@@ -123,11 +128,14 @@ class RowSamplingState:
     force_sequence_completion_token_sequences: Sequence[Sequence[int]] = ()
     force_sequence_completion_reason: str | None = None
     json_object_close_forcing: bool = False
+    tool_call_constraint: ToolCallConstraintSpec | None = None
     thinking_budget: ThinkingBudgetState | None = None
     _rng: np.random.Generator = field(init=False, repr=False)
     _stop_sequence_state: TokenSequenceDFAState = field(init=False, repr=False)
     _force_sequence_state: TokenSequenceDFAState = field(init=False, repr=False)
     _json_object_constraint: JsonObjectConstraintState | None = field(init=False, repr=False)
+    _tool_call_constraint: ToolCallConstraintState | None = field(init=False, repr=False)
+    _skip_next_selected_token_text: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.prompt_tokens = tuple(int(token) for token in self.prompt_tokens)
@@ -152,6 +160,14 @@ class RowSamplingState:
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason)
         )
         self.json_object_close_forcing = bool(self.json_object_close_forcing)
+        if self.tool_call_constraint is not None and not isinstance(
+            self.tool_call_constraint,
+            ToolCallConstraintSpec,
+        ):
+            if isinstance(self.tool_call_constraint, Mapping):
+                self.tool_call_constraint = ToolCallConstraintSpec(**self.tool_call_constraint)
+            else:
+                raise TypeError("tool_call_constraint must be ToolCallConstraintSpec or a mapping")
         if isinstance(self.forced_tokens_pending, ForcedTokenQueue):
             forced = self.forced_tokens_pending
         else:
@@ -187,6 +203,11 @@ class RowSamplingState:
                     self.force_sequence_completion_token_sequences
                 )
         self._json_object_constraint = JsonObjectConstraintState() if self.json_object_close_forcing else None
+        self._tool_call_constraint = (
+            ToolCallConstraintState(self.tool_call_constraint)
+            if self.tool_call_constraint is not None
+            else None
+        )
         self._rng = np.random.Generator(np.random.PCG64(self.seed))
         if self.step_index:
             # Keep reconstructed state deterministic when a caller restores a
@@ -207,8 +228,13 @@ class RowSamplingState:
         token = int(token_id)
         self.generated_tokens.append(token)
         self.step_index += 1
+        self._skip_next_selected_token_text = False
         if self.thinking_budget is not None:
+            previous_phase = self.thinking_budget.phase
             self.thinking_budget.observe(token)
+            self._skip_next_selected_token_text = (
+                previous_phase != "answer" and self.thinking_budget.phase == "answer"
+            )
         self._stop_sequence_state = self._stop_sequence_state.observe(token)
         self._queue_force_sequence_completion_if_partial(token)
 
@@ -224,6 +250,30 @@ class RowSamplingState:
     def stop_suffix_state(self) -> dict[str, Any] | None:
         payload = self._stop_sequence_state.to_json_dict()
         return payload or None
+
+    @property
+    def tool_call_constraint_state(self) -> ToolCallConstraintState | None:
+        return self._tool_call_constraint
+
+    @property
+    def has_token_text_constraint(self) -> bool:
+        return self._json_object_constraint is not None or self._tool_call_constraint is not None
+
+    def token_text_constraints_allow_eos(self) -> bool:
+        if self.thinking_budget is not None and self.thinking_budget.phase != "answer":
+            return False
+        if self._json_object_constraint is not None and not self._json_object_constraint.syntax_complete:
+            return False
+        if self._tool_call_constraint is not None and not self._tool_call_constraint.allows_eos:
+            return False
+        return True
+
+    def accepts_token_text(self, text: str) -> bool:
+        if self.thinking_budget is not None and self.thinking_budget.phase != "answer":
+            return True
+        if self._json_object_constraint is not None and not self._json_object_constraint.accepts_text(text):
+            return False
+        return self._tool_call_constraint is None or self._tool_call_constraint.accepts_text(text)
 
     def queue_forced_tokens(self, token_ids: Iterable[int], *, reason: str | None = None) -> None:
         self.forced_tokens_pending.extend(token_ids, reason=reason)
@@ -260,6 +310,8 @@ class RowSamplingState:
     def _queue_force_sequence_completion_if_partial(self, token_id: int) -> None:
         if not self.force_sequence_completion_token_sequences:
             return
+        if self._tool_call_constraint is not None and self._tool_call_constraint.branch != "tool":
+            return
         self._force_sequence_state = self._force_sequence_state.observe(int(token_id))
         if self._force_sequence_state.matched:
             self._force_sequence_state = TokenSequenceDFAState.from_sequences(
@@ -280,22 +332,38 @@ class RowSamplingState:
                 )
             return
 
-    def observe_text_for_json_object_close(
+    def observe_selected_token_text(
         self,
         text: str,
         *,
         remaining_tokens: int,
         encode_text: Callable[[str], Iterable[int]],
     ) -> None:
-        """Queue a structural JSON close suffix when the decode budget requires it."""
+        """Advance tokenizer-aware constraints and queue a safe budget close."""
 
-        constraint = self._json_object_constraint
-        if constraint is None:
+        if self._skip_next_selected_token_text:
+            self._skip_next_selected_token_text = False
             return
-        constraint.observe_text(str(text))
-        if constraint.invalid or constraint.complete or self.forced_tokens_pending:
+        if self.thinking_budget is not None and self.thinking_budget.phase != "answer":
             return
-        suffix = constraint.forced_close_suffix
+        token_text = str(text)
+        if self._json_object_constraint is not None:
+            if not self._json_object_constraint.accepts_text(token_text):
+                raise ValueError("selected token violates json_object constraint")
+            self._json_object_constraint.observe_text(token_text)
+        if self._tool_call_constraint is not None:
+            if not self._tool_call_constraint.accepts_text(token_text):
+                raise ValueError("selected token violates tool_call_constraint")
+            self._tool_call_constraint.observe_text(token_text)
+        if self.forced_tokens_pending:
+            return
+        constraint_and_reason = (
+            (self._tool_call_constraint, "tool_call_close_forcing")
+            if self._tool_call_constraint is not None
+            else (self._json_object_constraint, "json_object_close_forcing")
+        )
+        constraint, reason = constraint_and_reason
+        suffix = "" if constraint is None else constraint.forced_close_suffix
         if not suffix:
             return
         try:
@@ -304,7 +372,63 @@ class RowSamplingState:
             return
         remaining = int(remaining_tokens)
         if token_ids and remaining == len(token_ids):
-            self.queue_forced_tokens(token_ids, reason="json_object_close_forcing")
+            self.queue_forced_tokens(token_ids, reason=reason)
+
+    def observe_text_for_json_object_close(
+        self,
+        text: str,
+        *,
+        remaining_tokens: int,
+        encode_text: Callable[[str], Iterable[int]],
+    ) -> None:
+        """Backward-compatible alias for all tokenizer-aware output constraints."""
+
+        self.observe_selected_token_text(
+            text,
+            remaining_tokens=remaining_tokens,
+            encode_text=encode_text,
+        )
+
+    def clone(self) -> "RowSamplingState":
+        """Clone mutable row state without sharing queues or constraint state."""
+
+        budget = clone_thinking_budget_state(self.thinking_budget)
+        cloned = RowSamplingState(
+            prompt_tokens=self.prompt_tokens,
+            seed=self.seed,
+            request_id=self.request_id,
+            row_index=self.row_index,
+            generated_tokens=tuple(self.generated_tokens),
+            step_index=self.step_index,
+            stop_token_sequences=self.stop_token_sequences,
+            forced_tokens_pending=() if budget is not None else self.forced_tokens,
+            forced_token_reason=None if budget is not None else self.forced_token_reason,
+            post_thinking_forced_tokens_pending=self.post_thinking_forced_tokens_pending.pending_tokens,
+            post_thinking_forced_token_reason=self.post_thinking_forced_token_reason,
+            force_sequence_completion_token_sequences=self.force_sequence_completion_token_sequences,
+            force_sequence_completion_reason=self.force_sequence_completion_reason,
+            json_object_close_forcing=self.json_object_close_forcing,
+            tool_call_constraint=self.tool_call_constraint,
+            thinking_budget=budget,
+        )
+        cloned._stop_sequence_state = self._stop_sequence_state
+        cloned._force_sequence_state = self._force_sequence_state
+        if self._json_object_constraint is not None:
+            source = self._json_object_constraint
+            cloned._json_object_constraint = JsonObjectConstraintState(
+                started=source.started,
+                complete=source.complete,
+                invalid=source.invalid,
+                error_reason=source.error_reason,
+                stack=tuple(source.stack),
+                in_string=source.in_string,
+                escaping=source.escaping,
+                observed_text=source.observed_text,
+            )
+        if self._tool_call_constraint is not None:
+            cloned._tool_call_constraint = self._tool_call_constraint.clone()
+        cloned._skip_next_selected_token_text = self._skip_next_selected_token_text
+        return cloned
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,6 +566,12 @@ def validate_sampling_params(params: Any) -> None:
     if any(token < 0 for sequence in force_sequence_completion_token_sequences for token in sequence):
         raise ValueError("force_sequence_completion_token_sequences must contain non-negative token ids")
     normalize_logit_bias_pairs(getattr(params, "logit_bias", None))
+    tool_constraint = getattr(params, "tool_call_constraint", None)
+    if tool_constraint is not None and not isinstance(tool_constraint, ToolCallConstraintSpec):
+        if isinstance(tool_constraint, Mapping):
+            ToolCallConstraintSpec(**tool_constraint)
+        else:
+            raise TypeError("tool_call_constraint must be ToolCallConstraintSpec or a mapping")
     close_token_ids = _thinking_close_token_ids(params)
     if any(token_id < 0 for token_id in close_token_ids):
         raise ValueError("thinking_close_token_ids must be non-negative")
@@ -487,6 +617,8 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("force_sequence_completion_token_sequences")
     if bool(getattr(params, "json_object_close_forcing", False)):
         names.append("json_object_close_forcing")
+    if getattr(params, "tool_call_constraint", None) is not None:
+        names.append("tool_call_constraint")
     return tuple(names)
 
 
@@ -607,6 +739,8 @@ def supports_native_gpu_sampling(params: Any) -> bool:
         return False
     if bool(getattr(params, "json_object_close_forcing", False)):
         return False
+    if getattr(params, "tool_call_constraint", None) is not None:
+        return False
     if thinking_budget_active(params):
         return False
     top_k = int(getattr(params, "top_k", 0))
@@ -726,6 +860,8 @@ def select_token(
     logits: np.ndarray | Sequence[float],
     params: Any,
     state: RowSamplingState | None = None,
+    *,
+    token_text_for_id: Callable[[int], str] | None = None,
 ) -> SampleResult:
     """Select one token from a single logits row using the documented order."""
 
@@ -743,6 +879,7 @@ def select_token(
             force_sequence_completion_token_sequences=_force_sequence_completion_token_sequences(params),
             force_sequence_completion_reason=getattr(params, "force_sequence_completion_reason", None),
             json_object_close_forcing=bool(getattr(params, "json_object_close_forcing", False)),
+            tool_call_constraint=getattr(params, "tool_call_constraint", None),
         )
     )
     source = np.asarray(logits, dtype=np.float32)
@@ -776,17 +913,49 @@ def select_token(
     requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
+    tool_constraint_active = row_state.tool_call_constraint_state is not None
+    if tool_constraint_active and token_text_for_id is None:
+        raise ValueError("tokenizer-aware constraints require token_text_for_id")
+    constraint_active = tool_constraint_active or (
+        row_state._json_object_constraint is not None and token_text_for_id is not None
+    )
+
+    def token_allowed(token_id: int) -> bool:
+        if not constraint_active:
+            return True
+        assert token_text_for_id is not None
+        if _is_eos_token(params, token_id):
+            return row_state.token_text_constraints_allow_eos()
+        try:
+            token_text = token_text_for_id(int(token_id))
+        except Exception:
+            return False
+        if not isinstance(token_text, str) or not token_text:
+            return False
+        return row_state.accepts_token_text(token_text)
+
     forced_token_id = row_state.peek_forced_token()
     if forced_token_id is not None:
         token_id = int(forced_token_id)
         if token_id < 0 or token_id >= source.size:
             raise ValueError(f"forced token id {token_id} is outside vocab size {source.size}")
+        if not token_allowed(token_id):
+            constraint_name = (
+                "tool_call_constraint"
+                if row_state.tool_call_constraint_state is not None
+                else "json_object constraint"
+            )
+            raise ValueError(f"forced token id {token_id} violates {constraint_name}")
         forced_reason = row_state.forced_token_reason
         row_state.pop_forced_token()
         row_state.observe(token_id)
+        row_state._skip_next_selected_token_text = row_state._skip_next_selected_token_text or (
+            constraint_active and _is_eos_token(params, token_id)
+        )
         logprob, top_logprobs = (None, ())
         if requested_logprobs and np.isfinite(processed[token_id]):
-            logprob, top_logprobs = _logprob_summary(processed, token_id, requested_top_logprobs)
+            constrained = _constraint_logits_view(processed, token_allowed) if constraint_active else processed
+            logprob, top_logprobs = _logprob_summary(constrained, token_id, requested_top_logprobs)
         result_processors = _append_unique(active_processors, "forced_tokens_pending")
         result_blockers = _append_unique(fast_path_blockers, "forced_tokens_pending")
         return SampleResult(
@@ -803,9 +972,22 @@ def select_token(
             fast_path_blockers=result_blockers,
         )
     if temperature <= 0.0:
-        token_id = _argmax_lower_id(processed)
-        logprob, top_logprobs = _logprob_summary(processed, token_id, requested_top_logprobs) if requested_logprobs else (None, ())
+        if constraint_active:
+            constrained_ids = _constraint_candidate_ids(processed, token_allowed, limit=1)
+            if constrained_ids.size == 0:
+                raise ValueError("no finite logits remain after token constraints")
+            token_id = int(constrained_ids[0])
+        else:
+            token_id = _argmax_lower_id(processed)
+        if requested_logprobs:
+            constrained = _constraint_logits_view(processed, token_allowed) if constraint_active else processed
+            logprob, top_logprobs = _logprob_summary(constrained, token_id, requested_top_logprobs)
+        else:
+            logprob, top_logprobs = None, ()
         row_state.observe(token_id)
+        row_state._skip_next_selected_token_text = row_state._skip_next_selected_token_text or (
+            constraint_active and _is_eos_token(params, token_id)
+        )
         return SampleResult(
             token_id=token_id,
             logit=float(processed[token_id]),
@@ -818,7 +1000,12 @@ def select_token(
         )
 
     scaled = processed / temperature
-    candidate_ids = _top_k_candidate_ids(scaled, int(getattr(params, "top_k", 0)))
+    top_k = int(getattr(params, "top_k", 0))
+    candidate_ids = (
+        _constraint_candidate_ids(scaled, token_allowed, limit=top_k)
+        if constraint_active
+        else _top_k_candidate_ids(scaled, top_k)
+    )
     if candidate_ids.size == 0:
         raise ValueError("sampling filters removed all finite logits")
     candidate_logits = scaled[candidate_ids]
@@ -841,6 +1028,9 @@ def select_token(
     token_id = int(retained_ids[choice])
     probability = float(retained_probs[choice])
     row_state.observe(token_id)
+    row_state._skip_next_selected_token_text = row_state._skip_next_selected_token_text or (
+        constraint_active and _is_eos_token(params, token_id)
+    )
     top_logprobs = _top_logprob_pairs(retained_ids, retained_probs, requested_top_logprobs)
     return SampleResult(
         token_id=token_id,
@@ -851,6 +1041,15 @@ def select_token(
         top_logprobs=top_logprobs,
         active_processors=active_processors,
         fast_path_blockers=fast_path_blockers,
+    )
+
+
+def _is_eos_token(params: Any, token_id: int) -> bool:
+    eos_token_id = getattr(params, "eos_token_id", None)
+    return (
+        eos_token_id is not None
+        and not bool(getattr(params, "ignore_eos", False))
+        and int(token_id) == int(eos_token_id)
     )
 
 
@@ -920,7 +1119,7 @@ def _apply_json_object_eos_suppression(logits: np.ndarray, params: Any, state: R
         return False
     constraint = state._json_object_constraint
     eos_token_id = getattr(params, "eos_token_id", None)
-    if constraint is None or constraint.complete or constraint.invalid or state.forced_tokens_pending or eos_token_id is None:
+    if constraint is None or constraint.syntax_complete or constraint.invalid or state.forced_tokens_pending or eos_token_id is None:
         return False
     token_id = int(eos_token_id)
     if token_id < 0 or token_id >= int(logits.size):
@@ -948,6 +1147,50 @@ def _argmax_lower_id(values: np.ndarray) -> int:
     if not np.any(finite):
         raise ValueError("no finite logits remain after processing")
     return int(np.argmax(values))
+
+
+def _constraint_candidate_ids(
+    values: np.ndarray,
+    token_allowed: Callable[[int], bool],
+    *,
+    limit: int,
+) -> np.ndarray:
+    finite_ids = np.flatnonzero(np.isfinite(values)).astype(np.int64, copy=False)
+    if finite_ids.size == 0:
+        return finite_ids
+    if limit <= 0 or finite_ids.size <= max(64, int(limit) * 4):
+        ordered_ids = finite_ids[np.lexsort((finite_ids, -values[finite_ids]))]
+        return np.asarray(
+            [int(token_id) for token_id in ordered_ids if token_allowed(int(token_id))],
+            dtype=np.int64,
+        )
+
+    pool_size = min(int(finite_ids.size), max(64, int(limit) * 4))
+    while True:
+        pool_positions = np.argpartition(values[finite_ids], -pool_size)[-pool_size:]
+        threshold = float(np.min(values[finite_ids[pool_positions]]))
+        pool_ids = finite_ids[values[finite_ids] >= threshold]
+        ordered_ids = pool_ids[np.lexsort((pool_ids, -values[pool_ids]))]
+        selected = [
+            int(token_id)
+            for token_id in ordered_ids
+            if token_allowed(int(token_id))
+        ]
+        if len(selected) >= int(limit) or pool_size >= int(finite_ids.size):
+            return np.asarray(selected[: int(limit)], dtype=np.int64)
+        pool_size = min(int(finite_ids.size), pool_size * 4)
+
+
+def _constraint_logits_view(
+    values: np.ndarray,
+    token_allowed: Callable[[int], bool],
+) -> np.ndarray:
+    constrained = values.copy()
+    for raw_token_id in np.flatnonzero(np.isfinite(constrained)):
+        token_id = int(raw_token_id)
+        if not token_allowed(token_id):
+            constrained[token_id] = -np.inf
+    return constrained
 
 
 def _top_k_candidate_ids(values: np.ndarray, top_k: int) -> np.ndarray:
@@ -1046,6 +1289,8 @@ __all__ = [
     "SampleResult",
     "SamplerPlan",
     "SamplingMode",
+    "ToolCallConstraintSpec",
+    "ToolCallConstraintState",
     "NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES",
     "SPECULATIVE_MTP_INCOMPATIBLE_FIELDS",
     "SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS",

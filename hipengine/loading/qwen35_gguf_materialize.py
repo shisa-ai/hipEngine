@@ -179,12 +179,38 @@ def plan_qwen35_gguf_materialization(
     *,
     decode_repack: bool | None = None,
 ) -> Qwen35GGUFMaterializationPlan:
-    use_decode_repack = gguf_decode_repack_enabled(decode_repack)
+    requested_decode_repack = gguf_decode_repack_enabled(decode_repack)
+    contract_q3_f32_linear = any(
+        GGMLQuantizationType(tensor.ggml_type)
+        in {
+            GGMLQuantizationType.IQ2_XS,
+            GGMLQuantizationType.IQ3_XXS,
+            GGMLQuantizationType.IQ4_XS,
+        }
+        for layer in model_map.layers
+        for tensor in layer.tensors.values()
+    )
+    # Raw-IQ models' selected kernels consume compressed rank-3 GGUF layouts.
+    # Keep one compatible resident plan instead of silently mixing it with the
+    # Q4-oriented T16 decode residents.
+    use_decode_repack = requested_decode_repack and not contract_q3_f32_linear
     root_specs = {
-        slot: _spec_for_tensor(f"root.{slot}", tensor, decode_repack=use_decode_repack)
+        slot: _spec_for_tensor(
+            f"root.{slot}",
+            tensor,
+            decode_repack=use_decode_repack,
+            contract_f32_linear=contract_q3_f32_linear,
+        )
         for slot, tensor in model_map.root_tensors.items()
     }
-    layer_specs = tuple(_plan_layer(layer, decode_repack=use_decode_repack) for layer in model_map.layers)
+    layer_specs = tuple(
+        _plan_layer(
+            layer,
+            decode_repack=use_decode_repack,
+            contract_f32_linear=contract_q3_f32_linear,
+        )
+        for layer in model_map.layers
+    )
     return Qwen35GGUFMaterializationPlan(
         config=model_map.config,
         root_specs=MappingProxyType(root_specs),
@@ -292,9 +318,19 @@ def materialize_qwen35_gguf_weights(
     )
 
 
-def _plan_layer(layer: Qwen35GGUFLayerMap, *, decode_repack: bool) -> dict[str, Qwen35GGUFWeightSpec]:
+def _plan_layer(
+    layer: Qwen35GGUFLayerMap,
+    *,
+    decode_repack: bool,
+    contract_f32_linear: bool = False,
+) -> dict[str, Qwen35GGUFWeightSpec]:
     return {
-        slot: _spec_for_tensor(f"layers.{layer.layer_id}.{slot}", tensor, decode_repack=decode_repack)
+        slot: _spec_for_tensor(
+            f"layers.{layer.layer_id}.{slot}",
+            tensor,
+            decode_repack=decode_repack,
+            contract_f32_linear=contract_f32_linear,
+        )
         for slot, tensor in layer.tensors.items()
     }
 
@@ -422,14 +458,34 @@ def gguf_lm_head_q6_x8_sidecar_enabled(value: bool | str | None = None) -> bool:
     return raw.strip().lower() not in {"", "0", "false", "off", "no"}
 
 
-def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: bool) -> Qwen35GGUFWeightSpec:
+def plan_qwen35_gguf_weight_spec(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+    *,
+    decode_repack: bool = False,
+) -> Qwen35GGUFWeightSpec:
+    """Plan one canonical GGUF weight for AR or draft-model materialization."""
+
+    return _spec_for_tensor(slot_path, tensor, decode_repack=bool(decode_repack))
+
+
+def _spec_for_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+    *,
+    decode_repack: bool,
+    contract_f32_linear: bool = False,
+) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
+        bf16_linear_weight = contract_f32_linear and slot_path.endswith(
+            (".ffn_gate_inp", ".ffn_gate_inp_shexp", ".ssm_alpha", ".ssm_beta")
+        )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
-            quant_key="f32",
-            layout=LAYOUT_DENSE_F32,
+            quant_key="bf16" if bf16_linear_weight else "f32",
+            layout=LAYOUT_DENSE_BF16 if bf16_linear_weight else LAYOUT_DENSE_F32,
             allocation_names=("raw",),
         )
     if qtype == GGMLQuantizationType.Q4_K:
@@ -572,7 +628,30 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             allocation_names=("raw",),
         )
     if qtype in (
+        GGMLQuantizationType.IQ3_XXS,
+        GGMLQuantizationType.Q3_K,
+    ) or (
+        qtype in (GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ4_XS)
+        and _is_selected_expert_tensor(slot_path, tensor)
+    ):
+        # Native selected GEMV keeps routed rank-3 IQ2/IQ3/IQ4 experts raw.
+        # Rank-2 IQ2_XS/IQ4_XS tensors keep the dense-BF16 fallback below;
+        # rank-2 IQ3_XXS/Q3_K remain unsupported rather than silently expanding.
+        if not _is_selected_expert_tensor(slot_path, tensor):
+            raise ValueError(
+                f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r} outside "
+                f"rank-3 expert slots: {tensor.name}"
+            )
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
+        )
+    if qtype in (
         GGMLQuantizationType.Q4_1,
+        GGMLQuantizationType.IQ2_XS,
         GGMLQuantizationType.IQ4_XS,
         GGMLQuantizationType.F16,
         GGMLQuantizationType.BF16,
@@ -670,6 +749,25 @@ def _materialize_or_alias(
         )
         materialized[key] = weight
     return weight
+
+
+def materialize_qwen35_gguf_weight_spec(
+    spec: Qwen35GGUFWeightSpec,
+    reader: GGUFReader,
+    *,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    backend: str = "hip_gfx1100",
+) -> Qwen35GGUFDeviceWeight:
+    """Materialize one planned GGUF weight for AR or draft-model ownership."""
+
+    return _materialize_spec(
+        spec,
+        reader,
+        device=device,
+        runtime=runtime,
+        backend=str(backend),
+    )
 
 
 def _materialize_spec(
@@ -856,4 +954,5 @@ __all__ = [
     "gguf_selected_x8_repack_mode",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",
+    "plan_qwen35_gguf_weight_spec",
 ]

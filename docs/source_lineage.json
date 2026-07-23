@@ -40,6 +40,11 @@
       "path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna",
       "baseline_ref": "04b2b72cb54048ead292884adbe11f284e3ec950",
       "baseline_note": "Pinned Poolside Laguna target and DFlash oracle source used for hipEngine Laguna bring-up."
+    },
+    "llama.cpp-hip": {
+      "path": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "baseline_ref": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "baseline_note": "Pinned clean HIP tree used for the UD-Q3_K_M raw-Q8 MMQ128 port and numerical-boundary audit."
     }
   },
   "files": [
@@ -363,6 +368,42 @@
       "kind": "doc",
       "family": "gfx1151 roofline for DFlash verifier economics",
       "baseline_ref": "82f65a3"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/mmq.cuh",
+      "kind": "kernel",
+      "family": "UD-Q3_K_M raw-Q8 MMQ128 weight staging and tiled dataflow"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/mma.cuh",
+      "kind": "kernel",
+      "family": "UD-Q3_K_M raw-Q8 MMQ128 RDNA3 integer-WMMA fragments"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/quantize.cu",
+      "kind": "kernel",
+      "family": "UD-Q3_K_M D4 Q8_1 activation-quantization layout"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-common.h",
+      "kind": "kernel",
+      "family": "IQ2_XS block contract and compressed grid tables"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-quants.c",
+      "kind": "kernel",
+      "family": "IQ2_XS scalar dequantization reference"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/convert.cu",
+      "kind": "kernel",
+      "family": "IQ2_XS GPU block dequantization schedule"
     }
   ],
   "external_artifacts": [

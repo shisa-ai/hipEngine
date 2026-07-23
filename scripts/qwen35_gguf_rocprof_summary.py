@@ -18,15 +18,19 @@ Outputs (per phase):
   attention, etc.).
 * Optional **back-calculated effective GB/s** per bucket, using the
   methodology in ``docs/ROOFLINE.md`` 12.4. Footprints come from a small
-  built-in dict tuned for Qwen3.6-35B-A3B-UD-Q4_K_M; override or extend via
-  ``--config-json``. Buckets without a known per-dispatch footprint emit
-  ``None`` for ``effective_gb_s`` to make missing data visible.
+  built-in dict covering the Qwen3.6-35B-A3B UD-Q4_K_M and UD-Q3_K_M c=1
+  weight paths; override or extend via ``--config-json``. Buckets without a
+  known per-dispatch footprint emit ``None`` for ``effective_gb_s`` to make
+  missing data visible.
 
 Single-CSV mode produces only a ``"prefill"`` phase block. Paired mode
 produces both ``"prefill"`` and ``"decode"`` blocks (the typical 512/0 vs
-512/128 split). The decode CSV is expected to include the prefill prefix
-too (rocprofv3 traces both phases when the bench runs end-to-end); per-token
-metrics divide by ``--tokens-decode`` only.
+512/128 split). The decode CSV may be a decode-only selected-region trace or
+an end-to-end trace whose prefill prefix is removed with
+``--strip-prefill-prefix``; per-token metrics divide by ``--tokens-decode``
+only. ``--prefill-config-json`` and ``--decode-config-json`` can override
+footprints independently when a direct multi-row prefill launch rereads more
+encoded weights than a c=1 decode launch.
 """
 
 from __future__ import annotations
@@ -44,9 +48,11 @@ from typing import Any, Iterable
 
 SCHEMA = "p9_gguf_rocprof_summary_v1"
 
-# Default per-dispatch byte footprints for Qwen3.6-35B-A3B-UD-Q4_K_M, used for
-# back-calculated effective GB/s. ``None`` means "no known per-dispatch
-# footprint -- omit GB/s". Override via ``--config-json``.
+# Default c=1 per-dispatch byte footprints for Qwen3.6-35B-A3B UD-Q4_K_M and
+# UD-Q3_K_M, used for back-calculated effective GB/s. ``None`` means "no known
+# per-dispatch footprint -- omit GB/s". Direct x_rows>1 prefill rereads these
+# selected expert bytes per token and must override the IQ footprints with the
+# measured launch's x_rows multiplier via ``--config-json``.
 #
 # The values come from the model config (hidden_size=2048,
 # expert_ffn=4096, top_k=8, shared_ffn=4096) crossed with the GGUF block
@@ -54,6 +60,26 @@ SCHEMA = "p9_gguf_rocprof_summary_v1"
 # B/w, Q6_K ~0.8203 B/w, Q8_0 ~1.0625 B/w. Per-block headers (d/dmin/scales)
 # are amortised over 256 K's so the effective average dominates.
 _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
+    # --------------------------------------------------- Raw IQ2/IQ3/IQ4 MoE
+    # IQ2_XS Laguna footprints depend on active experts/rows; exact artifacts
+    # must supply overrides rather than assume a full-model routing pattern.
+    "moe_iq2_xs_selected_single": None,
+    "moe_iq2_xs_selected_dual_silu": None,
+    "moe_iq2_xs_grouped_dual_prefill": None,
+    "moe_iq2_xs_wmma_dual_prefill": None,
+    # UD-Q3_K_M uses hidden=2048, expert_ffn=512, top_k=8. IQ3_XXS encodes
+    # 256 values in 98 bytes; IQ4_XS encodes 256 values in 136 bytes. Gate/up
+    # and down have the same 2048*512 weight count per selected expert.
+    "moe_iq3_xxs_selected_single": 8 * 512 * (2048 // 256) * 98,
+    "moe_iq3_xxs_selected_dual_silu": 8 * 2 * 512 * (2048 // 256) * 98,
+    "moe_iq4_xs_selected_single": 8 * 2048 * (512 // 256) * 136,
+    "moe_iq4_xs_weighted_down": 8 * 2048 * (512 // 256) * 136,
+    # Grouped scalar kernels read each active expert's weight tensor once per
+    # dispatch. Active-expert count is route-dependent, so callers must supply
+    # an exact per-phase footprint override rather than assume all 256 experts.
+    "moe_iq3_xxs_grouped_dual_prefill": None,
+    "moe_iq4_xs_grouped_dual_prefill": None,
+    "moe_iq4_xs_grouped_down_prefill": None,
     # ------------------------------------------------------------------ MoE
     # Compact selected dual gate+up (P9.B1) and the matching WMMA prefill
     # (P8.4). One dispatch processes one compact tile across all active
@@ -78,6 +104,10 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     # (Q/K/V/O/shexp-gate/shexp-up/shexp-down); 2048*2048 is a representative
     # midpoint for QKV/O at hidden_size=2048.
     "dense_q8_0_wmma_prefill": int(2048 * 2048 * 1.0625),
+    # Exact tiled prefill rereads each encoded weight row once per live row
+    # tile; rows and the selected 8x2/8x4 tile are dispatch-shape dependent.
+    # Require a phase override rather than report one-tensor nominal traffic.
+    "dense_q8_0_exact_prefill": None,
     "dense_q8_0_pack8_gemv_decode_p9": int(2048 * 2048 * 1.0625),
     "dense_q8_0_t16_gemv_decode_p9": int(2048 * 2048 * 1.0625),
     "dense_q8_0_legacy_decode": int(2048 * 2048 * 1.0625),
@@ -104,6 +134,7 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     "moe_scheduler": None,
     "silu_mul": None,
     "moe_combine": None,
+    "moe_tail_next_rms": None,
     "rmsnorm": None,
     "kv_write": None,
     "copy": None,
@@ -224,6 +255,29 @@ def classify_kernel(name: str) -> str:
 
     lower = name.lower()
     base = _normalise_kernel_name(lower)
+    # ------------------------------------ GGUF raw IQ2_XS/IQ3_XXS/IQ4_XS
+    if "gguf_iq_selected_dual_wmma_prefill_compact_kernel<2>" in lower:
+        return "moe_iq2_xs_wmma_dual_prefill"
+    if "gguf_iq2_xs_selected_dual_grouped_prefill_compact" in base:
+        return "moe_iq2_xs_grouped_dual_prefill"
+    if "gguf_iq2_xs_selected_dual_silu_gemv" in base:
+        return "moe_iq2_xs_selected_dual_silu"
+    if "gguf_iq2_xs_selected_gemv" in base:
+        return "moe_iq2_xs_selected_single"
+    if "gguf_iq3_xxs_selected_dual_grouped_prefill_compact" in base:
+        return "moe_iq3_xxs_grouped_dual_prefill"
+    if "gguf_iq4_xs_selected_dual_grouped_prefill_compact" in base:
+        return "moe_iq4_xs_grouped_dual_prefill"
+    if "gguf_iq4_xs_selected_grouped_prefill_compact" in base:
+        return "moe_iq4_xs_grouped_down_prefill"
+    if "gguf_iq3_xxs_selected_dual_silu_gemv" in base:
+        return "moe_iq3_xxs_selected_dual_silu"
+    if "gguf_iq3_xxs_selected_gemv" in base:
+        return "moe_iq3_xxs_selected_single"
+    if "gguf_iq4_xs_weighted_selected_down" in base:
+        return "moe_iq4_xs_weighted_down"
+    if "gguf_iq4_xs_selected_gemv" in base:
+        return "moe_iq4_xs_selected_single"
     # ------------------------------------------------------ GGUF Q4_K MoE
     if (
         "gguf_q4_k_selected_dual_wmma_prefill_compact" in base
@@ -261,6 +315,8 @@ def classify_kernel(name: str) -> str:
         if ", 6" in name or ",6" in name:
             return "moe_q6_k_selected_legacy_decode"
     # ---------------------------------------------- Dense Q8_0 / Q4_K / Q6_K
+    if "gguf_q8_0_exact_prefill_tiled_out" in base:
+        return "dense_q8_0_exact_prefill"
     if (
         "gguf_q8_0_prefill_wmma" in base
         or "gguf_q8_0_prefill_dual_wmma" in base
@@ -276,7 +332,9 @@ def classify_kernel(name: str) -> str:
         or "q8_0_t16_triple" in base
     ):
         return "dense_q8_0_t16_gemv_decode_p9"
-    if "gguf_k_pack8_prefill_out" in base and (", 8" in name or ",8" in name):
+    if (
+        "gguf_k_pack8_prefill_out" in base or "gguf_k_dual_prefill_out" in base
+    ) and (", 8" in name or ",8" in name):
         return "dense_q8_0_legacy_decode"
     if "gguf_q4_k_pack8_gemv_decode" in base:
         return "dense_q4_k_pack8_gemv_decode_p9"
@@ -320,6 +378,8 @@ def classify_kernel(name: str) -> str:
     # ------------------------------------------------------------- Combine + SiLU
     if "silu" in base:
         return "silu_mul"
+    if "moe_tail_next_rmsnorm" in base:
+        return "moe_tail_next_rms"
     if "weighted_lanes" in base or "weighted_sum" in base or "shared_gate_combine" in base or "combine_residual" in base:
         return "moe_combine"
     # --------------------------------------------------------------- RMSNorm
@@ -520,14 +580,25 @@ def build_summary(
     footprints: dict[str, int | None],
     top: int,
     prefill_dispatches_from_single: bool,
+    prefill_footprints: dict[str, int | None] | None = None,
+    decode_footprints: dict[str, int | None] | None = None,
 ) -> dict[str, Any]:
     phases: dict[str, Any] = {}
     notes: list[str] = []
+    phase_prefill_footprints = (
+        footprints if prefill_footprints is None else prefill_footprints
+    )
+    phase_decode_footprints = (
+        footprints if decode_footprints is None else decode_footprints
+    )
 
     if single_csv is not None:
         kernels = read_kernel_trace(single_csv)
         phases["prefill"] = _summarise_phase(
-            kernels, tokens=tokens_prefill, footprints=footprints, top=top
+            kernels,
+            tokens=tokens_prefill,
+            footprints=phase_prefill_footprints,
+            top=top,
         )
         inputs = {"csv": str(single_csv)}
         notes.append(
@@ -539,7 +610,10 @@ def build_summary(
         prefill_kernels = read_kernel_trace(prefill_csv)
         decode_kernels_all = read_kernel_trace(decode_csv)
         phases["prefill"] = _summarise_phase(
-            prefill_kernels, tokens=tokens_prefill, footprints=footprints, top=top
+            prefill_kernels,
+            tokens=tokens_prefill,
+            footprints=phase_prefill_footprints,
+            top=top,
         )
         prefill_dispatches_used: int
         if prefill_dispatches_from_single:
@@ -547,9 +621,10 @@ def build_summary(
         else:
             prefill_dispatches_used = 0
             notes.append(
-                "decode phase reported over the full --decode-csv (prefill prefix "
-                "not subtracted). Pass --strip-prefill-prefix to subtract the "
-                "leading prefill dispatch count from the prefill-only CSV."
+                "decode phase reported over the full --decode-csv; no prefill-prefix "
+                "subtraction was requested. This is correct for a decode-only "
+                "selected-region CSV; pass --strip-prefill-prefix for an end-to-end "
+                "CSV that includes a leading prefill window."
             )
         prefill_prefix, decode_kernels = split_prefill_decode(
             decode_kernels_all, prefill_dispatches=prefill_dispatches_used
@@ -560,7 +635,10 @@ def build_summary(
                 "decode CSV as the prefill prefix."
             )
         phases["decode"] = _summarise_phase(
-            decode_kernels, tokens=tokens_decode, footprints=footprints, top=top
+            decode_kernels,
+            tokens=tokens_decode,
+            footprints=phase_decode_footprints,
+            top=top,
         )
         inputs = {
             "prefill_csv": str(prefill_csv),
@@ -575,13 +653,25 @@ def build_summary(
         "tokens_prefill": tokens_prefill,
         "tokens_decode": tokens_decode,
         "footprints_used": footprints,
+        "phase_footprints_used": {
+            "prefill": phase_prefill_footprints,
+            "decode": None if single_csv is not None else phase_decode_footprints,
+        },
         "phases": phases,
         "notes": notes,
     }
 
 
-def _load_footprint_overrides(path: Path | None) -> dict[str, int | None]:
-    footprints = dict(_QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH)
+def _load_footprint_overrides(
+    path: Path | None,
+    *,
+    base: dict[str, int | None] | None = None,
+) -> dict[str, int | None]:
+    footprints = dict(
+        _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH
+        if base is None
+        else base
+    )
     if path is None:
         return footprints
     raw = json.loads(path.read_text())
@@ -639,9 +729,9 @@ def main(argv: list[str] | None = None) -> int:
         "--decode-csv",
         type=Path,
         default=None,
-        help="Full prefill+decode rocprofv3 CSV (paired mode). Prefill prefix is "
-        "stripped using the dispatch count from --prefill-csv when "
-        "--strip-prefill-prefix is set.",
+        help="Decode-only selected-region or full prefill+decode rocprofv3 CSV "
+        "(paired mode). For a full trace, strip its prefill prefix using the "
+        "dispatch count from --prefill-csv with --strip-prefill-prefix.",
     )
     parser.add_argument(
         "--strip-prefill-prefix",
@@ -667,7 +757,19 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="Optional JSON config that overrides the built-in footprints "
-        "(bucket -> bytes-per-dispatch, null to mark unknown).",
+        "for every phase (bucket -> bytes-per-dispatch, null to mark unknown).",
+    )
+    parser.add_argument(
+        "--prefill-config-json",
+        type=Path,
+        default=None,
+        help="Optional prefill-only footprint overrides, applied after --config-json.",
+    )
+    parser.add_argument(
+        "--decode-config-json",
+        type=Path,
+        default=None,
+        help="Optional decode-only footprint overrides in paired mode, applied after --config-json.",
     )
     parser.add_argument(
         "--json",
@@ -695,8 +797,25 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--prefill-csv {args.prefill_csv} does not exist or is not a file")
     if args.decode_csv is not None and not args.decode_csv.is_file():
         parser.error(f"--decode-csv {args.decode_csv} does not exist or is not a file")
+    for option, path in (
+        ("--config-json", args.config_json),
+        ("--prefill-config-json", args.prefill_config_json),
+        ("--decode-config-json", args.decode_config_json),
+    ):
+        if path is not None and not path.is_file():
+            parser.error(f"{option} {path} does not exist or is not a file")
+    if args.csv is not None and args.decode_config_json is not None:
+        parser.error("--decode-config-json requires paired --prefill-csv/--decode-csv mode")
 
     footprints = _load_footprint_overrides(args.config_json)
+    prefill_footprints = _load_footprint_overrides(
+        args.prefill_config_json,
+        base=footprints,
+    )
+    decode_footprints = _load_footprint_overrides(
+        args.decode_config_json,
+        base=footprints,
+    )
 
     summary = build_summary(
         prefill_csv=args.prefill_csv,
@@ -707,6 +826,8 @@ def main(argv: list[str] | None = None) -> int:
         footprints=footprints,
         top=args.top,
         prefill_dispatches_from_single=args.strip_prefill_prefix,
+        prefill_footprints=prefill_footprints,
+        decode_footprints=decode_footprints,
     )
 
     if args.json is not None:

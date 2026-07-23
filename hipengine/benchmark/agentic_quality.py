@@ -19,6 +19,8 @@ from hipengine.benchmark.agentic import (
     AgenticBenchmarkError,
     AgenticWorkloadSuite,
 )
+from hipengine.benchmark.agentic_quality_oracle import evaluate_quality_oracle
+from hipengine.benchmark.provenance import validate_artifact_provenance
 from hipengine.tokenization.identity import token_ids_sha256
 
 
@@ -49,6 +51,7 @@ _QUALITY_OUTCOMES = frozenset(
         "content_alongside_tool_call",
         "raw_markup_leak",
         "finish_mismatch",
+        "oracle_failed",
     }
 )
 
@@ -181,6 +184,7 @@ def _quality_score(
     arguments: Mapping[str, Any] | None,
     arguments_json_valid: bool,
     repair_count: int,
+    external_oracle: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     expected = suite.workloads[workload_id]["turns"][turn_index]
     expected_tool = str(expected["expected_tool"])
@@ -218,12 +222,14 @@ def _quality_score(
         outcome = "wrong_tool"
     elif not exact_arguments:
         outcome = "wrong_arguments"
+    elif external_oracle is not None and external_oracle.get("passed") is not True:
+        outcome = "oracle_failed"
     elif finish_reason != "tool_calls":
         outcome = "finish_mismatch"
     else:
         outcome = "passed"
     success = outcome == "passed"
-    return {
+    score = {
         "expected_tool": expected_tool,
         "selected_tool": selected_tool,
         "tool_call_count": int(tool_call_count),
@@ -238,6 +244,9 @@ def _quality_score(
         "outcome": outcome,
         "repair_count": int(repair_count),
     }
+    if external_oracle is not None:
+        score["external_oracle"] = copy.deepcopy(dict(external_oracle))
+    return score
 
 
 def normalize_chat_quality_turn(
@@ -317,6 +326,16 @@ def normalize_chat_quality_turn(
     if usage.get("completion_tokens") != len(generated):
         raise AgenticBenchmarkError("quality response completion token accounting is inexact")
 
+    expected_turn = suite.workloads[workload_id]["turns"][turn_index]
+    oracle_case = expected_turn.get("oracle_case")
+    external_oracle = None
+    if oracle_case is not None:
+        external_oracle = evaluate_quality_oracle(
+            suite,
+            case_id=str(oracle_case),
+            selected_tool=selected_tool,
+            arguments=arguments,
+        )
     quality = _quality_score(
         suite,
         workload_id=workload_id,
@@ -331,6 +350,7 @@ def normalize_chat_quality_turn(
         arguments=arguments,
         arguments_json_valid=arguments_json_valid,
         repair_count=repairs,
+        external_oracle=external_oracle,
     )
     return {
         "workload_id": str(workload_id),
@@ -525,6 +545,16 @@ def _validate_quality_records(
             raise AgenticBenchmarkError(
                 f"quality record[{index}].finish.detail_reason must be string or null"
             )
+        expected_turn = suite.workloads[workload_id]["turns"][turn_index]
+        oracle_case = expected_turn.get("oracle_case")
+        external_oracle = None
+        if oracle_case is not None:
+            external_oracle = evaluate_quality_oracle(
+                suite,
+                case_id=str(oracle_case),
+                selected_tool=selected_tool,
+                arguments=arguments,
+            )
         expected_quality = _quality_score(
             suite,
             workload_id=workload_id,
@@ -539,6 +569,7 @@ def _validate_quality_records(
             arguments=arguments,
             arguments_json_valid=arguments_json_valid,
             repair_count=repairs,
+            external_oracle=external_oracle,
         )
         if dict(quality) != expected_quality:
             raise AgenticBenchmarkError(f"quality record[{index}] derived quality score is invalid")
@@ -568,22 +599,16 @@ def _validate_quality_records(
     return configuration, normalized, ownership
 
 
-def _quality_rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _quality_counts(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     attempts = len(records)
     successes = 0
     valid_calls = 0
     correct_tools = 0
     exact_arguments = 0
     repairs = 0
-    generated_tokens = 0
     outcomes: dict[str, int] = {}
-    workloads: set[str] = set()
-    agents: set[tuple[str, str]] = set()
-    runs: set[str] = set()
-    agents_by_run: dict[str, set[str]] = {}
     for record in records:
         quality = _mapping(record["quality"], label="quality")
-        output = _mapping(record["output"], label="output")
         successes += int(quality["success"])
         valid_calls += int(quality["valid_call"])
         correct_tools += int(quality["correct_tool"])
@@ -591,23 +616,7 @@ def _quality_rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any
         repairs += int(quality["repair_count"])
         outcome = str(quality["outcome"])
         outcomes[outcome] = outcomes.get(outcome, 0) + 1
-        generated_tokens += len(output["generated_token_ids"])
-        workload_id = str(record["workload_id"])
-        run_id = str(record["run_id"])
-        agent_id = str(record["agent_id"])
-        workloads.add(workload_id)
-        runs.add(run_id)
-        agents.add((run_id, agent_id))
-        agents_by_run.setdefault(run_id, set()).add(agent_id)
-    coverage = {
-        "workloads": sorted(workloads),
-        "runs": len(runs),
-        "concurrency": max((len(items) for items in agents_by_run.values()), default=0),
-        "agents": len(agents),
-        "turns": attempts,
-        "generated_tokens": generated_tokens,
-    }
-    quality_rollup = {
+    return {
         "attempts": attempts,
         "valid_calls": valid_calls,
         "correct_tools": correct_tools,
@@ -620,6 +629,86 @@ def _quality_rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any
         "repair_attempts": repairs,
         "outcomes": dict(sorted(outcomes.items())),
     }
+
+
+def _external_oracle_counts(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    external = [
+        _mapping(record["quality"].get("external_oracle"), label="external_oracle")
+        for record in records
+        if isinstance(record["quality"].get("external_oracle"), Mapping)
+    ]
+    attempts = len(external)
+    passes = sum(int(row["passed"]) for row in external)
+    patches = [row for row in external if row["kind"] == "patch"]
+    tests = [row for row in external if row["kind"] == "test"]
+    patch_successes = sum(
+        int(row["passed"] and row["patch_applied"] and row["tests_passed"])
+        for row in patches
+    )
+    test_successes = sum(
+        int(row["passed"] and row["tests_passed"])
+        for row in tests
+    )
+    return {
+        "attempts": attempts,
+        "passes": passes,
+        "pass_rate": passes / attempts if attempts else 0.0,
+        "patch_attempts": len(patches),
+        "patch_successes": patch_successes,
+        "patch_success_rate": patch_successes / len(patches) if patches else 0.0,
+        "test_attempts": len(tests),
+        "test_successes": test_successes,
+        "test_success_rate": test_successes / len(tests) if tests else 0.0,
+    }
+
+
+def _quality_rollup(
+    suite: AgenticWorkloadSuite,
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    attempts = len(records)
+    generated_tokens = 0
+    workloads: set[str] = set()
+    agents: set[tuple[str, str]] = set()
+    runs: set[str] = set()
+    agents_by_run: dict[str, set[str]] = {}
+    family_records: dict[str, list[Mapping[str, Any]]] = {}
+    has_external_oracle = False
+    for record in records:
+        output = _mapping(record["output"], label="output")
+        generated_tokens += len(output["generated_token_ids"])
+        workload_id = str(record["workload_id"])
+        run_id = str(record["run_id"])
+        agent_id = str(record["agent_id"])
+        workloads.add(workload_id)
+        runs.add(run_id)
+        agents.add((run_id, agent_id))
+        agents_by_run.setdefault(run_id, set()).add(agent_id)
+        family = suite.workloads[workload_id].get("family")
+        if family is not None:
+            family_records.setdefault(str(family), []).append(record)
+        has_external_oracle |= isinstance(
+            record["quality"].get("external_oracle"), Mapping
+        )
+    coverage = {
+        "workloads": sorted(workloads),
+        "runs": len(runs),
+        "concurrency": max((len(items) for items in agents_by_run.values()), default=0),
+        "agents": len(agents),
+        "turns": attempts,
+        "generated_tokens": generated_tokens,
+    }
+    quality_rollup = _quality_counts(records)
+    if has_external_oracle:
+        coverage["families"] = sorted(family_records)
+        quality_rollup["external_oracle"] = _external_oracle_counts(records)
+        quality_rollup["families"] = {
+            family: {
+                **_quality_counts(rows),
+                "external_oracle": _external_oracle_counts(rows),
+            }
+            for family, rows in sorted(family_records.items())
+        }
     return coverage, quality_rollup
 
 
@@ -651,6 +740,12 @@ def validate_agentic_quality_artifact(payload: Mapping[str, Any]) -> dict[str, A
         raise AgenticBenchmarkError("agentic quality artifact workload suite is invalid")
     _mapping(root.get("coverage"), label="coverage")
     _mapping(root.get("quality"), label="quality")
+    provenance = root.get("hipengine_artifact_provenance")
+    if provenance is not None:
+        validate_artifact_provenance(
+            _mapping(provenance, label="hipengine_artifact_provenance"),
+            require_model=True,
+        )
     return {"passed": True, "failure_reasons": []}
 
 
@@ -659,11 +754,12 @@ def build_agentic_quality_artifact(
     records_payload: Mapping[str, Any],
     *,
     created_at: str | None = None,
+    provenance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Validate natural quality records and build a non-performance artifact."""
 
     configuration, records, ownership = _validate_quality_records(suite, records_payload)
-    coverage, quality = _quality_rollup(records)
+    coverage, quality = _quality_rollup(suite, records)
     artifact = {
         "kind": AGENTIC_QUALITY_ARTIFACT_KIND,
         "schema_version": AGENTIC_SCHEMA_VERSION,
@@ -678,6 +774,11 @@ def build_agentic_quality_artifact(
         "turn_records_sha256": _canonical_sha256(records),
         "turn_records": records,
     }
+    if provenance is not None:
+        artifact["hipengine_artifact_provenance"] = validate_artifact_provenance(
+            provenance,
+            require_model=True,
+        )
     validate_agentic_quality_artifact(artifact)
     return artifact
 

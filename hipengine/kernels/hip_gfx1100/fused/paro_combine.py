@@ -42,6 +42,20 @@ _ARGTYPES_SHARED_BATCH_4 = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGTYPES_TAIL_RMS_SHARED = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+_ARGTYPES_TAIL_RMS_WEIGHTED = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
 
 _SOURCE = Path(__file__).with_name("paro_combine.hip")
 _OUTPUT_NAME = "paro_combine.so"
@@ -75,6 +89,12 @@ _SYMBOL_SHARED_RESIDUAL = "hipengine_shared_gate_combine_residual_out_bf16"
 _SYMBOL_SHARED_RESIDUAL_FP16 = "hipengine_shared_gate_combine_residual_out_fp16"
 _SYMBOL_SHARED_RESIDUAL_BATCH = "hipengine_shared_gate_combine_residual_batch_out_bf16"
 _SYMBOL_SHARED_RESIDUAL_BATCH_FP16 = "hipengine_shared_gate_combine_residual_batch_out_fp16"
+_SYMBOL_TAIL_RMS_SHARED_GGUF_BF16 = "hipengine_shared_gate_combine_residual_rmsnorm_gguf_bf16_out"
+_SYMBOL_TAIL_RMS_WEIGHTED_GGUF_BF16 = "hipengine_weighted_sum_shared_gate_combine_residual_rmsnorm_gguf_bf16_out"
+_SYMBOL_TAIL_RMS_SHARED_PARO_BF16 = "hipengine_shared_gate_combine_residual_rmsnorm_paro_bf16_out"
+_SYMBOL_TAIL_RMS_WEIGHTED_PARO_BF16 = "hipengine_weighted_sum_shared_gate_combine_residual_rmsnorm_paro_bf16_out"
+_SYMBOL_TAIL_RMS_SHARED_PARO_FP16 = "hipengine_shared_gate_combine_residual_rmsnorm_paro_fp16_out"
+_SYMBOL_TAIL_RMS_WEIGHTED_PARO_FP16 = "hipengine_weighted_sum_shared_gate_combine_residual_rmsnorm_paro_fp16_out"
 _ALLOWED_THREADS = {64, 128, 256}
 
 
@@ -906,6 +926,246 @@ def weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w(
     _check_launch(runtime, err)
 
 
+def shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
+    selected_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    features: int,
+    gate_stride: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse an already-rounded BF16 MoE aggregate with GGUF next-input RMSNorm."""
+
+    _launch_tail_rms_shared(
+        _SYMBOL_TAIL_RMS_SHARED_GGUF_BF16,
+        selected_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        features,
+        gate_stride,
+        eps,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def weighted_sum_shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
+    values_ptr: int,
+    weights_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    rows_per_token: int,
+    features: int,
+    gate_stride: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse slot-ordered BF16 selected sum with GGUF next-input RMSNorm."""
+
+    _launch_tail_rms_weighted(
+        _SYMBOL_TAIL_RMS_WEIGHTED_GGUF_BF16,
+        values_ptr,
+        weights_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        rows_per_token,
+        features,
+        gate_stride,
+        eps,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def shared_gate_combine_residual_rmsnorm_paro_bf16_out(
+    selected_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    features: int,
+    gate_stride: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse an already-rounded BF16 MoE aggregate with PARO next-input RMSNorm."""
+
+    _launch_tail_rms_shared(
+        _SYMBOL_TAIL_RMS_SHARED_PARO_BF16,
+        selected_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        features,
+        gate_stride,
+        eps,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def weighted_sum_shared_gate_combine_residual_rmsnorm_paro_bf16_out(
+    values_ptr: int,
+    weights_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    rows_per_token: int,
+    features: int,
+    gate_stride: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse slot-ordered BF16 selected sum with PARO next-input RMSNorm."""
+
+    _launch_tail_rms_weighted(
+        _SYMBOL_TAIL_RMS_WEIGHTED_PARO_BF16,
+        values_ptr,
+        weights_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        rows_per_token,
+        features,
+        gate_stride,
+        eps,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def shared_gate_combine_residual_rmsnorm_paro_fp16_out(
+    selected_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    features: int,
+    gate_stride: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse an already-rounded FP16 MoE aggregate with PARO next-input RMSNorm."""
+
+    _launch_tail_rms_shared(
+        _SYMBOL_TAIL_RMS_SHARED_PARO_FP16,
+        selected_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        features,
+        gate_stride,
+        eps,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def weighted_sum_shared_gate_combine_residual_rmsnorm_paro_fp16_out(
+    values_ptr: int,
+    weights_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    rows_per_token: int,
+    features: int,
+    gate_stride: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse slot-ordered FP16 selected sum with PARO next-input RMSNorm."""
+
+    _launch_tail_rms_weighted(
+        _SYMBOL_TAIL_RMS_WEIGHTED_PARO_FP16,
+        values_ptr,
+        weights_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        rows_per_token,
+        features,
+        gate_stride,
+        eps,
+        stream,
+        library,
+        runtime,
+    )
+
+
 def shared_gate_combine_out_bf16(
     expert_ptr: int,
     shared_ptr: int,
@@ -1167,6 +1427,67 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "shared_gate_combine+residual+rmsnorm",
+            "gguf_f32_weight",
+            "bf16_out",
+        ),
+        shared_gate_combine_residual_rmsnorm_gguf_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "weighted_sum+shared_gate+residual+rmsnorm",
+            "gguf_f32_weight",
+            "bf16_out",
+        ),
+        weighted_sum_shared_gate_combine_residual_rmsnorm_gguf_bf16_out,
+        replace=replace,
+    )
+    for quant in ("bf16", "w4_paro"):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "shared_gate_combine+residual+rmsnorm",
+                quant,
+                "paro_out",
+            ),
+            shared_gate_combine_residual_rmsnorm_paro_bf16_out,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "weighted_sum+shared_gate+residual+rmsnorm",
+                quant,
+                "paro_out",
+            ),
+            weighted_sum_shared_gate_combine_residual_rmsnorm_paro_bf16_out,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "shared_gate_combine+residual+rmsnorm",
+                quant,
+                "paro_out_fp16",
+            ),
+            shared_gate_combine_residual_rmsnorm_paro_fp16_out,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "weighted_sum+shared_gate+residual+rmsnorm",
+                quant,
+                "paro_out_fp16",
+            ),
+            weighted_sum_shared_gate_combine_residual_rmsnorm_paro_fp16_out,
+            replace=replace,
+        )
+    register(
         KernelKey("hip_gfx1100", "weighted_sum", "fp16", "out"),
         weighted_sum_out_fp16_f32w,
         replace=replace,
@@ -1231,6 +1552,91 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
         shared_gate_combine_residual_out_fp16,
         replace=replace,
     )
+
+
+def _launch_tail_rms_shared(
+    symbol: str,
+    selected_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    features: int,
+    gate_stride: int,
+    eps: float,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_positive(features, "features")
+    _check_positive(gate_stride, "gate_stride")
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_TAIL_RMS_SHARED, ctypes.c_int)
+    err = fn(
+        selected_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        features,
+        gate_stride,
+        float(eps),
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_tail_rms_weighted(
+    symbol: str,
+    values_ptr: int,
+    weights_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    tokens: int,
+    rows_per_token: int,
+    features: int,
+    gate_stride: int,
+    eps: float,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_positive(rows_per_token, "rows_per_token")
+    _check_positive(features, "features")
+    _check_positive(gate_stride, "gate_stride")
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_TAIL_RMS_WEIGHTED, ctypes.c_int)
+    err = fn(
+        values_ptr,
+        weights_ptr,
+        shared_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        tokens,
+        rows_per_token,
+        features,
+        gate_stride,
+        float(eps),
+        stream,
+    )
+    _check_launch(runtime, err)
 
 
 def _launch_weighted_lanes(
