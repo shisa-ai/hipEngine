@@ -503,6 +503,17 @@ def test_hipengine_parser_locks_the_retained_prefill_decode_policy(tmp_path: Pat
     assert args.hipengine_kv_scale_granularity == "per_token_head"
     assert args.batch_window_ms == 5.0
     assert args.hipengine_prefill_chunk_tokens is None
+    assert args.memory_sample_through_shutdown is False
+    lifecycle_args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--memory-sample-through-shutdown",
+            "--json",
+            str(tmp_path / "lifecycle.json"),
+        ]
+    )
+    assert lifecycle_args.memory_sample_through_shutdown is True
 
 
 def test_hipengine_command_separates_generation_window_from_prefill_chunk(
