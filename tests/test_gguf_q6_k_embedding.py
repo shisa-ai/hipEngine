@@ -11,6 +11,7 @@ from hipengine.kernels.cpu_reference import gguf_q4_k_embedding, gguf_q6_k_embed
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
     build_gguf_q6_k_embedding,
     gguf_q4_k_embedding_bf16_out,
+    gguf_q5_k_embedding_bf16_out,
     gguf_q6_k_embedding_bf16_out,
     gguf_q8_0_embedding_bf16_out,
     plan_gguf_q6_k_embedding_build,
@@ -19,12 +20,13 @@ from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.registry import resolve
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.materialize import float_array_to_bf16_bits
-from hipengine.quant.gguf import bf16_to_float32, dequantize_gguf_data
-from tests.test_gguf_k_gemv import make_q6_k_weight
+from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
+from tests.test_gguf_k_gemv import make_q5_k_weight, make_q6_k_weight
 from tests.test_gguf_q4_k_gemv import make_q4_k_weight
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 Q8_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q8_0.gguf")
+LAGUNA_Q2_MODEL = Path("/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf")
 
 
 def _hip_available() -> bool:
@@ -64,6 +66,12 @@ def test_gguf_q6_k_embedding_registry_and_build_plan() -> None:
         quant="gguf_q4_k",
         variant="lookup_bf16_out",
     ) is gguf_q4_k_embedding_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="embedding",
+        quant="gguf_q5_k",
+        variant="lookup_bf16_out",
+    ) is gguf_q5_k_embedding_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="embedding",
@@ -143,6 +151,20 @@ def test_gguf_q4_k_embedding_invalid_ids_preserve_output_rows() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_q5_k_embedding_hip_matches_cpu_reference_synthetic() -> None:
+    qweight = make_q5_k_weight(7, 512)
+    token_ids = np.asarray([0, 3, 6, 3], dtype=np.int64)
+    _run_embedding_case(
+        qweight,
+        token_ids,
+        hidden_size=512,
+        vocab_size=7,
+        expected=dequantize_gguf_data(qweight[token_ids], GGMLQuantizationType.Q5_K),
+        kernel=gguf_q5_k_embedding_bf16_out,
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_gguf_q6_k_embedding_hip_matches_cpu_reference_synthetic() -> None:
     qweight = make_q6_k_weight(7, 512)
     token_ids = np.asarray([0, 3, 6, 3], dtype=np.int64)
@@ -170,6 +192,26 @@ def test_gguf_q6_k_embedding_hip_matches_real_token_embedding() -> None:
         vocab_size=tensor.shape[0],
         expected=gguf_q6_k_embedding(token_ids, qweight),
         kernel=gguf_q6_k_embedding_bf16_out,
+    )
+
+
+@pytest.mark.skipif(
+    not LAGUNA_Q2_MODEL.exists(),
+    reason=f"local GGUF fixture not found: {LAGUNA_Q2_MODEL}",
+)
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_q5_k_embedding_hip_matches_real_laguna_token_embedding() -> None:
+    reader = GGUFReader(LAGUNA_Q2_MODEL)
+    tensor = reader.tensor_info("token_embd.weight")
+    qweight = np.asarray(reader.tensor_data("token_embd.weight"))
+    token_ids = np.asarray([1, 2, 3, 1], dtype=np.int64)
+    _run_embedding_case(
+        qweight,
+        token_ids,
+        hidden_size=tensor.shape[1],
+        vocab_size=tensor.shape[0],
+        expected=dequantize_gguf_data(qweight[token_ids], tensor.ggml_type),
+        kernel=gguf_q5_k_embedding_bf16_out,
     )
 
 
