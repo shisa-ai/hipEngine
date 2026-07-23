@@ -175868,3 +175868,74 @@ python3 -m compileall -q hipengine/llm.py hipengine/server/api.py \
   hipengine/server/__main__.py tests/test_server_speculative_provider.py
 # clean
 ```
+
+## 2026-07-23 — Close Laguna D5 with the live public DFlash gate
+
+Added `scripts/laguna_dflash_public_gate.py` and a deterministic helper suite for
+the final D5 product boundary. The gate uses one configured `LLM` behind the
+actual FastAPI/TestClient completion routes and all ten canonical
+`mtpbench-code-general-ja` prompts. For each prompt it runs true public AR,
+explicit B4 DFlash blocking, and explicit B4 DFlash live streaming with exact
+raw token prompts and a 32-token limit. The prior D4 artifact supplies the
+repeat-deterministic fixed-horizon oracle; public EOT/EOS stop policy is applied
+before comparison.
+
+The first attempt (`bg-63`) failed before weight materialization because the new
+harness used the obsolete exploratory `llm.compatibility_generator` property.
+The corrected harness resolves the registered wrapper's inner tokenizer. The
+accepted retry (`bg-64`) completed in **233.401 s** on Radeon 8060S/gfx1151 with
+`GPU_MAX_HW_QUEUES=1`:
+
+- all **10/10** true-AR controls match the retained fixed oracle under public
+  stop semantics;
+- all **10/10 blocking + 10/10 streaming** DFlash requests have exact cumulative
+  IDs against true AR, and blocking/streaming text is identical;
+- train, heldout, `code`, `general_en`, `general_ja`, and `mixed_ja_en` all pass;
+- the EOT-24 prompt finishes identically as `stop` and never leaks
+  `</assistant>`; the other nine finish `length/32`;
+- every request preserves the same target/drafter/cycle owners while resetting
+  target position and drafter committed context to `-1/0`;
+- closing the public library stream after its first emitted chunk resets both
+  request states;
+- all 17 provider capability checks pass, including target/drafter hashes,
+  revision, B4, explicit-only/default-off policy, streaming, target-corrected
+  exactness, and the D4 fallback/no-performance-claim metadata;
+- final close releases cycle, drafter, target session, and target weights;
+  tracked ownership returns from a **79,817,890,405-byte / 1,883-allocation**
+  peak to zero bytes and zero allocations.
+
+The AR/blocking/streaming route walls sum to 85.473/72.023/71.331 s, but are
+recorded only as diagnostics: the first AR row owns the 52.238 s cold target
+load and this is not a speed-comparison protocol. D4 remains authoritative at
+0.9469x full-suite DFlash/AR, so AR stays default and DFlash receives no
+performance or automatic-routing claim. D5 is now supported only as an explicit
+opt-in for the pinned target plus B4 drafter.
+
+Artifact:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-public-e2e.json`
+(SHA-256 `64c75dafefc8a3a05b7b80809884acb0c1fa42d104cfe2dcf7b85656fa10ec21`).
+The measured runtime source is clean tracked commit `c4ac3c60a`; provenance also
+records 257 total untracked paths (mostly pre-existing artifacts plus this gate's
+harness/test/artifact), with no tracked staged/unstaged runtime edits.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_public_gate.py \
+  tests/test_server_speculative_provider.py \
+  tests/test_generation_laguna_dflash.py \
+  tests/test_speculative_provider_registry.py
+# 27 passed
+
+uvx ruff check scripts/laguna_dflash_public_gate.py \
+  tests/test_laguna_dflash_public_gate.py
+python3 -m compileall -q scripts/laguna_dflash_public_gate.py \
+  tests/test_laguna_dflash_public_gate.py
+python3 -m json.tool \
+  benchmarks/results/2026-07-23-gfx1151-laguna-dflash-public-e2e.json
+# clean; compact artifact consistency checks pass
+
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  uv run python scripts/laguna_dflash_public_gate.py
+# accepted; 10/10 AR + 10/10 blocking + 10/10 streaming exact
+```

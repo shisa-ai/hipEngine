@@ -2269,9 +2269,27 @@ budget, advertises `sampling.speculative`, and routes only requests carrying the
 generic `speculative` extension; the older `speculative_mtp` route remains
 separate and mutually exclusive. Synthetic blocking/streaming, capability,
 identity, reset/close, default-AR isolation, CLI/env, and fail-before-prepare
-gates pass. The live full-suite/ten-prompt public equality and cancellation
-lifecycle gate remains D5's final support criterion, so this is not yet a live
-support or performance claim.
+gates pass.
+
+The live D5 gate now closes the final opt-in support criterion on gfx1151. Every
+canonical prompt runs through true public AR, explicit OpenAI blocking DFlash,
+and explicit OpenAI streaming DFlash at h32: all **10/10 + 10/10 + 10/10**
+routes have exact cumulative IDs, blocking/streaming text agrees, and train,
+heldout, all four categories, EOT-24 suppression, finish metadata, and fixed
+oracle stop-policy checks pass. The same target/drafter/cycle owners survive all
+requests while target position and drafter committed context reset to `-1/0`;
+closing a public library stream after its first emitted chunk also resets both.
+Final close releases the provider owners and returns **79,817,890,405 peak
+tracked bytes / 1,883 peak allocations** to zero. All identity, revision, B4,
+policy, streaming, exactness, and D4 fallback/no-performance-claim capabilities
+are truthful. The complete correctness wall is **233.401 s** and is not a speed
+comparison. Artifact:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-public-e2e.json`.
+
+D5 is therefore **supported as an explicit opt-in** for the pinned target and B4
+drafter on gfx1151. AR remains default, and DFlash remains ineligible for
+automatic or performance promotion because the separate D4 full-suite ratio is
+`0.9469x` with heldout/non-code regressions.
 
 Automatic routing is a later model-general policy. Never key route/budget to
 known prompt IDs, benchmark categories, candidate token IDs, or fixed-suite

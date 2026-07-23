@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`c4ac3c60a47ce474ce5aa160d7c3ff8eda1009b5` for the exact explicit-only
+Laguna S 2.1 B4 DFlash library/OpenAI route,
 `871a22dda42cc612a3a77b2110ac0d1397b5426c` for the current post-prefill
 Laguna S 2.1 B4 DFlash economics decision,
 `bd8877fdf029a6c23880cc8fb4fb04401adf93a7` for the exact Laguna S 2.1
@@ -1133,7 +1135,8 @@ recoverable from the linked compact artifacts, changelog, and
 exact tile, LPF-4's 128-row chunks, and LPF-5's wave32-exact SWA reader are
 default. The refreshed matched B4 DFlash row is exact and reaches **0.9469x**
 true-AR decode, but fails aggregate, heldout, and non-code economics, so DFlash
-remains off.** The AR protocol uses the
+remains off by default and performance-ineligible. Its exact B4 path is now
+supported only as an explicit library/OpenAI opt-in.** The AR protocol uses the
 full ten-prompt `mtpbench-code-general-ja` suite (`code`, `general_en`,
 `general_ja`, and
 `mixed_ja_en`), prompt lengths 68-122, greedy 16/32-token horizons, two
@@ -1236,6 +1239,28 @@ Artifacts: [retained LPF-1 hipEngine target AR](results/2026-07-23-gfx1151-lagun
 [previous bulk-GEMV hipEngine row](results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json),
 and [qualified Poolside baseline](results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json).
 
+#### Explicit public B4 DFlash correctness
+
+The explicit-only public gate runs every canonical train/heldout prompt through
+true AR, OpenAI blocking DFlash, and OpenAI live-streaming DFlash at the same
+32-token limit. All **10/10 AR controls**, **10/10 blocking requests**, and
+**10/10 streaming requests** have exact cumulative IDs; blocking/streaming text
+also agrees, the EOT-24 case stops identically without leaking
+`</assistant>`, and all four categories plus both splits pass. Every request
+resets the retained target to position `-1` and the drafter to zero committed
+context while preserving the same target/drafter/cycle owners. Closing a public
+stream after its first emitted chunk resets both states, and final close releases
+the cycle, drafter, target session, target weights, **79,817,890,405 peak tracked
+bytes**, and all **1,883 peak allocations** back to zero.
+
+All advertised capability checks pass: source/drafter hashes and revision, B4,
+explicit-only/default-off policy, streaming support, target-corrected greedy
+exactness, and the retained `0.9469x` fallback evidence/no-performance-claim
+flag. The complete gate takes **233.401 s**; its route walls are diagnostic only
+because first AR owns cold model load and this is a correctness protocol, not a
+speed comparison. D5 therefore supports the pinned B4 path as an opt-in while AR
+remains the default. [Public D5 artifact](results/2026-07-23-gfx1151-laguna-dflash-public-e2e.json).
+
 #### Current post-prefill matched B4 DFlash economics
 
 The current-default clean run alternates true AR and pinned `b0486d1` B4 DFlash
@@ -1258,8 +1283,9 @@ DFlash decode **10.715 -> 15.479 tok/s (+44.46%)** at unchanged 424/840 draft
 acceptance. Full-suite decode still misses the >1.10x gate. Median TTFT moves
 **1.619 -> 4.783 s** and E2E **8.860 -> 4.489 output tok/s (0.5066x)** because
 DFlash prompt capture remains serial. Code wins, but heldout and all non-code
-categories regress; AR remains default and public DFlash stays deferred.
-[Current diagnostic artifact](results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json).
+categories regress; AR remains default and automatic/performance promotion stays
+deferred, while the exact explicit-only route is supported by the separate D5
+public gate above. [Current diagnostic artifact](results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json).
 
 #### Pre-LPF-1 matched B4 DFlash economics (historical)
 
