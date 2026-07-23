@@ -63,6 +63,7 @@ class CategoryComparison:
     require_exact_free_running: bool = True
     screen_requires_model: bool = True
     screen_candidate_variant: str | None = None
+    prefill_min_tokens: int | None = None
 
 
 GROUPED_DOWN_COMPARISON = CategoryComparison(
@@ -118,6 +119,19 @@ SWA_QROW2_ONLINE_COMPARISON = CategoryComparison(
     require_exact_free_running=False,
     screen_candidate_variant="swa_context_rows_qrow2_online_spans",
 )
+EXPERT_MAJOR_WMMA_COMPARISON = CategoryComparison(
+    name="expert_major_wmma",
+    modes=("adaptive_grouped_smallm_fused", "adaptive_expert_major_wmma_comp"),
+    aggregate_key="adaptive_expert_major_wmma_comp_vs_retained",
+    screen_kind="hipengine_laguna_expert_major_wmma_full_model_screen",
+    screen_status="quality_lane_admitted",
+    screen_decision_key="quality",
+    require_positive_wall=True,
+    execution_mode="selected_down",
+    require_exact_free_running=False,
+    screen_candidate_variant="adaptive_expert_major_wmma_comp",
+    prefill_min_tokens=128,
+)
 GLOBAL_QROW2_ONLINE_COMPARISON = CategoryComparison(
     name="global_qrow2_online",
     modes=("global_exact", "global_qrow2_online"),
@@ -147,6 +161,7 @@ _COMPARISONS = {
         SWA_QROW2_COMPARISON,
         SWA_QROW2_ONLINE_COMPARISON,
         GLOBAL_QROW2_ONLINE_COMPARISON,
+        EXPERT_MAJOR_WMMA_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -222,6 +237,25 @@ def _f16_prefill_mode(mode: str):
             os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] = previous
 
 
+def _comparison_token_ids(
+    prompt: Mapping[str, Any],
+    comparison: CategoryComparison,
+) -> tuple[int, ...]:
+    """Return canonical tokens or a uniform no-leading-BOS category expansion."""
+
+    token_ids = tuple(int(value) for value in prompt["token_ids"])
+    target = comparison.prefill_min_tokens
+    if target is None or len(token_ids) >= target:
+        return token_ids
+    repeat = token_ids[1:] if len(token_ids) > 1 else token_ids
+    if not repeat:
+        raise ValueError("cannot expand an empty category prompt")
+    expanded = list(token_ids)
+    while len(expanded) < target:
+        expanded.extend(repeat[: target - len(expanded)])
+    return tuple(expanded)
+
+
 def _prefill_for_mode(
     session: LagunaGGUFResidentSession,
     token_ids: Sequence[int],
@@ -275,10 +309,11 @@ def _run_target_mode(
 ) -> dict[str, Any]:
     session = _session_for_mode(owner, args, mode, comparison=comparison)
     try:
+        token_ids = _comparison_token_ids(prompt, comparison)
         prefill_started = time.perf_counter()
         result = _prefill_for_mode(
             session,
-            prompt["token_ids"],
+            token_ids,
             mode,
             comparison,
         )
@@ -311,8 +346,11 @@ def _run_target_mode(
         return {
             "prompt_id": prompt["id"],
             "category": prompt["category"],
-            "prompt_tokens": prompt["prompt_tokens"],
-            "prompt_token_ids_sha256": prompt["token_ids_sha256"],
+            "prompt_tokens": len(token_ids),
+            "source_prompt_tokens": prompt["prompt_tokens"],
+            "prompt_token_ids_sha256": _sha256_bytes(
+                json.dumps(token_ids, separators=(",", ":")).encode()
+            ),
             "mode": mode,
             "repetition": int(repetition),
             "prefill_seconds": prefill_seconds,
@@ -554,10 +592,11 @@ def _teacher_forced_prompt(
         for mode in comparison.modes
     }
     try:
+        token_ids = _comparison_token_ids(prompt, comparison)
         results = {
             mode: _prefill_for_mode(
                 sessions[mode],
-                prompt["token_ids"],
+                token_ids,
                 mode,
                 comparison,
             )
@@ -604,8 +643,11 @@ def _teacher_forced_prompt(
     return {
         "prompt_id": prompt["id"],
         "category": prompt["category"],
-        "prompt_tokens": prompt["prompt_tokens"],
-        "prompt_token_ids_sha256": prompt["token_ids_sha256"],
+        "prompt_tokens": len(token_ids),
+        "source_prompt_tokens": prompt["prompt_tokens"],
+        "prompt_token_ids_sha256": _sha256_bytes(
+            json.dumps(token_ids, separators=(",", ":")).encode()
+        ),
         "steps": steps,
     }
 
@@ -711,9 +753,11 @@ def _load_shape_screen(
     artifact = json.loads(args.shape_screen.read_text(encoding="utf-8"))
     decision = artifact.get(comparison.screen_decision_key, {})
     model = artifact.get("model", {})
-    candidate_variant = artifact.get("protocol", {}).get(
-        "candidate_variant"
-    ) or artifact.get("candidate", {}).get("variant")
+    candidate_variant = (
+        artifact.get("protocol", {}).get("candidate_variant")
+        or artifact.get("candidate", {}).get("variant")
+        or artifact.get("decision", {}).get("candidate_mode")
+    )
     passed = bool(
         artifact.get("kind") == comparison.screen_kind
         and artifact.get("status") == comparison.screen_status
@@ -736,8 +780,14 @@ def _load_shape_screen(
         "path": str(args.shape_screen.resolve()),
         "sha256": _sha256_bytes(args.shape_screen.read_bytes()),
         "revision": artifact.get("repo", {}).get("revision"),
-        "aggregate_speedup": decision.get("effective_speedup")
-        or decision.get("m128_weighted_projection_sum", {}).get("speedup"),
+        "aggregate_speedup": (
+            decision.get("effective_speedup")
+            or decision.get("m128_weighted_projection_sum", {}).get("speedup")
+            or artifact.get("threshold", {})
+            .get("policies", {})
+            .get(str(artifact.get("threshold", {}).get("selected_rows")), {})
+            .get("speedup_vs_retained")
+        ),
         "grouped_min_rows": decision.get("grouped_min_rows"),
         "model_sha256": model.get("sha256"),
         "candidate_variant": candidate_variant,
@@ -887,6 +937,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args,
                 global_prefill_variant=_GLOBAL_PREFILL_VARIANTS[comparison.modes[1]],
             )
+        elif comparison.name == EXPERT_MAJOR_WMMA_COMPARISON.name:
+            owner.set_selected_down_mode(comparison.modes[1])
+            oracle = _oracle_gate(owner, args)
         else:
             oracle = _oracle_gate(owner, args)
         resident_nbytes = owner.resident_nbytes
@@ -933,7 +986,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "performance_claim": bool(passed and comparison.require_positive_wall),
         "performance_claim_scope": (
             f"same-owner Laguna {comparison.modes[0]} versus {comparison.modes[1]} "
-            "over all ten canonical category prompts at h16/h32; model load excluded; "
+            "over all ten canonical category prompts (with declared uniform expansion) at h16/h32; model load excluded; "
             + (
                 "retained full-model performance gate"
                 if comparison.require_positive_wall
@@ -966,6 +1019,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "repetitions": args.repetitions,
             "warmup_output_tokens_per_mode": args.warmup_output_tokens,
             "teacher_forced_tokens_per_prompt": args.teacher_forced_tokens,
+            "prefill_min_tokens": comparison.prefill_min_tokens,
+            "prompt_expansion": (
+                "repeat each canonical prompt without repeating its leading BOS, then truncate"
+                if comparison.prefill_min_tokens is not None
+                else None
+            ),
             "timed_order": (
                 f"alternating {comparison.modes[0]}/{comparison.modes[1]} per prompt "
                 "and reversed next repetition"
@@ -1014,11 +1073,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "sliding-attention layers; global attention and decode stay unchanged."
                         if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
                         else (
-                            "Adaptive grouped down stays BF16 throughout and falls back to "
-                            "direct below 32 rows."
-                            if comparison.require_positive_wall
-                            else "The candidate preserves both BF16 boundaries while removing "
-                            "one launch and the selected-output round trip for rows >=32."
+                            "Adaptive expert-major WMMA applies only at M128+; every canonical "
+                            "category prompt is uniformly expanded to M128 without repeating BOS, "
+                            "and shorter Poolside/decode rows use the retained exact fallback."
+                            if comparison.name == EXPERT_MAJOR_WMMA_COMPARISON.name
+                            else (
+                                "Adaptive grouped down stays BF16 throughout and falls back to "
+                                "direct below 32 rows."
+                                if comparison.require_positive_wall
+                                else "The candidate preserves both BF16 boundaries while removing "
+                                "one launch and the selected-output round trip for rows >=32."
+                            )
                         )
                     )
                 )

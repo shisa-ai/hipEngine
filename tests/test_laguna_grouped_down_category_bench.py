@@ -8,6 +8,7 @@ import pytest
 
 import scripts.laguna_grouped_down_category_bench as benchmark
 from scripts.laguna_grouped_down_category_bench import (
+    EXPERT_MAJOR_WMMA_COMPARISON,
     F16_WMMA_COMP_SWA_COMPARISON,
     GLOBAL_QROW2_ONLINE_COMPARISON,
     GROUPED_COMBINE_COMPARISON,
@@ -15,6 +16,7 @@ from scripts.laguna_grouped_down_category_bench import (
     SWA_QROW2_COMPARISON,
     SWA_QROW2_ONLINE_COMPARISON,
     _aggregate,
+    _comparison_token_ids,
     _load_shape_screen,
     _mode_order,
     _paired_free_running,
@@ -307,6 +309,59 @@ def test_global_qrow2_online_category_resolves_variants_and_screen(
         args,
         comparison=GLOBAL_QROW2_ONLINE_COMPARISON,
     )["pass"] is False
+
+
+def test_expert_major_category_expands_all_prompts_and_binds_screen(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    comparison = EXPERT_MAJOR_WMMA_COMPARISON
+    prompt = {"token_ids": [1, 2, 3], "prompt_tokens": 3}
+    expanded = _comparison_token_ids(prompt, comparison)
+    assert len(expanded) == 128
+    assert expanded[:7] == (1, 2, 3, 2, 3, 2, 3)
+    assert _comparison_token_ids(prompt, comparison) == expanded
+
+    selected: list[str] = []
+
+    class Session:
+        def set_selected_down_mode(self, mode: str) -> None:
+            selected.append(mode)
+
+    monkeypatch.setattr(benchmark, "_session", lambda *_args, **_kwargs: Session())
+    for mode in comparison.modes:
+        benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=comparison,
+        )
+    assert selected == list(comparison.modes)
+
+    screen = tmp_path / "expert-major-screen.json"
+    artifact = {
+        "kind": comparison.screen_kind,
+        "status": comparison.screen_status,
+        "pass": True,
+        "quality": {"pass": True},
+        "decision": {"candidate_mode": "adaptive_expert_major_wmma_comp"},
+        "threshold": {
+            "selected_rows": 128,
+            "policies": {"128": {"speedup_vs_retained": 1.66}},
+        },
+        "model": {"sha256": "model-sha"},
+        "repo": {"revision": "candidate-revision"},
+    }
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    args = SimpleNamespace(shape_screen=screen, model_sha256="model-sha")
+    result = _load_shape_screen(args, comparison=comparison)
+    assert result["pass"] is True
+    assert result["candidate_variant"] == "adaptive_expert_major_wmma_comp"
+    assert result["aggregate_speedup"] == pytest.approx(1.66)
+
+    artifact["decision"]["candidate_mode"] = "expert_major_wmma_comp"
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    assert _load_shape_screen(args, comparison=comparison)["pass"] is False
 
 
 def test_f16_wmma_comp_swa_category_requires_matching_compensated_screen(
