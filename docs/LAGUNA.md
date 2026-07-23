@@ -2238,39 +2238,35 @@ GEMVs over `rows * top_k`; the prior exact pair-reuse candidate lost 11.57%, and
 blanket M16 compact WMMA would execute 4.396x useful lanes at 55 rows. Do not
 repeat either experiment unchanged.
 
-- [ ] First screen already-landed primitives. **Exact Q4 dual+SiLU is complete
+- [x] First screen already-landed primitives. **Exact Q4 dual+SiLU is complete
   and rejected:** one-load, same-session, counterbalanced rows
   16/32/55/64/122/128 are exact in all 36 timed IDs, but split -> fused median
   rates are `46.380->46.300`, `48.917->49.000`, `49.088->49.137`,
   `50.558->50.527`, `51.081->51.194`, and `51.412->51.549 tok/s`. Aggregate
   wall improves only 0.129%, while rows 16/64 regress 0.172%/0.060%; the strict
   all-shape gate fails, candidate runtime code is removed, and the original
-  split chain stays default. Next screen direct Q8_1/dp4a for Q4 gate/up. Only
-  if that wins inclusively should a single-output Q4/Q6 down sibling be
-  developed. Include activation-quantization cost and full-model quality; a
-  prequantized leaf win is not sufficient. Evidence:
+  split chain stays default. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json`.
-  The inclusive Q8 screen is now positive but remains default-off pending the
-  complete quality lane. `HIPENGINE_LAGUNA_SELECTED_GATE_UP=q8_dp4a` allocates
-  one bounded `rows * (K/32) * 36` workspace, quantizes each producer row once
-  before top-10 expansion, launches the existing fused Q4T16 q8_1/dp4a leaf,
-  and keeps c=1 AR decode on exact split. In one resident session, balanced
-  split -> Q8 median rates at rows 16/32/55/64/122/128 are
-  `46.365->47.527`, `48.916->50.435`, `49.011->50.784`,
-  `50.381->52.260`, `50.925->52.964`, and `51.184->53.316 tok/s`
-  (+2.51% to +4.17%); aggregate measured wall improves 3.773%. All 36
-  next-token IDs agree and tracked ownership returns exactly to zero. The
-  frozen Poolside diagnostic also passes first-token KL `1.2837e-4` with exact
-  top-1, 31/32 teacher-forced top-1, and exact same-route replay, but its
-  29/32 free-running prefix is only the already-declared relaxed quality
-  behavior—not complete category evidence. The committed category harness now
-  requires three counterbalanced timing repetitions plus full-logit
-  teacher-forced and free-running h16/h32 reporting over all ten prompts and
-  four categories. No default changes before that gate, 128/512/1K/4K state
-  coverage, and a cached kernel trace pass. Remove this runtime route and
-  scratch immediately if any required quality or performance gate fails.
+  **Direct Q8_1/dp4a is also complete and rejected.** Its inclusive screen is
+  mechanically strong: quantizing each producer row once before top-10
+  expansion improves every 16/32/55/64/122/128 shape by 2.51-4.17% and
+  aggregate wall by 3.773%, with all 36 next IDs agreeing. The full three-repeat
+  ten-prompt category run likewise improves weighted prefill **4.070%**, h16/h32
+  E2E **2.650%/1.916%**, and every category's prefill/E2E while decode stays
+  within 0.07%. It nevertheless fails the predeclared quality lane: 315/320
+  teacher-forced top-1 comparisons agree, but maximum split-vs-Q8 KL is
+  **0.17156** (>0.05) on `mixed_ja_en_review`; `mixed_ja_en_translate` reaches
+  **0.11889**, and four prompts have deterministic free-running ID differences.
+  The frozen Poolside first-token gate still passes at KL `1.2837e-4`, proving
+  why the complete category gate was necessary. The env/session selector,
+  Q8_1 scratch, production route, and dedicated harnesses are removed; the
+  independently tested registered fused leaf remains. Do not develop the
+  single-output Q4/Q6 down sibling from this rejected quality trade. Continue
+  with device-resident grouping and a quality-preserving small-M Q4/Q6 engine.
   Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json`.
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json`
+  and
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json`.
 - [ ] Build one device-resident expert grouping/scatter pass with no scalar D2H
   boundary. Quantize each producer activation once, not once per selected
   expert or output projection.
