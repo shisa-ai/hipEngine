@@ -51,10 +51,12 @@ _SELECTED_DOWN_MODES = frozenset(
         "grouped_smallm_fused",
         "adaptive_grouped_smallm_fused",
         "expert_major_wmma_comp",
+        "adaptive_expert_major_wmma_comp",
     }
 )
 _BASELINE_SELECTED_DOWN_MODE = "direct"
 _GROUPED_SMALLM_MIN_ROWS = 32
+_EXPERT_MAJOR_MIN_ROWS = 128
 
 
 def resolve_laguna_selected_down_mode(
@@ -1428,7 +1430,10 @@ def run_laguna_moe_rows(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
-    use_expert_major = selected_down_mode == "expert_major_wmma_comp"
+    use_expert_major = selected_down_mode == "expert_major_wmma_comp" or (
+        selected_down_mode == "adaptive_expert_major_wmma_comp"
+        and tokens >= _EXPERT_MAJOR_MIN_ROWS
+    )
     if use_expert_major:
         _launch_expert_major_comp_gate_up(
             hidden_bf16_ptr,

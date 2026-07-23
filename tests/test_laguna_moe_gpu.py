@@ -177,6 +177,12 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
         )
         == "expert_major_wmma_comp"
     )
+    assert (
+        resolve_laguna_selected_down_mode(
+            "hip_gfx1151", "adaptive_expert_major_wmma_comp"
+        )
+        == "adaptive_expert_major_wmma_comp"
+    )
     for rejected in ("wmma16_down", "adaptive_wmma16_down", "invalid"):
         with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
             resolve_laguna_selected_down_mode("hip_gfx1151", rejected)
@@ -251,6 +257,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     grouped_scratch = None
     fused_scratch = None
     expert_major_scratch = None
+    adaptive_expert_major_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -434,6 +441,23 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert max_kl <= 0.05
         # The dedicated 51-row Q4/Q6 leaf fixture owns the >=90% top-1 gate;
         # these three near-zero full-MoE rows only verify runtime composition.
+        adaptive_expert_major_scratch = allocate_laguna_moe_scratch(
+            plan, max_rows=3
+        )
+        adaptive_expert_major_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            adaptive_expert_major_scratch,
+            rows=3,
+            selected_down_mode="adaptive_expert_major_wmma_comp",
+        )
+        adaptive_expert_major_actual = _read_bf16(
+            adaptive_expert_major_output, (3, h)
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(adaptive_expert_major_actual),
+            _f32_to_bf16_u16(fused_actual),
+        )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -452,6 +476,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if adaptive_expert_major_scratch is not None:
+            adaptive_expert_major_scratch.free()
         if expert_major_scratch is not None:
             expert_major_scratch.free()
         if fused_scratch is not None:
