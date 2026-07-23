@@ -70,7 +70,7 @@ from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
-    run_laguna_moe_c1,
+    run_laguna_moe_c1_components,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
 )
@@ -169,6 +169,7 @@ class LagunaEagerKernelPlan:
     rmsnorm_key: KernelKey
     add_rmsnorm_key: KernelKey
     add_key: KernelKey
+    moe_tail_next_rmsnorm_key: KernelKey
     attention_gate_key: KernelKey
     dense_silu_key: KernelKey
     argmax_key: KernelKey
@@ -179,16 +180,23 @@ class LagunaEagerKernelPlan:
     rmsnorm: Callable
     add_rmsnorm: Callable
     add: Callable
+    moe_tail_next_rmsnorm: Callable | None
     attention_gate: Callable
     dense_silu: Callable
     argmax: Callable
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
+        optional = (
+            (self.moe_tail_next_rmsnorm_key,)
+            if self.moe_tail_next_rmsnorm is not None
+            else ()
+        )
         return (
             self.rmsnorm_key,
             self.add_rmsnorm_key,
             self.add_key,
+            *optional,
             self.attention_gate_key,
             self.dense_silu_key,
             self.argmax_key,
@@ -1094,6 +1102,7 @@ def resolve_laguna_eager_kernel_plan(
     config: LagunaGGUFConfig,
     *,
     backend: str,
+    use_moe_tail_next_rmsnorm: bool = True,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
 
@@ -1119,6 +1128,12 @@ def resolve_laguna_eager_kernel_plan(
         "rmsnorm": KernelKey(backend, "rmsnorm", "gguf_f32_weight", "bf16_out"),
         "add_rmsnorm": KernelKey(backend, "add_rmsnorm", "gguf_f32_weight", "bf16_out"),
         "add": KernelKey(backend, "elementwise", "bf16", "add"),
+        "moe_tail_next_rmsnorm": KernelKey(
+            backend,
+            "moe_tail+next_rmsnorm",
+            "bf16",
+            "laguna_aggregate_gguf_f32_weight_out",
+        ),
         "attention_gate": KernelKey(
             backend, "attention_gate", "f32", "softplus_broadcast_bf16_out"
         ),
@@ -1134,12 +1149,21 @@ def resolve_laguna_eager_kernel_plan(
             "positions_f32",
         ),
     }
-    functions = {name: _resolve_exact(key) for name, key in keys.items()}
+    optional_name = "moe_tail_next_rmsnorm"
+    required = {name: key for name, key in keys.items() if name != optional_name}
+    functions = {name: _resolve_exact(key) for name, key in required.items()}
+    tail_key = keys[optional_name]
+    tail = (
+        _resolve_exact(tail_key)
+        if bool(use_moe_tail_next_rmsnorm) and is_registered(tail_key)
+        else None
+    )
     return LagunaEagerKernelPlan(
         backend=backend,
         rmsnorm_key=keys["rmsnorm"],
         add_rmsnorm_key=keys["add_rmsnorm"],
         add_key=keys["add"],
+        moe_tail_next_rmsnorm_key=tail_key,
         attention_gate_key=keys["attention_gate"],
         dense_silu_key=keys["dense_silu"],
         argmax_key=keys["argmax"],
@@ -1150,10 +1174,87 @@ def resolve_laguna_eager_kernel_plan(
         rmsnorm=functions["rmsnorm"],
         add_rmsnorm=functions["add_rmsnorm"],
         add=functions["add"],
+        moe_tail_next_rmsnorm=tail,
         attention_gate=functions["attention_gate"],
         dense_silu=functions["dense_silu"],
         argmax=functions["argmax"],
     )
+
+
+def launch_laguna_moe_tail_next_rmsnorm(
+    routed_ptr: int,
+    shared_ptr: int,
+    post_attention_ptr: int,
+    moe_out_ptr: int,
+    hidden_out_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    fused: Callable | None,
+    add: Callable,
+    rmsnorm: Callable,
+    stream: int = 0,
+    fused_library=None,
+    gguf_ops_library=None,
+    runtime: HipRuntime | None = None,
+) -> bool:
+    """Launch D9 for c=1 or the exact add/add/RMSNorm fallback chain."""
+
+    parsed_rows = int(rows)
+    parsed_hidden = int(hidden_size)
+    if parsed_rows <= 0:
+        raise ValueError("Laguna MoE-tail rows must be positive")
+    if parsed_hidden <= 0:
+        raise ValueError("Laguna MoE-tail hidden_size must be positive")
+    if parsed_rows == 1 and fused is not None:
+        fused(
+            routed_ptr,
+            shared_ptr,
+            post_attention_ptr,
+            norm_weight_ptr,
+            norm_out_ptr,
+            hidden_out_ptr,
+            parsed_hidden,
+            eps,
+            stream=stream,
+            library=fused_library,
+            runtime=runtime,
+        )
+        return True
+
+    add(
+        routed_ptr,
+        shared_ptr,
+        moe_out_ptr,
+        parsed_rows * parsed_hidden,
+        stream=stream,
+        library=gguf_ops_library,
+        runtime=runtime,
+    )
+    add(
+        post_attention_ptr,
+        moe_out_ptr,
+        hidden_out_ptr,
+        parsed_rows * parsed_hidden,
+        stream=stream,
+        library=gguf_ops_library,
+        runtime=runtime,
+    )
+    rmsnorm(
+        hidden_out_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        parsed_rows,
+        parsed_hidden,
+        eps,
+        stream=stream,
+        library=gguf_ops_library,
+        runtime=runtime,
+    )
+    return False
 
 
 def capture_laguna_hidden_tap(
@@ -1359,6 +1460,7 @@ class LagunaGGUFResidentSession:
         prefill_chunk_size: int = 128,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
+        use_moe_tail_next_rmsnorm: bool = True,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1425,6 +1527,7 @@ class LagunaGGUFResidentSession:
             self.kernel_plan = resolve_laguna_eager_kernel_plan(
                 config,
                 backend=self.backend,
+                use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
             )
             self.libraries = load_laguna_eager_libraries(
                 backend=self.backend,
@@ -2496,17 +2599,20 @@ class LagunaGGUFResidentSession:
         q_width = heads * config.key_length
         kv_width = config.head_count_kv * config.key_length
 
-        self.kernel_plan.rmsnorm(
-            scratch.hidden.ptr,
-            layer.weight("attn_norm").allocation("raw").tensor.ptr,
-            scratch.norm.ptr,
-            1,
-            config.hidden_size,
-            config.rms_norm_eps,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
-        )
+        # Sparse layer L precomputes layer L+1's input norm in its exact tail.
+        # Layer 0 and the first sparse layer still consume an unfused predecessor.
+        if layer_id <= config.leading_dense_block_count:
+            self.kernel_plan.rmsnorm(
+                scratch.hidden.ptr,
+                layer.weight("attn_norm").allocation("raw").tensor.ptr,
+                scratch.norm.ptr,
+                1,
+                config.hidden_size,
+                config.rms_norm_eps,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
         launch_laguna_attention_projections(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
@@ -2601,7 +2707,7 @@ class LagunaGGUFResidentSession:
         if layer.mlp_type == DENSE_MLP:
             self._run_dense_ffn(layer, stream=stream)
         elif layer.mlp_type == SPARSE_MOE:
-            self._run_sparse_ffn(layer, stream=stream)
+            self._run_sparse_ffn(layer_id, layer, stream=stream)
         else:
             raise ValueError(f"unsupported Laguna MLP type {layer.mlp_type!r}")
 
@@ -2672,6 +2778,7 @@ class LagunaGGUFResidentSession:
 
     def _run_sparse_ffn(
         self,
+        layer_id: int,
         layer: LagunaGGUFResidentLayerWeights,
         *,
         stream: int,
@@ -2681,7 +2788,7 @@ class LagunaGGUFResidentSession:
         assert self.moe_scratch is not None
         assert self.kernel_plan is not None
         assert self.libraries is not None
-        output = run_laguna_moe_c1(
+        routed, shared = run_laguna_moe_c1_components(
             self.scratch.norm.ptr,
             layer,
             self.moe_scratch,
@@ -2689,13 +2796,37 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             libraries=self.libraries.moe,
         )
-        self.kernel_plan.add(
+        config = self.weights.config
+        if layer_id + 1 < config.block_count:
+            next_norm_weight_ptr = (
+                self.weights.layer(layer_id + 1)
+                .weight("attn_norm")
+                .allocation("raw")
+                .tensor.ptr
+            )
+            next_norm_out_ptr = self.scratch.norm.ptr
+        else:
+            next_norm_weight_ptr = (
+                self.weights.root("output_norm").allocation("raw").tensor.ptr
+            )
+            next_norm_out_ptr = self.scratch.final_norm.ptr
+        launch_laguna_moe_tail_next_rmsnorm(
+            routed.ptr,
+            shared.ptr,
             self.scratch.post_attention.ptr,
-            output.ptr,
+            self.moe_scratch.output.ptr,
             self.scratch.hidden.ptr,
-            self.weights.config.hidden_size,
+            next_norm_weight_ptr,
+            next_norm_out_ptr,
+            1,
+            config.hidden_size,
+            config.rms_norm_eps,
+            fused=self.kernel_plan.moe_tail_next_rmsnorm,
+            add=self.kernel_plan.add,
+            rmsnorm=self.kernel_plan.rmsnorm,
             stream=stream,
-            library=self.libraries.gguf_ops,
+            fused_library=self.libraries.routed_sum,
+            gguf_ops_library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
 
@@ -2712,17 +2843,7 @@ class LagunaGGUFResidentSession:
         assert self.libraries is not None
         config = self.weights.config
         scratch = self.scratch
-        self.kernel_plan.rmsnorm(
-            scratch.hidden.ptr,
-            self.weights.root("output_norm").allocation("raw").tensor.ptr,
-            scratch.final_norm.ptr,
-            1,
-            config.hidden_size,
-            config.rms_norm_eps,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
-        )
+        # Sparse layer 47 emits the exact final output_norm into final_norm.
         launch_gguf_linear(
             self.weights.root("lm_head"),
             scratch.final_norm.ptr,
@@ -3146,6 +3267,7 @@ __all__ = [
     "LagunaVerifierScratch",
     "capture_laguna_hidden_rows",
     "capture_laguna_hidden_tap",
+    "launch_laguna_moe_tail_next_rmsnorm",
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",
 ]

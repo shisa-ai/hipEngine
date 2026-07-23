@@ -55,6 +55,17 @@ _ARGTYPES_SHARED_BATCH_4 = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGTYPES_LAGUNA_AGGREGATE_TAIL_RMS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
 _ARGTYPES_TAIL_RMS_SHARED = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
@@ -105,6 +116,9 @@ _SYMBOL_SHARED_RESIDUAL = "hipengine_shared_gate_combine_residual_out_bf16"
 _SYMBOL_SHARED_RESIDUAL_FP16 = "hipengine_shared_gate_combine_residual_out_fp16"
 _SYMBOL_SHARED_RESIDUAL_BATCH = "hipengine_shared_gate_combine_residual_batch_out_bf16"
 _SYMBOL_SHARED_RESIDUAL_BATCH_FP16 = "hipengine_shared_gate_combine_residual_batch_out_fp16"
+_SYMBOL_LAGUNA_AGGREGATE_TAIL_RMS = (
+    "hipengine_laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out"
+)
 _SYMBOL_TAIL_RMS_SHARED_GGUF_BF16 = "hipengine_shared_gate_combine_residual_rmsnorm_gguf_bf16_out"
 _SYMBOL_TAIL_RMS_WEIGHTED_GGUF_BF16 = "hipengine_weighted_sum_shared_gate_combine_residual_rmsnorm_gguf_bf16_out"
 _SYMBOL_TAIL_RMS_SHARED_PARO_BF16 = "hipengine_shared_gate_combine_residual_rmsnorm_paro_bf16_out"
@@ -987,6 +1001,45 @@ def weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w(
     _check_launch(runtime, err)
 
 
+def laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out(
+    routed_ptr: int,
+    shared_ptr: int,
+    post_attention_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    hidden_out_ptr: int,
+    features: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Preserve both Laguna BF16 add boundaries and emit next RMSNorm."""
+
+    _check_positive(features, "features")
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_LAGUNA_AGGREGATE_TAIL_RMS,
+        _ARGTYPES_LAGUNA_AGGREGATE_TAIL_RMS,
+        ctypes.c_int,
+    )
+    err = fn(
+        routed_ptr,
+        shared_ptr,
+        post_attention_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        hidden_out_ptr,
+        features,
+        float(eps),
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
 def shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
     selected_ptr: int,
     shared_ptr: int,
@@ -1497,6 +1550,16 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
             shared_gate_combine_residual_batch_out_fp16,
             replace=replace,
         )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_tail+next_rmsnorm",
+            "bf16",
+            "laguna_aggregate_gguf_f32_weight_out",
+        ),
+        laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",
