@@ -373,7 +373,7 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert all(layer.spans.token_positions is not None for layer in cache.layers)
     assert all(layer.spans.evict_mask is not None for layer in cache.layers)
     assert all(
-        layer.attention_prefill_variant == "global_context_rows_spans"
+        layer.attention_prefill_variant == "global_context_rows_qrow2_online_spans"
         for layer in cache.layers
         if layer.attention_type == FULL_ATTENTION
     )
@@ -391,14 +391,14 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert cache.allocation_count == 243
     assert (
         resolve_laguna_global_prefill_variant("hip_gfx1151")
-        == "global_context_rows_spans"
+        == "global_context_rows_qrow2_online_spans"
     )
     assert (
         resolve_laguna_global_prefill_variant(
             "hip_gfx1151",
-            "global_context_rows_qrow2_online_spans",
+            "global_context_rows_spans",
         )
-        == "global_context_rows_qrow2_online_spans"
+        == "global_context_rows_spans"
     )
     assert (
         resolve_laguna_swa_prefill_variant("hip_gfx1151")
@@ -851,12 +851,14 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         context_length=520,
         backend="hip_gfx1151",
         runtime=runtime,
+        global_prefill_variant="global_context_rows_spans",
     )
     bulk = allocate_laguna_kv_cache(
         config,
         context_length=520,
         backend="hip_gfx1151",
         runtime=runtime,
+        global_prefill_variant="global_context_rows_spans",
         swa_prefill_variant="swa_context_rows_spans",
     )
     wave32 = allocate_laguna_kv_cache(
@@ -864,6 +866,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         context_length=520,
         backend="hip_gfx1151",
         runtime=runtime,
+        global_prefill_variant="global_context_rows_spans",
         swa_prefill_variant="swa_context_rows_wave32_exact_spans",
     )
     qrow2 = allocate_laguna_kv_cache(
@@ -871,6 +874,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         context_length=520,
         backend="hip_gfx1151",
         runtime=runtime,
+        global_prefill_variant="global_context_rows_spans",
         swa_prefill_variant="swa_context_rows_qrow2_exact_spans",
     )
     rng = np.random.default_rng(1207)

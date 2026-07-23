@@ -67,6 +67,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
     LAGUNA_F16_PREFILL_MIN_ROWS,
     LAGUNA_F16_PREFILL_STRATEGY,
+    LAGUNA_GLOBAL_PREFILL_VARIANT,
     LAGUNA_PREFILL_MATRIX_ROWS,
     LAGUNA_SWA_PREFILL_VARIANT,
     GGUF_GDN_INDEXED_SINGLETON_DECODE,
@@ -212,6 +213,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_PREFILL_STRATEGY == "wmma_comp_swa"
     assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
     assert LAGUNA_PREFILL_MATRIX_ROWS == 512
+    assert LAGUNA_GLOBAL_PREFILL_VARIANT == "global_context_rows_qrow2_online_spans"
     assert (
         LAGUNA_SWA_PREFILL_VARIANT
         == "swa_context_rows_qrow2_m128_c128_exact_spans"
@@ -239,6 +241,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_GLOBAL_PREFILL_VARIANT", None
+        )
+        == "global_context_rows_qrow2_online_spans"
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_GLOBAL_PREFILL_VARIANT", None
     ) is None
     assert (
         backend_package_capability(
