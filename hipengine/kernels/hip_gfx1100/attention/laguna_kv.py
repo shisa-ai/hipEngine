@@ -716,7 +716,7 @@ def laguna_swa_attention_prefill_qrow2_exact_bf16_spans(
     _check_launch(runtime, err)
 
 
-def laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans(
+def laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans(
     query_ptr: int,
     current_key_ptr: int,
     current_value_ptr: int,
@@ -740,7 +740,7 @@ def laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans(
 
     kernel = (
         laguna_swa_attention_prefill_qrow2_exact_bf16_spans
-        if int(rows) >= 32
+        if int(rows) == 128
         and start_position is not None
         and int(start_position) >= 128
         else laguna_swa_attention_prefill_wave32_exact_bf16_spans
@@ -825,8 +825,8 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_prefill",
-            "swa_context_rows_qrow2_32_c128_exact_spans",
-            laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans,
+            "swa_context_rows_qrow2_m128_c128_exact_spans",
+            laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans,
         ),
     )
     for layer, variant, kernel in registrations:
@@ -920,7 +920,7 @@ __all__ = [
     "laguna_swa_attention_decode_bf16_spans",
     "laguna_swa_attention_decode_token4_exact_bf16_spans",
     "laguna_swa_attention_prefill_bf16_spans",
-    "laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans",
+    "laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow2_exact_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
     "laguna_swa_write_kv_f32_spans",

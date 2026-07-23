@@ -108,7 +108,7 @@ SWA_QROW2_COMPARISON = CategoryComparison(
 )
 _SWA_PREFILL_VARIANTS = {
     "wave32_exact": "swa_context_rows_wave32_exact_spans",
-    "qrow2_32_exact": "swa_context_rows_qrow2_32_c128_exact_spans",
+    "qrow2_32_exact": "swa_context_rows_qrow2_m128_c128_exact_spans",
 }
 _COMPARISONS = {
     comparison.name: comparison

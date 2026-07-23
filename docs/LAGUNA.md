@@ -2553,9 +2553,10 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
   context axis: every empty-context canonical prompt loses **0.08-0.72%**.
   Dedicated M128 leaf timing crosses over only after 128 prior tokens
   (**0.876/0.979/1.048/1.089/1.120/1.145/1.165x** at prior context
-  0/64/128/192/256/320/384). The revised registered policy therefore requires
-  both M>=32 and absolute chunk start>=128, preserving wave32 for canonical
-  first chunks. Rerun repeated long-context and complete non-regressive category
+  0/64/128/192/256/320/384). Because shorter residual rows have no measured
+  crossover at that same start, the final conservative registered policy requires
+  exactly M128 and absolute chunk start>=128; every partial tile and canonical
+  first chunk stays wave32. Rerun repeated long-context and complete non-regressive category
   gates before changing the gfx1151 default; the prior M-only screen is
   diagnostic rather than final evidence.
 - [ ] For global layers, screen the existing torch-free AOTriton adapter as a

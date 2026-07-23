@@ -89,7 +89,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
         laguna_swa_attention_prefill_bf16_spans,
-        laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans,
+        laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow2_exact_bf16_spans,
         laguna_swa_attention_prefill_wave32_exact_bf16_spans,
         laguna_swa_write_kv_f32_spans,
@@ -188,9 +188,9 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             backend="hip_gfx1151",
             layer="laguna_attention_prefill",
             quant="bf16",
-            variant="swa_context_rows_qrow2_32_c128_exact_spans",
+            variant="swa_context_rows_qrow2_m128_c128_exact_spans",
         )
-        is laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans
+        is laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans
     )
     assert (
         resolve(
@@ -227,7 +227,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         )
 
 
-def test_laguna_swa_qrow2_auto_requires_32_rows_and_128_prior_tokens(
+def test_laguna_swa_qrow2_auto_requires_m128_and_128_prior_tokens(
     monkeypatch,
 ) -> None:
     import hipengine.kernels.hip_gfx1100.attention.laguna_kv as module
@@ -244,27 +244,27 @@ def test_laguna_swa_qrow2_auto_requires_32_rows_and_128_prior_tokens(
         lambda *args, **kwargs: calls.append("qrow2"),
     )
     common = (1, 2, 3, 4, 5, 6, _ring_spans())
-    module.laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans(
+    module.laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans(
         *common,
-        31,
+        127,
         72,
         8,
         128,
         128**-0.5,
         start_position=128,
     )
-    module.laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans(
+    module.laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans(
         *common,
-        32,
+        128,
         72,
         8,
         128,
         128**-0.5,
         start_position=127,
     )
-    module.laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans(
+    module.laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans(
         *common,
-        32,
+        128,
         72,
         8,
         128,

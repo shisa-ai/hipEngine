@@ -174,7 +174,7 @@ def test_swa_qrow2_category_resolves_explicit_session_variants(monkeypatch) -> N
 
     assert calls == [
         "swa_context_rows_wave32_exact_spans",
-        "swa_context_rows_qrow2_32_c128_exact_spans",
+        "swa_context_rows_qrow2_m128_c128_exact_spans",
     ]
 
 
