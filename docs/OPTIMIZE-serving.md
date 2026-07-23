@@ -1,6 +1,6 @@
 # hipEngine Serving-Latency Optimization Plan
 
-Status: 2026-07-23 (active; S0 complete, implementation lanes pending).
+Status: 2026-07-23 (active; S0-S1 complete, S2-S5 pending).
 
 Scope: resident Poolside Laguna S 2.1 Q4_K_M serving on the local Ryzen AI
 MAX+ 395 / Radeon 8060S (`gfx1151`) host, starting with exact greedy `c=1`.
@@ -193,8 +193,8 @@ stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
 | ID | Pi task | Candidate | Expected scope | Status |
 | --- | ---: | --- | --- | --- |
 | S0 | #17 | Document path, definitions, evidence, telemetry, and gates | process only | **complete** |
-| S1 | #18 | Pool/reset one generator-owned Laguna resident session | about 31 ms idle TTFT ceiling; about 5 ms tail | pending |
-| S2 | #19 | Render/encode once into request-local prepared prompt ownership | sub-ms short; about 7-14 ms near 4K | pending, blocked by S1 |
+| S1 | #18 | Pool/reset one generator-owned Laguna resident session | **31.800 ms setup and 34.877 ms direct TTFT saved** | **complete** |
+| S2 | #19 | Render/encode once into request-local prepared prompt ownership | sub-ms short; about 7-14 ms near 4K | pending |
 | S3 | #20 | Prefix-aware stop-safe streaming holdback | workload-dependent; up to 61 ms per avoidable held token | pending, blocked by S2 |
 | S4 | #21 | Exact stateful Laguna KV continuation | seconds on guaranteed-hit follow-up turns | pending, blocked by S3 |
 | S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | seconds under contention; c=1 exact first | pending, blocked by S4 |
@@ -250,6 +250,44 @@ and require complete ID/state/lifecycle equality. Promotion requires every
 paired reused sample to improve session preparation and complete request TTFT
 to be non-regressive. Do not claim the current 31.426-ms constructor ceiling as
 the realized win until that gate passes.
+
+### Retained result (2026-07-23)
+
+Revision `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` passes the clean detached
+hardware gate on the exact Q4_K_M model (`7da520c5...5753f`), gfx1151, BF16 KV,
+4K capacity, chunk 128, and the 46-token frozen `no_thinking` Poolside prompt.
+One warmup preceded five alternating synchronized samples per mode; model load
+was excluded.
+
+| Direct first-token scope | Fresh borrowing session | Pooled reset | Change |
+| --- | ---: | ---: | ---: |
+| Synchronized session preparation, median | 32.399 ms | **0.598 ms** | **-31.800 ms; 54.14x** |
+| Prefill after preparation, median | 930.826 ms | 927.781 ms | -3.045 ms diagnostic |
+| Preparation + prefill/argmax TTFT, median | 963.262 ms | **928.384 ms** | **-34.877 ms; -3.621%** |
+| Fresh-session close after first token, median | 5.373 ms | deferred to owner close | removed per-request tail |
+
+Every paired setup sample improves (30.723-33.015 ms saved), every first token
+is exact ID `5887`, the first-token median is non-regressive, and all tracked
+allocations recover to zero. `prepare()` now creates the pool during resident
+readiness, so normal server requests enter the reset arm; lazy direct users pay
+one initial create and then reset. Telemetry reports `session_prepare_ms` and
+`session_prepare_mode`, and poisoned/cancelled/abandoned sessions fail closed to
+`recreate_after_error`.
+
+Artifact:
+[`2026-07-23-gfx1151-laguna-session-pool.json`](../benchmarks/results/2026-07-23-gfx1151-laguna-session-pool.json).
+Exact command:
+
+```bash
+PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  /home/lhl/hipEngine-main/.venv/bin/python3 -u scripts/laguna_session_pool_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 \
+  --context-length 4096 --chunk-size 128 --warmups 1 --repetitions 5 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/2026-07-23-gfx1151-laguna-session-pool.json
+```
 
 ---
 
