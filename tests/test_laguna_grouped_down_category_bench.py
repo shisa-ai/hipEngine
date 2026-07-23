@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from types import SimpleNamespace
 
 import pytest
 
 from scripts.laguna_grouped_down_category_bench import (
+    GROUPED_COMBINE_COMPARISON,
     MODES,
     _aggregate,
+    _load_shape_screen,
     _mode_order,
     _paired_free_running,
     _promotion_gate,
@@ -17,14 +21,19 @@ HORIZONS = (16, 32)
 CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
 
 
-def _rows() -> list[dict[str, object]]:
+def _rows(
+    *,
+    modes: tuple[str, str] = MODES,
+    baseline_prefill: float = 2.0,
+    candidate_prefill: float = 1.8,
+) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for prompt_index, category in enumerate(CATEGORIES):
         prompt_id = f"prompt_{prompt_index}"
         for repetition in range(3):
             generated = list(range(32))
-            for mode in MODES:
-                prefill = 2.0 if mode == "direct" else 1.8
+            for mode in modes:
+                prefill = baseline_prefill if mode == modes[0] else candidate_prefill
                 rows.append(
                     {
                         "prompt_id": prompt_id,
@@ -78,6 +87,70 @@ def test_grouped_down_category_mode_order_is_counterbalanced() -> None:
     for index in range(10):
         assert _mode_order(index, 1) == tuple(reversed(_mode_order(index, 0)))
         assert _mode_order(index, 2) == _mode_order(index, 0)
+
+
+def test_grouped_combine_category_accepts_exact_nonregressive_wall() -> None:
+    comparison = GROUPED_COMBINE_COMPARISON
+    rows = _rows(
+        modes=comparison.modes,
+        baseline_prefill=2.0,
+        candidate_prefill=2.001,
+    )
+    free_running = _paired_free_running(
+        rows,
+        HORIZONS,
+        comparison=comparison,
+    )
+    aggregate = _aggregate(rows, HORIZONS, comparison=comparison)
+    gate = _promotion_gate(
+        aggregate,
+        free_running,
+        _teacher_forced_quality(_teacher_rows()),
+        {"pass": True},
+        {"pass": True},
+        horizons=HORIZONS,
+        recovered=True,
+        comparison=comparison,
+    )
+
+    assert _mode_order(0, 0, comparison=comparison) == comparison.modes
+    assert aggregate[comparison.aggregate_key]["prefill_speedup"] == pytest.approx(
+        2.0 / 2.001
+    )
+    assert free_running["all_pairs_exact"] is True
+    assert gate["pass"] is True
+    assert gate["policy"]["performance"].startswith("aggregate/category prefill >=0.995x")
+
+
+def test_grouped_combine_category_loads_matching_screen(tmp_path) -> None:
+    screen = tmp_path / "combine-screen.json"
+    screen.write_text(
+        json.dumps(
+            {
+                "kind": GROUPED_COMBINE_COMPARISON.screen_kind,
+                "status": GROUPED_COMBINE_COMPARISON.screen_status,
+                "pass": True,
+                "screen": {
+                    "pass": True,
+                    "regressed_rows": [],
+                    "effective_speedup": 0.9997,
+                },
+                "model": {"sha256": "model-sha"},
+                "repo": {"revision": "candidate-revision"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = SimpleNamespace(shape_screen=screen, model_sha256="model-sha")
+
+    result = _load_shape_screen(
+        args,
+        comparison=GROUPED_COMBINE_COMPARISON,
+    )
+
+    assert result["pass"] is True
+    assert result["comparison"] == "grouped_combine"
+    assert result["aggregate_speedup"] == pytest.approx(0.9997)
 
 
 def test_grouped_down_category_gate_accepts_quality_and_full_model_win() -> None:
