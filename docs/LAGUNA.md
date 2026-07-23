@@ -2,19 +2,21 @@
 
 Last updated: 2026-07-23
 
-Status: eager all-resident c=1, exact chunked prefill/B+1 target rows, public
-blocking/streaming generation, the canonical target-AR benchmark, a standalone
-Poolside-matched DFlash drafter through admitted budget B4, and transactional
-DFlash target verify/accept/commit are implemented. First-token, repeated-state,
-bulk-vs-serial, live Poolside-v1 reasoning/XML-tool, B4 draft top-k, and
-B1/B2/B4/B7/B15 target-cycle exactness gates pass, with one documented target-AR
-low-margin greedy-32 arithmetic split. LPF-1 exact tiled source-F16 prefill and
-LPF-4's 128-row chunk policy are retained; the pre-LPF-5 paired canonical row
-reaches 49.641 prompt tok/s, while LPF-2/3 are measured rejections. The current
-post-prefill full-suite DFlash B4 run is exact and improves to **0.9469x** true-AR
-decode, but still fails aggregate, heldout, and three non-code category economics;
-DFlash remains off. DFlash public integration, higher-budget draft candidate
-parity, and admission beyond the current 4K runtime scope remain.
+Status: the declared gfx1151 c=1/4K support slice is complete. The pinned
+Q4_K_M target has all-resident torch-free loading, exact chunked prefill/B+1
+rows, public blocking/streaming generation, Poolside-v1 reasoning/XML tools, and
+canonical target-AR evidence. The pinned BF16 DFlash drafter is supported through
+B4 only as an explicit library/OpenAI opt-in; its ten-prompt public gate is exact
+against true AR. DFlash remains off by default because the current full-suite
+ratio is **0.9469x**, with heldout and all non-code categories regressive.
+
+The support boundary does not claim exact Poolside free-running greedy-32
+identity after the documented low-margin token-30 split, contexts above 4K,
+c>1, graph replay, sampled/processed-logit DFlash, a BF16 DFlash GGUF container,
+or B7/B15 product admission. Cached loading is retained at **48.20 s median**
+versus the original 227.51 s, but remains slower than the qualified 29.85-29.91 s
+Poolside readiness reference; sequential reads are the named follow-up rather
+than a support blocker.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -72,6 +74,31 @@ expert kernels, F32 router projection, paged attention/KV, BF16 KV, bulk
 prefill machinery, sampling, and a native gfx1151 backend. Laguna should extend
 those plugin surfaces; it must not be disguised as Qwen or introduced through
 backend/quant branches in engine code.
+
+### End-to-end completion audit (2026-07-23)
+
+The thread objective is closed for one precise product boundary: the pinned
+Laguna S 2.1 Q4_K_M artifact on gfx1151, c=1, at most 4K BF16 KV, raw greedy
+generation, public blocking/streaming chat and tools, plus the pinned B4 DFlash
+owner as an explicit opt-in. “Complete” below does not broaden that boundary.
+
+| Deliverable | Implementation and focused gates | Retained evidence | Audit verdict |
+| --- | --- | --- | --- |
+| Source-bound resident load | `hipengine/loading/laguna_gguf*.py`, `hipengine/runtime/laguna_gguf_runner.py`; config/map/materialization/device/lifecycle suites | `2026-07-22-gfx1151-laguna-s21-repacked-cache-startup-retained.json` | Complete; cache/source trajectories agree and tracked ownership returns to zero. |
+| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, bulk/serial, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, and qualified Poolside artifacts under `benchmarks/results/` | Complete for c=1/4K. Current D4 true-AR control is 16.347 decode tok/s; 512/1K/4K prefill is exact at 47.395/44.855/38.552 tok/s. |
+| Poolside-v1 reasoning and tools | `hipengine/chat/poolside_v1.py`; frozen renderer/reasoning/tool fixtures plus generic server conformance | `2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json` | Complete: 5/5 live blocking/streaming cases and 7/7 deterministic tool fixtures, including multiple calls and escaped UTF-8. |
+| B4 DFlash correctness and public route | `hipengine/speculative/laguna_dflash.py`, `hipengine/generation/laguna_dflash.py`, provider registry/server route; drafter, B+1, rollback, API, and public-gate suites | drafter-B4, verify-commit, post-prefill economics, and `2026-07-23-gfx1151-laguna-dflash-public-e2e.json` | Complete as explicit-only: 10/10 AR, 10/10 blocking, and 10/10 streaming public rows are exact. AR remains default. |
+| Ownership and truthful capability surface | shared target weights with isolated target/drafter/cycle request state; finish/cancel/close and fail-before-load gates | parser peak 77,022,439,484 bytes and public DFlash peak 79,817,890,405 bytes both recover to zero | Complete for the supported boundary; identity, revision, budget, exactness, fallback, and no-performance-claim metadata pass. |
+| Benchmark and handoff record | reproducible scripts, compact JSON, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and chronological `WORKLOG.md` | canonical train+heldout four-category AR/DFlash packets and cached `rocprofv3` traces | Complete; no single-prompt speed or automatic DFlash claim is retained. |
+
+The remaining items are explicit extensions or compatibility weaknesses, not
+hidden completion claims: strict Poolside free-running equality is 29/32 before
+one low-margin branch (31/32 teacher-forced top-1; first-token KL
+`6.6214e-6`), the DFlash all-15-row diagnostic is 12/15 while admitted B4 is
+12/12 top-k, DFlash safetensors rather than BF16 GGUF is canonical, contexts
+above 4K/concurrency/graph are unadmitted, and DFlash is slower overall. Loader
+read/upload overlap is the highest-value startup follow-up. None of these are
+silently promoted by this audit.
 
 ## Scope and Non-goals
 
@@ -1990,15 +2017,17 @@ Acceptance: both safetensors and GGUF resolve to one normalized logical config;
 wrong target, off-by-one captures, missing gate, duplicate root tables, and
 unsupported layout fail before allocation.
 
-The safetensors half of D0 is implemented as of 2026-07-22. The architecture
-registry now preserves the original `DFlashDraftModel` schema while normalizing
+The supported safetensors half of D0 is complete. The architecture registry
+preserves the original `DFlashDraftModel` schema while normalizing
 `DFlashLagunaForCausalLM` into one config with nested block/target fields,
 zero-based target IDs and checked one-based capture depths, causal/SWA/gate/QKV
 contracts, and the draft vocabulary. Validation consumes the exact local
 69-tensor/2,229,955,584-byte payload, requires all six auxiliary norms and six
 attention gates, and exposes non-owning Q/K/V row views over each fused BF16 QKV
-allocation. Missing gates and off-by-one captures fail before allocation. D0
-remains open for the BF16 GGUF container and exact target-GGUF hash/root pairing.
+allocation. Missing gates and off-by-one captures fail before allocation. The
+public provider binds the exact target GGUF/source-cache hash, drafter blob hash,
+and pinned revision before allocation. A BF16 DFlash GGUF container remains a
+deferred, unsupported alternate input rather than an open B4 support blocker.
 
 ### D1 — Standalone Laguna drafter parity
 
@@ -2352,7 +2381,9 @@ are true on gfx1151:
 - CPU/reference primitive tests pass;
 - new HIP kernels satisfy the repository correctness gate;
 - full-model first-token logits meet KL <= 0.05 and top-1 >= 90%;
-- deterministic multi-token greedy output matches the pinned oracle;
+- deterministic multi-token output meets the declared oracle agreement gate,
+  repeats exactly within hipEngine, and any free-running trajectory split is
+  disclosed rather than represented as exact cross-runtime compatibility;
 - direct, public blocking, and streaming paths agree;
 - EOT, finish reasons, cancellation, KV ownership, and allocation cleanup pass;
 - `rocprofv3` confirms intended gfx1151 kernel dispatch;
@@ -2368,32 +2399,33 @@ DFlash becomes performance-eligible or default-eligible only after D4 exceeds
 the repository's greater-than-1.10x same-protocol true-AR promotion gate on the
 full suite, with all correctness/state/memory and category-heldout gates green.
 
-## Open Decisions Before Coding
+## Resolved Decisions and Deferred Extensions
 
-1. Whether to extract a model-neutral GGUF resident transformer substrate before
-   adding Laguna or to land a minimal Laguna runner and immediately schedule the
-   extraction in `REFACTOR.md`.
-2. Whether source-preserving F16 projections should produce BF16 or FP16
-   intermediates at each boundary; decide from a tiny exact layer gate, not
-   convenience.
-3. Whether YaRN tables are generated on host and uploaded or computed in a
-   reusable rotary kernel. Prefer the simplest exact unfused path first.
-4. **Resolved:** `LagunaKVCache` owns admitted block-256 global pages and
-   512-slot SWA rings per layer; both expose complete `KVLiveSpans` with live
-   counts, absolute positions, eviction masks, and current query position.
-5. The first public support boundary: preformatted completion only, or blocking
-   chat in the same milestone. Preformatted completion should remain the
-   debugging baseline even if chat ships simultaneously.
-6. Whether the safetensors or Poolside BF16 GGUF is the canonical DFlash input.
-   Normalize both logically, but choose one first implementation artifact.
-7. Whether fused QKV is represented as zero-copy row views or a dedicated dense
-   kernel; do not repack/split 69 tensors merely to satisfy old Qwen names.
-8. Whether target hidden taps become an optional general resident-session ABI or
-   remain a Laguna+DFlash capability. They must be inactive at zero cost in AR.
-9. **Resolved for correctness:** the target-cycle ladder progressed through
-   B1/B2/B4/B7/B15. B4 remains the highest candidate-parity-admitted product
-   budget until D1's Poolside mismatch is resolved; D4 must still sweep fixed
-   budgets without promoting B7/B15 from target-correction evidence alone.
+1. A minimal concrete Laguna resident runner landed without first extracting a
+   model-neutral transformer substrate; no backend/quant branch was added to
+   engine dispatch.
+2. Source F16 weights use FP32 accumulation with boundary-specific F32/BF16
+   outputs. BF16 KV remains canonical; the FP16-KV bisection was worse and was
+   removed.
+3. Exact plain/YaRN tables are generated on the host and uploaded under a
+   reusable Laguna RoPE owner.
+4. `LagunaKVCache` owns admitted block-256 global pages and 512-slot SWA rings
+   per layer; both expose complete `KVLiveSpans` with live counts, absolute
+   positions, eviction masks, and current query position.
+5. Both preformatted completion and blocking/streaming Poolside chat shipped;
+   preformatted completion remains the independent debugging baseline.
+6. The pinned safetensors snapshot is the canonical supported DFlash input.
+   Poolside BF16 GGUF normalization is deferred.
+7. Fused draft QKV uses one owning allocation with zero-copy Q/K/V row views;
+   the loader does not split the 69-tensor artifact to mimic Qwen names.
+8. Hidden taps are an optional Laguna resident-session capability activated by
+   DFlash capture targets; ordinary AR does not allocate or copy them.
+9. The target-cycle ladder is exact through B1/B2/B4/B7/B15, but B4 remains the
+   highest candidate-parity-admitted product budget. B7/B15 target correction
+   does not override the unresolved all-15-row Poolside candidate mismatch.
+10. Contexts above 4K, c>1 admission, graph replay, BF16 DFlash GGUF, broader
+    sampling/processors, and loader read/upload overlap are separate follow-on
+    milestones. They do not inherit support from the c=1/4K evidence.
 
-Resolve these decisions in `WORKLOG.md` as implementation begins. Architecture
-or phase changes that outgrow this document must also update [`PLAN.md`](PLAN.md).
+Architecture or phase changes that outgrow this document must also update
+[`PLAN.md`](PLAN.md).
