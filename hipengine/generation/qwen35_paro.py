@@ -2175,6 +2175,7 @@ class _ParoResidentLoopRow:
     sampler_plan: Any
     native_greedy: bool
     submitted_at: float
+    tokenize_ms: float = 0.0
     sampling_state: RowSamplingState | None = None
     model_slot: int | None = None
     prefill_tokens_seen: int = 0
@@ -2237,6 +2238,18 @@ class Qwen35ParoResidentModelRunner:
         if not tokens:
             raise ValueError("Qwen3.5/PARO prompt tokenization produced no token IDs")
         return tokens
+
+    def record_prompt_tokenize_ms(
+        self,
+        request_ids: Sequence[int],
+        tokenize_ms: Sequence[float],
+    ) -> None:
+        ids = tuple(int(request_id) for request_id in request_ids)
+        values = tuple(max(0.0, float(value)) for value in tokenize_ms)
+        if len(ids) != len(values):
+            raise ValueError("request_ids and tokenize_ms must have the same length")
+        for request_id, value in zip(ids, values, strict=True):
+            self._row(request_id).tokenize_ms = value
 
     def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
         return max(1, int(request.max_tokens))
@@ -3032,7 +3045,10 @@ class Qwen35ParoResidentModelRunner:
                 not row.native_greedy or row.serial_decode_steps > 0
             ),
             native_sampler_rows=False,
-            timing={"request_total_ms": (time.perf_counter() - row.submitted_at) * 1000.0},
+            timing={
+                "tokenize_ms": float(row.tokenize_ms),
+                "request_total_ms": (time.perf_counter() - row.submitted_at) * 1000.0,
+            },
             diagnostics={
                 "stable_model_slot": row.model_slot,
                 "last_width_plan": copy.deepcopy(self._last_width_plan),

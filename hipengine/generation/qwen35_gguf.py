@@ -104,10 +104,19 @@ def _new_gguf_timing_batch_id(kind: str) -> str:
     return f"gguf-{str(kind)}-{uuid.uuid4().hex}"
 
 
-def _encode_prompt(tokenizer: Any, prompt: PromptInput) -> list[int]:
+def _encode_prompt_timed(
+    tokenizer: Any,
+    prompt: PromptInput,
+) -> tuple[list[int], float]:
     if not isinstance(prompt, str):
-        return [int(token) for token in prompt]
-    return [int(token) for token in tokenizer.encode(prompt)]
+        return [int(token) for token in prompt], 0.0
+    tokenize_started = time.perf_counter()
+    token_ids = [int(token) for token in tokenizer.encode(prompt)]
+    return token_ids, _timing_ms_since(tokenize_started)
+
+
+def _encode_prompt(tokenizer: Any, prompt: PromptInput) -> list[int]:
+    return _encode_prompt_timed(tokenizer, prompt)[0]
 
 
 _LLAMA_COMPAT_MTP_ENV = {
@@ -1212,7 +1221,10 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         if request.max_tokens == 0:
             return
-        prompt_ids = _encode_prompt(self.tokenizer, request.prompts[0])
+        prompt_ids, tokenize_ms = _encode_prompt_timed(
+            self.tokenizer,
+            request.prompts[0],
+        )
         raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("GGUF prompt tokenization produced no token IDs")
@@ -1237,13 +1249,19 @@ class Qwen35GGUFBringupGenerator:
         )
         with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
             if plan.mode is SamplingMode.GREEDY_FAST:
-                yield from self._stream_greedy(session, prompt_ids, request)
+                yield from self._stream_greedy(
+                    session,
+                    prompt_ids,
+                    request,
+                    tokenize_ms=tokenize_ms,
+                )
                 return
             yield from self._stream_sampled(
                 session,
                 prompt_ids,
                 request,
                 row_index=0,
+                tokenize_ms=tokenize_ms,
             )
 
     @_target_arch_scoped
@@ -1254,9 +1272,13 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         plan = _gguf_sampler_plan(request)
         if request.max_tokens == 0:
-            prompt_rows_by_request = {
-                index: _encode_prompt(self.tokenizer, prompt)
+            encoded_prompts = {
+                index: _encode_prompt_timed(self.tokenizer, prompt)
                 for index, prompt in enumerate(request.prompts)
+            }
+            prompt_rows_by_request = {
+                index: encoded[0]
+                for index, encoded in encoded_prompts.items()
             }
             self.last_generation_outputs = tuple(
                 GenerationOutput(
@@ -1268,6 +1290,7 @@ class Qwen35GGUFBringupGenerator:
                         (),
                         request,
                         row_index=index,
+                        timing={"tokenize_ms": encoded_prompts[index][1]},
                     ),
                 )
                 for index, prompt in enumerate(request.prompts)
@@ -1299,9 +1322,13 @@ class Qwen35GGUFBringupGenerator:
             and len(request.prompts) > 1
             and bool(getattr(self, "native_batch_decode", False))
         ):
-            prompt_rows_by_request = {
-                row_index: _encode_prompt(self.tokenizer, prompt)
+            encoded_prompts = {
+                row_index: _encode_prompt_timed(self.tokenizer, prompt)
                 for row_index, prompt in enumerate(request.prompts)
+            }
+            prompt_rows_by_request = {
+                row_index: encoded[0]
+                for row_index, encoded in encoded_prompts.items()
             }
             if any(not prompt_ids for prompt_ids in prompt_rows_by_request.values()):
                 raise ValueError("GGUF prompt tokenization produced no token IDs")
@@ -1348,6 +1375,7 @@ class Qwen35GGUFBringupGenerator:
                         native_caware_decode=True,
                         serial_decode_fallback=False,
                         native_sampler_rows=True,
+                        timing={"tokenize_ms": encoded_prompts[row_index][1]},
                     ),
                 )
                 for row_index in range(len(prompt_rows_by_request))
@@ -1377,9 +1405,10 @@ class Qwen35GGUFBringupGenerator:
                 row_start = time.perf_counter()
                 row_timing: dict[str, float] = {"session_open_ms": session_open_ms}
                 raise_if_generation_deadline_expired(request)
-                tokenize_start = time.perf_counter()
-                prompt_ids = _encode_prompt(self.tokenizer, prompt)
-                _timing_set(row_timing, "tokenize_ms", tokenize_start)
+                prompt_ids, row_timing["tokenize_ms"] = _encode_prompt_timed(
+                    self.tokenizer,
+                    prompt,
+                )
                 prompt_rows_by_request[row_index] = prompt_ids
                 raise_if_generation_deadline_expired(request)
                 if not prompt_ids:
@@ -1417,6 +1446,7 @@ class Qwen35GGUFBringupGenerator:
                         prompt_ids,
                         request,
                         row_index=row_index,
+                        timing=row_timing,
                     )
                     outputs.append(output)
                     token_logprobs_by_request[row_index] = list(output.token_logprobs)
@@ -1446,9 +1476,10 @@ class Qwen35GGUFBringupGenerator:
         tokenize_ms_by_request: dict[int, float] = {}
         for row_index, prompt in enumerate(request.prompts):
             raise_if_generation_deadline_expired(request)
-            tokenize_start = time.perf_counter()
-            prompt_ids = _encode_prompt(self.tokenizer, prompt)
-            tokenize_ms_by_request[row_index] = _timing_ms_since(tokenize_start)
+            prompt_ids, tokenize_ms_by_request[row_index] = _encode_prompt_timed(
+                self.tokenizer,
+                prompt,
+            )
             if not prompt_ids:
                 raise ValueError("GGUF prompt tokenization produced no token IDs")
             encoded_prompts[row_index] = prompt_ids
@@ -2001,9 +2032,10 @@ class Qwen35GGUFBringupGenerator:
         encoded_prompts: dict[int, list[int]] = {}
         tokenize_ms_by_request: dict[int, float] = {}
         for row_index, prompt in enumerate(request.prompts):
-            tokenize_start = time.perf_counter()
-            encoded_prompts[row_index] = _encode_prompt(self.tokenizer, prompt)
-            tokenize_ms_by_request[row_index] = _timing_ms_since(tokenize_start)
+            (
+                encoded_prompts[row_index],
+                tokenize_ms_by_request[row_index],
+            ) = _encode_prompt_timed(self.tokenizer, prompt)
         if any(
             len(prompt_ids) < _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS
             for prompt_ids in encoded_prompts.values()
@@ -4128,6 +4160,7 @@ class Qwen35GGUFBringupGenerator:
         request: GenerationRequest,
         *,
         row_index: int,
+        timing: dict[str, float] | None = None,
     ) -> GenerationOutput:
         sampling_request = _request_with_tokenizer_eos(request, self.tokenizer)
         state = _gguf_row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
@@ -4159,6 +4192,7 @@ class Qwen35GGUFBringupGenerator:
                     forced_sample=sample,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
+                    timing=timing,
                 ),
             )
         for _ in range(request.max_tokens - 1):
@@ -4193,6 +4227,7 @@ class Qwen35GGUFBringupGenerator:
                 forced_sample=samples[-1] if samples else None,
                 full_vocab_logits_d2h=full_vocab_logits_d2h,
                 logits_d2h_bytes=logits_d2h_bytes,
+                timing=timing,
             ),
         )
 
@@ -4201,8 +4236,11 @@ class Qwen35GGUFBringupGenerator:
         session: Qwen35GGUFResidentSession,
         prompt_ids: list[int],
         request: GenerationRequest,
+        *,
+        tokenize_ms: float,
     ) -> Iterator[GenerationStreamChunk]:
         generated_ids: list[int] = []
+        telemetry_timing = {"tokenize_ms": max(0.0, float(tokenize_ms))}
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=False)
         raise_if_generation_deadline_expired(request)
@@ -4221,6 +4259,7 @@ class Qwen35GGUFBringupGenerator:
                 request,
                 row_index=0,
                 phase="answer",
+                timing=telemetry_timing,
             ),
             generated_token_ids=(
                 tuple(generated_ids)
@@ -4249,6 +4288,7 @@ class Qwen35GGUFBringupGenerator:
                     request,
                     row_index=0,
                     phase="answer",
+                    timing=telemetry_timing,
                 ),
                 generated_token_ids=(
                     tuple(generated_ids)
@@ -4266,8 +4306,10 @@ class Qwen35GGUFBringupGenerator:
         request: GenerationRequest,
         *,
         row_index: int,
+        tokenize_ms: float,
     ) -> Iterator[GenerationStreamChunk]:
         sampling_request = _request_with_tokenizer_eos(request, self.tokenizer)
+        telemetry_timing = {"tokenize_ms": max(0.0, float(tokenize_ms))}
         state = _gguf_row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         generated_ids: list[int] = []
         live_phase = None if state.thinking_budget is not None else "answer"
@@ -4302,6 +4344,7 @@ class Qwen35GGUFBringupGenerator:
                 forced_sample=sample,
                 full_vocab_logits_d2h=full_vocab_logits_d2h,
                 logits_d2h_bytes=logits_d2h_bytes,
+                timing=telemetry_timing,
             ),
             generated_token_ids=(
                 tuple(generated_ids)
@@ -4343,6 +4386,7 @@ class Qwen35GGUFBringupGenerator:
                     forced_sample=sample,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
+                    timing=telemetry_timing,
                 ),
                 generated_token_ids=(
                     tuple(generated_ids)
@@ -4387,6 +4431,7 @@ class _GGUFResidentLoopRow:
     native_greedy: bool
     native_sampled: bool
     submitted_at: float
+    tokenize_ms: float = 0.0
     native_sampler: bool = False
     prefill_tokens_seen: int = 0
     incremental_prefill: bool | None = None
@@ -5255,6 +5300,18 @@ class Qwen35GGUFResidentModelRunner:
             raise ValueError("GGUF prompt tokenization produced no token IDs")
         return tokens
 
+    def record_prompt_tokenize_ms(
+        self,
+        request_ids: Sequence[int],
+        tokenize_ms: Sequence[float],
+    ) -> None:
+        ids = tuple(int(request_id) for request_id in request_ids)
+        values = tuple(max(0.0, float(value)) for value in tokenize_ms)
+        if len(ids) != len(values):
+            raise ValueError("request_ids and tokenize_ms must have the same length")
+        for request_id, value in zip(ids, values, strict=True):
+            self._row(request_id).tokenize_ms = value
+
     def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
         if int(request.max_tokens) > 0:
             return int(request.max_tokens)
@@ -5896,6 +5953,7 @@ class Qwen35GGUFResidentModelRunner:
             seq_position=int(lease.session.position),
             generated_ids=[token],
             timing={
+                "tokenize_ms": float(row.tokenize_ms),
                 "prefill_ms": float(row.prefill_ms),
                 "prefill_chunk_count": float(row.prefill_chunk_count),
                 "request_total_ms": _timing_ms_since(row.submitted_at),
@@ -6209,6 +6267,7 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF resident prefill finished without a session lease")
         token = int(getattr(result, "token_id"))
         timing = {
+            "tokenize_ms": float(row.tokenize_ms),
             "prefill_ms": float(row.prefill_ms),
             "prefill_chunk_count": float(row.prefill_chunk_count),
             "request_total_ms": _timing_ms_since(row.submitted_at),
@@ -7010,6 +7069,10 @@ class Qwen35GGUFResidentModelRunner:
                 native_caware_decode=False,
                 serial_decode_fallback=False,
                 native_sampler_rows=False,
+                timing={
+                    "tokenize_ms": float(row.tokenize_ms),
+                    "request_total_ms": _timing_ms_since(row.submitted_at),
+                },
                 diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
             ),
         )
