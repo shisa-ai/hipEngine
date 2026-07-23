@@ -1,0 +1,284 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T22:01:44.577388+00:00",
+  "kind": "hipengine_laguna_expert_major_component_bisection",
+  "status": "component_bisection_rejected",
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "rejected same-owner uniformly-M128 component diagnostic over all ten canonical category prompts; exact grouped-small-M remains default",
+  "repo": {
+    "revision": "bc4baa193c1ad179d83b5c660a5f65272164a5d2",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "gpu_max_hw_queues": 1
+  },
+  "protocol": {
+    "modes": [
+      "adaptive_grouped_smallm_fused",
+      "adaptive_expert_major_gate_up_comp",
+      "adaptive_expert_major_down_comp",
+      "adaptive_expert_major_wmma_comp"
+    ],
+    "chunk_size": 128,
+    "context_length": 4096,
+    "prompt_tokens": 128,
+    "prompt_expansion": "repeat each canonical prompt without repeating its leading BOS, then truncate; apply identically to every mode",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "repetitions": 3,
+    "teacher_forced_tokens_per_prompt": 32,
+    "timed_order": "four-mode deterministic rotation by prompt and repetition",
+    "timing_scope": "resident same-owner prefill only; model load and quality copies excluded",
+    "teacher_forcing": "one retained top-1 ID feeds all four isolated sessions per step",
+    "decode_route": "unchanged exact c=1 path"
+  },
+  "source_rejection": {
+    "path": "benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json",
+    "sha256": "80329583ca485f0dcc79a6964aef138042d29ffd46f550be08380050992d07d7",
+    "revision": "e1b3f89f59caf4e4e17c604398dae25cd1f7c022",
+    "max_kl_divergence": 0.5277908719463109,
+    "prefill_speedup": 1.7873134631551568
+  },
+  "performance": {
+    "adaptive_grouped_smallm_fused": {
+      "prefill_seconds": 52.26608205609955,
+      "prefill_tok_s": 73.47020953050115
+    },
+    "adaptive_expert_major_gate_up_comp": {
+      "prefill_seconds": 33.82357064401731,
+      "prefill_tok_s": 113.5302963845781,
+      "speedup_vs_retained": 1.5452561944504324,
+      "category_prefill_tok_s": {
+        "code": 113.277,
+        "general_en": 114.176,
+        "general_ja": 114.326,
+        "mixed_ja_en": 112.613
+      }
+    },
+    "adaptive_expert_major_down_comp": {
+      "prefill_seconds": 47.750401196302846,
+      "prefill_tok_s": 80.41817249270187,
+      "speedup_vs_retained": 1.0945684381002927,
+      "category_prefill_tok_s": {
+        "code": 79.867,
+        "general_en": 79.908,
+        "general_ja": 81.446,
+        "mixed_ja_en": 81.030
+      }
+    },
+    "adaptive_expert_major_wmma_comp": {
+      "prefill_seconds": 29.37647748598829,
+      "prefill_tok_s": 130.71682953926543,
+      "speedup_vs_retained": 1.7791813903157356,
+      "category_prefill_tok_s": {
+        "code": 130.371,
+        "general_en": 131.625,
+        "general_ja": 132.124,
+        "mixed_ja_en": 129.135
+      }
+    }
+  },
+  "quality": {
+    "adaptive_expert_major_gate_up_comp": {
+      "pass": false,
+      "failed_checks": [
+        "max_kl_above_0.05"
+      ],
+      "steps": 320,
+      "top1_matches": 312,
+      "top1_agreement": 0.975,
+      "max_kl_divergence": 0.9880495956669225,
+      "finite": true,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 127,
+          "top1_agreement": 0.9921875,
+          "max_kl_divergence": 0.9880495956669225
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.44790900060471456
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.31111597635981264
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 61,
+          "top1_agreement": 0.953125,
+          "max_kl_divergence": 0.9188796641359216
+        }
+      }
+    },
+    "adaptive_expert_major_down_comp": {
+      "pass": false,
+      "failed_checks": [
+        "max_kl_above_0.05"
+      ],
+      "steps": 320,
+      "top1_matches": 311,
+      "top1_agreement": 0.971875,
+      "max_kl_divergence": 1.1836615229784513,
+      "finite": true,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 126,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 1.1836615229784513
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 63,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 0.5715331415731462
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 63,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 0.34080215575509554
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 59,
+          "top1_agreement": 0.921875,
+          "max_kl_divergence": 0.3957829743398101
+        }
+      }
+    },
+    "adaptive_expert_major_wmma_comp": {
+      "pass": false,
+      "failed_checks": [
+        "max_kl_above_0.05"
+      ],
+      "steps": 320,
+      "top1_matches": 314,
+      "top1_agreement": 0.98125,
+      "max_kl_divergence": 0.5277908719463109,
+      "finite": true,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 126,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 0.4339216159136236
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.18588204419128115
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 64,
+          "top1_agreement": 1.0,
+          "max_kl_divergence": 0.3294641705177081
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.5277908719463109
+        }
+      }
+    },
+    "poolside_oracle": {
+      "all_modes_pass": true,
+      "prompt_tokens": 55,
+      "kl_divergence": 0.00009721235133095365,
+      "top1_agreement": 1.0,
+      "reference_top1": 94557,
+      "candidate_top1": 94557
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "evaluation": {
+    "pass": false,
+    "passing_modes": [],
+    "selected_mode": null,
+    "decision": "reject both component routes; retain the combined leaf only for one final architecture-derived layer-family scope bisection",
+    "reason": "Q4 gate/up-only and Q4/Q6 down-only both exceed KL 0.05 and are numerically worse than the combined route, indicating partial error cancellation"
+  },
+  "memory": {
+    "resident_nbytes": 77125438836,
+    "tracked_returned_to_baseline": true,
+    "tracked_peak_allocated_bytes": 78675563332,
+    "tracked_peak_allocations": 2759,
+    "tracked_total_allocated_bytes": 141843136544,
+    "tracked_total_freed_bytes": 141843136544,
+    "tracked_after_current_allocated_bytes": 0,
+    "tracked_after_active_allocations": 0
+  },
+  "load": {
+    "seconds_excluded": 50.42431751603726
+  },
+  "raw_output": {
+    "path": "/tmp/laguna-expert-major-component-bisection.raw.json",
+    "bytes": 283606,
+    "sha256": "cd6fbf3835b0451342a7d030204744c77b4c9e8672d7e1c738923b1a91f99685",
+    "stderr_path": "/tmp/laguna-expert-major-component-bisection.stderr.log",
+    "stderr_sha256": "bc332f965860c1df21ac40ffc3ef6ac95df8e336b9ba5f51309b9d9a72b8dd1c",
+    "committed": false,
+    "omitted_fields": [
+      "rows",
+      "teacher_forced_prompts"
+    ]
+  },
+  "command": [
+    "HIP_VISIBLE_DEVICES=0",
+    "HIPENGINE_HIP_ARCH=gfx1151",
+    "HIPENGINE_GPU_MAX_HW_QUEUES=1",
+    "PYTHONPATH=.",
+    ".venv/bin/python",
+    "-u",
+    "scripts/laguna_expert_major_component_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--chunk-size",
+    "128",
+    "--repetitions",
+    "3",
+    "--teacher-forced-tokens",
+    "32",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-expert-major-component-bisection.raw.json"
+  ]
+}

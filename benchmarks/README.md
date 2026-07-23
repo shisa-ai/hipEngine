@@ -1850,6 +1850,16 @@ grouped-small-M remains default; the registered leaf is retained only for a
 full-suite component/layer-scope bisection.
 [Rejected expert-major category gate](results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json).
 
+The follow-up component bisection rejects both halves. Q4 gate/up-only reaches
+**113.530 tok/s (1.545x)** but max KL **0.988050** at **312/320** top-1;
+Q4/Q6 down-only reaches **80.418 tok/s (1.095x)** but max KL **1.183662** at
+**311/320**. The combined route remains fastest and has lower KL than either
+half, indicating partial numerical cancellation rather than one isolated bad
+projection. Poolside fallback and lifecycle pass for every mode. No component
+is retained; only an architecture-derived global-versus-SWA layer-family screen
+remains before removing the temporary routes.
+[Rejected expert-major component bisection](results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row
