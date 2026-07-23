@@ -1,0 +1,526 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 48.987,
+    "canonical_ms_per_token": 20.414,
+    "commit": "64437400facf5a16cee5baaa24c0f63a8788d4aa",
+    "dispatches_per_token": 775,
+    "name": "D12 retained raw-Q5 wave32x2",
+    "remaining_gap_ms_per_token": 0.414,
+    "retained_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json",
+    "retained_artifact_sha256": "c02d1351fc07572ea4cb23cc6693be19343537158c050394374f0a021ac84769",
+    "target_ms_per_token": 20.0,
+    "target_tok_s": 50.0,
+    "trace_source_revision": "338d3afca"
+  },
+  "candidate": {
+    "dispatch_effect": {
+      "candidate_launches_per_layer": 1,
+      "control_launches_per_layer": 2,
+      "expected_dispatches_per_token": 727,
+      "removed_launches_per_token": 48,
+      "standalone_global_writes_removed_per_token": 12,
+      "standalone_swa_writes_removed_per_token": 36
+    },
+    "expected_resources_gate": {
+      "dynamic_lds_bytes": 1024,
+      "expected_grid_blocks": {
+        "global": 56,
+        "swa": 80
+      },
+      "scratch_bytes": 0,
+      "vgpr_max": 32,
+      "workgroup_size": 256
+    },
+    "name": "exact Laguna head RMSNorm + partial RoPE + BF16 KV append",
+    "registry_keys": [
+      [
+        "hip_gfx1100",
+        "head_rmsnorm+partial_rotary+kv_write",
+        "laguna_f32_weight",
+        "global_f32_bf16_spans"
+      ],
+      [
+        "hip_gfx1100",
+        "head_rmsnorm+partial_rotary+kv_write",
+        "laguna_f32_weight",
+        "swa_f32_bf16_spans"
+      ]
+    ],
+    "schedule": [
+      "retain the existing local256 one-block-per-Q-or-K-head RMSNorm reduction, stride-128..1 shared-memory tree, F32-weight multiply, and partial/full RoPE expressions",
+      "query-head blocks remain arithmetically and structurally unchanged",
+      "each of the eight K-head blocks stores the exact F32 rotated key scratch row and converts that same register value to BF16 directly into its physical cache row",
+      "threads 0..127 of each K-head block load the matching F32 value element and store the current RNE-BF16 value cache row; threads 128..255 still participate in the unchanged RMS reduction barriers",
+      "the first K-head block thread 0 reproduces the standalone global or SWA writer metadata update for live_counts, token_positions, and evict_mask",
+      "kernel completion remains the only required cross-block synchronization before the following attention launch"
+    ],
+    "scope": {
+      "complete_kv_live_spans": true,
+      "head_dim": 128,
+      "kv_heads": 8,
+      "q_heads": {
+        "global": 48,
+        "swa": 72
+      },
+      "rotary_dim": {
+        "global": 64,
+        "swa": 128
+      },
+      "rows": 1
+    },
+    "traffic_effect": {
+      "bf16_cache_writes_retained_bytes_per_layer": 4096,
+      "f32_rotated_key_scratch_reread_removed_bytes_per_layer": 4096,
+      "f32_rotated_key_scratch_reread_removed_bytes_per_token": 196608,
+      "f32_rotated_key_scratch_write_retained_bytes_per_layer": 4096,
+      "f32_value_reads_retained_bytes_per_layer": 4096,
+      "note": "The design preserves observable F32 key scratch and all value/cache traffic; only the writer reread of the just-produced key row is removed."
+    },
+    "unfused_fallback": "registered head RMSNorm+partial RoPE followed by registered global/SWA KV writer; mandatory for rows>1, gfx1151/unmeasured backends, registry/shape miss, explicit rollback, and any unsupported capture mode"
+  },
+  "candidate_ranking": [
+    {
+      "candidate": "head RMSNorm + partial RoPE + BF16 KV append",
+      "decision": "selected",
+      "rank": 1,
+      "reason": "largest fresh block-local exact launch boundary; existing K-head blocks have the output registers and idle post-reduction lanes needed to append K/V without a global producer counter",
+      "short_zero_increment_ceiling_ms": 0.36879757142857145
+    },
+    {
+      "candidate": "global/SWA attention decode + per-head softplus gate",
+      "decision": "deferred_to_independent_followup",
+      "rank": 2,
+      "reason": "also block-local and exact, but must pay softplus/BF16 post-op work inside long context-sensitive attention bodies; D10 and D13 require an independent mechanical/category decision rather than an assumed additive bundle",
+      "short_gate_body_plus_pre_gate_gap_ceiling_ms": 0.30710478571428573
+    },
+    {
+      "candidate": "Q5 attention output + add-RMSNorm",
+      "decision": "deferred",
+      "rank": 3,
+      "reason": "requires completion across 1,536 output producer workgroups per layer and a global counter; D11 showed this class can shorten a window while regressing total kernel sum"
+    },
+    {
+      "candidate": "IQ3 selected down + D9 aggregate tail",
+      "decision": "deferred",
+      "rank": 4,
+      "reason": "requires completion across 3,072 output workgroups and entangles the separately fused weighted-down and aggregate-tail boundaries"
+    }
+  ],
+  "date": "2026-07-24",
+  "hardware": {
+    "architecture": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "implementation_gate": {
+    "micro": [
+      "50 warmups/mode and 15 counterbalanced repetitions with at least 500 inclusive head+writer or fused launches/sample on actual global layers 0/44 and SWA layers 1/47",
+      "all four actual endpoint cases must preserve F32 query/key bits, BF16 K/V bits, and metadata and improve both HIP-event and synchronized-wall medians",
+      "cached trace must show the global/SWA fused symbols at local256, dynamic LDS1024, VGPR<=32, scratch0, 56/80 blocks, exactly 48 fused calls/token, and no standalone KV writer"
+    ],
+    "model": [
+      "all 48 post-layer hidden rows, full logits/argmax bits, final/post-layer hidden, complete K/V and KVLiveSpans, reset/re-prefill, and lifecycle must remain exact",
+      "clean short/512/1K/near-4K fused family, total kernel sum, dispatch span, and profiled-child throughput must each improve with 727 classified dispatches/token",
+      "only after the mechanical gate passes, the complete counterbalanced ten-prompt/four-category h16/h32 gate must preserve every ID/quality/state/lifecycle check and be non-regressive in every category"
+    ],
+    "red": [
+      "missing global/SWA four-axis wrappers and registry keys must fail before implementation",
+      "synthetic global partial-64 and SWA full-128 query/key F32 outputs, BF16 cache rows, and every KVLiveSpans field must equal the existing head-plus-writer chain bit-for-bit",
+      "cover positions 0/255/256/4095 globally and 0/511/512/513/1024 in SWA, permuted physical offsets, eviction/reused slots, BF16 halfway cases, signed zero, finite extremes, and non-finite classes",
+      "gfx1151, rows>1, registry/shape miss, and explicit disable must execute the existing two-kernel fallback"
+    ],
+    "retention": "promote only after all gates; otherwise remove the fused route and retain D12 head-plus-writer fallback without default-off debt"
+  },
+  "kind": "hipengine_laguna_q2_xl_d14_head_rope_kv_write_design",
+  "measured_opportunity": {
+    "interpretation": "The short same-work launch-gap model saves 0.203 ms/token and reaches only 49.48 tok/s. The impossible zero-increment ceiling also removes the complete writer body, saves 0.369 ms/token, and reaches 49.89 tok/s. D14 is selected as an exact incremental win, not a standalone 50 tok/s claim.",
+    "profiles": [
+      {
+        "calls_per_token": {
+          "global_write": 12,
+          "head": 48,
+          "swa_write": 36
+        },
+        "label": "short",
+        "means_ms_per_token": {
+          "head_ms": 0.20315857142857144,
+          "head_to_write_end_window_ms": 0.5719561428571429,
+          "head_to_write_gap_ms": 0.20337650000000002,
+          "write_ms": 0.16542107142857143
+        },
+        "resources": [
+          [
+            "(anonymous namespace)::laguna_global_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "(anonymous namespace)::laguna_swa_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ]
+        ],
+        "stable_tokens": 14,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-short-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "95024673f518c9b9a577ee9097155eade80500a685a39e4070f68e0203924306",
+        "zero_increment_fusion_savings_ms": 0.36879757142857145,
+        "zero_increment_remaining_ms": 20.04520242857143,
+        "zero_increment_tok_s": 49.88724876006491
+      },
+      {
+        "calls_per_token": {
+          "global_write": 12,
+          "head": 48,
+          "swa_write": 36
+        },
+        "label": "512",
+        "means_ms_per_token": {
+          "head_ms": 0.20214183333333333,
+          "head_to_write_end_window_ms": 0.5910245,
+          "head_to_write_gap_ms": 0.21965466666666666,
+          "write_ms": 0.169228
+        },
+        "resources": [
+          [
+            "(anonymous namespace)::laguna_global_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "(anonymous namespace)::laguna_swa_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ]
+        ],
+        "stable_tokens": 6,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-512-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "67f8f6be2900cc8b0301cd73c090f3d0ec162e195e6987ae3e425f508e680f36",
+        "zero_increment_fusion_savings_ms": 0.38888266666666665,
+        "zero_increment_remaining_ms": 20.025117333333334,
+        "zero_increment_tok_s": 49.937285427807396
+      },
+      {
+        "calls_per_token": {
+          "global_write": 12,
+          "head": 48,
+          "swa_write": 36
+        },
+        "label": "1024",
+        "means_ms_per_token": {
+          "head_ms": 0.20198966666666668,
+          "head_to_write_end_window_ms": 0.5820133333333334,
+          "head_to_write_gap_ms": 0.20974166666666666,
+          "write_ms": 0.170282
+        },
+        "resources": [
+          [
+            "(anonymous namespace)::laguna_global_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "(anonymous namespace)::laguna_swa_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ]
+        ],
+        "stable_tokens": 6,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-1024-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "625d1a2b59622fc9612c599d85ae0799969027f0475dc3dedf09cc0cc63fa9e9",
+        "zero_increment_fusion_savings_ms": 0.38002366666666665,
+        "zero_increment_remaining_ms": 20.033976333333335,
+        "zero_increment_tok_s": 49.91520322084836
+      },
+      {
+        "calls_per_token": {
+          "global_write": 12,
+          "head": 48,
+          "swa_write": 36
+        },
+        "label": "3968",
+        "means_ms_per_token": {
+          "head_ms": 0.18906283333333335,
+          "head_to_write_end_window_ms": 0.5798061666666667,
+          "head_to_write_gap_ms": 0.22156166666666666,
+          "write_ms": 0.16918166666666667
+        },
+        "resources": [
+          [
+            "(anonymous namespace)::laguna_global_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "(anonymous namespace)::laguna_swa_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ],
+          [
+            "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+            256,
+            16,
+            128,
+            0,
+            0
+          ]
+        ],
+        "stable_tokens": 6,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-3968-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "1438490d37a22c4e145c10ac7904cbd6343d074e8100dad8f096791e339dd9da",
+        "zero_increment_fusion_savings_ms": 0.39074333333333333,
+        "zero_increment_remaining_ms": 20.02325666666667,
+        "zero_increment_tok_s": 49.94192586387462
+      }
+    ],
+    "short": {
+      "head_ms_per_token": 0.20315857142857144,
+      "head_to_writer_end_window_ms_per_token": 0.5719561428571429,
+      "head_to_writer_gap_ms_per_token": 0.20337650000000002,
+      "same_work_gap_only_model": {
+        "gap_closed_pct": 49.124758454106285,
+        "modeled_tok_s": 49.47892874259916,
+        "remaining_ms_per_token": 20.2106235,
+        "savings_ms": 0.20337650000000002
+      },
+      "writer_ms_per_token": 0.16542107142857143,
+      "zero_increment_ceiling": {
+        "gap_closed_pct": 89.08153899240857,
+        "modeled_tok_s": 49.88724876006491,
+        "remaining_ms_per_token": 20.04520242857143,
+        "savings_ms": 0.36879757142857145
+      }
+    }
+  },
+  "model": {
+    "global_layers": 12,
+    "head_dim": 128,
+    "id": "unsloth/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_heads": 8,
+    "layers": 48,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "swa_layers": 36
+  },
+  "next_bound": {
+    "combined_modeled_ms_per_token": 19.738097642857145,
+    "combined_modeled_tok_s": 50.66344376717995,
+    "combined_zero_increment_ceiling_ms": 0.6759023571428572,
+    "note": "D14 plus the independently measured attention+gate zero-increment ceiling would save 0.676 ms/token and model 50.66 tok/s. This is candidate-ranking arithmetic only, not an additive or retained performance claim."
+  },
+  "performance_claim": false,
+  "residual_profile": {
+    "adjacent_profiles": [
+      {
+        "label": "short",
+        "means_ms_per_token": {
+          "attention_gate_gap_ms": 0.1877865714285714,
+          "attention_gate_zero_increment_ms": 0.30710478571428573,
+          "attention_ms": 2.6670719285714286,
+          "combined_zero_increment_ms": 0.6759023571428572,
+          "gate_ms": 0.11931821428571429,
+          "gate_output_gap_ms": 0.18216842857142856,
+          "head_ms": 0.20315857142857144,
+          "head_write_gap_ms": 0.20337650000000002,
+          "head_write_zero_increment_ms": 0.36879757142857145,
+          "output_ms": 2.2427992857142858,
+          "write_attention_gap_ms": 0.20552114285714285,
+          "write_ms": 0.16542107142857143
+        },
+        "modeled": {
+          "attention_gate_zero_increment_ms": {
+            "remaining_ms": 20.106895214285714,
+            "tok_s": 49.73418269417904
+          },
+          "combined_zero_increment_ms": {
+            "remaining_ms": 19.738097642857145,
+            "tok_s": 50.66344376717995
+          },
+          "head_write_zero_increment_ms": {
+            "remaining_ms": 20.04520242857143,
+            "tok_s": 49.88724876006491
+          }
+        },
+        "stable_tokens": 14,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-short-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "95024673f518c9b9a577ee9097155eade80500a685a39e4070f68e0203924306"
+      },
+      {
+        "label": "512",
+        "means_ms_per_token": {
+          "attention_gate_gap_ms": 0.3942876666666667,
+          "attention_gate_zero_increment_ms": 0.5102223333333333,
+          "attention_ms": 16.074893166666666,
+          "combined_zero_increment_ms": 0.899105,
+          "gate_ms": 0.11593466666666667,
+          "gate_output_gap_ms": 0.18177733333333332,
+          "head_ms": 0.20214183333333333,
+          "head_write_gap_ms": 0.21965466666666666,
+          "head_write_zero_increment_ms": 0.38888266666666665,
+          "output_ms": 2.2281511666666667,
+          "write_attention_gap_ms": 0.21548283333333335,
+          "write_ms": 0.169228
+        },
+        "modeled": {
+          "attention_gate_zero_increment_ms": {
+            "remaining_ms": 19.903777666666667,
+            "tok_s": 50.24171877053892
+          },
+          "combined_zero_increment_ms": {
+            "remaining_ms": 19.514895000000003,
+            "tok_s": 51.242909582654676
+          },
+          "head_write_zero_increment_ms": {
+            "remaining_ms": 20.025117333333334,
+            "tok_s": 49.937285427807396
+          }
+        },
+        "stable_tokens": 6,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-512-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "67f8f6be2900cc8b0301cd73c090f3d0ec162e195e6987ae3e425f508e680f36"
+      },
+      {
+        "label": "1024",
+        "means_ms_per_token": {
+          "attention_gate_gap_ms": 0.39676100000000003,
+          "attention_gate_zero_increment_ms": 0.5117433333333333,
+          "attention_ms": 19.018943833333335,
+          "combined_zero_increment_ms": 0.891767,
+          "gate_ms": 0.11498233333333334,
+          "gate_output_gap_ms": 0.18136283333333333,
+          "head_ms": 0.20198966666666668,
+          "head_write_gap_ms": 0.20974166666666666,
+          "head_write_zero_increment_ms": 0.38002366666666665,
+          "output_ms": 2.246862166666667,
+          "write_attention_gap_ms": 0.21216966666666667,
+          "write_ms": 0.170282
+        },
+        "modeled": {
+          "attention_gate_zero_increment_ms": {
+            "remaining_ms": 19.90225666666667,
+            "tok_s": 50.245558418249715
+          },
+          "combined_zero_increment_ms": {
+            "remaining_ms": 19.522233,
+            "tok_s": 51.2236484422658
+          },
+          "head_write_zero_increment_ms": {
+            "remaining_ms": 20.033976333333335,
+            "tok_s": 49.91520322084836
+          }
+        },
+        "stable_tokens": 6,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-1024-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "625d1a2b59622fc9612c599d85ae0799969027f0475dc3dedf09cc0cc63fa9e9"
+      },
+      {
+        "label": "3968",
+        "means_ms_per_token": {
+          "attention_gate_gap_ms": 0.46359883333333335,
+          "attention_gate_zero_increment_ms": 0.5870476666666666,
+          "attention_ms": 35.76801566666667,
+          "combined_zero_increment_ms": 0.9777910000000001,
+          "gate_ms": 0.12344883333333334,
+          "gate_output_gap_ms": 0.18202666666666667,
+          "head_ms": 0.18906283333333335,
+          "head_write_gap_ms": 0.22156166666666666,
+          "head_write_zero_increment_ms": 0.39074333333333333,
+          "output_ms": 2.230770833333333,
+          "write_attention_gap_ms": 0.21653416666666667,
+          "write_ms": 0.16918166666666667
+        },
+        "modeled": {
+          "attention_gate_zero_increment_ms": {
+            "remaining_ms": 19.826952333333335,
+            "tok_s": 50.43639502369644
+          },
+          "combined_zero_increment_ms": {
+            "remaining_ms": 19.436209,
+            "tok_s": 51.4503625681325
+          },
+          "head_write_zero_increment_ms": {
+            "remaining_ms": 20.02325666666667,
+            "tok_s": 49.94192586387462
+          }
+        },
+        "stable_tokens": 6,
+        "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-3968-candidate-v1/epyc_kernel_trace.csv",
+        "trace_sha256": "1438490d37a22c4e145c10ac7904cbd6343d074e8100dad8f096791e339dd9da"
+      }
+    ],
+    "adjacent_ranking_command": "PYTHONPATH=. uv run python /tmp/analyze_laguna_d14_attention_windows.py",
+    "adjacent_ranking_harness_sha256": "bdbd6882c5671b663fdeb26e7bb55b6bbe8b3a973f12963a387c949652ac00c0",
+    "adjacent_ranking_json_sha256": "1c5b3ba063782b8af8a8cb84f563df97389b6a98979c4569f5b324c03f8758df",
+    "adjacent_ranking_output_sha256": "4c488f5b6f90e7eb121d8f253902ce5638de35d255833beb500c1bc9b3a7ec68",
+    "analysis_command": "PYTHONPATH=. uv run python /tmp/analyze_laguna_d14_head_kv_window.py",
+    "analysis_harness_sha256": "57937dbdba84ff887ddece475945d3bbdbfc7fb741528a59918065d4a7036f39",
+    "analysis_json_sha256": "e1310c59a6ebab5a5ee4ba6a6b88a8fe92e16ace37c34e576e7be6e38e269137",
+    "analysis_output_sha256": "f9b72ffa7de76cfd76fb43f163fe0e561f61047432b5d3346bae19ad35757309",
+    "note": "The D12 candidate traces are the retained D12 executable route. Later promotion/rejection commits changed defaults/docs or removed D13 code without changing these baseline kernel bodies."
+  },
+  "schema": 1,
+  "source_basis": {
+    "head_control": "hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip::gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel",
+    "llamacpp_review_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json",
+    "llamacpp_review_artifact_sha256": "411a7357b33a5be502aa0a6ec68cdc2cc9e55614c070aed325f4ac3584694adf",
+    "runtime_boundary": "hipengine/runtime/laguna_gguf_runner.py::_run_layer",
+    "source_lineage": "Narrow check_lineage commands select no external parent; the fusion is an in-tree exact composite. The read-only llama.cpp Vulkan review supports boundary fusion generally but is not arithmetic or speed evidence for this HIP leaf.",
+    "source_sha256": {
+      "gguf_ops.hip": "40710cdcc0af6b4777648273b6e237e9f22e0a87d58b402596ede027e3f82e72",
+      "laguna_gguf_runner.py": "a641d58d33dc50f7b39df8ea94c269ad3663131310d48c7a08fec20e05b111ab",
+      "laguna_kv.py": "dd22adf614fc0a275691cc888ef90f650f3a8262ea6421137ead5020b4e01d6f",
+      "laguna_kv_attention.hip": "2cf9581ceb3ba4100ebc42becfc56d0f1c5473165798d9892f2d445bc11fcbda"
+    },
+    "span_owner": "hipengine/runtime/laguna_kv.py::LagunaKVCache",
+    "writer_controls": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip::{laguna_global,laguna_swa}_write_kv_f32_bf16_kernel"
+  },
+  "status": "selected_for_implementation"
+}
