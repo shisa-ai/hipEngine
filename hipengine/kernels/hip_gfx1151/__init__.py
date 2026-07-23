@@ -34,11 +34,11 @@ from hipengine.kernels.registry import (
 
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
-# Clean LPF-1 same-session rows 2..128 and canonical category gates admit the
-# exact 8x4/16x4 source-F16 tile for every bulk row count. Decode rows remain on
-# the separately registered GEMV fallback.
-LAGUNA_F16_PREFILL_STRATEGY = "tiled"
-LAGUNA_F16_PREFILL_MIN_ROWS = 2
+# Clean AR-O2 three-repeat category/quality gates admit compensated source-F16
+# WMMA only for SWA QKV/gate/O from 16 rows. Full-attention layers and M2-15
+# retain the exact LPF-1 tile; decode retains the separately registered GEMV.
+LAGUNA_F16_PREFILL_STRATEGY = "wmma_comp_swa"
+LAGUNA_F16_PREFILL_MIN_ROWS = 16
 # Clean LPF-5 512/1K/4K full-state equality and timing admit the barrier-free,
 # reduction-order-exact wave32 SWA reader. Other backends retain the registered
 # 128-thread baseline until measured independently.

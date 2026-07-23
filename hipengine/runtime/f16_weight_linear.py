@@ -53,6 +53,12 @@ def _prefill_strategy(
     minimum = int(
         backend_package_capability(backend, "LAGUNA_F16_PREFILL_MIN_ROWS", 0) or 0
     )
+    if strategy == "wmma_comp_swa":
+        return (
+            "wmma_comp"
+            if compensated_wmma_eligible and rows >= minimum > 0
+            else "tiled"
+        )
     return str(strategy) if strategy == "tiled" and rows >= minimum > 0 else None
 
 

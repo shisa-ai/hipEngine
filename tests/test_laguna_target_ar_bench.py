@@ -132,8 +132,8 @@ def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
     monkeypatch,
 ) -> None:
     capabilities = {
-        "LAGUNA_F16_PREFILL_STRATEGY": "tiled",
-        "LAGUNA_F16_PREFILL_MIN_ROWS": 8,
+        "LAGUNA_F16_PREFILL_STRATEGY": "wmma_comp_swa",
+        "LAGUNA_F16_PREFILL_MIN_ROWS": 16,
     }
     monkeypatch.setattr(
         benchmark,
@@ -145,10 +145,10 @@ def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
     automatic = _laguna_f16_prefill_configuration("hip_gfx1151")
     assert automatic == {
         "requested": "auto",
-        "backend_strategy": "tiled",
-        "backend_min_rows": 8,
-        "effective_strategy": "tiled",
-        "effective_min_rows": 8,
+        "backend_strategy": "wmma_comp_swa",
+        "backend_min_rows": 16,
+        "effective_strategy": "wmma_comp_swa",
+        "effective_min_rows": 16,
         "rows_one_always_gemv": True,
     }
 
