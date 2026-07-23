@@ -67,6 +67,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
     LAGUNA_F16_PREFILL_MIN_ROWS,
     LAGUNA_F16_PREFILL_STRATEGY,
+    LAGUNA_PREFILL_MATRIX_ROWS,
     LAGUNA_SWA_PREFILL_VARIANT,
     GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE,
@@ -210,6 +211,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
     assert LAGUNA_F16_PREFILL_STRATEGY == "wmma_comp_swa"
     assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
+    assert LAGUNA_PREFILL_MATRIX_ROWS == 512
     assert LAGUNA_SWA_PREFILL_VARIANT == "swa_context_rows_wave32_exact_spans"
     assert (
         backend_package_capability(
@@ -225,6 +227,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_F16_PREFILL_STRATEGY", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_PREFILL_MATRIX_ROWS", None
+        )
+        == 512
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
     ) is None
     assert (
         backend_package_capability(
