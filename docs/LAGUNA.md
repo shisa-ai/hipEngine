@@ -2805,12 +2805,12 @@ Proceed in measured Amdahl order:
    aggregate and every-category h16 non-regression. The token8 kernel, wrapper,
    registry entry, tests, and selector are removed; token4 remains the gfx1100
    default with baseline fallback; and
-17. **SELECTED (D11):** contract the 47 adjacent BF16-hidden/F32-weight router
-   projection plus correction-only sigmoid-top-k pairs into one exact
-   persistent-counter kernel. The measured short pair window is **0.896
-   ms/token**, including **0.179 ms/token** between the two current kernels;
-   implementation must preserve every current logit/score/ID/weight bit and
-   reduce **775 -> 728 dispatches/token** before clean promotion.
+17. **CORRECTNESS-ADMITTED (D11):** the exact persistent-counter router/top-k
+   composite preserves every logit/score/ID/weight bit at hidden 17/3072 and
+   across all 47 actual Q2 XL sparse layers. It reduces **775 -> 728
+   dispatches/token**; matched dirty tracing improves kernel sum/span/profiled
+   child **0.01%/0.43%/0.88%**, while clean context/category promotion remains
+   the next mandatory gate.
 
 **50 tok/s is a credible W7900 target, not a current claim.** Retained D9 must
 reduce the canonical **21.217 ms to 20 ms**, another **1.217 ms / 5.74% wall**
@@ -3297,6 +3297,35 @@ scratch0, and no per-layer fill. Promotion still requires every clean context's
 kernel sum/span/profiled child plus aggregate and every-category h16/h32 decode
 and E2E to improve with prefill/TTFT inside 0.5%. Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-design.json`.
+
+D11 is now implementation- and correctness-admitted, not performance-promoted.
+The separately registered gfx1100 c=1 composite is default-eligible with
+`use_persistent_router_topk=False` as the explicit split rollback; rows>1,
+gfx1151, missing registrations, and shape misses still execute the two
+registered primitives. Synthetic hidden-17/3072 replay is bit-exact for full
+FP32 logits, unbiased/corrected scores, selected IDs, normalized/scaled weights,
+and two consecutive launches; the dedicated counter reads zero after each.
+
+The shared-weight real-model gate compares all **47** sparse-layer router
+captures plus all 48 post-layer hidden rows, full logits/argmax bits, complete
+K/V and every `KVLiveSpans` field, reset/re-prefill, and lifecycle through 16
+decode steps. Everything is exact, and **40,455,911,864 bytes / 1,500 tracked
+allocations** return to zero. A 15x100 actual-weight all-layer HIP-event screen
+moves the complete 47-layer split window **0.820 -> 0.661 ms (-19.37%)**, or
+**17.452 -> 14.072 us/layer**, with exact outputs and a self-rearmed counter.
+
+Matched cache-only dirty traces then record exactly 47
+`laguna_router_topk_bf16_f32w_persistent_kernel` calls and **728
+dispatches/token**. The kernel runs at **13.76 us median / 0.652 ms/token**,
+local256/VGPR32/SGPR128/LDS512/scratch0. Split -> D11 kernel sum is **17.329 ->
+17.328 ms/token (-0.007%)**, median embedding-to-argmax span **20.494 -> 20.406
+ms (-0.432%)**, and profiled-child throughput **44.912 -> 45.308 tok/s
+(+0.881%)**; IDs, finite logits, and teardown match. One instrumented full-model
+wall screen improves **0.694%**, but remains a correctness-harness diagnostic,
+not a promotion result. Task #287 must still run clean short/512/1K/near-4K
+and the complete category/state/KV/lifecycle gate; rejection removes the route.
+Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-correctness.json`.
 
 ### llama.cpp Vulkan c=1 transfer review (diagnostic)
 

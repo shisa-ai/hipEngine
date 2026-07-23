@@ -103,6 +103,8 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert (plan.expert_ffn_size, plan.shared_ffn_size) == (1_024, 1_024)
     assert plan.routed_scaling_factor == pytest.approx(2.5)
     assert plan.router_select_key.layer == "laguna_sigmoid_router_topk"
+    assert plan.router_topk is None
+    assert plan.router_topk_key not in plan.kernel_keys
     assert (plan.routed_sum_rows_key.layer, plan.routed_sum_rows_key.variant) == (
         "weighted_sum",
         "laguna_rows",
@@ -144,6 +146,27 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "selected_expert_mlp" in sparse_sequence
     assert "laguna_shared_expert" in sparse_sequence
     assert "laguna_routed_shared_combine" in sparse_sequence
+
+
+def test_laguna_d11_router_plan_is_gfx1100_only_and_explicitly_disableable() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    plan = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert plan.router_topk is not None
+    assert plan.router_topk_key == KernelKey(
+        "hip_gfx1100",
+        "laguna_router_topk",
+        "f32",
+        "bf16_hidden_correction_bias_persistent",
+    )
+    assert plan.router_topk_key in plan.kernel_keys
+
+    fallback = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        use_persistent_router_topk=False,
+    )
+    assert fallback.router_topk is None
+    assert fallback.router_topk_key not in fallback.kernel_keys
 
 
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
