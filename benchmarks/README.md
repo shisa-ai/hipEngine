@@ -3,8 +3,10 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
-`73a2583beecc0a92964e9885fc15a2b28802eddf` for the exact W7900 Laguna S 2.1
-UD-Q2_K_XL token4 SWA decode default,
+`35b1602e50c3234f7676dea5c62a802f99a67a8e` for the exact W7900 Laguna S 2.1
+UD-Q2_K_XL Q5 shared gate/up pair default,
+`73a2583beecc0a92964e9885fc15a2b28802eddf` for its preceding token4 SWA
+decode default,
 `fe89c210c9129d51a893beaab8c419aa87250fd5` for its preceding IQ3
 routing-weighted down default,
 `ae20392bb8472a26ad67eba2a82679a83add8576` for its preceding IQ3 K1024
@@ -1187,9 +1189,9 @@ recoverable from the linked compact artifacts, changelog, and
 
 ### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-23
 
-**Status: exact dense/IQ3 decode plus token4 score-parallel SWA is the retained
-W7900 target-only AR default.** Clean revision
-`73a2583beecc0a92964e9885fc15a2b28802eddf` runs the pinned
+**Status: exact dense/IQ3 decode, token4 score-parallel SWA, and raw-Q5 shared
+projection pairing are the retained W7900 target-only AR default.** Clean
+revision `35b1602e50c3234f7676dea5c62a802f99a67a8e` runs the pinned
 `Laguna-S-2.1-UD-Q2_K_XL.gguf`
 (SHA-256 `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
 directly from raw GGUF residency with BF16 KV and a 4-GiB safety reserve. The
@@ -1201,7 +1203,9 @@ rows=1 projections to exact decode-specialized leaves; D2 removes four idle
 wave32 units from exact IQ3 selected-down K1024 launches; D3 preserves each
 route projection's BF16 boundary while contracting scaled routing into that
 selected-down leaf. D4 computes four exact SWA slot dots concurrently, then
-consumes softmax and values in the baseline logical-slot order.
+consumes softmax and values in the baseline logical-slot order. D5 combines
+each same-input K3072/N1024 raw-Q5 shared gate/up pair into one registered
+launch while preserving both singleton reduction trees and BF16 stores.
 
 | hipEngine route | Prefill tok/s | Median TTFT | Decode tok/s, h32 | E2E tok/s, h16 | E2E tok/s, h32 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -1211,35 +1215,38 @@ consumes softmax and values in the baseline logical-slot order.
 | D2 change vs D1 | +7.093% | -6.743% | +8.135% | +7.279% | +7.393% |
 | D3 exact D2 + IQ3 weighted down | 43.264 | 1.865 s | 38.840 | 6.728 | 11.448 |
 | D3 change vs D2 | -0.004% | +0.016% | +1.407% | +0.218% | +0.399% |
-| D4 exact D3 + token4 SWA | **43.168** | **1.870 s** | **43.081** | **6.815** | **11.760** |
-| D4 change vs D3 | **-0.223%** | **+0.272%** | **+10.919%** | **+1.298%** | **+2.724%** |
+| D4 exact D3 + token4 SWA | 43.168 | 1.870 s | 43.081 | 6.815 | 11.760 |
+| D4 change vs D3 | -0.223% | +0.272% | +10.919% | +1.298% | +2.724% |
+| D5 exact D4 + Q5 shared pair | **43.167** | **1.871 s** | **44.501** | **6.849** | **11.860** |
+| D5 change vs D4 | **-0.003%** | **+0.066%** | **+3.298%** | **+0.499%** | **+0.849%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
-The two D4 default samples are stable: bulk prefill is `43.432/42.907 tok/s`,
-h32 decode is `43.331/42.833 tok/s`, and h32 E2E is `11.831/11.690 output
-tok/s`. Versus D3, all four categories improve h32 decode **9.17-13.59%** and
-h32 E2E **2.61-2.86%**; the decode-only route leaves category prefill within
-**-0.33% to -0.10%**. All 20 serial/bulk pairs are exact at both horizons,
-every route repeats deterministically, the independent Poolside first-token
-gate passes at KL `0.000156823` and top-1 `1.0`, and tracked peak ownership is
+The two D5 default samples are stable: bulk prefill is `43.415/42.921 tok/s`,
+h32 decode is `44.713/44.292 tok/s`, and h32 E2E is `11.925/11.795 output
+tok/s`. Versus D4, all four categories improve h32 decode **2.78-3.81%** and
+h32 E2E **0.59-1.17%**; unchanged category prefill stays within **-0.023% to
++0.031%**. All 20 serial/bulk pairs are exact at both horizons, every route
+repeats deterministically, the independent Poolside first-token gate passes at
+KL `0.000156823` and top-1 `1.0`, and tracked peak ownership is
 **40,455,814,968 bytes (37.677 GiB)** before teardown returns exactly to zero.
 
 The source harness's serial-vs-bulk predicate remains false because both modes
 use the same c=1 decode while token-serial prompt prefill is faster. That is
-disclosed rather than hidden: D4 retention compares clean D3 bulk against clean
-D4 bulk on the identical full suite. Decode and E2E improve in every category,
-while unchanged prompt prefill remains within the declared 0.5% guard. [D4
-retained artifact](results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json).
-The [D3 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json),
+disclosed rather than hidden: D5 retention compares clean D4 bulk against clean
+D5 bulk on the identical full suite. Decode and E2E improve in every category,
+while unchanged prompt prefill remains within the declared 0.5% guard. [D5
+retained artifact](results/2026-07-23-gfx1100-laguna-q2-xl-q5-shared-pair-retained.json).
+The [D4 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json),
+[D3 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json),
 [D2 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json),
 [D1 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-dense-decode-retained.json),
 and [D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json)
 remain frozen baselines.
 
-Exact D4 benchmark command:
+Exact D5 benchmark command:
 
 ```bash
-HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-swa-token4-target-ar.json
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-q5-pair-target-ar.json
 ```
 
 ##### Laguna Q2 XL c=1 decode D0
@@ -1346,23 +1353,41 @@ eviction, generated-ID, state, and lifecycle gates all pass. The full suite
 therefore promotes **43.081 tok/s** h32 decode. [D4 retained
 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json).
 
-A direct inventory/trace join now splits D4's remaining dense-Q5 family. Its
-**235 calls/token consume 7.123 ms (37.52% of kernel sum)** across a **1.931 GB
+A direct inventory/trace join split D4's remaining dense-Q5 family. Its **235
+calls/token consumed 7.123 ms (37.52% of kernel sum)** across a **1.931 GB
 encoded-weight proxy**, or 271.1 GB/s; this proxy excludes activations, cache
-waste, and dequant compute. The same-input K3072/N1024 shared gate/up pair is
-**92 calls and 1.561 ms/token** at only 127.4 GB/s. The next bounded candidate
-therefore combines each of the 46 pairs into one registered `linear_pair`
-launch with independent block sets, exact singleton arithmetic, and the two
-singletons retained as fallback. This is an attribution/design decision, not a
-speedup claim. [D4 Q5 profile](results/2026-07-23-gfx1100-laguna-q2-xl-d4-q5-profile.json).
+waste, and dequant compute. The same-input K3072/N1024 shared gate/up subset was
+**92 calls and 1.561 ms/token** at only 127.4 GB/s, selecting the bounded D5
+candidate. [D4 Q5 profile](results/2026-07-23-gfx1100-laguna-q2-xl-d4-q5-profile.json).
+
+##### Laguna Q2 XL c=1 decode D5
+
+D5 combines each of those 46 pairs into one four-axis `linear_pair` launch.
+Independent grid-y workgroups call the exact singleton block body, preserving
+each projection's K order, coefficient hoist, reduction tree, and BF16 store;
+registry/shape misses still execute the two singleton primitives and rows>1 is
+unchanged. Synthetic K3072/N1024 output and actual Q2 XL layer-1/layer-47
+oracles are exact. Actual `blk.1` gate/up wall improves **28.148 -> 16.373 us
+per pair (-41.83%)**.
+
+Clean short tracing removes **46 launches/token (1,010 -> 964)**, moves the
+paired subset **1.561 -> 0.890 ms/token (-42.99%)**, complete dense Q5 **7.123
+-> 6.366 ms (-10.62%)**, kernel sum **18.983 -> 18.260 ms (-3.81%)**, and
+median span **22.878 -> 21.981 ms (-3.92%)**. At 512/1K/near-4K, kernel sum
+improves **2.13%/1.68%/1.18%**, span improves **2.25%/2.02%/1.55%**, and
+profiled child throughput improves **1.78%/1.14%/1.50%**. Every trace preserves
+generated IDs, finite output, exact lifecycle, and local128/VGPR72/LDS1024/
+scratch0 resources. The complete category suite therefore promotes **44.501
+tok/s** h32 decode and **11.860 output tok/s** h32 E2E. [D5 retained
+artifact](results/2026-07-23-gfx1100-laguna-q2-xl-q5-shared-pair-retained.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 
 #### Laguna Q2 XL B4 DFlash decode
 
-**Status: historical D0-relative decode win; current D4 comparison pending.**
-The clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run predates D1/D2/D3/D4 and
+**Status: historical D0-relative decode win; current D5 comparison pending.**
+The clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run predates D1/D2/D3/D4/D5 and
 uses the same ten prompts, categories/heldouts, 128-row chunks, two balanced
 repetitions, and 32
 visible outputs as the Q4 DFlash protocol. It pairs the pinned Q2 XL target with
@@ -1395,10 +1420,10 @@ families, B+1 rowtiles, BF16/F32 DFlash WMMA projections, norm/rope/Silu,
 [Compact artifact](results/2026-07-23-gfx1100-laguna-q2-xl-dflash-b4.json).
 
 The result is retained as a historical **D0-relative decode** win, not a
-current/default-route or fixed-32 E2E win. Current D4 AR reaches **43.081
+current/default-route or fixed-32 E2E win. Current D5 AR reaches **44.501
 tok/s**, above this old DFlash row's 29.452 tok/s, while the verifier should
-also benefit from D2's K1024 workgroup change, D3's weighted-down fusion, and
-D4's token4 SWA. A fresh matched category run is
+also benefit from D2's K1024 workgroup change, D3's weighted-down fusion, D4's
+token4 SWA, and D5's Q5 shared pair. A fresh matched category run is
 therefore required before any current DFlash ratio is claimed. Independently,
 DFlash still seeds target captures serially and this capture reported h32 E2E
 29.16% slower; a full long-horizon category/public-route gate remains required
