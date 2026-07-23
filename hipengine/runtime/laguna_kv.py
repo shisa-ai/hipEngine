@@ -449,12 +449,19 @@ def allocate_laguna_kv_cache(
     backend: str = "hip_gfx1100",
     device: Device | None = None,
     runtime: HipRuntime | None = None,
+    swa_prefill_variant: str = "swa_context_rows_spans",
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
     context = int(context_length)
     if context <= 0:
         raise ValueError("context_length must be positive")
+    parsed_swa_prefill_variant = str(swa_prefill_variant)
+    if parsed_swa_prefill_variant not in {
+        "swa_context_rows_spans",
+        "swa_context_rows_wave32_exact_spans",
+    }:
+        raise ValueError("unsupported Laguna SWA prefill variant")
     runtime = runtime or get_hip_runtime()
     device = device or Device("hip", 0)
     layer_types, head_counts, sliding_window = _validate_config(config, context)
@@ -575,7 +582,7 @@ def allocate_laguna_kv_cache(
                 write_variant = "swa_f32_spans"
                 write_rows_variant = "swa_f32_rows_spans"
                 attention_variant = "swa_context_spans"
-                attention_prefill_variant = "swa_context_rows_spans"
+                attention_prefill_variant = parsed_swa_prefill_variant
             states.append(
                 LagunaKVLayerState(
                     layer_id=layer_id,

@@ -923,12 +923,14 @@ class LagunaGGUFResidentSession:
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
         prefill_chunk_size: int = 128,
+        swa_prefill_variant: str = "swa_context_rows_spans",
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
         self.backend = resolve_backend(backend)
         self.context_length = int(context_length)
         self.prefill_chunk_size = int(prefill_chunk_size)
+        self.swa_prefill_variant = str(swa_prefill_variant)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1022,6 +1024,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 device=self.device,
                 runtime=self.runtime,
+                swa_prefill_variant=self.swa_prefill_variant,
             )
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(

@@ -88,6 +88,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_global_write_kv_rows_f32_spans,
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_prefill_bf16_spans,
+        laguna_swa_attention_prefill_wave32_exact_bf16_spans,
         laguna_swa_write_kv_f32_spans,
         laguna_swa_write_kv_rows_f32_spans,
         plan_laguna_kv_attention_build,
@@ -151,6 +152,15 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             variant="swa_context_rows_spans",
         )
         is laguna_swa_attention_prefill_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_wave32_exact_spans",
+        )
+        is laguna_swa_attention_prefill_wave32_exact_bf16_spans
     )
     assert (
         resolve(
@@ -270,6 +280,11 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     )
     assert all(layer.spans.token_positions is not None for layer in cache.layers)
     assert all(layer.spans.evict_mask is not None for layer in cache.layers)
+    assert all(
+        layer.attention_prefill_variant == "swa_context_rows_spans"
+        for layer in cache.layers
+        if layer.attention_type == SLIDING_ATTENTION
+    )
     assert cache.allocation_count == 243
 
     cache.prepare_position(0)
@@ -310,6 +325,15 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
 
 def test_laguna_kv_owner_cleans_partial_allocation_failure() -> None:
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    with pytest.raises(ValueError, match="SWA prefill variant"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1151",
+            runtime=_FakeRuntime(),
+            swa_prefill_variant="missing",
+        )
 
     runtime = _FakeRuntime(fail_malloc_at=12)
     with pytest.raises(MemoryError, match="synthetic Laguna KV"):
@@ -600,6 +624,13 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         backend="hip_gfx1151",
         runtime=runtime,
     )
+    wave32 = allocate_laguna_kv_cache(
+        config,
+        context_length=520,
+        backend="hip_gfx1151",
+        runtime=runtime,
+        swa_prefill_variant="swa_context_rows_wave32_exact_spans",
+    )
     rng = np.random.default_rng(1207)
     seed_rows = 508
     rows = 8
@@ -615,6 +646,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         swa_query_rows = malloc(query_swa.nbytes, runtime=runtime)
         global_bulk_out = malloc(query_global.nbytes, runtime=runtime)
         swa_bulk_out = malloc(query_swa.nbytes, runtime=runtime)
+        swa_wave32_out = malloc(query_swa.nbytes, runtime=runtime)
         global_serial_out = malloc(query_global[0].nbytes, runtime=runtime)
         swa_serial_out = malloc(query_swa[0].nbytes, runtime=runtime)
         allocations.extend(
@@ -625,6 +657,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
                 swa_query_rows,
                 global_bulk_out,
                 swa_bulk_out,
+                swa_wave32_out,
                 global_serial_out,
                 swa_serial_out,
             )
@@ -640,7 +673,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         # Populate both owners through the bulk write path, then compare one
         # wrap-crossing 508..515 chunk against the established token-serial path.
         seed_positions = tuple(range(seed_rows))
-        for cache in (serial, bulk):
+        for cache in (serial, bulk, wave32):
             cache.prepare_rows(seed_positions)
             for layer_id in range(2):
                 cache.append_rows(
@@ -691,6 +724,25 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         )
         bulk.commit_rows()
 
+        wave32.prepare_rows(positions)
+        wave32.attend_prefill(
+            1,
+            swa_query_rows.ptr,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            swa_wave32_out.ptr,
+            rows,
+            library=library,
+        )
+        wave32.append_rows(
+            1,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            rows,
+            library=library,
+        )
+        wave32.commit_rows()
+
         expected_global = np.empty_like(query_global)
         expected_swa = np.empty_like(query_swa)
         for row, position in enumerate(positions):
@@ -725,6 +777,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
 
         actual_global = np.empty_like(query_global)
         actual_swa = np.empty_like(query_swa)
+        actual_swa_wave32 = np.empty_like(query_swa)
         runtime.device_synchronize()
         copy_device_to_host(
             host_array_ptr(actual_global),
@@ -738,8 +791,15 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             actual_swa.nbytes,
             runtime=runtime,
         )
+        copy_device_to_host(
+            host_array_ptr(actual_swa_wave32),
+            swa_wave32_out,
+            actual_swa_wave32.nbytes,
+            runtime=runtime,
+        )
         np.testing.assert_array_equal(actual_global, expected_global)
         np.testing.assert_array_equal(actual_swa, expected_swa)
+        np.testing.assert_array_equal(actual_swa_wave32, actual_swa)
         assert bulk.position == serial.position == 515
 
         for layer_id in range(2):
@@ -767,6 +827,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
+        wave32.free()
         bulk.free()
         serial.free()
 

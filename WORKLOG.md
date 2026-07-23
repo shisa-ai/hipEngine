@@ -175432,3 +175432,59 @@ SHA-256 `7ca2217d...313ea5`; the compact artifact SHA-256 is
 
 This is retained one-pass attribution, not a speedup, repeated throughput row,
 or supported long-context claim.
+
+## 2026-07-23 — Add exact Laguna LPF-5 wave32 SWA candidate
+
+Started LPF-5 from the measured 4K split rather than an AOTriton rewrite. The
+baseline SWA reader uses 128 threads and seven block barriers for each score in
+each of two token scans. On gfx1151's wave32 execution, lane `i` can instead
+load dimensions `i/i+32/i+64/i+96`, explicitly form the baseline stride-64 and
+stride-32 pairs, and finish offsets 16..1 with shuffles. The candidate preserves
+separate ordered multiply/add operations, sequential softmax max/denominator,
+per-dimension value accumulation, BF16 current/cache rounding, absolute ring
+positions, evictions, and the complete `KVLiveSpans` ABI.
+
+Added the separately registered
+`swa_context_rows_wave32_exact_spans` variant and explicit constructor/allocation
+selection; the old 128-thread route remains default pending full-model timing.
+The GPU wrap fixture seeds 508 rows, crosses 511/512/513 through 515 with an
+evicted prior slot, and proves candidate output byte-exact to both baseline bulk
+and scalar attention. RED first failed because the selector did not exist, then
+GREEN passed.
+
+A ten-pair balanced production leaf screen at 128 rows, 72 Q heads, eight KV
+heads, dim 128, and a full 512-token window is byte-exact and moves median
+**20.434 -> 9.229 ms (2.214x)**. Cached-only `rocprofv3` confirms 14 launches
+per route: baseline **20.355 ms** median at workgroup 128 / 16 VGPR / 1,024 B
+LDS / zero scratch; candidate **9.123 ms** at workgroup 32 / 32 VGPR / zero
+LDS/scratch. Raw trace SHA-256 is `369ba856...76618321` and remains under
+`/tmp/hipengine-laguna-swa-wave32-trace`.
+
+Added `scripts/laguna_swa_prefill_bench.py` and its fail-closed unit gate for a
+clean shared-weight 512/1K/4K full-model A/B. It hashes complete FP32 logits,
+final/pre-final BF16 hidden, next-logit bits, IDs, and cursors after synchronized
+timing; promotion requires every length above 1.05x plus exact lifecycle.
+
+Validation:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_laguna_kv_attention.py
+# 7 passed
+uv run pytest -q tests/test_laguna_gguf_runner.py \
+  -k 'owned_session or allocation_failure'
+# 2 passed
+uv run pytest -q tests/test_laguna_swa_prefill_bench.py \
+  tests/test_laguna_long_context_profile.py
+# 7 passed
+uvx ruff check scripts/laguna_swa_prefill_bench.py \
+  tests/test_laguna_swa_prefill_bench.py \
+  hipengine/kernels/hip_gfx1100/attention/laguna_kv.py \
+  hipengine/runtime/laguna_kv.py hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_laguna_kv_attention.py tests/test_laguna_gguf_runner.py
+# clean
+python3 scripts/check_lineage.py --kind kernel --file '*laguna*' --diff stat
+# no selected external sources / no drift
+```
+
+No full-model promotion claim is made in this candidate unit.
