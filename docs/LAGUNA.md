@@ -2402,14 +2402,16 @@ acceptance are out of scope until AR itself is substantially faster.
 The W7900 UD-Q2_K_XL route changes the decode priority established by the
 mixed-F16 Q4 model on gfx1151. D0 measured **19.596 decode tok/s (51.032
 ms/token)** on the retained full category suite. Exact dense decode at D1
-revision `fc08ca0e` first reached **35.419 tok/s**. D2 revision `ae20392bb` is
-now the default: exact IQ3 selected-down K1024 uses local128 and measures
-**38.301 tok/s (26.109 ms/token)** at h32, **+8.135%** versus D1 and **+95.76%**
-versus D0. D1 -> D2 h32 E2E improves **10.618 -> 11.403 output tok/s
-(+7.393%)**, bulk prefill improves **40.401 -> 43.266 tok/s (+7.093%)**, and
-median TTFT falls **2.000 -> 1.865 s (-6.743%)**. Every category's
-prefill/decode/E2E row, exactness gate, and lifecycle check passes. Evidence:
-`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json`.
+revision `fc08ca0e` first reached **35.419 tok/s**. D2 revision `ae20392bb`
+right-sized exact IQ3 selected-down K1024 to local128 and reached **38.301
+tok/s**. D3 revision `fe89c210c` is now the default: it preserves each D2
+projection's BF16 boundary while contracting scaled routing into the IQ3 down
+leaf and measures **38.840 tok/s (25.747 ms/token)** at h32, **+1.407%** versus
+D2 and **+98.52%** versus D0. D2 -> D3 h32 E2E improves **11.403 -> 11.448
+output tok/s (+0.399%)** while unchanged bulk prefill is **43.264 tok/s
+(-0.004%)** and median TTFT remains **1.865 s (+0.016%)**. Every category's
+decode/E2E row, exactness gate, and lifecycle check passes. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json`.
 
 The frozen clean D0 at `e6120872` profiles 16 c=1 rows after the canonical
 69-token `code_merge_intervals` bulk prefill; the stable 14 rows contain exactly
@@ -2496,6 +2498,19 @@ DFlash row is D0-relative and no longer a current speedup claim; target/DFlash
 economics require a fresh matched rerun after AR optimization closes. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json`.
 
+D3 fuses IQ3 selected-down with its scaled routing reduction only for c=1.
+The registered unfused selected-single plus weighted-sum chain remains the bulk
+and registry fallback. Each route keeps D2's local128 reduction and BF16
+rounding before a slot-ordered FMA. Synthetic tokens=1/2 and actual
+`E256/K1024/N3072/top-10` outputs are BF16-bit exact; the clean paired micro
+median improves **18.13%**. Cached profiling confirms
+local128/VGPR32/LDS512/scratch0, removes 45 weighted-reduce launches/token
+(**1,055 -> 1,010**), moves IQ3 down plus selected reduction **2.392 -> 2.115
+ms/token (-11.61%)**, total kernel sum **21.302 -> 20.997 ms (-1.43%)**, and
+median dispatch span **25.524 -> 25.037 ms (-1.91%)**. The full category suite
+promotes the D3 headline above. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json`.
+
 A second clean D0 at `b4973769` extends the same synthetic canonical token
 stream to 512/1K/3,968 prompt tokens and profiles eight c=1 steps at each shape
 (six stable rows after two disclosed warmups):
@@ -2521,8 +2536,9 @@ it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
 token on an RX 7900 XTX. D1 has now transferred its dedicated dense pack8
 strategy to Laguna: raw Q4/Q5/Q6/Q8 rows=1 use exact decode leaves, rows>1 keep
 their existing prefill route, and registry misses preserve the generic
-fallback. Laguna already benefits from IQ2 dual+SiLU, but IQ3 down still has a
-separate 47-launch projection/reduction tail and no graph replay.
+fallback. Laguna already benefits from IQ2 dual+SiLU, and D3 now contracts the
+IQ3 projection/reduction tail by 45 launches/token; one-step graph replay is
+still absent.
 
 Proceed in measured Amdahl order:
 
@@ -2531,17 +2547,20 @@ Proceed in measured Amdahl order:
 2. **REJECTED:** direct one-wave and two-wave exact SWA prefill transfers are
    neutral/regressive; retain local128 and revisit only with token-parallel or
    online/split softmax while preserving `KVLiveSpans` and wrap fixtures;
-3. **PARTIAL:** retain the exact IQ3 wave-uniform base (-0.94% family); screen
-   the larger routing-weighted IQ3 down/MoE-tail fusion next;
-4. reprofile at 128/512/1K/near-4K after SWA/IQ3, then address the 22.7-ms
+3. **DONE:** retain IQ3 wave-uniform addressing, K1024 local128, and the exact
+   routing-weighted down composite; D3 removes 45 launches and improves h32
+   decode 1.407% over D2;
+4. reprofile at 128/512/1K/near-4K after D3, then address the 22.7-ms
    near-4K global-attention route; and
-5. admit Laguna-specific one-step graph replay only after kernel work. D1's
-   decode span still exceeds kernel sum by **4.43 ms / 16.1%**, so submission
-   remains material but trails SWA plus IQ3 in Amdahl order.
+5. admit Laguna-specific one-step graph replay only after kernel work. D3's
+   decode span still exceeds kernel sum by **4.15 ms**, so submission remains
+   material but trails SWA plus the dense/selected matrix families in Amdahl
+   order.
 
-**50 tok/s is a credible W7900 target, not a current claim.** D1 must reduce the
-canonical **28.233 ms to 20 ms**. The remaining short profile has 4.212 ms SWA,
-4.040 ms IQ3 down, 7.133 ms Q5, and 4.43 ms of span-over-kernel wall; the prior
+**50 tok/s is a credible W7900 target, not a current claim.** D3 must reduce the
+canonical **25.747 ms to 20 ms**. The remaining short profile has 4.202 ms SWA,
+7.090 ms Q5, 2.276 ms IQ2 gate/up, 2.108 ms weighted IQ3 down, and 4.15 ms of
+span-over-kernel wall; the prior
 long-context profile also requires SWA and eventually global attention. Every
 retained candidate uses the full category/heldout suite and the same
 exact/quality lanes above. Laguna DFlash/MTP optimization resumes only after
