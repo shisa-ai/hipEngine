@@ -17,7 +17,7 @@ LAYOUT_DENSE_F16 = "dense_f16"
 SOURCE_QUANT_FP16 = "fp16"
 F16_WEIGHT = "fp16_weight"
 _ENV_PREFILL_MODE = "HIPENGINE_LAGUNA_F16_PREFILL"
-_PREFILL_MODES = frozenset({"auto", "gemv", "tiled"})
+_PREFILL_MODES = frozenset({"auto", "gemv", "tiled", "wmma_comp_swa"})
 
 
 def _variant(activation_dtype: str, output_dtype: str) -> str:
@@ -29,7 +29,11 @@ def _variant(activation_dtype: str, output_dtype: str) -> str:
 
 
 def _prefill_strategy(
-    *, rows: int, activation_dtype: str, backend: str
+    *,
+    rows: int,
+    activation_dtype: str,
+    backend: str,
+    compensated_wmma_eligible: bool = False,
 ) -> str | None:
     if rows <= 1 or activation_dtype != "bf16":
         return None
@@ -41,6 +45,8 @@ def _prefill_strategy(
         return None
     if mode == "tiled":
         return mode
+    if mode == "wmma_comp_swa":
+        return "wmma_comp" if compensated_wmma_eligible and rows >= 16 else "tiled"
     strategy = backend_package_capability(
         backend, "LAGUNA_F16_PREFILL_STRATEGY", None
     )
@@ -112,11 +118,15 @@ def launch_f16_weight_linear(
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
+    compensated_wmma_eligible: bool = False,
 ) -> None:
     resolved_backend = _backend((weight,), backend)
     variant = _variant(activation_dtype, output_dtype)
     strategy = _prefill_strategy(
-        rows=rows, activation_dtype=activation_dtype, backend=resolved_backend
+        rows=rows,
+        activation_dtype=activation_dtype,
+        backend=resolved_backend,
+        compensated_wmma_eligible=compensated_wmma_eligible,
     )
     if strategy is not None:
         variant = f"{strategy}_{variant}"
@@ -192,11 +202,15 @@ def launch_f16_weight_linear_triple(
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
+    compensated_wmma_eligible: bool = False,
 ) -> None:
     resolved_backend = _backend((weight_a, weight_b, weight_c), backend)
     variant = "bf16_f32_out"
     strategy = _prefill_strategy(
-        rows=rows, activation_dtype="bf16", backend=resolved_backend
+        rows=rows,
+        activation_dtype="bf16",
+        backend=resolved_backend,
+        compensated_wmma_eligible=compensated_wmma_eligible,
     )
     if strategy is not None:
         variant = f"{strategy}_{variant}"
