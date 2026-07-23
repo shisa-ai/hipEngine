@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T15:48:00+00:00",
+  "kind": "hipengine_laguna_swa_qgroup9_exact_rejection",
+  "status": "rejected",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Laguna 72-query-head/8-KV-head SWA prefill leaf with complete KVLiveSpans",
+  "repo": {
+    "base_revision": "6dcd7ad9d",
+    "candidate_committed": false,
+    "candidate_removed": true,
+    "candidate_diff_sha256": "7ca7b4fb5b571b5b5de4433f5a4436f5c4a92450507d3af32eb4f1349d67fe6c"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 1
+  },
+  "candidate": {
+    "variant": "swa_context_rows_qgroup9_exact_spans",
+    "design": "one wave32 serializes the nine GQA query heads for one KV head and reuses each BF16 K/V row across the group",
+    "fallback": "swa_context_rows_wave32_exact_spans",
+    "math": "per-query logical-slot order, exact 128-element reduction tree, softmax order, BF16 K/V boundary, and KVLiveSpans visibility preserved"
+  },
+  "correctness": {
+    "pass": true,
+    "m128_full_window_output_byte_exact": true,
+    "wrap_508_515_output_byte_exact": true,
+    "wrap_508_515_cursor_exact": true,
+    "kv_live_spans_consumed": true,
+    "focused_test": "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+  },
+  "measurements": {
+    "m128_seed384_full_window": {
+      "rows": 128,
+      "prior_rows": 384,
+      "window": 512,
+      "iterations_per_sample": 5,
+      "repetitions": 7,
+      "balanced_order": true,
+      "wave32_exact_samples_ms": [
+        9.17855453491211,
+        9.1843017578125,
+        9.148932647705077,
+        9.2006591796875,
+        9.192709350585938,
+        9.15128173828125,
+        9.172969818115234
+      ],
+      "qgroup9_exact_samples_ms": [
+        9.858482360839844,
+        9.854905700683593,
+        9.849897003173828,
+        9.85827407836914,
+        9.865115356445312,
+        9.848251342773438,
+        9.867906951904297
+      ],
+      "wave32_exact_median_ms": 9.17855453491211,
+      "qgroup9_exact_median_ms": 9.85827407836914,
+      "candidate_speedup": 0.9310508575787663,
+      "candidate_wall_regression_pct": 7.4055183838763305
+    },
+    "m8_wrap_trace": {
+      "rows": 8,
+      "positions": [508, 509, 510, 511, 512, 513, 514, 515],
+      "wave32_exact_us": 1053.647,
+      "qgroup9_exact_us": 2945.218,
+      "candidate_speedup": 0.35774839078125964,
+      "candidate_wall_regression_pct": 179.52606518122295,
+      "wave32_resources": {
+        "workgroup": 32,
+        "grid_x": 2304,
+        "grid_y": 8,
+        "vgpr": 32,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "qgroup9_resources": {
+        "workgroup": 32,
+        "grid_x": 256,
+        "grid_y": 8,
+        "vgpr": 104,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "candidate regresses both the production M128 full-window shape and the wrap-boundary M8 shape despite byte-exact output",
+    "action": "remove kernel, wrapper, registry variant, runtime selector, and candidate tests; retain the existing wave32-exact default",
+    "full_model_gate_run": false,
+    "full_model_gate_skip_reason": "the predeclared production leaf screen failed"
+  },
+  "commands": {
+    "m128_micro": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/laguna_swa_qgroup9_micro.py",
+    "m8_trace": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-qgroup9-smoke-trace --output-file epyc -- .venv/bin/python -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+  },
+  "raw_sha256": {
+    "m128_micro_json": "5b6af2c744831793fe9dd349ec3b711ce2e3b686942d7be6d7be6f84ef8bed15",
+    "m8_kernel_trace_csv": "0662850c35545615ebcbb63909a8744d5a0ad6d9524e71a33e209c9180aaebb4"
+  },
+  "limitations": [
+    "This is a model-neutral production-shape kernel rejection, not a full-model throughput result.",
+    "No online-softmax, query-row tiling, or global-attention candidate is evaluated by this artifact."
+  ]
+}
