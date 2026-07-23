@@ -79,7 +79,7 @@ backend/quant branches in engine code.
 ### End-to-end completion audit (2026-07-23)
 
 The thread objective is closed for one precise product boundary: the pinned
-Laguna S 2.1 Q4_K_M artifact on gfx1151, exact physical c=1 model ticks with
+Laguna S 2.1 Q4_K_M artifact on gfx1151, physical c=1 model ticks with
 at most two scheduler-resident rows, at most 4K BF16 KV, raw greedy generation,
 public blocking/streaming chat and tools, plus the pinned B4 DFlash
 owner as an explicit opt-in. “Complete” below does not broaden that boundary.
@@ -87,7 +87,7 @@ owner as an explicit opt-in. “Complete” below does not broaden that boundary
 | Deliverable | Implementation and focused gates | Retained evidence | Audit verdict |
 | --- | --- | --- | --- |
 | Source-bound resident load | `hipengine/loading/laguna_gguf*.py`, `hipengine/runtime/laguna_gguf_runner.py`; config/map/materialization/device/lifecycle suites | `2026-07-22-gfx1151-laguna-s21-repacked-cache-startup-retained.json` | Complete; cache/source trajectories agree and tracked ownership returns to zero. |
-| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, resident admission/reclaim, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, `2026-07-23-gfx1151-laguna-native-scheduler.json`, and qualified Poolside artifacts under `benchmarks/results/` | Complete for exact physical c=1/4K and logical two-slot serving. The retained quality-gated canonical prefill row is 69.037 tok/s; the AR-O3 deterministic long-stream matrix512/attention128 screen reaches exact 69.069/63.925/51.989 tok/s at 512/1K/4K. The D4 true-AR decode control remains 16.384 tok/s. Native scheduling adds bounded c2 ownership, not c>1 model math or a speedup claim. |
+| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, resident admission/reclaim, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, `2026-07-23-gfx1151-laguna-native-scheduler.json`, and qualified Poolside artifacts under `benchmarks/results/` | Complete for physical c=1/4K and logical two-slot serving. The retained quality-gated canonical prefill row is **69.761 tok/s**; repeated 512/1K/4K reaches **76.226/74.538/70.885 tok/s** after the independently gated global/SWA online promotions. The D4 true-AR decode control remains 16.384 tok/s. Native scheduling adds bounded c2 ownership, not c>1 model math or a speedup claim. |
 | Poolside-v1 reasoning and tools | `hipengine/chat/poolside_v1.py`; frozen renderer/reasoning/tool fixtures plus generic server conformance | `2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json` | Complete: 5/5 live blocking/streaming cases and 7/7 deterministic tool fixtures, including multiple calls and escaped UTF-8. |
 | B4 DFlash correctness and public route | `hipengine/speculative/laguna_dflash.py`, `hipengine/generation/laguna_dflash.py`, provider registry/server route; drafter, B+1, rollback, API, and public-gate suites | drafter-B4, verify-commit, post-prefill economics, and `2026-07-23-gfx1151-laguna-dflash-public-e2e.json` | Complete as explicit-only: 10/10 AR, 10/10 blocking, and 10/10 streaming public rows are exact. AR remains default. |
 | Ownership and truthful capability surface | shared target weights with isolated target/drafter/cycle request state; finish/cancel/close and fail-before-load gates | parser peak 77,022,439,484 bytes and public DFlash peak 79,817,890,405 bytes both recover to zero | Complete for the supported boundary; identity, revision, budget, exactness, fallback, and no-performance-claim metadata pass. |
@@ -2593,9 +2593,10 @@ remains deferred. Evidence:
   69.647/64.745/52.557 tok/s (+0.893%/+1.212%/+1.040%)**. The complete
   category gate is exact across all 30 free-running pairs and 320 teacher-forced
   steps and non-regressive at **0.999652x prefill** and
-  **0.999917/0.999999x h16/h32 E2E**. gfx1151 therefore defaults to the
-  context-qualified selector; wave32 remains the automatic short/partial fallback
-  and explicit rollback, and unmeasured backends remain unchanged. Evidence:
+  **0.999917/0.999999x h16/h32 E2E**. gfx1151 therefore first defaulted to the
+  context-qualified selector; after the online promotion below it remains the
+  primary exact rollback, with wave32 as its automatic short/partial fallback.
+  Unmeasured backends remain unchanged. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json`.
   The post-global profile's **15.21%** 4K SWA share admits one bounded
   online-softmax qrow2 leaf. It replaces exact qrow2's two scans with one while
@@ -2603,16 +2604,21 @@ remains deferred. Evidence:
   -> online is **7.893 -> 2.552 ms (3.093x)** and start508 wrap is
   **8.676 -> 2.987 ms (2.904x)**, with maximum absolute error **3.45e-8**,
   synthetic KL **1.11e-15**, top-1 100%, and the 508..515 fixture passing.
-  Cached tracing confirms **2.559 ms**, local32/VGPR56/LDS0/scratch0. This is an
-  explicit candidate only. The clean repeated full-model gate now admits it to
-  category testing: exact -> online moves 512/1K/4K
-  **71.354/68.156/63.995 -> 76.226/74.538/70.885 tok/s
-  (+6.828%/+9.364%/+10.766%)**, with maximum full-vocabulary KL **0.016558**,
-  top-1 **9/9**, exact IDs/cursors, deterministic state, and exact lifecycle.
-  The complete category gate remains mandatory before any default. Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json`
+  Cached tracing confirms **2.559 ms**, local32/VGPR56/LDS0/scratch0. The clean
+  repeated full-model gate moves 512/1K/4K **71.354/68.156/63.995 ->
+  76.226/74.538/70.885 tok/s (+6.828%/+9.364%/+10.766%)**, with maximum
+  full-vocabulary KL **0.016558**, top-1 **9/9**, exact IDs/cursors,
+  deterministic state, and exact lifecycle. The complete category gate promotes
+  it on gfx1151: weighted prefill improves **69.011 -> 69.761 tok/s (+1.086%)**,
+  h16/h32 E2E improves **+0.616%/+0.420%**, every category is positive, maximum
+  teacher-forced KL is **0.042924**, top-1 is **316/320**, and Poolside,
+  deterministic repeats, and lifecycle pass. Exact context-qualified qrow2 and
+  wave32 remain explicit fallback/rollback routes; unmeasured backends keep
+  their prior defaults. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json`,
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-screen.json`,
   and
-  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-screen.json`.
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json`.
 - [x] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling. The wrapper/runtime is healthy but has no executable head-dim-128
   Laguna geometry, so direct adaptation is closed mechanically.
@@ -2657,9 +2663,10 @@ remaining headline gap. The user's unprofiled build measures **344.56 +/- 3.16
 tok/s** (**1.486 s**) at pp512. The instrumented benchmark's wall is perturbed
 to 316.13 tok/s, but its complete Vulkan operation sum is **1.478897 s**
 (**346.20 tok/s implied**), within **0.48%** of the user's unprofiled wall.
-The retained hipEngine profile is **71.456 tok/s / 7.150503 s kernel sum**, or
-**4.835x** the Vulkan operation sum; the explicit SWA-online candidate reaches
-76.226 tok/s but is still **4.520x** behind the user's row.
+The profiled pre-SWA-online hipEngine default is **71.456 tok/s / 7.150503 s
+kernel sum**, or **4.835x** the Vulkan operation sum. The newly promoted
+SWA-online screen reaches **76.226 tok/s** but remains **4.520x** behind the
+user's row.
 
 The shape-matched family comparison is decisive:
 
@@ -2690,19 +2697,18 @@ The source audit identifies three mechanisms to transfer as designs, not code:
 2. Vulkan Flash Attention owns **16 query rows x 64 key rows** in one
    256-thread cooperative-matrix workgroup, performs both QK and PV with
    `VK_KHR_cooperative_matrix`, and carries online softmax state. It runs one
-   512-row attention graph per layer rather than four 128-row slices. After the
-   current SWA-online category decision, the valid successor is an in-tree
-   `KVLiveSpans`-aware cooperative tile, not another row2-only scan.
+   512-row attention graph per layer rather than four 128-row slices. With the
+   SWA-online category decision complete, future attention work would require an
+   in-tree `KVLiveSpans`-aware cooperative tile, not another row2-only scan.
 3. Vulkan fuses multi-add/matmul tails, RMSNorm+mul+RoPE+KV set, and the complete
    sigmoid/bias/top-k/normalization router pattern. These are useful memory-
    traffic targets after matrix kernels, but hipEngine's **0.144%** pp512
    span-minus-sum rejects submission-only work as the next lane.
 
-Finish the already-admitted SWA-online category gate without changing its
-policy. Then pivot the primary prefill campaign to quality-safe expert-major
-Q4/Q6 matrix reuse, followed by dense/shared MMQ and broader compensated F16
-matrix-core coverage. Exact source paths, commit permalinks, raw hashes, and the
-complete operation ledger are in
+The SWA-online category gate is complete. Pivot the primary prefill campaign to
+quality-safe expert-major Q4/Q6 matrix reuse, followed by dense/shared MMQ and
+broader compensated F16 matrix-core coverage. Exact source paths, commit
+permalinks, raw hashes, and the complete operation ledger are in
 `benchmarks/results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json`.
 
 #### AR-O6 — submission and serving only after a new profile asks for it
