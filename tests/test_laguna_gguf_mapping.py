@@ -17,7 +17,12 @@ from hipengine.loading.laguna_gguf import (
     validate_laguna_gguf_tensor_map,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
-from tests._laguna_synthetic import laguna_tensors, make_laguna_info, tensor_info
+from tests._laguna_synthetic import (
+    laguna_q2_xl_tensors,
+    laguna_tensors,
+    make_laguna_info,
+    tensor_info,
+)
 
 
 def _info():
@@ -62,6 +67,22 @@ def test_laguna_gguf_tensor_map_covers_production_inventory() -> None:
     assert layer1.tensor("ffn_down_exps").shape == (256, 3_072, 1_024)
     assert layer1.tensor("ffn_gate_shexp").shape == (1_024, 3_072)
     assert layer1.tensor("ffn_down_shexp").shape == (3_072, 1_024)
+
+
+def test_laguna_q2_xl_tensor_map_accepts_exact_quant_recipe() -> None:
+    info = make_laguna_info(tensors=laguna_q2_xl_tensors())
+
+    model_map = build_laguna_gguf_tensor_map(info)
+
+    assert model_map.validation.passed
+    assert len(model_map.tensor_names) == 814
+    assert model_map.root("token_embedding").ggml_type_name == "Q5_K"
+    assert model_map.root("lm_head").ggml_type_name == "Q4_K"
+    assert model_map.layer(1).tensor("ffn_gate_exps").ggml_type_name == "IQ2_XS"
+    assert model_map.layer(1).tensor("ffn_down_exps").ggml_type_name == "IQ3_XXS"
+    assert model_map.layer(46).tensor("ffn_down_exps").ggml_type_name == "IQ4_XS"
+    assert model_map.layer(47).tensor("ffn_gate_exps").ggml_type_name == "IQ3_XXS"
+    assert model_map.layer(47).tensor("attn_k").ggml_type_name == "Q8_0"
 
 
 def test_laguna_gguf_tensor_map_accepts_per_element_attention_gate() -> None:
