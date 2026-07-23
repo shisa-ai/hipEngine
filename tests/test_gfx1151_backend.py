@@ -208,20 +208,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
 
     assert TARGET_ARCH == "gfx1151"
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
-    assert LAGUNA_F16_PREFILL_STRATEGY == "tiled"
-    assert LAGUNA_F16_PREFILL_MIN_ROWS == 2
+    assert LAGUNA_F16_PREFILL_STRATEGY == "wmma_comp_swa"
+    assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
     assert LAGUNA_SWA_PREFILL_VARIANT == "swa_context_rows_wave32_exact_spans"
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_F16_PREFILL_STRATEGY"
         )
-        == "tiled"
+        == "wmma_comp_swa"
     )
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_F16_PREFILL_MIN_ROWS"
         )
-        == 2
+        == 16
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_F16_PREFILL_STRATEGY", None
@@ -794,6 +794,8 @@ def test_gguf_fused_linear_matching_uses_resident_backend() -> None:
             in_features=2048,
             out_features=4096,
             out_features_b=4096,
+            activation_dtype="bf16",
+            output_dtype="bf16",
             backend="hip_gfx1151",
             use_wmma=False,
             use_gemv=False,

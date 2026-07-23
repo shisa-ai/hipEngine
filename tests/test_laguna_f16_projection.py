@@ -287,11 +287,23 @@ def test_laguna_f16_projection_runtime_auto_uses_measured_gfx1151_threshold(
         rows=1, activation_dtype="bf16", backend="hip_gfx1151"
     ) is None
     assert _prefill_strategy(
-        rows=2, activation_dtype="bf16", backend="hip_gfx1151"
+        rows=2,
+        activation_dtype="bf16",
+        backend="hip_gfx1151",
+        compensated_wmma_eligible=True,
     ) == "tiled"
     assert _prefill_strategy(
-        rows=128, activation_dtype="bf16", backend="hip_gfx1151"
+        rows=128,
+        activation_dtype="bf16",
+        backend="hip_gfx1151",
+        compensated_wmma_eligible=False,
     ) == "tiled"
+    assert _prefill_strategy(
+        rows=128,
+        activation_dtype="bf16",
+        backend="hip_gfx1151",
+        compensated_wmma_eligible=True,
+    ) == "wmma_comp"
     assert _prefill_strategy(
         rows=128, activation_dtype="bf16", backend="hip_gfx1100"
     ) is None

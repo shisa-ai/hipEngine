@@ -436,6 +436,9 @@ def _laguna_f16_prefill_configuration(backend: str) -> dict[str, Any]:
     elif requested == "gemv":
         effective_strategy = "gemv"
         effective_min_rows = None
+    elif backend_strategy == "wmma_comp_swa" and backend_min_rows > 1:
+        effective_strategy = "wmma_comp_swa"
+        effective_min_rows = backend_min_rows
     elif backend_strategy == "tiled" and backend_min_rows > 1:
         effective_strategy = "tiled"
         effective_min_rows = backend_min_rows
