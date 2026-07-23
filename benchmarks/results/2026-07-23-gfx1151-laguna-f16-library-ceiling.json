@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_f16_library_ceiling",
+  "status": "diagnostic_passed",
+  "pass": true,
+  "created_at": "2026-07-23T11:52:09.670035+00:00",
+  "performance_claim": false,
+  "performance_claim_scope": "Synthetic zero-data production geometry; establishes a matrix-library ceiling only, not a runtime candidate or model-throughput claim.",
+  "source_run": {
+    "revision": "b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2",
+    "tracked_clean": true,
+    "raw_path": "/tmp/2026-07-23-gfx1151-laguna-f16-library-ceiling.json",
+    "raw_sha256": "58f516093ae9241aae417601f4c5374ad4cfb08475d713a5c1e2ea1b34608b8a",
+    "raw_size_bytes": 271081,
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python -u scripts/laguna_f16_library_ceiling.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rocblas-library /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocblas.so --hipblaslt-library /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhipblaslt.so --output /tmp/2026-07-23-gfx1151-laguna-f16-library-ceiling.json"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "rocblas_library": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocblas.so",
+    "hipblaslt_library": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhipblaslt.so"
+  },
+  "protocol": {
+    "rows": [16, 32, 64, 128, 256, 512],
+    "projection_shapes_kn": {
+      "full_q": [3072, 6144],
+      "swa_q": [3072, 9216],
+      "kv": [3072, 1024],
+      "full_gate": [3072, 48],
+      "swa_gate": [3072, 72],
+      "full_o": [6144, 3072],
+      "swa_o": [9216, 3072]
+    },
+    "full_family": ["full_q", "kv", "kv", "full_gate", "full_o"],
+    "swa_family": ["swa_q", "kv", "kv", "swa_gate", "swa_o"],
+    "iterations_per_sample": 3,
+    "repetitions": 7,
+    "warmups": 3,
+    "algorithm_repetitions": 5,
+    "algorithm_warmups": 2,
+    "heuristic_count_per_shape": 7,
+    "workspace_search_nbytes": 67108864,
+    "timed_order": "Rotated and reversed by repetition.",
+    "exact": "Retained BF16-input/F16-weight reduction-order-preserving tile.",
+    "library_core": "Preconverted FP16 input, F16 weight, FP32 accumulation/output; O uses the existing FP32-to-BF16 boundary.",
+    "library_inclusive": "Core plus conservative BF16-to-F32-to-FP16 input casts before QKV/gate and O.",
+    "data": "Zero timing buffers with an independent seeded nonzero 2x16x3 mapping/math smoke."
+  },
+  "summary": {
+    "rows": [16, 32, 64, 128, 256, 512],
+    "exact_full_ms": [2.070481, 3.652273, 6.869808, 13.009350, 25.850525, 50.823639],
+    "exact_swa_ms": [2.819205, 5.131353, 9.698021, 18.660791, 36.734500, 72.461878],
+    "rocblas_inclusive_full_ms": [1.239323, 1.275711, 2.151099, 2.444944, 4.195505, 8.257728],
+    "rocblas_inclusive_swa_ms": [1.856329, 1.908645, 2.989935, 3.400722, 5.998659, 11.584064],
+    "rocblas_inclusive_full_speedup": [1.670655, 2.862931, 3.193627, 5.320919, 6.161480, 6.154676],
+    "rocblas_inclusive_swa_speedup": [1.518699, 2.688480, 3.243556, 5.487303, 6.123785, 6.255307],
+    "hipblaslt_inclusive_full_ms": [0.520282, 0.561065, 0.714593, 1.131548, 1.643254, 2.583908],
+    "hipblaslt_inclusive_swa_ms": [0.734417, 0.770698, 0.945800, 1.293078, 1.999535, 2.981794],
+    "hipblaslt_inclusive_full_speedup": [3.979533, 6.509536, 9.613596, 11.496949, 15.731302, 19.669294],
+    "hipblaslt_inclusive_swa_speedup": [3.838700, 6.658059, 10.253776, 14.431300, 18.371517, 24.301439],
+    "weighted_12_full_36_swa_exact_ms": [126.337152, 228.555984, 431.566452, 827.900676, 1632.648300, 3218.511276],
+    "weighted_12_full_36_swa_hipblaslt_inclusive_ms": [32.682396, 34.477908, 42.623916, 60.129384, 91.702308, 138.351480],
+    "weighted_12_full_36_swa_speedup": [3.865603, 6.629056, 10.124984, 13.768654, 17.803786, 23.263295]
+  },
+  "hipblaslt_selection": {
+    "returned_algorithms_per_shape": 7,
+    "selected_algorithm_id_prefixes": [[84, 9], [85, 9], [86, 9], [96, 9], [97, 9]],
+    "all_selected_workspace_nbytes": 0,
+    "full_algorithm_ids_and_samples": "Bound by source_run.raw_sha256."
+  },
+  "correctness": {
+    "pass": true,
+    "library_math_smoke_shape_mkn": [2, 16, 3],
+    "rocblas_max_abs_error": 0.0,
+    "hipblaslt_max_abs_error": 3.725290298461914e-09,
+    "tracked_returned_to_baseline": true,
+    "model_quality_gate_required_for_runtime_candidate": true
+  },
+  "memory": {
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0,
+    "active_allocations_after": 0,
+    "peak_allocated_bytes": 187842560,
+    "workspace_nbytes": 67108864
+  },
+  "findings": [
+    "At M128, inclusive hipBLASLt is 11.497x/14.431x faster than retained exact full/SWA projection families.",
+    "Across 12 full and 36 SWA layers at M128, the synthetic projection-family sum is 827.901 -> 60.129 ms (13.769x).",
+    "All selected hipBLASLt algorithms use zero workspace despite the 64 MiB search allowance.",
+    "This ceiling justifies a custom WMMA candidate but changes no runtime route, default, topline, or quality claim."
+  ]
+}
