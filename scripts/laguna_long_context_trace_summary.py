@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Attach a compact LPF-5 attention summary to a Laguna rocprofv3 trace."""
+"""Attach a compact all-family prefill summary to a Laguna rocprofv3 trace."""
 
 from __future__ import annotations
 
@@ -24,6 +24,22 @@ _RESOURCE_FIELDS = (
     "Scratch_Size",
 )
 
+_FAMILY_ORDER = (
+    "embedding",
+    "source_f16_projection",
+    "selected_q4_gate_up",
+    "selected_q4_q6_down",
+    "dense_shared_quant_projection",
+    "router",
+    "prefill_kv_write",
+    "global_attention",
+    "swa_attention",
+    "norm_rope_gate",
+    "activation_reduce_residual",
+    "lm_head_argmax",
+    "other",
+)
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -45,12 +61,88 @@ def _is_argmax_end(name: str) -> bool:
     return "argmax_stage2_kernel" in name
 
 
-def _attention_family(name: str) -> str | None:
-    if "laguna_global_attention_prefill_bf16_kernel" in name:
+def _kernel_family(name: str) -> str:
+    """Map one demangled Laguna prefill symbol to an attribution family."""
+
+    lowered = str(name).lower()
+    if _is_embedding(lowered):
+        return "embedding"
+    if "argmax_stage" in lowered:
+        return "lm_head_argmax"
+    if "laguna_f16w_" in lowered and (
+        "gemv_kernel" in lowered or "tiled_exact_kernel" in lowered
+    ):
+        return "source_f16_projection"
+    if "q4_k_t16_selected_dual" in lowered and "gemv_kernel" in lowered:
+        return "selected_q4_gate_up"
+    if "qk_t16_selected" in lowered and "gemv_kernel" in lowered:
+        return "selected_q4_q6_down"
+    if "laguna_global_attention_prefill" in lowered:
         return "global_attention"
-    if "laguna_swa_attention_prefill_bf16_kernel" in name:
+    if "laguna_swa_attention_prefill" in lowered:
         return "swa_attention"
-    return None
+    if "write_kv_rows" in lowered and "laguna_" in lowered:
+        return "prefill_kv_write"
+    if "router" in lowered or "sigmoid_correction_topk" in lowered:
+        return "router"
+    if any(
+        marker in lowered
+        for marker in (
+            "rmsnorm",
+            "rotary",
+            "rope",
+            "softplus_head_gate",
+            "attention_gate",
+        )
+    ):
+        return "norm_rope_gate"
+    if "selected" not in lowered and any(
+        marker in lowered
+        for marker in (
+            "q4_k_pack8",
+            "q5_k_pack8",
+            "q6_k_pack8",
+            "q4_k_gemv",
+            "q5_k_gemv",
+            "q6_k_gemv",
+            "q4_k_t16_gemv",
+            "q5_k_t16_gemv",
+            "q6_k_t16_gemv",
+            "gguf_k_prefill_out_kernel",
+        )
+    ):
+        return "dense_shared_quant_projection"
+    if any(
+        marker in lowered
+        for marker in (
+            "silu",
+            "weighted_sum",
+            "bf16_add",
+            "elementwise",
+            "residual",
+            "gate_mul",
+        )
+    ):
+        return "activation_reduce_residual"
+    return "other"
+
+
+def _attention_family(name: str) -> str | None:
+    family = _kernel_family(name)
+    return family if family in {"global_attention", "swa_attention"} else None
+
+
+def _trace_row_family(rows: Sequence[Mapping[str, Any]], index: int) -> str:
+    """Classify one row, including the otherwise ambiguous final Q6 LM head."""
+
+    if index < 0 or index >= len(rows):
+        raise IndexError("trace row index out of range")
+    if index + 2 < len(rows):
+        next_name = str(rows[index + 1]["Kernel_Name"])
+        final_name = str(rows[index + 2]["Kernel_Name"])
+        if "argmax_stage1" in next_name and "argmax_stage2" in final_name:
+            return "lm_head_argmax"
+    return _kernel_family(str(rows[index]["Kernel_Name"]))
 
 
 def _read_trace(path: Path) -> list[dict[str, str]]:
@@ -113,13 +205,19 @@ def _summarize_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
     end = max(int(row["End_Timestamp"]) for row in rows)
     family_calls: dict[str, int] = defaultdict(int)
     family_duration: dict[str, int] = defaultdict(int)
-    for row in rows:
-        family = _attention_family(str(row["Kernel_Name"]))
-        if family is None:
-            continue
+    # The resident prompt path ends with one LM-head launch and two argmax
+    # stages. Classify that three-launch chain together because the Q6 head
+    # symbol is also used by ordinary quantized projections. Synthetic/partial
+    # traces without both argmax stages retain normal symbol classification.
+    for index, row in enumerate(rows):
+        family = _trace_row_family(rows, index)
         family_calls[family] += 1
         family_duration[family] += _duration_ns(row)
-    attention_ns = sum(family_duration.values())
+    if sum(family_duration.values()) != kernel_sum:
+        raise ValueError("all-family attribution does not cover the complete kernel sum")
+    attention_ns = sum(
+        family_duration[family] for family in ("global_attention", "swa_attention")
+    )
     return {
         "length": int(segment["length"]),
         "chunks": int(segment["chunks"]),
@@ -134,7 +232,7 @@ def _summarize_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
                 "duration_ns": family_duration[family],
                 "share_of_kernel_sum": family_duration[family] / kernel_sum,
             }
-            for family in ("global_attention", "swa_attention")
+            for family in _FAMILY_ORDER
         },
     }
 
@@ -175,7 +273,7 @@ def _aggregate_segments(segments: Sequence[Mapping[str, Any]]) -> dict[str, Any]
                         for item in selected
                     ),
                 }
-                for family in ("global_attention", "swa_attention")
+                for family in _FAMILY_ORDER
             },
         }
     return result
@@ -189,6 +287,39 @@ def _trace_resources(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
             continue
         resources.setdefault(family, {field: str(row[field]) for field in _RESOURCE_FIELDS})
     return [resources[key] for key in sorted(resources)]
+
+
+def _family_resources(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    resources: dict[tuple[str, str], dict[str, Any]] = {}
+    for index, row in enumerate(rows):
+        name = str(row["Kernel_Name"])
+        family = _trace_row_family(rows, index)
+        key = (family, name)
+        item = resources.setdefault(
+            key,
+            {
+                "family": family,
+                **{field: str(row[field]) for field in _RESOURCE_FIELDS},
+                "calls": 0,
+                "duration_ns": 0,
+                "observed_grid_sizes": set(),
+            },
+        )
+        item["calls"] += 1
+        item["duration_ns"] += _duration_ns(row)
+        item["observed_grid_sizes"].add(
+            (str(row["Grid_Size_X"]), str(row["Grid_Size_Y"]))
+        )
+    output = []
+    for item in resources.values():
+        item["observed_grid_sizes"] = [
+            {"x": x, "y": y} for x, y in sorted(item["observed_grid_sizes"])
+        ]
+        output.append(item)
+    return sorted(
+        output,
+        key=lambda item: (str(item["family"]), -int(item["duration_ns"])),
+    )
 
 
 def attach_summary(
@@ -225,6 +356,7 @@ def attach_summary(
         "warmup": warmup,
         "lengths": _aggregate_segments(timed),
         "attention_resources": _trace_resources(rows),
+        "family_resources": _family_resources(rows),
     }
     output["derived_artifact_repairs"] = [
         {

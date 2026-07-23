@@ -257,7 +257,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "tracked_returned_to_baseline": recovered,
             "boundary_fixture_evidence": [
                 "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
-                "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_attention_match_cpu_across_wrap_and_eviction",
+                "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
+                "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
             ],
         },
         "memory": {

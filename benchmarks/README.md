@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`7ded0d5f42b107d3bf10f1d096f8a93ae194be9b` for the current Laguna S 2.1
+128/512/1K/4K all-family prefill attribution,
 `8f8baf9a100bc9598b633cb040193dcfcdb80ebe` for the current merged-main
 Laguna S 2.1 B4 DFlash economics confirmation,
 `c4ac3c60a47ce474ce5aa160d7c3ff8eda1009b5` for the exact explicit-only
@@ -1252,6 +1254,21 @@ every length; lifecycle is exact. A prior complete timing pass independently
 reproduced **1.082/1.128/1.140x** before a post-timing harness failure. gfx1151
 therefore defaults to wave32 exact; explicit baseline and unmeasured-backend
 fallback remain. [Retained LPF-5 SWA gate](results/2026-07-23-gfx1151-laguna-prefill-lpf5-swa-wave32.json).
+
+The fresh post-LPF current-main all-family profile supersedes inference about the
+next bottleneck. Three alternating non-profiled repetitions measure
+**47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row
+warmup and those three lengths with complete kernel-sum classification. Selected
+Q4/Q6 experts own **56.78/53.23/50.48/43.45%** at 128/512/1K/4K; source-F16
+owns **33.40/30.82/29.12/25.02%**; dense/shared quant projections own
+**6.55/6.06/5.71/4.94%**; and global+SWA attention owns
+**2.46/9.17/14.01/26.01%**. At 4K, global/SWA are **15.92/10.09%**, so the
+promoted wave32 path makes global the later attention target. Every next ID,
+final cursor, 511/512/513/wrap fixture, and lifecycle gate passes; unclassified
+kernel time is below 0.001%, resources are recorded for all 26 symbols, and
+kernel-span residual is only **0.28-0.34%**. This is an attribution baseline,
+not a speedup claim, and ranks selected experts before source-F16 projections.
+[Current all-family profile](results/2026-07-23-gfx1151-laguna-prefill-current-main-all-family-profile.json).
 
 The exact adjacent-head global-attention follow-up is rejected: at the
 3,968-prior + 128-current 4K leaf it moves **86.429 -> 125.319 ms (+45.00%)**
