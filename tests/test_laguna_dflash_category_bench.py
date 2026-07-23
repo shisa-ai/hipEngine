@@ -175,19 +175,35 @@ def test_laguna_dflash_correctness_fails_closed_on_pair_or_repeat_drift() -> Non
 
 
 def test_laguna_dflash_promotion_requires_exact_protocol_and_gt_1p10() -> None:
-    fast = _aggregate_scope(_pairs(spec_decode_seconds=0.8))
+    fast_pairs = _pairs(spec_decode_seconds=0.8)
+    fast = _aggregate_scope(fast_pairs)
+    fast_heldout = _aggregate_scope(
+        [row for row in fast_pairs if row["split"] == "heldout"]
+    )
+    fast_categories = {
+        "code": _aggregate_scope(
+            [row for row in fast_pairs if row["prompt"]["category"] == "code"]
+        )
+    }
     accepted = _promotion_gate(
         correctness_passed=True,
         protocol_eligible=True,
         full_metrics=fast,
+        heldout_metrics=fast_heldout,
+        category_metrics=fast_categories,
     )
     assert accepted["pass"] is True
 
-    slow = _aggregate_scope(_pairs(spec_decode_seconds=1.0))
+    slow_pairs = _pairs(spec_decode_seconds=1.0)
+    slow = _aggregate_scope(slow_pairs)
     rejected = _promotion_gate(
         correctness_passed=True,
         protocol_eligible=True,
         full_metrics=slow,
+        heldout_metrics=_aggregate_scope(
+            [row for row in slow_pairs if row["split"] == "heldout"]
+        ),
+        category_metrics={"code": slow},
     )
     assert rejected["pass"] is False
     assert "full_suite_decode_speedup_gt_1p10" in rejected["failed_checks"]
@@ -196,6 +212,27 @@ def test_laguna_dflash_promotion_requires_exact_protocol_and_gt_1p10() -> None:
         correctness_passed=False,
         protocol_eligible=True,
         full_metrics=fast,
+        heldout_metrics=fast_heldout,
+        category_metrics=fast_categories,
     )
     assert incorrect["pass"] is False
     assert "exact_finite_state_correctness" in incorrect["failed_checks"]
+
+
+def test_laguna_dflash_promotion_rejects_heldout_or_category_regression() -> None:
+    fast_pairs = _pairs(spec_decode_seconds=0.8)
+    fast = _aggregate_scope(fast_pairs)
+    regressive = _aggregate_scope(_pairs(spec_decode_seconds=1.1))
+
+    rejected = _promotion_gate(
+        correctness_passed=True,
+        protocol_eligible=True,
+        full_metrics=fast,
+        heldout_metrics=regressive,
+        category_metrics={"code": fast, "general_en": regressive},
+    )
+
+    assert rejected["pass"] is False
+    assert "heldout_decode_non_regression" in rejected["failed_checks"]
+    assert "category_general_en_decode_non_regression" in rejected["failed_checks"]
+    assert rejected["category_decode_speedups_vs_true_ar"]["code"] == pytest.approx(1.25)

@@ -545,8 +545,17 @@ def _promotion_gate(
     correctness_passed: bool,
     protocol_eligible: bool,
     full_metrics: dict[str, Any],
+    heldout_metrics: dict[str, Any],
+    category_metrics: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     speedup = float(full_metrics["comparison"]["decode_speedup_vs_true_ar"])
+    heldout_speedup = float(
+        heldout_metrics["comparison"]["decode_speedup_vs_true_ar"]
+    )
+    category_speedups = {
+        category: float(metrics["comparison"]["decode_speedup_vs_true_ar"])
+        for category, metrics in category_metrics.items()
+    }
     failed: list[str] = []
     if not correctness_passed:
         failed.append("exact_finite_state_correctness")
@@ -554,13 +563,21 @@ def _promotion_gate(
         failed.append("canonical_protocol")
     if not speedup > 1.10:
         failed.append("full_suite_decode_speedup_gt_1p10")
+    if heldout_speedup < 1.0:
+        failed.append("heldout_decode_non_regression")
+    for category, category_speedup in category_speedups.items():
+        if category_speedup < 1.0:
+            failed.append(f"category_{category}_decode_non_regression")
     return {
         "pass": not failed,
         "failed_checks": failed,
         "full_suite_decode_speedup_vs_true_ar": speedup,
+        "heldout_decode_speedup_vs_true_ar": heldout_speedup,
+        "category_decode_speedups_vs_true_ar": category_speedups,
         "policy": (
             "canonical 10-prompt train+heldout suite, exact/finite/state-aligned "
-            "same-session output, and weighted DFlash decode speedup >1.10x true AR"
+            "same-session output, weighted full-suite DFlash decode speedup >1.10x "
+            "true AR, and no heldout/category decode regression"
         ),
     }
 
@@ -769,16 +786,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         correctness_passed=correctness_passed,
         protocol_eligible=protocol_eligible,
         full_metrics=full_metrics,
+        heldout_metrics=split_metrics["heldout"],
+        category_metrics=category_metrics,
     )
     if not correctness_passed:
         decision_reason = "same-session exact/finite/state/oracle correctness gate failed"
     elif not promotion["pass"]:
         decision_reason = (
-            "correctness retained, but weighted full-suite DFlash decode speedup "
-            f"was {promotion['full_suite_decode_speedup_vs_true_ar']:.4f}x, below >1.10x"
+            "correctness retained, but DFlash failed promotion checks: "
+            + ", ".join(promotion["failed_checks"])
         )
     else:
-        decision_reason = "exact full-suite DFlash decode exceeded true AR by >1.10x"
+        decision_reason = (
+            "exact full-suite DFlash decode exceeded true AR by >1.10x without "
+            "heldout/category decode regression"
+        )
     status = (
         "accepted"
         if promotion["pass"]
@@ -833,7 +855,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "target_swa_prefill_variant": target_swa_prefill_variant,
             "sampling": "greedy argmax fixed horizon after stop",
             "same_session_ar_required": True,
-            "speed_promotion_gate": ">1.10x true AR and exact/finite correctness",
+            "speed_promotion_gate": (
+                ">1.10x full-suite true AR, exact/finite/state correctness, and "
+                "no heldout/category decode regression"
+            ),
         },
         commands={
             "benchmark": [str(Path(sys.executable).resolve()), *sys.argv],
@@ -908,6 +933,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             },
         }
     )
+    artifact["decision"]["promotion_rule"] = promotion["policy"]
     return artifact
 
 
