@@ -2433,11 +2433,22 @@ become a hard runtime dependency without an explicit package decision.
 
 #### AR-O3 — larger row substrate and independent chunk policies
 
-The current owner allocates one global 128-row scratch shape. That is adequate
+The retained default owner allocates one global 128-row scratch shape. That is adequate
 for exact LPF but can starve grouped experts and matrix tiles. Do not simply set
 the global chunk to 512.
 
-- [ ] Add bounded 256/512-row scratch and admission accounting after AR-O1/O2
+The first AR-O3 substrate unit is implemented without changing execution
+scheduling. `LagunaPrefillChunkPolicy` now carries independent bounded
+`matrix_rows` and `attention_rows`; 256/512 matrix capacities default to the
+retained 128-row attention tile. `LagunaPrefillScratchPlan` computes exact row
+and MoE allocation bytes before model materialization and feeds a conservative
+floor into UMA admission. Production 512/128 requires **334,651,392 row bytes +
+77,301,776 MoE bytes = 411,953,168 bytes (0.384 GiB)**, below the existing
+2-GiB admission floor. Allocation and exact byte estimates share one source of
+truth. The next unit must make layer attention consume the independent tile;
+this unit alone does not change the 128-row default or claim performance.
+
+- [x] Add bounded 256/512-row scratch and admission accounting after AR-O1/O2
   establish the layouts they actually need.
 - [ ] Decouple projection/MoE row tiles from attention query tiles, following
   the proven Qwen prefill configuration pattern. Matrix work may use M256/512

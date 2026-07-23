@@ -38,6 +38,7 @@ from hipengine.loading.laguna_gguf import (
 )
 from hipengine.loading.laguna_gguf_materialize import (
     DEFAULT_LAGUNA_SAFETY_RESERVE_BYTES,
+    DEFAULT_LAGUNA_SCRATCH_BYTES,
     LAYOUT_DENSE_F16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q6_K_T16,
@@ -68,6 +69,7 @@ from hipengine.runtime.laguna_moe import (
     LagunaMoEKernelPlan,
     LagunaMoEScratch,
     allocate_laguna_moe_scratch,
+    laguna_moe_scratch_nbytes,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     run_laguna_moe_c1,
@@ -321,6 +323,33 @@ class LagunaEagerScratch:
             free(buffer, runtime=runtime)
 
 
+@dataclass(frozen=True)
+class LagunaPrefillChunkPolicy:
+    """Bounded matrix/MoE capacity with an independent attention query tile."""
+
+    matrix_rows: int
+    attention_rows: int
+
+    @classmethod
+    def resolve(
+        cls,
+        *,
+        context_length: int,
+        matrix_rows: int,
+        attention_rows: int | None = None,
+    ) -> "LagunaPrefillChunkPolicy":
+        context = int(context_length)
+        matrix = int(matrix_rows)
+        if matrix <= 0 or matrix > min(context, 512):
+            raise ValueError(
+                "Laguna prefill matrix rows must be positive and no larger than context/512"
+            )
+        attention = min(matrix, 128) if attention_rows is None else int(attention_rows)
+        if attention <= 0 or attention > matrix:
+            raise ValueError("Laguna prefill attention rows must be within matrix capacity")
+        return cls(matrix_rows=matrix, attention_rows=attention)
+
+
 @dataclass
 class LagunaRowsScratch:
     """Bounded row-major scratch for chunked prefill and B+1 verification."""
@@ -351,13 +380,12 @@ class LagunaRowsScratch:
     _closed: bool = False
 
     @classmethod
-    def allocate(
+    def _planned_sizes(
         cls,
         config: LagunaGGUFConfig,
         *,
         max_rows: int,
-        runtime: HipRuntime | None = None,
-    ) -> "LagunaRowsScratch":
+    ) -> tuple[int, ...]:
         rows = int(max_rows)
         if rows <= 0:
             raise ValueError("max_rows must be positive")
@@ -367,7 +395,7 @@ class LagunaRowsScratch:
         hidden = int(config.hidden_size)
         dense_ffn = int(config.feed_forward_length)
         vocab = int(config.vocab_size)
-        sizes = (
+        return (
             rows * _I64_NBYTES,
             rows * _I64_NBYTES,
             rows * hidden * _BF16_NBYTES,
@@ -389,6 +417,30 @@ class LagunaRowsScratch:
             rows * hidden * _BF16_NBYTES,
             rows * vocab * _F32_NBYTES,
         )
+
+    @classmethod
+    def planned_nbytes(
+        cls,
+        config: LagunaGGUFConfig,
+        *,
+        max_rows: int,
+    ) -> int:
+        """Return exact owned bytes before allocating the bounded row scratch."""
+
+        return sum(cls._planned_sizes(config, max_rows=max_rows))
+
+    @classmethod
+    def allocate(
+        cls,
+        config: LagunaGGUFConfig,
+        *,
+        max_rows: int,
+        runtime: HipRuntime | None = None,
+    ) -> "LagunaRowsScratch":
+        rows = int(max_rows)
+        sizes = cls._planned_sizes(config, max_rows=rows)
+        max_heads = max(int(value) for value in config.head_counts)
+        max_query_width = max_heads * int(config.key_length)
         buffers: list[DeviceBuffer] = []
         try:
             buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
@@ -433,6 +485,43 @@ class LagunaRowsScratch:
         self._closed = True
         for buffer in reversed(self.buffers):
             free(buffer, runtime=runtime)
+
+
+@dataclass(frozen=True)
+class LagunaPrefillScratchPlan:
+    """Exact bounded row-scratch bytes covered by UMA memory admission."""
+
+    matrix_rows: int
+    attention_rows: int
+    rows_nbytes: int
+    moe_nbytes: int
+
+    @classmethod
+    def build(
+        cls,
+        config: LagunaGGUFConfig,
+        moe_plan: LagunaMoEKernelPlan,
+        *,
+        policy: LagunaPrefillChunkPolicy,
+    ) -> "LagunaPrefillScratchPlan":
+        rows_nbytes = LagunaRowsScratch.planned_nbytes(
+            config,
+            max_rows=policy.matrix_rows,
+        )
+        moe_nbytes = laguna_moe_scratch_nbytes(
+            moe_plan,
+            max_rows=policy.matrix_rows,
+        )
+        return cls(
+            matrix_rows=policy.matrix_rows,
+            attention_rows=policy.attention_rows,
+            rows_nbytes=rows_nbytes,
+            moe_nbytes=moe_nbytes,
+        )
+
+    @property
+    def total_nbytes(self) -> int:
+        return self.rows_nbytes + self.moe_nbytes
 
 
 @dataclass
@@ -1326,6 +1415,7 @@ class LagunaGGUFResidentSession:
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
         prefill_chunk_size: int = 128,
+        prefill_attention_chunk_size: int | None = None,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
     ) -> None:
@@ -1333,7 +1423,13 @@ class LagunaGGUFResidentSession:
         self.device = device or Device("hip", 0)
         self.backend = resolve_backend(backend)
         self.context_length = int(context_length)
-        self.prefill_chunk_size = int(prefill_chunk_size)
+        self.prefill_chunk_policy = LagunaPrefillChunkPolicy.resolve(
+            context_length=self.context_length,
+            matrix_rows=prefill_chunk_size,
+            attention_rows=prefill_attention_chunk_size,
+        )
+        self.prefill_chunk_size = self.prefill_chunk_policy.matrix_rows
+        self.prefill_attention_chunk_size = self.prefill_chunk_policy.attention_rows
         self.swa_decode_variant = resolve_laguna_swa_decode_variant(
             self.backend,
             swa_decode_variant,
@@ -1357,6 +1453,8 @@ class LagunaGGUFResidentSession:
         self.libraries: LagunaEagerLibraries | None = None
         self.kernel_plan: LagunaEagerKernelPlan | None = None
         self.moe_plan: LagunaMoEKernelPlan | None = None
+        self.prefill_scratch_plan: LagunaPrefillScratchPlan | None = None
+        self.prefill_scratch_admission_nbytes = DEFAULT_LAGUNA_SCRATCH_BYTES
         self._owns_weights = resident_weights is None
         self._closed = False
         self._compiler_version = compiler_version
@@ -1367,12 +1465,6 @@ class LagunaGGUFResidentSession:
         if self.context_length <= 0 or self.context_length > _INITIAL_MAX_CONTEXT:
             raise ValueError(
                 f"initial Laguna eager context_length must be within [1, {_INITIAL_MAX_CONTEXT}]"
-            )
-        if self.prefill_chunk_size <= 0 or self.prefill_chunk_size > min(
-            self.context_length, 512
-        ):
-            raise ValueError(
-                "Laguna prefill_chunk_size must be positive and no larger than context/512"
             )
         if resident_weights is not None and (
             repacked_cache is not None or model_sha256 is not None
@@ -1400,11 +1492,22 @@ class LagunaGGUFResidentSession:
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
             )
+            self.moe_plan = resolve_laguna_moe_plan(config, backend=self.backend)
+            self.prefill_scratch_plan = LagunaPrefillScratchPlan.build(
+                config,
+                self.moe_plan,
+                policy=self.prefill_chunk_policy,
+            )
+            self.prefill_scratch_admission_nbytes = max(
+                DEFAULT_LAGUNA_SCRATCH_BYTES,
+                self.prefill_scratch_plan.total_nbytes,
+            )
             if resident_weights is None:
                 self.weights = materialize_laguna_gguf_weights(
                     reader,
                     context_length=self.context_length,
                     available_bytes=available_bytes,
+                    scratch_nbytes=self.prefill_scratch_admission_nbytes,
                     safety_reserve_nbytes=safety_reserve_nbytes,
                     device=self.device,
                     runtime=self.runtime,
@@ -1415,7 +1518,6 @@ class LagunaGGUFResidentSession:
                 )
             else:
                 self.weights = resident_weights
-            self.moe_plan = resolve_laguna_moe_plan(config, backend=self.backend)
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,

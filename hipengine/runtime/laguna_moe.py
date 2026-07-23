@@ -483,14 +483,11 @@ def resolve_laguna_moe_plan(
     )
 
 
-def allocate_laguna_moe_scratch(
+def _laguna_moe_scratch_sizes(
     plan: LagunaMoEKernelPlan,
     *,
-    max_rows: int = 1,
-    runtime: HipRuntime | None = None,
-) -> LagunaMoEScratch:
-    """Allocate bounded router/routed/shared intermediates with failure cleanup."""
-
+    max_rows: int,
+) -> tuple[int, ...]:
     rows = int(max_rows)
     if rows <= 0:
         raise ValueError("max_rows must be positive")
@@ -499,7 +496,7 @@ def allocate_laguna_moe_scratch(
     k = plan.top_k
     f = plan.expert_ffn_size
     sf = plan.shared_ffn_size
-    sizes = (
+    return (
         rows * e * _F32_NBYTES,
         rows * e * _F32_NBYTES,
         rows * e * _F32_NBYTES,
@@ -526,6 +523,28 @@ def allocate_laguna_moe_scratch(
         rows * h * _BF16_NBYTES,
         rows * h * _BF16_NBYTES,
     )
+
+
+def laguna_moe_scratch_nbytes(
+    plan: LagunaMoEKernelPlan,
+    *,
+    max_rows: int,
+) -> int:
+    """Return the exact bounded allocation bytes for one Laguna MoE scratch owner."""
+
+    return sum(_laguna_moe_scratch_sizes(plan, max_rows=max_rows))
+
+
+def allocate_laguna_moe_scratch(
+    plan: LagunaMoEKernelPlan,
+    *,
+    max_rows: int = 1,
+    runtime: HipRuntime | None = None,
+) -> LagunaMoEScratch:
+    """Allocate bounded router/routed/shared intermediates with failure cleanup."""
+
+    rows = int(max_rows)
+    sizes = _laguna_moe_scratch_sizes(plan, max_rows=rows)
     buffers: list[DeviceBuffer] = []
     try:
         buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
@@ -1427,6 +1446,7 @@ __all__ = [
     "LagunaMoEKernelPlan",
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",
+    "laguna_moe_scratch_nbytes",
     "resolve_laguna_moe_plan",
     "resolve_laguna_selected_down_mode",
     "run_laguna_moe_c1",
