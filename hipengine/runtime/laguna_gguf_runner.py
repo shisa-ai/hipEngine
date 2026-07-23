@@ -625,7 +625,6 @@ class LagunaEagerLibraries:
     iq_selected_experts: object
     moe_group: object
     routed_sum: object
-    runtime_state: object
 
     @property
     def embedding_libraries(self) -> Mapping[str, object]:
@@ -1307,7 +1306,6 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
     )
-    from hipengine.kernels.hip_gfx1100.runtime.state import build_runtime_state
     kwargs = {
         "compiler_version": compiler_version,
         "require_cached": require_cached,
@@ -1336,7 +1334,6 @@ def load_laguna_eager_libraries(
             iq_selected_experts=build_gguf_iq_gemv(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
-            runtime_state=build_runtime_state(**kwargs),
         )
 
 
@@ -1362,7 +1359,6 @@ class LagunaGGUFResidentSession:
         prefill_chunk_size: int = 128,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
-        use_decode_graph: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1378,7 +1374,6 @@ class LagunaGGUFResidentSession:
             swa_prefill_variant,
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
-        self.use_decode_graph = bool(use_decode_graph)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1399,7 +1394,6 @@ class LagunaGGUFResidentSession:
         self._require_cached_build = bool(require_cached_build)
         self._dflash_accept_library = None
         self._staged_verifier_tokens: tuple[int, ...] | None = None
-        self._decode_graph = None
 
         if self.context_length <= 0 or self.context_length > _INITIAL_MAX_CONTEXT:
             raise ValueError(
@@ -1509,10 +1503,10 @@ class LagunaGGUFResidentSession:
     def set_selected_down_mode(self, mode: str) -> None:
         """Select the explicit diagnostic sparse-down route for later row runs."""
 
-        selected = resolve_laguna_selected_down_mode(self.backend, mode)
-        if selected != self.selected_down_mode and self._decode_graph is not None:
-            self._decode_graph.close()
-        self.selected_down_mode = selected
+        self.selected_down_mode = resolve_laguna_selected_down_mode(
+            self.backend,
+            mode,
+        )
 
     @property
     def resident_nbytes(self) -> int:
@@ -1546,52 +1540,7 @@ class LagunaGGUFResidentSession:
         captures: LagunaHiddenCaptureTargets | None = None,
         stream: int = 0,
     ) -> LagunaEagerTokenResult:
-        """Append one token through the admitted graph or the exact eager fallback."""
-
-        self._check_open()
-        if self.use_decode_graph:
-            from hipengine.runtime.laguna_decode_graph import (
-                capture_laguna_decode_graph,
-                laguna_decode_graph_ineligibility,
-            )
-
-            reason = laguna_decode_graph_ineligibility(
-                self,
-                captures=captures,
-                stream=stream,
-                input_token_id=int(token_id),
-            )
-            if reason is None:
-                graph = self._decode_graph
-                if graph is None or graph.closed:
-                    graph = capture_laguna_decode_graph(self)
-                return graph.replay(int(token_id))
-        return self._forward_token_eager(token_id, captures=captures, stream=stream)
-
-    def capture_decode_graph(self):
-        """Capture or return this session's exact one-step raw-greedy graph."""
-
-        from hipengine.runtime.laguna_decode_graph import capture_laguna_decode_graph
-
-        return capture_laguna_decode_graph(self)
-
-    def decode_graph_stats(self) -> dict[str, object]:
-        graph = self._decode_graph
-        return {
-            "enabled": bool(self.use_decode_graph),
-            "captured": bool(graph is not None and not graph.closed),
-            "capture_seconds": None if graph is None else float(graph.capture_seconds),
-            "replay_count": 0 if graph is None else int(graph.replay_count),
-        }
-
-    def _forward_token_eager(
-        self,
-        token_id: int,
-        *,
-        captures: LagunaHiddenCaptureTargets | None = None,
-        stream: int = 0,
-    ) -> LagunaEagerTokenResult:
-        """Execute the exact unfused host-submitted token path."""
+        """Append and execute one token, then return the borrowed top-1 result."""
 
         self._check_open()
         self._check_no_staged_verifier()
@@ -1668,7 +1617,7 @@ class LagunaGGUFResidentSession:
         if not use_bulk or len(tokens) == 1:
             result: LagunaEagerTokenResult | None = None
             for index, token in enumerate(tokens):
-                result = self._forward_token_eager(
+                result = self.forward_token(
                     token,
                     captures=capture_last if index == len(tokens) - 1 else None,
                     stream=stream,
@@ -2750,49 +2699,13 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
         )
 
-    def _enqueue_decode_graph_step(self, *, stream: int) -> None:
-        """Enqueue one capture-safe device-fed c=1 step without host state reads."""
-
-        assert self.weights is not None
-        assert self.kv_cache is not None
-        assert self.scratch is not None
-        assert self.libraries is not None
-        config = self.weights.config
-        launch_gguf_embedding(
-            self.weights.root("token_embedding"),
-            self.scratch.argmax_id.ptr,
-            self.scratch.hidden.ptr,
-            1,
-            config.hidden_size,
-            config.vocab_size,
-            backend=self.backend,
-            stream=stream,
-            libraries=self.libraries.embedding_libraries,
-            runtime=self.runtime,
-        )
-        for layer_id in range(config.block_count):
-            self._run_layer(layer_id, stream=stream)
-        self._enqueue_project_and_sample(stream=stream)
-        advance = resolve(
-            backend=self.backend,
-            layer="decode_position",
-            quant="laguna",
-            variant="advance_pair_i64",
-            missing="none",
-        )
-        if advance is None:
-            raise NotImplementedError(
-                f"backend {self.backend!r} does not provide Laguna paired position advance"
-            )
-        advance(
-            self.scratch.position.ptr,
-            self.kv_cache.row_position.ptr,
-            stream=stream,
-            library=self.libraries.runtime_state,
-            runtime=self.runtime,
-        )
-
-    def _enqueue_project_and_sample(self, *, stream: int) -> None:
+    def _project_and_sample(
+        self,
+        *,
+        input_token_id: int,
+        position: int,
+        stream: int,
+    ) -> LagunaEagerTokenResult:
         assert self.weights is not None
         assert self.scratch is not None
         assert self.kernel_plan is not None
@@ -2836,30 +2749,20 @@ class LagunaGGUFResidentSession:
             library=self.libraries.argmax,
             runtime=self.runtime,
         )
-
-    def _project_and_sample(
-        self,
-        *,
-        input_token_id: int,
-        position: int,
-        stream: int,
-    ) -> LagunaEagerTokenResult:
-        assert self.scratch is not None
-        self._enqueue_project_and_sample(stream=stream)
         if stream:
             self.runtime.stream_synchronize(stream)
         else:
             self.runtime.device_synchronize()
-        next_id = _read_i64(self.scratch.argmax_id, self.runtime)
-        next_value = _read_f32(self.scratch.argmax_value, self.runtime)
+        next_id = _read_i64(scratch.argmax_id, self.runtime)
+        next_value = _read_f32(scratch.argmax_value, self.runtime)
         return LagunaEagerTokenResult(
             position=position,
             input_token_id=input_token_id,
             next_token_id=next_id,
             next_token_logit=next_value,
-            logits=self.scratch.logits,
-            final_hidden=self.scratch.final_norm,
-            post_layer_hidden=self.scratch.hidden,
+            logits=scratch.logits,
+            final_hidden=scratch.final_norm,
+            post_layer_hidden=scratch.hidden,
         )
 
     def _validate_resident_weights(self) -> None:
@@ -2954,10 +2857,6 @@ class LagunaGGUFResidentSession:
             except BaseException as exc:  # best-effort teardown after HIP failures
                 errors.append(exc)
 
-        if self._decode_graph is not None:
-            graph = self._decode_graph
-            self._decode_graph = None
-            release(graph.close)
         if self.verifier_scratch is not None:
             scratch = self.verifier_scratch
             self.verifier_scratch = None
