@@ -229,11 +229,17 @@ def test_laguna_native_runner_admits_later_prefill_between_decode_ticks(generato
         first = adapter.submit_detailed(_request(max_tokens=3))
         first_prefill = adapter.poll(max_ticks=1)
         first_decode = adapter.poll(max_ticks=1)
+        one_active = adapter.live_loop_snapshot()
         second = adapter.submit_detailed(
             _request(prompts=((9, 8),), max_tokens=2)
         )
         delayed_arrival = adapter.poll(max_ticks=1)
+        two_active = adapter.live_loop_snapshot()
 
+        assert one_active["loop"]["physical_bucket"]["occupied_slots"] == 1
+        assert one_active["runner"]["sessions"]["active"] == 1
+        assert two_active["loop"]["physical_bucket"]["occupied_slots"] == 2
+        assert two_active["runner"]["sessions"]["active"] == 2
         assert any(event.work_kind is not None and event.work_kind.value == "prefill" for event in first_prefill)
         assert [event.token_id for event in first_decode if event.kind == "token"] == [10]
         assert any(event.request_id == second.request_ids[0] and event.kind == "admitted" for event in delayed_arrival)

@@ -199,7 +199,7 @@ stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
 | S2 | #19 | Render/encode once into request-local prepared prompt ownership | **6 -> 1 prompt encodes; 8.17/8.70 ms isolated 4K blocking/streaming TTFT saved** | **complete** |
 | S3 | #20 | Prefix-aware stop-safe streaming holdback | **184.536/123.243 ms useful-content delay removed in deterministic nonmatch/failed-prefix lanes** | **complete** |
 | S4 | #21 | Exact stateful Laguna KV continuation | **2.347/10.044/21.306 s saved at exact 128/512/1K hits; canonical chat 1.671 -> 0.412 s** | **complete** |
-| S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | exact c=1 runner and hardware smoke complete; retained server load-shape artifact pending | in progress |
+| S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | exact two-slot c1 model ticks; c2 OpenAI policy/lifecycle packet retained | **complete** |
 | Q1 | #23 | Audit and port retained serving improvements to Qwen GGUF/PARO | only genuine Qwen deltas; do not duplicate native ownership | queued after S5 |
 
 The separate model-prefill campaign runs in parallel. S1-S5 may consume its
@@ -585,10 +585,28 @@ continuation smoke matched the next ID and byte-identical SHA-256
 `38f4d005...58087` across all **277,434,816 copied KV/span bytes**, with exact
 session/KV position 8 and `prefix_reused_tokens=7`.
 
-This is a correctness/ownership checkpoint, not a latency or policy promotion
-claim. S5 remains open for a retained, reproducible server load-shape artifact
-covering each scheduling policy plus queue/useful-TTFT/ITL/E2E percentiles,
-active occupancy, cancellation acknowledgement, and lifecycle memory.
+The retained real-Uvicorn p32/d8 packet closes S5's initial exact-c1 scheduler
+scope. All three policies pass c1/c2 blocking IDs, SSE oracle reconstruction,
+`laguna_resident_scheduler_c1` routing, and delayed admission. At c2,
+`protect_ttft`/`protect_decode`/`fair` blocking throughput is
+**8.306/8.316/8.326 tok/s** and exact SSE is **8.276/8.263/8.288 tok/s**.
+Against the declared 0.5-second ITL threshold, policy SLO runs pass **3/3,
+0/3, and 2/3**; corresponding TTFT p95 medians are **1.241/1.586/1.295 s**
+and ITL p99 medians are **0.116/0.560/0.116 s**. Thus this one short shape
+changes no package policy: `protect_ttft` has the best TTFT/SLO stability and
+`fair` the highest median goodput, but neither earns broad default promotion.
+
+`protect_decode` initially exposed and now has a deterministic repair for a
+finite tick-budget assumption when ready rows stagger. Dispatched cancellation
+remains unpublished until the scheduler reclaims the row, then acknowledges and
+returns both leases. The host overload/recovery and 20-request soak pass; fair
+and repaired-protect-decode c2 GTT return exactly to sampled baseline after
+child shutdown. Existing S4 reuse remains byte-identical over all
+**277,434,816 KV/span bytes**. Artifact:
+[`2026-07-23-gfx1151-laguna-native-scheduler.json`](../benchmarks/results/2026-07-23-gfx1151-laguna-native-scheduler.json),
+SHA-256 `09b57dca...47d2`. This is correctness/ownership and absolute server
+evidence, not a speedup claim: the old bridge had no c2 baseline and every
+physical model transition remains c1.
 
 ---
 
