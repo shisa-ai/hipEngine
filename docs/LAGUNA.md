@@ -2348,6 +2348,26 @@ resource sets, all per-row sums/spans, generated IDs, exact command, hashes, and
 traffic caveats are in
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json`.
 
+A second clean D0 at `b4973769` extends the same synthetic canonical token
+stream to 512/1K/3,968 prompt tokens and profiles eight c=1 steps at each shape
+(six stable rows after two disclosed warmups):
+
+| Admitted regime | Kernel sum | Dispatch span | Profiled child wall | Dense Q5 | SWA | Global |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| positions 69-84 | 44.572 ms | 49.929 ms | 52.703 ms / 18.974 tok/s | 27.303 ms | 4.237 ms | 0.509 ms |
+| positions 512-519 | 70.686 ms | 76.434 ms | 79.432 ms / 12.589 tok/s | 27.318 ms | 27.823 ms | 2.988 ms |
+| positions 1,024-1,031 | 73.947 ms | 80.125 ms | 82.839 ms / 12.072 tok/s | 27.424 ms | 27.903 ms | 5.922 ms |
+| positions 3,968-3,975 | 90.605 ms | 96.493 ms | 99.248 ms / 10.076 tok/s | 27.401 ms | 27.927 ms | 22.713 ms |
+
+Dense Q5 is context-invariant. SWA reaches its physical 512-token window and
+plateaus near 27.9 ms, while global attention grows nearly linearly and becomes
+the third combined family/second individual symbol near 4K. The fixed 1,055-
+launch span gap remains about 5.4-6.2 ms. Thus Q5 is the first canonical-short
+route, but **512+ decode cannot approach 50 tok/s without SWA**, and near-4K also
+requires global attention work. All context rows are finite, lifecycle-exact,
+fully classified, and scratch-free. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json`.
+
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
 token on an RX 7900 XTX. Qwen moved dense raw projections onto dedicated pack8
@@ -2363,11 +2383,13 @@ Proceed in measured Amdahl order:
 
 1. add an exact dense Q5_K pack8 decode body and route all c=1 Laguna raw Q5
    projections through it; preserve bulk dispatch and the generic fallback;
-2. develop a short-context SWA decode specialization for the measured 69-84
-   admitted-token regime, without weakening `KVLiveSpans` or wrap fixtures;
+2. adapt the retained wave32-exact SWA prefill schedule to c=1 decode, where it
+   grows from 4.2 ms short to 27.9 ms at its 512-token physical window, without
+   weakening `KVLiveSpans` or 511/512/513 wrap fixtures;
 3. screen the landed weighted IQ3 selected-down and MoE-tail fusion patterns;
 4. activate/measure the existing exact Q6 and Q4 decode families, including the
-   Q4 lm-head; then reprofile at 128/512/1K/4K; and
+   Q4 lm-head, then address the 22.7-ms near-4K global-attention route and
+   reprofile at 128/512/1K/near-4K; and
 5. admit Laguna-specific one-step graph replay only after the kernel work. The
    decode span exceeds kernel sum by **5.42 ms / 10.8%**, so the prefill AR-O6
    graph defer no longer applies automatically, but graph capture is not the

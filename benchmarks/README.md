@@ -1228,6 +1228,13 @@ classified and scratch-free; final logits and lifecycle pass. This is a
 bottleneck diagnostic, not a new throughput claim. The authoritative canonical
 wall remains 19.596 tok/s above. [D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json).
 
+A clean context extension keeps dense Q5 fixed at **27.3-27.4 ms/token**, but
+SWA grows from **4.237 ms** short to **27.823/27.903/27.927 ms** at
+512/1K/near-4K, and global attention grows to **2.988/5.922/22.713 ms**.
+Profiled child wall is **12.589/12.072/10.076 tok/s** at those three shapes.
+These are profiler diagnostics over a deterministic extended token stream, not
+retained public throughput rows. [Context D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json).
+
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 
