@@ -671,7 +671,6 @@ class LagunaEagerLibraries:
             **self.linear,
             "router_logits": self.router_logits,
             "router_select": self.router_select,
-            "router_topk": self.router_select,
             "selected_gate_up": self.selected_experts,
             "selected_gate_up_iq": self.iq_selected_experts,
             "selected_silu": self.dense_silu,
@@ -1462,7 +1461,6 @@ class LagunaGGUFResidentSession:
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
-        use_persistent_router_topk: bool = True,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1551,11 +1549,7 @@ class LagunaGGUFResidentSession:
                 )
             else:
                 self.weights = resident_weights
-            self.moe_plan = resolve_laguna_moe_plan(
-                config,
-                backend=self.backend,
-                use_persistent_router_topk=use_persistent_router_topk,
-            )
+            self.moe_plan = resolve_laguna_moe_plan(config, backend=self.backend)
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,

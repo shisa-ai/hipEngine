@@ -14,10 +14,8 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("laguna_router.hip")
 _OUTPUT_NAME = "laguna_router.so"
 _SYMBOL = "hipengine_laguna_sigmoid_correction_topk_f32"
-_PERSISTENT_SYMBOL = "hipengine_laguna_router_topk_bf16_f32w_correction_persistent"
 _WEIGHTED_SUM_ROWS_SYMBOL = "hipengine_laguna_weighted_sum_rows_bf16_f32w"
 _THREADS = 256
-_MAX_HIDDEN_SIZE = 3_072
 _MAX_EXPERTS = 256
 _MAX_TOP_K = 16
 _WEIGHTED_SUM_ROWS_ARGTYPES = (
@@ -27,25 +25,6 @@ _WEIGHTED_SUM_ROWS_ARGTYPES = (
     ctypes.c_int64,
     ctypes.c_int64,
     ctypes.c_int64,
-    ctypes.c_int64,
-    ctypes.c_void_p,
-)
-_PERSISTENT_ARGTYPES = (
-    ctypes.c_void_p,  # hidden [hidden_size] bf16 bits
-    ctypes.c_void_p,  # router weight [experts, hidden_size] f32
-    ctypes.c_void_p,  # correction bias [experts] f32
-    ctypes.c_void_p,  # logits [experts] f32
-    ctypes.c_void_p,  # unbiased sigmoid scores [experts] f32
-    ctypes.c_void_p,  # corrected selection scores [experts] f32
-    ctypes.c_void_p,  # selected ids [top_k] i64
-    ctypes.c_void_p,  # normalized unbiased weights [top_k] f32
-    ctypes.c_void_p,  # scaled normalized weights [top_k] f32
-    ctypes.c_void_p,  # self-resetting completion counter [1] i32
-    ctypes.c_int64,
-    ctypes.c_int64,
-    ctypes.c_int64,
-    ctypes.c_int64,
-    ctypes.c_float,
     ctypes.c_int64,
     ctypes.c_void_p,
 )
@@ -152,70 +131,6 @@ def laguna_sigmoid_correction_topk_f32(
         runtime.check(int(err))
 
 
-def laguna_router_topk_bf16_hidden_correction_bias_persistent(
-    hidden_ptr: int,
-    weight_ptr: int,
-    correction_bias_ptr: int,
-    logits_ptr: int,
-    routing_scores_ptr: int,
-    selection_scores_ptr: int,
-    selected_ptr: int,
-    routing_ptr: int,
-    scaled_routing_ptr: int,
-    completion_counter_ptr: int,
-    tokens: int,
-    hidden_size: int,
-    num_experts: int,
-    top_k: int,
-    routed_scaling_factor: float,
-    *,
-    threads: int = _THREADS,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Run exact c=1 F32-weight Laguna routing with a self-resetting counter."""
-
-    if int(tokens) != 1:
-        raise ValueError("persistent Laguna router is decode-only and requires tokens == 1")
-    if int(hidden_size) <= 0:
-        raise ValueError("hidden_size must be positive")
-    if int(hidden_size) > _MAX_HIDDEN_SIZE:
-        raise ValueError(f"hidden_size must be <= {_MAX_HIDDEN_SIZE}")
-    _check_shape(tokens, num_experts, top_k, routed_scaling_factor, threads)
-    if int(completion_counter_ptr) == 0:
-        raise ValueError("completion_counter_ptr must be nonzero")
-    library = library or build_laguna_router(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(
-        library,
-        _PERSISTENT_SYMBOL,
-        _PERSISTENT_ARGTYPES,
-        ctypes.c_int,
-    )
-    err = fn(
-        hidden_ptr,
-        weight_ptr,
-        correction_bias_ptr,
-        logits_ptr,
-        routing_scores_ptr,
-        selection_scores_ptr,
-        selected_ptr,
-        routing_ptr,
-        scaled_routing_ptr,
-        completion_counter_ptr,
-        tokens,
-        hidden_size,
-        num_experts,
-        top_k,
-        float(routed_scaling_factor),
-        threads,
-        stream,
-    )
-    if int(err) != HIP_SUCCESS:
-        runtime.check(int(err))
-
-
 def laguna_weighted_sum_rows_bf16_f32w(
     values_ptr: int,
     weights_ptr: int,
@@ -271,16 +186,6 @@ def register_laguna_router_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
-        KernelKey(
-            "hip_gfx1100",
-            "laguna_router_topk",
-            "f32",
-            "bf16_hidden_correction_bias_persistent",
-        ),
-        laguna_router_topk_bf16_hidden_correction_bias_persistent,
-        replace=replace,
-    )
-    register(
         KernelKey("hip_gfx1100", "weighted_sum", "bf16", "laguna_rows"),
         laguna_weighted_sum_rows_bf16_f32w,
         replace=replace,
@@ -318,7 +223,6 @@ register_laguna_router_kernels()
 
 __all__ = [
     "build_laguna_router",
-    "laguna_router_topk_bf16_hidden_correction_bias_persistent",
     "laguna_sigmoid_correction_topk_f32",
     "laguna_weighted_sum_rows_bf16_f32w",
     "plan_laguna_router_build",

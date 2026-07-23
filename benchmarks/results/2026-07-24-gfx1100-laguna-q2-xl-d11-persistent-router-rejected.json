@@ -1,0 +1,403 @@
+{
+  "acceptance_policy": {
+    "admitted": false,
+    "canonical": "positive aggregate and every-category h16/h32 decode and E2E versus retained D9, with prefill/TTFT inside 0.5%",
+    "canonical_status": "skipped_after_mechanical_failure",
+    "correctness": "bit-exact router outputs plus full output/state/KV/live-span/reset/lifecycle gates",
+    "correctness_pass": true,
+    "profiles": "lower router work, complete kernel sum, and span plus higher profiled-child throughput at every short/512/1K/near-4K context",
+    "profiles_pass": false
+  },
+  "candidate": {
+    "baseline_after_decision": "Laguna D9 at 47.132308286752306 h32 decode tok/s",
+    "candidate_source_retained": false,
+    "default_after_decision": "registered router_logits/f32/bf16_hidden plus laguna_sigmoid_router_topk/f32/correction_bias split chain",
+    "description": "exact persistent-counter BF16-hidden/F32-weight router plus correction-only sigmoid top-k composite",
+    "implementation_revision": "c7466339703a711515f5e508321e2d3ac1a8d8b4",
+    "registry_key": [
+      "hip_gfx1100",
+      "laguna_router_topk",
+      "f32",
+      "bf16_hidden_correction_bias_persistent"
+    ]
+  },
+  "canonical_full_suite": {
+    "reason": "predeclared every-context mechanical gate failed before canonical admission",
+    "retained_baseline": {
+      "h16_decode_tok_s": 47.5762814310924,
+      "h16_e2e_output_tok_s": 6.909168860306418,
+      "h32_decode_tok_s": 47.132308286752306,
+      "h32_e2e_output_tok_s": 12.038207197450902,
+      "prefill_tok_s": 43.18963030675214,
+      "ttft_median_seconds": 1.8708374230191112
+    },
+    "status": "not_run",
+    "target": {
+      "additional_speedup_required_pct": 6.084343876817355,
+      "candidate_h32_decode_tok_s": 47.132308286752306,
+      "candidate_ms_per_token": 21.216868775363473,
+      "decode_tok_s": 50.0,
+      "remaining_ms_to_20": 1.2168687753634728
+    }
+  },
+  "clean_profiles": {
+    "checks": {
+      "all_kernel_sum_improve": false,
+      "all_profiled_child_improve": true,
+      "all_router_improve": true,
+      "all_span_improve": true,
+      "failed": [
+        "short:complete_kernel_sum"
+      ],
+      "pass": false
+    },
+    "common_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <root> --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens <16|8> --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt [--prompt-length <512|1024|3968>] [--disable-d11] --output <root>/bench.json",
+    "exact_order": [
+      "short control",
+      "short candidate",
+      "512 candidate",
+      "512 control",
+      "1024 control",
+      "1024 candidate",
+      "3968 candidate",
+      "3968 control"
+    ],
+    "protocol": "matched cached rocprofv3 code_merge_intervals streams; two warmup rows excluded; candidate/control order alternated by context",
+    "revision": "c7466339703a711515f5e508321e2d3ac1a8d8b4",
+    "rows": [
+      {
+        "candidate_bench_sha256": "30929c77007df2093ae706adcd2c0d8d0ce475746bdcee9cd23ebda496665223",
+        "candidate_kernel": {
+          "calls_per_token": 47,
+          "kernel_name": "(anonymous namespace)::laguna_router_topk_bf16_f32w_persistent_kernel(unsigned short const*, float const*, float const*, float*, float*, float*, long*, float*, float*, int*, long, long, long, float)",
+          "lds_block_size": 512,
+          "median_us": 13.72,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 32,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "1bf9ba01bc4ec11ce17164f19d0b2a20aea2f0583ac4a9e3e02e9c0f21c89380",
+        "control_bench_sha256": "232299af3c42db4eb0a887482d17807d5df5d6d35357f04628346a4709a269d3",
+        "control_trace_sha256": "5a87a4edabb90a329e9821dad0a5672c1d9cad33be0a5b4b681c318399bb2f9d",
+        "dispatches_per_token": {
+          "candidate_d11": 728,
+          "change": -47,
+          "split_d9": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d11": 17.2493115,
+          "change_pct": 0.169260453060871,
+          "split_d9": 17.220164571428572
+        },
+        "label": "short",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d11": 46.01467577209933,
+          "change_pct": 2.1840242032395096,
+          "split_d9": 45.03118381849806
+        },
+        "router_ms_per_token": {
+          "candidate_d11": 0.6502678571428574,
+          "change_pct": -9.688209424349715,
+          "split_d9": 0.720025428571429
+        },
+        "span_median_ms_per_token": {
+          "candidate_d11": 20.189182000000002,
+          "change_pct": -0.14164731904823258,
+          "split_d9": 20.21782
+        },
+        "stable_steps": 14
+      },
+      {
+        "candidate_bench_sha256": "44baf89a49ec12f0653d9f6ffd5f930ae088366b2a429fa2ebcbb70c76a4f396",
+        "candidate_kernel": {
+          "calls_per_token": 47,
+          "kernel_name": "(anonymous namespace)::laguna_router_topk_bf16_f32w_persistent_kernel(unsigned short const*, float const*, float const*, float*, float*, float*, long*, float*, float*, int*, long, long, long, float)",
+          "lds_block_size": 512,
+          "median_us": 13.4,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 32,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "a337b5acd3699a3b16dd438a76d99eea9b03a0e03be45ea8c40702fda80ee4d4",
+        "control_bench_sha256": "780820788ec721662a900a41214b038917f7a0e8ae7fa2029938f39cc5d2b0ce",
+        "control_trace_sha256": "58a3576201d3fa4f8ae90e824787a02331327aa23fcd947ac0f3a99e6cc7395a",
+        "dispatches_per_token": {
+          "candidate_d11": 728,
+          "change": -47,
+          "split_d9": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d11": 30.526998333333335,
+          "change_pct": -0.2690419728063276,
+          "split_d9": 30.609350333333335
+        },
+        "label": "512",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d11": 27.964115145487575,
+          "change_pct": 0.09233616037933601,
+          "split_d9": 27.93831797539453
+        },
+        "router_ms_per_token": {
+          "candidate_d11": 0.6362189999999999,
+          "change_pct": -11.048303998232733,
+          "split_d9": 0.7152409999999996
+        },
+        "span_median_ms_per_token": {
+          "candidate_d11": 33.610445,
+          "change_pct": -1.0122737854107777,
+          "split_d9": 33.954154
+        },
+        "stable_steps": 6
+      },
+      {
+        "candidate_bench_sha256": "881e65dc6635355a523cc793692f498b30c540ebd8204144fbc37f777ba21edc",
+        "candidate_kernel": {
+          "calls_per_token": 47,
+          "kernel_name": "(anonymous namespace)::laguna_router_topk_bf16_f32w_persistent_kernel(unsigned short const*, float const*, float const*, float*, float*, float*, long*, float*, float*, int*, long, long, long, float)",
+          "lds_block_size": 512,
+          "median_us": 13.561,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 32,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "4cd74c41ed3d72fe71bcbbf99e15a4f0ad6ceb314953cd1202f213e9a41292c2",
+        "control_bench_sha256": "7842a4e2d70d11e1992b2619ce5642e8b5bc0c7f2e81d54b88691f44dbc9ad44",
+        "control_trace_sha256": "0cebb7077c6506c71f59922570a255d191d7899a0d25206ee158cd17b59a291c",
+        "dispatches_per_token": {
+          "candidate_d11": 728,
+          "change": -47,
+          "split_d9": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d11": 33.461424666666666,
+          "change_pct": -0.13455892333441577,
+          "split_d9": 33.506510666666664
+        },
+        "label": "1024",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d11": 26.007064062859147,
+          "change_pct": 0.8961787644855779,
+          "split_d9": 25.77606444696533
+        },
+        "router_ms_per_token": {
+          "candidate_d11": 0.6442565000000003,
+          "change_pct": -9.656164014418355,
+          "split_d9": 0.7131161666666667
+        },
+        "span_median_ms_per_token": {
+          "candidate_d11": 36.538238500000006,
+          "change_pct": -0.605934508938355,
+          "split_d9": 36.760986
+        },
+        "stable_steps": 6
+      },
+      {
+        "candidate_bench_sha256": "da6925262acd50e23d89ddc543d9b0089afbbe8c95c50e67da5dc7a416036853",
+        "candidate_kernel": {
+          "calls_per_token": 47,
+          "kernel_name": "(anonymous namespace)::laguna_router_topk_bf16_f32w_persistent_kernel(unsigned short const*, float const*, float const*, float*, float*, float*, long*, float*, float*, int*, long, long, long, float)",
+          "lds_block_size": 512,
+          "median_us": 13.5805,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 32,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "9caef6108bd4f4c72ee1c76110bf1f7e1bded13cfde1b897eeda74697318c440",
+        "control_bench_sha256": "d4a1929e20a559f8d4591129c79a2a6d910bd1bd470eabc7fa18318e2f4dbe41",
+        "control_trace_sha256": "5ae4432521449121ac8973b480ee5a162224f4bbaef4ee29300008776aa58827",
+        "dispatches_per_token": {
+          "candidate_d11": 728,
+          "change": -47,
+          "split_d9": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d11": 50.175974000000004,
+          "change_pct": -0.15997838284126376,
+          "split_d9": 50.256373333333336
+        },
+        "label": "3968",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d11": 18.075160933757466,
+          "change_pct": 0.7492225985580747,
+          "split_d9": 17.940744819222218
+        },
+        "router_ms_per_token": {
+          "candidate_d11": 0.6441441666666671,
+          "change_pct": -9.874255620463368,
+          "split_d9": 0.714717166666667
+        },
+        "span_median_ms_per_token": {
+          "candidate_d11": 53.3691175,
+          "change_pct": -0.4877532558169029,
+          "split_d9": 53.630703
+        },
+        "stable_steps": 6
+      }
+    ]
+  },
+  "correctness": {
+    "actual_router_layers_exact": 47,
+    "actual_weight_router_micro": {
+      "candidate_median_ms": 0.661407470703125,
+      "candidate_us_per_layer": 14.072499376662234,
+      "candidate_vs_control_pct": -19.365130153155285,
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_d11_router.py",
+      "control_median_ms": 0.8202499389648438,
+      "control_us_per_layer": 17.45212636095412,
+      "counter_self_rearmed": true,
+      "harness_sha256": "4150fa07afe3e2b7bb6a0fb3d7798842d2f111b5ccf053437fa496c269e8cf6e",
+      "iterations": 100,
+      "layers_per_iteration": 47,
+      "outputs_bit_exact": true,
+      "raw_sha256": "4b8fd4b9f6ee70f55bab3b88a202d52a0577329bec4a5264b9c213250db9dbae",
+      "repetitions": 15,
+      "warmups": 5
+    },
+    "full_kv_and_live_spans_exact": true,
+    "full_logits_exact": true,
+    "pass": true,
+    "post_layer_hidden_exact": true,
+    "reset_exact": true,
+    "synthetic_exact": true,
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40455911864,
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-24",
+  "evidence": {
+    "baseline_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json",
+    "baseline_artifact_sha256": "9e36ee9c7a9e46157f7cc1446405683f6853120d1861410658ec48211f6d0b54",
+    "clean_profile_runner_sha256": "e05b4cb8b9bd4f7a94fb8cebae763d802221d5ed8d2f6642c64897e79ef82ba8",
+    "clean_profile_summary_sha256": "19d74b1820439f96e19bc4993e2b46fabe9ea4891c892c209aa26adb1185f6ff",
+    "correctness_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-correctness.json",
+    "correctness_artifact_sha256": "a0d3ddada1aa26585ccb81e89c989493e4cf41c4a5d9b2e6bad6836fc43378bf",
+    "design_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-design.json",
+    "design_artifact_sha256": "13e53160e9bb135594539379a96acb06ec32a4b3a9de61130a41deb746553f3f",
+    "short_confirmation_runner_sha256": "12b4247248aa10f90d57ba32a09833adb8400c8145bb0278d29d44365a8a42d3",
+    "short_confirmation_summary_sha256": "754a56bfbbab7c7a853432e35a1253ee2ab3eca9b7ca37a0ab485bee56e54040"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_d11_persistent_router_rejection",
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "notes": [
+    "The isolated router composite and launch-count contraction are real, but they do not override the frozen every-context mechanical predicate.",
+    "Three matched short pairs remove order ambiguity and still put pooled complete kernel sum 0.046% above split.",
+    "No category or 50 tok/s claim is made; retained D9 remains the target-only AR baseline."
+  ],
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": null,
+  "removal": {
+    "fallback_retained": "architecturally required registered split projection plus correction-only selector",
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_router_gpu.py tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_laguna_moe_tail_next_rmsnorm.py tests/test_generation_laguna_gguf.py tests/test_laguna_cpu_reference.py tests/test_kernel_registry.py",
+    "focused_output_sha256": "36d16feb57cadd45b6b2a039d1d4f0d3e1783690a4183b0ad7aad7db6077cd87",
+    "focused_result": "92 passed; one Starlette deprecation warning",
+    "removed": [
+      "persistent HIP body and C export",
+      "ctypes wrapper and four-axis registration",
+      "runtime composite selector and session counter allocation",
+      "gfx1151 alias exclusion",
+      "candidate kernel/runtime tests",
+      "constructor rollback selector"
+    ]
+  },
+  "schema": 1,
+  "short_confirmation": {
+    "decision": "confirmed short complete-kernel-sum non-improvement; do not run canonical category gate",
+    "median_pair_delta_pct": {
+      "kernel_sum_pct": 0.039222045896969426,
+      "profiled_child_tok_s_pct": 1.6993552807065715,
+      "router_pct": -9.611250123448755,
+      "span_pct": -1.0746836679246807
+    },
+    "pass": false,
+    "pooled": {
+      "kernel_sum_pct": {
+        "candidate": 17.277499333333335,
+        "control": 17.269472,
+        "delta_pct": 0.04648279538213007,
+        "samples_per_mode": 42
+      },
+      "span_pct": {
+        "candidate": 20.209367999999998,
+        "control": 20.3814055,
+        "delta_pct": -0.8440904627504797,
+        "samples_per_mode": 42
+      }
+    },
+    "protocol": "three clean matched 16-step short profiles; two warmup steps excluded; launch order C/A, A/C, C/A",
+    "rows": [
+      {
+        "candidate_bench_sha256": "30929c77007df2093ae706adcd2c0d8d0ce475746bdcee9cd23ebda496665223",
+        "candidate_trace_sha256": "1bf9ba01bc4ec11ce17164f19d0b2a20aea2f0583ac4a9e3e02e9c0f21c89380",
+        "control_bench_sha256": "232299af3c42db4eb0a887482d17807d5df5d6d35357f04628346a4709a269d3",
+        "control_trace_sha256": "5a87a4edabb90a329e9821dad0a5672c1d9cad33be0a5b4b681c318399bb2f9d",
+        "delta_pct": {
+          "kernel_sum_pct": 0.169260453060871,
+          "profiled_child_tok_s_pct": 2.1840242032395096,
+          "router_pct": -9.688209424349715,
+          "span_pct": -0.14164731904823258
+        },
+        "generated_ids_exact": true,
+        "label": "matrix"
+      },
+      {
+        "candidate_bench_sha256": "eab2989581829c7af0c7aa7e0653f408b29a74c2758dbee79d142673c9ed5260",
+        "candidate_trace_sha256": "d33ae8a22d747ba74ac782196454464a3c815e2df179b3f5cf86b7383d2f4b11",
+        "control_bench_sha256": "bd8d7de0ef0d2322ddf1214c38d5f6aff5109c4a5fb7c10b98995cb735abc74f",
+        "control_trace_sha256": "c063a3299985801c27215ff4eff71e6cd62528b723b43d748d98622d33cbb845",
+        "delta_pct": {
+          "kernel_sum_pct": -0.0687528795109027,
+          "profiled_child_tok_s_pct": 1.6993552807065715,
+          "router_pct": -9.39025870005633,
+          "span_pct": -1.1758845510064342
+        },
+        "generated_ids_exact": true,
+        "label": "repeat1_candidate_first"
+      },
+      {
+        "candidate_bench_sha256": "787967b189e9c56f565104409a9ecd4a926136dcba3db6f813c708fe47a4f728",
+        "candidate_trace_sha256": "6f0ecd299d3888572845cd8c823eec315235d7a2893b6d3102c02221ffb85090",
+        "control_bench_sha256": "f53141470d12d625d589974e1a9f08b6361e4f86fc1a9cb7d9bf15aab232b2c3",
+        "control_trace_sha256": "ce5f17b3863deebadb5e593db0e3dab41d5422172814f171e5140b50b5a7ce49",
+        "delta_pct": {
+          "kernel_sum_pct": 0.039222045896969426,
+          "profiled_child_tok_s_pct": 1.3873024156667135,
+          "router_pct": -9.611250123448755,
+          "span_pct": -1.0746836679246807
+        },
+        "generated_ids_exact": true,
+        "label": "repeat2_control_first"
+      }
+    ]
+  },
+  "status": "performance_rejected_removed"
+}

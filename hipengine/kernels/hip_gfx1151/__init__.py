@@ -138,16 +138,11 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
-        # D9/D11 are W7900-only until gfx1151 receives independent exact/perf gates.
+        # D9 is W7900-only until gfx1151 receives an independent exact/perf gate.
         (
             "moe_tail+next_rmsnorm",
             "bf16",
             "laguna_aggregate_gguf_f32_weight_out",
-        ),
-        (
-            "laguna_router_topk",
-            "f32",
-            "bf16_hidden_correction_bias_persistent",
         ),
         (
             "speculative_cycle",
