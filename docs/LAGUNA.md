@@ -8,12 +8,13 @@ Poolside-matched DFlash drafter through admitted budget B4, and transactional
 DFlash target verify/accept/commit are implemented. First-token, repeated-state,
 bulk-vs-serial, live Poolside-v1 reasoning/XML-tool, B4 draft top-k, and
 B1/B2/B4/B7/B15 target-cycle exactness gates pass, with one documented target-AR
-low-margin greedy-32 arithmetic split. LPF-1 exact tiled source-F16 prefill is
-retained from two rows and moves canonical prefill to 48.560 tok/s. The
-pre-LPF-1 full-suite DFlash B4 run was exact at 0.6538x true-AR decode, but is
-now stale because the promoted tile changes B+1 verification; DFlash remains
-off pending a post-prefill refresh. Public integration, higher-budget draft
-candidate parity, LPF-2 through LPF-6, and long-context admission remain.
+low-margin greedy-32 arithmetic split. LPF-1 exact tiled source-F16 prefill and
+LPF-4's 128-row chunk policy are retained; the paired canonical row reaches
+49.641 prompt tok/s, while LPF-2/3 are measured rejections. The pre-LPF-1 full-
+suite DFlash B4 run was exact at 0.6538x true-AR decode, but is now stale because
+the promoted prefill routes change B+1 verification; DFlash remains off pending
+a post-prefill refresh. DFlash public integration, higher-budget draft candidate
+parity, LPF-5/6, and long-context admission remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1872,9 +1873,23 @@ down as raw GGUF, while the in-tree Matrix-Core families require raw/T16
 residency and use reassociated arithmetic. Changing all 48 layers' replacement
 contract plus cache for a family that owned only about 71 ms of the pre-LPF-1
 55-row span has a best-case post-LPF-1 ceiling near 6%; it is deferred until a
-future resident-layout project or a new profile makes it dominant. LPF-4 chunk
-policy is next. Evidence:
+future resident-layout project or a new profile makes it dominant. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf3-dense-shared-rejected.json`.
+
+LPF-4 is closed and promoted at **128 rows**. The clean same-session gate keeps
+one 128-row resident allocation and alternates 64/128 scheduling over two
+repetitions of all ten canonical prompts. Every prompt crosses 64 and fits 128,
+so the candidate removes a second complete 48-layer pass without changing
+kernel math. Prefill moves **48.541 -> 49.641 tok/s (+2.27%)**, median TTFT
+**1.692 -> 1.639 s (-3.15%)**, and h16/h32 E2E **5.954/8.717 -> 6.042/8.811
+(+1.49%/+1.08%)**; decode is neutral within **0.014%**. Every category improves
+prefill by **1.09-2.84%** and E2E by **0.48-1.79%**. All 20 chunk pairs are
+complete-ID exact at both horizons, same-route repeats are deterministic, the
+Poolside gate remains KL `6.6214e-6` with exact top-1, and lifecycle recovery is
+exact. The larger bounded scratch adds **49.1 MiB** to resident ownership; the
+public session default is now 128 while an explicit 64-row constructor override
+remains available. LPF-5 long-context 512/1K/4K attribution is next. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf4-chunk128.json`.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths

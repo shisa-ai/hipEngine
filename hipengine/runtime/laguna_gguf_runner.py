@@ -922,7 +922,7 @@ class LagunaGGUFResidentSession:
         progress: Callable | None = None,
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
-        prefill_chunk_size: int = 64,
+        prefill_chunk_size: int = 128,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)

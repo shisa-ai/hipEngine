@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`8ceb7d3a0068822b23ba6729cd9c91cacb701309` for the exact Laguna S 2.1
+LPF-4 128-row chunk-policy and canonical target-AR gate,
 `6b14c2da60bd51d56373e31fe9e16e15f4e969d9` for the exact Laguna S 2.1
 LPF-1 tiled source-F16 prefill and canonical target-AR gate,
 `dbfeecf83363023d3ac9d72736c68da632af0726` for the Laguna S 2.1 LPF-0
@@ -1121,9 +1123,10 @@ recoverable from the linked compact artifacts, changelog, and
 
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 
-**Status: retained for exact target-only c=1 AR and loader startup; the matched
-B4 DFlash row is exact but stale after LPF-1 changed target-verifier rows, so
-DFlash remains off pending refresh.** The AR protocol uses the
+**Status: retained for exact target-only c=1 AR and loader startup; LPF-1's
+exact tile and LPF-4's 128-row chunks are default. The matched B4 DFlash row is
+exact but stale after those target-verifier changes, so DFlash remains off
+pending refresh.** The AR protocol uses the
 full ten-prompt `mtpbench-code-general-ja` suite (`code`, `general_en`,
 `general_ja`, and
 `mixed_ja_en`), prompt lengths 68-122, greedy 16/32-token horizons, two
@@ -1136,8 +1139,10 @@ top-1, and lifecycle recovery is exact.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Token-serial prefill + eager c=1 decode | 17.425 | 4.625 s | 16.384 | 2.727 | 4.671 |
 | Previous 64-row bulk GEMV prefill + same eager c=1 decode | 23.333 | 3.481 s | 16.381 | 3.470 | 5.719 |
-| **Default LPF-1 exact tiled prefill + same eager c=1 decode** | **48.560** | **1.692 s** | **16.386** | **5.955** | **8.717** |
+| LPF-1 exact tiled prefill, 64-row chunks + same eager c=1 decode | 48.560 | 1.692 s | 16.386 | 5.955 | 8.717 |
 | LPF-1 change vs previous default | **+108.12% (2.081x)** | **-51.39%** | +0.030% | **+71.61%** | **+52.42%** |
+| **Default LPF-1 tile + LPF-4 128-row chunks + same eager c=1 decode** | **49.641** | **1.639 s** | **16.390** | **6.042** | **8.811** |
+| LPF-4 paired change vs same-session 64-row control | **+2.27%** | **-3.15%** | -0.010% | **+1.49%** | **+1.08%** |
 
 LPF-1 changes prompt execution only; rows=1 decode stays on the original exact
 GEMV and is neutral. Every serial/tiled pair and same-route repeat is exact at
@@ -1165,13 +1170,26 @@ first family with a reduction-order-preserving 8x4/16x4 tile; the cached
 LDS, and zero scratch. A faster reassociated WMMA control was rejected after
 changing three free-running trajectories.
 
-Real top-10 routing still produces 6,892 nonempty `(layer, expert)` groups at 55
-rows; 76.25% have at most four lanes, so naïve 16-row compact-WMMA padding would
-execute 4.396x useful lanes (2.704x at 128 rows). LPF-2 compact WMMA remains a
-control rather than an assumed win; a small-M grouped reuse path is the stronger
-fallback candidate. Artifacts: [LPF-0 profile and routing](results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json),
+Real top-10 routing produces 6,892 nonempty `(layer, expert)` groups at 55 rows;
+76.25% have at most four lanes. LPF-2's exact no-padding compact-pair candidate
+therefore tested the strongest incremental reuse bound, but regressed weighted
+prefill **-11.57%** and was removed. LPF-3 exact dense/shared gate+up pairing
+regressed **-0.71%** and was also removed; its real-WMMA follow-up requires a
+non-incremental resident-layout/cache change for a family with only a roughly
+6% post-LPF-1 Amdahl ceiling.
+
+LPF-4 promotes 128-row chunks. A clean same-session run alternates 64/128 over
+two repetitions of every canonical prompt, all of which cross 64 and fit 128.
+The candidate moves paired prefill **48.541 -> 49.641 tok/s (+2.27%)**, median
+TTFT **1.692 -> 1.639 s (-3.15%)**, and h16/h32 E2E **5.954/8.717 ->
+6.042/8.811 (+1.49%/+1.08%)**, with decode neutral within 0.014%. Every category
+improves: prefill is **+1.09% to +2.84%**, and fixed-horizon E2E is **+0.48% to
++1.79%**. All chunk pairs/repeats are exact, the Poolside gate remains KL
+`6.6214e-6` with exact top-1, lifecycle returns to zero, and bounded resident
+ownership rises only **49.1 MiB**. Artifacts: [LPF-0 profile and routing](results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json),
 [LPF-1 same-session A/B](results/2026-07-23-gfx1151-laguna-prefill-lpf1-ab.json),
-and [LPF-1 canonical category gate](results/2026-07-23-gfx1151-laguna-prefill-lpf1-tiled.json).
+[LPF-1 canonical category gate](results/2026-07-23-gfx1151-laguna-prefill-lpf1-tiled.json),
+and [LPF-4 chunk-policy gate](results/2026-07-23-gfx1151-laguna-prefill-lpf4-chunk128.json).
 
 The matched clean Poolside llama.cpp `04b2b72c` raw-token diagnostic reports
 70.463/70.451 prompt tok/s and 19.063/18.882 native predicted tok/s at h16/h32,
