@@ -1,6 +1,6 @@
 # hipEngine Serving-Latency Optimization Plan
 
-Status: 2026-07-23 (active; S0-S1 complete, S2-S5 pending).
+Status: 2026-07-23 (active; S0-S2 complete, S3-S5 pending).
 
 Scope: resident Poolside Laguna S 2.1 Q4_K_M serving on the local Ryzen AI
 MAX+ 395 / Radeon 8060S (`gfx1151`) host, starting with exact greedy `c=1`.
@@ -117,9 +117,9 @@ probe script is not yet committed and `reset_state()` was timed as host
 submission rather than synchronized request wall. S1 must add a checked-in
 harness and measure complete first-token latency before promotion.
 
-### 2.3 Public chat can encode the same prompt repeatedly
+### 2.3 Pre-S2 public chat encoded the same prompt repeatedly
 
-The current server performs prompt-wide token work at multiple boundaries:
+The pre-S2 baseline performed prompt-wide token work at multiple boundaries:
 
 1. thinking-budget/context calculation while rendering chat;
 2. reasoning-open detection before live chat streaming;
@@ -127,9 +127,11 @@ The current server performs prompt-wide token work at multiple boundaries:
 4. model generation tokenization; and
 5. another remaining-context count when `max_tokens` is omitted.
 
-Thus a normal chat prompt is encoded at least three times for blocking and four
-times for streaming; implicit token budgets can add another pass. A completion
-request normally counts once for admission and encodes again for generation.
+Thus the baseline encoded a normal chat prompt at least three times for blocking
+and four times for streaming; implicit token budgets could add another pass. A
+completion request normally counted once for admission and encoded again for
+generation. The retained S2 measurement below observes six complete prompt
+encodes per blocking or streaming chat request in its exact isolated scope.
 
 The reconstructed HF encoder's measured median at 4,096 tokens is **3.428 ms**.
 Request-local reuse therefore has a directional ceiling of roughly **6.9 ms**
@@ -194,8 +196,8 @@ stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
 | --- | ---: | --- | --- | --- |
 | S0 | #17 | Document path, definitions, evidence, telemetry, and gates | process only | **complete** |
 | S1 | #18 | Pool/reset one generator-owned Laguna resident session | **31.800 ms setup and 34.877 ms direct TTFT saved** | **complete** |
-| S2 | #19 | Render/encode once into request-local prepared prompt ownership | sub-ms short; about 7-14 ms near 4K | pending |
-| S3 | #20 | Prefix-aware stop-safe streaming holdback | workload-dependent; up to 61 ms per avoidable held token | pending, blocked by S2 |
+| S2 | #19 | Render/encode once into request-local prepared prompt ownership | **6 -> 1 prompt encodes; 8.17/8.70 ms isolated 4K blocking/streaming TTFT saved** | **complete** |
+| S3 | #20 | Prefix-aware stop-safe streaming holdback | workload-dependent; up to 61 ms per avoidable held token | pending |
 | S4 | #21 | Exact stateful Laguna KV continuation | seconds on guaranteed-hit follow-up turns | pending, blocked by S3 |
 | S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | seconds under contention; c=1 exact first | pending, blocked by S4 |
 
@@ -335,6 +337,50 @@ when tests prove the split exact.
 Telemetry should expose `render_ms`, `prompt_encode_ms`, and
 `admission_prepare_ms`; `tokenize_ms` may remain as a compatibility alias only
 if its ownership is documented and it is not double-counted.
+
+### Retained result (2026-07-23)
+
+Revision `0081d150c08a95423f29fec8fd26779f53c8f730` introduces an
+immutable request-local `PreparedPromptInput` with rendered text, exact IDs and
+count, tokenizer identity, and render/encode/admission timing. One owner is
+shared across duplicate `n` rows and reclaimed with the request. Thinking
+budgeting, context admission, Poolside reasoning-open detection, generation,
+and usage all consume its exact IDs/count. Text/raw-ID fallback remains public,
+and no process-wide tokenizer or prompt cache was added.
+
+The clean comparison runs the same checked-in FastAPI TestClient harness against
+baseline `88205779d5f9d69d4393060d89718ae935de7869` and the candidate on the
+Ryzen AI MAX+ 395. It uses the exact Laguna Q4_K_M GGUF only for tokenizer
+metadata and an immediate deterministic fake model (`ready`, generated ID 1),
+so these values isolate rendering, tokenization, admission, usage, HTTP/SSE, and
+client parsing. They are **not Laguna model TTFT** and use no GPU.
+
+| Mode | Rendered prompt | Prompt encodes | Prompt encoder wall, median | Useful-content TTFT, median | Change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| blocking | 128 | 6 -> **1** | 0.585 -> **0.094 ms** | 1.715 -> **1.337 ms** | **-0.377 ms** |
+| blocking | 512 | 6 -> **1** | 1.892 -> **0.303 ms** | 2.897 -> **1.924 ms** | **-0.973 ms** |
+| blocking | 1,024 | 6 -> **1** | 3.676 -> **0.565 ms** | 4.905 -> **2.691 ms** | **-2.214 ms** |
+| blocking | 4,096 | 6 -> **1** | 13.578 -> **2.172 ms** | 15.334 -> **7.167 ms** | **-8.166 ms** |
+| streaming | 128 | 6 -> **1** | 0.472 -> **0.099 ms** | 1.373 -> 1.443 ms | +0.069 ms, overlapping noise |
+| streaming | 512 | 6 -> **1** | 1.870 -> **0.290 ms** | 2.961 -> **1.593 ms** | **-1.369 ms** |
+| streaming | 1,024 | 6 -> **1** | 3.716 -> **0.550 ms** | 5.151 -> **2.360 ms** | **-2.791 ms** |
+| streaming | 4,096 | 6 -> **1** | 13.488 -> **2.133 ms** | 15.483 -> **6.786 ms** | **-8.697 ms** |
+
+Across 500 requests per mode over the canonical ten-prompt suite, pooled median
+prompt-encoder wall changes **0.357 -> 0.065 ms (-81.93%)** blocking and
+**0.340 -> 0.063 ms (-81.39%)** streaming. Useful-content TTFT changes
+**1.265 -> 0.998 ms (-21.12%)** and **1.244 -> 0.964 ms (-22.49%)**,
+respectively. The isolated 128-token streaming p10-p90 ranges overlap; it is not
+a resolved regression and is reported rather than discarded. All exact prompt
+usage counts match, the candidate performs one prompt encode in every sample,
+and focused generation/server validation reports 125/527 passes.
+
+`tokenize_ms` is now explicitly the compatibility alias of
+`prompt_encode_ms`; `render_ms` and `admission_prepare_ms` are separate and not
+additive aliases. Artifact:
+[`2026-07-23-laguna-prepared-prompt-fastapi.json`](../benchmarks/results/2026-07-23-laguna-prepared-prompt-fastapi.json).
+The two raw outputs have SHA-256 `22fa854d...9ad5d768` and
+`badd0a26...8946df9`; exact commands are recorded in the artifact.
 
 ---
 
