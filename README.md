@@ -70,7 +70,13 @@ numbers below.
   runtime and benchmark paths.
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
-  parsing, and exact source-bound cached loading. Its matched BF16 DFlash B4
+  parsing, and exact source-bound cached loading. gfx1151 prefill now uses the
+  quality-gated global qrow2 online-softmax route, improving repeated 512/1K/4K
+  throughput by **2.47%/5.44%/21.85%** and complete-category prefill by **0.32%**
+  at maximum KL **0.03084** and top-1 **317/320**; exact global attention remains
+  the rollback and unmeasured-backend default
+  ([evidence](benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json)).
+  Its matched BF16 DFlash B4
   drafter is supported only as an explicit library/OpenAI opt-in; true AR stays
   default because the canonical full-suite DFlash economics are `0.9469x` with
   heldout and non-code regressions.

@@ -2586,7 +2586,7 @@ that consumes complete `KVLiveSpans`. Evidence:
 - [x] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling. The wrapper/runtime is healthy but has no executable head-dim-128
   Laguna geometry, so direct adaptation is closed mechanically.
-- [ ] Implement an in-tree tiled causal GQA route now that the retained profile
+- [x] Implement an in-tree tiled causal GQA route now that the retained profile
   measures global at 21.62% of 4K kernel sum. The rejected paired-head exact
   kernel is not a Flash-attention test. An exact adjacent-query-row follow-up is
   also closed: despite halving Y workgroups and reusing each BF16 K/V load, its
@@ -2609,10 +2609,14 @@ that consumes complete `KVLiveSpans`. Evidence:
   -> 71.475/68.281/64.076 tok/s (+2.472%/+5.444%/+21.854%)**, all nine
   full-vocabulary pairs are finite with maximum KL **0.007589**, top-1 is
   **9/9**, cursors/repeats/lifecycle pass, and online state hashes differ as
-  declared. This remains an explicit quality-lane candidate only; run the
-  complete category gate before selecting any runtime default. Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-screen.json`.
-- [ ] Preserve complete `KVLiveSpans`, physical SWA rings, absolute positions,
+  declared. The complete category gate promotes this route on gfx1151: weighted
+  prefill improves **69.310 -> 69.529 tok/s (+0.315%)**, h16/h32 E2E improves
+  **+0.184%/+0.125%**, all categories are positive, maximum teacher-forced KL is
+  **0.030836**, top-1 is **317/320**, and Poolside/repeats/lifecycle pass. Exact
+  global prefill remains explicit rollback and the default on unmeasured
+  backends. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json`.
+- [x] Preserve complete `KVLiveSpans`, physical SWA rings, absolute positions,
   eviction masks, BF16 K/V rounding, and the separate softplus output gate.
   Keep the exact global/SWA kernels as fallbacks below the selected threshold.
 
