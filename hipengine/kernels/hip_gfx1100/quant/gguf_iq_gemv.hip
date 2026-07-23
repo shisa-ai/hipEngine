@@ -790,6 +790,73 @@ __global__ void gguf_iq4_xs_selected_gemv_kernel(
 }
 
 __launch_bounds__(256, 2)
+__global__ void gguf_iq3_xxs_weighted_selected_down_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const float* __restrict__ routing_weights,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int tokens,
+    int top_k,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int token = blockIdx.y;
+  if (out_col >= out_features || token >= tokens) return;
+
+  const int row_bytes = (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int groups8 = in_features / 8;
+  const int64_t route_base = static_cast<int64_t>(token) * top_k;
+
+  // Preserve the unfused path exactly: reduce and round every selected route
+  // to BF16, then accumulate scaled routing weights in slot order before the
+  // final BF16 rounding. The trailing barrier protects the reused LDS wave
+  // sums before the next route starts its reduction.
+  float weighted_total = 0.0f;
+  for (int slot = 0; slot < top_k; ++slot) {
+    const int64_t route = route_base + slot;
+    const int64_t expert_id = selected[route];
+    float route_acc = 0.0f;
+    if (expert_id >= 0 && expert_id < num_experts) {
+      const uint8_t* __restrict__ weight_row =
+          qweight + expert_id * expert_bytes +
+          static_cast<int64_t>(out_col) * row_bytes;
+      const uint16_t* __restrict__ x_row_ptr =
+          x + route * in_features;
+      for (int group8_linear = threadIdx.x; group8_linear < groups8;
+           group8_linear += blockDim.x) {
+        const int block_idx =
+            __builtin_amdgcn_readfirstlane(group8_linear >> 5);
+        const int group8 = group8_linear & 31;
+        const int x_offset = block_idx * QK_K + group8 * 8;
+        float x_values[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+        }
+        const uint8_t* __restrict__ block =
+            weight_row + static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+        route_acc += iq3_xxs_group_dot(block, group8, x_values);
+      }
+    }
+    const float route_total = reduce_block_sum(route_acc);
+    if (threadIdx.x == 0) {
+      const float route_bf16 =
+          bf16_bits_to_float(float_to_bf16_bits(route_total));
+      weighted_total =
+          fmaf(route_bf16, routing_weights[route], weighted_total);
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    out[static_cast<int64_t>(token) * out_features + out_col] =
+        float_to_bf16_bits(weighted_total);
+  }
+}
+
+__launch_bounds__(256, 2)
 __global__ void gguf_iq4_xs_weighted_selected_down_kernel(
     const uint16_t* __restrict__ x,
     const int64_t* __restrict__ selected,
@@ -1106,6 +1173,42 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out(
       out,
       static_cast<int>(x_rows),
       static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const float* routing_weights,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || routing_weights == nullptr ||
+      qweight == nullptr || out == nullptr || tokens <= 0 || top_k <= 0 ||
+      num_experts <= 0 || in_features <= 0 || in_features % QK_K != 0 ||
+      out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(
+      static_cast<unsigned int>(out_features), static_cast<unsigned int>(tokens));
+  gguf_iq3_xxs_weighted_selected_down_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      routing_weights,
+      qweight,
+      out,
+      static_cast<int>(tokens),
+      static_cast<int>(top_k),
       static_cast<int>(num_experts),
       static_cast<int>(in_features),
       static_cast<int>(out_features));

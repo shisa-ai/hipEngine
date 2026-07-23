@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+    gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
     gguf_iq4_xs_selected_gemv_bf16_bf16_out,
     gguf_iq4_xs_weighted_selected_down_bf16_bf16_out,
     iq3_selected_default_threads,
@@ -267,7 +268,8 @@ def _run_iq3_fused(
     return out
 
 
-def _run_iq4_weighted(
+def _run_iq_weighted(
+    launch,
     library,
     *,
     x_bf16: np.ndarray,
@@ -290,7 +292,7 @@ def _run_iq4_weighted(
         weight_buf = _device_buffer(qweight, buffers)
         out_buf = malloc(out.nbytes)
         buffers.append(out_buf)
-        gguf_iq4_xs_weighted_selected_down_bf16_bf16_out(
+        launch(
             x_buf.ptr,
             selected_buf.ptr,
             routing_buf.ptr,
@@ -343,6 +345,12 @@ def test_iq_gemv_registry_and_build_plan() -> None:
         quant="gguf_iq4_xs",
         variant="selected_gemv_decode_bf16_bf16_out",
     ) is gguf_iq4_xs_selected_gemv_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq3_xxs",
+        variant="selected_weighted_down_gemv_decode_bf16_bf16_out",
+    ) is gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="moe_linear",
@@ -597,7 +605,59 @@ def test_iq4_weighted_down_matches_selected_single_fallback(iq_library, tokens: 
         for slot in range(top_k):
             fallback[token] += routing[token, slot] * single_f32[token, slot]
     fallback_bf16 = _f32_to_bf16_u16(fallback)
-    actual = _run_iq4_weighted(
+    actual = _run_iq_weighted(
+        gguf_iq4_xs_weighted_selected_down_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        routing=routing,
+        qweight=qweight,
+    )
+    np.testing.assert_array_equal(actual, fallback_bf16)
+
+
+@pytest.mark.parametrize("tokens", [1, 2])
+def test_iq3_weighted_down_matches_local128_selected_single_fallback(
+    iq_library, tokens: int
+) -> None:
+    top_k = 10
+    in_features = 1024
+    out_features = 17
+    qweight = _make_iq3_weight(5, out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(_make_x(tokens * top_k, in_features))
+    selected = np.asarray(
+        [
+            [4, 0, 3, 1, 2, 1, -1, 2, 4, 0],
+            [1, 5, 3, 0, 2, 4, 2, 0, 3, 1],
+        ],
+        dtype=np.int64,
+    )[:tokens]
+    routing = np.asarray(
+        [
+            [0.31, 0.27, 0.23, 0.19, 0.15, 0.11, 0.09, 0.07, 0.05, 0.03],
+            [0.29, 0.25, 0.21, 0.18, 0.14, 0.12, 0.10, 0.08, 0.06, 0.04],
+        ],
+        dtype=np.float32,
+    )[:tokens]
+    single = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected.reshape(-1),
+        qweight=qweight,
+        threads=128,
+    )
+    single_f32 = _bf16_u16_to_f32(single).reshape(tokens, top_k, out_features)
+    fallback = np.zeros((tokens, out_features), dtype=np.float32)
+    for token in range(tokens):
+        for slot in range(top_k):
+            fallback[token] = (
+                fallback[token]
+                + routing[token, slot] * single_f32[token, slot]
+            ).astype(np.float32)
+    fallback_bf16 = _f32_to_bf16_u16(fallback)
+    actual = _run_iq_weighted(
+        gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
         iq_library,
         x_bf16=x_bf16,
         selected=selected,
