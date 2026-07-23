@@ -744,10 +744,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         session.global_prefill_variant
         == "global_context_rows_qrow2_online_spans"
     )
-    assert (
-        session.swa_prefill_variant
-        == "swa_context_rows_qrow2_m128_c128_exact_spans"
-    )
+    assert session.swa_prefill_variant == "swa_context_rows_qrow2_online_spans"
     assert session.selected_down_mode == "adaptive_grouped_smallm_fused"
     assert session.verifier_scratch is None
     session.close()

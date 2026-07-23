@@ -48,11 +48,11 @@ LAGUNA_PREFILL_MATRIX_ROWS = 512
 # prefill shapes. Exact global prefill remains the explicit rollback and every
 # unmeasured backend retains its prior default.
 LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow2_online_spans"
-# Clean AR-O5 repeated 512/1K/4K full-state and ten-prompt category gates admit
-# two-query-row reuse only for complete M128 attention tiles with >=128 prior
-# tokens. The policy delegates short/partial/empty-context rows to exact wave32;
-# other backends retain their independently measured defaults.
-LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow2_m128_c128_exact_spans"
+# Clean AR-O5 repeated 512/1K/4K and complete ten-prompt category quality gates
+# admit online-softmax K/V reuse across adjacent query rows on all SWA prefill
+# shapes. Exact context-qualified qrow2 and wave32 remain explicit rollback and
+# every unmeasured backend retains its independently measured default.
+LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow2_online_spans"
 # Clean AR-O1 shape/micro/category gates admit exact grouped Q4/Q6 down plus
 # routing/shared combine from 32 bulk rows. Other backends retain direct GEMV.
 LAGUNA_SELECTED_DOWN_MODE = "adaptive_grouped_smallm_fused"
