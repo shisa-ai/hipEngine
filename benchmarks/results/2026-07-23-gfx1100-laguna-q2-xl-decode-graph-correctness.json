@@ -1,0 +1,285 @@
+{
+  "backend": "hip_gfx1100",
+  "base_revision": "293aa80b1c28fd8ccc7a0c10ab1b3f547ed001ef",
+  "candidate": "Laguna Q2 XL one-step raw-greedy HIP decode graph",
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_graph_correctness_gate.py",
+  "date": "2026-07-23",
+  "focused_tests": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_laguna_decode_graph.py tests/test_runtime_state_plan.py tests/test_laguna_kv_attention.py tests/test_laguna_gguf_runner.py",
+    "passed": 34
+  },
+  "gate_source_sha256": "47b487ad5a9fd327f830e91082c7e76d48972f39afd276f47f677e64c67d732f",
+  "graph": {
+    "capture_seconds": 0.02911316091194749,
+    "captured": true,
+    "enabled": true,
+    "replay_count": 961
+  },
+  "hardware": "AMD Radeon PRO W7900",
+  "lifecycle": {
+    "capture_nonexecuting": true,
+    "graph_reused_after_continuation_reset": true,
+    "mismatched_token_eager_fallback_passed": true,
+    "replay_allocation_free": true,
+    "retained_prefix_suffix_passed": true,
+    "third_replay_after_reset_passed": true,
+    "tracked_peak_bytes": 40455911848,
+    "tracked_returned_to_baseline": true
+  },
+  "model": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+  "model_sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+  "policy": {
+    "default_enabled": false,
+    "eager_fallback_retained": true,
+    "explicit_session_opt_in": "use_decode_graph=True",
+    "gfx1151_certified": false
+  },
+  "prompt": {
+    "id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+  },
+  "quant": "UD-Q2_K_XL",
+  "raw_artifact": "/tmp/laguna-q2-xl-decode-graph-correctness.json",
+  "raw_sha256": "50ff3706a8316ab8ac5564872ddb6b5a4e74779c0222ef495d009a609347a83a",
+  "rocprof": {
+    "api_counts": {
+      "hipGraphDestroy": 1,
+      "hipGraphExecDestroy": 1,
+      "hipGraphInstantiate": 1,
+      "hipGraphLaunch": 1,
+      "hipMalloc": 1155,
+      "hipStreamBeginCapture": 1,
+      "hipStreamEndCapture": 1
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --hip-runtime-trace --kernel-trace --memory-allocation-trace --output-format csv --output-directory /tmp/laguna-q2-xl-decode-graph-trace --output-file epyc -- .venv/bin/python -u /tmp/laguna_graph_trace_child.py",
+    "hip_malloc_at_or_after_graph_launch": 0,
+    "kernel_dispatch_count_including_prefill": 2309,
+    "paired_position_tail_count": 1,
+    "paired_position_tail_duration_ns": 1920,
+    "paired_position_tail_name": "(anonymous namespace)::advance_laguna_position_pair_i64_kernel(long*, long*)",
+    "trace_sha256": {
+      "epyc_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+      "epyc_hip_api_trace.csv": "179e8377b5f71d900014006c7cdcab57d8077664a2b02e7cde453d9775e5c6c9",
+      "epyc_kernel_trace.csv": "4de02623020f1433edeee5d3c492023b67886f0c6e12a7ad76ad792beb4b529d",
+      "epyc_memory_allocation_trace.csv": "2f5cf532255c0f978231962900d87b4a1f0efdae1a35e1e2403fde9cd2d62efa"
+    }
+  },
+  "runtime": "ROCm/HIP 7.2.0 runtime trace; one queue",
+  "schema": 1,
+  "status": "correctness_pass_performance_pending",
+  "target_arch": "gfx1100",
+  "timing_diagnostic": {
+    "note": "Sparse correctness-gate samples show graph slower than eager at every sampled context; task #278 owns clean counterbalanced measurement and retain/reject.",
+    "promotion_claim": false,
+    "samples": [
+      {
+        "eager_seconds": 0.01984067598823458,
+        "graph_seconds": 0.020104829920455813,
+        "position": 69
+      },
+      {
+        "eager_seconds": 0.019597733044065535,
+        "graph_seconds": 0.020057918969541788,
+        "position": 70
+      },
+      {
+        "eager_seconds": 0.01996704807970673,
+        "graph_seconds": 0.020034209010191262,
+        "position": 71
+      },
+      {
+        "eager_seconds": 0.019711124943569303,
+        "graph_seconds": 0.020181940984912217,
+        "position": 72
+      },
+      {
+        "eager_seconds": 0.025501151918433607,
+        "graph_seconds": 0.026015528943389654,
+        "position": 255
+      },
+      {
+        "eager_seconds": 0.02538849099073559,
+        "graph_seconds": 0.026462264941073954,
+        "position": 256
+      },
+      {
+        "eager_seconds": 0.033217275980859995,
+        "graph_seconds": 0.03372436203062534,
+        "position": 510
+      },
+      {
+        "eager_seconds": 0.033388267969712615,
+        "graph_seconds": 0.03459767403546721,
+        "position": 511
+      },
+      {
+        "eager_seconds": 0.03330716700293124,
+        "graph_seconds": 0.03473063593264669,
+        "position": 512
+      },
+      {
+        "eager_seconds": 0.03325052699074149,
+        "graph_seconds": 0.03452970297075808,
+        "position": 513
+      },
+      {
+        "eager_seconds": 0.0363291569519788,
+        "graph_seconds": 0.03687397507019341,
+        "position": 1023
+      },
+      {
+        "eager_seconds": 0.03657662100158632,
+        "graph_seconds": 0.03818082204088569,
+        "position": 1024
+      }
+    ]
+  },
+  "trajectory": {
+    "checkpoint_count": 20,
+    "checkpoints": [
+      {
+        "argmax_value_bits": 1105847024,
+        "kv_sha256": "5b1fb524367532c7f106481902711385428dd4109f1472799ea14d564a7533b0",
+        "label": "prefill",
+        "next_token_id": 605,
+        "position": 68
+      },
+      {
+        "argmax_value_bits": 1107246907,
+        "kv_sha256": "d21feab939100015ccbe71945d489952f68cd1463d04332000e966ce1f9b74d1",
+        "label": "position_69",
+        "next_token_id": 2825,
+        "position": 69
+      },
+      {
+        "argmax_value_bits": 1105028997,
+        "kv_sha256": "91046529aa40c82c4c0a0b99f67d5a72b8322d4a956cb4239618e254bc6dd1eb",
+        "label": "position_70",
+        "next_token_id": 268,
+        "position": 70
+      },
+      {
+        "argmax_value_bits": 1106892756,
+        "kv_sha256": "618fda5713896a16eace4ffe76a60a067386189f07950656641381960bd59df8",
+        "label": "position_71",
+        "next_token_id": 1172,
+        "position": 71
+      },
+      {
+        "argmax_value_bits": 1107402224,
+        "kv_sha256": "215773f33bc23676c6fa9c8b2c4f6cf1f46097f322cedaff9dafe1feb0ab2027",
+        "label": "position_72",
+        "next_token_id": 7024,
+        "position": 72
+      },
+      {
+        "argmax_value_bits": 1108214359,
+        "kv_sha256": "b5af5764f560e0e7790650c5465cf805b6ef063b3b9bc5b5b6c2a71ae7d6db71",
+        "label": "position_255",
+        "next_token_id": 7024,
+        "position": 255
+      },
+      {
+        "argmax_value_bits": 1107366204,
+        "kv_sha256": "3ad59e027c4e1acd76bec4d481f08f417affd3131cd499bb2bfd90b2ee5ba928",
+        "label": "position_256",
+        "next_token_id": 69452,
+        "position": 256
+      },
+      {
+        "argmax_value_bits": 1107961076,
+        "kv_sha256": "4e9c4b0520cb62bcbc2487652a99523a560d1f4532a3e86ac77739a863dccf30",
+        "label": "position_510",
+        "next_token_id": 3492,
+        "position": 510
+      },
+      {
+        "argmax_value_bits": 1108010620,
+        "kv_sha256": "3a716073b632030dc32d8595e57c05f9c1dd661a5ff8118188e08e2e8bb6aa8c",
+        "label": "position_511",
+        "next_token_id": 7024,
+        "position": 511
+      },
+      {
+        "argmax_value_bits": 1105558844,
+        "kv_sha256": "0eed15bb451f475bf55292abd9334ea9d1b12970aae9a240ed04d070dc077dcb",
+        "label": "position_512",
+        "next_token_id": 69452,
+        "position": 512
+      },
+      {
+        "argmax_value_bits": 1107535069,
+        "kv_sha256": "c1e81bae0ae9991f55a5ed2e207a3b7483630df01697d00da26b732eea7fc26b",
+        "label": "position_513",
+        "next_token_id": 19549,
+        "position": 513
+      },
+      {
+        "argmax_value_bits": 1107667481,
+        "kv_sha256": "9476442072480fc841a9e07e90dbfb3981cafafa4a89bad6c9f3d455ac2fe6ad",
+        "label": "position_1023",
+        "next_token_id": 19549,
+        "position": 1023
+      },
+      {
+        "argmax_value_bits": 1106403158,
+        "kv_sha256": "2d2e5e267bc249f3e0710bbf732380eaacacc2e07b22f1dbe5de8905d8ea77cb",
+        "label": "position_1024",
+        "next_token_id": 86,
+        "position": 1024
+      },
+      {
+        "argmax_value_bits": 1100186348,
+        "kv_sha256": "d92e68acc47936fe3d73236e809c057624a9fd194c4aa2b0abc3af36a98c89dc",
+        "label": "retained_prefix_suffix_prefill",
+        "next_token_id": 1450,
+        "position": 1027
+      },
+      {
+        "argmax_value_bits": 1101525726,
+        "kv_sha256": "2639ed6443519589770335794fc2649a5cf9953c26d29325032568f555651b0a",
+        "label": "retained_prefix_graph_resume",
+        "next_token_id": 81,
+        "position": 1028
+      },
+      {
+        "argmax_value_bits": 1099540661,
+        "kv_sha256": "fdd8bbc08659d40e191a8402f6d7e115b4291ded2c124894829effd3f22e3619",
+        "label": "mismatched_token_eager_fallback",
+        "next_token_id": 705,
+        "position": 1029
+      },
+      {
+        "argmax_value_bits": 1100772990,
+        "kv_sha256": "7972161bb9cb2a01a5af5831a82a326c202f0edc9106db56f55e48ee523098af",
+        "label": "graph_resume_after_fallback",
+        "next_token_id": 397,
+        "position": 1030
+      },
+      {
+        "argmax_value_bits": 1107246907,
+        "kv_sha256": "9cee06dca2a60417f82f22124bdb5374ce3262722b98a0328765da58032b82c7",
+        "label": "reset_replay_1",
+        "next_token_id": 2825,
+        "position": 69
+      },
+      {
+        "argmax_value_bits": 1105028997,
+        "kv_sha256": "a2520247993d98af88b863ea972185dbc4838ecad8e3569fc173cce791cd6655",
+        "label": "reset_replay_2",
+        "next_token_id": 268,
+        "position": 70
+      },
+      {
+        "argmax_value_bits": 1106892756,
+        "kv_sha256": "8a1a6aeca44ce49fb6991b6e81fbb590f4dd73188a7f8f4eddb2a089949ee184",
+        "label": "reset_replay_3",
+        "next_token_id": 1172,
+        "position": 71
+      }
+    ],
+    "comparisons": "Every checkpoint is byte-exact for full FP32 logits, argmax value bits, BF16 final/post-layer hidden, all 48 complete K/V allocations, base offsets, live counts, token positions, eviction masks, and host cursors.",
+    "steps": 956
+  }
+}

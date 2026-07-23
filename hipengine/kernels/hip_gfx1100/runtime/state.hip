@@ -106,6 +106,16 @@ __global__ void advance_decode_position_i64_kernel(int64_t* position, int64_t* c
   }
 }
 
+__global__ void advance_laguna_position_pair_i64_kernel(
+    int64_t* rope_position,
+    int64_t* kv_position) {
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    const int64_t next = rope_position[0] + 1;
+    rope_position[0] = next;
+    kv_position[0] = next;
+  }
+}
+
 __global__ void record_i64_scalar_indexed_kernel(
     const int64_t* value,
     int64_t* out,
@@ -637,6 +647,21 @@ extern "C" int hipengine_advance_decode_position_i64(
       stream,
       position,
       context);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_advance_laguna_position_pair_i64(
+    int64_t* rope_position,
+    int64_t* kv_position,
+    hipStream_t stream) {
+  hipLaunchKernelGGL(
+      advance_laguna_position_pair_i64_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      rope_position,
+      kv_position);
   return static_cast<int>(hipGetLastError());
 }
 
