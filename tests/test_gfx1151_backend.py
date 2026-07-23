@@ -212,7 +212,10 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_PREFILL_STRATEGY == "wmma_comp_swa"
     assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
     assert LAGUNA_PREFILL_MATRIX_ROWS == 512
-    assert LAGUNA_SWA_PREFILL_VARIANT == "swa_context_rows_wave32_exact_spans"
+    assert (
+        LAGUNA_SWA_PREFILL_VARIANT
+        == "swa_context_rows_qrow2_m128_c128_exact_spans"
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_F16_PREFILL_STRATEGY"
@@ -241,7 +244,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_SWA_PREFILL_VARIANT", None
         )
-        == "swa_context_rows_wave32_exact_spans"
+        == "swa_context_rows_qrow2_m128_c128_exact_spans"
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_SWA_PREFILL_VARIANT", None

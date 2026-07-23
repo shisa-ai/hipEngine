@@ -43,10 +43,11 @@ LAGUNA_F16_PREFILL_MIN_ROWS = 16
 # projection/MoE transactions while attention remains independently tiled at 128.
 # Other backends retain the 128-row runtime fallback until measured independently.
 LAGUNA_PREFILL_MATRIX_ROWS = 512
-# Clean LPF-5 512/1K/4K full-state equality and timing admit the barrier-free,
-# reduction-order-exact wave32 SWA reader. Other backends retain the registered
-# 128-thread baseline until measured independently.
-LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_wave32_exact_spans"
+# Clean AR-O5 repeated 512/1K/4K full-state and ten-prompt category gates admit
+# two-query-row reuse only for complete M128 attention tiles with >=128 prior
+# tokens. The policy delegates short/partial/empty-context rows to exact wave32;
+# other backends retain their independently measured defaults.
+LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow2_m128_c128_exact_spans"
 # Clean AR-O1 shape/micro/category gates admit exact grouped Q4/Q6 down plus
 # routing/shared combine from 32 bulk rows. Other backends retain direct GEMV.
 LAGUNA_SELECTED_DOWN_MODE = "adaptive_grouped_smallm_fused"

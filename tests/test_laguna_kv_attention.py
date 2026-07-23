@@ -367,14 +367,15 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
         if layer.attention_type == SLIDING_ATTENTION
     )
     assert all(
-        layer.attention_prefill_variant == "swa_context_rows_wave32_exact_spans"
+        layer.attention_prefill_variant
+        == "swa_context_rows_qrow2_m128_c128_exact_spans"
         for layer in cache.layers
         if layer.attention_type == SLIDING_ATTENTION
     )
     assert cache.allocation_count == 243
     assert (
         resolve_laguna_swa_prefill_variant("hip_gfx1151")
-        == "swa_context_rows_wave32_exact_spans"
+        == "swa_context_rows_qrow2_m128_c128_exact_spans"
     )
     assert (
         resolve_laguna_swa_decode_variant("hip_gfx1100")
