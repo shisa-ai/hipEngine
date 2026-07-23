@@ -2373,20 +2373,28 @@ not matrix prefill as a class.
   production full/SWA family: M128 exact -> WMMA is **12.772/18.505 ->
   1.800/2.474 ms (7.094x/7.479x)**, while the weighted 12-full/36-SWA sum is
   **819.423 -> 110.681 ms (7.403x)**. It remains below the inclusive library
-  ceiling and full-model quality stays open, so no runtime capability/default
-  has changed. The explicit `f16_wmma` quality route and full ten-prompt
-  category/state/KV/E2E harness are now wired from M16 while `auto` remains
-  exact. Evidence:
-  `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json`.
+  ceiling. The complete ten-prompt category gate then **rejected** this direct
+  route: tiled -> WMMA improved weighted prefill **53.447 -> 73.637 tok/s
+  (1.3778x)** and h16/h32 E2E **1.2129x/1.1444x**, with every category faster
+  and decode neutral, but maximum teacher-forced KL was **0.097062** (>0.05).
+  Suite top-1 remained **317/320 (99.06%)**, while three prompt trajectories
+  differed deterministically. The Poolside first-token gate and exact teardown
+  passed. Per the predeclared policy, the explicit runtime/category route was
+  removed, exact `tiled` remains the gfx1151 default, and only the independently
+  tested leaf remains registered for diagnostics. This rejects the current
+  reduction schedule, not all precision-preserving matrix designs. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json` and
+  `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-category-rejected.json`.
 - [x] Account for residency explicitly. The candidate directly consumes the
   existing 5.61-GB row-major source-F16 allocations and allocates no persistent
   sidecar; only 4,096/10,240/17,408 B bounded per-block LDS is used at
   M128/M256/M512. Rows=1 therefore keeps the same bytes and exact GEMV ABI.
-- [x] Select the row threshold from measured shapes. Explicit `wmma` starts at
-  M16, the first declared production shape and a clean **1.803/1.364x**
-  full/SWA win. M2-15 stays on exact `tiled`; rows=1 stays on exact GEMV, so
-  decode performance and arithmetic are unchanged. `auto` remains exact until
-  the complete quality lane decides promotion or removal.
+- [x] Select and close the first candidate's row threshold. Its measured M16
+  crossover was a clean **1.803/1.364x** full/SWA win, with M2-15 exact tiled
+  and rows=1 exact GEMV. The later quality rejection removes that runtime
+  threshold entirely; `auto|gemv|tiled` are again the only public selector
+  values. Any precision-preserving replacement must receive a new variant and
+  independently measured threshold rather than reviving `wmma`.
 
 A reassociated matrix path may be admitted without byte identity only through
 the quality lane below. A library control is a ceiling/diagnostic and must not

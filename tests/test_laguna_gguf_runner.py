@@ -13,7 +13,6 @@ from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16, LAYOUT_R
 from hipengine.runtime import laguna_gguf_runner as runner_module
 from hipengine.runtime.laguna_gguf_runner import (
     LAGUNA_DFLASH_CAPTURE_DEPTHS,
-    LagunaEagerLibraries,
     LagunaEagerScratch,
     LagunaHiddenCaptureTargets,
     LagunaRowsScratch,
@@ -60,19 +59,6 @@ class _FakeRuntime:
 
 def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
-
-
-def test_laguna_eager_libraries_route_wmma_to_prefill_build() -> None:
-    values = {name: object() for name in LagunaEagerLibraries.__dataclass_fields__}
-    exact = object()
-    prefill = object()
-    values["f16_projection"] = exact
-    values["f16_projection_prefill"] = prefill
-    libraries = LagunaEagerLibraries(**values)
-
-    assert libraries.f16_linear["fp16_weight"] is exact
-    assert libraries.f16_linear["fp16_weight:wmma_bf16_f32_out"] is prefill
-    assert libraries.f16_linear["fp16_weight:wmma_bf16_bf16_out"] is prefill
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:
