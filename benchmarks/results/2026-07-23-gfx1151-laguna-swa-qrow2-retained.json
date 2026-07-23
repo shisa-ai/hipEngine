@@ -1,0 +1,340 @@
+{
+  "created_at": "2026-07-23T17:12:04.086470+00:00",
+  "decision": {
+    "failed_checks": [],
+    "pass": true,
+    "policy": {
+      "category": "aggregate/category prefill >=0.995x; aggregate E2E >=0.995x; each-category E2E >=0.98x; decode within 2%",
+      "correctness": "full logits/hidden/KV/span/cursor exact at 512/1K/4K; exact free-running pairs; KL <=0.05 and top-1 >=90% suite-wide and per category",
+      "lifecycle": "tracked allocations return exactly to baseline",
+      "performance": "every 512/1K/4K long-context length improves at the final selector revision"
+    },
+    "reason": "The context-qualified exact route improves every repeated long-context length, delegates canonical and partial rows to wave32, and passes every category, correctness, oracle, determinism, and lifecycle gate."
+  },
+  "evidence": {
+    "category_gate": {
+      "command": [
+        "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+        "scripts/laguna_grouped_down_category_bench.py",
+        "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+        "--prompts",
+        "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "--comparison",
+        "swa_qrow2",
+        "--shape-screen",
+        "/tmp/laguna-swa-qrow2-m128-c128-clean-screen-3rep.json",
+        "--backend",
+        "hip_gfx1151",
+        "--context-length",
+        "4096",
+        "--chunk-size",
+        "128",
+        "--output-horizons",
+        "16,32",
+        "--repetitions",
+        "3",
+        "--warmup-output-tokens",
+        "2",
+        "--teacher-forced-tokens",
+        "32",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--repacked-cache",
+        "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+        "--model-sha256",
+        "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+        "--output",
+        "/tmp/laguna-swa-qrow2-m128-c128-category-3rep.json"
+      ],
+      "load_seconds_excluded": 50.343388963956386,
+      "raw_nbytes": 272051,
+      "raw_not_committed": true,
+      "raw_sha256": "7419b7147b2477f94f585ac1b6b557e0190e5cd58720f760f5947bbf010824c1",
+      "resident_nbytes": 77125438836
+    },
+    "long_context_gate": {
+      "command": [
+        "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+        "/tmp/laguna_swa_qrow2_full_model.py",
+        "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+        "--prompts",
+        "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "--backend",
+        "hip_gfx1151",
+        "--context-length",
+        "4096",
+        "--chunk-size",
+        "512",
+        "--repetitions",
+        "3",
+        "--warmup-rows",
+        "128",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version.txt",
+        "--require-cached-build",
+        "--repacked-cache",
+        "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+        "--model-sha256",
+        "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+        "--output",
+        "/tmp/laguna-swa-qrow2-m128-c128-clean-screen-3rep.json"
+      ],
+      "raw_nbytes": 26471,
+      "raw_not_committed": true,
+      "raw_sha256": "dbbe6939235b33da915a1963618f6b18558426e18548be7f09a38ecec94b2e0a"
+    },
+    "production_trace": {
+      "candidate_kernel": "laguna_swa_attention_prefill_qrow2_exact_bf16_kernel",
+      "candidate_median_ms": 7.9132,
+      "grid": "2304x64",
+      "lds_bytes": 0,
+      "local_size": 32,
+      "raw_trace_sha256": "ac640e86e1e3cb0bcf3399faf7533999565baff2e4ba9eedcbd3c3e7b4a716e",
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "speedup": 1.1562,
+      "vgpr": 56,
+      "wave32_median_ms": 9.1491
+    }
+  },
+  "kind": "hipengine_laguna_swa_qrow2_retained",
+  "lifecycle": {
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77900501084,
+      "peak_allocations": 2077,
+      "total_allocated_bytes": 109290522128,
+      "total_freed_bytes": 109290522128
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "limitations": [
+    "Only complete 128-row SWA attention slices beginning at absolute position 128 or later use qrow2.",
+    "Empty-context, short, partial, and verifier rows delegate to the retained exact wave32 route.",
+    "Only Radeon 8060S/gfx1151 Q4_K_M is promoted; gfx1100 and unmeasured backends are unchanged.",
+    "The category suite validates exact non-regression because its 68-122-token prompts intentionally stay on wave32; the performance claim comes from the repeated 512/1K/4K gate."
+  ],
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "pass": true,
+  "performance": {
+    "long_context": {
+      "1024": {
+        "qrow2_median_seconds": 15.815973880933598,
+        "qrow2_median_tok_s": 64.74466938987854,
+        "qrow2_samples_seconds": [
+          15.815973880933598,
+          15.822516315965913,
+          15.811554708052427
+        ],
+        "seconds_saved": 0.19176016910932958,
+        "speedup": 1.012124461671026,
+        "wave32_median_seconds": 16.007734050042927,
+        "wave32_median_tok_s": 63.96907874648592,
+        "wave32_samples_seconds": [
+          16.007734050042927,
+          16.002521920017898,
+          16.008234285982326
+        ]
+      },
+      "4096": {
+        "qrow2_median_seconds": 77.93372789700516,
+        "qrow2_median_tok_s": 52.55747556966797,
+        "qrow2_samples_seconds": [
+          77.89870307396632,
+          77.93372789700516,
+          78.48146859998815
+        ],
+        "seconds_saved": 0.810504900990054,
+        "speedup": 1.0103999246906448,
+        "wave32_median_seconds": 78.74423279799521,
+        "wave32_median_tok_s": 52.01650780581714,
+        "wave32_samples_seconds": [
+          78.6614663710352,
+          78.93007554905489,
+          78.74423279799521
+        ]
+      },
+      "512": {
+        "qrow2_median_seconds": 7.351317006978206,
+        "qrow2_median_tok_s": 69.64738420530446,
+        "qrow2_samples_seconds": [
+          7.354613046976738,
+          7.351317006978206,
+          7.335657282033935
+        ],
+        "seconds_saved": 0.065669582108967,
+        "speedup": 1.0089330363588769,
+        "wave32_median_seconds": 7.416986589087173,
+        "wave32_median_tok_s": 69.03073018270256,
+        "wave32_samples_seconds": [
+          7.447377684060484,
+          7.410903448006138,
+          7.416986589087173
+        ]
+      }
+    },
+    "short_category_non_regression": {
+      "category_speedups": {
+        "code": {
+          "h16_e2e": 1.0001462450863607,
+          "h32_e2e": 1.0001629603136069,
+          "prefill": 0.9998096272333631
+        },
+        "general_en": {
+          "h16_e2e": 1.0003883622867424,
+          "h32_e2e": 1.0004511317920801,
+          "prefill": 1.0009676850708975
+        },
+        "general_ja": {
+          "h16_e2e": 1.00005214823581,
+          "h32_e2e": 0.9999405506231536,
+          "prefill": 1.000079023289375
+        },
+        "mixed_ja_en": {
+          "h16_e2e": 0.9990837302925525,
+          "h32_e2e": 0.9994147857413502,
+          "prefill": 0.9982573569750365
+        }
+      },
+      "qrow2": {
+        "h16_decode_tok_s": 16.548798091262494,
+        "h16_e2e_output_tok_s": 7.421007731491425,
+        "h32_decode_tok_s": 16.40886514413617,
+        "h32_e2e_output_tok_s": 10.194804083121964,
+        "prefill_tok_s": 69.14040047624896,
+        "ttft_median_seconds": 1.1866267634904943
+      },
+      "speedup": {
+        "h16_decode": 1.0002815364831363,
+        "h16_e2e": 0.9999166386105406,
+        "h32_decode": 1.0002287233224236,
+        "h32_e2e": 0.9999991051278895,
+        "prefill": 0.9996519627818913,
+        "ttft": 0.9993938743307778
+      },
+      "wave32": {
+        "h16_decode_tok_s": 16.54414031218249,
+        "h16_e2e_output_tok_s": 7.421626408580893,
+        "h32_decode_tok_s": 16.405112912206153,
+        "h32_e2e_output_tok_s": 10.194813206175974,
+        "prefill_tok_s": 69.1644722867756,
+        "ttft_median_seconds": 1.1859075185493566
+      }
+    }
+  },
+  "performance_claim": true,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "protocol": {
+    "attention_rows": 128,
+    "category_output_horizons": [
+      16,
+      32
+    ],
+    "category_prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "category_prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "category_repetitions": 3,
+    "long_context_lengths": [
+      512,
+      1024,
+      4096
+    ],
+    "long_context_matrix_rows": 512,
+    "long_context_repetitions": 3,
+    "timing_scope": "same resident weights; synchronized prefill; model/session construction and post-timing correctness copies excluded"
+  },
+  "quality": {
+    "free_running": {
+      "all_pairs_exact": true,
+      "pairs": 30,
+      "same_mode_repeat_deterministic": true
+    },
+    "long_context": {
+      "complete_logits_exact": true,
+      "final_hidden_exact": true,
+      "final_position_exact": true,
+      "kv_and_spans_exact": true,
+      "next_token_and_logit_bits_exact": true,
+      "post_layer_hidden_exact": true,
+      "same_mode_repeat_deterministic": true
+    },
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 0.00004295086910063869,
+      "kl_threshold": 0.05,
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "teacher_forced": {
+      "categories": {
+        "code": {
+          "max_kl_divergence": 0.0,
+          "steps": 128,
+          "top1_agreement": 1.0
+        },
+        "general_en": {
+          "max_kl_divergence": 0.0,
+          "steps": 64,
+          "top1_agreement": 1.0
+        },
+        "general_ja": {
+          "max_kl_divergence": 0.0,
+          "steps": 64,
+          "top1_agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "max_kl_divergence": 0.0,
+          "steps": 64,
+          "top1_agreement": 1.0
+        }
+      },
+      "finite": true,
+      "max_kl_divergence": 0.0,
+      "pass": true,
+      "steps": 320,
+      "top1_agreement": 1.0,
+      "top1_matches": 320
+    }
+  },
+  "repo": {
+    "measured_route_revision": "bb622c9a01ed2080a61a547e422147eb098de988",
+    "measured_tracked_clean": true,
+    "promotion_revision": "c0dfb324eba69f61b981af57c5af6815af92a6f5"
+  },
+  "route": {
+    "backend": "hip_gfx1151",
+    "backend_capability": "LAGUNA_SWA_PREFILL_VARIANT=swa_context_rows_qrow2_m128_c128_exact_spans",
+    "candidate_scope": "rows==128 and absolute start_position>=128",
+    "fallback": "swa_context_rows_wave32_exact_spans",
+    "partial_rows": "exact wave32",
+    "short_or_empty_context": "exact wave32",
+    "unmeasured_backends": "unchanged",
+    "verifier_rows": "exact wave32"
+  },
+  "schema": 1,
+  "status": "retained_default"
+}

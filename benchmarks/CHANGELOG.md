@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [retained exact gfx1151 Laguna AR-O5 SWA qrow2 default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / context-qualified wave32 -> qrow2 moves repeated 512/1K/4K prefill **69.031/63.969/52.017 -> 69.647/64.745/52.557 tok/s (+0.893%/+1.212%/+1.040%)** with complete logits/hidden/KV/span/cursor/repeat/lifecycle equality; only M128 slices at start>=128 use qrow2, while the exact ten-prompt fallback gate is non-regressive at **0.999652x prefill** and **0.999917/0.999999x h16/h32 E2E**; `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json`.
+
 - [rejected and removed gfx1151 Laguna AR-O5 SWA qgroup9] Radeon 8060S Poolside Laguna S 2.1 / exact wave32 -> one-wave nine-query-head K/V reuse regresses production M128/full-window **9.179 -> 9.858 ms (+7.41%)** and exact 508..515 wrap **1.054 -> 2.945 ms (+179.53%)** while VGPR rises **32 -> 104** despite byte-exact outputs; full-model gate skipped and all candidate code removed; `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qgroup9-rejected.json`.
 
 - [diagnostic gfx1151 Laguna post-matrix512 attribution] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / retained pre-matrix -> post-AR-O1/O2/O3 4K kernel sum moves **106.209 -> 78.763 s (-25.84%)** while source-F16/selected-down fall **73.21%/47.27%** and unchanged global+SWA attention rises from **26.01% -> 34.88%** of kernel sum; 512/1K/4K span-minus-sum remains **0.140%/0.171%/0.159%**, selecting attention rather than submission work; `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-post-matrix512-all-family-profile.json`.

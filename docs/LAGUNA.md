@@ -2532,8 +2532,9 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
 
 - [x] Reprofile at 512/1K/4K after AR-O1 through AR-O3; repeat after any AR-O4
   promotion before final attention admission.
-- [ ] For SWA, process multiple query rows per tile, reuse the 512-token K/V
-  window, and use online softmax instead of one serial scan per score/value.
+- [x] For SWA, process multiple query rows per tile and reuse the 512-token K/V
+  window while preserving the retained exact three-pass softmax order. Reopen
+  online-softmax reassociation only if a later profile justifies its quality surface.
   The first exact query-head-group attempt is closed as a measured rejection:
   one wave reused each K/V row across all nine Q heads but raised VGPR **32 ->
   104** and serialized too much independent work. At the production M128/full-
@@ -2556,9 +2557,15 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
   0/64/128/192/256/320/384). Because shorter residual rows have no measured
   crossover at that same start, the final conservative registered policy requires
   exactly M128 and absolute chunk start>=128; every partial tile and canonical
-  first chunk stays wave32. Rerun repeated long-context and complete non-regressive category
-  gates before changing the gfx1151 default; the prior M-only screen is
-  diagnostic rather than final evidence.
+  first chunk stays wave32. The clean final-policy three-repeat gate is exact and
+  improves 512/1K/4K prefill **69.031/63.969/52.017 ->
+  69.647/64.745/52.557 tok/s (+0.893%/+1.212%/+1.040%)**. The complete
+  category gate is exact across all 30 free-running pairs and 320 teacher-forced
+  steps and non-regressive at **0.999652x prefill** and
+  **0.999917/0.999999x h16/h32 E2E**. gfx1151 therefore defaults to the
+  context-qualified selector; wave32 remains the automatic short/partial fallback
+  and explicit rollback, and unmeasured backends remain unchanged. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json`.
 - [ ] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling, then implement/adapt a tiled causal GQA route only if the measured
   threshold warrants it. The rejected paired-head exact kernel is not a Flash
