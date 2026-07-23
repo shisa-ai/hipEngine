@@ -428,6 +428,13 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
         resolve_laguna_swa_prefill_variant("hip_gfx1151", "swa_context_rows_spans")
         == "swa_context_rows_spans"
     )
+    assert (
+        resolve_laguna_swa_prefill_variant(
+            "hip_gfx1151",
+            "swa_context_rows_qrow2_online_spans",
+        )
+        == "swa_context_rows_qrow2_online_spans"
+    )
 
     cache.prepare_position(0)
     cache.prepare_position(1)
