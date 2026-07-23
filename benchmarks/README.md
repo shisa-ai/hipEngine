@@ -1215,8 +1215,11 @@ recoverable from the linked compact artifacts, changelog, and
 
 **Status: exact dense/IQ3 decode, token4 score-parallel SWA, both raw-Q5
 projection pairs, raw-Q6 attention pairing, and aggregate MoE-tail plus
-next-RMS fusion are the retained W7900 target-only AR default.** Clean measured
-revision `30cf6f0755ee53afc1c72e9106fbab887ea067bc` runs the pinned
+next-RMS fusion are the retained W7900 target-only AR default.** The exact D10
+token8 SWA candidate improved every clean mechanical profile and h32 decode but
+failed aggregate/every-category h16 non-regression; it is removed and does not
+change the D9 topline. Clean measured D9 revision
+`30cf6f0755ee53afc1c72e9106fbab887ea067bc` runs the pinned
 `Laguna-S-2.1-UD-Q2_K_XL.gguf`
 (SHA-256 `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
 directly from raw GGUF residency with BF16 KV and a 4-GiB safety reserve. The
@@ -1289,9 +1292,21 @@ throughput is **2.247%/1.995%/1.502%/1.146% slower** than eager at
 short/512/1K/near-4K. Capture-inclusive canonical h16/h32 decode falls
 **46.827/46.409 -> 43.480/44.193 tok/s (-7.150%/-4.774%)**, while h16/h32 E2E
 falls **6.881/11.972 -> 6.819/11.839 (-0.902%/-1.110%)**; every category
-regresses both horizons. The graph remains removed; eager D9 is now the only
-default runtime route and the 50 tok/s headline remains unmet. [D8 rejection
+regresses both horizons. [D8 rejection
 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-rejected.json).
+
+The exact D10 token8 SWA screen is also rejected and removed under the stricter
+non-regression rule. It improves clean short/512/1K/near-4K SWA by
+**12.47%/14.81%/14.74%/14.86%**, complete span by
+**0.70%/5.81%/5.32%/3.70%**, and diagnostic h32 decode
+**47.132 -> 47.872 tok/s (+1.569%)**. However aggregate h16 E2E changes
+**6.909 -> 6.905 (-0.055%)**, general-English h16 decode/E2E changes
+**-0.535%/-0.254%**, and code/mixed h16 E2E changes **-0.128%/-0.017%**. The
+required aggregate and every-category h16/h32 decode/E2E predicate therefore
+fails despite exact output/state/KV/lifecycle. Token8 source/dispatch/tests are
+removed; eager token4 D9 remains the only default route and the 50 tok/s
+headline remains unmet. [D10 rejection
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-rejected.json).
 
 Exact D9 benchmark command:
 
@@ -1540,6 +1555,28 @@ the 0.5% guard, and all correctness/lifecycle gates pass. Canonical D9 is
 **21.217 ms/token**, still **1.217 ms** above 20 ms and requiring another
 **6.084% throughput** to reach 50 tok/s. [D9 retained
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json).
+
+##### Laguna Q2 XL c=1 decode D10 (rejected and removed)
+
+D10 tested a local256 token8 sibling of the retained exact token4 SWA reader.
+It preserves complete `KVLiveSpans`, BF16 K/V, every score/softmax/value
+arithmetic boundary, full logits and argmax bits, all 48 layer states, complete
+K/V payload and live spans, reset, and lifecycle. The focused pre-measurement
+bundle reported 69 passed.
+
+Clean candidate versus token4 profiles improve SWA
+**2.143/13.114/13.128/13.140 -> 1.876/11.171/11.193/11.187 ms/token** at
+short/512/1K/near-4K. Kernel sum improves **1.05-6.38%**, span improves
+**0.70-5.81%**, and profiled child throughput improves **0.91-5.80%** with 775
+dispatches/token and exact IDs/teardown. The complete suite is not
+non-regressive: aggregate h16 E2E is **-0.055%**, general-English h16
+decode/E2E is **-0.535%/-0.254%**, and code/mixed h16 E2E is
+**-0.128%/-0.017%**. Thus diagnostic h32 **47.872 tok/s / 20.889 ms/token** is
+not retained. The token8 kernel, wrapper, registry entry, tests, and selector
+are removed; post-removal validation reports 69 passed. Current D9 stays
+**47.132 tok/s / 21.217 ms/token**, so the 50 tok/s gap remains **1.217 ms /
+6.084% throughput**. [D10 rejection
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-rejected.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.

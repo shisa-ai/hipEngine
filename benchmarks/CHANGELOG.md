@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-24
 
+- [rejected and removed gfx1100 Laguna Q2 XL token8 SWA] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / exact D9 token4 -> local256 token8 improves clean short/512/1K/near-4K SWA **12.47%/14.81%/14.74%/14.86%** and diagnostic h32 decode **47.132 -> 47.872 tok/s (+1.569%)**, but aggregate h16 E2E changes **6.909 -> 6.905 (-0.055%)**, general-English h16 decode/E2E changes **-0.535%/-0.254%**, and code/mixed h16 E2E also dip; the predeclared every-category gate fails, token8 source/dispatch/tests are removed, and retained D9 remains **47.132 tok/s**; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-rejected.json`.
+
 - [retained exact gfx1100 Laguna Q2 XL aggregate MoE-tail plus next-RMS] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves D7 -> D9 h32 decode **46.409 -> 47.132 tok/s (+1.560%)** and h32 E2E **11.972 -> 12.038 (+0.555%)** with prefill within guard at **43.093 -> 43.190 tok/s (+0.224%)**; the exact dual-output leaf removes 94 launches/token, improves clean short kernel sum/span **0.320%/2.667%**, improves every context/category decode/E2E row, and passes all correctness/lifecycle gates; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json`.
 
 ## 2026-07-23

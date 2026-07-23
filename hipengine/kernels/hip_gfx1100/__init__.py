@@ -1,10 +1,9 @@
 """gfx1100 / RDNA3 backend capabilities."""
 
-# Exact wrap/eviction and dirty full-model family screens admit the token8
-# score-parallel SWA decode candidate on W7900. The clean category gate follows
-# the atomic default commit; token4 and baseline remain explicit fallbacks and
-# other backends retain the registered baseline.
-LAGUNA_SWA_DECODE_VARIANT = "swa_context_token8_exact_spans"
+# Clean W7900 context/category gates retain the exact token4 score-parallel SWA
+# decode default. The wider token8 screen failed the every-category h16 gate and
+# was removed; other backends retain the separately registered baseline.
+LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.

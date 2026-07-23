@@ -28,7 +28,6 @@ _SWA_DECODE_VARIANTS = frozenset(
     {
         _BASELINE_SWA_DECODE_VARIANT,
         "swa_context_token4_exact_spans",
-        "swa_context_token8_exact_spans",
     }
 )
 _BASELINE_SWA_PREFILL_VARIANT = "swa_context_rows_spans"
