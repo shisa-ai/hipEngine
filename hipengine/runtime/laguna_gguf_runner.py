@@ -53,7 +53,11 @@ from hipengine.runtime.f16_weight_linear import (
     launch_f16_weight_linear_triple,
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
+from hipengine.runtime.gguf_linear import (
+    GGUF_OUTPUT_F32,
+    launch_gguf_linear,
+    launch_gguf_linear_pair,
+)
 from hipengine.runtime.laguna_kv import (
     LagunaKVCache,
     allocate_laguna_kv_cache,
@@ -869,6 +873,113 @@ def launch_laguna_qkv(
         libraries=libraries,
         runtime=runtime,
     )
+
+
+def launch_laguna_attention_projections(
+    q_weight,
+    k_weight,
+    v_weight,
+    gate_weight,
+    x_ptr: int,
+    q_ptr: int,
+    k_ptr: int,
+    v_ptr: int,
+    gate_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    k_features: int,
+    v_features: int,
+    gate_features: int,
+    *,
+    backend: str,
+    stream: int,
+    libraries: LagunaEagerLibraries,
+    runtime: HipRuntime | None,
+) -> bool:
+    """Launch exact attention projections and report a fused query/gate pair.
+
+    The registered raw pair is decode-only and fail-closed. F16 projections,
+    rows greater than one, mixed quants, unsupported shapes, and registry
+    misses retain the established QKV plus gate fallback.
+    """
+
+    q_gate_fused = False
+    if (
+        q_weight.spec.layout == LAYOUT_RAW_GGUF
+        and gate_weight.spec.layout == LAYOUT_RAW_GGUF
+    ):
+        q_gate_fused = launch_gguf_linear_pair(
+            q_weight,
+            gate_weight,
+            x_ptr,
+            q_ptr,
+            gate_ptr,
+            rows,
+            in_features,
+            q_features,
+            out_features_b=gate_features,
+            output_dtype=GGUF_OUTPUT_F32,
+            backend=backend,
+            stream=stream,
+            libraries=libraries.linear,
+            runtime=runtime,
+            use_wmma_prefill=False,
+            use_gemv_decode=rows == 1,
+            registered_decode_only=True,
+        )
+    if not q_gate_fused:
+        launch_laguna_qkv(
+            q_weight,
+            k_weight,
+            v_weight,
+            x_ptr,
+            q_ptr,
+            k_ptr,
+            v_ptr,
+            rows,
+            in_features,
+            q_features,
+            k_features,
+            v_features,
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+        )
+        launch_laguna_weight_linear(
+            gate_weight,
+            x_ptr,
+            gate_ptr,
+            rows,
+            in_features,
+            gate_features,
+            output_dtype=GGUF_OUTPUT_F32,
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+        )
+        return False
+
+    for weight, out_ptr, out_features in (
+        (k_weight, k_ptr, k_features),
+        (v_weight, v_ptr, v_features),
+    ):
+        launch_laguna_weight_linear(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            output_dtype=GGUF_OUTPUT_F32,
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+        )
+    return True
 
 
 @dataclass(frozen=True)
@@ -1969,32 +2080,22 @@ class LagunaGGUFResidentSession:
             library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
-        launch_laguna_qkv(
+        launch_laguna_attention_projections(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
             layer.weight("attn_v"),
+            layer.weight("attn_gate"),
             scratch.norm.ptr,
             scratch.query.ptr,
             scratch.key.ptr,
             scratch.value.ptr,
+            scratch.gate_logits.ptr,
             rows,
             config.hidden_size,
             q_width,
             kv_width,
             kv_width,
-            backend=self.backend,
-            stream=stream,
-            libraries=self.libraries,
-            runtime=self.runtime,
-        )
-        launch_laguna_weight_linear(
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.gate_logits.ptr,
-            rows,
-            config.hidden_size,
             heads,
-            output_dtype="f32",
             backend=self.backend,
             stream=stream,
             libraries=self.libraries,
@@ -2361,32 +2462,22 @@ class LagunaGGUFResidentSession:
             library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
-        launch_laguna_qkv(
+        launch_laguna_attention_projections(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
             layer.weight("attn_v"),
+            layer.weight("attn_gate"),
             scratch.norm.ptr,
             scratch.query.ptr,
             scratch.key.ptr,
             scratch.value.ptr,
+            scratch.gate_logits.ptr,
             1,
             config.hidden_size,
             q_width,
             kv_width,
             kv_width,
-            backend=self.backend,
-            stream=stream,
-            libraries=self.libraries,
-            runtime=self.runtime,
-        )
-        launch_laguna_weight_linear(
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.gate_logits.ptr,
-            1,
-            config.hidden_size,
             heads,
-            output_dtype="f32",
             backend=self.backend,
             stream=stream,
             libraries=self.libraries,
