@@ -1920,6 +1920,16 @@ selects SWA query-group reuse and then tiled global attention while leaving host
 submission deferred.
 [Post-matrix512 all-family profile](results/2026-07-23-gfx1151-laguna-prefill-post-matrix512-all-family-profile.json).
 
+The first exact AR-O5 SWA reuse candidate is rejected before a full-model run.
+One wave32 handled all nine query heads sharing a KV head, preserving every
+logical-slot reduction/softmax/output order and consuming complete
+`KVLiveSpans`. Output is byte-exact at the 508..515 wrap and production
+M128/full-window shapes, but VGPR rises **32 -> 104**. At M128, retained wave32
+-> qgroup9 moves **9.179 -> 9.858 ms (+7.41%)**; at M8 wrap it moves
+**1.054 -> 2.945 ms (+179.53%)**. All candidate code is removed. Continue with
+query-row tiling/online softmax rather than serializing query heads.
+[Rejected SWA qgroup9](results/2026-07-23-gfx1151-laguna-swa-qgroup9-rejected.json).
+
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
 Three alternating native `prompt_ms` samples measure

@@ -2534,6 +2534,15 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
   promotion before final attention admission.
 - [ ] For SWA, process multiple query rows per tile, reuse the 512-token K/V
   window, and use online softmax instead of one serial scan per score/value.
+  The first exact query-head-group attempt is closed as a measured rejection:
+  one wave reused each K/V row across all nine Q heads but raised VGPR **32 ->
+  104** and serialized too much independent work. At the production M128/full-
+  window shape, exact wave32 -> qgroup9 moves **9.179 -> 9.858 ms (+7.41%)**;
+  at the exact 508..515 wrap fixture it moves **1.054 -> 2.945 ms (+179.53%)**.
+  Output is byte-exact at both shapes, but all candidate code is removed and the
+  wave32 route remains default. Continue with query-row tiling/online softmax,
+  not another unchanged serial query-head group. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qgroup9-rejected.json`.
 - [ ] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling, then implement/adapt a tiled causal GQA route only if the measured
   threshold warrants it. The rejected paired-head exact kernel is not a Flash
