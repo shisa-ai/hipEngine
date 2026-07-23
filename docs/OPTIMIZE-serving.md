@@ -1,0 +1,475 @@
+# hipEngine Serving-Latency Optimization Plan
+
+Status: 2026-07-23 (active; S0 complete, implementation lanes pending).
+
+Scope: resident Poolside Laguna S 2.1 Q4_K_M serving on the local Ryzen AI
+MAX+ 395 / Radeon 8060S (`gfx1151`) host, starting with exact greedy `c=1`.
+The primary metric is **useful-content time to first token (TTFT)**; complete
+request latency and loaded-idle memory are secondary metrics.
+
+This is the live punchlist for request-path work outside the model's matrix
+prefill kernels. The separate Laguna AR prefill campaign remains authoritative
+in [`LAGUNA.md`](LAGUNA.md) and is being executed independently. This campaign
+must not edit or retune that agent's selected-expert, source-F16, attention, or
+chunk kernels unless a later serving profile establishes a new boundary.
+
+Cross-links:
+
+- [`LAGUNA.md`](LAGUNA.md) — model contract, AR prefill/decode evidence, and
+  active AR-O1 through AR-O6 kernel campaign.
+- [`BENCHMARK.md`](BENCHMARK.md) — evidence, anti-gaming, timing, and rollup
+  requirements.
+- [`TESTING.md`](TESTING.md) — RED/GREEN workflow and deterministic gates.
+- [`PLAN.md`](PLAN.md) — resident scheduler, batch-shaped ABI, and prefix-cache
+  architecture.
+- [`REFACTOR.md`](REFACTOR.md) — temporary route/flag removal ledger.
+- [`../benchmarks/README.md`](../benchmarks/README.md) — retained performance
+  scoreboard, including Qwen GGUF prefix-reuse precedent.
+
+---
+
+## 1. Goal and timing definitions
+
+Optimize the complete resident request path:
+
+```text
+HTTP request accepted
+  -> validate/auth/session lookup
+  -> render chat prompt
+  -> encode/count/reasoning/admission
+  -> generation queue
+  -> acquire/reset resident model state
+  -> model prefill + first-token LM head/argmax
+  -> stop-safe incremental detokenization
+  -> first useful content SSE event
+```
+
+Definitions:
+
+- **Useful-content TTFT:** client submission to the first non-empty completion
+  text, `reasoning_content`, or tool-call argument/name delta. An OpenAI role-
+  only SSE frame is not a token and must not stop the TTFT clock.
+- **Backend prefill:** `LagunaGGUFResidentSession.prefill()` start through its
+  synchronized first-token argmax. It excludes model loading, tokenizer wall,
+  generator session construction, server queueing, and SSE serialization.
+- **Queue latency:** request admission to the first scheduler-owned model step.
+- **Session preparation:** construction or reset of request-owned KV/scratch
+  state after resident weights are available and before prefill begins.
+- **End-to-end latency:** client submission through the terminal response or
+  `[DONE]`; report blocking and streaming separately.
+- **Cold start:** process/model readiness. It remains useful operational data
+  but is not credited to resident TTFT.
+
+Every result must state whether it measures direct in-process, FastAPI
+in-process, or real localhost Uvicorn/client wall. Never compare unlike timing
+scopes as a speed ratio.
+
+---
+
+## 2. Current evidence and latency budget
+
+### 2.1 Model work remains dominant
+
+The retained current-main Laguna route reports **50.389 prefill tok/s**, median
+TTFT **1.620 s** on the canonical 68-122-token suite, and **16.384 decode tok/s**.
+The current 128-row profile attributes approximately **56.78%** of kernel time
+to selected experts and **33.40%** to source-F16 projections. Kernel-span minus
+kernel-sum is only about **0.1-0.34%** on retained prefill profiles.
+
+Consequences:
+
+- the other agent's AR-O1/O2 kernel campaign is still the largest idle-request
+  TTFT lever;
+- graph/host submission fusion is not reopened merely because this serving
+  campaign exists; and
+- a 10% reduction in the current 1.620-second model-prefill wall is worth about
+  162 ms, larger than all currently identified idle host micro-costs combined.
+
+### 2.2 Per-request Laguna session construction is measurable
+
+A local, non-retained diagnostic at current main loaded the exact Q4_K_M model
+once from the repacked cache, then constructed and closed six borrowing
+`LagunaGGUFResidentSession` instances with cached libraries. The warm five-
+sample medians were:
+
+| Stage | Result |
+| --- | ---: |
+| constructor return | 31.334 ms |
+| constructor plus explicit device synchronize | **31.426 ms** |
+| explicit synchronize remainder | 0.093 ms |
+| close | **5.033 ms** |
+| existing `reset_state()` host submission | 0.296 ms median |
+
+Each temporary session added **387,482,684 bytes** (369.53 MiB) across **323
+tracked allocations**, then recovered exactly. The owner reported
+77,125,390,396 resident bytes, model load took 50.075 s and was excluded from
+the session samples, and final tracked ownership returned to zero.
+
+Diagnostic command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  PYTHONPATH=. uv run python -u /tmp/laguna_session_latency_probe.py
+```
+
+This is candidate-selection evidence, not a retained performance claim: the
+probe script is not yet committed and `reset_state()` was timed as host
+submission rather than synchronized request wall. S1 must add a checked-in
+harness and measure complete first-token latency before promotion.
+
+### 2.3 Public chat can encode the same prompt repeatedly
+
+The current server performs prompt-wide token work at multiple boundaries:
+
+1. thinking-budget/context calculation while rendering chat;
+2. reasoning-open detection before live chat streaming;
+3. context admission validation;
+4. model generation tokenization; and
+5. another remaining-context count when `max_tokens` is omitted.
+
+Thus a normal chat prompt is encoded at least three times for blocking and four
+times for streaming; implicit token budgets can add another pass. A completion
+request normally counts once for admission and encodes again for generation.
+
+The reconstructed HF encoder's measured median at 4,096 tokens is **3.428 ms**.
+Request-local reuse therefore has a directional ceiling of roughly **6.9 ms**
+for explicit-budget blocking chat, **10.3 ms** for explicit-budget streaming,
+and **13.7 ms** when streaming also recomputes an implicit budget. Short
+canonical prompts save less than one millisecond. These are arithmetic bounds
+from the measured tokenizer wall, not public HTTP measurements.
+
+### 2.4 Multi-token stop handling can delay visible output
+
+Laguna streaming currently retains `longest_stop_sequence - 1` generated tokens
+before releasing any pending text, even when the pending suffix cannot be a
+prefix of a configured stop sequence. At 16.384 decode tok/s, each unnecessarily
+held token costs approximately **61.0 ms**. A four-token stop can therefore add
+up to roughly **183 ms** before first useful content on a nonmatching output.
+Default atomic EOT handling does not incur this multi-token hold.
+
+### 2.5 Re-prefilling chat history is the largest repeated-turn opportunity
+
+The current generic chat-session record retains transcript text, not resident
+Laguna KV; capabilities truthfully report `resident_kv_commit=false`. Every
+follow-up turn re-renders and re-prefills the complete visible transcript.
+
+Directional avoided model wall at current measured rates is approximately:
+
+| Exact reusable prefix | Avoidable Laguna prefill wall |
+| ---: | ---: |
+| 100 tokens | about 2.0 s at 50.389 tok/s |
+| 256 tokens | about 5.1 s at 50.389 tok/s |
+| 1,024 tokens | about 22.8 s at the retained 44.855 tok/s 1K rate |
+
+This is an Amdahl estimate, not a retained continuation benchmark. The existing
+Qwen GGUF exact p256+s1 precedent proves the architecture but not Laguna's
+result: it moved continuation TTFT **249.269 -> 21.188 ms (11.765x)** on a
+narrow guaranteed-hit route. Broader Qwen agentic radix experiments were
+rejected when hit rate and snapshot cost outweighed reuse. Laguna therefore
+starts with explicit stateful-session continuation, not a global default-on
+radix cache.
+
+### 2.6 The compatibility bridge makes queue latency unbounded by one token
+
+Laguna currently enters `SubmitPollTextGenerator` through the compatibility
+runner. One scheduler decode work item invokes a complete inner generation,
+and `LagunaGGUFGenerator._token_steps()` holds the generator lock through
+prefill and every output token. A later request can therefore wait for the
+prior request's full response rather than one scheduler tick.
+
+At the canonical median and 16.384 decode tok/s, a 32-token response is roughly
+1.620 s TTFT plus 31 post-TTFT forwards (about 1.89 s). A request arriving
+behind it can inherit about 3.5 s of queueing before its own model prefill. This
+is a directional composition, not a measured concurrent Laguna server row.
+
+---
+
+## 3. Ordered task list
+
+Task order is intentional. Finish and commit each validated logical unit before
+starting the next. The pi task IDs are session-local coordination aids; the
+stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
+
+| ID | Pi task | Candidate | Expected scope | Status |
+| --- | ---: | --- | --- | --- |
+| S0 | #17 | Document path, definitions, evidence, telemetry, and gates | process only | **complete** |
+| S1 | #18 | Pool/reset one generator-owned Laguna resident session | about 31 ms idle TTFT ceiling; about 5 ms tail | pending |
+| S2 | #19 | Render/encode once into request-local prepared prompt ownership | sub-ms short; about 7-14 ms near 4K | pending, blocked by S1 |
+| S3 | #20 | Prefix-aware stop-safe streaming holdback | workload-dependent; up to 61 ms per avoidable held token | pending, blocked by S2 |
+| S4 | #21 | Exact stateful Laguna KV continuation | seconds on guaranteed-hit follow-up turns | pending, blocked by S3 |
+| S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | seconds under contention; c=1 exact first | pending, blocked by S4 |
+
+The separate model-prefill campaign runs in parallel. S1-S5 may consume its
+new default kernels after those commits land, but must compare against the
+then-current default rather than a stale prefill baseline.
+
+---
+
+## 4. S1 — Persistent/resettable Laguna session
+
+### Implementation
+
+- Move the exact AR `LagunaGGUFResidentSession` from request-local construction
+  into `LagunaGGUFGenerator` ownership.
+- Lazily create it after immutable resident weights are prepared; reuse it only
+  under the existing c=1 lock.
+- Reset request state before every new prompt while retaining KV/scratch/RoPE
+  allocations and loaded libraries at stable addresses.
+- Close the pooled session before shared weights in `LagunaGGUFGenerator.close()`.
+- Keep DFlash provider target/drafter/cycle ownership isolated. Do not make a
+  DFlash performance claim from an AR session-pool change.
+- Failure, deadline, cancellation, empty-generation, and stop exits must leave
+  the pooled state reusable or retire/recreate it explicitly before the next
+  request.
+
+### RED/GREEN gates
+
+- two sequential requests initialize one session, reset once, produce the same
+  IDs/text/telemetry as two fresh sessions, and close exactly once;
+- an injected prefill/decode exception cannot leak stale position/KV into the
+  next request;
+- cancellation and EOT/stop completion leave the next request exact;
+- public blocking and streaming retain identical IDs and terminal ownership;
+- generator close frees the session and shared weights in safe order;
+- the focused HIP test has an explicit no-ROCm skip guard.
+
+### Measurement and telemetry
+
+Add request timing fields with non-overlapping scopes:
+
+- `session_prepare_ms`: constructor plus required synchronization, or reset plus
+  stream ordering before prefill;
+- `session_prepare_mode`: diagnostic metadata (`create`, `reset`, or
+  `recreate_after_error`), not an additive numeric timing field;
+- existing `prefill_ms`, `decode_ms`, and `tokenize_ms` retain their current
+  meanings.
+
+Use a checked-in cached-build probe. Alternate fresh/reused ordering where
+possible, synchronize both arms equivalently, report at least five warm samples,
+and require complete ID/state/lifecycle equality. Promotion requires every
+paired reused sample to improve session preparation and complete request TTFT
+to be non-regressive. Do not claim the current 31.426-ms constructor ceiling as
+the realized win until that gate passes.
+
+---
+
+## 5. S2 — Request-local prepared prompt
+
+### Contract
+
+Introduce a model-neutral, request-local prepared prompt record (name may change)
+containing at least:
+
+```text
+rendered text, exact token IDs, token count, tokenizer wall, tokenizer identity
+```
+
+It is not a process-wide or unbounded cache. Public users may continue to submit
+text or raw token IDs. The record exists only from request preparation through
+completion/reclaim.
+
+### Required reuse
+
+- chat thinking-budget and context calculations consume the prepared count;
+- Poolside reasoning-open detection consumes prepared IDs or a proven exact
+  rendered-suffix fast path;
+- context admission uses the prepared count;
+- generation receives the same IDs without re-encoding;
+- usage accounting uses exact prompt IDs/count without decoded-text
+  retokenization; and
+- raw ID prompts retain `tokenize_ms=0`.
+
+Avoid rendering the same deterministic model prompt twice merely to discover
+that the thinking control did not change. Keep generic role/tool-transcript
+validation, but separate validation from discarded duplicate string assembly
+when tests prove the split exact.
+
+### Gates
+
+- count actual encoder calls: exactly one per text prompt for blocking and live
+  streaming, with explicit and omitted `max_tokens`;
+- exact rendered bytes, prompt IDs, usage, output IDs, stop/tool/reasoning
+  behavior, and context-overflow errors match the old path;
+- no tokenizer or prompt cache survives request reclaim;
+- measure 128/512/1K/4K text plus the ten-prompt suite; report preprocessing and
+  useful-content TTFT separately.
+
+Telemetry should expose `render_ms`, `prompt_encode_ms`, and
+`admission_prepare_ms`; `tokenize_ms` may remain as a compatibility alias only
+if its ownership is documented and it is not double-counted.
+
+---
+
+## 6. S3 — Prefix-aware stop-safe streaming
+
+Maintain a pending token suffix and the token-prefix trie (or equivalent
+bounded matcher) of configured stop sequences. After each generated token:
+
+1. stop immediately and suppress the exact matched suffix when a complete stop
+   sequence is present;
+2. retain only the longest pending suffix that is still a prefix of at least
+   one possible stop sequence; and
+3. emit all earlier pending tokens immediately through the incremental UTF-8
+   decoder.
+
+Do not change blocking stop semantics. Atomic EOT/EOS/control-token suppression,
+`min_tokens`, `ignore_eos`, overlapping stops, duplicate stops, and caller stop
+IDs remain exact.
+
+Tests must cover:
+
+- nonmatching first token with a long stop (first token emits immediately);
+- partial then failed prefix (safe prefix flushes at the earliest token);
+- exact, overlapping, suffix-contained, and shared-prefix stops;
+- a stop sequence split across byte-BPE UTF-8 pieces;
+- terminal max-length flush, cancellation, EOT, and blocking/stream equality;
+- a deliberately delayed fake decoder proving useful-content TTFT improves by
+  the avoided token intervals rather than merely changing chunk count.
+
+No user-selected stop string or fixed token ID may be special-cased.
+
+---
+
+## 7. S4 — Exact stateful Laguna KV continuation
+
+Start with explicit chat-session ownership where an exact prefix hit is
+structural. Do not enable general radix matching by default.
+
+### State contract
+
+- bind one bounded Laguna session/KV owner to a server chat session and exact
+  tokenizer/model/revision/context identity;
+- record the exact committed token sequence and the point through which model
+  state/KV has been processed;
+- account for Laguna's generation loop returning a sampled token before that
+  final token has necessarily been forwarded into KV;
+- append only the newly rendered suffix after verifying exact token-prefix
+  equality;
+- preserve all 12 global KV families and all 36 SWA rings, absolute positions,
+  eviction metadata, and 511/512/513 wrap behavior;
+- on any mismatch, unsafe cache action, context truncation/reset, sampling mode
+  incompatibility, cancellation ambiguity, or ownership error, fail closed to
+  ordinary full prefill;
+- cap retained sessions/bytes with explicit LRU/TTL reclamation and truthful
+  capability/metrics reporting.
+
+### Gates
+
+- continuation output, complete logits at declared checkpoints, final hidden,
+  global/SWA KV metadata and live BF16 rows are exact against full transcript
+  prefill;
+- final-token pending/processed cases, stop/EOT, tool turns, thinking turns,
+  context clear/truncate/new-session, disconnect, timeout, and server shutdown
+  pass;
+- retained state cannot cross auth principal, session ID, model revision,
+  tokenizer identity, or cache-action boundary;
+- repeated load/run/evict/close returns tracked and GTT ownership to the expected
+  baseline;
+- benchmark guaranteed-hit 128/512/1K prefixes plus multi-turn canonical chat,
+  reporting avoided tokens, fallback reason, memory, TTFT p50/p95, and exactness.
+
+Only after this lane is positive should Laguna evaluate shared-prefix radix
+snapshots across unrelated requests.
+
+---
+
+## 8. S5 — Native resident scheduler integration
+
+Replace the compatibility runner's whole-generation decode work item with a
+Laguna runner implementing scheduler-owned transitions:
+
+- admission reserves a stable request/session slot;
+- prefill consumes bounded prompt chunks and commits canonical KV;
+- each decode work item advances one target token per ready request;
+- generated chunks route by stable request ID through bounded queues;
+- cancellation, deadline, EOS/stop, and reclaim occur between model ticks;
+- a later request can be admitted and begin prefill without waiting for an
+  earlier request's complete decode;
+- the initial path remains exact `c=1`; c>N packed execution is a later,
+  separately gated throughput extension.
+
+The runner must use the existing batch-shaped scheduler/KV contracts and must
+not add model/backend/quant branches to generic engine code.
+
+### Gates
+
+- independent c=1 output/state/KV equivalence for blocking and streaming;
+- delayed-arrival test proves request B begins prefill before request A's long
+  decode completes;
+- `protect_ttft`, `protect_decode`, and `fair` policies report truthful work
+  order; no policy is promoted from a single load shape;
+- queue p50/p95, useful TTFT p50/p95, ITL p50/p99, end-to-end p50/p95, active
+  occupancy, cancellation acknowledgement, and ownership all appear in the
+  retained server artifact;
+- full pressure/overload/recovery/soak gates pass before changing the package
+  default.
+
+---
+
+## 9. Promotion and correctness policy
+
+Every S1-S5 change must satisfy all applicable items:
+
+1. **Exactness:** complete generated IDs for deterministic cases, required
+   logits/hidden/KV state, stop/reasoning/tool output, and blocking/stream
+   reconstruction match the current default.
+2. **No benchmark gaming:** use the full canonical category/heldout suite where
+   model output can change; never tune on fixed prompt/token IDs or stop strings.
+3. **Torch-free hot path:** no `import torch` in `LLM.generate()` reachability.
+4. **Registry and ownership boundaries:** no backend/quant branches in generic
+   engine/dispatch; every retained allocation has one explicit owner.
+5. **ROCm CI safety:** GPU/HIP tests skip cleanly when HIP is unavailable.
+6. **Narrow then broad validation:** run focused tests first. Ask before
+   repeating an equivalent benchmark expected to exceed five minutes.
+7. **Evidence:** model, quant, workload, hardware, exact command, timing scope,
+   warmups/repetitions, result, correctness, memory, and source revision travel
+   together.
+8. **Rollup:** an accepted performance change updates `WORKLOG.md`, a compact
+   result under `benchmarks/results/`, `benchmarks/README.md` and
+   `benchmarks/CHANGELOG.md`; rejected measured candidates receive a compact
+   rejection artifact when they informed the plan.
+9. **Default policy:** exact non-regressive wins become default unless a concrete
+   blocker is recorded. Temporary flags/routes get a removal trigger in
+   `REFACTOR.md`.
+
+---
+
+## 10. Required timing payload
+
+By S2, a useful streaming response should make the following ownership
+reconstructable without overlapping numeric scopes:
+
+```json
+{
+  "render_ms": 0.0,
+  "prompt_encode_ms": 0.0,
+  "admission_prepare_ms": 0.0,
+  "queue_ms": 0.0,
+  "session_prepare_ms": 0.0,
+  "prefill_ms": 0.0,
+  "first_emit_after_prefill_ms": 0.0,
+  "useful_ttft_ms": 0.0,
+  "decode_ms": 0.0,
+  "request_total_ms": 0.0
+}
+```
+
+The concrete API may keep server-wall fields separate from backend
+`GenerationTelemetry`; the invariant is that field ownership and clocks are
+explicit. Role-only SSE must not populate `useful_ttft_ms`. Queue and useful
+TTFT must be measured from request/server clocks, while GPU/backend stages use
+their documented synchronized host boundaries.
+
+---
+
+## 11. Explicit non-goals
+
+- Do not duplicate the active Laguna AR prefill kernel campaign here.
+- Do not credit model load/readiness improvements to resident TTFT.
+- Do not enable DFlash automatically or call verifier-derived rows an AR
+  baseline.
+- Do not enable a global Laguna radix cache before explicit-session reuse is
+  exact, bounded, and positive.
+- Do not add graph replay solely to remove a sub-percent prefill residual.
+- Do not count an SSE role frame, empty delta, or hidden reasoning marker as a
+  useful first token.
