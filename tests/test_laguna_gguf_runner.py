@@ -735,9 +735,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         model_sha256="synthetic-sha256",
         safety_reserve_nbytes=4 * 2**30,
     )
-    assert session.prefill_chunk_size == 128
+    assert session.prefill_chunk_size == 512
     assert session.prefill_attention_chunk_size == 128
-    assert session.prefill_scratch_plan.total_nbytes == 102_992_912
+    assert session.prefill_scratch_plan.total_nbytes == 411_953_168
     assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
     assert session.swa_prefill_variant == "swa_context_rows_wave32_exact_spans"
     assert session.selected_down_mode == "adaptive_grouped_smallm_fused"

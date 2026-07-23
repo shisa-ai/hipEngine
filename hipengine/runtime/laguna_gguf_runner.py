@@ -19,6 +19,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.backends import (
+    backend_package_capability,
     hip_target_arch_environment,
     hip_target_arch_for_backend,
     load_backend_kernel_package,
@@ -1471,7 +1472,7 @@ class LagunaGGUFResidentSession:
         progress: Callable | None = None,
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
-        prefill_chunk_size: int = 128,
+        prefill_chunk_size: int | None = None,
         prefill_attention_chunk_size: int | None = None,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
@@ -1480,9 +1481,22 @@ class LagunaGGUFResidentSession:
         self.device = device or Device("hip", 0)
         self.backend = resolve_backend(backend)
         self.context_length = int(context_length)
+        matrix_rows = prefill_chunk_size
+        if matrix_rows is None:
+            matrix_rows = min(
+                self.context_length,
+                int(
+                    backend_package_capability(
+                        self.backend,
+                        "LAGUNA_PREFILL_MATRIX_ROWS",
+                        128,
+                    )
+                    or 128
+                ),
+            )
         self.prefill_chunk_policy = LagunaPrefillChunkPolicy.resolve(
             context_length=self.context_length,
-            matrix_rows=prefill_chunk_size,
+            matrix_rows=matrix_rows,
             attention_rows=prefill_attention_chunk_size,
         )
         self.prefill_chunk_size = self.prefill_chunk_policy.matrix_rows

@@ -39,6 +39,10 @@ TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 # retain the exact LPF-1 tile; decode retains the separately registered GEMV.
 LAGUNA_F16_PREFILL_STRATEGY = "wmma_comp_swa"
 LAGUNA_F16_PREFILL_MIN_ROWS = 16
+# Clean AR-O3 repeated 512/1K/4K full-state equality and timing admit 512-row
+# projection/MoE transactions while attention remains independently tiled at 128.
+# Other backends retain the 128-row runtime fallback until measured independently.
+LAGUNA_PREFILL_MATRIX_ROWS = 512
 # Clean LPF-5 512/1K/4K full-state equality and timing admit the barrier-free,
 # reduction-order-exact wave32 SWA reader. Other backends retain the registered
 # 128-thread baseline until measured independently.
@@ -258,6 +262,7 @@ __all__ = [
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
     "LAGUNA_F16_PREFILL_STRATEGY",
+    "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SWA_PREFILL_VARIANT",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
