@@ -2032,6 +2032,277 @@ keeps decode within 2%, excludes model load, and records the intended kernel
 name, duration, workgroup, VGPR/SGPR, LDS, and scratch from a prebuilt cached
 `rocprofv3` run. A kernel-only micro win does not promote the default.
 
+## Laguna AR Optimization Campaign — 4-10x Prefill
+
+This is the active Laguna performance campaign after LPF-0 through LPF-6. The
+previous work established a correct, resident, chunked baseline and found useful
+exact improvements; it did **not** establish a competitive matrix prefill
+architecture. DFlash is frozen as an explicit correctness-supported provider and
+is not an optimization target. AR prefill is the only headline metric in this
+campaign. DFlash should be rerun only if shared target-state or public-provider
+behavior changes.
+
+### Why the 4-10x target is credible but not yet a claim
+
+The current merged-main canonical result is **50.389 prefill tok/s** and
+**16.384 decode tok/s** on the Radeon 8060S/gfx1151. The retained long-context
+AR results are **47.395/44.855/38.552 tok/s** at 512/1K/4K. Model loading is
+excluded from all of these values.
+
+The following llama.cpp numbers were reported during this planning session and
+are directional controls, not retained hipEngine evidence. Their exact prompt,
+batch/chunk, build, power, and timing scopes still need to be captured:
+
+| Directional control | Approx. active parameters | Prefill | Decode | Evidence status |
+| --- | ---: | ---: | ---: | --- |
+| gpt-oss 120B MXFP4 | about 6B | 720 tok/s | 56 tok/s | user-reported; protocol capture pending |
+| Nemotron Super 3 120B-A12B | about 12B | 276 tok/s | 14.86 tok/s | user-reported; protocol/quant capture pending |
+| Laguna S 2.1 Q4_K_M in hipEngine | about 7.83B prefill linear work | 50.389 tok/s | 16.384 tok/s | retained current-main AR evidence |
+
+Laguna's active linear work can be estimated directly from the published
+shapes. Per prefill token it evaluates approximately 2.803B attention-projection
+parameters, 4.435B selected routed-expert parameters, 0.444B shared-expert
+parameters, 0.113B dense-layer-0 parameters, and 0.037B router parameters: about
+**7.83B active linear parameters** before norms, elementwise work, and context
+attention. Decode also evaluates the 0.308B-parameter LM head. This is not an
+“8B model” capacity statement; all roughly 70 GiB of quantized weights remain
+resident.
+
+At 50.389 tok/s, the prefill linear work rate is only about **0.79 TFLOP/s** if
+a multiply-add is counted as two operations. A 200-500 tok/s Laguna prefill
+would be about **3.1-7.8 TFLOP/s** before attention, comparable in scale to the
+rough active-work rates implied by the two directional controls. Differences in
+quant format, active-parameter definitions, architecture, and benchmark scope
+prevent a direct ratio, but they do show that 50 tok/s is not a plausible
+compute roofline.
+
+Decode tells a different story. The existing model estimate is 9-10 GB of
+active weight traffic per generated token. At 16.384 tok/s that implies roughly
+147-164 GB/s, already 67-74% of the local 221 GB/s practical read ceiling before
+other traffic. Decode can still improve, but its result is consistent with
+Laguna's mixed F16/Q4/Q6 active bytes and is not the current priority. Prefill
+should reuse weights across rows and move onto matrix instructions instead of
+paying decode-shaped costs per row.
+
+The same-model Poolside llama.cpp raw-token control is only 70.45 prompt tok/s.
+That is the cleanest compatibility reference, but it is not an upper bound: it
+suggests that the current llama.cpp Laguna path may also be under-optimized.
+Before publishing a cross-engine ratio, run the identical Q4_K_M file and token
+streams at 128/512/1K/4K with homologous in-process timing.
+
+### What the retained profiles actually say
+
+The detailed LPF-0 trace predates the promoted LPF-1 source-F16 tile. At 55
+rows, source-F16 QKV/O occupied 68.99% of its 2.340 s kernel sum and selected
+Q4/Q6 experts occupied 26.45%. LPF-1 then reduced full-model 55-row time from
+about 2.34 s to about 1.13 s without changing selected-expert execution. Until a
+fresh all-family trace is collected, the best inference is therefore that
+selected experts now own roughly **55%** of short-prefill time, remaining
+source-F16 projections roughly **35%**, and everything else roughly **10%**.
+Those percentages are an Amdahl estimate, not a current measurement.
+
+This changes the priority order. Perfectly eliminating either selected experts
+or source-F16 projections alone cannot deliver 4x. Even making both families
+10x faster gives only about 5.3x under the inferred 55/35/10 split. Reaching the
+upper end of the target requires both matrix engines plus cleanup of the new
+residual; it cannot come from another local fusion or launch tweak.
+
+The retained LPF-5 attribution is also stale for attention because it predates
+the promoted wave32 SWA body. Before that promotion, attention was 16.25/23.78/
+35.19% of 512/1K/4K kernel sum. The full-model wave32 win implies that attention
+is now roughly a tenth of 512-row time and about a quarter of 4K time, but a
+fresh trace must replace this inference. The prior LPF-6 trace found kernel-span
+minus kernel-sum at only 0.10-0.25%, so graph capture and host launch work stay
+last until a new trace proves otherwise.
+
+### Target ladder
+
+Targets are defined against the retained current-main AR route, not against
+DFlash and not against a single repeated-token prompt:
+
+| Milestone | Canonical short prefill | 512 / 1K / 4K intent | Meaning |
+| --- | ---: | --- | --- |
+| O1 | >=100 tok/s | report all three shapes | matrix substrate is working; not campaign success |
+| O2 | >=200 tok/s | seek >=190/180/154 tok/s | minimum 4x short/long campaign goal |
+| O3 | >=300 tok/s | no long-context regression | comparator-class checkpoint, still protocol-qualified |
+| Stretch | 400-500 tok/s | continue context-specific scaling | 8-10x short-prefill objective |
+
+These are outcome gates, not promises. Every retained sub-window or exact
+end-to-end gain is still promoted under the repository performance policy even
+if it does not cross the next ladder rung. Long-context ratios are reported
+separately because causal attention work grows with context while projection
+work does not.
+
+### Optimization sequence and task list
+
+Dependencies are intentional. Reprofile after every promoted phase; do not keep
+implementing against the pre-LPF attribution.
+
+#### AR-O0 — homologate controls and capture the current bottleneck
+
+- [ ] Run cached-build, prefill-only timing at rows/lengths 128, 512, 1K, and 4K
+  on the current merged revision. Use at least three balanced timing samples for
+  candidate admission; a single profiler pass is sufficient for attribution.
+- [ ] Extend the trace summary to account for **all** kernel families, not only
+  global/SWA attention. Record kernel sum/span, calls, median/total duration,
+  VGPR/SGPR, LDS, scratch, and row/chunk shape for selected Q4/Q6, source-F16,
+  dense/shared, router, attention, norms, and metadata kernels.
+- [ ] Preserve the 128-row real-routing histogram and add 256/512-row replays.
+  Report useful rows per `(layer, expert)`, padding factors for 2/4/8/16/32-row
+  tiles, and hot/Zipf as well as natural routing.
+- [ ] Capture matched llama.cpp Laguna Q4_K_M 128/512/1K/4K controls with the
+  same token streams and timing boundary. Separately record reproducible
+  metadata for the gpt-oss and Nemotron directional rows if available.
+- [ ] Audit the merged kernel catalog and run `scripts/check_lineage.py` before
+  new kernel work. In particular inspect the existing exact Q4 dual-SiLU,
+  Q4/Q5 T16 Q8_1/dp4a, grouped compact-MoE, IQ MMQ32, Qwen GGUF Q8T16/MMQ,
+  F32-router, device-metadata, and AOTriton paths before writing duplicates.
+
+Exit: one compact current-main artifact with a complete Amdahl table and a
+ranked first candidate. If the inferred 55/35 split is wrong, reorder AR-O1 and
+AR-O2 from the measured table.
+
+#### AR-O1 — selected Q4/Q6 expert matrix engine
+
+This is the expected first bottleneck. Laguna currently runs direct T16 decode
+GEMVs over `rows * top_k`; the prior exact pair-reuse candidate lost 11.57%, and
+blanket M16 compact WMMA would execute 4.396x useful lanes at 55 rows. Do not
+repeat either experiment unchanged.
+
+- [ ] First screen already-landed primitives: exact Q4 dual+SiLU fusion and
+  direct Q8_1/dp4a for Q4 gate/up. Only if that wins inclusively should a
+  single-output Q4/Q6 down sibling be developed. Include activation-quantization
+  cost and full-model quality; a prequantized leaf win is not sufficient.
+- [ ] Build one device-resident expert grouping/scatter pass with no scalar D2H
+  boundary. Quantize each producer activation once, not once per selected
+  expert or output projection.
+- [ ] Implement adaptive small-M grouped Q4/Q6 schedules for the measured
+  1/2/4/8-row populations. One expert/output tile should reuse decoded weights
+  across all rows in its bucket; do not launch a nominal GEMV independently for
+  each lane.
+- [ ] Add an M16/M32 integer-MMQ/WMMA route only where measured occupancy pays
+  for padding. Use the landed IQ2 MMQ32 work as a scheduling reference, not as
+  a quant-format shortcut; Laguna Q4_K/Q6_K decode and scales need their own
+  oracle.
+- [ ] After gate/up, evaluate fused SiLU and routing-weighted down/combine to
+  remove the largest expert intermediates. Keep the unfused staged chain
+  registered and do not introduce order-dependent atomics across ten experts.
+
+Stop rule: remove a candidate that is slower inclusively at every natural
+shape, or whose best applicable family speedup is below 2x with no material
+scratch/dispatch benefit. Reprofile the full model after each retained leaf.
+
+#### AR-O2 — true source-F16 matrix projection
+
+The current exact 8x4/16x4 tile preserves GEMV's reduction order. It reuses some
+loads but is not a matrix-core GEMM. The removed 16x16 WMMA control reached only
+60.65 tok/s and changed three trajectories; that rejects that implementation,
+not matrix prefill as a class.
+
+- [ ] Establish a torch-free rocBLAS/hipBLASLt FP16-input/F16-weight/FP32-
+  accumulate ceiling at Laguna's real M/K/N shapes before tuning a custom body.
+  BF16 hidden values may be converted once to FP16 only through the quality
+  lane and only if range/finite checks pass.
+- [ ] Develop a tiled matrix-core path for Q/K/V/gate and O at M=16..512.
+  Compare separate GEMMs with a resident composite QKV+gate layout; packing
+  should happen once at materialization/cache build, never during inference.
+- [ ] Account for residency explicitly. Duplicating every source-F16 projection
+  would cost about 5.61 GB; prefer a replacement/composite device layout with
+  offsets usable by the exact rows=1 fallback, or justify the sidecar against
+  the 120 GiB admission budget.
+- [ ] Select the row threshold from measured shapes. Rows=1 must remain on the
+  current exact GEMV, so decode performance and arithmetic stay unchanged.
+
+A reassociated matrix path may be admitted without byte identity only through
+the quality lane below. A library control is a ceiling/diagnostic and must not
+become a hard runtime dependency without an explicit package decision.
+
+#### AR-O3 — larger row substrate and independent chunk policies
+
+The current owner allocates one global 128-row scratch shape. That is adequate
+for exact LPF but can starve grouped experts and matrix tiles. Do not simply set
+the global chunk to 512.
+
+- [ ] Add bounded 256/512-row scratch and admission accounting after AR-O1/O2
+  establish the layouts they actually need.
+- [ ] Decouple projection/MoE row tiles from attention query tiles, following
+  the proven Qwen prefill configuration pattern. Matrix work may use M256/512
+  while SWA/global attention remains at its independently measured query tile.
+- [ ] Compare 128/256/512 on 512/1K/4K with exact final cursor, KV state, and
+  511/512/513 wrap behavior. Canonical 68-122-token prompts will not benefit
+  from a larger maximum by themselves; this phase targets matrix occupancy and
+  long-context passes.
+- [ ] Keep request/chunk metadata resident and reusable, but do not add graph
+  capture unless kernel-span residual has become material.
+
+#### AR-O4 — dense/shared/router residual
+
+After AR-O1/O2, reprofile before deciding what remains. Likely candidates are
+shared-expert Q4/Q6 projections, layer-0 dense Q4/Q6, and the F32 router.
+Transfer the promoted Qwen GGUF Q8T16/MMQ and token-tiled F32-router schedules
+through registry keys where their shape/quant contracts match. Pair gate/up,
+fuse SiLU, or fuse the following norm/residual only when the new profile gives
+the family at least a 5% full-model ceiling. The rejected LPF-3 pack8 dual launch
+must not be revived without a different resident layout or execution schedule.
+
+#### AR-O5 — context attention after matrix work
+
+Attention is not the short-prompt first move, but it will become dominant as the
+linear families accelerate and already matters at 4K.
+
+- [ ] Reprofile at 512/1K/4K after AR-O1 through AR-O4.
+- [ ] For SWA, process multiple query rows per tile, reuse the 512-token K/V
+  window, and use online softmax instead of one serial scan per score/value.
+- [ ] For global layers, screen the existing torch-free AOTriton adapter as a
+  ceiling, then implement/adapt a tiled causal GQA route only if the measured
+  threshold warrants it. The rejected paired-head exact kernel is not a Flash
+  attention test.
+- [ ] Preserve complete `KVLiveSpans`, physical SWA rings, absolute positions,
+  eviction masks, BF16 K/V rounding, and the separate softplus output gate.
+  Keep the exact global/SWA kernels as fallbacks below the selected threshold.
+
+#### AR-O6 — submission and serving only after a new profile asks for it
+
+Graph replay, cross-layer launch fusion, and packed multi-request prefill remain
+deferred while kernel sum explains wall time. Re-open this phase only when
+kernel-span minus kernel-sum exceeds 5% or HIP API tracing names repeated
+synchronization/copies. Packed c>1 prefill is a separate serving throughput
+milestone and must not be used to claim a c=1 latency win.
+
+### Correctness, quality, and performance admission
+
+Two candidate lanes are allowed:
+
+1. **Exact lane:** primitive bytes, full logits/hidden/state, token IDs, cursors,
+   and lifecycle match the current route.
+2. **Quality-gated throughput lane:** reassociated WMMA/MMQ, activation
+   quantization, or online softmax may differ numerically. It must pass the
+   repository kernel gate (KL <= 0.05 and top-1 >= 90% versus the CPU/source
+   oracle), the frozen Poolside first-token gate, and the complete ten-prompt
+   `code/general_en/general_ja/mixed_ja_en` train+heldout teacher-forced and
+   free-running suite. Report complete-ID agreement but do not require it as a
+   substitute for the declared gate. No prompt/token-conditioned tuning is
+   admissible.
+
+Every candidate also requires:
+
+- balanced same-session baseline/candidate ordering and at least three timing
+  samples for a retained performance claim;
+- 128/512/1K/4K reporting at milestone boundaries, with all four categories
+  non-regressive and decode within 2%;
+- exact 511/512/513 SWA, global cursor, KV, teardown, repeated-session, and
+  bounded-memory checks;
+- a prebuilt cached `rocprofv3` trace proving the intended symbol, plausible
+  duration, workgroup, VGPR/SGPR, LDS, and zero or justified scratch;
+- an unfused/exact registry fallback, an explicit removal trigger for temporary
+  selectors in `docs/REFACTOR.md`, and the normal artifact/README/changelog/
+  WORKLOG update before promotion.
+
+Model load remains outside the prefill metric. Loader optimization is useful for
+cold start but cannot be credited toward the resident TTFT or prefill-throughput
+metric in this campaign. Likewise, DFlash proposal/verification time and
+acceptance are out of scope until AR itself is substantially faster.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
