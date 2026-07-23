@@ -1,0 +1,295 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T22:20:25.106116+00:00",
+  "kind": "hipengine_laguna_expert_major_layer_families_bisection",
+  "status": "layer_families_bisection_rejected",
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "rejected same-owner architecture-derived global-versus-SWA layer-family diagnostic over all ten uniformly-M128 category prompts; exact grouped-small-M remains default",
+  "repo": {
+    "revision": "58d8029f040343cd6ea8b5b903c040628bbf4c80",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "gpu_max_hw_queues": 1
+  },
+  "protocol": {
+    "bisection": "layer_families",
+    "modes": [
+      "adaptive_grouped_smallm_fused",
+      "adaptive_expert_major_wmma_comp_global",
+      "adaptive_expert_major_wmma_comp_swa",
+      "adaptive_expert_major_wmma_comp"
+    ],
+    "layer_scopes": {
+      "adaptive_expert_major_wmma_comp_global": "12 layers declared full_attention by model metadata",
+      "adaptive_expert_major_wmma_comp_swa": "36 layers declared sliding_attention by model metadata",
+      "adaptive_expert_major_wmma_comp": "all 48 sparse-MoE layers"
+    },
+    "chunk_size": 128,
+    "context_length": 4096,
+    "prompt_tokens": 128,
+    "prompt_expansion": "repeat each canonical prompt without repeating its leading BOS, then truncate; apply identically to every mode",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "repetitions": 3,
+    "teacher_forced_tokens_per_prompt": 32,
+    "timed_order": "four-mode deterministic rotation by prompt and repetition",
+    "timing_scope": "resident same-owner prefill only; model load and quality copies excluded",
+    "teacher_forcing": "one retained top-1 ID feeds all four isolated sessions per step",
+    "decode_route": "unchanged exact c=1 path",
+    "anti_gaming": "scope is derived only from model-declared attention family; no arbitrary layer IDs or prompt/token conditions"
+  },
+  "source_rejection": {
+    "path": "benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json",
+    "sha256": "78fa82c28177eb84257b5f6b456f74d9383b6b5bc5bf24b8541b977884237a9e",
+    "revision": "bc4baa193c1ad179d83b5c660a5f65272164a5d2",
+    "source_kind": "hipengine_laguna_expert_major_component_bisection",
+    "source_status": "component_bisection_rejected"
+  },
+  "performance": {
+    "adaptive_grouped_smallm_fused": {
+      "prefill_seconds": 52.20059985911939,
+      "prefill_tok_s": 73.56237304482156
+    },
+    "adaptive_expert_major_wmma_comp_global": {
+      "prefill_seconds": 46.81771570886485,
+      "prefill_tok_s": 82.0202340472776,
+      "speedup_vs_retained": 1.1149753692326194,
+      "category_prefill_tok_s": {
+        "code": 81.636,
+        "general_en": 81.588,
+        "general_ja": 82.868,
+        "mixed_ja_en": 82.390
+      }
+    },
+    "adaptive_expert_major_wmma_comp_swa": {
+      "prefill_seconds": 34.68482320278417,
+      "prefill_tok_s": 110.71124617096969,
+      "speedup_vs_retained": 1.5049982972070972,
+      "category_prefill_tok_s": {
+        "code": 110.368,
+        "general_en": 110.978,
+        "general_ja": 111.745,
+        "mixed_ja_en": 110.112
+      }
+    },
+    "adaptive_expert_major_wmma_comp": {
+      "prefill_seconds": 29.27971315011382,
+      "prefill_tok_s": 131.14882582055188,
+      "speedup_vs_retained": 1.7828248381906184,
+      "category_prefill_tok_s": {
+        "code": 130.929,
+        "general_en": 131.950,
+        "general_ja": 132.405,
+        "mixed_ja_en": 129.568
+      }
+    }
+  },
+  "quality": {
+    "adaptive_expert_major_wmma_comp_global": {
+      "pass": false,
+      "failed_checks": [
+        "max_kl_above_0.05"
+      ],
+      "steps": 320,
+      "top1_matches": 310,
+      "top1_agreement": 0.96875,
+      "max_kl_divergence": 0.6283014401467499,
+      "finite": true,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 125,
+          "top1_agreement": 0.9765625,
+          "max_kl_divergence": 0.6283014401467499
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.2850382638503443
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 64,
+          "top1_agreement": 1.0,
+          "max_kl_divergence": 0.3937556161403181
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 59,
+          "top1_agreement": 0.921875,
+          "max_kl_divergence": 0.2846472089009936
+        }
+      }
+    },
+    "adaptive_expert_major_wmma_comp_swa": {
+      "pass": false,
+      "failed_checks": [
+        "max_kl_above_0.05"
+      ],
+      "steps": 320,
+      "top1_matches": 312,
+      "top1_agreement": 0.975,
+      "max_kl_divergence": 1.2057788310173099,
+      "finite": true,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 126,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 1.2057788310173099
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 64,
+          "top1_agreement": 1.0,
+          "max_kl_divergence": 0.2337912434040774
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 63,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 0.44934164146596195
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 59,
+          "top1_agreement": 0.921875,
+          "max_kl_divergence": 0.3198096204026695
+        }
+      }
+    },
+    "adaptive_expert_major_wmma_comp": {
+      "pass": false,
+      "failed_checks": [
+        "max_kl_above_0.05"
+      ],
+      "steps": 320,
+      "top1_matches": 314,
+      "top1_agreement": 0.98125,
+      "max_kl_divergence": 0.5277908719463109,
+      "finite": true,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 126,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 0.4339216159136236
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.18588204419128115
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 64,
+          "top1_agreement": 1.0,
+          "max_kl_divergence": 0.3294641705177081
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.5277908719463109
+        }
+      }
+    },
+    "poolside_oracle": {
+      "all_modes_pass": true,
+      "prompt_tokens": 55,
+      "kl_divergence": 0.00009721235133095365,
+      "top1_agreement": 1.0,
+      "reference_top1": 94557,
+      "candidate_top1": 94557
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "evaluation": {
+    "pass": false,
+    "passing_modes": [],
+    "selected_mode": null,
+    "decision": "reject both architecture-derived layer-family scopes and remove all temporary expert-major runtime and benchmark selectors",
+    "reason": "global-only and SWA-only both exceed KL 0.05 and are numerically worse than the already-rejected all-layer route"
+  },
+  "memory": {
+    "resident_nbytes": 77125438836,
+    "tracked_returned_to_baseline": true,
+    "tracked_peak_allocated_bytes": 78675563332,
+    "tracked_peak_allocations": 2759,
+    "tracked_total_allocated_bytes": 141843136544,
+    "tracked_total_freed_bytes": 141843136544,
+    "tracked_after_current_allocated_bytes": 0,
+    "tracked_after_active_allocations": 0
+  },
+  "load": {
+    "seconds_excluded": 50.285517030977644
+  },
+  "raw_output": {
+    "path": "/tmp/laguna-expert-major-layer-family-bisection.raw.json",
+    "bytes": 284319,
+    "sha256": "c032e48a58a17476cef621e5651034fdc4edea67564ede91465186412f0d4229",
+    "stderr_path": "/tmp/laguna-expert-major-layer-family-bisection.stderr.log",
+    "stderr_sha256": "17330baffd52226d5f4882d0219f149ef0e1cedb127d93266da3dc184ba845a1",
+    "committed": false,
+    "omitted_fields": [
+      "rows",
+      "teacher_forced_prompts"
+    ]
+  },
+  "command": [
+    "HIP_VISIBLE_DEVICES=0",
+    "HIPENGINE_HIP_ARCH=gfx1151",
+    "HIPENGINE_GPU_MAX_HW_QUEUES=1",
+    "PYTHONPATH=.",
+    ".venv/bin/python",
+    "-u",
+    "scripts/laguna_expert_major_component_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--bisection",
+    "layer_families",
+    "--source-rejection",
+    "benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--chunk-size",
+    "128",
+    "--repetitions",
+    "3",
+    "--teacher-forced-tokens",
+    "32",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-expert-major-layer-family-bisection.raw.json"
+  ]
+}

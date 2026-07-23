@@ -1860,6 +1860,16 @@ is retained; only an architecture-derived global-versus-SWA layer-family screen
 remains before removing the temporary routes.
 [Rejected expert-major component bisection](results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json).
 
+The final architecture-derived layer-family screen also rejects both scopes.
+Global-only (12 layers) reaches **82.020 tok/s (1.115x)** but max KL
+**0.628301** at **310/320** top-1; SWA-only (36 layers) reaches **110.711 tok/s
+(1.505x)** but max KL **1.205779** at **312/320**. Both are numerically worse
+than all-layer KL **0.527791**. No arbitrary layer subset will be tuned from
+prompt outcomes. Exact grouped-small-M remains default, all temporary runtime
+and benchmark selectors are removed, and only the independently tested kernel
+leaf/oracle/trace remain as diagnostic evidence.
+[Rejected expert-major layer-family bisection](results/2026-07-24-gfx1151-laguna-expert-major-wmma-layer-family-rejected.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row
