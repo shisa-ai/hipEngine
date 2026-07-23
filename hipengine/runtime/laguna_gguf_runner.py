@@ -639,6 +639,8 @@ class LagunaEagerLibraries:
             "fp16_weight": self.f16_projection,
             "fp16_weight:tiled_bf16_f32_out": self.f16_projection_prefill,
             "fp16_weight:tiled_bf16_bf16_out": self.f16_projection_prefill,
+            "fp16_weight:wmma_comp_bf16_f32_out": self.f16_projection_prefill,
+            "fp16_weight:wmma_comp_bf16_bf16_out": self.f16_projection_prefill,
         }
 
     @property
@@ -686,6 +688,7 @@ def _launch_laguna_f16_weight_linear(weight, *args, libraries, **kwargs) -> None
 
 def _launch_laguna_raw_weight_linear(weight, *args, libraries, **kwargs) -> None:
     rows = int(args[2])
+    kwargs.pop("compensated_wmma_eligible", None)
     launch_gguf_linear(
         weight,
         *args,
@@ -718,6 +721,7 @@ def launch_laguna_weight_linear(
     stream: int = 0,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None = None,
+    compensated_wmma_eligible: bool = False,
 ) -> None:
     """Dispatch one Laguna projection from its validated resident layout."""
 
@@ -740,6 +744,7 @@ def launch_laguna_weight_linear(
         stream=stream,
         libraries=libraries,
         runtime=runtime,
+        compensated_wmma_eligible=compensated_wmma_eligible,
     )
 
 
@@ -761,6 +766,7 @@ def _launch_laguna_f16_qkv(
     stream,
     libraries,
     runtime,
+    compensated_wmma_eligible,
 ) -> None:
     launch_f16_weight_linear_triple(
         q_weight,
@@ -779,6 +785,7 @@ def _launch_laguna_f16_qkv(
         stream=stream,
         libraries=libraries.f16_linear,
         runtime=runtime,
+        compensated_wmma_eligible=compensated_wmma_eligible,
     )
 
 
@@ -800,6 +807,7 @@ def _launch_laguna_raw_qkv(
     stream,
     libraries,
     runtime,
+    compensated_wmma_eligible,
 ) -> None:
     for weight, out_ptr, out_features in (
         (q_weight, q_ptr, q_features),
@@ -847,6 +855,7 @@ def launch_laguna_qkv(
     stream: int,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
+    compensated_wmma_eligible: bool = False,
 ) -> None:
     """Preserve the fused F16 QKV path and route raw quants independently."""
 
@@ -872,6 +881,7 @@ def launch_laguna_qkv(
         stream=stream,
         libraries=libraries,
         runtime=runtime,
+        compensated_wmma_eligible=compensated_wmma_eligible,
     )
 
 
@@ -896,6 +906,7 @@ def launch_laguna_attention_projections(
     stream: int,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
+    compensated_wmma_eligible: bool = False,
 ) -> bool:
     """Launch exact attention projections and report a fused query/gate pair.
 
@@ -946,6 +957,7 @@ def launch_laguna_attention_projections(
             stream=stream,
             libraries=libraries,
             runtime=runtime,
+            compensated_wmma_eligible=compensated_wmma_eligible,
         )
         launch_laguna_weight_linear(
             gate_weight,
@@ -959,6 +971,7 @@ def launch_laguna_attention_projections(
             stream=stream,
             libraries=libraries,
             runtime=runtime,
+            compensated_wmma_eligible=compensated_wmma_eligible,
         )
         return False
 
@@ -978,6 +991,7 @@ def launch_laguna_attention_projections(
             stream=stream,
             libraries=libraries,
             runtime=runtime,
+            compensated_wmma_eligible=compensated_wmma_eligible,
         )
     return True
 
@@ -2100,6 +2114,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -2179,6 +2194,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
         )
         self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,

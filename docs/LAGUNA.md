@@ -2401,18 +2401,25 @@ not matrix prefill as a class.
   and **1.2955x** prefill while every broader schedule still fails. Exact tiled
   remains default. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-screen.json`.
-  Next, wire an explicit SWA-only quality route and require the full repeated
-  category/state/KV/E2E/lifecycle gate before promotion.
+  The explicit `wmma_comp_swa` quality route is now wired: only SWA-layer
+  QKV/gate/O at M>=16 resolve compensated WMMA, while all full-attention layers,
+  M2-15, rows=1, and `auto` remain exact. The generalized one-load harness
+  counterbalances `tiled`/`wmma_comp_swa`, validates the exact compensated shape
+  artifact, teacher-forces baseline top-1 across all ten prompts, reports full
+  trajectories, and requires KL/top-1, positive category wall, neutral decode,
+  Poolside oracle, deterministic repeats, and teardown. Its clean repeated gate
+  remains pending before any default or performance claim.
 - [x] Account for residency explicitly. The candidate directly consumes the
   existing 5.61-GB row-major source-F16 allocations and allocates no persistent
   sidecar; only 4,096/10,240/17,408 B bounded per-block LDS is used at
   M128/M256/M512. Rows=1 therefore keeps the same bytes and exact GEMV ABI.
 - [x] Select and close the first candidate's row threshold. Its measured M16
   crossover was a clean **1.803/1.364x** full/SWA win, with M2-15 exact tiled
-  and rows=1 exact GEMV. The later quality rejection removes that runtime
-  threshold entirely; `auto|gemv|tiled` are again the only public selector
-  values. Any precision-preserving replacement must receive a new variant and
-  independently measured threshold rather than reviving `wmma`.
+  and rows=1 exact GEMV. The later quality rejection removed that `wmma`
+  threshold. The independent compensated screen also selects M16 and exposes
+  only the explicit `wmma_comp_swa` quality route; `auto` remains exact tiled.
+  Any promotion or removal follows the complete gate, and the rejected direct
+  `wmma` selector must not be revived.
 
 A reassociated matrix path may be admitted without byte identity only through
 the quality lane below. A library control is a ceiling/diagnostic and must not

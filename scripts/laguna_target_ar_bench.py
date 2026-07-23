@@ -416,9 +416,10 @@ def _promotion_gate(
 
 def _laguna_f16_prefill_configuration(backend: str) -> dict[str, Any]:
     requested = os.environ.get("HIPENGINE_LAGUNA_F16_PREFILL", "auto").strip().lower() or "auto"
-    if requested not in {"auto", "gemv", "tiled"}:
+    if requested not in {"auto", "gemv", "tiled", "wmma_comp_swa"}:
         raise ValueError(
-            "HIPENGINE_LAGUNA_F16_PREFILL must be one of: auto, gemv, tiled"
+            "HIPENGINE_LAGUNA_F16_PREFILL must be one of: "
+            "auto, gemv, tiled, wmma_comp_swa"
         )
     backend_strategy = backend_package_capability(
         backend, "LAGUNA_F16_PREFILL_STRATEGY", None
@@ -429,6 +430,9 @@ def _laguna_f16_prefill_configuration(backend: str) -> dict[str, Any]:
     if requested == "tiled":
         effective_strategy = "tiled"
         effective_min_rows = 2
+    elif requested == "wmma_comp_swa":
+        effective_strategy = "wmma_comp_swa"
+        effective_min_rows = 16
     elif requested == "gemv":
         effective_strategy = "gemv"
         effective_min_rows = None
