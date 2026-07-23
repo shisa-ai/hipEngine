@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
+import pytest
+
 from scripts.laguna_expert_major_component_bench import (
     CANDIDATE_MODES,
+    LAYER_CANDIDATE_MODES,
+    LAYER_MODES,
     MODES,
+    _bisection_modes,
     _evaluate,
+    _load_source_rejection,
     _mode_order,
 )
 
@@ -20,6 +29,54 @@ def test_component_bisection_mode_order_is_deterministic_permutation() -> None:
     assert all(set(order) == set(MODES) for order in orders)
     assert len({order[0] for order in orders}) == len(MODES)
     assert orders == [_mode_order(prompt_index=2, repetition=rep) for rep in range(4)]
+
+
+def test_layer_family_bisection_uses_only_architecture_scopes() -> None:
+    assert _bisection_modes("components") == (MODES, CANDIDATE_MODES)
+    assert _bisection_modes("layer_families") == (
+        LAYER_MODES,
+        LAYER_CANDIDATE_MODES,
+    )
+    assert LAYER_CANDIDATE_MODES == (
+        "adaptive_expert_major_wmma_comp_global",
+        "adaptive_expert_major_wmma_comp_swa",
+        "adaptive_expert_major_wmma_comp",
+    )
+    orders = [
+        _mode_order(1, repetition, modes=LAYER_MODES) for repetition in range(4)
+    ]
+    assert all(set(order) == set(LAYER_MODES) for order in orders)
+    assert len({order[0] for order in orders}) == len(LAYER_MODES)
+
+
+def test_layer_family_bisection_requires_published_component_rejection(
+    tmp_path,
+) -> None:
+    path = tmp_path / "component-rejection.json"
+    artifact = {
+        "kind": "hipengine_laguna_expert_major_component_bisection",
+        "status": "component_bisection_rejected",
+        "pass": False,
+        "model": {"sha256": "model-sha"},
+        "repo": {"revision": "component-revision"},
+    }
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    args = SimpleNamespace(
+        source_rejection=path,
+        model_sha256="model-sha",
+        bisection="layer_families",
+    )
+
+    result = _load_source_rejection(args)
+
+    assert result["pass"] is True
+    assert result["source_kind"] == artifact["kind"]
+    assert result["revision"] == "component-revision"
+
+    artifact["kind"] = "hipengine_laguna_prefill_expert_major_wmma_category"
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    with pytest.raises(ValueError, match="source expert-major rejection"):
+        _load_source_rejection(args)
 
 
 def test_component_bisection_selects_only_quality_safe_faster_mode() -> None:
