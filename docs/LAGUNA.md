@@ -445,6 +445,14 @@ The Poolside BF16 GGUF download completed on 2026-07-23 and matches the Hugging
 Face LFS object exactly at revision
 `e08e1fe855bb2d43f96ad78e24495283f3426c67`: 2,233,764,224 file bytes and
 SHA-256 `2ee8aa30338d6599bc7a8ce008cc57c56f2c2b2fdc21f6db9ecda203c751bfd4`.
+The earlier `19bafe9bde46a3c7f9c0b2ef10ecb8a0ef154a1e` object is 2,233,764,000
+bytes with SHA-256
+`24614292a4477f3ae5203c3875edcde0bc219f02616a9c9f65791e29b18a67ee`.
+All 76 tensor payloads and all 1,114,977,792 values are byte-exact between the
+two revisions; e08 only adds the missing sliding-window pattern, rotary
+dimension, and RoPE-scaling metadata. e08 remains canonical because the older
+header is incomplete, not because its learned weights differ.
+
 The GGUF-v3 header scans cleanly as architecture `dflash`, decoder `laguna`, six
 512-window layers, block size 16, target depths `2,11,20,30,39,48`, mask token
 12, and a 100,352-entry Laguna tokenizer. Its 76 tensors contain 2,230,081,536
