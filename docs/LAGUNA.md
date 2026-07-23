@@ -2084,11 +2084,19 @@ Laguna's mixed F16/Q4/Q6 active bytes and is not the current priority. Prefill
 should reuse weights across rows and move onto matrix instructions instead of
 paying decode-shaped costs per row.
 
-The same-model Poolside llama.cpp raw-token control is only 70.45 prompt tok/s.
-That is the cleanest compatibility reference, but it is not an upper bound: it
-suggests that the current llama.cpp Laguna path may also be under-optimized.
-Before publishing a cross-engine ratio, run the identical Q4_K_M file and token
-streams at 128/512/1K/4K with homologous in-process timing.
+The earlier same-model Poolside llama.cpp raw-token control was 70.45 prompt
+tok/s over the short canonical suite. AR-O0 now adds a matched long-shape
+control with the identical Q4_K_M hash, deterministic token stream, BF16 KV,
+and 128-row microbatch. Poolside native `prompt_ms` measures
+**80.235/103.868/105.435/120.530 tok/s** at 128/512/1K/4K. At the three shapes
+with balanced hipEngine timing, that is a diagnostic **2.189/2.351/3.127x**.
+The ratio remains qualified because Poolside excludes HTTP/sampling and
+hipEngine includes final argmax bookkeeping; Poolside also rounds the requested
+4,097-slot endpoint context to 4,352. Nevertheless, the same-model control
+proves that the current 38-47 tok/s long-prefill path is not a model-imposed
+ceiling. Poolside itself is still far below the cross-model gpt-oss directional
+number, so the 200-500 tok/s target remains an optimization objective rather
+than a comparator-derived promise.
 
 ### What the retained profiles actually say
 
@@ -2160,9 +2168,13 @@ implementing against the pre-LPF attribution.
 - [ ] Preserve the 128-row real-routing histogram and add 256/512-row replays.
   Report useful rows per `(layer, expert)`, padding factors for 2/4/8/16/32-row
   tiles, and hot/Zipf as well as natural routing.
-- [ ] Capture matched llama.cpp Laguna Q4_K_M 128/512/1K/4K controls with the
-  same token streams and timing boundary. Separately record reproducible
-  metadata for the gpt-oss and Nemotron directional rows if available.
+- [x] Capture matched llama.cpp Laguna Q4_K_M 128/512/1K/4K controls with the
+  same token streams and native prompt timing. Poolside reaches
+  80.235/103.868/105.435/120.530 tok/s; model/token/KV/microbatch hashes match,
+  and build, clocks, memory, and timing qualifications are retained in
+  `benchmarks/results/2026-07-23-gfx1151-poolside-laguna-prefill-matched-control.json`.
+  Reproducible metadata for the gpt-oss and Nemotron directional rows remains
+  unavailable, so those rows stay explicitly directional.
 - [ ] Audit the merged kernel catalog and run `scripts/check_lineage.py` before
   new kernel work. In particular inspect the existing exact Q4 dual-SiLU,
   Q4/Q5 T16 Q8_1/dp4a, grouped compact-MoE, IQ MMQ32, Qwen GGUF Q8T16/MMQ,
