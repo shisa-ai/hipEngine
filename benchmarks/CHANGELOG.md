@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [diagnostic gfx1151 Laguna post-global-online attribution] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / post-SWA-qrow2 -> retained global online cuts global duration **79.49%/81.62%/82.53%** and kernel sum **2.80%/5.33%/18.03%** at 512/1K/4K; 4K global is now **4.61%**, SWA **15.21%**, total attention **19.82%**, and residual <=**0.208%**, deferring further grouped-head global work while admitting one bounded SWA online-qrow2 screen; `benchmarks/results/2026-07-23-gfx1151-laguna-post-global-online-all-family-profile.json`.
+
 - [retained quality-gated gfx1151 Laguna AR-O5 global online prefill] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / exact global -> qrow2 online softmax improves repeated 512/1K/4K **69.751/64.756/52.584 -> 71.475/68.281/64.076 tok/s (+2.472%/+5.444%/+21.854%)** and complete-category prefill **69.310 -> 69.529 tok/s (+0.315%)**, with h16/h32 E2E **+0.184%/+0.125%**, max KL **0.030836**, top-1 **317/320**, every category positive, Poolside/repeat/lifecycle pass; `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json`.
 
 - [rejected and removed gfx1151 Laguna AR-O5 global qrow2] Radeon 8060S Poolside Laguna S 2.1 / exact M128/context4096 global prefill -> adjacent-query-row K/V reuse regresses prior-context 0/128/384/896/1920/3968 leaves **76.99-111.81%** and the 4K leaf **86.778 -> 154.590 ms (+78.15%)** while VGPR rises **40 -> 48** despite byte-exact output; full-model gate skipped, candidate removed, and key-tiled/online-softmax work remains untested; `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-rejected.json`.

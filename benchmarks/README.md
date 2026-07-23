@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`7c211f2412872dab76de5edd70ec155c7ca88f75` for the post-global-online Laguna
+512/1K/4K all-family attribution,
 `60a1e8f104993b5d50374170959659080151f4e1` for the quality-gated gfx1151
 Laguna global qrow2 online-softmax prefill default,
 `afdede4286bab27a691e8e137b16229d1baba194` for the post-qrow2 Laguna
@@ -1779,6 +1781,18 @@ category is at least 96.875%, and the frozen Poolside oracle, deterministic
 repeats, and lifecycle pass. gfx1151 now selects online global prefill by backend
 capability; exact global prefill remains explicit rollback and the default on
 unmeasured backends. [Retained global online gate](results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json).
+
+The post-promotion cached profile confirms that the retained route changes the
+bottleneck rather than submission overhead. Relative to the post-SWA-qrow2
+trace, global duration falls **79.49%/81.62%/82.53%** and kernel sum falls
+**2.80%/5.33%/18.03%** at 512/1K/4K; synchronized prefill is
+**71.456/68.307/64.071 tok/s**. At 4K, global is now only **2.939 s / 4.61%**
+of kernel sum, SWA is **9.705 s / 15.21%**, and total attention is **19.82%**;
+span-minus-sum remains only **0.144-0.208%**. Perfect global removal is just a
+**1.048x** ceiling, so another high-register query-head-sharing route is
+deferred. SWA's **1.179x** perfect-removal ceiling admits one bounded online
+qrow2 screen before AR-O5 closes. This is attribution, not a new performance
+headline. [Post-global-online profile](results/2026-07-23-gfx1151-laguna-post-global-online-all-family-profile.json).
 
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
