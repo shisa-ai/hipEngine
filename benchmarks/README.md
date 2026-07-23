@@ -1283,17 +1283,20 @@ registered leaf and bit-exact kernel test remain. The next AR-O1 screen is the
 inclusive Q8_1/dp4a gate/up path.
 [Rejected fused-SiLU screen](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json).
 
-The second AR-O1 screen keeps the selected-Q4 Q8_1/dp4a route alive for the
-complete quality lane. With activation quantization included once per producer
-row, counterbalanced split -> Q8 median rates at rows 16/32/55/64/122/128 are
-**46.365->47.527, 48.916->50.435, 49.011->50.784, 50.381->52.260,
-50.925->52.964, and 51.184->53.316 tok/s** (+2.51% to +4.17%). Aggregate wall
-improves **3.773%**; all 36 next IDs agree and lifecycle recovers exactly. A
-separate frozen Poolside diagnostic passes first-token KL `1.2837e-4`, exact
-first top-1, and 31/32 teacher-forced top-1. This is a positive screen, not a
-production performance claim: split remains default until the full ten-prompt
-category, long-context state/performance, and cached trace gates pass.
+The second AR-O1 screen finds a real selected-Q4 Q8_1/dp4a speedup but rejects
+it on complete model quality. With producer-row activation quantization
+included, rows 16/32/55/64/122/128 improve **2.51-4.17%** and aggregate wall
+improves **3.773%**, with all 36 screen IDs agreeing. The three-repeat ten-prompt
+category gate then improves weighted prefill **4.070%**, h16/h32 E2E
+**2.650%/1.916%**, and every category while decode stays neutral. However,
+teacher-forced split-vs-Q8 quality reaches maximum KL **0.17156** (>0.05), even
+though top-1 is 315/320 and the frozen Poolside first-token gate passes at KL
+`1.2837e-4`. Four prompts also have deterministic free-running ID differences.
+The predeclared gate therefore removes the env/session selector, Q8 scratch,
+runtime route, and harnesses; exact split remains the only production path, and
+the independently tested leaf remains kernel-only evidence.
 [Positive selected-Q8 screen](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json).
+[Rejected selected-Q8 category gate](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.

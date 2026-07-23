@@ -33,7 +33,6 @@ from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
-    resolve_laguna_selected_gate_up_mode,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
@@ -107,10 +106,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "laguna_rows",
     )
     assert plan.selected_gate_up_key.quant == "gguf_q4_k_t16_v1"
-    assert plan.activation_quant_key == plan.activation_quant_keys["q8_dp4a"]
-    assert plan.activation_quant_key.layer == "activation_quant"
-    assert plan.activation_quant_key.quant == "q8_1"
-    assert plan.activation_quant_key.variant == "bf16"
     assert set(plan.selected_gate_up_keys) == {
         "gguf_q4_k_t16_v1",
         "gguf_iq2_xs",
@@ -123,11 +118,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "gguf_iq4_xs",
     }
     assert plan.selected_down_keys["gguf_q6_k_t16_v1"] == plan.selected_down_key
-    q8_route = plan.selected_gate_up_routes_by_mode["q8_dp4a"]["gguf_q4_k_t16_v1"]
-    assert q8_route.abi == "t16_dual_silu_q8_dp4a"
-    assert q8_route.key.variant == (
-        "selected_dual_t16_silu_q8_1_dp4a_gemv_decode_bf16_bf16_out"
-    )
     assert all(key.backend == "hip_gfx1151" for key in plan.kernel_keys)
 
     sparse_sequence = LAGUNA_GGUF.decode_layer_sequence(
@@ -138,19 +128,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "selected_expert_mlp" in sparse_sequence
     assert "laguna_shared_expert" in sparse_sequence
     assert "laguna_routed_shared_combine" in sparse_sequence
-
-
-def test_laguna_selected_gate_up_mode_defaults_and_rejects_unknown(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("HIPENGINE_LAGUNA_SELECTED_GATE_UP", raising=False)
-    assert resolve_laguna_selected_gate_up_mode("hip_gfx1151", None) == "split"
-    assert resolve_laguna_selected_gate_up_mode("hip_gfx1151", "q8_dp4a") == "q8_dp4a"
-
-    monkeypatch.setenv("HIPENGINE_LAGUNA_SELECTED_GATE_UP", "q8_dp4a")
-    assert resolve_laguna_selected_gate_up_mode("hip_gfx1151", None) == "q8_dp4a"
-    with pytest.raises(ValueError, match="HIPENGINE_LAGUNA_SELECTED_GATE_UP"):
-        resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unknown")
 
 
 def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> None:
@@ -347,7 +324,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             bulk_hidden_bits.nbytes,
         )
         bulk_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
-        assert bulk_scratch.q8_1_activation.nbytes == 3 * (h // 32) * 36
         bulk_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
             layer,
@@ -355,21 +331,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             rows=3,
         )
         bulk_actual = _read_bf16(bulk_output, (3, h))
-        q8_output = run_laguna_moe_rows(
-            bulk_hidden_buffer.ptr,
-            layer,
-            bulk_scratch,
-            rows=3,
-            selected_gate_up_mode="q8_dp4a",
-        )
-        q8_actual = _read_bf16(q8_output, (3, h))
-        assert np.isfinite(q8_actual).all()
-        q8_relative_l2 = float(
-            np.linalg.norm(q8_actual.astype(np.float64) - bulk_actual.astype(np.float64))
-            / max(np.linalg.norm(bulk_actual.astype(np.float64)), 1.0e-12)
-        )
-        assert q8_relative_l2 <= 0.05
-
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
