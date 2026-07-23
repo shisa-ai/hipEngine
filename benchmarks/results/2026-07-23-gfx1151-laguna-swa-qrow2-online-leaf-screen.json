@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T19:28:25+00:00",
+  "kind": "hipengine_laguna_swa_qrow2_online_leaf_screen",
+  "status": "candidate_leaf_admitted",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Laguna S 2.1 SWA BF16 KVLiveSpans M128 full-window online-softmax qrow2 leaf",
+  "repo": {
+    "base_revision": "8e271c910",
+    "tracked_clean_before_candidate": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "candidate": {
+    "variant": "swa_context_rows_qrow2_online_spans",
+    "kernel": "laguna_swa_attention_prefill_qrow2_online_bf16_kernel",
+    "algorithm": "one wave reuses each BF16 K/V row across two adjacent query rows and carries online max, denominator, and output state in one scan",
+    "default_selected": false,
+    "exact_fallback": "swa_context_rows_qrow2_m128_c128_exact_spans"
+  },
+  "protocol": {
+    "rows": 128,
+    "ring_capacity": 512,
+    "sliding_window": 512,
+    "q_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "warmups_per_sample": 2,
+    "launches_per_sample": 5,
+    "counterbalanced_repetitions": 7,
+    "baseline": "exact qrow2 two-pass softmax",
+    "candidate_math": "online-softmax qrow2 one-pass",
+    "timing": "HIP events in one resident allocation"
+  },
+  "measurements": {
+    "start_384_full_window": {
+      "baseline_median_ms": 7.893052673339843,
+      "candidate_median_ms": 2.5517789840698244,
+      "speedup": 3.0931568613952756,
+      "max_abs": 3.259629011154175e-08,
+      "mean_abs": 1.3416528998888566e-09,
+      "max_synthetic_kl": 1.106975113818167e-15,
+      "top1_agreement": 1.0,
+      "finite": true
+    },
+    "start_508_wrap": {
+      "baseline_median_ms": 8.675540924072266,
+      "candidate_median_ms": 2.9869775772094727,
+      "speedup": 2.9044546535154194,
+      "max_abs": 3.4458935260772705e-08,
+      "mean_abs": 1.3194232373336945e-09,
+      "max_synthetic_kl": 1.0611348021139278e-15,
+      "top1_agreement": 1.0,
+      "finite": true
+    }
+  },
+  "trace": {
+    "baseline_median_ms": 7.877504500000001,
+    "candidate_median_ms": 2.5586975,
+    "speedup": 3.0787166126515544,
+    "candidate_calls": 50,
+    "workgroup": 32,
+    "grid_x": 2304,
+    "grid_y": 64,
+    "vgpr": 56,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "raw_sha256": "c984c29a52484e7b54a7cec684fd2526b92057208e0b32a07f45bef59b5b2ee8"
+  },
+  "correctness": {
+    "wrap_fixture": "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
+    "quality_gate": {
+      "max_kl_threshold": 0.05,
+      "minimum_top1_agreement": 0.9,
+      "pass": true
+    },
+    "complete_kv_live_spans": true,
+    "physical_ring_preserved": true,
+    "absolute_positions_preserved": true,
+    "evict_mask_preserved": true,
+    "bf16_kv_rounding_preserved": true
+  },
+  "decision": {
+    "leaf_admitted": true,
+    "backend_default_changed": false,
+    "next": "run a clean repeated 512/1K/4K full-model quality/performance/lifecycle screen before any category gate or default selection",
+    "rejection_rule": "remove the candidate if full-model KL/top-1, lifecycle, or performance fails the predeclared quality lane"
+  },
+  "raw": {
+    "script_sha256": "93f8087e64c28cd42b6a8b9bde718f8a9fd84af094fc45fa7b3bb01dcbf19c18",
+    "start_384_sha256": "19b9e4f733f49f6c2076f90fecb8f23aaca4fb92976507064890cd0d75f10407",
+    "start_508_sha256": "982b741fcbf834654d77d3ddaef60af3e73b0d238a360082df1b829662804006",
+    "trace_summary_sha256": "3048b21f62b78f0fbe391354cfe000987b1c79cd1da75473791e9a0ae4d153f8"
+  },
+  "limitations": [
+    "This is a synthetic production-shape leaf gate, not a full-model or category result.",
+    "The online-softmax route is numerically close but not byte-exact to the retained exact qrow2 route.",
+    "No backend capability or default selects the candidate."
+  ]
+}

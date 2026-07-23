@@ -2597,6 +2597,17 @@ remains deferred. Evidence:
   context-qualified selector; wave32 remains the automatic short/partial fallback
   and explicit rollback, and unmeasured backends remain unchanged. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json`.
+  The post-global profile's **15.21%** 4K SWA share admits one bounded
+  online-softmax qrow2 leaf. It replaces exact qrow2's two scans with one while
+  preserving complete ring/span visibility. Production M128/full-window exact
+  -> online is **7.893 -> 2.552 ms (3.093x)** and start508 wrap is
+  **8.676 -> 2.987 ms (2.904x)**, with maximum absolute error **3.45e-8**,
+  synthetic KL **1.11e-15**, top-1 100%, and the 508..515 fixture passing.
+  Cached tracing confirms **2.559 ms**, local32/VGPR56/LDS0/scratch0. This is an
+  explicit candidate only; require a clean repeated 512/1K/4K full-model quality,
+  performance, and lifecycle gate before category admission or any default.
+  Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json`.
 - [x] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling. The wrapper/runtime is healthy but has no executable head-dim-128
   Laguna geometry, so direct adaptation is closed mechanically.

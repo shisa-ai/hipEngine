@@ -1794,6 +1794,16 @@ deferred. SWA's **1.179x** perfect-removal ceiling admits one bounded online
 qrow2 screen before AR-O5 closes. This is attribution, not a new performance
 headline. [Post-global-online profile](results/2026-07-23-gfx1151-laguna-post-global-online-all-family-profile.json).
 
+The one admitted SWA follow-up leaf is promising but not yet retained. A wave32
+online-softmax qrow2 kernel replaces exact qrow2's two ring scans with one while
+preserving complete `KVLiveSpans`, physical ring mapping, positions, evictions,
+and BF16 K/V boundaries. Production M128/full-window improves **7.893 -> 2.552
+ms (3.093x)** and start508 wrap improves **8.676 -> 2.987 ms (2.904x)**;
+maximum absolute error is **3.45e-8**, synthetic KL **1.11e-15**, and top-1
+100%. Cached tracing confirms **2.559 ms**, local32/VGPR56/LDS0/scratch0. No
+backend default selects it; repeated full-model and complete category quality
+admission remain mandatory. [SWA online leaf screen](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row
