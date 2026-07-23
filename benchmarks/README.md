@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`09cca232f49e73f68fd09d4ace8509fa3201681e` for the first W7900 Laguna S 2.1
+UD-Q2_K_XL target-only AR baseline,
 `7ded0d5f42b107d3bf10f1d096f8a93ae194be9b` for the current Laguna S 2.1
 128/512/1K/4K all-family prefill attribution,
 `8f8baf9a100bc9598b633cb040193dcfcdb80ebe` for the current merged-main
@@ -1163,6 +1165,57 @@ The dated records below preserve scoped retained rows plus diagnostic protocols,
 blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
+
+### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-23
+
+**Status: first retained exact W7900 target-only AR baseline.** Revision
+`09cca232f49e73f68fd09d4ace8509fa3201681e` runs the pinned
+`Laguna-S-2.1-UD-Q2_K_XL.gguf` (SHA-256
+`8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
+directly from raw GGUF residency with BF16 KV and a 4-GiB safety reserve. The
+canonical protocol covers all ten `mtpbench-code-general-ja` prompts, all four
+categories and heldouts, prompt lengths 68-122, two balanced repetitions,
+greedy h16/h32, 128-row prompt chunks, and c=1 eager decode. Model load is
+excluded.
+
+| hipEngine route | Prefill tok/s | Median TTFT | Decode tok/s, h32 | E2E tok/s, h16 | E2E tok/s, h32 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Token-serial prefill + eager c=1 decode | 20.867 | 3.859 s | 19.582 | 3.265 | 5.591 |
+| Exact 128-row bulk prefill + same eager c=1 decode | **40.091** | **2.018 s** | **19.565** | **5.488** | **8.557** |
+| Bulk change vs serial | **+92.12% (1.921x)** | **-47.71%** | -0.090% | **+68.06%** | **+53.05%** |
+
+Both full-suite samples are stable: bulk prefill is `40.270/39.913 tok/s`, h32
+decode is `19.637/19.493 tok/s`, and h32 E2E is `8.592/8.522 output tok/s`.
+All 20 serial/bulk pairs are ID-exact at both horizons, every route repeats
+deterministically, and each category independently passes the declared
+prefill/decode/E2E guard. The independent Poolside first-token gate passes at
+KL `0.000156823` and top-1 `1.0`; the earlier full bulk artifact is bit-exact
+for logits, hidden state, DFlash taps, KV payload/metadata, and B+1 rows.
+Tracked peak ownership is **40,455,814,968 bytes (37.677 GiB)** across 1,460
+allocations and teardown returns tracked ownership exactly to zero.
+
+A separate cached `rocprofv3 --kernel-trace` correctness replay covers three
+exact 55-token bulk prefills and nine c=1 decode steps. All expected Q5_K
+embedding, Q5/Q6/Q8 projection, IQ2_XS/IQ3_XXS gate/up, IQ3_XXS/IQ4_XS down,
+global/SWA prefill+decode attention, Q4_K lm-head, and argmax symbols are
+present with zero scratch in the dominant kernels. Across this mixed dispatch
+profile, Q5/Q6/Q8 projections own 69.88% of kernel duration, IQ3 selected down
+16.65%, and IQ2 selected gate/up 9.73%; these shares are attribution, not timing
+substitutes for the unprofiled category run. Raw timing JSON SHA-256 is
+`82d8d03ebddea7b012865fb0145c43529a4c219532496fbe3eba45d202a4fd8c`;
+raw trace SHA-256 is
+`d53bff36d18345b8ee0ea1840aa2b1497e9d9c2578019c783f6f036e4daff1d5`.
+[Compact artifact](results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json).
+
+Exact benchmark command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-target-ar.json
+```
+
+No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
+different tensor recipe on gfx1151. Matched Q2 XL DFlash compatibility and
+economics are a separate gate.
 
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 
