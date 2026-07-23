@@ -69,7 +69,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--direct-gguf", action="store_true")
+    parser.add_argument("--safety-reserve-gib", type=float, default=8.0)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
+    parser.add_argument("--quant-label", default="Q4_K_M mixed GGUF v3")
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -466,6 +469,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("at least two benchmark repetitions are required")
     if args.warmup_output_tokens <= 0:
         raise ValueError("warmup output tokens must be positive")
+    if args.safety_reserve_gib <= 0.0:
+        raise ValueError("--safety-reserve-gib must be positive")
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
     if not args.model_sha256:
@@ -480,7 +485,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolved_backend=args.backend,
         target_arch=args.backend.removeprefix("hip_"),
         model_path=args.model,
-        quant="gguf_q4_k_m",
+        quant=args.quant_label,
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         build_profile="laguna_target_ar_category",
@@ -491,6 +496,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     bulk_gate = json.loads(args.bulk_correctness_artifact.read_text(encoding="utf-8"))
     if not bulk_gate.get("pass") or bulk_gate.get("status") != "accepted":
         raise ValueError("Laguna bulk correctness artifact is not accepted")
+    if bulk_gate.get("model", {}).get("sha256") != args.model_sha256:
+        raise ValueError("Laguna bulk correctness artifact model SHA-256 mismatch")
 
     reader = GGUFReader(args.model)
     tokenizer = LagunaGGUFTokenizer.from_gguf_info(reader.info)
@@ -512,8 +519,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             runtime=runtime,
             compiler_version=_compiler_version(args.compiler_version_file),
             require_cached_build=args.require_cached_build,
+            safety_reserve_nbytes=int(args.safety_reserve_gib * 2**30),
             progress=_progress,
-            repacked_cache=args.repacked_cache,
+            repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
         )
@@ -572,9 +580,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     created_at = datetime.now(timezone.utc).isoformat()
     prompt_payload = args.prompts.read_bytes()
     bulk_payload = args.bulk_correctness_artifact.read_bytes()
-    manifest_path = args.repacked_cache / "manifest.json"
+    active_cache = None if args.direct_gguf else args.repacked_cache
+    manifest_path = None if active_cache is None else active_cache / "manifest.json"
     manifest_sha256 = (
-        _sha256_bytes(manifest_path.read_bytes()) if manifest_path.is_file() else None
+        _sha256_bytes(manifest_path.read_bytes())
+        if manifest_path is not None and manifest_path.is_file()
+        else None
     )
     return {
         "schema": 1,
@@ -592,8 +603,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": {
             "path": str(args.model.resolve()),
             "sha256": args.model_sha256,
-            "quant": "Q4_K_M mixed GGUF v3",
-            "repacked_cache": str(args.repacked_cache.resolve()),
+            "quant": args.quant_label,
+            "repacked_cache": None if active_cache is None else str(active_cache.resolve()),
             "repacked_cache_manifest_sha256": manifest_sha256,
         },
         "platform": {

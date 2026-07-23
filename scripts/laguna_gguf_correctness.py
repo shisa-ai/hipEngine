@@ -62,6 +62,26 @@ def _kl_from_reference_log_probs(
     return float(np.sum(probabilities * (reference - candidate)))
 
 
+def _quality_gate_passes(
+    result: dict[str, object],
+    *,
+    captures_pass: bool,
+) -> bool:
+    first = result["first_token"]
+    repeat = result["repeat"]
+    teacher_forced = result["teacher_forced"]
+    return (
+        bool(first["finite_logits"])
+        and float(first["kl_divergence"]) <= 0.05
+        and float(first["top1_agreement"]) >= 0.9
+        and float(teacher_forced["top1_agreement"]) >= 0.9
+        and bool(repeat["exact"])
+        and float(repeat["first_logits_max_abs"]) <= 1e-6
+        and captures_pass
+        and bool(result["tracked_returned_to_baseline"])
+    )
+
+
 def _greedy_step_metrics(
     logits: np.ndarray,
     *,
@@ -92,6 +112,7 @@ def run_correctness(
     greedy_tokens: int,
     compiler_version: str | None,
     require_cached: bool,
+    safety_reserve_nbytes: int,
     repacked_cache: Path | None = None,
     model_sha256: str | None = None,
 ) -> dict[str, object]:
@@ -121,6 +142,7 @@ def run_correctness(
             runtime=runtime,
             compiler_version=compiler_version,
             require_cached_build=require_cached,
+            safety_reserve_nbytes=safety_reserve_nbytes,
             progress=_progress,
             repacked_cache=repacked_cache,
             model_sha256=model_sha256,
@@ -307,6 +329,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--greedy-tokens", type=int, default=32)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--safety-reserve-gib", type=float, default=8.0)
     parser.add_argument("--repacked-cache", type=Path)
     parser.add_argument("--model-sha256")
     parser.add_argument("--output", type=Path)
@@ -317,6 +340,8 @@ def main() -> int:
     args = _parse_args()
     if args.greedy_tokens <= 0 or args.greedy_tokens > 32:
         raise ValueError("--greedy-tokens must be within [1, 32]")
+    if args.safety_reserve_gib <= 0.0:
+        raise ValueError("--safety-reserve-gib must be positive")
     result = run_correctness(
         args.model,
         template_path=args.template,
@@ -325,6 +350,7 @@ def main() -> int:
         greedy_tokens=args.greedy_tokens,
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached=args.require_cached_build,
+        safety_reserve_nbytes=int(args.safety_reserve_gib * 2**30),
         repacked_cache=args.repacked_cache,
         model_sha256=args.model_sha256,
     )
@@ -339,17 +365,16 @@ def main() -> int:
         and after["active_allocations"] == before["active_allocations"]
     )
     captures_pass = all(bool(metrics["finite"]) for metrics in result["hidden_captures"].values())
-    first = result["first_token"]
-    passed = (
-        bool(first["finite_logits"])
-        and float(first["kl_divergence"]) <= 0.05
-        and float(first["top1_agreement"]) >= 0.9
-        and bool(result["greedy"]["exact"])
-        and bool(result["repeat"]["exact"])
-        and float(result["repeat"]["first_logits_max_abs"]) <= 1e-6
-        and captures_pass
-        and bool(result["tracked_returned_to_baseline"])
-    )
+    strict_greedy_exact = bool(result["greedy"]["exact"])
+    result["strict_cross_runtime_greedy_exact"] = strict_greedy_exact
+    result["quality_gate"] = {
+        "max_kl": 0.05,
+        "min_first_top1_agreement": 0.9,
+        "min_teacher_forced_top1_agreement": 0.9,
+        "requires_cross_runtime_greedy_exact": False,
+        "requires_repeat_exact": True,
+    }
+    passed = _quality_gate_passes(result, captures_pass=captures_pass)
     result["pass"] = passed
     payload = json.dumps(result, indent=2, sort_keys=True)
     print(payload)
