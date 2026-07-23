@@ -2711,14 +2711,18 @@ dual+SiLU, retained Q5 query/gate, weighted IQ3 down, and token4 SWA at
 **2.646/2.317/2.171/2.134/2.119 ms/token**. The first family contains 47
 raw-Q5 BF16-output N3072 projections: K6144 in 12 global layers and K9216 in 35
 SWA layers. Existing local128/VGPR72/LDS1024/scratch0 pack8 blocks reread a
-304.35-MB/token BF16 activation proxy around 836.96 MB of encoded weights. The
-selected D8 RED is one exact 16-output workgroup that preserves each output's
-K/reduction/BF16 order while halving duplicate activation reads; tile32 is only
-a secondary screen. The traffic proxy predicts **13.33%** less combined
-weight-plus-activation traffic, **0.353 ms/token** savings, and only **47.181
-tok/s**, so actual-weight global/SWA timing decides retention and this cannot
-reach 50 alone. Evidence:
-`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d7-residual-profile.json`.
+304.35-MB/token BF16 activation proxy around 836.96 MB of encoded weights. D8
+screened one exact 16-output workgroup that preserved each output's
+K/reduction/BF16 order while halving nominal duplicate activation reads. Both
+synthetic and actual K6144/K9216 N3072 outputs were BF16-bit exact, but the best
+scratch-free local256/VGPR88/LDS2048 schedule regressed production HIP-event
+time **16.69%/19.04%**. The proxy therefore described nominal traffic, not a
+cache-visible win. Tile16/tile32 were removed before full-model measurement;
+one-step graph replay is now the bounded route against the 3.385-ms short
+span-minus-kernel residual. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d7-residual-profile.json`
+and
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-output-tile16-rejected.json`.
 
 The preceding code-identical D6 reanalysis ranked short attention-output Q5,
 selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V Q6
@@ -2771,21 +2775,22 @@ Proceed in measured Amdahl order:
    every clean context and category decode/E2E row, and promotes D7 to 46.409
    tok/s; and
 10. **DONE:** reprofile D7; Q5 attention output is the largest named short leaf
-   at 2.646 ms/token and its exact tile16 activation-reuse screen is selected;
-11. **NEXT:** implement and actual-weight gate exact Q5 attention-output tile16,
-   admitting tile32 only if both production shapes beat tile16 without spill.
-   Admit Laguna-specific one-step graph replay only when its exact state/capture
-   route and same-suite wall beat the remaining kernel work. D7's short decode
-   span still exceeds kernel sum by about **3.45 ms**, so submission is material
-   but is not yet the only plausible route.
+   at 2.646 ms/token and exact tile16 activation reuse is the first screen;
+11. **REJECTED:** tile16 is exact and scratch-free, but the best production
+   schedule regresses global/SWA actual weights **16.69%/19.04%**; tile16 and
+   tile32 are removed without spending clean full-model/category runs; and
+12. **NEXT:** design Laguna-specific one-step graph replay with device-fed token,
+   position, `KVLiveSpans`, and top-1 state, then admit it only after eager/graph
+   state equality and a same-suite wall win. D7's short decode span exceeds
+   kernel sum by **3.385 ms**, making submission the largest remaining bounded
+   premise.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
 canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
 is **17.268 ms** and median span is **20.715 ms**, so the measured device window
-does not impose a 20-ms floor. The selected tile16 traffic model reaches only
-**47.181 tok/s** and leaves 1.195 ms to 20 ms; it cannot close the target alone.
-The near-4K profile
-remains led by global attention. Every retained candidate uses the full
+does not impose a 20-ms floor. The rejected tile16 traffic model was not cache-visible; one-step graph replay
+must now remove at least **1.548 ms/token** from the canonical h32 wall to reach
+the target. The near-4K profile remains led by global attention. Every retained candidate uses the full
 category/heldout suite and the same exact/quality lanes above. Laguna DFlash/MTP
 economics must use D7 or a later true-AR baseline rather than the historical D0
 row.
