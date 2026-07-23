@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-24
+
+- [retained exact gfx1100 Laguna Q2 XL aggregate MoE-tail plus next-RMS] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves D7 -> D9 h32 decode **46.409 -> 47.132 tok/s (+1.560%)** and h32 E2E **11.972 -> 12.038 (+0.555%)** with prefill within guard at **43.093 -> 43.190 tok/s (+0.224%)**; the exact dual-output leaf removes 94 launches/token, improves clean short kernel sum/span **0.320%/2.667%**, improves every context/category decode/E2E row, and passes all correctness/lifecycle gates; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json`.
+
 ## 2026-07-23
 
 - [rejected and removed gfx1100 Laguna Q2 XL one-step graph] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / exact eager D7 -> pointer-bound one-step HIP graph regresses counterbalanced short/512/1K/near-4K throughput **2.247%/1.995%/1.502%/1.146%** and capture-inclusive canonical h16/h32 decode **46.827/46.409 -> 43.480/44.193 tok/s (-7.150%/-4.774%)** with every category's decode/E2E lower; the 956-step full-state gate remains exact, but the selector/capability/graph owner/paired tail/tests are removed and eager D7 remains **46.409 tok/s**; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-rejected.json`.

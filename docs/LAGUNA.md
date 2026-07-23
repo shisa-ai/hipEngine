@@ -2791,24 +2791,24 @@ Proceed in measured Amdahl order:
    1.502%, and 1.146%** and capture-inclusive canonical h16/h32 decode by
    **7.150%/4.774%**.
    The graph owner, selector, capability, paired tail, and tests are removed;
-   eager D7 remains the only runtime route.
-14. **SELECTED (D9):** contract every sparse routed/shared tail with its
-   next input RMSNorm. The retained D7 trace has 47 adjacent BF16 add/add/RMS
-   triples totaling **0.517 ms/token** short; one exact dual-output composite
-   removes **94 dispatches/token (869 -> 775)** while preserving both BF16 add
-   boundaries. Task #280 implements the separately registered leaf and task
-   #281 owns clean context/category retention.
+   eager D7 resumed as the only route at that checkpoint.
+14. **DONE:** exact aggregate sparse MoE-tail plus next-RMS fusion removes
+   **94 dispatches/token (869 -> 775)** while preserving both BF16 add
+   boundaries. Every clean context profile improves, every category's decode
+   and E2E rows improve, and D9 promotes h32 decode to **47.132 tok/s**; and
+15. **NEXT:** reprofile retained D9 before selecting another quant, SWA, or
+   submission candidate. Token8 SWA needs a score/value split rather than an
+   assumed 2x, while near-4K remains a separate global-attention problem.
 
-**50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
-canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
-is **17.268 ms** and median span is **20.715 ms**, so the measured device window
-does not impose a 20-ms floor. The rejected tile16 traffic model was not
-cache-visible and ROCm graph replay regressed. D9 is the next bounded exact
-route, but even eliminating its complete measured kernel window plus transferring
-the recent pair-launch gap reaches only a modeled **48.17 tok/s**; it must
-compound with later work. The near-4K profile remains led by global attention.
-Every retained candidate uses the full category/heldout suite and the same
-exact/quality lanes above. Laguna DFlash/MTP economics must use D7 or a later
+**50 tok/s is a credible W7900 target, not a current claim.** D9 must reduce the
+canonical **21.217 ms to 20 ms**, another **1.217 ms / 5.74% wall** or **6.08%
+throughput**. The clean short candidate kernel sum is **17.289 ms** and median
+span is **20.389 ms**, so the measured device window still does not impose a
+20-ms floor. The rejected tile16 traffic model was not cache-visible and ROCm
+graph replay regressed. D9 compounds the exact leaf wins but does not close the
+target alone. The near-4K profile remains led by global attention. Every
+retained candidate uses the full category/heldout suite and the same
+exact/quality lanes above. Laguna DFlash/MTP economics must use D9 or a later
 true-AR baseline rather than the historical D0 row.
 
 ### D8 one-step graph replay (exact, performance-rejected, removed)
@@ -2999,7 +2999,7 @@ capture/state-tail and graph scheduling overhead exceed any host-submission
 saving. Task #278 therefore removes the route and kernel optimization resumes
 from eager D7.
 
-### D9 aggregate MoE tail plus next RMSNorm (selected design)
+### D9 aggregate MoE tail plus next RMSNorm (retained exact default)
 
 The next candidate is a measured launch-contraction boundary, not another graph
 or quant-math rewrite. Splitting every retained D7 token from embedding through
@@ -3060,7 +3060,7 @@ boundaries exact, local256/LDS1024/scratch0 tracing, and exactly
 four-category h16/h32 exact state/KV/lifecycle gate. Evidence and full gate:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-design.json`.
 
-Task #280 now correctness-admits the gfx1100 c=1 implementation. The registered
+Task #280 correctness-admitted the gfx1100 c=1 implementation. The registered
 local256 leaf preserves both BF16 boundaries byte-for-byte at hidden 17/3072;
 a shared-weight Q2 XL gate matches all 47 actual sparse boundaries, full logits,
 argmax bits, final norm, complete K/V/live spans, reset, and lifecycle through
@@ -3068,18 +3068,38 @@ argmax bits, final norm, complete K/V/live spans, reset, and lifecycle through
 **869 -> 775 dispatches/token** at VGPR16/SGPR128/LDS1024/scratch0. Kernel sum
 is effectively flat within dirty-run noise (**17.296 -> 17.288 ms/token**), while
 span improves **20.702 -> 20.383 ms (-1.545%)** and profiled child throughput
-improves **43.890 -> 45.003 tok/s (+2.536%)**. This is execution/correctness
-evidence, not promotion; task #281 owns clean context and category retention.
-The exact three-kernel route remains available through registry miss, rows>1,
-gfx1151, and the temporary explicit constructor rollback. Evidence:
+improves **43.890 -> 45.003 tok/s (+2.536%)**. The exact three-kernel route
+remains available through registry miss, rows>1, gfx1151, and the temporary
+explicit constructor rollback. Correctness evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-correctness.json`.
 
-A local256 token8 SWA sibling remains a separate later screen. Token4 already
+Task #281 promotes D9 on clean evidence. Short/512/1K/near-4K candidate versus
+explicit D7 fallback improves kernel sum **0.320%/0.515%/0.462%/0.117%**, median
+embedding-to-argmax span **2.667%/1.551%/1.431%/0.751%**, and profiled child
+throughput **3.104%/2.387%/2.297%/1.015%**. Every stable candidate row has 775
+dispatches and 47 fused calls. The fused body costs **0.389/0.385/0.386/0.385
+ms/token**, with **8.12-8.24 us** medians at local256/VGPR16/SGPR128/LDS1024/
+scratch0. All context IDs, finite outputs, and teardown are exact.
+
+The clean ten-prompt/four-category h16/h32 gate moves D7 -> D9 bulk prefill
+**43.093 -> 43.190 tok/s (+0.224%)**, TTFT **1.873 -> 1.871 s (-0.117% wall)**,
+h16/h32 decode **46.827/46.409 -> 47.576/47.132 tok/s
+(+1.599%/+1.560%)**, and h16/h32 E2E **6.881/11.972 -> 6.909/12.038
+output tok/s (+0.411%/+0.555%)**. Every category improves decode
+**0.956-1.855%** and E2E **0.261-0.759%** while prefill stays within
+**+0.114% to +0.384%**. All 20 serial/bulk pairs and repeats are exact, the
+Poolside gate remains KL `0.000156823`/top-1 `1.0`, accepted bulk state passes,
+and tracked ownership returns to zero. Retention evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json`.
+
+Canonical D9 is **47.132 tok/s / 21.217 ms/token**, still **1.217 ms** above
+20 ms and requiring another **6.084% throughput** to reach 50 tok/s. A
+local256 token8 SWA sibling remains a separate later screen. Token4 already
 eliminates the second key pass, so token8 needs a measured score/value
 breakdown rather than an assumed 2x. Fusing attention with its softplus gate is
 also deferred: the current gate family is only **0.117 ms/token** and 48
-launches, below D9's measured boundary. Near-4K global attention remains a
-separate requirement.
+launches, below D9's measured boundary. Reprofile D9 before selecting either;
+near-4K global attention remains a separate requirement.
 
 ## Laguna DFlash Follow-on Plan
 
