@@ -390,6 +390,9 @@ the target architecture only, not the Laguna DFlash decoder contract.
 | architecture | `DFlashLagunaForCausalLM` |
 | parameters | 1,114,977,792 BF16 |
 | safetensors size | 2,229,962,896 bytes |
+| BF16 GGUF repository revision | `e08e1fe855bb2d43f96ad78e24495283f3426c67` |
+| BF16 GGUF size | 2,233,764,224 bytes |
+| BF16 GGUF SHA-256 | `2ee8aa30338d6599bc7a8ce008cc57c56f2c2b2fdc21f6db9ecda203c751bfd4` |
 | draft layers | 6 |
 | draft layer type | six sliding-attention layers |
 | hidden size | 3,072 |
@@ -438,12 +441,43 @@ payload bytes:
 | dense gate/up/down | 18 | `(12288,3072)`, `(12288,3072)`, `(3072,12288)` |
 | final `norm.weight` | 1 | `(3072,)` |
 
-The checkpoint intentionally omits token embeddings and LM head. The drafter
-must call target-owned Q4_K embedding and Q6_K LM-head/sampler primitives rather
-than duplicate or dequantize those complete tables. hipEngine has Q6_K/Q8_0
-embedding lookup today, not a Q4_K lookup; the base Laguna target port therefore
-needs a registered Q4_K row-dequant/embedding kernel. Root/mask embedding rows
-can then be materialized directly to BF16.
+The Poolside BF16 GGUF download completed on 2026-07-23 and matches the Hugging
+Face LFS object exactly at revision
+`e08e1fe855bb2d43f96ad78e24495283f3426c67`: 2,233,764,224 file bytes and
+SHA-256 `2ee8aa30338d6599bc7a8ce008cc57c56f2c2b2fdc21f6db9ecda203c751bfd4`.
+The GGUF-v3 header scans cleanly as architecture `dflash`, decoder `laguna`, six
+512-window layers, block size 16, target depths `2,11,20,30,39,48`, mask token
+12, and a 100,352-entry Laguna tokenizer. Its 76 tensors contain 2,230,081,536
+payload bytes: 49 BF16 tensors and 27 F32 norm tensors.
+
+The container has the same architecture schema but is neither storage- nor
+weight-identical to the pinned 69-BF16 safetensors contract. It stores the six
+auxiliary norms as one F32 `enc.aux_norm.weight (6,3072)` tensor, converts the
+hidden/final and per-layer norm families to F32, and expands each fused QKV
+allocation into separate BF16 `attn_q`, `attn_k`, and `attn_v` tensors. Six
+fused tensors becoming eighteen adds 12 entries while six auxiliary tensors
+becoming one removes five, explaining the net **69 -> 76** count.
+
+A complete torch-free payload comparison against both the b048 safetensors and
+the prior local direct conversion covers all 69 logical tensors and all
+1,114,977,792 parameter values. Every F32 GGUF norm down-converts exactly to its
+BF16 source: **32/69 logical tensors and 62,976 values are exact**. All 37 linear
+families differ, however: **564,101,261 / 1,114,914,816 linear values
+(50.5930%)** have different BF16 bits. This confirms the earlier Poolside
+intermediate finding that the published GGUF is a distinct weight artifact, not
+just another encoding of `poolside/Laguna-S-2.1-DFlash@b0486d1`.
+
+The current hipEngine runtime deliberately does not consume this alternate
+layout or identity. D0 must normalize names/shapes and register the published
+GGUF as a separately source-bound model variant; then its standalone candidates,
+target-corrected cycles, full category economics, public exactness, and lifecycle
+must pass independently. It cannot silently share the supported b048 B4 claim.
+Availability alone is not runtime support.
+
+Both containers intentionally omit token embeddings and the LM head. The
+drafter calls target-owned Q4_K embedding and Q6_K LM-head/sampler primitives
+rather than duplicate or dequantize those complete tables; root/mask embedding
+rows are materialized directly to BF16.
 
 ### DFlash data flow
 

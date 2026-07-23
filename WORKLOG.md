@@ -175973,3 +175973,37 @@ Laguna artifact parses and has its recorded accepted/retained status, checked
 all referenced implementation/test/artifact paths are tracked, and ran
 `git diff --check`. No GPU benchmark or broad test rerun was warranted because
 this unit changes no runtime or measured value.
+
+## 2026-07-23 — Audit the published Laguna DFlash BF16 GGUF
+
+The background Hugging Face download completed at
+`/home/lhl/models/gguf/laguna-s-2.1-DFlash-BF16.gguf`. Verified it against
+`poolside/Laguna-S-2.1-GGUF@e08e1fe855bb2d43f96ad78e24495283f3426c67` with
+`HfApi.model_info(..., files_metadata=True)`: local and LFS size are both
+**2,233,764,224 bytes**, and local/LFS SHA-256 is
+`2ee8aa30338d6599bc7a8ce008cc57c56f2c2b2fdc21f6db9ecda203c751bfd4`.
+
+The torch-free GGUF scanner validates version 3, all tensor spans, architecture
+`dflash`, decoder `laguna`, six 512-window layers, block size 16, target depths
+`2,11,20,30,39,48`, mask token 12, and the 100,352-token Laguna tokenizer. The
+file has **76 tensors / 2,230,081,536 payload bytes**: 49 BF16 linear tensors and
+27 F32 norm tensors. The 76-vs-69 count is structural: six fused b048 QKV tensors
+become 18 separate Q/K/V tensors (+12), while six auxiliary norms become one
+matrix (-5).
+
+Ran a complete raw-payload comparator against the pinned b048 safetensors and the
+existing local direct b048 GGUF conversion. It covers every one of the 69 logical
+tensors and every one of the 1,114,977,792 parameters. F32-to-BF16 RNE conversion
+makes all norm families exact (**32 tensors / 62,976 values**), but all 37 linear
+families differ: **564,101,261 / 1,114,914,816 values (50.5930%)** have different
+BF16 bits. This independently confirms the earlier Poolside callback finding:
+the newly published GGUF is a distinct weight artifact, not a container-equivalent
+copy of `poolside/Laguna-S-2.1-DFlash@b0486d1`.
+
+Updated `docs/LAGUNA.md` with the exact repository/file provenance, GGUF inventory,
+layout normalization map, and identity boundary. The existing b048 safetensors
+remains the supported explicit B4 owner. Supporting the published GGUF requires
+a separate source-bound variant plus fresh standalone-candidate, target-cycle,
+full-category economics, public-route, and lifecycle gates; file availability
+alone does not inherit the b048 claim. This is an artifact/docs audit only, not
+a runtime or performance result.
