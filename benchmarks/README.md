@@ -1221,8 +1221,10 @@ MoE-tail plus next-RMS fusion are the retained W7900 target-only AR default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
-span/child rows, but failed the clean short kernel-sum gate. Both are removed.
-Clean measured D12 implementation revision
+span/child rows, but failed the clean short kernel-sum gate. The exact D13 Q5
+shared pair+SiLU leaf shortened its local launch window but regressed total
+kernel sum at every context. All three candidates are removed. Clean measured
+D12 implementation revision
 `338d3afca01aa884ff3a68e0175566bc51e5ceae` runs the pinned
 `Laguna-S-2.1-UD-Q2_K_XL.gguf`
 (SHA-256 `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
@@ -1643,6 +1645,25 @@ The counterbalanced canonical gate moves h32 decode **47.046 -> 48.987 tok/s
 positive and unaffected prefill/TTFT inside 0.5%. D12 is **20.414 ms/token**,
 still **0.414 ms / 2.068% throughput** from 50 tok/s. [D12 retained
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json).
+
+##### Laguna Q2 XL c=1 decode D13 (rejected and removed)
+
+D13 tested an exact local256 Q5 shared gate/up pair+SiLU composite. Synthetic,
+actual endpoint, and complete shared-weight model gates preserve every BF16
+output, hidden/logit/argmax checkpoint, K/V and `KVLiveSpans` field, reset, and
+lifecycle bit-for-bit. The endpoint micro improves the inclusive pair+SiLU
+window **2.12-2.95%**, and cached tracing confirms local256/VGPR88/SGPR128/
+LDS1536/scratch0.
+
+Clean short/512/1K/near-4K profiles reject the route. The composite body is
+**9.28-11.07% slower** than pair+separate SiLU, while removing 46 launch gaps
+shortens the inclusive boundary **5.46-6.93%**. Complete kernel sum regresses
+**0.594%/0.390%/0.707%/0.444%**; 1K span regresses **0.024%**, and short
+profiled-child throughput regresses **1.280%**. The frozen every-context
+mechanical gate therefore fails, the category suite is skipped, and the kernel,
+wrapper/registry, runtime selector, and tests are removed. D12 remains
+**48.987 tok/s / 20.414 ms/token**. [D13 rejection
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-rejected.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.

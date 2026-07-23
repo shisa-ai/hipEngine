@@ -10,7 +10,7 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
 import hipengine.runtime.gguf_linear as gguf_linear_module
-from hipengine.kernels.registry import KernelKey, register, resolve, unregister
+from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
@@ -25,7 +25,6 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_FP16,
     launch_gguf_linear,
     launch_gguf_linear_pair,
-    launch_gguf_linear_pair_activation,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
     q8_mmq_prefill_session,
@@ -1445,93 +1444,6 @@ def test_registered_q5_decode_pair_is_exact_scope_and_falls_back() -> None:
     args, kwargs = calls[0]
     assert args == (100, 10, 10, 200, 300, 1, 3072, 1024)
     assert kwargs["stream"] == 0
-
-
-def test_registered_q5_pair_activation_is_exact_scope_and_fails_closed() -> None:
-    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
-    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
-    q6_weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
-    candidate_key = KernelKey(
-        "hip_gfx1100",
-        "linear_pair+activation",
-        "gguf_q5_k",
-        "pack8_gemv_decode_bf16_silu_bf16_out",
-    )
-    original = resolve(
-        backend=candidate_key.backend,
-        layer=candidate_key.layer,
-        quant=candidate_key.quant,
-        variant=candidate_key.variant,
-    )
-    calls: list[tuple[tuple, dict]] = []
-
-    def fake_candidate(*args, **kwargs):
-        calls.append((args, kwargs))
-
-    register(candidate_key, fake_candidate, replace=True)
-    try:
-        assert launch_gguf_linear_pair_activation(
-            weight_a,
-            weight_b,
-            x_ptr=100,
-            out_ptr=200,
-            rows=1,
-            in_features=3072,
-            out_features=1024,
-            backend="hip_gfx1100",
-            stream=7,
-            runtime="runtime-sentinel",
-            libraries={"gguf_q5_k": "library-sentinel"},
-        )
-        assert not launch_gguf_linear_pair_activation(
-            weight_a,
-            weight_b,
-            x_ptr=100,
-            out_ptr=200,
-            rows=2,
-            in_features=3072,
-            out_features=1024,
-        )
-        assert not launch_gguf_linear_pair_activation(
-            weight_a,
-            q6_weight,
-            x_ptr=100,
-            out_ptr=200,
-            rows=1,
-            in_features=3072,
-            out_features=1024,
-        )
-        assert not launch_gguf_linear_pair_activation(
-            weight_a,
-            weight_b,
-            x_ptr=100,
-            out_ptr=200,
-            rows=1,
-            in_features=3072,
-            out_features=1024,
-            backend="hip_gfx1151",
-        )
-        unregister(candidate_key)
-        assert not launch_gguf_linear_pair_activation(
-            weight_a,
-            weight_b,
-            x_ptr=100,
-            out_ptr=200,
-            rows=1,
-            in_features=3072,
-            out_features=1024,
-        )
-    finally:
-        register(candidate_key, original, replace=True)
-
-    assert len(calls) == 1
-    args, kwargs = calls[0]
-    assert args == (100, 10, 10, 200, 1, 3072, 1024)
-    assert kwargs == {
-        "library": "library-sentinel",
-        "runtime": "runtime-sentinel",
-        "stream": 7,
-    }
 
 
 def test_registered_q5_f32_decode_pair_accepts_unequal_widths_only_at_c1() -> None:

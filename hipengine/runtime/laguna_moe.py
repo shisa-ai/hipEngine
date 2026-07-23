@@ -26,11 +26,7 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
-from hipengine.runtime.gguf_linear import (
-    launch_gguf_linear,
-    launch_gguf_linear_pair,
-    launch_gguf_linear_pair_activation,
-)
+from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
 
 _QK_K = 256
 _T16_COLUMNS = 16
@@ -43,7 +39,6 @@ _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
-_SHARED_PAIR_ACTIVATION_VARIANT = "pack8_gemv_decode_bf16_silu_bf16_out"
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
@@ -124,8 +119,6 @@ class LagunaMoEKernelPlan:
     grouped_smallm_down_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
     grouped_weighted_sum_shared_add_key: KernelKey
-    shared_pair_activation_key: KernelKey
-    shared_pair_activation_enabled: bool
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
@@ -149,11 +142,6 @@ class LagunaMoEKernelPlan:
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
-        optional_shared = (
-            (self.shared_pair_activation_key,)
-            if self.shared_pair_activation_enabled
-            else ()
-        )
         return (
             self.router_logits_key,
             self.router_select_key,
@@ -171,7 +159,6 @@ class LagunaMoEKernelPlan:
             *tuple(self.grouped_smallm_down_keys.values()),
             self.grouped_weighted_sum_key,
             self.grouped_weighted_sum_shared_add_key,
-            *optional_shared,
             self.shared_silu_key,
             self.add_key,
         )
@@ -252,7 +239,6 @@ def resolve_laguna_moe_plan(
     config: LagunaGGUFConfig,
     *,
     backend: str,
-    use_shared_pair_activation: bool = False,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -329,23 +315,6 @@ def resolve_laguna_moe_plan(
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
     }
-    shared_pair_activation_key = KernelKey(
-        backend,
-        "linear_pair+activation",
-        "gguf_q5_k",
-        _SHARED_PAIR_ACTIVATION_VARIANT,
-    )
-    shared_pair_activation_enabled = (
-        bool(use_shared_pair_activation)
-        and bool(
-            backend_package_capability(
-                backend,
-                "LAGUNA_Q5_SHARED_SILU_SUPPORTED",
-                False,
-            )
-        )
-        and is_registered(shared_pair_activation_key)
-    )
     selected_gate_up_keys = MappingProxyType(
         {
             "gguf_q4_k_t16_v1": keys["selected_gate_up"],
@@ -499,8 +468,6 @@ def resolve_laguna_moe_plan(
         grouped_weighted_sum_shared_add_key=keys[
             "grouped_weighted_sum_shared_add"
         ],
-        shared_pair_activation_key=shared_pair_activation_key,
-        shared_pair_activation_enabled=shared_pair_activation_enabled,
         grouped_count=functions["grouped_count"],
         grouped_prefix_active=functions["grouped_prefix_active"],
         grouped_scatter=functions["grouped_scatter"],
@@ -1164,79 +1131,60 @@ def run_laguna_moe_c1_components(
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
     shared_down = layer.weight("ffn_down_shexp")
-    shared_activated = False
-    if plan.shared_pair_activation_enabled:
-        shared_activated = launch_gguf_linear_pair_activation(
+    shared_pair = launch_gguf_linear_pair(
+        shared_gate,
+        shared_up,
+        hidden_bf16_ptr,
+        scratch.shared_gate.ptr,
+        scratch.shared_up.ptr,
+        1,
+        h,
+        sf,
+        backend=plan.backend,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+        use_wmma_prefill=False,
+        use_gemv_decode=True,
+        registered_decode_only=True,
+    )
+    if not shared_pair:
+        launch_gguf_linear(
             shared_gate,
-            shared_up,
-            hidden_bf16_ptr,
-            scratch.shared_intermediate.ptr,
-            1,
-            h,
-            sf,
-            backend=plan.backend,
-            stream=stream,
-            libraries=libraries,
-            runtime=runtime,
-            registered_variant=plan.shared_pair_activation_key.variant,
-        )
-    if not shared_activated:
-        shared_pair = launch_gguf_linear_pair(
-            shared_gate,
-            shared_up,
             hidden_bf16_ptr,
             scratch.shared_gate.ptr,
-            scratch.shared_up.ptr,
             1,
             h,
             sf,
             backend=plan.backend,
             stream=stream,
-            libraries=libraries,
             runtime=runtime,
+            libraries=libraries,
             use_wmma_prefill=False,
             use_gemv_decode=True,
-            registered_decode_only=True,
         )
-        if not shared_pair:
-            launch_gguf_linear(
-                shared_gate,
-                hidden_bf16_ptr,
-                scratch.shared_gate.ptr,
-                1,
-                h,
-                sf,
-                backend=plan.backend,
-                stream=stream,
-                runtime=runtime,
-                libraries=libraries,
-                use_wmma_prefill=False,
-                use_gemv_decode=True,
-            )
-            launch_gguf_linear(
-                shared_up,
-                hidden_bf16_ptr,
-                scratch.shared_up.ptr,
-                1,
-                h,
-                sf,
-                backend=plan.backend,
-                stream=stream,
-                runtime=runtime,
-                libraries=libraries,
-                use_wmma_prefill=False,
-                use_gemv_decode=True,
-            )
-        plan.shared_silu(
-            scratch.shared_gate.ptr,
+        launch_gguf_linear(
+            shared_up,
+            hidden_bf16_ptr,
             scratch.shared_up.ptr,
-            scratch.shared_intermediate.ptr,
             1,
+            h,
             sf,
-            **_stage_kwargs(
-                "shared_silu", libraries, stream=stream, runtime=runtime
-            ),
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
         )
+    plan.shared_silu(
+        scratch.shared_gate.ptr,
+        scratch.shared_up.ptr,
+        scratch.shared_intermediate.ptr,
+        1,
+        sf,
+        **_stage_kwargs("shared_silu", libraries, stream=stream, runtime=runtime),
+    )
     launch_gguf_linear(
         shared_down,
         scratch.shared_intermediate.ptr,
