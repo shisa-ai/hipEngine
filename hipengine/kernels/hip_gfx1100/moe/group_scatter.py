@@ -457,6 +457,11 @@ def register_qwen35_moe_group_scatter_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "moe_wmma_tile_map", "generic", "tile16"),
+        qwen35_moe_wmma_tile_map,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "moe_group_scatter", "w4_paro", "qwen35"),
         qwen35_moe_group_scatter,
         replace=replace,

@@ -2296,12 +2296,17 @@ repeat either experiment unchanged.
   and
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json`.
 - [ ] Add an M16/M32 integer-MMQ/WMMA route only where measured occupancy pays
-  for padding. The retained replay narrows the first screen to M16: natural/
-  Zipf overhead falls to 1.803/2.049x at 256 and 1.379/1.465x at 512. Natural/
-  Zipf M32 remains 2.924/3.421x and 1.867/2.134x, so it is hot-only unless an
-  inclusive timing result overturns that bound. Use the landed IQ2 MMQ32 work
-  as a scheduling reference, not as a quant-format shortcut; Laguna Q4_K/Q6_K
-  decode and scales need their own oracle.
+  for padding. The first M16 control is now wired over resident Q4T16/Q6T16:
+  device compact/gather, one exact padded-row scalar read per sparse layer,
+  bounded tile metadata, single-output WMMA down, and ordered weighted combine.
+  It remains diagnostic while the clean counterbalanced 256/512 full-model
+  wall plus final-logit KL/top-1 screen runs; a win must still pass the complete
+  category quality/E2E gate before promotion. The retained replay reports
+  natural/Zipf overhead of 1.803/2.049x at 256 and 1.379/1.465x at 512.
+  Natural/Zipf M32 remains 2.924/3.421x and 1.867/2.134x, so it is hot-only
+  unless an inclusive timing result overturns that bound. Use the landed IQ2
+  MMQ32 work as a scheduling reference, not as a quant-format shortcut;
+  Laguna Q4_K/Q6_K decode and scales keep their own CPU-reference oracle.
 - [ ] After gate/up, evaluate fused SiLU and routing-weighted down/combine to
   remove the largest expert intermediates. Keep the unfused staged chain
   registered and do not introduce order-dependent atomics across ten experts.

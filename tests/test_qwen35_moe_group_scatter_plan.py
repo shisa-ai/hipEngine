@@ -87,6 +87,15 @@ def test_qwen35_moe_group_scatter_registers_prefill_metadata_variants() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="moe_wmma_tile_map",
+            quant="generic",
+            variant="tile16",
+        )
+        is qwen35_moe_wmma_tile_map
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="moe_group_scatter",
             quant="w4_paro",
             variant="qwen35",
