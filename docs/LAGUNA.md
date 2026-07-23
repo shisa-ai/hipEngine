@@ -2784,12 +2784,16 @@ Proceed in measured Amdahl order:
 11. **REJECTED:** tile16 is exact and scratch-free, but the best production
    schedule regresses global/SWA actual weights **16.69%/19.04%**; tile16 and
    tile32 are removed without spending clean full-model/category runs; and
-12. **DONE (design only):** freeze the Laguna one-step graph ABI, fail-closed
-   eligibility, lifecycle, RED gates, and 3.385-ms residual model below; and
-13. **NEXT:** implement and exact-state gate the graph candidate, then retain it
-   only after cold-inclusive E2E and every category improve. D7's short decode
-   span exceeds kernel sum by **3.385 ms**, making submission the largest
-   remaining bounded premise.
+12. **DONE:** freeze the Laguna one-step graph ABI, fail-closed eligibility,
+   lifecycle, RED gates, and 3.385-ms residual model below;
+13. **DONE (correctness only):** implement the pointer-bound graph, exact eager
+   fallback, device-fed token/position state, paired position tail, and
+   deterministic teardown. A 956-step real Q2 XL trajectory is byte-exact at
+   short, 255/256, 510-513, 1023/1024, continuation, fallback, and reset gates;
+   and
+14. **NEXT:** measure the candidate cleanly and retain it only after
+   cold-inclusive E2E and every category improve. D7's short decode span exceeds
+   kernel sum by **3.385 ms**, making submission the largest bounded premise.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
 canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
@@ -2801,7 +2805,7 @@ by global attention. Every retained candidate uses the full category/heldout
 suite and the same exact/quality lanes above. Laguna DFlash/MTP economics must
 use D7 or a later true-AR baseline rather than the historical D0 row.
 
-### D8 one-step graph replay design (frozen, not yet admitted)
+### D8 one-step graph replay (correctness admitted, performance pending)
 
 This design is Laguna-specific. It reuses HIP graph mechanics and the small
 runtime-state kernel family, but it does not inherit Qwen/PARO graph correctness.
@@ -2920,6 +2924,21 @@ Task #277 must add the tests before default wiring:
    serial/bulk/graph IDs are exact, Poolside KL/top-1 and accepted bulk-state
    gates pass, and every graph/session/reset/continuation/error lifecycle returns
    tracked ownership to zero.
+
+The task #277 implementation passes the frozen state/lifecycle gate on the real
+UD-Q2_K_XL model. Two resident sessions remained byte-exact for every ID,
+argmax-value bit pattern, complete FP32 logits, BF16 final/post-layer hidden,
+all 48 complete K/V allocations, and every live-span metadata allocation across
+**956** graph transitions. Checkpoints cover positions 69-72, 255/256,
+510-513, and 1023/1024, then exact retained-prefix suffix prefill, a forced eager
+fallback, graph resumption, reset, and third replay. Capture is non-executing,
+replay performs no tracked device allocation, one cached trace contains exactly
+one `hipGraphLaunch` and one `advance_laguna_position_pair_i64_kernel` tail, and
+teardown returns **40,455,911,848 bytes / 1,496 allocations** to zero. This is a
+correctness result only: sparse diagnostic samples were slower than eager, so
+the graph stays explicit opt-in and task #278 owns clean retain/reject evidence.
+Artifact:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-correctness.json`.
 
 Graph capture/instantiate latency, first replay, and warm replay are separate
 measurements. The canonical fresh-session run includes lazy capture in its

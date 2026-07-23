@@ -9,6 +9,7 @@ import pytest
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
+    advance_laguna_position_pair_i64,
     advance_decode_positions_i64,
     commit_packed_decode_graph_step,
     copy_i32_to_i64,
@@ -85,6 +86,15 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="decode_position", quant="w4_paro", variant="advance_vector_i64")
         is advance_decode_positions_i64
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_position",
+            quant="laguna",
+            variant="advance_pair_i64",
+        )
+        is advance_laguna_position_pair_i64
     )
     assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_i64") is set_i64_scalar
     assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_vector_i64") is set_i64_vector
@@ -214,6 +224,34 @@ def test_copy_i32_to_i64_matches_exact_cpu_cast() -> None:
             free(buf, runtime=runtime)
 
     np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_advance_laguna_position_pair_keeps_rope_and_kv_positions_equal() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rope_position = np.asarray([511], dtype=np.int64)
+    kv_position = np.asarray([511], dtype=np.int64)
+    actual_rope = np.empty_like(rope_position)
+    actual_kv = np.empty_like(kv_position)
+    bufs = []
+    try:
+        d_rope = malloc(rope_position.nbytes, runtime=runtime)
+        d_kv = malloc(kv_position.nbytes, runtime=runtime)
+        bufs.extend((d_rope, d_kv))
+        copy_host_to_device(d_rope, host_array_ptr(rope_position), runtime=runtime)
+        copy_host_to_device(d_kv, host_array_ptr(kv_position), runtime=runtime)
+        advance_laguna_position_pair_i64(d_rope.ptr, d_kv.ptr, runtime=runtime)
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual_rope), d_rope, runtime=runtime)
+        copy_device_to_host(host_array_ptr(actual_kv), d_kv, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_rope, np.asarray([512], dtype=np.int64))
+    np.testing.assert_array_equal(actual_kv, actual_rope)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

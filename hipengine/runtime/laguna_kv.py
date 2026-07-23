@@ -95,6 +95,8 @@ class LagunaKVCache:
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
+        self.graph_state_epoch = 0
+        self.graph_compatible = True
         self._closed = False
 
     @property
@@ -116,6 +118,14 @@ class LagunaKVCache:
     @property
     def pending_positions(self) -> tuple[int, ...]:
         return self._pending_positions
+
+    @property
+    def buffers(self) -> tuple[DeviceBuffer, ...]:
+        return self._buffers
+
+    @property
+    def row_position(self) -> DeviceBuffer:
+        return self._row_position
 
     def layer(self, layer_id: int) -> LagunaKVLayerState:
         self._check_open()
@@ -139,6 +149,7 @@ class LagunaKVCache:
             )
         _copy_i64(self._row_position, parsed, self.runtime)
         self.position = parsed
+        self.graph_state_epoch += 1
 
     def prepare_rows(self, positions: Sequence[int]) -> None:
         """Publish one bounded consecutive chunk without committing its final position."""
@@ -160,6 +171,7 @@ class LagunaKVCache:
             raise ValueError("Laguna KV bulk positions exceed the admitted context")
         _copy_i64(self._row_position, parsed[0], self.runtime)
         self._pending_positions = parsed
+        self.graph_state_epoch += 1
 
     def commit_rows(self) -> None:
         """Commit the currently prepared chunk after every layer has appended it."""
@@ -169,6 +181,7 @@ class LagunaKVCache:
             raise RuntimeError("no Laguna KV bulk positions are pending")
         self.position = self._pending_positions[-1]
         self._pending_positions = ()
+        self.graph_state_epoch += 1
 
     def discard_rows(self) -> None:
         """Discard prepared transient query rows without advancing committed state.
@@ -183,6 +196,21 @@ class LagunaKVCache:
         if not self._pending_positions:
             raise RuntimeError("no Laguna KV bulk positions are pending")
         self._pending_positions = ()
+        self.graph_state_epoch += 1
+
+    def commit_graph_position(self, position: int) -> None:
+        """Commit one synchronized graph append without rewriting device state."""
+
+        self._check_open()
+        if self._pending_positions:
+            raise RuntimeError("cannot commit graph position while bulk rows are pending")
+        parsed = int(position)
+        if not self.graph_compatible:
+            raise RuntimeError("Laguna KV state is not graph-compatible after manual mutation")
+        if parsed != self.position + 1 or parsed >= self.context_length:
+            raise ValueError("graph position must be the next admitted token-serial cursor")
+        self.position = parsed
+        self.graph_state_epoch += 1
 
     def reset(self) -> None:
         """Reset request metadata while retaining payload allocations and addresses."""
@@ -218,6 +246,8 @@ class LagunaKVCache:
                 spans.evict_mask.numel * spans.evict_mask.dtype.itemsize,
             )
         self.position = -1
+        self.graph_state_epoch += 1
+        self.graph_compatible = True
 
     def append(
         self,
@@ -397,6 +427,8 @@ class LagunaKVCache:
             1,
             HipMemcpyKind.HOST_TO_DEVICE,
         )
+        self.graph_state_epoch += 1
+        self.graph_compatible = False
 
     def evict_swa_position(self, layer_id: int, position: int) -> None:
         """Mark one currently addressable absolute SWA position invisible."""

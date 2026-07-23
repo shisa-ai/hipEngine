@@ -3,6 +3,7 @@
 from hipengine.kernels.hip_gfx1100.runtime.state import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
+    advance_laguna_position_pair_i64,
     build_runtime_state,
     commit_packed_decode_graph_step,
     copy_i32_to_i64,
@@ -30,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.runtime.state import (
 __all__ = [
     "advance_decode_position_i64",
     "advance_decode_positions_i64",
+    "advance_laguna_position_pair_i64",
     "build_runtime_state",
     "commit_packed_decode_graph_step",
     "copy_i32_to_i64",

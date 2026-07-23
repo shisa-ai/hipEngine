@@ -663,10 +663,12 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.swa_prefill_variant == "swa_context_rows_wave32_exact_spans"
     assert session.selected_down_mode == "adaptive_grouped_smallm_fused"
     assert session.verifier_scratch is None
+    session._decode_graph = SimpleNamespace(close=lambda: events.append("decode_graph"))
     session.close()
     session.close()
 
     assert events == [
+        "decode_graph",
         "rows_moe_scratch",
         "rows_scratch",
         "moe_scratch",
@@ -680,6 +682,47 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert materialize_kwargs["repacked_cache"] == "/synthetic/laguna-repacked-v1"
     assert materialize_kwargs["repacked_cache_source_sha256"] == "synthetic-sha256"
     assert materialize_kwargs["safety_reserve_nbytes"] == 4 * 2**30
+
+
+def test_laguna_forward_reuses_graph_and_falls_back_on_ineligible_token(monkeypatch) -> None:
+    import hipengine.runtime.laguna_decode_graph as graph_module
+
+    replayed: list[int] = []
+    eager: list[int] = []
+    graph = SimpleNamespace(
+        closed=False,
+        replay=lambda token: replayed.append(int(token)) or "graph-result",
+    )
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session._closed = False
+    session.use_decode_graph = True
+    session._decode_graph = graph
+    session._forward_token_eager = (
+        lambda token, *, captures, stream: eager.append(int(token)) or "eager-result"
+    )
+    monkeypatch.setattr(
+        graph_module,
+        "capture_laguna_decode_graph",
+        lambda session: (_ for _ in ()).throw(AssertionError("graph recaptured")),
+    )
+    monkeypatch.setattr(
+        graph_module,
+        "laguna_decode_graph_ineligibility",
+        lambda *args, **kwargs: None,
+    )
+
+    assert session.forward_token(17) == "graph-result"
+    assert replayed == [17]
+    assert eager == []
+
+    monkeypatch.setattr(
+        graph_module,
+        "laguna_decode_graph_ineligibility",
+        lambda *args, **kwargs: "device_token_mismatch",
+    )
+    assert session.forward_token(18) == "eager-result"
+    assert replayed == [17]
+    assert eager == [18]
 
 
 def test_laguna_borrowed_session_rejects_loader_cache_options() -> None:
