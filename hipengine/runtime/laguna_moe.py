@@ -52,6 +52,10 @@ _SELECTED_DOWN_MODES = frozenset(
         "adaptive_grouped_smallm_fused",
         "expert_major_wmma_comp",
         "adaptive_expert_major_wmma_comp",
+        "expert_major_gate_up_comp",
+        "adaptive_expert_major_gate_up_comp",
+        "expert_major_down_comp",
+        "adaptive_expert_major_down_comp",
     }
 )
 _BASELINE_SELECTED_DOWN_MODE = "direct"
@@ -1096,6 +1100,7 @@ def _launch_expert_major_comp_down(
     scratch: LagunaMoEScratch,
     *,
     lanes: int,
+    input_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
@@ -1111,7 +1116,7 @@ def _launch_expert_major_comp_down(
             f"no Laguna expert-major down route for {weight.spec.quant_key!r}"
         ) from exc
     expert_major(
-        scratch.expert_intermediate.ptr,
+        scratch.expert_intermediate.ptr if input_ptr is None else input_ptr,
         scratch.grouped_expert_start.ptr,
         scratch.grouped_active_experts.ptr,
         scratch.grouped_active_count.ptr,
@@ -1125,6 +1130,106 @@ def _launch_expert_major_comp_down(
             "expert_major_comp", libraries, stream=stream, runtime=runtime
         ),
     )
+
+
+def _prepare_grouped_compact_intermediate(
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> int:
+    """Compact lane-order intermediate rows for an expert-major down probe."""
+
+    plan = scratch.plan
+    active_runtime = runtime or get_hip_runtime()
+    plan.grouped_compact(
+        scratch.selected_experts.ptr,
+        scratch.scaled_routing_weights.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.grouped_sorted_experts.ptr,
+        scratch.grouped_sorted_weights.ptr,
+        lanes,
+        plan.expert_count,
+        **_stage_kwargs(
+            "grouped_metadata", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    plan.grouped_gather(
+        scratch.expert_intermediate.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.expert_gate.ptr,
+        lanes * plan.expert_ffn_size,
+        lanes,
+        1,
+        plan.expert_ffn_size,
+        **_stage_kwargs(
+            "grouped_gather", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    return scratch.expert_gate.ptr
+
+
+def _launch_grouped_smallm_down_prepared(
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    input_ptr: int,
+    tokens: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+    defer_weighted_sum: bool,
+) -> None:
+    """Run exact grouped down from rows already sorted by natural expert."""
+
+    plan = scratch.plan
+    weight = layer.weight("ffn_down_exps")
+    try:
+        grouped_down = plan.grouped_smallm_downs[weight.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna grouped small-M selected-down route for {weight.spec.quant_key!r}"
+        ) from exc
+    active_runtime = runtime or get_hip_runtime()
+    grouped_down(
+        input_ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        weight.allocation("tiles").tensor.ptr,
+        scratch.expert_down.ptr,
+        lanes,
+        plan.expert_ffn_size,
+        plan.hidden_size,
+        plan.expert_count,
+        **_stage_kwargs(
+            "grouped_down", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    if not defer_weighted_sum:
+        plan.grouped_weighted_sum(
+            scratch.expert_down.ptr,
+            scratch.grouped_sorted_weights.ptr,
+            scratch.grouped_sorted_lanes.ptr,
+            scratch.grouped_lane_to_row.ptr,
+            scratch.routed_output.ptr,
+            tokens,
+            plan.top_k,
+            plan.hidden_size,
+            **_stage_kwargs(
+                "grouped_weighted_sum",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
 
 
 def _launch_grouped_smallm_down(
@@ -1430,11 +1535,23 @@ def run_laguna_moe_rows(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
-    use_expert_major = selected_down_mode == "expert_major_wmma_comp" or (
-        selected_down_mode == "adaptive_expert_major_wmma_comp"
-        and tokens >= _EXPERT_MAJOR_MIN_ROWS
+    adaptive_expert_major = selected_down_mode.startswith("adaptive_expert_major_")
+    expert_major_enabled = (
+        not adaptive_expert_major or tokens >= _EXPERT_MAJOR_MIN_ROWS
     )
-    if use_expert_major:
+    use_expert_major_gate_up = expert_major_enabled and selected_down_mode in {
+        "expert_major_wmma_comp",
+        "adaptive_expert_major_wmma_comp",
+        "expert_major_gate_up_comp",
+        "adaptive_expert_major_gate_up_comp",
+    }
+    use_expert_major_down = expert_major_enabled and selected_down_mode in {
+        "expert_major_wmma_comp",
+        "adaptive_expert_major_wmma_comp",
+        "expert_major_down_comp",
+        "adaptive_expert_major_down_comp",
+    }
+    if use_expert_major_gate_up:
         _launch_expert_major_comp_gate_up(
             hidden_bf16_ptr,
             layer,
@@ -1456,25 +1573,64 @@ def run_laguna_moe_rows(
             runtime=runtime,
             libraries=libraries,
         )
-    use_grouped_fused_combine = use_expert_major or (
-        selected_down_mode == "grouped_smallm_fused"
+    adaptive_expert_grouped_fallback = bool(
+        adaptive_expert_major
+        and not expert_major_enabled
+        and tokens >= _GROUPED_SMALLM_MIN_ROWS
+    )
+    use_grouped_fused_combine = bool(
+        use_expert_major_gate_up
+        or use_expert_major_down
+        or selected_down_mode == "grouped_smallm_fused"
         or (
             selected_down_mode == "adaptive_grouped_smallm_fused"
             and tokens >= _GROUPED_SMALLM_MIN_ROWS
         )
+        or adaptive_expert_grouped_fallback
     )
-    use_grouped_smallm = selected_down_mode == "grouped_smallm" or (
-        selected_down_mode == "adaptive_grouped_smallm"
-        and tokens >= _GROUPED_SMALLM_MIN_ROWS
-    ) or (use_grouped_fused_combine and not use_expert_major)
-    if use_expert_major:
+    use_grouped_smallm = bool(
+        selected_down_mode == "grouped_smallm"
+        or (
+            selected_down_mode in {
+                "adaptive_grouped_smallm",
+                "adaptive_grouped_smallm_fused",
+            }
+            and tokens >= _GROUPED_SMALLM_MIN_ROWS
+        )
+        or selected_down_mode == "grouped_smallm_fused"
+        or adaptive_expert_grouped_fallback
+    )
+    if use_expert_major_down:
+        input_ptr = None
+        if not use_expert_major_gate_up:
+            input_ptr = _prepare_grouped_compact_intermediate(
+                scratch,
+                tokens=tokens,
+                lanes=lanes,
+                stream=stream,
+                runtime=runtime,
+                libraries=libraries,
+            )
         _launch_expert_major_comp_down(
             layer,
             scratch,
             lanes=lanes,
+            input_ptr=input_ptr,
             stream=stream,
             runtime=runtime,
             libraries=libraries,
+        )
+    elif use_expert_major_gate_up:
+        _launch_grouped_smallm_down_prepared(
+            layer,
+            scratch,
+            input_ptr=scratch.expert_intermediate.ptr,
+            tokens=tokens,
+            lanes=lanes,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            defer_weighted_sum=True,
         )
     elif use_grouped_smallm:
         _launch_grouped_smallm_down(

@@ -177,6 +177,16 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
         )
         == "expert_major_wmma_comp"
     )
+    for component_mode in (
+        "expert_major_gate_up_comp",
+        "adaptive_expert_major_gate_up_comp",
+        "expert_major_down_comp",
+        "adaptive_expert_major_down_comp",
+    ):
+        assert (
+            resolve_laguna_selected_down_mode("hip_gfx1151", component_mode)
+            == component_mode
+        )
     assert (
         resolve_laguna_selected_down_mode(
             "hip_gfx1151", "adaptive_expert_major_wmma_comp"
@@ -258,6 +268,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     fused_scratch = None
     expert_major_scratch = None
     adaptive_expert_major_scratch = None
+    component_scratches = []
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -439,6 +450,37 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             np.max(np.sum(np.exp(ref_logp) * (ref_logp - cand_logp), axis=-1))
         )
         assert max_kl <= 0.05
+        # Isolate candidate Q4 gate/up from candidate Q4/Q6 down without
+        # weakening the exact grouped fallback or its fused combine boundary.
+        for component_mode in (
+            "expert_major_gate_up_comp",
+            "expert_major_down_comp",
+        ):
+            component_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
+            component_scratches.append(component_scratch)
+            component_output = run_laguna_moe_rows(
+                bulk_hidden_buffer.ptr,
+                layer,
+                component_scratch,
+                rows=3,
+                selected_down_mode=component_mode,
+            )
+            component_actual = _read_bf16(component_output, (3, h))
+            assert np.isfinite(component_actual).all()
+            component_logits = component_actual.astype(np.float64)
+            component_logits -= component_logits.max(axis=-1, keepdims=True)
+            component_logp = component_logits - np.log(
+                np.exp(component_logits).sum(axis=-1, keepdims=True)
+            )
+            component_kl = float(
+                np.max(
+                    np.sum(
+                        np.exp(ref_logp) * (ref_logp - component_logp),
+                        axis=-1,
+                    )
+                )
+            )
+            assert component_kl <= 0.05
         # The dedicated 51-row Q4/Q6 leaf fixture owns the >=90% top-1 gate;
         # these three near-zero full-MoE rows only verify runtime composition.
         adaptive_expert_major_scratch = allocate_laguna_moe_scratch(
@@ -476,6 +518,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        for component_scratch in reversed(component_scratches):
+            component_scratch.free()
         if adaptive_expert_major_scratch is not None:
             adaptive_expert_major_scratch.free()
         if expert_major_scratch is not None:
