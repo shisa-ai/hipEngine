@@ -86,6 +86,96 @@ def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:
         "f32",
         "top1_i64",
     )
+    assert plan.moe_tail_next_rmsnorm is None
+
+
+def test_laguna_d9_plan_is_gfx1100_only_and_explicitly_disableable() -> None:
+    plan = resolve_laguna_eager_kernel_plan(_config(), backend="hip_gfx1100")
+    assert plan.moe_tail_next_rmsnorm is not None
+    assert (
+        plan.moe_tail_next_rmsnorm_key.layer,
+        plan.moe_tail_next_rmsnorm_key.quant,
+        plan.moe_tail_next_rmsnorm_key.variant,
+    ) == (
+        "moe_tail+next_rmsnorm",
+        "bf16",
+        "laguna_aggregate_gguf_f32_weight_out",
+    )
+    assert plan.moe_tail_next_rmsnorm_key in plan.kernel_keys
+
+    fallback = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_moe_tail_next_rmsnorm=False,
+    )
+    assert fallback.moe_tail_next_rmsnorm is None
+    assert fallback.moe_tail_next_rmsnorm_key not in fallback.kernel_keys
+
+
+def test_laguna_d9_dispatch_is_c1_only_with_exact_three_kernel_fallback() -> None:
+    calls = []
+
+    def fused(*args, **kwargs):
+        calls.append(("fused", args, kwargs))
+
+    def add(*args, **kwargs):
+        calls.append(("add", args, kwargs))
+
+    def rmsnorm(*args, **kwargs):
+        calls.append(("rmsnorm", args, kwargs))
+
+    assert runner_module.launch_laguna_moe_tail_next_rmsnorm(
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        1,
+        3_072,
+        1e-6,
+        fused=fused,
+        add=add,
+        rmsnorm=rmsnorm,
+        stream=9,
+        fused_library="fused-lib",
+        gguf_ops_library="ops-lib",
+        runtime="runtime",
+    )
+    assert [call[0] for call in calls] == ["fused"]
+    assert calls[0][1] == (1, 2, 3, 6, 7, 5, 3_072, 1e-6)
+    assert calls[0][2] == {
+        "stream": 9,
+        "library": "fused-lib",
+        "runtime": "runtime",
+    }
+
+    calls.clear()
+    assert not runner_module.launch_laguna_moe_tail_next_rmsnorm(
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        2,
+        17,
+        1e-5,
+        fused=fused,
+        add=add,
+        rmsnorm=rmsnorm,
+        stream=11,
+        fused_library="fused-lib",
+        gguf_ops_library="ops-lib",
+        runtime="runtime",
+    )
+    assert [call[0] for call in calls] == ["add", "add", "rmsnorm"]
+    assert calls[0][1] == (1, 2, 4, 34)
+    assert calls[1][1] == (3, 4, 5, 34)
+    assert calls[2][1] == (5, 6, 7, 2, 17, 1e-5)
+    assert all(call[2]["library"] == "ops-lib" for call in calls)
 
 
 def test_laguna_eager_scratch_is_bounded_by_max_head_width_and_frees() -> None:

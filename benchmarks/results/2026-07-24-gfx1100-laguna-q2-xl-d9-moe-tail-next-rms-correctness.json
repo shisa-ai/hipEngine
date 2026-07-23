@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_d9_moe_tail_next_rms_correctness",
+  "date": "2026-07-24",
+  "status": "correctness_admitted_dirty_profile",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "source": {
+    "base_revision": "814b96dd7b41f555e59cd1d1ca90b0f6102f9495",
+    "dirty_tree": true,
+    "design_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-design.json",
+    "kernel_source": "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip",
+    "runtime_source": "hipengine/runtime/laguna_gguf_runner.py",
+    "cpu_oracle": "hipengine/kernels/cpu_reference/ops.py::laguna_aggregate_moe_tail_next_rmsnorm",
+    "qwen_kernel_reference": {
+      "repository": "/home/lhl/qwen-kernel",
+      "commit": "52e240f9c6d91750d0e5e692976cfb67fd9bc603",
+      "file": "shaders/add_rms3.comp",
+      "use": "scheduling reference only; implementation preserves Laguna's two BF16 add boundaries"
+    }
+  },
+  "implementation": {
+    "registry_key": [
+      "hip_gfx1100",
+      "moe_tail+next_rmsnorm",
+      "bf16",
+      "laguna_aggregate_gguf_f32_weight_out"
+    ],
+    "kernel": "laguna_aggregate_moe_tail_next_rmsnorm_out_kernel",
+    "scope": "gfx1100 c=1 sparse Laguna layers only; rows>1, gfx1151, registry miss, and explicit use_moe_tail_next_rmsnorm=False retain the exact three-kernel fallback",
+    "arithmetic": [
+      "BF16(F32(routed_bf16) + F32(shared_bf16))",
+      "BF16(F32(post_attention_bf16) + F32(first_boundary_bf16))",
+      "the exact local256 gguf_rmsnorm_bf16_f32_weight accumulation/reduction order",
+      "BF16(F32(hidden_bf16) * inv_rms * next_norm_weight_f32)"
+    ],
+    "outputs": [
+      "post-MoE BF16 hidden",
+      "next-layer attn_norm or final output_norm BF16"
+    ],
+    "unfused_fallback": "registered BF16 add, BF16 add, then GGUF F32-weight RMSNorm",
+    "dispatch_effect": {
+      "sparse_boundaries_per_token": 47,
+      "before_dispatches_per_token": 869,
+      "after_dispatches_per_token": 775,
+      "removed_dispatches_per_token": 94
+    }
+  },
+  "synthetic_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_tail_next_rmsnorm.py tests/test_moe_tail_next_rmsnorm.py tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py",
+    "tests_passed": 87,
+    "hidden_sizes": [
+      17,
+      3072
+    ],
+    "adversarial_first_rounding_boundary_present": true,
+    "hidden_bf16_bits_exact": true,
+    "norm_bf16_bits_exact": true,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "rows_gt_1_fallback_tested": true,
+    "explicit_disable_fallback_tested": true,
+    "gfx1151_registry_exclusion_tested": true
+  },
+  "actual_model_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_d9_correctness_gate.py",
+    "raw_output": "/tmp/laguna-q2-xl-d9-correctness.json",
+    "raw_sha256": "0ab3ee871263f4dc110eb73db64c0f26ca330198eebb4dc46d62b1e9e10624de",
+    "harness_sha256": "515e94ddc15aca0b347f54e442fe6196bed7a347d2146bcfd35c715b6b979537",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "checkpoints": 18,
+    "decode_steps": 16,
+    "actual_layer_hidden_captures_exact": 48,
+    "actual_sparse_tail_boundaries_exact": 47,
+    "full_logits_exact": true,
+    "argmax_id_and_value_bits_exact": true,
+    "final_output_norm_exact": true,
+    "post_layer_hidden_exact": true,
+    "full_kv_payload_and_live_spans_exact": true,
+    "reset_exact": true,
+    "tracked_peak_bytes": 40455911848,
+    "tracked_peak_allocations": 1496,
+    "tracked_returned_to_baseline": true,
+    "counterbalanced_dirty_wall": {
+      "control_median_ms": 20.056654000654817,
+      "candidate_median_ms": 19.709690008312464,
+      "wall_delta_pct": -1.7299196183522159,
+      "throughput_delta_pct": 1.7603726501838501
+    }
+  },
+  "dirty_cached_profile": {
+    "control_command_suffix": "--disable-d9",
+    "candidate_command_suffix": "default D9 route",
+    "common_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "comparison": "/tmp/laguna-q2-xl-d9-profile-comparison.json",
+    "comparison_sha256": "0aed7fa79ad8cbd27621e82a5514823d0363155603bdf8a9f6e281e17762cdb7",
+    "control_trace_sha256": "3bd52dcd7a68b4793d98acefab32c78960cda86bd42e284ea2454583e1c2280d",
+    "candidate_trace_sha256": "16c908d511ad56346130e1778b9ffe536f88d052f54dd3f22225992e9f7e5954",
+    "stable_steps": 14,
+    "ids_exact": true,
+    "finite": true,
+    "lifecycle": true,
+    "control": {
+      "dispatches_per_token": 869,
+      "kernel_sum_ms_per_token": 17.295613928571427,
+      "span_median_ms_per_token": 20.702371,
+      "profiled_child_tok_s": 43.89033568171921
+    },
+    "candidate": {
+      "dispatches_per_token": 775,
+      "kernel_sum_ms_per_token": 17.288420642857144,
+      "span_median_ms_per_token": 20.382590999999998,
+      "profiled_child_tok_s": 45.003241879579264,
+      "tail_calls_per_token": 47,
+      "tail_ms_per_token": 0.39234285714285544,
+      "tail_median_us": 8.28,
+      "workgroup_size_x": 256,
+      "vgpr_count": 16,
+      "sgpr_count": 128,
+      "lds_block_size": 1024,
+      "scratch_size": 0
+    },
+    "delta": {
+      "kernel_sum_pct": -0.04159023058672995,
+      "span_pct": -1.5446539915645485,
+      "profiled_child_throughput_pct": 2.535652053177606,
+      "dispatches_removed_per_token": 94
+    },
+    "caveat": "Dirty-tree matched-profile evidence admits task #280 correctness and execution only. Task #281 owns clean short/512/1K/near-4K and category retain-or-remove measurement."
+  },
+  "next": "Commit the exact candidate, then task #281 runs clean context and canonical category promotion gates; remove runtime selection if any mechanical or suite gate fails."
+}

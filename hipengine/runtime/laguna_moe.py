@@ -1045,7 +1045,7 @@ def _launch_grouped_smallm_down(
         )
 
 
-def run_laguna_moe_c1(
+def run_laguna_moe_c1_components(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
@@ -1053,8 +1053,8 @@ def run_laguna_moe_c1(
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
-) -> DeviceBuffer:
-    """Run the exact staged Laguna routed plus always-on shared expert path."""
+) -> tuple[DeviceBuffer, DeviceBuffer]:
+    """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
     plan = scratch.plan
     if scratch.max_rows < 1:
@@ -1199,11 +1199,33 @@ def run_laguna_moe_c1(
         use_wmma_prefill=False,
         use_gemv_decode=True,
     )
-    plan.add(
-        scratch.routed_output.ptr,
-        scratch.shared_output.ptr,
+    return scratch.routed_output, scratch.shared_output
+
+
+def run_laguna_moe_c1(
+    hidden_bf16_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+    libraries: Mapping[str, object] | None = None,
+) -> DeviceBuffer:
+    """Run the exact staged Laguna routed plus always-on shared expert path."""
+
+    routed, shared = run_laguna_moe_c1_components(
+        hidden_bf16_ptr,
+        layer,
+        scratch,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+    )
+    scratch.plan.add(
+        routed.ptr,
+        shared.ptr,
         scratch.output.ptr,
-        h,
+        scratch.plan.hidden_size,
         **_stage_kwargs("add", libraries, stream=stream, runtime=runtime),
     )
     return scratch.output
@@ -1430,6 +1452,7 @@ __all__ = [
     "resolve_laguna_moe_plan",
     "resolve_laguna_selected_down_mode",
     "run_laguna_moe_c1",
+    "run_laguna_moe_c1_components",
     "run_laguna_moe_rows",
     "validate_laguna_moe_layer",
 ]

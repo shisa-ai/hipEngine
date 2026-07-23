@@ -102,6 +102,38 @@ def moe_tail_next_rmsnorm(
     return rounded_residual, norm_out
 
 
+def laguna_aggregate_moe_tail_next_rmsnorm(
+    routed: ArrayLike,
+    shared: ArrayLike,
+    post_attention: ArrayLike,
+    norm_weight: ArrayLike,
+    *,
+    eps: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Exact Laguna BF16 routed/shared tail plus F32-weight RMSNorm oracle.
+
+    Laguna rounds ``routed + shared`` to BF16, rounds the subsequent
+    ``post_attention + moe`` sum to BF16, and only then accumulates the next
+    RMSNorm. Returns both rounded BF16 boundaries represented as float32.
+    """
+
+    routed_arr = np.asarray(routed, dtype=np.float32)
+    shared_arr = np.asarray(shared, dtype=np.float32)
+    post_arr = np.asarray(post_attention, dtype=np.float32)
+    weight_arr = np.asarray(norm_weight, dtype=np.float32)
+    if routed_arr.ndim != 1:
+        raise ValueError("routed must have shape [hidden]")
+    if shared_arr.shape != routed_arr.shape or post_arr.shape != routed_arr.shape:
+        raise ValueError("shared and post_attention must match routed shape")
+    if weight_arr.shape != routed_arr.shape:
+        raise ValueError("norm_weight must have shape [hidden]")
+
+    moe = _round_to_bf16_float((routed_arr + shared_arr).astype(np.float32))
+    hidden = _round_to_bf16_float((post_arr + moe).astype(np.float32))
+    norm = _round_to_bf16_float(rmsnorm(hidden, weight_arr, eps))
+    return hidden, norm
+
+
 def linear(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     x_arr = np.asarray(x, dtype=np.float32)
     weight_arr = np.asarray(weight, dtype=np.float32)

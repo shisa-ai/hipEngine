@@ -3060,6 +3060,20 @@ boundaries exact, local256/LDS1024/scratch0 tracing, and exactly
 four-category h16/h32 exact state/KV/lifecycle gate. Evidence and full gate:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-design.json`.
 
+Task #280 now correctness-admits the gfx1100 c=1 implementation. The registered
+local256 leaf preserves both BF16 boundaries byte-for-byte at hidden 17/3072;
+a shared-weight Q2 XL gate matches all 47 actual sparse boundaries, full logits,
+argmax bits, final norm, complete K/V/live spans, reset, and lifecycle through
+16 decode steps. Cached matched dirty traces show exactly 47 calls and
+**869 -> 775 dispatches/token** at VGPR16/SGPR128/LDS1024/scratch0. Kernel sum
+is effectively flat within dirty-run noise (**17.296 -> 17.288 ms/token**), while
+span improves **20.702 -> 20.383 ms (-1.545%)** and profiled child throughput
+improves **43.890 -> 45.003 tok/s (+2.536%)**. This is execution/correctness
+evidence, not promotion; task #281 owns clean context and category retention.
+The exact three-kernel route remains available through registry miss, rows>1,
+gfx1151, and the temporary explicit constructor rollback. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-correctness.json`.
+
 A local256 token8 SWA sibling remains a separate later screen. Token4 already
 eliminates the second key pass, so token8 needs a measured score/value
 breakdown rather than an assumed 2x. Fusing attention with its softplus gate is
