@@ -32,12 +32,10 @@ _QK_K = 256
 _T16_COLUMNS = 16
 _BF16_NBYTES = 2
 _F32_NBYTES = 4
-_I32_NBYTES = 4
 _I64_NBYTES = 8
 
 _ROUTER_LOGITS_VARIANT = "bf16_hidden"
 _ROUTER_SELECT_VARIANT = "correction_bias"
-_ROUTER_TOPK_VARIANT = "bf16_hidden_correction_bias_persistent"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
@@ -102,7 +100,6 @@ class LagunaMoEKernelPlan:
     routed_scaling_factor: float
     router_logits_key: KernelKey
     router_select_key: KernelKey
-    router_topk_key: KernelKey
     selected_gate_up_key: KernelKey
     selected_gate_up_keys: Mapping[str, KernelKey]
     selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
@@ -126,7 +123,6 @@ class LagunaMoEKernelPlan:
     add_key: KernelKey
     router_logits: Callable
     router_select: Callable
-    router_topk: Callable | None
     selected_gate_up: Callable
     selected_silu: Callable
     selected_down: Callable
@@ -146,11 +142,9 @@ class LagunaMoEKernelPlan:
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
-        optional = (self.router_topk_key,) if self.router_topk is not None else ()
         return (
             self.router_logits_key,
             self.router_select_key,
-            *optional,
             *tuple(self.selected_gate_up_keys.values()),
             self.selected_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -179,7 +173,6 @@ class LagunaMoEScratch:
     router_logits: DeviceBuffer
     routing_scores: DeviceBuffer
     selection_scores: DeviceBuffer
-    router_counter: DeviceBuffer
     selected_experts: DeviceBuffer
     routing_weights: DeviceBuffer
     scaled_routing_weights: DeviceBuffer
@@ -209,7 +202,6 @@ class LagunaMoEScratch:
             self.router_logits,
             self.routing_scores,
             self.selection_scores,
-            self.router_counter,
             self.selected_experts,
             self.routing_weights,
             self.scaled_routing_weights,
@@ -247,7 +239,6 @@ def resolve_laguna_moe_plan(
     config: LagunaGGUFConfig,
     *,
     backend: str,
-    use_persistent_router_topk: bool = True,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -278,12 +269,6 @@ def resolve_laguna_moe_plan(
             "laguna_sigmoid_router_topk",
             "f32",
             _ROUTER_SELECT_VARIANT,
-        ),
-        "router_topk": KernelKey(
-            backend,
-            "laguna_router_topk",
-            "f32",
-            _ROUTER_TOPK_VARIANT,
         ),
         "selected_gate_up": KernelKey(
             backend,
@@ -367,18 +352,7 @@ def resolve_laguna_moe_plan(
             ),
         }
     )
-    optional_name = "router_topk"
-    functions = {
-        name: _resolve_exact(key)
-        for name, key in keys.items()
-        if name != optional_name
-    }
-    router_topk_key = keys[optional_name]
-    router_topk = (
-        _resolve_exact(router_topk_key)
-        if bool(use_persistent_router_topk) and is_registered(router_topk_key)
-        else None
-    )
+    functions = {name: _resolve_exact(key) for name, key in keys.items()}
     selected_gate_up_route_specs = {
         "gguf_q4_k_t16_v1": ("t16_dual", "tiles", "selected_gate_up"),
         "gguf_iq2_xs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
@@ -463,7 +437,6 @@ def resolve_laguna_moe_plan(
         routed_scaling_factor=config.expert_weights_scale,
         router_logits_key=keys["router_logits"],
         router_select_key=keys["router_select"],
-        router_topk_key=router_topk_key,
         selected_gate_up_key=keys["selected_gate_up"],
         selected_gate_up_keys=selected_gate_up_keys,
         selected_gate_up_routes=selected_gate_up_routes,
@@ -479,7 +452,6 @@ def resolve_laguna_moe_plan(
         add_key=keys["add"],
         router_logits=functions["router_logits"],
         router_select=functions["router_select"],
-        router_topk=router_topk,
         selected_gate_up=functions["selected_gate_up"],
         selected_silu=functions["selected_silu"],
         selected_down=functions["selected_down"],
@@ -531,7 +503,6 @@ def allocate_laguna_moe_scratch(
         rows * e * _F32_NBYTES,
         rows * e * _F32_NBYTES,
         rows * e * _F32_NBYTES,
-        _I32_NBYTES,
         rows * k * _I64_NBYTES,
         rows * k * _F32_NBYTES,
         rows * k * _F32_NBYTES,
@@ -555,14 +526,12 @@ def allocate_laguna_moe_scratch(
         rows * h * _BF16_NBYTES,
         rows * h * _BF16_NBYTES,
     )
-    active_runtime = runtime or get_hip_runtime()
     buffers: list[DeviceBuffer] = []
     try:
-        buffers.extend(malloc(nbytes, runtime=active_runtime) for nbytes in sizes)
-        active_runtime.memset(buffers[3].ptr, 0, _I32_NBYTES)
+        buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
     except Exception:
         for buffer in reversed(buffers):
-            free(buffer, runtime=active_runtime)
+            free(buffer, runtime=runtime)
         raise
     return LagunaMoEScratch(plan, rows, *buffers)
 
@@ -1100,49 +1069,29 @@ def run_laguna_moe_c1_components(
     router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
 
-    if plan.router_topk is not None:
-        plan.router_topk(
-            hidden_bf16_ptr,
-            router,
-            correction,
-            scratch.router_logits.ptr,
-            scratch.routing_scores.ptr,
-            scratch.selection_scores.ptr,
-            scratch.selected_experts.ptr,
-            scratch.routing_weights.ptr,
-            scratch.scaled_routing_weights.ptr,
-            scratch.router_counter.ptr,
-            1,
-            h,
-            e,
-            k,
-            plan.routed_scaling_factor,
-            **_stage_kwargs("router_topk", libraries, stream=stream, runtime=runtime),
-        )
-    else:
-        plan.router_logits(
-            hidden_bf16_ptr,
-            router,
-            scratch.router_logits.ptr,
-            1,
-            h,
-            e,
-            **_stage_kwargs("router_logits", libraries, stream=stream, runtime=runtime),
-        )
-        plan.router_select(
-            scratch.router_logits.ptr,
-            correction,
-            scratch.routing_scores.ptr,
-            scratch.selection_scores.ptr,
-            scratch.selected_experts.ptr,
-            scratch.routing_weights.ptr,
-            scratch.scaled_routing_weights.ptr,
-            1,
-            e,
-            k,
-            plan.routed_scaling_factor,
-            **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
-        )
+    plan.router_logits(
+        hidden_bf16_ptr,
+        router,
+        scratch.router_logits.ptr,
+        1,
+        h,
+        e,
+        **_stage_kwargs("router_logits", libraries, stream=stream, runtime=runtime),
+    )
+    plan.router_select(
+        scratch.router_logits.ptr,
+        correction,
+        scratch.routing_scores.ptr,
+        scratch.selection_scores.ptr,
+        scratch.selected_experts.ptr,
+        scratch.routing_weights.ptr,
+        scratch.scaled_routing_weights.ptr,
+        1,
+        e,
+        k,
+        plan.routed_scaling_factor,
+        **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
+    )
     _launch_selected_gate_up(
         hidden_bf16_ptr,
         layer,

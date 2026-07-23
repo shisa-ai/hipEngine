@@ -2805,25 +2805,24 @@ Proceed in measured Amdahl order:
    aggregate and every-category h16 non-regression. The token8 kernel, wrapper,
    registry entry, tests, and selector are removed; token4 remains the gfx1100
    default with baseline fallback; and
-17. **CORRECTNESS-ADMITTED (D11):** the exact persistent-counter router/top-k
-   composite preserves every logit/score/ID/weight bit at hidden 17/3072 and
-   across all 47 actual Q2 XL sparse layers. It reduces **775 -> 728
-   dispatches/token**; matched dirty tracing improves kernel sum/span/profiled
-   child **0.01%/0.43%/0.88%**, while clean context/category promotion remains
-   the next mandatory gate.
+17. **REJECTED AND REMOVED (D11):** the exact persistent-counter router/top-k
+   composite preserves every output/state bit and removes **47
+   dispatches/token**, but the predeclared clean mechanical gate fails. Three
+   short matched pairs put pooled kernel sum at **17.269 -> 17.277 ms/token
+   (+0.046%)** despite positive span/child rows. The composite, counter,
+   selector, and tests are removed before the category gate; split D9 remains.
 
 **50 tok/s is a credible W7900 target, not a current claim.** Retained D9 must
 reduce the canonical **21.217 ms to 20 ms**, another **1.217 ms / 5.74% wall**
 or **6.08% throughput**. Its clean short kernel sum is **17.289 ms** and median
 span is **20.389 ms**, so the measured device window still does not impose a
 20-ms floor. The rejected tile16 traffic model was not cache-visible, ROCm graph
-replay regressed, and D10's positive mechanical/h32 diagnostics were not
-retainable after h16 category regressions. D11 is a bounded launch-contraction
-candidate, not target closure: even deleting its complete measured router
-window reaches only **49.21 tok/s**. The near-4K profile remains led by global
-attention. Every retained candidate uses the full category/heldout suite and
-the same exact/quality lanes above. Laguna DFlash/MTP economics must use D9 or a
-later true-AR baseline rather than the historical D0 row.
+replay regressed, D10's positive mechanical/h32 diagnostics were not retainable
+after h16 category regressions, and D11's launch contraction failed the clean
+short kernel-sum gate. The near-4K profile remains led by global attention.
+Every retained candidate uses the full category/heldout suite and the same
+exact/quality lanes above. Laguna DFlash/MTP economics must use D9 or a later
+true-AR baseline rather than the historical D0 row.
 
 ### D8 one-step graph replay (exact, performance-rejected, removed)
 
@@ -3222,7 +3221,7 @@ to reach 50. Token16 is not admitted from a candidate that failed the complete
 suite. Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-{correctness,rejected}.json`.
 
-### D11 persistent cooperative Laguna router (selected exact design)
+### D11 persistent cooperative Laguna router (exact, performance-rejected, removed)
 
 Retained D9 contains exactly **47** adjacent sparse-layer pairs of the current
 registered BF16-hidden/F32-weight router projection and Laguna's correction-only
@@ -3245,7 +3244,7 @@ cold-grid rejection evidence, token8 SWA failed the complete suite, and graph/
 stream submission tactics already regressed. The standalone attention-gate and
 KV-write leaves are only **0.121/0.165 ms/token**.
 
-D11 therefore selects a separately registered
+D11 therefore selected a separately registered
 `(hip_gfx1100, laguna_router_topk, f32,
 bf16_hidden_correction_bias_persistent)` composite. One local256 block computes
 each of 256 logits with the exact current projection contract: each lane visits
@@ -3282,8 +3281,8 @@ Laguna weights before clean model runs.
 The Amdahl bound forbids overclaiming. Removing only the measured **0.179-ms**
 gap models **47.53 tok/s**. A planning-only fused body of 12-15 us/layer models
 **47.88-47.56 tok/s**. Even making the full **0.896-ms** window free yields only
-**49.21 tok/s / 20.321 ms**, still **0.321 ms** above 20 ms. D11 can move D9
-toward 50 but cannot close the target alone.
+**49.21 tok/s / 20.321 ms**, still **0.321 ms** above 20 ms. The design
+could only move D9 toward 50; it could not close the target alone.
 
 RED compares all FP32 logit/routing/selection score bits, every selected ID, and
 all normalized/scaled routing-weight bits against the split chain at hidden
@@ -3298,34 +3297,41 @@ kernel sum/span/profiled child plus aggregate and every-category h16/h32 decode
 and E2E to improve with prefill/TTFT inside 0.5%. Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-design.json`.
 
-D11 is now implementation- and correctness-admitted, not performance-promoted.
-The separately registered gfx1100 c=1 composite is default-eligible with
-`use_persistent_router_topk=False` as the explicit split rollback; rows>1,
-gfx1151, missing registrations, and shape misses still execute the two
-registered primitives. Synthetic hidden-17/3072 replay is bit-exact for full
-FP32 logits, unbiased/corrected scores, selected IDs, normalized/scaled weights,
-and two consecutive launches; the dedicated counter reads zero after each.
+D11 reached implementation and correctness admission before the performance
+decision. Synthetic hidden-17/3072 replay is bit-exact for full FP32 logits,
+unbiased/corrected scores, selected IDs, normalized/scaled weights, and two
+consecutive launches; the dedicated counter reads zero after each. The
+shared-weight real-model gate compares all **47** sparse-layer routers plus all
+48 post-layer hidden rows, full logits/argmax bits, complete K/V and every
+`KVLiveSpans` field, reset/re-prefill, and lifecycle through 16 decode steps.
+Everything is exact, and **40,455,911,864 bytes / 1,500 tracked allocations**
+return to zero.
 
-The shared-weight real-model gate compares all **47** sparse-layer router
-captures plus all 48 post-layer hidden rows, full logits/argmax bits, complete
-K/V and every `KVLiveSpans` field, reset/re-prefill, and lifecycle through 16
-decode steps. Everything is exact, and **40,455,911,864 bytes / 1,500 tracked
-allocations** return to zero. A 15x100 actual-weight all-layer HIP-event screen
-moves the complete 47-layer split window **0.820 -> 0.661 ms (-19.37%)**, or
-**17.452 -> 14.072 us/layer**, with exact outputs and a self-rearmed counter.
+A 15x100 actual-weight all-layer HIP-event screen moves the isolated split
+window **0.820 -> 0.661 ms (-19.37%)**, or **17.452 -> 14.072 us/layer**.
+Matched dirty tracing records 47 candidate calls at **13.76 us median / 0.652
+ms/token**, local256/VGPR32/SGPR128/LDS512/scratch0, and **775 -> 728
+dispatches/token**. Those diagnostics are positive, but the clean gate is the
+retention authority.
 
-Matched cache-only dirty traces then record exactly 47
-`laguna_router_topk_bf16_f32w_persistent_kernel` calls and **728
-dispatches/token**. The kernel runs at **13.76 us median / 0.652 ms/token**,
-local256/VGPR32/SGPR128/LDS512/scratch0. Split -> D11 kernel sum is **17.329 ->
-17.328 ms/token (-0.007%)**, median embedding-to-argmax span **20.494 -> 20.406
-ms (-0.432%)**, and profiled-child throughput **44.912 -> 45.308 tok/s
-(+0.881%)**; IDs, finite logits, and teardown match. One instrumented full-model
-wall screen improves **0.694%**, but remains a correctness-harness diagnostic,
-not a promotion result. Task #287 must still run clean short/512/1K/near-4K
-and the complete category/state/KV/lifecycle gate; rejection removes the route.
-Evidence:
-`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-correctness.json`.
+Clean short/512/1K/near-4K candidate-versus-split profiles move the isolated
+router body **-9.69%/-11.05%/-9.66%/-9.87%**, dispatch span
+**-0.142%/-1.012%/-0.606%/-0.488%**, and profiled-child throughput
+**+2.184%/+0.092%/+0.896%/+0.749%**. Complete kernel sum, however, changes
+**+0.169%/-0.269%/-0.135%/-0.160%**: the short row violates the predeclared
+requirement that every context improve. Two extra counterbalanced short pairs
+confirm rather than clear the failure. Across three pairs, median router/span/
+child changes are **-9.611%/-1.075%/+1.699%**, while median pair kernel sum is
+**+0.039%** and the pooled 42-step kernel sum is **17.269472 -> 17.277499
+ms/token (+0.046%)**.
+
+The canonical category run is therefore skipped rather than used to rescue a
+failed mechanical screen. The composite HIP body/export, wrapper, registry
+entry, runtime selector, session counter, backend exclusion, and candidate
+tests are removed; the registered BF16-hidden/F32-weight projection plus
+correction-only top-k selector is again the only D9 route. The **47.132 tok/s /
+21.217 ms/token** headline and 50-tok/s gap do not change. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-{design,correctness,rejected}.json`.
 
 ### llama.cpp Vulkan c=1 transfer review (diagnostic)
 
@@ -3355,8 +3361,9 @@ The source and same-build ablations materially change the optimization ranking:
   moves **94.513 -> 74.865 tok/s**, or **10.581 -> 13.357 ms/token (+2.777
   ms, -20.79% throughput)**. The backend fuses Laguna-relevant top-k sigmoid/
   correction/normalization, multi-add, matvec post-add/scale, selected-down
-  weighting, and RMS/mul/RoPE/KV-write subgraphs. D11 remains rank 1 because it
-  contracts one measured **0.896-ms** router/top-k boundary with exact fallback.
+  weighting, and RMS/mul/RoPE/KV-write subgraphs. D11 tested that transfer but
+  failed its clean short kernel-sum gate and is removed; raw Q5 geometry is now
+  the first open source-transfer screen.
 - Graph sorting plus dependency-scoped barriers are source-confirmed and place
   independent Q/K/V/gate and routed/shared MoE work in concurrent groups, but
   disabling graph optimization alone costs only **0.116 ms/token / 1.08%**.
@@ -3369,8 +3376,8 @@ The source and same-build ablations materially change the optimization ranking:
   **2.189-ms query/gate** families, with current HIP reduction/BF16 bits and
   actual K6144/K9216/K3072 weights as hard gates. This is distinct from the
   rejected tile16 traffic-sharing design.
-- After D11 and the raw-Q5 geometry screen, rank exact post-op fusion around Q5
-  output, IQ3 selected-down weighting, and shared/routed combines ahead of a
+- After the raw-Q5 geometry screen, rank exact post-op fusion around Q5 output,
+  IQ3 selected-down weighting, and shared/routed combines ahead of a
   new one-wave attention algorithm. Token16 extrapolation remains closed by
   D10. Generic graph replay, stream overlap, and Q8_1 MMVQ stay deferred.
 

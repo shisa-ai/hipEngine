@@ -1217,8 +1217,10 @@ recoverable from the linked compact artifacts, changelog, and
 projection pairs, raw-Q6 attention pairing, and aggregate MoE-tail plus
 next-RMS fusion are the retained W7900 target-only AR default.** The exact D10
 token8 SWA candidate improved every clean mechanical profile and h32 decode but
-failed aggregate/every-category h16 non-regression; it is removed and does not
-change the D9 topline. Clean measured D9 revision
+failed aggregate/every-category h16 non-regression. The exact D11 persistent
+router removed 47 launches/token and improved isolated router/span/child rows,
+but failed the clean short kernel-sum gate. Both candidates are removed and do
+not change the D9 topline. Clean measured D9 revision
 `30cf6f0755ee53afc1c72e9106fbab887ea067bc` runs the pinned
 `Laguna-S-2.1-UD-Q2_K_XL.gguf`
 (SHA-256 `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
@@ -1577,6 +1579,29 @@ are removed; post-removal validation reports 69 passed. Current D9 stays
 **47.132 tok/s / 21.217 ms/token**, so the 50 tok/s gap remains **1.217 ms /
 6.084% throughput**. [D10 rejection
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-rejected.json).
+
+##### Laguna Q2 XL c=1 decode D11 (rejected and removed)
+
+D11 tested a separately registered gfx1100 c=1 persistent router/top-k
+composite. It preserves full FP32 logits, unbiased/corrected scores, selected
+IDs, normalized/scaled weights, all 47 actual layer routers, full model state,
+K/V plus `KVLiveSpans`, reset, and lifecycle bit-for-bit. The self-resetting
+counter returns to zero after every launch. Actual-weight events improve the
+isolated 47-layer split window **0.820 -> 0.661 ms (-19.37%)**, and tracing
+confirms **775 -> 728 dispatches/token** at local256/VGPR32/SGPR128/LDS512/
+scratch0.
+
+The predeclared clean mechanical screen nevertheless rejects the route.
+Short/512/1K/near-4K isolated router work improves
+**9.69%/11.05%/9.66%/9.87%**, span improves
+**0.142%/1.012%/0.606%/0.488%**, and profiled-child throughput improves
+**2.184%/0.092%/0.896%/0.749%**. Complete kernel sum changes
+**+0.169%/-0.269%/-0.135%/-0.160%**. Two extra counterbalanced short pairs
+confirm the failure: pooled 42-step kernel sum is **17.269472 -> 17.277499
+ms/token (+0.046%)**. The category suite is skipped by policy, and the
+composite source/export/wrapper/registry/selector/counter/tests are removed.
+Split D9 remains **47.132 tok/s / 21.217 ms/token**. [D11 rejection
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-rejected.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
