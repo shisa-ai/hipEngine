@@ -1140,14 +1140,19 @@ are linked from the platform index and
 model-throughput toplines.
 
 
-## Merged UD-Q3_K_M GPU1 Records
+## Merged UD-Q3_K_M GPU1 and W7900 Records
 
-These rows retain the branch's exact direct/native evidence under its original
-GPU1 RX 7900 XTX scopes. They do not replace the W7900 Q4_K_M or project-wide
-serving toplines above.
+These rows retain exact direct/native evidence under the original RX 7900 XTX
+GPU1 and Radeon Pro W7900 scopes. They do not replace the W7900 Q4_K_M or
+project-wide serving toplines above. The three W7900 rows are the
+correctness-first branch baseline measured at `44a1f963`; current production Q3
+code is the later optimized route represented by the GPU1 rows.
 
 | Model | Quant | Backend | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Correctness | Artifact | Last updated | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` Radeon Pro W7900 historical branch | 512/128 repeated-token bulk prefill + graph decode | 614.089 | 92.285 | 15.692 | finite and bit-identical logits across three measured runs; stable token `9707`; selected-kernel CPU-oracle and zero-scratch gates pass | [`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json) | 2026-07-19 | Historical correctness-first branch baseline; superseded as implementation evidence by the optimized merged Q3 route. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` Radeon Pro W7900 historical branch | 1K/128 repeated-token bulk prefill + graph decode | 623.583 | 97.373 | 15.759 | finite and bit-identical logits across three measured runs; stable token `9707`; exact final positions and graph replay pass | [`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json) | 2026-07-19 | Same pinned model, compiler, and one-warmup/three-median protocol as the adjacent W7900 rows. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` Radeon Pro W7900 historical branch | 4K/128 repeated-token bulk prefill + graph decode | 616.135 | 98.111 | 16.134 | finite and bit-identical logits across three measured runs; stable token `9707`; 4K final position and graph replay pass | [`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json) | 2026-07-19 | Descriptive same-model Vulkan comparison only; raw source sweeps remain in merged commit `d47e63cd`. |
 | Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=2 512/128 | 864.569 | 118.125 | 15.903 | all 129 sampled IDs (128 timed native decode steps) and stateful full logits are exact vs independent c=1 | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 59.062 tok/s/request; 16.865/17.543 ms p50/p95; aggregate is 1.167× retained c=1. |
 | Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=4 512/128 | 864.549 | 151.772 | 16.059 | exact generated IDs/full logits vs independent c=1; varied-prompt confirmation 151.638 tok/s | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 37.943 tok/s/request; 26.124/27.964 ms p50/p95; aggregate is 1.499× c=1. |
 | Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=8 512/128 | 863.901 | 207.780 | 16.372 | exact generated IDs/full logits vs independent c=1; rocprof shows indexed Conv/GDN, row-batched paged attention, selected-row MoE, row lm-head, and row argmax | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 25.973 tok/s/request; 38.547/39.917 ms p50/p95; 2.053× c=1; varied prompts confirm 210.640 tok/s. |

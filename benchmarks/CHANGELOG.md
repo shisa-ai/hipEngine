@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [merged historical gfx1100 Qwen3.6 UD-Q3_K_M baseline] Radeon Pro W7900 same-model retained evidence moves no prior W7900 Q3 row -> **614.089/92.285**, **623.583/97.373**, and **616.135/98.111 prefill/decode tok/s** at 512/128, 1K/128, and 4K/128; all measured logits/IDs, selected-kernel CPU oracles, 512/1K/4K positions, graph replay, and zero-scratch gates pass at measured revision `44a1f963`, while current production code remains the newer optimized Q3 route. `benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`.
+
 - [diagnostic gfx1100 Laguna Q2 XL decode context D0] W7900 512/1K/near-4K traces keep dense Q5 flat at **27.3-27.4 ms/token**, while SWA saturates at **27.823/27.903/27.927 ms** and global attention grows **2.988/5.922/22.713 ms**; total kernel sum is **70.686/73.947/90.605 ms**, all **1,055 dispatches/token** are classified/scratch-free, and this ranks wave32 SWA as mandatory for 512+ plus global attention near 4K without replacing canonical short-suite throughput. `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json`.
 
 - [diagnostic gfx1100 Laguna Q2 XL c=1 decode D0] W7900 current-main trace attributes **44.572 ms/token** kernel sum and **1,055 dispatches/token**: generic dense-Q5 aliases dominate at **27.303 ms / 61.26% / 235 calls / 70.7 GB/s encoded-weight proxy**, ahead of SWA **4.237 ms**, IQ3 down **4.021 ms**, IQ2 dual+SiLU **2.318 ms**, dense Q6 **2.006 ms**, and Q4 lm-head **1.618 ms**; all symbols are classified/scratch-free and the result ranks exact Q5 decode first while keeping **19.596 tok/s** as the canonical wall baseline. `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json`.

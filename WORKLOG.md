@@ -177200,3 +177200,274 @@ performance claim.
 - The default-off Q8 route quantizes each hidden producer row once into `rows * (K/32) * 36` GGML Q8_1 bytes before top-10 lane expansion, then calls the existing fused Q4T16 q8_1/dp4a gate/up+SiLU leaf. Raw-IQ routes remain unchanged under either selector. Production c=1 decode is explicitly forced to exact split; only rows>1 prefill is screened. No kernel source or external implementation was copied.
 - Added `scripts/laguna_selected_q8_prefill_bench.py` for one-load, same-weight/scratch/token-stream, counterbalanced 16/32/55/64/122/128 inclusive timing. The screen includes quantization cost, requires every natural shape plus aggregate wall to improve, treats next-ID agreement as diagnostic, and cannot claim promotion without separate full-model quality.
 - Focused GREEN: five host contract/harness tests pass; the two-parameter production H3072/F1024/top-10 Q4 gate/up plus Q4/Q6 down GPU test passes, including finite Q8 output and relative-L2 <=0.05 versus exact split; Ruff, py_compile, and diff checks pass. ROCm is live on gfx1151. The required broad lineage command remains blocked by the already-recorded absent `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Clean committed same-session timing is next; no speed or quality claim is made in this unit.
+
+## 2026-07-19 — Qwen3.6 UD-Q3_K_M host oracle and compressed materialization
+
+### Scope and model inventory
+
+Started the correctness-first prerequisite for native Q3 execution from clean
+worktree `/home/lhl/hipEngine-q3-k-m` at `fb9a6e45`. The target file is
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf` (17,104,402,720 bytes). Header and
+AR-map inspection finds 753 file tensors, 733 tensors in the intended 40-layer
+AR target, and 20 intentionally ignored tensors in trailing MTP block 40.
+The AR quant inventory is F32=361, Q8_0=250, IQ3_XXS=78, IQ4_XS=39, and Q6_K=5.
+The exact expert mix is more nuanced than the initial shorthand:
+
+- IQ3_XXS: 39 gate plus 39 up tensors (layers 0-38);
+- IQ4_XS: 37 down tensors plus layer-39 gate and up;
+- Q6_K: selected down in layers 34, 38, and 39, plus two root tensors.
+
+Host planning therefore stays projection-agnostic: every rank-3 IQ3_XXS or
+IQ4_XS selected-expert tensor remains raw GGUF bytes. Existing Q6_K handling is
+unchanged.
+
+### Oracle and RED/GREEN implementation
+
+Added a deterministic two-case fixture under
+`tests/fixtures/gguf/iq3_xxs_iq4_xs_dequant.json`. Expected FP32 values were
+generated outside hipEngine by compiling `/home/lhl/qwen-kernel/src/quants.h`
+at `52e240f9c6d91750d0e5e692976cfb67fd9bc603`; that header is the faithful
+llama.cpp `ggml-quants.c` port, cross-checked against local llama.cpp commit
+`1ebf790cda38d827559548f67b0469189690cc8c`.
+
+```bash
+g++ -std=c++17 -O2 /tmp/generate_hipengine_iq_fixture.cpp \
+  -o /tmp/generate_hipengine_iq_fixture
+/tmp/generate_hipengine_iq_fixture > /tmp/hipengine_iq_fixture.txt
+```
+
+RED was explicit. The IQ3 golden-oracle and partial-block tests failed with
+`NotImplementedError`; plugin resolution failed for `gguf_iq3_xxs`; and after
+placing the real-model tests in their own file (so the old missing 0.8B fixture's
+module skip could not hide them), both plan modes and device materialization
+failed on `blk.0.ffn_gate_exps.weight` as unsupported:
+
+```bash
+PYTHONPATH=. python3 -m pytest -q tests/test_gguf_quant_layout.py \
+  tests/test_model_quant_and_imports.py::test_builtin_mixed_gguf_quant_plugins_are_registered
+# 4 failed for the new IQ3 contracts; existing IQ4 external oracle passed
+
+PYTHONPATH=. python3 -m pytest -q tests/test_qwen36_q3_gguf_materialize.py
+# 3 failed at unsupported IQ3_XXS planning
+```
+
+GREEN adds:
+
+- canonical 256-entry IQ3_XXS grid and even-parity sign decoding in the
+  torch-free NumPy GGUF oracle;
+- `dequant_supported=True`, partial-block rejection, and exact FP32 output for
+  IQ3_XXS while retaining the existing exact IQ4_XS oracle;
+- registered `gguf_iq3_xxs` quant metadata;
+- raw `DType.INT8` resident planning/materialization for rank-3 IQ3_XXS and
+  IQ4_XS experts in both `decode_repack=False` and `True`; non-expert IQ
+  fallback behavior remains dense BF16;
+- tests for the exact 733-tensor AR boundary, 78/39 IQ inventory, compressed
+  device shape/byte count, plugin metadata, and GGML golden values.
+
+The copied IQ3 codebook was mechanically checked against all 256 source words:
+
+```text
+iq3_grid_words_exact 256
+```
+
+### Validation
+
+Focused CPU/reader/plugin plus real-model selected-device gate:
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+PYTHONPATH=. python3 -m pytest -q \
+  tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_model_quant_and_imports.py \
+  tests/test_qwen36_q3_gguf_materialize.py
+# 22 passed
+```
+
+A full W7900 device materialization, using
+`HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3` and
+`materialize_qwen35_gguf_weights(model, decode_repack=True)`, asserted every
+resident record and then freed it:
+
+```text
+materialized_weights 733
+layouts {'dense_f32': 361, 'gguf_q6_k_t16_v1': 4, 'gguf_q8_0_t16_v1': 250, 'raw_gguf': 118}
+allocation_bytes 16669411840
+iq_raw_records 117
+iq_raw_bytes 13576962048
+iq_dense_bf16_records 0
+elapsed=13.900 user=8.388 sys=5.567
+```
+
+The registry, CPU-fixture, and dry-run build smokes pass. `git diff --check`
+passes. No HIP kernel changed, so a kernel trace is not applicable to this host
+unit.
+
+The repository-wide `PYTHONPATH=. python3 -m pytest -q` guard was attempted once
+and reached 83% in 30 minutes before the harness timeout. It showed one early,
+unrelated baseline failure; focused rerun identifies
+`tests/test_benchmark_readme_sync.py::test_gfx1100_mtp_topline_publishes_graph_ar_correction`
+(5 passed, 1 failed) because the unchanged benchmark README lacks an expected
+heading. Per the focused-repair rule, the expensive broad suite was not restarted.
+The standard `scripts/check_fixtures.py` also retains an unrelated pre-existing
+schema failure on `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`;
+`scripts/smoke.py --mode cpu-fixtures` passes all seven fixtures it owns. Neither
+baseline issue is in this change's files.
+
+No generation or performance claim is made yet. Next is native selected-expert
+IQ3_XXS/IQ4_XS decode, starting with exact single-row kernels and the CPU oracle
+above before any row-tile sweep.
+
+## 2026-07-19 — Qwen3.6 UD-Q3_K_M native execution and W7900 baseline
+
+### Accepted implementation units
+
+The correctness-first Q3 path is split into three reviewable commits:
+
+- `b84547ef` adds canonical `IQ3_XXS` host dequantization, quant registration,
+  and compressed rank-3 IQ3/IQ4 materialization. All 733 AR tensors occupy
+  `16,669,411,840` resident bytes; 117 IQ expert records remain raw compressed
+  blocks (`13,576,962,048` bytes), with zero IQ dense-BF16 records.
+- `8ece5a57` adds raw-weight, four-row selected-expert HIP kernels for fused
+  IQ3/IQ4 gate+up+SiLU and IQ4 down. Layers 34, 38, and 39 continue to reuse the
+  existing selected Q6_K down path. The ABI keeps `selected` on device and is
+  compatible with resident graph capture.
+- `44a1f963` routes bulk MoE prefill through the same fused IQ gate/up ABI with
+  `rows = tokens * top_k`, then reuses selected IQ4_XS/Q6_K down and the existing
+  shared/combine chain. It deliberately does not introduce a second weight
+  layout before end-to-end measurement.
+
+### Correctness gates
+
+The retained decode artifact is
+[`2026-07-19-gfx1100-qwen36-q3-selected-decode-kernels.json`](benchmarks/results/2026-07-19-gfx1100-qwen36-q3-selected-decode-kernels.json):
+
+- 76 focused regressions pass, including real-shape canonical CPU-oracle cases;
+- one all-40-layer eager step returns 2,048 finite, nonzero values;
+- independent eager and resident graph decode produce the same next token
+  (`513`);
+- the real-shape profiler trace contains IQ3 gate/up, IQ4 gate/up, and IQ4 down,
+  all with `Scratch_Size=0` (64/56/40 VGPR respectively).
+
+The retained prefill artifact is
+[`2026-07-19-gfx1100-qwen36-q3-prefill-correctness.json`](benchmarks/results/2026-07-19-gfx1100-qwen36-q3-prefill-correctness.json):
+
+- multi-token IQ3 and IQ4 fused gate/up agree with the canonical host oracle;
+- four-token bulk and token-serial prefill choose token `16` in both paths, with
+  KL divergence `0.000571618`;
+- fresh 512, 1K, and 4K bulk-prefill sessions reach positions 512, 1024, and
+  4096 without fallback, cursor, or non-finite failures.
+
+### Repeated benchmark protocol
+
+Measured from a tracked-clean worktree at `44a1f96362ab09c3` on the Radeon Pro
+W7900 (`gfx1100`, HIP device 0 / sysfs `card1`). The exact model is
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf`, 17,104,402,720 bytes, SHA-256
+`8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1`.
+The trailing MTP block is ignored; this measures the 40-layer AR target.
+
+The new IQ library was built once outside timing. Each retained shape then ran
+in its own right-sized process after `card1` reported at most 2% busy for three
+consecutive seconds. Each process used one discarded warmup and three measured
+runs; the table reports medians. The environment is the same hermetic TheRock
+HIP 7.15 / AMD clang 22 stack used by the July 19 baseline:
+
+```bash
+REPO=/home/lhl/hipEngine-q3-k-m
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$($PY -m rocm_sdk path --root)
+VER=/tmp/q3-hipcc-version-715.txt
+$ROOT/bin/hipcc --version > "$VER"
+
+# Prebuild once outside retained timing (512/1, warmup=0, measured=1), then:
+for SHAPE in 512/128 1K/128 4K/128; do
+  env -i \
+    HOME="$HOME" USER="$USER" LOGNAME="$USER" SHELL=/bin/bash TERM=xterm \
+    PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+    LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+    HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" \
+    HIP_INCLUDE_PATH="$ROOT/include" HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+    HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_COMPILER_VERSION_FILE="$VER" HIPENGINE_GGUF_DECODE_REPACK=1 \
+    PYTHONPATH="$REPO" \
+    "$PY" "$REPO/scripts/qwen35_readme_sweep.py" \
+      --engine gguf \
+      --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf \
+      --quant gguf_q3_k_m --backend hip_gfx1100 --token-id 9707 \
+      --workloads "$SHAPE" --warmup-runs 1 --measured-runs 3 \
+      --warmup-decode-tokens 1 --force-bulk-prefill \
+      --bulk-prefill-attention-mode bulk --use-wmma-prefill \
+      --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 \
+      --compiler-version-file "$VER" --require-cached-build \
+      --json "RESULT.json"
+done
+```
+
+Production graph capture is excluded from steady decode time. All nine measured
+final logits are finite and bit-identical within each shape; all final token IDs
+are `9707`. Maximum prefill/decode stdev over median is `0.454%/0.226%`.
+
+| Workload | Prefill tok/s | Decode tok/s | Tracked peak GiB | Sampled HIP-used peak GiB |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **614.089** | **92.285** | 15.692 | 16.149 |
+| 1K/128 | **623.583** | **97.373** | 15.759 | 16.245 |
+| 4K/128 | **616.135** | **98.111** | 16.134 | 16.639 |
+
+### Same-Q3 baseline comparison
+
+The comparator is `/home/lhl/qwen-kernel/BASELINE-PERF.md`, measured earlier the
+same day on this W7900 and the exact same GGUF. It removes the prior Q3-versus-Q4
+model-quant confounder, but remains descriptive: hipEngine is HIP/BF16-KV and
+times the full prompt, while qwen-kernel is Vulkan with a different harness and
+times `prompt_length - 1` prefill tokens.
+
+| Workload | hipEngine pp | qwen-kernel pp | hipEngine pp delta | hipEngine tg | qwen-kernel tg | hipEngine tg delta | qwen tg / hip tg |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 614.089 | 756.050 | -18.78% | 92.285 | 161.560 | -42.88% | 1.751x |
+| 1K/128 | 623.583 | 736.440 | -15.32% | 97.373 | 158.710 | -38.65% | 1.630x |
+| 4K/128 | 616.135 | 624.320 | -1.31% | 98.111 | 146.610 | -33.08% | 1.494x |
+
+Against the prior hipEngine Q4_K_M rows in the same baseline, Q3 decode is
+`-0.46%/-0.74%/-2.35%` rather than realizing the `6.77%` ideal active-byte
+advantage calculated during attribution. Q3 prefill is
+`-77.84%/-80.45%/-80.44%` versus the optimized Q4 path. The implementation is
+therefore functional and reproducible, but it does **not** replicate
+qwen-kernel's decode advantage yet.
+
+### Raw records and limitations
+
+Compact summary and comparison:
+[`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json).
+Byte-exact raw per-run records:
+
+- [`512/128`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-512-128-raw.json),
+  SHA-256 `5937fd9b183de752e8b7a0cf858bcef80910e4f5f14d57a1fecf3f434972c0c8`;
+- [`1K/128`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-1k-128-raw.json),
+  SHA-256 `5bbb1135f5e955b8f2fc9293a20d5c0e27695fbacb0fd3e380ef8b3ec22f70cd`;
+- [`4K/128`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-4k-128-raw.json),
+  SHA-256 `a63ea9067c7321b1bfca3e9a219deb4e4d57c4a0c857a4c3299c5c9f335cc9c8`.
+
+Known limits:
+
+1. Bulk prefill reuses the correctness-first four-row selected kernel for
+   `tokens * top_k` rows and has no grouped-expert weight reuse. The same expert
+   blocks are reread for independently routed rows.
+2. IQ weights intentionally stay in raw GGUF layout; no IQ-specific resident
+   decode repack or row-tile/codegen sweep has been accepted.
+3. This validates only W7900/gfx1100, BF16 KV, greedy repeated-token traffic,
+   and the 40-layer AR target. gfx1151/XTX, prompt-corpus quality, concurrency,
+   long context, and MTP remain unvalidated for Q3.
+4. The raw sweep files retain the generic
+   `diagnostic_retained_pending_rollup_gate` label because the README rollup
+   expects a different six-shape protocol. The compact artifact accepts only
+   this explicit three-shape local baseline.
+
+The next performance experiments remain bounded: sweep IQ row tiles/codegen with
+zero-spill gates, then test grouped expert reuse. Do not infer that porting the
+Vulkan local sizes verbatim will close the measured gap.
+
+## 2026-07-23 — Merge the historical W7900 Q3_K_M branch
+
+- Synced the five local Laguna Q2 XL benchmark commits with ten newer `origin/main` commits first (`31670d35`), preserving both benchmark rollups; the focused README/control/tokenizer gate passed with `15 passed, 5 skipped`.
+- Merged local branch `q3-k-m` at `d47e63cd`. Its four 2026-07-19 commits predate and are implementation-superseded by the optimized UD-Q3_K_M branch already merged through `f4c23b79`/`5c76b408`, so conflict resolution deliberately retains current-main quant metadata, materialization, selected-IQ kernels, routing, and tests instead of reintroducing the older duplicate `gguf_iq_selected_gemv` family.
+- Retained the branch's three compact evidence artifacts: selected-decode correctness, bulk-prefill correctness, and the W7900 512/1K/4K summary. The three 150-KiB source sweep packets are omitted from the repository tip under the compact-artifact policy but remain byte-recoverable from merged commit `d47e63cd` at the SHA-256 values recorded in the summary/earlier log. Updated root/GGUF/benchmark documentation to label **614.089/92.285**, **623.583/97.373**, and **616.135/98.111 prefill/decode tok/s** as historical measured-branch evidence, not current production performance.
+- Merge validation exposed one stale test helper monkeypatch for the direct cooperative-router symbol removed when routing moved behind registry resolution; deleting that unused patch restores the intended current-main test contract without runtime changes. The focused Q3/quant/materialization/compact-routing/README bundle reports **104 passed**; Ruff, three JSON parses, conflict-marker scan, and diff checks pass.
