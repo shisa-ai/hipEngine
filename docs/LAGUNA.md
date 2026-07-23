@@ -2175,10 +2175,47 @@ implementing against the pre-LPF attribution.
   `benchmarks/results/2026-07-23-gfx1151-poolside-laguna-prefill-matched-control.json`.
   Reproducible metadata for the gpt-oss and Nemotron directional rows remains
   unavailable, so those rows stay explicitly directional.
-- [ ] Audit the merged kernel catalog and run `scripts/check_lineage.py` before
+- [x] Audit the merged kernel catalog and run `scripts/check_lineage.py` before
   new kernel work. In particular inspect the existing exact Q4 dual-SiLU,
   Q4/Q5 T16 Q8_1/dp4a, grouped compact-MoE, IQ MMQ32, Qwen GGUF Q8T16/MMQ,
   F32-router, device-metadata, and AOTriton paths before writing duplicates.
+
+##### Merged-main transfer audit (2026-07-23)
+
+The audit imported each lazy candidate family, refreshed the gfx1151 backend
+aliases, and resolved all 17 inspected four-axis keys. Fifteen focused
+registry/build/argument-policy tests pass. The result is not “write a new MoE
+stack”: most leaf kernels already exist, but the complete device-resident
+Laguna scheduler and a useful small-M selected layout do not.
+
+| Existing family | Laguna compatibility | Decision |
+| --- | --- | --- |
+| direct Q4T16 dual + fused SiLU | Exact resident `tiles`, selected-ID, K3072/N1024, and BF16-output ABI match. The fused output is bit-identical to dual projection followed by the registered separate SiLU chain. | **First exact screen.** Route gate/up directly into `expert_intermediate`; retain the present split chain as fallback. No weight or scratch-layout change is needed. |
+| direct Q4T16 Q8_1/dp4a + fused SiLU | Resident T16 and selected-ID ABI match. It needs one caller-owned GGML Q8_1 buffer of `rows * (K/32) * 36` bytes. This is quality-gated, not byte-exact. | **Second screen only.** Quantize each token row once before top-10 expansion and include quantization in timing. There is no qualified Q4/Q6 single-down peer; do not build one unless gate/up wins inclusively. |
+| group count/prefix/scatter-gather/tile-map + weighted-lane sum | Raw-pointer metadata and BF16 packed-row ABI are model-neutral; passing Laguna's already-scaled routing weights preserves normalized uncorrected sigmoid probabilities and the 2.5 scale. Registrations still carry Qwen/PARO names. | Reuse bodies through new generic registry aliases and Laguna-owned bounded scratch; do not call Qwen runner helpers or add model branches. |
+| Q4T16 dual and Q4T16/Q6T16 compact WMMA | Existing Laguna allocations match the kernel `tiles` layouts exactly. The output can return through `sorted_lanes`, a static lane-to-token map, and weighted-lane sum. | Replay control, not the default design. M16 padding is already 4.396x at 55 rows and 2.704x at 128. gfx1151 also has no admitted no-read compact-WMMA launch policy, so the current complete Qwen orchestration may read one device scalar. |
+| compact exact pair-reuse | Layout and arithmetic match. | Do not rewire: LPF-2 already rejected its stronger no-padding bound at 0.8843x weighted full-model throughput. |
+| IQ2_XS MMQ32 | Exact K3072/N1024 Laguna Q2 XL gate/up shapes, raw-IQ weights, D4-Q8_1 input, and compact metadata match. It pads populated experts to M32. | Q2-XL-specific later lane. It is a scheduling reference for Q4_K_M, not a quant-format shortcut; prior synthetic evidence wins at 256/512 rows and loses at short shapes. |
+| Qwen raw-Q8/Q8T16 MMQ and WMMA | Guarded correction, activation reuse, and tile schedules are useful references, but weight formats and admitted K/N shapes do not match Laguna Q4/Q6 selected experts. | Do not route or duplicate residency. Reuse only scheduler/correctness ideas in a Q4/Q6-specific kernel. |
+| 256-thread BF16-hidden/F32 router | Laguna already resolves `router_logits/f32/bf16_hidden` to this exact gfx1151 wrapper. | No AR-O1 work. Revisit only if a post-matrix profile makes router material. |
+| contiguous prefill metadata | The helper writes Qwen attention/GDN metadata, not Laguna's span/ring contract. Kernel-span residual is only 0.28-0.34%. | Do not port. Only the grouped-expert count/prefix/scatter metadata is relevant now. |
+| AOTriton | Torch-free adapter exists, but it does not directly consume Laguna's global/SWA `KVLiveSpans`, physical ring, eviction, and separate gate ABI. | Keep as an AR-O5 global-attention ceiling after matrix work; not an AR-O1 dependency. |
+
+The ranked AR-O1 execution order is therefore: (1) exact fused Q4 dual-SiLU
+full-model A/B; (2) inclusive direct Q8_1/dp4a gate/up A/B through the quality
+lane; (3) preserve and extend the natural-routing replay to 256/512, then add a
+generic no-D2H grouping substrate and small-M Q4/Q6 kernels; and (4) admit
+M16/M32 only at a measured crossover. This deliberately excludes the rejected
+compact-pair route, raw-Q4 duplication, Q8T16 substitution, router retuning,
+metadata work, and attention work.
+
+Lineage status is bounded and explicit. Poolside Laguna source/layout is clean
+at `04b2b72c`; llama.cpp HIP `mmq.cuh`, `mma.cuh`, and `quantize.cu` are clean
+at `1ebf790c`. The broad kernel scan is blocked by the absent read-only Atlas
+checkout, and the Qwen/PARO filters are blocked by the absent
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout. No external source is being
+copied in this phase; restore and inspect those checkouts before any future
+external port.
 
 Exit: one compact current-main artifact with a complete Amdahl table and a
 ranked first candidate. If the inferred 55/35 split is wrong, reorder AR-O1 and
