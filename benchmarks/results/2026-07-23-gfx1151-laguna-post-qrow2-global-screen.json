@@ -1,0 +1,251 @@
+{
+  "aotriton_screen": {
+    "attempts": [
+      {
+        "adapter": "AOTriton V3 native GQA",
+        "head_dim": 128,
+        "kv_heads": 8,
+        "max_k_rows": 128,
+        "q_heads": 48,
+        "q_rows": 128,
+        "result": "hipErrorInvalidValue (1)",
+        "status": "mechanical_rejection"
+      },
+      {
+        "adapter": "AOTriton V2 per-query-head GQA",
+        "head_dim": 128,
+        "kv_heads": 8,
+        "max_k_rows": 128,
+        "q_heads": 48,
+        "q_rows": 128,
+        "result": "hipErrorInvalidValue (1)",
+        "status": "mechanical_rejection"
+      },
+      {
+        "adapter": "AOTriton V3 native GQA",
+        "head_dim": 128,
+        "kv_heads": 8,
+        "max_k_rows": 512,
+        "q_heads": 48,
+        "q_rows": 512,
+        "result": "hipErrorInvalidValue (1)",
+        "status": "mechanical_rejection"
+      }
+    ],
+    "control": {
+      "adapter": "AOTriton V3 native GQA",
+      "correctness": {
+        "finite_output": true,
+        "nonzero_output": true,
+        "output_sha256": "102d24e394d76fb582ad409255b13af349690ec253dca86c8caf98957dac1e0b"
+      },
+      "head_dim": 256,
+      "kv_heads": 8,
+      "lifecycle_exact": true,
+      "performance_claim": false,
+      "q_heads": 16,
+      "q_rows": 512,
+      "rows": [
+        {
+          "core_median_ms": 0.3361479938030243,
+          "inclusive_query_output_cast_median_ms": 0.4295229911804199,
+          "k_rows": 512
+        },
+        {
+          "core_median_ms": 0.8063870072364807,
+          "inclusive_query_output_cast_median_ms": 0.872750997543335,
+          "k_rows": 1024
+        },
+        {
+          "core_median_ms": 1.6756969690322876,
+          "inclusive_query_output_cast_median_ms": 1.6783419847488403,
+          "k_rows": 1536
+        },
+        {
+          "core_median_ms": 2.2383410930633545,
+          "inclusive_query_output_cast_median_ms": 2.2747700214385986,
+          "k_rows": 2048
+        },
+        {
+          "core_median_ms": 3.055272102355957,
+          "inclusive_query_output_cast_median_ms": 3.1288490295410156,
+          "k_rows": 2560
+        },
+        {
+          "core_median_ms": 3.6846981048583984,
+          "inclusive_query_output_cast_median_ms": 3.7850449085235596,
+          "k_rows": 3072
+        },
+        {
+          "core_median_ms": 4.3538360595703125,
+          "inclusive_query_output_cast_median_ms": 4.394991874694824,
+          "k_rows": 3584
+        },
+        {
+          "core_median_ms": 5.0064191818237305,
+          "inclusive_query_output_cast_median_ms": 5.04657506942749,
+          "k_rows": 4096
+        }
+      ],
+      "raw_sha256": "83e851ccac69039444643d5a412a93aba1beca364cd85a9cf7d09690b172c049"
+    },
+    "decision": {
+      "action": "do not adapt the existing AOTriton wrapper directly for Laguna",
+      "next": "The post-qrow2 profile still gives a 1.276x perfect-global-removal ceiling at 4K. If global optimization continues, implement an in-tree raw-pointer head_dim128 tiled causal kernel that consumes KVLiveSpans, rather than adding a shape-expansion or unsupported AOTriton route.",
+      "reason": "The vendored runtime and wrapper pass the GPU compatibility check and execute a head_dim256 GQA control, but expose no executable head_dim128 Laguna geometry at either retained M128 or global-only M512 query tiles."
+    },
+    "gpu_check": "pass",
+    "limitations": [
+      "The successful head_dim256 control is not a Laguna performance result.",
+      "No AOTriton Laguna quality or full-model route exists, so no runtime selector was added.",
+      "AOTriton does not consume Laguna KVLiveSpans directly."
+    ],
+    "raw_script_path": "/tmp/laguna_aotriton_global_ceiling.py",
+    "raw_script_sha256": "5d212619443b722e2cf5fd51517e2d6deba62cd894562767d090c4eeb77e8c60"
+  },
+  "comparison_to_pre_qrow2_profile": {
+    "1024": {
+      "attention_duration_delta_percent": -6.182296578465074,
+      "global_duration_delta_percent": -0.08284766454762504,
+      "kernel_sum_delta_percent": -1.2391572250498584,
+      "swa_duration_delta_percent": -9.000540244604615
+    },
+    "4096": {
+      "attention_duration_delta_percent": -3.432263950583603,
+      "global_duration_delta_percent": 0.09051416395502443,
+      "kernel_sum_delta_percent": -1.196068985311527,
+      "swa_duration_delta_percent": -8.986417594625207
+    },
+    "512": {
+      "attention_duration_delta_percent": -7.186851411732587,
+      "global_duration_delta_percent": 0.26355219706393207,
+      "kernel_sum_delta_percent": -0.9467190211996157,
+      "swa_duration_delta_percent": -9.382628766038382
+    },
+    "prior_artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-post-matrix512-all-family-profile.json"
+  },
+  "correctness": {
+    "boundary_fixtures_linked": true,
+    "final_positions_exact": true,
+    "pass": true,
+    "repeat_next_token_deterministic": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T17:33:56.752972+00:00",
+  "kind": "hipengine_laguna_post_qrow2_global_screen",
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "pass": true,
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "target_arch": "gfx1151"
+  },
+  "profile": {
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_long_context_profile.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--prompts",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--lengths",
+      "512,1024,4096",
+      "--chunk-size",
+      "512",
+      "--repetitions",
+      "1",
+      "--warmup-rows",
+      "128",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-post-qrow2-profile-afdede428/child.json"
+    ],
+    "load_seconds_excluded": 50.73906921898015,
+    "repo_revision": "afdede4286bab27a691e8e137b16229d1baba194",
+    "resources": {
+      "global": {
+        "kernel": "laguna_global_attention_prefill_bf16_kernel",
+        "lds_bytes": 0,
+        "local_size": 256,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 40
+      },
+      "qrow2": {
+        "kernel": "laguna_swa_attention_prefill_qrow2_exact_bf16_kernel",
+        "lds_bytes": 0,
+        "local_size": 32,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 56
+      },
+      "wave32_fallback": {
+        "kernel": "laguna_swa_attention_prefill_wave32_exact_bf16_kernel",
+        "lds_bytes": 0,
+        "local_size": 32,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 32
+      }
+    },
+    "source_child_sha256": "f199cca91fa56b2a0edafa75994934b2ca6a39d0e22e5ae14ecf491d27357f58",
+    "source_summary_sha256": "70e4817fd8e2a80a9b4857619dcab04c260cc2e7c96e54f1e8bc2840f7768b04",
+    "source_trace_sha256": "95d2940760799a7cbb8152a4d6113b58133f873f471009e0ccdbeb3cfb545e90"
+  },
+  "profile_lengths": {
+    "1024": {
+      "attention_seconds": 2.990905245,
+      "attention_share_percent": 18.930240850019334,
+      "global_seconds": 1.006662632,
+      "global_share_percent": 6.371437580756384,
+      "kernel_span_seconds": 15.826390023,
+      "kernel_span_minus_sum_percent": 0.16946388474872176,
+      "kernel_sum_seconds": 15.799615381,
+      "prefill_tok_s": 64.67574071248225,
+      "swa_seconds": 1.984242613,
+      "swa_share_percent": 12.558803269262949
+    },
+    "4096": {
+      "attention_seconds": 26.525945806,
+      "attention_share_percent": 34.08595731280976,
+      "global_seconds": 16.823275902,
+      "global_share_percent": 21.617983707389058,
+      "kernel_span_seconds": 77.941898162,
+      "kernel_span_minus_sum_percent": 0.15568278166215865,
+      "kernel_sum_seconds": 77.820744662,
+      "prefill_tok_s": 52.54915931080928,
+      "swa_seconds": 9.702669904,
+      "swa_share_percent": 12.467973605420703
+    },
+    "512": {
+      "attention_seconds": 0.924822983,
+      "attention_share_percent": 12.572046293406192,
+      "global_seconds": 0.227418134,
+      "global_share_percent": 3.0915227683177644,
+      "kernel_span_seconds": 7.366475688,
+      "kernel_span_minus_sum_percent": 0.1398917102682251,
+      "kernel_sum_seconds": 7.356184995,
+      "prefill_tok_s": 69.46716476208117,
+      "swa_seconds": 0.697404849,
+      "swa_share_percent": 9.480523525088428
+    }
+  },
+  "schema": 1,
+  "status": "accepted_attribution_aotriton_blocked"
+}
