@@ -2604,9 +2604,14 @@ that consumes complete `KVLiveSpans`. Evidence:
   online improves **3.720/4.624/5.336/5.714/5.856/5.867x** with maximum output
   error `5.96e-8`; the 4K synthetic gate has KL `1.14e-15` and 100% top-1.
   Cached tracing confirms **86.752 -> 14.807 ms (5.859x)**, local32/VGPR48,
-  zero LDS/scratch, and the intended symbol. This is an explicit quality-lane
-  candidate only; run the clean repeated full-model and complete category gates
-  before selecting any runtime default.
+  zero LDS/scratch, and the intended symbol. The clean three-repeat full-model
+  quality screen passes: exact -> online moves 512/1K/4K **69.751/64.756/52.584
+  -> 71.475/68.281/64.076 tok/s (+2.472%/+5.444%/+21.854%)**, all nine
+  full-vocabulary pairs are finite with maximum KL **0.007589**, top-1 is
+  **9/9**, cursors/repeats/lifecycle pass, and online state hashes differ as
+  declared. This remains an explicit quality-lane candidate only; run the
+  complete category gate before selecting any runtime default. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-screen.json`.
 - [ ] Preserve complete `KVLiveSpans`, physical SWA rings, absolute positions,
   eviction masks, BF16 K/V rounding, and the separate softplus output gate.
   Keep the exact global/SWA kernels as fallbacks below the selected threshold.
