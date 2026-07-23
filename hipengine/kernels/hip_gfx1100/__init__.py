@@ -1,5 +1,10 @@
 """gfx1100 / RDNA3 backend capabilities."""
 
+# Exact wrap/eviction and dirty full-model family screens admit the token4
+# score-parallel SWA decode candidate on W7900. The clean category gate follows
+# the atomic default commit; other backends retain the registered baseline.
+LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
+
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
@@ -59,6 +64,7 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
+    "LAGUNA_SWA_DECODE_VARIANT",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",

@@ -23,6 +23,13 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 _GLOBAL_BLOCK_SIZE = 256
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
+_BASELINE_SWA_DECODE_VARIANT = "swa_context_spans"
+_SWA_DECODE_VARIANTS = frozenset(
+    {
+        _BASELINE_SWA_DECODE_VARIANT,
+        "swa_context_token4_exact_spans",
+    }
+)
 _BASELINE_SWA_PREFILL_VARIANT = "swa_context_rows_spans"
 _SWA_PREFILL_VARIANTS = frozenset(
     {
@@ -452,6 +459,27 @@ class LagunaKVCache:
             raise RuntimeError("Laguna KV cache is closed")
 
 
+def resolve_laguna_swa_decode_variant(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve an explicit rollback or the architecture-qualified SWA default."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_SWA_DECODE_VARIANT",
+            _BASELINE_SWA_DECODE_VARIANT,
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _SWA_DECODE_VARIANTS:
+        raise ValueError("unsupported Laguna SWA decode variant")
+    return parsed
+
+
 def resolve_laguna_swa_prefill_variant(
     backend: str,
     requested: str | None = None,
@@ -480,6 +508,7 @@ def allocate_laguna_kv_cache(
     backend: str = "hip_gfx1100",
     device: Device | None = None,
     runtime: HipRuntime | None = None,
+    swa_decode_variant: str | None = None,
     swa_prefill_variant: str | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
@@ -487,6 +516,10 @@ def allocate_laguna_kv_cache(
     context = int(context_length)
     if context <= 0:
         raise ValueError("context_length must be positive")
+    parsed_swa_decode_variant = resolve_laguna_swa_decode_variant(
+        backend,
+        swa_decode_variant,
+    )
     parsed_swa_prefill_variant = resolve_laguna_swa_prefill_variant(
         backend,
         swa_prefill_variant,
@@ -610,7 +643,7 @@ def allocate_laguna_kv_cache(
                 append_spans = decode_spans
                 write_variant = "swa_f32_spans"
                 write_rows_variant = "swa_f32_rows_spans"
-                attention_variant = "swa_context_spans"
+                attention_variant = parsed_swa_decode_variant
                 attention_prefill_variant = parsed_swa_prefill_variant
             states.append(
                 LagunaKVLayerState(
@@ -699,5 +732,6 @@ __all__ = [
     "LagunaKVCache",
     "LagunaKVLayerState",
     "allocate_laguna_kv_cache",
+    "resolve_laguna_swa_decode_variant",
     "resolve_laguna_swa_prefill_variant",
 ]
