@@ -12,7 +12,10 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.backends import (
+    backend_package_capability,
+    load_backend_kernel_package,
+)
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
@@ -20,6 +23,13 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 _GLOBAL_BLOCK_SIZE = 256
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
+_BASELINE_SWA_PREFILL_VARIANT = "swa_context_rows_spans"
+_SWA_PREFILL_VARIANTS = frozenset(
+    {
+        _BASELINE_SWA_PREFILL_VARIANT,
+        "swa_context_rows_wave32_exact_spans",
+    }
+)
 
 
 class _LagunaKVConfig(Protocol):
@@ -442,6 +452,27 @@ class LagunaKVCache:
             raise RuntimeError("Laguna KV cache is closed")
 
 
+def resolve_laguna_swa_prefill_variant(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve an explicit rollback or the architecture-qualified SWA default."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_SWA_PREFILL_VARIANT",
+            _BASELINE_SWA_PREFILL_VARIANT,
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _SWA_PREFILL_VARIANTS:
+        raise ValueError("unsupported Laguna SWA prefill variant")
+    return parsed
+
+
 def allocate_laguna_kv_cache(
     config: _LagunaKVConfig,
     *,
@@ -449,19 +480,17 @@ def allocate_laguna_kv_cache(
     backend: str = "hip_gfx1100",
     device: Device | None = None,
     runtime: HipRuntime | None = None,
-    swa_prefill_variant: str = "swa_context_rows_spans",
+    swa_prefill_variant: str | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
     context = int(context_length)
     if context <= 0:
         raise ValueError("context_length must be positive")
-    parsed_swa_prefill_variant = str(swa_prefill_variant)
-    if parsed_swa_prefill_variant not in {
-        "swa_context_rows_spans",
-        "swa_context_rows_wave32_exact_spans",
-    }:
-        raise ValueError("unsupported Laguna SWA prefill variant")
+    parsed_swa_prefill_variant = resolve_laguna_swa_prefill_variant(
+        backend,
+        swa_prefill_variant,
+    )
     runtime = runtime or get_hip_runtime()
     device = device or Device("hip", 0)
     layer_types, head_counts, sliding_window = _validate_config(config, context)
@@ -670,4 +699,5 @@ __all__ = [
     "LagunaKVCache",
     "LagunaKVLayerState",
     "allocate_laguna_kv_cache",
+    "resolve_laguna_swa_prefill_variant",
 ]

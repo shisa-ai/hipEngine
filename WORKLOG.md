@@ -175522,3 +175522,71 @@ git diff --check
 A clean retry is required for the exact artifact. It repeats roughly six minutes
 of equivalent 512/1K/4K validation, so project policy requires explicit user
 approval before rerunning it.
+
+## 2026-07-23 — Promote exact Laguna LPF-5 wave32 SWA prefill
+
+After explicit approval, reran the repaired clean gate at `bd8877fdf`:
+
+```bash
+env -u HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL \
+  -u HIPENGINE_LAGUNA_SELECTED_PREFILL \
+  -u HIPENGINE_LAGUNA_F16_PREFILL HIPENGINE_HIP_ARCH=gfx1151 \
+  GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  uv run python -u scripts/laguna_swa_prefill_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 --chunk-size 128 \
+  --repetitions 1 --warmup-rows 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 \
+  7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-prefill-lpf5-swa-wave32-retry.json
+```
+
+The repaired gate passes every predeclared promotion check:
+
+| length | baseline tok/s | wave32 tok/s | delta | seconds saved |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 43.760 | 47.395 | +8.31% / 1.0831x | 0.898 |
+| 1K | 39.748 | 44.855 | +12.85% / 1.1285x | 2.933 |
+| 4K | 33.800 | 38.552 | +14.06% / 1.1406x | 14.939 |
+
+The three lengths together move **35.500 -> 40.264 tok/s (+13.42%)** by summed
+wall. The earlier complete timing pass reproduced **1.0821/1.1284/1.1404x**, so
+this is stable across two independent executions even though only the repaired
+run carries the complete artifact.
+
+Every baseline/candidate pair has exact 100,352-way FP32 logits, final and pre-
+final BF16 hidden, next-logit bits, token IDs, and final cursor. The 511/512/513
+and wrap/eviction fixtures remain exact, and 80,225,251,868 tracked bytes free
+back to zero. Shared model load was 49.694 s and excluded. Artifact SHA-256 is
+`b698b496...e4fee799`:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-swa-wave32.json`.
+
+Promoted through architecture metadata rather than a model/backend branch:
+`hip_gfx1151.LAGUNA_SWA_PREFILL_VARIANT` selects wave32 exact by default;
+explicit baseline remains available and gfx1100/unmeasured backend packages
+resolve the original 128-thread route. The refactor ledger keeps that rollback
+through one release and the post-prefill DFlash refresh.
+
+Promotion validation:
+
+```bash
+uv run pytest -q \
+  tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys
+# 1 passed
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_laguna_kv_attention.py
+# 7 passed
+uv run pytest -q tests/test_laguna_gguf_runner.py \
+  -k 'owned_session or allocation_failure'
+# 2 passed
+uvx ruff check hipengine/kernels/hip_gfx1151/__init__.py \
+  hipengine/runtime/laguna_kv.py hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_gfx1151_backend.py tests/test_laguna_kv_attention.py \
+  tests/test_laguna_gguf_runner.py
+# clean
+```

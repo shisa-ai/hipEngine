@@ -440,7 +440,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         model_sha256="synthetic-sha256",
     )
     assert session.prefill_chunk_size == 128
-    assert session.swa_prefill_variant == "swa_context_rows_spans"
+    assert session.swa_prefill_variant == "swa_context_rows_wave32_exact_spans"
     assert session.verifier_scratch is None
     session.close()
     session.close()
