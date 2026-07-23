@@ -1,0 +1,1496 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_long_context_profile.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--prompts",
+    "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--lengths",
+    "512,1024,4096",
+    "--chunk-size",
+    "512",
+    "--repetitions",
+    "1",
+    "--warmup-rows",
+    "128",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-post-m512-profile/child.json"
+  ],
+  "correctness": {
+    "boundary_fixture_evidence": [
+      "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
+      "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
+      "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+    ],
+    "final_positions_exact": true,
+    "pass": true,
+    "repeat_next_token_deterministic": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T15:34:45.208010+00:00",
+  "derived_artifact_repairs": [
+    {
+      "kind": "attach_rocprof_summary",
+      "measurement_values_changed": false,
+      "source_child_sha256": "ad8ead703d8065850c73e03c7ae145589fa7784602362ed60702d8e40ebaa4d5",
+      "source_trace_sha256": "388ad550a7d6b0427c0150bd15715245c6c68105f074b862b18da57996c4087f"
+    }
+  ],
+  "kind": "hipengine_laguna_prefill_long_context_profile",
+  "load": {
+    "resident_nbytes": 77434399092,
+    "seconds_excluded": 50.00181987299584
+  },
+  "memory": {
+    "gpu_free_after": 128689381376,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77434399092,
+      "peak_allocations": 1395,
+      "total_allocated_bytes": 77434399092,
+      "total_freed_bytes": 77434399092
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "This is an attribution baseline, not a speedup or long-context support claim.",
+    "The deterministic stream repeats the longest canonical prompt without its leading BOS.",
+    "Run once under cached-only rocprofv3 and attach a raw-trace summary separately."
+  ],
+  "pass": true,
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "profiler": {
+    "attached_at": "2026-07-23T15:35:30.213237+00:00",
+    "attention_resources": [
+      {
+        "Grid_Size_X": "12288",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_global_attention_prefill_bf16_kernel(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "40",
+        "Workgroup_Size_X": "256"
+      },
+      {
+        "Grid_Size_X": "2304",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_swa_attention_prefill_wave32_exact_bf16_kernel(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "32",
+        "Workgroup_Size_X": "32"
+      }
+    ],
+    "family_resources": [
+      {
+        "Grid_Size_X": "3072",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "void (anonymous namespace)::weighted_lanes_sum_shared_add_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short const*, unsigned short*, long, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "8",
+        "Workgroup_Size_X": "128",
+        "calls": 564,
+        "duration_ns": 103956935,
+        "family": "activation_reduce_residual",
+        "observed_grid_sizes": [
+          {
+            "x": "3072",
+            "y": "128"
+          },
+          {
+            "x": "3072",
+            "y": "512"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "1572864",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 1140,
+        "duration_ns": 54320584,
+        "family": "activation_reduce_residual",
+        "observed_grid_sizes": [
+          {
+            "x": "131072",
+            "y": "1"
+          },
+          {
+            "x": "1310720",
+            "y": "1"
+          },
+          {
+            "x": "1572864",
+            "y": "1"
+          },
+          {
+            "x": "524288",
+            "y": "1"
+          },
+          {
+            "x": "5242880",
+            "y": "1"
+          },
+          {
+            "x": "6291456",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "393216",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 576,
+        "duration_ns": 18424134,
+        "family": "activation_reduce_residual",
+        "observed_grid_sizes": [
+          {
+            "x": "1572864",
+            "y": "1"
+          },
+          {
+            "x": "393216",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "1280",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "8",
+        "Workgroup_Size_X": "256",
+        "calls": 564,
+        "duration_ns": 1066369,
+        "family": "activation_reduce_residual",
+        "observed_grid_sizes": [
+          {
+            "x": "1280",
+            "y": "1"
+          },
+          {
+            "x": "5120",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "393216",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "128",
+        "calls": 288,
+        "duration_ns": 4993244051,
+        "family": "dense_shared_quant_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "393216",
+            "y": "128"
+          },
+          {
+            "x": "393216",
+            "y": "512"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "49152",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "void (anonymous namespace)::gguf_q4_k_pack8_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, int const*, float const*, float const*, unsigned short*, int, int, int, int)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "96",
+        "Workgroup_Size_X": "32",
+        "calls": 1440,
+        "duration_ns": 2166698314,
+        "family": "dense_shared_quant_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "12288",
+            "y": "128"
+          },
+          {
+            "x": "12288",
+            "y": "512"
+          },
+          {
+            "x": "4096",
+            "y": "128"
+          },
+          {
+            "x": "4096",
+            "y": "512"
+          },
+          {
+            "x": "49152",
+            "y": "128"
+          },
+          {
+            "x": "49152",
+            "y": "512"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "3072",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 12,
+        "duration_ns": 1481858,
+        "family": "embedding",
+        "observed_grid_sizes": [
+          {
+            "x": "3072",
+            "y": "128"
+          },
+          {
+            "x": "3072",
+            "y": "512"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "12288",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_global_attention_prefill_bf16_kernel(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "40",
+        "Workgroup_Size_X": "256",
+        "calls": 540,
+        "duration_ns": 18054223399,
+        "family": "global_attention",
+        "observed_grid_sizes": [
+          {
+            "x": "12288",
+            "y": "128"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "802816",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "72",
+        "Workgroup_Size_X": "128",
+        "calls": 4,
+        "duration_ns": 4622034,
+        "family": "lm_head_argmax",
+        "observed_grid_sizes": [
+          {
+            "x": "802816",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "25088",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 4,
+        "duration_ns": 21081,
+        "family": "lm_head_argmax",
+        "observed_grid_sizes": [
+          {
+            "x": "25088",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "256",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 4,
+        "duration_ns": 6612,
+        "family": "lm_head_argmax",
+        "observed_grid_sizes": [
+          {
+            "x": "256",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "14336",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 576,
+        "duration_ns": 171668266,
+        "family": "norm_rope_gate",
+        "observed_grid_sizes": [
+          {
+            "x": "14336",
+            "y": "128"
+          },
+          {
+            "x": "14336",
+            "y": "512"
+          },
+          {
+            "x": "20480",
+            "y": "128"
+          },
+          {
+            "x": "20480",
+            "y": "512"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "786432",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "void (anonymous namespace)::laguna_softplus_head_gate_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "24",
+        "Workgroup_Size_X": "256",
+        "calls": 576,
+        "duration_ns": 68783826,
+        "family": "norm_rope_gate",
+        "observed_grid_sizes": [
+          {
+            "x": "1179648",
+            "y": "1"
+          },
+          {
+            "x": "3145728",
+            "y": "1"
+          },
+          {
+            "x": "4718592",
+            "y": "1"
+          },
+          {
+            "x": "786432",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "32768",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "24",
+        "Workgroup_Size_X": "256",
+        "calls": 576,
+        "duration_ns": 27097134,
+        "family": "norm_rope_gate",
+        "observed_grid_sizes": [
+          {
+            "x": "131072",
+            "y": "1"
+          },
+          {
+            "x": "32768",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "32768",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 580,
+        "duration_ns": 12401836,
+        "family": "norm_rope_gate",
+        "observed_grid_sizes": [
+          {
+            "x": "131072",
+            "y": "1"
+          },
+          {
+            "x": "256",
+            "y": "1"
+          },
+          {
+            "x": "32768",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "256",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "(anonymous namespace)::qwen35_moe_group_compact_active_kernel(long const*, float const*, long*, long*, long*, long*, long*, float*, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 564,
+        "duration_ns": 202263583,
+        "family": "other",
+        "observed_grid_sizes": [
+          {
+            "x": "256",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "1310720",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "(anonymous namespace)::qwen35_moe_gather_packed_hidden_kernel(unsigned short const*, long const*, unsigned short*, long, long, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 564,
+        "duration_ns": 57080891,
+        "family": "other",
+        "observed_grid_sizes": [
+          {
+            "x": "1310720",
+            "y": "1"
+          },
+          {
+            "x": "5242880",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "1024",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "__amd_rocclr_copyBuffer",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "512",
+        "calls": 422,
+        "duration_ns": 1611991,
+        "family": "other",
+        "observed_grid_sizes": [
+          {
+            "x": "1024",
+            "y": "1"
+          },
+          {
+            "x": "512",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "256",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "__amd_rocclr_fillBufferUnAligned",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "8",
+        "Workgroup_Size_X": "256",
+        "calls": 432,
+        "duration_ns": 1009448,
+        "family": "other",
+        "observed_grid_sizes": [
+          {
+            "x": "2048",
+            "y": "1"
+          },
+          {
+            "x": "256",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "1024",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_swa_write_kv_rows_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 1620,
+        "duration_ns": 6209262,
+        "family": "prefill_kv_write",
+        "observed_grid_sizes": [
+          {
+            "x": "1024",
+            "y": "128"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "1024",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_global_write_kv_rows_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "256",
+        "calls": 540,
+        "duration_ns": 2380502,
+        "family": "prefill_kv_write",
+        "observed_grid_sizes": [
+          {
+            "x": "1024",
+            "y": "128"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "65536",
+        "Grid_Size_Y": "32",
+        "Kernel_Name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, float, 4>(unsigned short const*, float const*, float*, long, long, long)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "32",
+        "Workgroup_Size_X": "256",
+        "calls": 564,
+        "duration_ns": 340532334,
+        "family": "router",
+        "observed_grid_sizes": [
+          {
+            "x": "65536",
+            "y": "128"
+          },
+          {
+            "x": "65536",
+            "y": "32"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "32768",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "(anonymous namespace)::laguna_sigmoid_correction_topk_kernel(float const*, float const*, float*, float*, long*, float*, float*, long, long, float)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "32",
+        "Workgroup_Size_X": "256",
+        "calls": 564,
+        "duration_ns": 16450506,
+        "family": "router",
+        "observed_grid_sizes": [
+          {
+            "x": "131072",
+            "y": "1"
+          },
+          {
+            "x": "32768",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "8192",
+        "Grid_Size_Y": "1280",
+        "Kernel_Name": "void (anonymous namespace)::q4_k_t16_selected_dual_direct_gemv_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long, long)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "200",
+        "Workgroup_Size_X": "128",
+        "calls": 564,
+        "duration_ns": 41629763475,
+        "family": "selected_q4_gate_up",
+        "observed_grid_sizes": [
+          {
+            "x": "8192",
+            "y": "1280"
+          },
+          {
+            "x": "8192",
+            "y": "5120"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "6291456",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "void (anonymous namespace)::qk_t16_selected_grouped_smallm_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "168",
+        "Workgroup_Size_X": "128",
+        "calls": 276,
+        "duration_ns": 6157630250,
+        "family": "selected_q4_q6_down",
+        "observed_grid_sizes": [
+          {
+            "x": "6291456",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "6291456",
+        "Grid_Size_Y": "1",
+        "Kernel_Name": "void (anonymous namespace)::qk_t16_selected_grouped_smallm_kernel<unsigned short, 4>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "184",
+        "Workgroup_Size_X": "128",
+        "calls": 288,
+        "duration_ns": 6136114203,
+        "family": "selected_q4_q6_down",
+        "observed_grid_sizes": [
+          {
+            "x": "6291456",
+            "y": "1"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "393216",
+        "Grid_Size_Y": "8",
+        "Kernel_Name": "void (anonymous namespace)::laguna_f16w_tiled_exact_kernel<float, 16>(unsigned short const*, _Float16 const*, float*, long, long, long)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "96",
+        "Workgroup_Size_X": "256",
+        "calls": 576,
+        "duration_ns": 4103447490,
+        "family": "source_f16_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "3072",
+            "y": "32"
+          },
+          {
+            "x": "3072",
+            "y": "8"
+          },
+          {
+            "x": "393216",
+            "y": "32"
+          },
+          {
+            "x": "393216",
+            "y": "8"
+          },
+          {
+            "x": "65536",
+            "y": "32"
+          },
+          {
+            "x": "65536",
+            "y": "8"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "196608",
+        "Grid_Size_Y": "8",
+        "Kernel_Name": "void (anonymous namespace)::laguna_f16w_tiled_exact_kernel<unsigned short, 16>(unsigned short const*, _Float16 const*, unsigned short*, long, long, long)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "96",
+        "Workgroup_Size_X": "256",
+        "calls": 144,
+        "duration_ns": 2830465106,
+        "family": "source_f16_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "196608",
+            "y": "32"
+          },
+          {
+            "x": "196608",
+            "y": "8"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "73728",
+        "Grid_Size_Y": "2",
+        "Kernel_Name": "void (anonymous namespace)::laguna_f16w_wmma_large_kernel<float, 4, 2, 4, true>(unsigned short const*, _Float16 const*, float*, long, long, long)",
+        "LDS_Block_Size": "9216",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "152",
+        "Workgroup_Size_X": "256",
+        "calls": 1584,
+        "duration_ns": 1614753339,
+        "family": "source_f16_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "73728",
+            "y": "2"
+          },
+          {
+            "x": "768",
+            "y": "2"
+          },
+          {
+            "x": "8192",
+            "y": "2"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "24576",
+        "Grid_Size_Y": "2",
+        "Kernel_Name": "void (anonymous namespace)::laguna_f16w_wmma_large_kernel<unsigned short, 4, 2, 4, true>(unsigned short const*, _Float16 const*, unsigned short*, long, long, long)",
+        "LDS_Block_Size": "9216",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "152",
+        "Workgroup_Size_X": "256",
+        "calls": 396,
+        "duration_ns": 1400379007,
+        "family": "source_f16_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "24576",
+            "y": "2"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "18432",
+        "Grid_Size_Y": "2",
+        "Kernel_Name": "void (anonymous namespace)::laguna_f16w_wmma_kernel<float, 4, true>(unsigned short const*, _Float16 const*, float*, long, long, long)",
+        "LDS_Block_Size": "2048",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "152",
+        "Workgroup_Size_X": "128",
+        "calls": 144,
+        "duration_ns": 85147407,
+        "family": "source_f16_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "18432",
+            "y": "2"
+          },
+          {
+            "x": "2048",
+            "y": "2"
+          },
+          {
+            "x": "256",
+            "y": "2"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "2",
+        "Kernel_Name": "void (anonymous namespace)::laguna_f16w_wmma_kernel<unsigned short, 4, true>(unsigned short const*, _Float16 const*, unsigned short*, long, long, long)",
+        "LDS_Block_Size": "2048",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "152",
+        "Workgroup_Size_X": "128",
+        "calls": 36,
+        "duration_ns": 37591835,
+        "family": "source_f16_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "6144",
+            "y": "2"
+          }
+        ]
+      },
+      {
+        "Grid_Size_X": "2304",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_swa_attention_prefill_wave32_exact_bf16_kernel(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "32",
+        "Workgroup_Size_X": "32",
+        "calls": 1620,
+        "duration_ns": 13659962287,
+        "family": "swa_attention",
+        "observed_grid_sizes": [
+          {
+            "x": "2304",
+            "y": "128"
+          }
+        ]
+      }
+    ],
+    "kind": "rocprofv3_kernel_trace_laguna_lpf5_long_context",
+    "lengths": {
+      "1024": {
+        "chunks_per_pass": [
+          2
+        ],
+        "dispatches_per_pass": [
+          2967
+        ],
+        "families": {
+          "activation_reduce_residual": {
+            "calls_per_pass": [
+              474
+            ],
+            "median_duration_ns": 31494028,
+            "median_share_of_kernel_sum": 0.001968640800837655
+          },
+          "dense_shared_quant_projection": {
+            "calls_per_pass": [
+              288
+            ],
+            "median_duration_ns": 1267114695,
+            "median_share_of_kernel_sum": 0.07920529212452472
+          },
+          "embedding": {
+            "calls_per_pass": [
+              2
+            ],
+            "median_duration_ns": 202058,
+            "median_share_of_kernel_sum": 1.2630319085753494e-05
+          },
+          "global_attention": {
+            "calls_per_pass": [
+              96
+            ],
+            "median_duration_ns": 1007497320,
+            "median_share_of_kernel_sum": 0.06297702951450324
+          },
+          "lm_head_argmax": {
+            "calls_per_pass": [
+              3
+            ],
+            "median_duration_ns": 1159697,
+            "median_share_of_kernel_sum": 7.249078558033371e-05
+          },
+          "norm_rope_gate": {
+            "calls_per_pass": [
+              385
+            ],
+            "median_duration_ns": 49575680,
+            "median_share_of_kernel_sum": 0.0030988956502252213
+          },
+          "other": {
+            "calls_per_pass": [
+              191
+            ],
+            "median_duration_ns": 45997684,
+            "median_share_of_kernel_sum": 0.00287524090174929
+          },
+          "prefill_kv_write": {
+            "calls_per_pass": [
+              384
+            ],
+            "median_duration_ns": 1510276,
+            "median_share_of_kernel_sum": 9.440491238929141e-05
+          },
+          "router": {
+            "calls_per_pass": [
+              188
+            ],
+            "median_duration_ns": 63300358,
+            "median_share_of_kernel_sum": 0.003956803095063936
+          },
+          "selected_q4_gate_up": {
+            "calls_per_pass": [
+              94
+            ],
+            "median_duration_ns": 7389370600,
+            "median_share_of_kernel_sum": 0.46189761613440566
+          },
+          "selected_q4_q6_down": {
+            "calls_per_pass": [
+              94
+            ],
+            "median_duration_ns": 2179905422,
+            "median_share_of_kernel_sum": 0.13626236554169657
+          },
+          "source_f16_projection": {
+            "calls_per_pass": [
+              480
+            ],
+            "median_duration_ns": 1780226793,
+            "median_share_of_kernel_sum": 0.1112791002612994
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              288
+            ],
+            "median_duration_ns": 2180499333,
+            "median_share_of_kernel_sum": 0.13629948995863891
+          }
+        },
+        "median_attention_duration_ns": 3187996653,
+        "median_attention_share_of_kernel_sum": 0.19927651947314215,
+        "median_kernel_span_ns": 16025330457,
+        "median_kernel_sum_ns": 15997853944,
+        "passes": 1
+      },
+      "4096": {
+        "chunks_per_pass": [
+          8
+        ],
+        "dispatches_per_pass": [
+          11865
+        ],
+        "families": {
+          "activation_reduce_residual": {
+            "calls_per_pass": [
+              1896
+            ],
+            "median_duration_ns": 126235197,
+            "median_share_of_kernel_sum": 0.0016027260790404604
+          },
+          "dense_shared_quant_projection": {
+            "calls_per_pass": [
+              1152
+            ],
+            "median_duration_ns": 5083891104,
+            "median_share_of_kernel_sum": 0.06454685419774485
+          },
+          "embedding": {
+            "calls_per_pass": [
+              8
+            ],
+            "median_duration_ns": 1188710,
+            "median_share_of_kernel_sum": 1.5092276660495771e-05
+          },
+          "global_attention": {
+            "calls_per_pass": [
+              384
+            ],
+            "median_duration_ns": 16808062225,
+            "median_share_of_kernel_sum": 0.21340101894198593
+          },
+          "lm_head_argmax": {
+            "calls_per_pass": [
+              3
+            ],
+            "median_duration_ns": 1176367,
+            "median_share_of_kernel_sum": 1.4935565628519512e-05
+          },
+          "norm_rope_gate": {
+            "calls_per_pass": [
+              1537
+            ],
+            "median_duration_ns": 199333284,
+            "median_share_of_kernel_sum": 0.0025308048807305187
+          },
+          "other": {
+            "calls_per_pass": [
+              773
+            ],
+            "median_duration_ns": 184116759,
+            "median_share_of_kernel_sum": 0.0023376105733625735
+          },
+          "prefill_kv_write": {
+            "calls_per_pass": [
+              1536
+            ],
+            "median_duration_ns": 6121445,
+            "median_share_of_kernel_sum": 7.77200002540641e-05
+          },
+          "router": {
+            "calls_per_pass": [
+              752
+            ],
+            "median_duration_ns": 253423813,
+            "median_share_of_kernel_sum": 0.0032175570981599756
+          },
+          "selected_q4_gate_up": {
+            "calls_per_pass": [
+              376
+            ],
+            "median_duration_ns": 29638188029,
+            "median_share_of_kernel_sum": 0.37629676998549844
+          },
+          "selected_q4_q6_down": {
+            "calls_per_pass": [
+              376
+            ],
+            "median_duration_ns": 8680344550,
+            "median_share_of_kernel_sum": 0.11020868122336538
+          },
+          "source_f16_projection": {
+            "calls_per_pass": [
+              1920
+            ],
+            "median_duration_ns": 7120037191,
+            "median_share_of_kernel_sum": 0.0903984749178447
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              1152
+            ],
+            "median_duration_ns": 10660683436,
+            "median_share_of_kernel_sum": 0.13535175425972412
+          }
+        },
+        "median_attention_duration_ns": 27468745661,
+        "median_attention_share_of_kernel_sum": 0.34875277320171005,
+        "median_kernel_span_ns": 78887925888,
+        "median_kernel_sum_ns": 78762802110,
+        "passes": 1
+      },
+      "512": {
+        "chunks_per_pass": [
+          1
+        ],
+        "dispatches_per_pass": [
+          1484
+        ],
+        "families": {
+          "activation_reduce_residual": {
+            "calls_per_pass": [
+              237
+            ],
+            "median_duration_ns": 15900989,
+            "median_share_of_kernel_sum": 0.0021411168048769474
+          },
+          "dense_shared_quant_projection": {
+            "calls_per_pass": [
+              144
+            ],
+            "median_duration_ns": 649948371,
+            "median_share_of_kernel_sum": 0.0875175361388211
+          },
+          "embedding": {
+            "calls_per_pass": [
+              1
+            ],
+            "median_duration_ns": 36909,
+            "median_share_of_kernel_sum": 4.969909742796705e-06
+          },
+          "global_attention": {
+            "calls_per_pass": [
+              48
+            ],
+            "median_duration_ns": 226820344,
+            "median_share_of_kernel_sum": 0.030542053090305894
+          },
+          "lm_head_argmax": {
+            "calls_per_pass": [
+              3
+            ],
+            "median_duration_ns": 1149959,
+            "median_share_of_kernel_sum": 0.00015484549670586462
+          },
+          "norm_rope_gate": {
+            "calls_per_pass": [
+              193
+            ],
+            "median_duration_ns": 24868509,
+            "median_share_of_kernel_sum": 0.0033486208016453318
+          },
+          "other": {
+            "calls_per_pass": [
+              94
+            ],
+            "median_duration_ns": 23117915,
+            "median_share_of_kernel_sum": 0.0031128979650395868
+          },
+          "prefill_kv_write": {
+            "calls_per_pass": [
+              192
+            ],
+            "median_duration_ns": 746478,
+            "median_share_of_kernel_sum": 0.00010051554593685549
+          },
+          "router": {
+            "calls_per_pass": [
+              94
+            ],
+            "median_duration_ns": 31771389,
+            "median_share_of_kernel_sum": 0.004278114707341951
+          },
+          "selected_q4_gate_up": {
+            "calls_per_pass": [
+              47
+            ],
+            "median_duration_ns": 3689939314,
+            "median_share_of_kernel_sum": 0.4968616149713401
+          },
+          "selected_q4_q6_down": {
+            "calls_per_pass": [
+              47
+            ],
+            "median_duration_ns": 1104349732,
+            "median_share_of_kernel_sum": 0.1487040692655377
+          },
+          "source_f16_projection": {
+            "calls_per_pass": [
+              240
+            ],
+            "median_duration_ns": 888228144,
+            "median_share_of_kernel_sum": 0.11960263639469601
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              144
+            ],
+            "median_duration_ns": 769614964,
+            "median_share_of_kernel_sum": 0.10363100890800986
+          }
+        },
+        "median_attention_duration_ns": 996435308,
+        "median_attention_share_of_kernel_sum": 0.13417306199831575,
+        "median_kernel_span_ns": 7436881183,
+        "median_kernel_sum_ns": 7426493017,
+        "passes": 1
+      }
+    },
+    "raw_csv_committed": false,
+    "raw_csv_path": "/tmp/laguna-post-m512-profile/epyc_kernel_trace.csv",
+    "raw_csv_sha256": "388ad550a7d6b0427c0150bd15715245c6c68105f074b862b18da57996c4087f",
+    "segmentation": "request starts at its first Q4 embedding, includes every chunk, and ends at argmax stage 2; summed embedding Grid_Size_Y equals logical context length",
+    "warmup": {
+      "attention_duration_ns": 61008064,
+      "attention_share_of_kernel_sum": 0.03444517611321347,
+      "chunks": 1,
+      "dispatches": 1196,
+      "families": {
+        "activation_reduce_residual": {
+          "calls": 237,
+          "duration_ns": 4137808,
+          "share_of_kernel_sum": 0.00233620796887873
+        },
+        "dense_shared_quant_projection": {
+          "calls": 144,
+          "duration_ns": 158988195,
+          "share_of_kernel_sum": 0.08976479530143629
+        },
+        "embedding": {
+          "calls": 1,
+          "duration_ns": 54181,
+          "share_of_kernel_sum": 3.059061318500484e-05
+        },
+        "global_attention": {
+          "calls": 12,
+          "duration_ns": 11843510,
+          "share_of_kernel_sum": 0.0066868502457085805
+        },
+        "lm_head_argmax": {
+          "calls": 3,
+          "duration_ns": 1163704,
+          "share_of_kernel_sum": 0.0006570277205264367
+        },
+        "norm_rope_gate": {
+          "calls": 193,
+          "duration_ns": 6173589,
+          "share_of_kernel_sum": 0.0034856106949336632
+        },
+        "other": {
+          "calls": 94,
+          "duration_ns": 6237512,
+          "share_of_kernel_sum": 0.0035217016450199493
+        },
+        "prefill_kv_write": {
+          "calls": 48,
+          "duration_ns": 211565,
+          "share_of_kernel_sum": 0.0001194496793799588
+        },
+        "router": {
+          "calls": 94,
+          "duration_ns": 8487280,
+          "share_of_kernel_sum": 0.004791921512575032
+        },
+        "selected_q4_gate_up": {
+          "calls": 47,
+          "duration_ns": 912265532,
+          "share_of_kernel_sum": 0.5150654659645383
+        },
+        "selected_q4_q6_down": {
+          "calls": 47,
+          "duration_ns": 329144749,
+          "share_of_kernel_sum": 0.1858352503374708
+        },
+        "source_f16_projection": {
+          "calls": 240,
+          "duration_ns": 283292056,
+          "share_of_kernel_sum": 0.15994680244884235
+        },
+        "swa_attention": {
+          "calls": 36,
+          "duration_ns": 49164554,
+          "share_of_kernel_sum": 0.027758325867504884
+        }
+      },
+      "kernel_span_ns": 1780840790,
+      "kernel_sum_ns": 1771164235,
+      "length": 128
+    }
+  },
+  "protocol": {
+    "attention_rows": 128,
+    "chunk_size": 512,
+    "chunks_per_length": {
+      "1024": 2,
+      "4096": 8,
+      "512": 1
+    },
+    "context_length": 4096,
+    "lengths": [
+      512,
+      1024,
+      4096
+    ],
+    "matrix_rows": 512,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 1,
+    "timed_order": "ascending then alternating direction by repetition",
+    "timing_scope": "reset complete through synchronized first-token projection; load excluded",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 4096,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "12f068e7d4d96062bcd911e14221d937037bc782c006f4502766fe9136cf0eb1",
+    "warmup_rows": 128
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_long_context_matrix512",
+    "collected_at": "2026-07-23T15:32:10.568257+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_long_context_profile.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--prompts",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--lengths",
+      "512,1024,4096",
+      "--chunk-size",
+      "512",
+      "--repetitions",
+      "1",
+      "--warmup-rows",
+      "128",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-post-m512-profile/child.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "cdc43b36635cb23fbfcf674d7cd9698b65630a7a",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 1,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "prefill_only_512_1024_4096_matrix512_attention128",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 1
+  },
+  "repo": {
+    "revision": "cdc43b36635cb23fbfcf674d7cd9698b65630a7a",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "rows": [
+    {
+      "chunks": 1,
+      "final_position": 511,
+      "length": 512,
+      "next_token_id": 2930,
+      "prefill_seconds": 7.441555544966832,
+      "prefill_tok_s": 68.80281910229054,
+      "repetition": 0
+    },
+    {
+      "chunks": 2,
+      "final_position": 1023,
+      "length": 1024,
+      "next_token_id": 95,
+      "prefill_seconds": 16.031640731031075,
+      "prefill_tok_s": 63.87368686586962,
+      "repetition": 0
+    },
+    {
+      "chunks": 8,
+      "final_position": 4095,
+      "length": 4096,
+      "next_token_id": 7772,
+      "prefill_seconds": 78.89243379805703,
+      "prefill_tok_s": 51.918793765250484,
+      "repetition": 0
+    }
+  ],
+  "schema": 1,
+  "scope": "Laguna S 2.1 c=1 prefill-only matrix-chunk attribution baseline",
+  "status": "accepted_attribution_baseline",
+  "timings": {
+    "1024": {
+      "length": 1024,
+      "median_seconds": 16.031640731031075,
+      "median_tok_s": 63.87368686586962,
+      "next_token_ids": [
+        95
+      ],
+      "repeat_deterministic": true,
+      "samples_seconds": [
+        16.031640731031075
+      ]
+    },
+    "4096": {
+      "length": 4096,
+      "median_seconds": 78.89243379805703,
+      "median_tok_s": 51.918793765250484,
+      "next_token_ids": [
+        7772
+      ],
+      "repeat_deterministic": true,
+      "samples_seconds": [
+        78.89243379805703
+      ]
+    },
+    "512": {
+      "length": 512,
+      "median_seconds": 7.441555544966832,
+      "median_tok_s": 68.80281910229054,
+      "next_token_ids": [
+        2930
+      ],
+      "repeat_deterministic": true,
+      "samples_seconds": [
+        7.441555544966832
+      ]
+    }
+  }
+}
