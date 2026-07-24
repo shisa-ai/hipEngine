@@ -13,15 +13,23 @@ from hipengine.kvcache import KVLiveSpans
 
 _SOURCE = Path(__file__).with_name("laguna_kv_attention.hip")
 _OUTPUT_NAME = "laguna_kv_attention.so"
+_SYMBOL_GLOBAL_HEAD_KV = "hipengine_laguna_global_head_rmsnorm_rope_write_kv_f32_bf16_spans"
+_SYMBOL_SWA_HEAD_KV = "hipengine_laguna_swa_head_rmsnorm_rope_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_WRITE = "hipengine_laguna_global_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_WRITE_ROWS = "hipengine_laguna_global_write_kv_rows_f32_bf16_spans"
 _SYMBOL_GLOBAL_ATTENTION = "hipengine_laguna_global_attention_decode_bf16_spans"
+_SYMBOL_GLOBAL_ATTENTION_GATE = (
+    "hipengine_laguna_global_attention_softplus_gate_bf16_spans"
+)
 _SYMBOL_GLOBAL_PREFILL = "hipengine_laguna_global_attention_prefill_bf16_spans"
 _SYMBOL_SWA_WRITE = "hipengine_laguna_swa_write_kv_f32_bf16_spans"
 _SYMBOL_SWA_WRITE_ROWS = "hipengine_laguna_swa_write_kv_rows_f32_bf16_spans"
 _SYMBOL_SWA_ATTENTION = "hipengine_laguna_swa_attention_decode_bf16_spans"
 _SYMBOL_SWA_ATTENTION_TOKEN4_EXACT = (
     "hipengine_laguna_swa_attention_decode_token4_exact_bf16_spans"
+)
+_SYMBOL_SWA_ATTENTION_TOKEN4_EXACT_GATE = (
+    "hipengine_laguna_swa_attention_token4_exact_softplus_gate_bf16_spans"
 )
 _SYMBOL_SWA_PREFILL = "hipengine_laguna_swa_attention_prefill_bf16_spans"
 _SYMBOL_SWA_PREFILL_WAVE32_EXACT = (
@@ -69,6 +77,144 @@ def build_laguna_kv_attention(
         load=load,
         require_cached=require_cached,
     )
+
+
+def laguna_global_head_rmsnorm_rope_write_kv_f32_spans(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse one exact global head-norm/RoPE row with complete-span BF16 KV append."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    _check_head_kv_rope_shape(rotary_dim, head_dim, max_positions)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_HEAD_KV)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 16
+        + [ctypes.c_float]
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(q_weight_ptr),
+        ctypes.c_void_p(k_weight_ptr),
+        ctypes.c_void_p(cos_ptr),
+        ctypes.c_void_p(sin_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(key_out_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(rotary_dim),
+        ctypes.c_int64(max_positions),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_head_rmsnorm_rope_write_kv_f32_spans(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse one exact SWA head-norm/RoPE row with complete-ring BF16 KV append."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    _check_head_kv_rope_shape(rotary_dim, head_dim, max_positions)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_HEAD_KV)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 16
+        + [ctypes.c_float]
+        + [ctypes.c_int64] * 6
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(q_weight_ptr),
+        ctypes.c_void_p(k_weight_ptr),
+        ctypes.c_void_p(cos_ptr),
+        ctypes.c_void_p(sin_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(key_out_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(rotary_dim),
+        ctypes.c_int64(max_positions),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def laguna_global_write_kv_f32_spans(
@@ -224,6 +370,65 @@ def laguna_global_attention_decode_bf16_spans(
         ctypes.c_void_p(key_cache_ptr),
         ctypes.c_void_p(value_cache_ptr),
         ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_softplus_gate_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    spans: KVLiveSpans,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run global GQA and write exact F32 context plus BF16 softplus-gated output."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    if int(max_context_len) != capacity:
+        raise ValueError("max_context_len must equal the global span capacity")
+    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
+        raise ValueError("eager Laguna global attention currently supports at most 4096 tokens")
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_ATTENTION_GATE)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 11
+        + [ctypes.c_int64] * 6
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(gated_out_ptr),
         ctypes.c_void_p(spans.base_offsets.ptr),
         ctypes.c_void_p(spans.live_counts.ptr),
         ctypes.c_void_p(spans.token_positions.ptr),
@@ -530,6 +735,63 @@ def laguna_swa_attention_decode_token4_exact_bf16_spans(
     _check_launch(runtime, err)
 
 
+def laguna_swa_attention_token4_exact_softplus_gate_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    spans: KVLiveSpans,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact token4 SWA and write F32 context plus BF16 softplus-gated output."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if window <= 0 or window > capacity:
+        raise ValueError("sliding_window must be in [1, ring capacity]")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_ATTENTION_TOKEN4_EXACT_GATE)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 11
+        + [ctypes.c_int64] * 5
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(gated_out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(window),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_swa_attention_prefill_bf16_spans(
     query_ptr: int,
     current_key_ptr: int,
@@ -651,6 +913,39 @@ def laguna_swa_attention_prefill_wave32_exact_bf16_spans(
 
 
 def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
+    for variant, kernel in (
+        ("global_f32_bf16_spans", laguna_global_head_rmsnorm_rope_write_kv_f32_spans),
+        ("swa_f32_bf16_spans", laguna_swa_head_rmsnorm_rope_write_kv_f32_spans),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "head_rmsnorm+partial_rotary+kv_write",
+                "laguna_f32_weight",
+                variant,
+            ),
+            kernel,
+            replace=replace,
+        )
+
+    for variant, kernel in (
+        ("global_softplus_bf16_spans", laguna_global_attention_softplus_gate_bf16_spans),
+        (
+            "swa_token4_exact_softplus_bf16_spans",
+            laguna_swa_attention_token4_exact_softplus_gate_bf16_spans,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "laguna_attention_decode+attention_gate",
+                "bf16",
+                variant,
+            ),
+            kernel,
+            replace=replace,
+        )
+
     registrations = (
         (
             "laguna_kv_write",
@@ -778,6 +1073,20 @@ def _check_laguna_attention_shape(
         raise ValueError("num_q_heads must be a Laguna production width (48 or 72)")
 
 
+def _check_head_kv_rope_shape(
+    rotary_dim: int,
+    head_dim: int,
+    max_positions: int,
+) -> None:
+    parsed_rotary = int(rotary_dim)
+    if parsed_rotary <= 0 or parsed_rotary > int(head_dim):
+        raise ValueError("rotary_dim must be within [1, head_dim]")
+    if parsed_rotary % 2:
+        raise ValueError("rotary_dim must be even")
+    if int(max_positions) <= 0:
+        raise ValueError("max_positions must be positive")
+
+
 def _check_launch(runtime: HipRuntime, err: int) -> None:
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
@@ -789,12 +1098,16 @@ __all__ = [
     "build_laguna_kv_attention",
     "laguna_global_attention_decode_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",
+    "laguna_global_attention_softplus_gate_bf16_spans",
+    "laguna_global_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_global_write_kv_f32_spans",
     "laguna_global_write_kv_rows_f32_spans",
     "laguna_swa_attention_decode_bf16_spans",
     "laguna_swa_attention_decode_token4_exact_bf16_spans",
     "laguna_swa_attention_prefill_bf16_spans",
+    "laguna_swa_attention_token4_exact_softplus_gate_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
+    "laguna_swa_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_swa_write_kv_f32_spans",
     "laguna_swa_write_kv_rows_f32_spans",
     "plan_laguna_kv_attention_build",
