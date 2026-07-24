@@ -3724,7 +3724,7 @@ device work or device dispatches.
 Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d16-c-dispatch-rejected.json`.
 
-### D17 token8 attention-boundary bundle (selected, default-off design)
+### D17 token8 attention-boundary bundle (correctness-admitted, default off)
 
 The next device-side candidate combines only independently exact, mechanically
 positive components. It restores D15's global/SWA head+KV and global
@@ -3762,6 +3762,39 @@ all aggregate/category h16/h32 decode/E2E rows positive and prefill/TTFT within
 
 Design evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d17-token8-attention-boundaries-design.json`.
+
+RED failed collection on the missing all-or-none resolver. GREEN restores D15's
+three shared boundary components and introduces only one new SWA leaf: D10's
+exact 256-thread token8 arithmetic followed by D15's FP32 softplus/multiply and
+BF16 rounding epilogue. No standalone D10 or token4-gate key is registered. The
+four-key route remains explicit-only and fail-closed; gfx1151, rows>1,
+registry/shape misses, and explicit disable retain the registered four-kernel
+chain. The dedicated production fixtures report **4 passed**, including
+empty/short/full state, 510..513 and repeated wrap, reversed offsets, explicit
+eviction, adversarial scores, BF16 boundaries, and extreme/non-finite gates.
+The wider KV/RoPE/runner/generation/CPU/registry bundle reports **94 passed**
+with one Starlette warning.
+
+At actual-weight layers 0/44/1/47, every 50-warmup/15x500 HIP-event and
+synchronized-wall component plus complete window is exact and positive.
+Head+KV improves **35.85-42.65% event / 35.66-42.27% wall**; global
+attention+gate improves **13.55-13.62% / 13.36-13.46%**; SWA token8+gate
+improves **20.93-21.00% / 20.92-21.01%**; complete head-through-gate improves
+**20.12-26.63% / 20.15-26.66%**. Cached `rocprofv3 --kernel-trace` names the
+SWA leaf at local256/VGPR24/SGPR128/dynamic-LDS4136/scratch0, inside every
+frozen ceiling.
+
+The shared-weight gate matches all **48** context, gated-context, and hidden
+taps, 17 complete logit/argmax checkpoints, every K/V and span byte,
+reset/re-prefill, and lifecycle through 16 decode transitions. Tracked
+ownership peaks at **40,455,911,848 bytes / 1,496 allocations** and returns to
+zero. This is correctness/execution admission only, not a throughput claim or
+default change. Task #306 must pass every clean short/512/1K/near-4K row at
+exactly 679 dispatches/token before the unchanged full-suite gate is allowed.
+Any later failure removes the complete bundle.
+
+Correctness evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d17-attention-boundaries-correctness.json`.
 
 ## Laguna DFlash Follow-on Plan
 
