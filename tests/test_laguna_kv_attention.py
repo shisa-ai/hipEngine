@@ -409,8 +409,22 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     cache.free()
 
 
-def test_laguna_kv_owner_allocates_one_bounded_split_workspace_when_enabled() -> None:
-    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback() -> None:
+    from hipengine.runtime.laguna_kv import (
+        allocate_laguna_kv_cache,
+        resolve_laguna_split_thresholds,
+    )
+
+    assert resolve_laguna_split_thresholds(
+        "hip_gfx1100",
+        context_length=4096,
+        sliding_window=512,
+    ) == (127, 65)
+    assert resolve_laguna_split_thresholds(
+        "hip_gfx1151",
+        context_length=4096,
+        sliding_window=512,
+    ) == (None, None)
 
     runtime = _FakeRuntime()
     cache = allocate_laguna_kv_cache(
@@ -418,8 +432,6 @@ def test_laguna_kv_owner_allocates_one_bounded_split_workspace_when_enabled() ->
         context_length=4096,
         backend="hip_gfx1100",
         runtime=runtime,
-        global_split_min_live=127,
-        swa_split_min_live=65,
     )
     split_elements = max(48 * 4096, 72 * 512)
     try:
@@ -432,6 +444,23 @@ def test_laguna_kv_owner_allocates_one_bounded_split_workspace_when_enabled() ->
         cache.free()
     assert runtime.allocations == {}
 
+    rollback_runtime = _FakeRuntime()
+    rollback = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=rollback_runtime,
+        use_split_attention=False,
+    )
+    try:
+        assert rollback.global_split_min_live is None
+        assert rollback.swa_split_min_live is None
+        assert rollback.allocation_count == 243
+        assert sorted(rollback_runtime.allocations.values()).count(split_elements * 4) == 0
+    finally:
+        rollback.free()
+    assert rollback_runtime.allocations == {}
+
     with pytest.raises(ValueError, match="global_split_min_live"):
         allocate_laguna_kv_cache(
             _production_config(),
@@ -439,6 +468,15 @@ def test_laguna_kv_owner_allocates_one_bounded_split_workspace_when_enabled() ->
             backend="hip_gfx1100",
             runtime=_FakeRuntime(),
             global_split_min_live=4097,
+        )
+    with pytest.raises(ValueError, match="cannot be combined"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            use_split_attention=False,
+            global_split_min_live=127,
         )
     with pytest.raises(ValueError, match="unavailable.*hip_gfx1151"):
         allocate_laguna_kv_cache(

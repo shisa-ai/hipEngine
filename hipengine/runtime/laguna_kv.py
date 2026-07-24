@@ -558,6 +558,51 @@ def resolve_laguna_swa_prefill_variant(
     return parsed
 
 
+def resolve_laguna_split_thresholds(
+    backend: str,
+    *,
+    context_length: int,
+    sliding_window: int,
+    global_split_min_live: int | None = None,
+    swa_split_min_live: int | None = None,
+    use_split_attention: bool | None = None,
+) -> tuple[int | None, int | None]:
+    """Resolve explicit split crossovers or architecture-qualified defaults."""
+
+    context = int(context_length)
+    window = min(int(sliding_window), context)
+    if context <= 0 or window <= 0:
+        raise ValueError("Laguna split threshold capacities must be positive")
+    has_explicit_threshold = (
+        global_split_min_live is not None or swa_split_min_live is not None
+    )
+    if use_split_attention is False:
+        if has_explicit_threshold:
+            raise ValueError(
+                "use_split_attention=False cannot be combined with split thresholds"
+            )
+        return None, None
+    if has_explicit_threshold:
+        return global_split_min_live, swa_split_min_live
+
+    global_default = backend_package_capability(
+        backend,
+        "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
+        None,
+    )
+    swa_default = backend_package_capability(
+        backend,
+        "LAGUNA_SWA_SPLIT_MIN_LIVE",
+        None,
+    )
+    parsed_global = None if global_default is None else int(global_default)
+    parsed_swa = None if swa_default is None else int(swa_default)
+    return (
+        parsed_global if parsed_global is not None and parsed_global <= context else None,
+        parsed_swa if parsed_swa is not None and parsed_swa <= window else None,
+    )
+
+
 def allocate_laguna_kv_cache(
     config: _LagunaKVConfig,
     *,
@@ -569,6 +614,7 @@ def allocate_laguna_kv_cache(
     swa_prefill_variant: str | None = None,
     global_split_min_live: int | None = None,
     swa_split_min_live: int | None = None,
+    use_split_attention: bool | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -588,13 +634,21 @@ def allocate_laguna_kv_cache(
     layer_types, head_counts, sliding_window = _validate_config(config, context)
     has_global = FULL_ATTENTION in layer_types
     has_sliding = SLIDING_ATTENTION in layer_types
+    selected_global_split, selected_swa_split = resolve_laguna_split_thresholds(
+        backend,
+        context_length=context,
+        sliding_window=sliding_window,
+        global_split_min_live=global_split_min_live,
+        swa_split_min_live=swa_split_min_live,
+        use_split_attention=use_split_attention,
+    )
     parsed_global_split = _validate_split_threshold(
-        global_split_min_live,
+        selected_global_split,
         context,
         "global_split_min_live",
     )
     parsed_swa_split = _validate_split_threshold(
-        swa_split_min_live,
+        selected_swa_split,
         sliding_window,
         "swa_split_min_live",
     )
@@ -877,6 +931,7 @@ __all__ = [
     "LagunaKVCache",
     "LagunaKVLayerState",
     "allocate_laguna_kv_cache",
+    "resolve_laguna_split_thresholds",
     "resolve_laguna_swa_decode_variant",
     "resolve_laguna_swa_prefill_variant",
 ]

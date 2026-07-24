@@ -62,6 +62,7 @@ from hipengine.runtime.gguf_linear import (
 from hipengine.runtime.laguna_kv import (
     LagunaKVCache,
     allocate_laguna_kv_cache,
+    resolve_laguna_split_thresholds,
     resolve_laguna_swa_decode_variant,
     resolve_laguna_swa_prefill_variant,
 )
@@ -1501,6 +1502,7 @@ class LagunaGGUFResidentSession:
         swa_prefill_variant: str | None = None,
         global_split_min_live: int | None = None,
         swa_split_min_live: int | None = None,
+        use_split_attention: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
@@ -1522,6 +1524,7 @@ class LagunaGGUFResidentSession:
         )
         self.global_split_min_live = global_split_min_live
         self.swa_split_min_live = swa_split_min_live
+        self.use_split_attention = use_split_attention
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self._q5_output_variant, self._q5_query_gate_variant = (
             resolve_laguna_q5_wave32x2_variants(
@@ -1631,6 +1634,20 @@ class LagunaGGUFResidentSession:
                 device=self.device,
                 runtime=self.runtime,
             )
+            self.global_split_min_live, self.swa_split_min_live = (
+                resolve_laguna_split_thresholds(
+                    self.backend,
+                    context_length=self.context_length,
+                    sliding_window=config.sliding_window,
+                    global_split_min_live=self.global_split_min_live,
+                    swa_split_min_live=self.swa_split_min_live,
+                    use_split_attention=self.use_split_attention,
+                )
+            )
+            self.use_split_attention = (
+                self.global_split_min_live is not None
+                or self.swa_split_min_live is not None
+            )
             self.kv_cache = allocate_laguna_kv_cache(
                 config,
                 context_length=self.context_length,
@@ -1641,6 +1658,7 @@ class LagunaGGUFResidentSession:
                 swa_prefill_variant=self.swa_prefill_variant,
                 global_split_min_live=self.global_split_min_live,
                 swa_split_min_live=self.swa_split_min_live,
+                use_split_attention=self.use_split_attention,
             )
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
