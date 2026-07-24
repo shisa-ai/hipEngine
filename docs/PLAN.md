@@ -1300,6 +1300,7 @@ hipengine/
 │   ├── BENCHMARK.md             # Evidence policy and benchmark procedures
 │   ├── KERNELS.md               # Kernel catalog and port playbook
 │   ├── PREFILL.md               # Native bulk prefill plan/evidence
+│   ├── LAGUNA-prefill.md        # Active Laguna arithmetic/MMQ prefill attack plan
 │   ├── SAMPLING.md              # Normal sampling parameter support plan
 │   ├── ROOFLINE.md
 │   ├── LESSONS-LEARNED.md
@@ -1312,6 +1313,12 @@ hipengine/
 ```
 
 ## Development Roadmap (LoC Estimates)
+
+The current focused Laguna S 2.1 performance campaign is owned by
+[`LAGUNA-prefill.md`](LAGUNA-prefill.md). It succeeds the exhausted LPF/AR-O
+work in `LAGUNA.md` and keeps the architecture invariants in this file: new
+packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
+with exact fallbacks and no backend/quant branches in model or engine code.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
