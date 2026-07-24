@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T09:59:21.864281+00:00",
+  "kind": "hipengine_laguna_lap1_q4_k_x8_mmq32_layout_screen",
+  "status": "retained_explicit_primitive",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "One actual Laguna sparse-layer Q4_K gate/up pair, producer-row Q8_1 pack included, natural per-expert counts at M32/55/64/122/128/256/512; not a full-model or runtime-default claim.",
+  "repo": {
+    "revision": "3143c09216cb76e1519511ec0ea7987cee39c1c9",
+    "tracked_clean": true,
+    "unrelated_untracked_artifacts_excluded": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "hip_version": "7.15.0-0000000"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "up_tensor": "blk.1.ffn_up_exps.weight",
+    "shape_each": [
+      256,
+      1024,
+      3072
+    ],
+    "quant": "Q4_K"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 32,55,64,122,128,256,512 --layer 1 --modes retained-direct,raw-mmq32,x8-mmq32 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-lap1-x8-mmq32-all-shapes.json",
+    "raw_sha256": "bcac3a4647e2e22eca381b7bb30738ad5e5efc11565400233b9117820f9bc3c6",
+    "routing_source": "/tmp/laguna-lap1-routing-all-shapes.json",
+    "routing_sha256": "0d29540b03047650c6ce85352a8514d6df3b8e8397ac434ad014a8d9cdfa3f16",
+    "warmups": 2,
+    "samples": 7,
+    "burst": 3,
+    "timing": "counter-rotated HIP-event elapsed time",
+    "inclusive_scope": "one BF16 producer-row DS4 Q8_1 pack plus one dual gate/up MMQ launch",
+    "routing_qualification": "Natural per-expert counts from complete model execution; stable producer-row order reconstructed as a valid top-10 assignment because selected IDs were intentionally not persisted."
+  },
+  "results": {
+    "32": {
+      "retained_direct_ms": 3.989045778910319,
+      "raw_mmq32_ms": 5.839567184448242,
+      "x8_mmq32_ms": 5.2073720296223955,
+      "x8_speedup_vs_raw": 1.1214038772781305,
+      "x8_speedup_vs_retained": 0.7660381774565813
+    },
+    "55": {
+      "retained_direct_ms": 6.375602722167969,
+      "raw_mmq32_ms": 7.052926381429036,
+      "x8_mmq32_ms": 6.308010737101237,
+      "x8_speedup_vs_raw": 1.1180904211127128,
+      "x8_speedup_vs_retained": 1.0107152615751243
+    },
+    "64": {
+      "retained_direct_ms": 7.3043467203776045,
+      "raw_mmq32_ms": 7.3902937571207685,
+      "x8_mmq32_ms": 6.61111323038737,
+      "x8_speedup_vs_raw": 1.1178592015565498,
+      "x8_speedup_vs_retained": 1.1048588136115791
+    },
+    "122": {
+      "retained_direct_ms": 13.123242696126303,
+      "raw_mmq32_ms": 8.644500096638998,
+      "x8_mmq32_ms": 7.750560124715169,
+      "x8_speedup_vs_raw": 1.1153387571400437,
+      "x8_speedup_vs_retained": 1.6931992636607769
+    },
+    "128": {
+      "retained_direct_ms": 13.758621215820312,
+      "raw_mmq32_ms": 8.857660293579102,
+      "x8_mmq32_ms": 7.930053075154622,
+      "x8_speedup_vs_raw": 1.1169736456532344,
+      "x8_speedup_vs_retained": 1.7349973682934074
+    },
+    "256": {
+      "retained_direct_ms": 26.534080505371094,
+      "raw_mmq32_ms": 10.003768920898438,
+      "x8_mmq32_ms": 8.974385579427084,
+      "x8_speedup_vs_raw": 1.114702375149906,
+      "x8_speedup_vs_retained": 2.9566459197159882
+    },
+    "512": {
+      "retained_direct_ms": 52.2232411702474,
+      "raw_mmq32_ms": 12.594679514567057,
+      "x8_mmq32_ms": 11.468783060709635,
+      "x8_speedup_vs_raw": 1.0981705249717886,
+      "x8_speedup_vs_retained": 4.553511989354524
+    }
+  },
+  "correctness": {
+    "x8_vs_raw_fixture_bf16_bit_exact": true,
+    "x8_vs_raw_actual_checksum_exact_at_every_shape": true,
+    "all_outputs_finite": true,
+    "fixture_cpu_reference_gate": {
+      "max_softmax_kl_limit": 0.05,
+      "top1_agreement_minimum": 0.9,
+      "passed": true
+    },
+    "focused_tests": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py tests/test_laguna_q4_k_mmq_leaf_bench.py",
+      "passed": 29
+    }
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lap1-x8-mmq32-trace-final --output-file x8-mmq32 -- env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py -k 'x8_q8_1_ds4_mmq32'",
+    "csv_sha256": "bc85fd8a9e1fccb0cf0a511eb3366377257051b8b6322e7e92cbf6a578db0a38",
+    "kernel": "gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel",
+    "workgroup_size": 128,
+    "vgpr": 120,
+    "sgpr": 128,
+    "lds_bytes": 2048,
+    "scratch_bytes": 0
+  },
+  "memory": {
+    "raw_gate_up_bytes": 905969664,
+    "x8_gate_up_bytes": 905969664,
+    "t16_gate_up_bytes": 931135488,
+    "temporary_side_by_side_tracked_peak_bytes": 2821486144,
+    "tracked_after_bytes": 0
+  },
+  "decision": {
+    "retained_code": true,
+    "resident_layout_winner": "gguf_q4_k_x8_v1",
+    "reason": "X8 preserves every Q4_K byte, uses the same resident capacity as raw, is BF16-bit identical to raw MMQ32, and improves every declared natural shape by 9.82% to 12.14%.",
+    "default_changed": false,
+    "blocker": "A resident X8 route still needs an exact X8 decode/fallback and a scheduling fix for sparse tile32 padding; M32 remains slower than production and M128 remains below the LAP-1 2x gate.",
+    "lap1_state": "in_progress",
+    "next": "Keep X8 fixed as the replacement layout. Test a full-tile-plus-tail or X8-native exact fallback schedule; do not screen another resident weight format."
+  }
+}

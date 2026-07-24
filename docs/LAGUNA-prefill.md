@@ -24,8 +24,8 @@ The first design is:
    possible;
 3. residual Q8_1 planes plus conservative BF16-boundary detection;
 4. sparse exact recomputation with a bounded, fail-closed queue;
-5. a lossless resident weight-layout decision that does not duplicate the
-   roughly 70 GiB model;
+5. the byte-exact `gguf_q4_k_x8_v1` resident replacement layout, which does not
+   duplicate or expand the roughly 70 GiB model;
 6. exact fallbacks selected by quant, projection role, and measured shape—not
    prompt, token, or hand-picked layer ID.
 
@@ -322,6 +322,15 @@ If source-compatible raw blocks win, prefer making them the resident source of
 truth for the affected family and derive both prefill and decode from them.
 Do not keep the complete T16 copy merely to avoid writing the exact fallback.
 
+Measured LAP-1 decision: X8 wins. It preserves every original 144-byte Q4_K
+block, changes only the order to
+`[expert,out_pack8,k_block,col_in_pack8]`, and occupies exactly the same bytes
+as raw. On the actual layer-1 gate/up pair it is BF16-bit identical to raw
+MMQ32 and improves all seven natural shapes by **9.82–12.14%**. Generic
+Q4_K `pack8` is not the chosen format because its materialized FP32 metadata
+expands residency. The remaining layout work is an exact X8 decode/fallback,
+not another resident-format screen.
+
 ## Quality strategy
 
 ### Three comparison lanes
@@ -394,7 +403,7 @@ Current progress:
 | Task | State | Result / next condition |
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
-| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise. Smaller packed-dot tiles and the existing exact grouped-small-M hybrid both lose; next compare MMQ32 on the byte-exact X8 replacement layout and provide an X8-native fallback. |
+| LAP-1 | In progress | The packed-dot body passes its synthetic gate; byte-neutral X8 is exact and wins every natural shape by 9.82–12.14% over raw. M256/M512 reach 2.957x/4.554x retained, but M32 still loses and M128 is only 1.735x. Keep X8 fixed; next add an X8-native exact fallback or full-tile-plus-tail schedule. |
 | LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
@@ -502,11 +511,29 @@ mixed case raises M128 **8.867 -> 11.625 ms (+31.10%)** and M512
 **12.524 -> 13.294 ms (+6.15%)** before any device merge/scatter. All-exact
 grouped-small-M itself is **43.622/136.742 ms** at M128/M512.
 
-LAP-1 therefore moves to the resident-layout decision. The next candidate is
-the existing byte-exact Q4_K X8 replacement layout: adapt MMQ32 to consume it
-without a second weight set, then provide an X8-native exact decode/tail
-fallback or a full-tile-plus-tail MMQ body. No threshold, small-row prototype,
-or runtime default was retained.
+The resident-layout screen selects the existing byte-exact Q4_K X8 format.
+Raw and X8 share the complete packed-dot arithmetic body; X8 changes only the
+weight-block address. Two uneven/empty-expert fixtures, including a nonidentity
+source-row map, are BF16-bit identical to raw and pass the independent CPU
+KL/top-1 gate. Cached tracing remains local128, VGPR120, LDS 2,048 bytes, and
+scratch0.
+
+On the clean actual-weight screen, X8 improves raw MMQ32 by
+**12.14/11.81/11.79/11.53/11.70/11.47/9.82%** at
+M32/55/64/122/128/256/512. Its inclusive speedups over retained direct are
+**0.766/1.011/1.105/1.693/1.735/2.957/4.554x**. Raw and X8 checksums match
+exactly at every shape, both gate/up pairs occupy **905,969,664 bytes**, and
+all tracked temporary buffers return to zero. This retains X8 as the resident
+layout winner, but does not change a runtime default: M32 still loses and M128
+does not satisfy the LAP-1 2x gate.
+
+The next bounded branch is scheduling on X8, not another format. First test a
+full-tile-plus-tail schedule that keeps MMQ32 for complete row groups and
+avoids paying a complete decoded tile for sparse residue. If that cannot beat
+the measured all-MMQ ceiling, add an exact X8-native small-M decode fallback
+and select its crossover from all seven natural shapes. Decode must remain
+within 2%, and the fallback must make a single X8 resident set sufficient.
+No threshold, small-row prototype, or runtime default was retained.
 Evidence:
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
 The all-shape crossover packet is
@@ -515,6 +542,8 @@ The rejected small-row packet is
 [`2026-07-24-gfx1151-laguna-q4-k-mmq8-tail-rejected.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq8-tail-rejected.json).
 The rejected whole-expert mixed packet is
 [`2026-07-24-gfx1151-laguna-q4-k-mixed-exact-rejected.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mixed-exact-rejected.json).
+The retained X8 layout packet is
+[`2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-layout-retained.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-layout-retained.json).
 
 ### LAP-2 — calibrate residual Q8_1 and exact repair
 
