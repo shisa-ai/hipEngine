@@ -1,6 +1,6 @@
 # Laguna S 2.1 Q4_K_M and DFlash on gfx1151
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 Status: the declared gfx1151 c=1/4K support slice is complete. The pinned
 Q4_K_M target has all-resident torch-free loading, exact chunked prefill/B+1
@@ -10,6 +10,14 @@ B4 only as an explicit library/OpenAI opt-in; its ten-prompt public gate is exac
 against true AR. DFlash remains off by default because the current merged-main
 full-suite ratio is **0.9477x**, with heldout and all non-code categories
 regressive.
+
+The bounded LPF/AR-O prefill campaign recorded later in this document is now
+complete through the rejected expert-major F16 route. Its active successor is
+[`LAGUNA-prefill.md`](LAGUNA-prefill.md): a source-faithful packed integer-dot
+Q4_K/Q6_K MMQ plan with residual-Q8_1 calibration, bounded exact repair,
+resident-layout gates, and a staged path from selected experts through
+dense/shared, source-F16, and tiled attention. This support document remains the
+model contract and historical evidence index.
 
 The support boundary does not claim exact Poolside free-running greedy-32
 identity after the documented low-margin token-30 split, contexts above 4K,
@@ -2051,13 +2059,14 @@ name, duration, workgroup, VGPR/SGPR, LDS, and scratch from a prebuilt cached
 
 ## Laguna AR Optimization Campaign — 4-10x Prefill
 
-This is the active Laguna performance campaign after LPF-0 through LPF-6. The
-previous work established a correct, resident, chunked baseline and found useful
-exact improvements; it did **not** establish a competitive matrix prefill
-architecture. DFlash is frozen as an explicit correctness-supported provider and
-is not an optimization target. AR prefill is the only headline metric in this
-campaign. DFlash should be rerun only if shared target-state or public-provider
-behavior changes.
+This section records the completed Laguna performance campaign after LPF-0
+through LPF-6. The work established a correct, resident, chunked baseline and
+useful exact improvements, then exhausted its bounded expert-major F16 route
+without establishing a quality-safe competitive matrix prefill architecture.
+The successor arithmetic campaign is in
+[`LAGUNA-prefill.md`](LAGUNA-prefill.md). DFlash remains frozen as an explicit
+correctness-supported provider and should be rerun only if shared target-state
+or public-provider behavior changes.
 
 ### Why the 4-10x target is credible but not yet a claim
 
