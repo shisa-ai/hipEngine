@@ -81,6 +81,7 @@ from hipengine.runtime.laguna_moe import (
     LagunaMoEScratch,
     allocate_laguna_moe_scratch,
     laguna_moe_scratch_nbytes,
+    resolve_laguna_dense_q4_prefill_mode,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
@@ -728,6 +729,7 @@ class LagunaEagerLibraries:
     argmax: object
     q4_linear: object
     q4_decode_linear: object
+    q4_prefill_linear: object
     q6_linear: object
     q6_decode_linear: object
     q6_t16_linear: object
@@ -763,6 +765,7 @@ class LagunaEagerLibraries:
             "gguf_q4_k": self.q4_linear,
             "gguf_q4_k:pack8_gemv_decode_bf16_bf16_out": self.q4_decode_linear,
             "gguf_q4_k:pack8_gemv_decode_bf16_f32_out": self.q4_decode_linear,
+            "gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
             "gguf_q5_k": self.q6_linear,
             "gguf_q6_k": self.q6_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": self.q6_decode_linear,
@@ -1422,6 +1425,9 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
         build_gguf_q4_k_pack8_gemv,
     )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+        build_gguf_q4_k_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
         build_gguf_q4_k_q8_1_selected_prefill,
     )
@@ -1459,6 +1465,7 @@ def load_laguna_eager_libraries(
             argmax=build_lm_head(**kwargs),
             q4_linear=build_gguf_q4_k_gemv(**kwargs),
             q4_decode_linear=build_gguf_q4_k_pack8_gemv(**kwargs),
+            q4_prefill_linear=build_gguf_q4_k_prefill(**kwargs),
             q6_linear=build_gguf_k_gemv(**kwargs),
             q6_decode_linear=build_gguf_q6_k_pack8_gemv(**kwargs),
             q6_t16_linear=build_gguf_q6_k_t16_gemv(**kwargs),
@@ -1536,6 +1543,7 @@ class LagunaGGUFResidentSession:
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
+        self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(self.backend)
         self.f16_prefill_mode = resolve_laguna_f16_prefill_mode(self.backend)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -1705,6 +1713,14 @@ class LagunaGGUFResidentSession:
                     f"first unsupported={unsupported[0]}"
                 )
         self.f16_prefill_mode = selected
+
+    def set_dense_q4_prefill_mode(self, mode: str) -> None:
+        """Select the explicit dense/shared Q4 rows>1 projection route."""
+
+        self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(
+            self.backend,
+            mode,
+        )
 
     @property
     def resident_nbytes(self) -> int:
@@ -2628,6 +2644,7 @@ class LagunaGGUFResidentSession:
                 runtime=self.runtime,
                 use_wmma_prefill=False,
                 use_gemv_decode=rows == 1,
+                use_q4_pack8_wmma=self.dense_q4_prefill_mode == "wmma_pack8",
             )
         self.kernel_plan.dense_silu(
             scratch.dense_gate.ptr,
@@ -2652,6 +2669,7 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             use_wmma_prefill=False,
             use_gemv_decode=rows == 1,
+            use_q4_pack8_wmma=self.dense_q4_prefill_mode == "wmma_pack8",
         )
         self.kernel_plan.add(
             scratch.post_attention.ptr,
@@ -2682,6 +2700,7 @@ class LagunaGGUFResidentSession:
             rows=rows,
             selected_down_mode=self.selected_down_mode,
             selected_gate_up_mode=self.selected_gate_up_mode,
+            dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,

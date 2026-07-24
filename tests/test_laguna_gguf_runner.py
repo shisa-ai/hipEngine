@@ -68,13 +68,19 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     values = {name: object() for name in LagunaEagerLibraries.__dataclass_fields__}
     exact = object()
     prefill = object()
+    q4_prefill = object()
     values["f16_projection"] = exact
     values["f16_projection_prefill"] = prefill
+    values["q4_prefill_linear"] = q4_prefill
     libraries = LagunaEagerLibraries(**values)
 
     assert libraries.f16_linear["fp16_weight"] is exact
     assert libraries.f16_linear["fp16_weight:wmma_comp_bf16_f32_out"] is prefill
     assert libraries.f16_linear["fp16_weight:wmma_comp_bf16_bf16_out"] is prefill
+    assert (
+        libraries.linear["gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out"]
+        is q4_prefill
+    )
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:

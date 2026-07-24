@@ -703,6 +703,7 @@ def launch_gguf_linear(
     runtime=None,
     use_wmma_prefill: bool | None = None,
     use_gemv_decode: bool | None = None,
+    use_q4_pack8_wmma: bool = False,
 ) -> None:
     """Launch a GGUF resident linear projection through the kernel registry.
 
@@ -740,6 +741,7 @@ def launch_gguf_linear(
         f_gemv,
         use_wmma,
         f_rowtile,
+        bool(use_q4_pack8_wmma),
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
     )
@@ -780,6 +782,11 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_rowtile=f_rowtile,
+        )
+        dispatch = _q4_pack8_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            enabled=use_q4_pack8_wmma,
         )
         _ensure_linear_kernel_registered(dispatch.key)
         fn = resolve(
@@ -1854,6 +1861,32 @@ def _variant_for_rows(variant: str, *, rows: int) -> str:
     if variant == "out":
         return "prefill_out"
     return variant
+
+
+def _q4_pack8_wmma_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    enabled: bool,
+) -> GGUFLinearDispatch:
+    """Select the wide resident-pack8 Q4_K WMMA prefill leaf."""
+
+    if (
+        not enabled
+        or rows < 16
+        or dispatch.abi != "pack8"
+        or dispatch.key.variant != "pack8_prefill_bf16_bf16_out"
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "pack8_wmma_prefill_bf16_bf16_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
 
 
 def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:

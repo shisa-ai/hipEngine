@@ -1336,8 +1336,12 @@ locked-clock bandwidth/active-byte ledger and ablate the shipping
 now integrated with exact power-of-two row scaling: compounded with selected
 MMQ it moves a same-session real pp512 diagnostic **127.831 -> 154.321 tok/s**
 with the same next token and no added scratch. It remains explicit pending the
-complete quality/clean gate. The next implementation target is the low-risk
-dense/shared quant family before selected down. Streaming families target at
+complete quality/clean gate. The low-risk dense/shared Q4 candidate is also
+integrated without a sidecar: its resident-pack8 64x16 WMMA leaf is 5.275x the
+old M512/K3072/N1024 kernel and the compounded real pp512 stack now reaches
+**163.881 tok/s** with next token 2930. It remains explicit pending the same
+complete gate. The next implementation target is selected Q4/Q6 down.
+Streaming families target at
 least 70% of the measured achievable-read ceiling unless profiling proves
 another limiter. The detailed gates, sequence, and T16-lite/X16
 replacement-layout screen remain owned by `LAGUNA-prefill.md`.

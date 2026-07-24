@@ -2,10 +2,10 @@
 
 This module owns the C ABI exports defined in ``gguf_q4_k_prefill.hip``
 (see docs/GGUF.md "P8: real batched prefill GEMM" for the wider plan).
-The single-output kernel is a real GEMM-style batched WMMA prefill: one
+The single-output kernels are real GEMM-style batched WMMA prefill: one
 wave32 block computes a TM x TN output tile via
 ``__builtin_amdgcn_wmma_f32_16x16x16_f16_w32``, with raw GGUF Q4_K
-``block_q4_K`` dequant in the inner K-loop.
+``block_q4_K`` or resident pack8 dequant in the inner K-loop.
 
 The dual variant mirrors ``awq_fusedw4_prefill_dual_fp16_kernel``'s grid
 split for dense gate+up: the first half of x-tiles writes A/gate and the
@@ -213,6 +213,66 @@ def _launch_dual(
         runtime.check(int(err))
 
 
+def _launch_pack8(
+    symbol: str,
+    x_ptr: int,
+    qweight_ptr: int,
+    scales_ptr: int,
+    mins_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_shape(rows, in_features, out_features)
+    if out_features % 8:
+        raise ValueError("pack8 out_features must be divisible by 8")
+    if threads not in (0, 32):
+        raise ValueError("pack8 WMMA threads must be 0 or 32")
+    tile_m = 64 if tile_m is None else tile_m
+    tile_n = 16 if tile_n is None else tile_n
+    tile_m, tile_n = _resolve_tiles(rows, out_features, tile_m, tile_n)
+    library = library or build_gguf_q4_k_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_void_p(mins_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(tile_m),
+        ctypes.c_int64(tile_n),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _make_wrapper(variant: str):
     sym = _symbol(variant)
 
@@ -245,6 +305,20 @@ def _make_dual_wrapper(variant: str):
     return wrapper
 
 
+def _make_pack8_wrapper(variant: str):
+    sym = _symbol(variant)
+
+    def wrapper(*args, **kwargs) -> None:
+        _launch_pack8(sym, *args, **kwargs)
+
+    wrapper.__name__ = f"gguf_q4_k_{variant}"
+    wrapper.__qualname__ = wrapper.__name__
+    wrapper.__doc__ = (
+        f"Launch resident-pack8 GGUF Q4_K WMMA prefill (C symbol: {sym})."
+    )
+    return wrapper
+
+
 # Single-output dtype matrix. Names mirror Q8_0 WMMA prefill so dispatch can
 # swap prefill_* -> wmma_prefill_* by string prefix when raw Q4_K is available.
 gguf_q4_k_wmma_prefill_bf16_bf16_out = _make_wrapper("wmma_prefill_bf16_bf16_out")
@@ -256,6 +330,9 @@ gguf_q4_k_wmma_prefill_fp16_f32_out = _make_wrapper("wmma_prefill_fp16_f32_out")
 gguf_q4_k_wmma_prefill_f32_bf16_out = _make_wrapper("wmma_prefill_f32_bf16_out")
 gguf_q4_k_wmma_prefill_f32_fp16_out = _make_wrapper("wmma_prefill_f32_fp16_out")
 gguf_q4_k_wmma_prefill_f32_f32_out = _make_wrapper("wmma_prefill_f32_f32_out")
+gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out = _make_pack8_wrapper(
+    "pack8_wmma_prefill_bf16_bf16_out"
+)
 
 # GGUF runtime pair fast path uses BF16 hidden activations and BF16 outputs.
 gguf_q4_k_wmma_prefill_dual_bf16_bf16_out = _make_dual_wrapper(
@@ -273,6 +350,9 @@ _WRAPPERS = {
     "wmma_prefill_f32_bf16_out": gguf_q4_k_wmma_prefill_f32_bf16_out,
     "wmma_prefill_f32_fp16_out": gguf_q4_k_wmma_prefill_f32_fp16_out,
     "wmma_prefill_f32_f32_out": gguf_q4_k_wmma_prefill_f32_f32_out,
+    "pack8_wmma_prefill_bf16_bf16_out": (
+        gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out
+    ),
 }
 
 _DUAL_WRAPPERS = {
@@ -315,5 +395,6 @@ __all__ = [
     "gguf_q4_k_wmma_prefill_f32_bf16_out",
     "gguf_q4_k_wmma_prefill_f32_fp16_out",
     "gguf_q4_k_wmma_prefill_f32_f32_out",
+    "gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_wmma_prefill_dual_bf16_bf16_out",
 ]
