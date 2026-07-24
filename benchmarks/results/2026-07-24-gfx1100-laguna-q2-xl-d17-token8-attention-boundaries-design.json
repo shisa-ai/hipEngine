@@ -1,0 +1,323 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 48.987,
+    "canonical_ms_per_token": 20.414,
+    "gap_to_50_ms_per_token": 0.414,
+    "name": "D12 exact raw-Q5 wave32x2"
+  },
+  "candidate": {
+    "default": false,
+    "description": "D15 head/KV and global gate boundaries plus an exact D10-token8 SWA attention+gate leaf",
+    "dispatch_change_per_token": "775 -> 679",
+    "fail_closed": "all four keys resolve or the complete bundle is disabled; standalone D10/D14/D15 remains unselectable",
+    "fallback": "registered head, KV write, global/SWA attention (token4 on gfx1100), and softplus-gate chain",
+    "keys": [
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/global_f32_bf16_spans",
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/swa_f32_bf16_spans",
+      "laguna_attention_decode+attention_gate/bf16/global_softplus_bf16_spans",
+      "laguna_attention_decode+attention_gate/bf16/swa_token8_exact_softplus_bf16_spans"
+    ],
+    "name": "D17 all-or-none token8 attention-boundary bundle"
+  },
+  "component_evidence": {
+    "d10": {
+      "artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-rejected.json",
+      "implementation_commit": "aef8c082d70652da438b981fcfc5790e4ac9c4d5",
+      "sha256": "2d442789be32848f6a635dbf53d221e3a5da76f769416a39487a58685e3d83bc"
+    },
+    "d15": {
+      "artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-rejected.json",
+      "implementation_commit": "7a9dd1f609db181ec6f08a270f4fb8cd267ecd38",
+      "sha256": "c5fc52e8d707cb2e188dd017ebea5019484108bbadf615b60e35cf08717d8e5a"
+    },
+    "exactness": "both components independently passed production fixtures and complete shared-weight state/KV/lifecycle gates before suite rejection"
+  },
+  "date": "2026-07-24",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_d17_token8_attention_boundaries_design",
+  "lineage": {
+    "external_parent": null,
+    "internal_sources": [
+      "aef8c082d",
+      "7a9dd1f60"
+    ],
+    "narrow_check": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "projected_canonical": {
+    "aggregate_h32_decode_tok_s": 50.39126310196449,
+    "aggregate_h32_ms_per_token": 19.844709944589884,
+    "checks": {
+      "aggregate_decode_and_e2e_positive": true,
+      "aggregate_ttft_within_half_percent": false,
+      "every_category_decode_and_e2e_positive": true,
+      "prefill_within_half_percent": true
+    },
+    "minimum_category_h16_e2e_margin_pct": 0.09670901399874143,
+    "risk": "The decode/E2E model is positive everywhere, but D15 unaffected TTFT was +0.5545%; fresh counterbalanced measurement must pass rather than waiving the 0.5% guard.",
+    "rows": {
+      "aggregate": {
+        "control_d12": {
+          "h16_decode_tok_s": 49.393683532443276,
+          "h16_e2e_output_tok_s": 6.916227731906756,
+          "h32_decode_tok_s": 48.88769642180917,
+          "h32_e2e_output_tok_s": 12.103681760269174,
+          "prefill_tok_s": 42.99112190010854,
+          "ttft_median_seconds": 1.8739027310512029
+        },
+        "method": "apply the measured D10 category decode ratio to D15 candidate decode while holding D15 pooled prefill seconds fixed",
+        "projected_change_pct": {
+          "h16_decode_tok_s": 2.871345325855734,
+          "h16_e2e_output_tok_s": 0.2860542514891318,
+          "h32_decode_tok_s": 3.075552317258645,
+          "h32_e2e_output_tok_s": 0.6488048301535487,
+          "prefill_tok_s": -0.09334313448287057,
+          "ttft_median_seconds": 0.5544979064756816
+        },
+        "projected_d17": {
+          "h16_decode_tok_s": 50.81194675582006,
+          "h16_e2e_output_tok_s": 6.936011895376545,
+          "h32_decode_tok_s": 50.39126310196449,
+          "h32_e2e_output_tok_s": 12.182211032156214,
+          "prefill_tok_s": 42.950992639377624,
+          "ttft_median_seconds": 1.8842934824642725
+        }
+      },
+      "code": {
+        "control_d12": {
+          "h16_decode_tok_s": 50.23119365140506,
+          "h16_e2e_output_tok_s": 7.7220508181500875,
+          "h32_decode_tok_s": 49.707070040311166,
+          "h32_e2e_output_tok_s": 13.349893035786515,
+          "prefill_tok_s": 43.1382249160611,
+          "ttft_median_seconds": 1.7743876365129836
+        },
+        "method": "apply the measured D10 category decode ratio to D15 candidate decode while holding D15 pooled prefill seconds fixed",
+        "projected_change_pct": {
+          "h16_decode_tok_s": 2.543408846359907,
+          "h16_e2e_output_tok_s": 0.09670901399874143,
+          "h32_decode_tok_s": 2.573332855978405,
+          "h32_e2e_output_tok_s": 0.42907988778406736,
+          "prefill_tok_s": -0.3038531375984199,
+          "ttft_median_seconds": 0.843910464729114
+        },
+        "projected_d17": {
+          "h16_decode_tok_s": 51.508778274367074,
+          "h16_e2e_output_tok_s": 7.729518737356802,
+          "h32_decode_tok_s": 50.986198405402696,
+          "h32_e2e_output_tok_s": 13.407174741843761,
+          "prefill_tok_s": 43.007148066149384,
+          "ttft_median_seconds": 1.7893618794623762
+        }
+      },
+      "general_en": {
+        "control_d12": {
+          "h16_decode_tok_s": 50.818527924061506,
+          "h16_e2e_output_tok_s": 8.520601307547961,
+          "h32_decode_tok_s": 50.19204500871187,
+          "h32_e2e_output_tok_s": 14.543725415686637,
+          "prefill_tok_s": 42.96635117615332,
+          "ttft_median_seconds": 1.5865933605236933
+        },
+        "method": "apply the measured D10 category decode ratio to D15 candidate decode while holding D15 pooled prefill seconds fixed",
+        "projected_change_pct": {
+          "h16_decode_tok_s": 1.195944267021809,
+          "h16_e2e_output_tok_s": 0.09990958878187683,
+          "h32_decode_tok_s": 2.2935867937342813,
+          "h32_e2e_output_tok_s": 0.5591389548008863,
+          "prefill_tok_s": -0.10188393574828147,
+          "ttft_median_seconds": -0.11234913975798344
+        },
+        "projected_d17": {
+          "h16_decode_tok_s": 51.426289195354194,
+          "h16_e2e_output_tok_s": 8.529114205276075,
+          "h32_decode_tok_s": 51.343243124536855,
+          "h32_e2e_output_tok_s": 14.625045049965017,
+          "prefill_tok_s": 42.922575366527624,
+          "ttft_median_seconds": 1.5848108365316875
+        }
+      },
+      "general_ja": {
+        "control_d12": {
+          "h16_decode_tok_s": 48.74272202083399,
+          "h16_e2e_output_tok_s": 6.381215865915153,
+          "h32_decode_tok_s": 48.27991091739701,
+          "h32_e2e_output_tok_s": 11.260825717025897,
+          "prefill_tok_s": 42.96194855740461,
+          "ttft_median_seconds": 2.197082747006789
+        },
+        "method": "apply the measured D10 category decode ratio to D15 candidate decode while holding D15 pooled prefill seconds fixed",
+        "projected_change_pct": {
+          "h16_decode_tok_s": 3.911956677741024,
+          "h16_e2e_output_tok_s": 0.44566940243859765,
+          "h32_decode_tok_s": 3.7998710315202633,
+          "h32_e2e_output_tok_s": 0.8175842173037129,
+          "prefill_tok_s": -0.0209274198409104,
+          "ttft_median_seconds": 0.14548264027354207
+        },
+        "projected_d17": {
+          "h16_decode_tok_s": 50.649516189840746,
+          "h16_e2e_output_tok_s": 6.409654992533095,
+          "h32_decode_tok_s": 50.11448526639097,
+          "h32_e2e_output_tok_s": 11.352892450826378,
+          "prefill_tok_s": 42.952957730058166,
+          "ttft_median_seconds": 2.2002791209961288
+        }
+      },
+      "mixed_ja_en": {
+        "control_d12": {
+          "h16_decode_tok_s": 47.13007065771774,
+          "h16_e2e_output_tok_s": 5.266863170560444,
+          "h32_decode_tok_s": 46.72139080914801,
+          "h32_e2e_output_tok_s": 9.45877805429437,
+          "prefill_tok_s": 42.83728909878834,
+          "ttft_median_seconds": 2.7192771075642668
+        },
+        "method": "apply the measured D10 category decode ratio to D15 candidate decode while holding D15 pooled prefill seconds fixed",
+        "projected_change_pct": {
+          "h16_decode_tok_s": 4.080392367470531,
+          "h16_e2e_output_tok_s": 0.5285856524489096,
+          "h32_decode_tok_s": 4.065549552947156,
+          "h32_e2e_output_tok_s": 0.8771606254010633,
+          "prefill_tok_s": 0.1287069877208502,
+          "ttft_median_seconds": -0.08130969947941491
+        },
+        "projected_d17": {
+          "h16_decode_tok_s": 49.053162463618726,
+          "h16_e2e_output_tok_s": 5.294703053614142,
+          "h32_decode_tok_s": 48.62087210432002,
+          "h32_e2e_output_tok_s": 9.541746731030718,
+          "prefill_tok_s": 42.89242368320866,
+          "ttft_median_seconds": 2.717066071520094
+        }
+      }
+    }
+  },
+  "projected_mechanical": [
+    {
+      "dispatches_per_token": {
+        "candidate_d17": 679,
+        "control_d12": 775
+      },
+      "kernel_sum_ms_per_token": {
+        "candidate_d17": 16.114090500000003,
+        "change_pct": -2.1843534745791593,
+        "control_d12": 16.473939571428573
+      },
+      "label": "short",
+      "note": "diagnostic composition of independent clean D10 SWA body savings and D15 boundary trace; implementation must remeasure",
+      "profiled_child_tok_s": {
+        "candidate_d17": 48.67917174046397,
+        "change_pct": 4.438427127108424,
+        "control_d12": 46.610402970946915
+      },
+      "projected_attention_boundary_ms_per_token": 2.450222285714287,
+      "span_median_ms_per_token": {
+        "candidate_d17": 18.818739714285716,
+        "change_pct": -4.341605105990743,
+        "control_d12": 19.6728575
+      },
+      "token8_swa_savings_ms_per_token": 0.26717278571428404
+    },
+    {
+      "dispatches_per_token": {
+        "candidate_d17": 679,
+        "control_d12": 775
+      },
+      "kernel_sum_ms_per_token": {
+        "candidate_d17": 27.518594166666666,
+        "change_pct": -7.3198858537139255,
+        "control_d12": 29.692015833333333
+      },
+      "label": "512",
+      "note": "diagnostic composition of independent clean D10 SWA body savings and D15 boundary trace; implementation must remeasure",
+      "profiled_child_tok_s": {
+        "candidate_d17": 31.067613651269625,
+        "change_pct": 8.59907101294002,
+        "control_d12": 28.607623768317314
+      },
+      "projected_attention_boundary_ms_per_token": 14.146592000000004,
+      "span_median_ms_per_token": {
+        "candidate_d17": 30.383594000000002,
+        "change_pct": -7.806665347954233,
+        "control_d12": 32.956389
+      },
+      "token8_swa_savings_ms_per_token": 1.9424154999999974
+    },
+    {
+      "dispatches_per_token": {
+        "candidate_d17": 679,
+        "control_d12": 775
+      },
+      "kernel_sum_ms_per_token": {
+        "candidate_d17": 30.598729166666665,
+        "change_pct": -6.4829591402036595,
+        "control_d12": 32.71995016666666
+      },
+      "label": "1024",
+      "note": "diagnostic composition of independent clean D10 SWA body savings and D15 boundary trace; implementation must remeasure",
+      "profiled_child_tok_s": {
+        "candidate_d17": 28.332251374297694,
+        "change_pct": 8.486648237382921,
+        "control_d12": 26.115887839306303
+      },
+      "projected_attention_boundary_ms_per_token": 17.134110333333332,
+      "span_median_ms_per_token": {
+        "candidate_d17": 33.49738,
+        "change_pct": -7.085352842053516,
+        "control_d12": 36.051775500000005
+      },
+      "token8_swa_savings_ms_per_token": 1.9347115000000006
+    },
+    {
+      "dispatches_per_token": {
+        "candidate_d17": 679,
+        "control_d12": 775
+      },
+      "kernel_sum_ms_per_token": {
+        "candidate_d17": 47.3133835,
+        "change_pct": -4.272124709940672,
+        "control_d12": 49.42487583333333
+      },
+      "label": "3968",
+      "note": "diagnostic composition of independent clean D10 SWA body savings and D15 boundary trace; implementation must remeasure",
+      "profiled_child_tok_s": {
+        "candidate_d17": 19.145485302999155,
+        "change_pct": 5.682408780281589,
+        "control_d12": 18.116056895337678
+      },
+      "projected_attention_boundary_ms_per_token": 33.865968333333335,
+      "span_median_ms_per_token": {
+        "candidate_d17": 50.283108500000004,
+        "change_pct": -4.877023176156392,
+        "control_d12": 52.8611595
+      },
+      "token8_swa_savings_ms_per_token": 1.9524169999999987
+    }
+  ],
+  "red_green": {
+    "actual_endpoints": "global layers 0/44 and SWA layers 1/47; 50 warmups and 15x500 HIP-event plus synchronized wall; all component and complete windows positive",
+    "exact_fields": "F32 context, BF16 gated context, complete KVLiveSpans, then all-layer context/gated-context/hidden/logit/KV/reset/lifecycle",
+    "red": "missing swa_token8_exact_softplus_bf16_spans wrapper/key plus all-four-key route test",
+    "resources": "head local256/VGPR<=32/dynamic-LDS1024/scratch0; global gate local256/VGPR<=48/scratch0; SWA token8+gate local256/VGPR<=32/dynamic-LDS<=4136/scratch0",
+    "synthetic": "token4 chain versus token8+gate across empty/short/full, 510..513, repeated wrap, reversed offsets, eviction, adversarial scores, and extreme/non-finite gate logits"
+  },
+  "retention_gate": {
+    "canonical": "two complete process-order pairs; aggregate and every-category h16/h32 decode and E2E positive; aggregate/category prefill and aggregate TTFT within 0.5%; exact IDs/oracle/lifecycle",
+    "failure_action": "remove the complete D17 bundle and selector without restoring standalone D10, D14, or D15 debt",
+    "mechanical": "every short/512/1K/near-4K head, global/SWA attention, kernel-sum, span, and child row positive at exactly 679 dispatches/token"
+  },
+  "schema": 1,
+  "status": "selected_for_red_green_default_off"
+}
