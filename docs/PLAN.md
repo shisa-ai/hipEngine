@@ -1320,12 +1320,24 @@ work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
-source-faithful packed-dot body, live-row schedule, and direct resident-T16
+source-arithmetic packed-dot body, live-row schedule, and direct resident-T16
 consumer pass every leaf gate. Producer-pack-inclusive direct T16 reaches
 **2.502x/3.959x/5.502x** retained at M128/M256/M512, stays within
 **4.66%/4.05%/3.02%** of the X8 ceiling, remains positive at all natural
-shapes, and adds no resident sidecar or layout transpose. LAP-2 now owns
-residual calibration and exact repair before LAP-3 runtime integration.
+shapes, and adds no resident sidecar or layout transpose. The first LAP-2
+three-plane/guarded/exact-repair primitive is implemented and traced.
+
+The campaign order is no longer numeric. A 2026-07-25 source and artifact audit
+corrected the actual Vulkan comparator from a 32x32 small tile to a 64x64
+medium tile on RADV gfx1151 and showed that the **344.56 tok/s** Vulkan row is
+a compatibility floor, not a hardware ceiling. Next establish a same-host
+locked-clock bandwidth/active-byte ledger and ablate the shipping
+**0.0459275** maximum KL debt. Then promote the measured hipBLASLt source-F16
+opportunity and low-risk dense/shared quant family before calibrating and
+integrating selected gate/up/down. Streaming families target at least 70% of
+the measured achievable-read ceiling unless profiling proves another limiter.
+The detailed gates, sequence, and T16-lite/X16 replacement-layout screen remain
+owned by `LAGUNA-prefill.md`.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
