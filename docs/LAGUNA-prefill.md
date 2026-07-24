@@ -596,8 +596,8 @@ Current progress:
 | LAP-1 | Complete | Direct resident-T16 MMQ32 is BF16-bit identical to X8, positive at all seven natural shapes, **2.502x/3.959x/5.502x** retained at M128/M256/M512, and within **4.66%/4.05%/3.02%** of X8 with no transpose or sidecar. |
 | LAP-2 primitive | Complete | Three-plane pack, direct/guarded T16 MMQ, bounded queue, and overflow-safe exact correction landed in `d9bb6ad88`; 35 focused tests and cached trace pass. |
 | LAP-BW0 / LAP-Q0 | Next | Measure same-host cold-read bandwidth and active bytes/GB/s; ablate the 0.0459275 shipping KL debt by admitted approximation. |
-| LAP-6 | Ready after LAP-Q0 | Convert the 138.351 ms zero-data library ceiling into a real-input torch-free path with range and quality gates. |
-| LAP-5 | Ready after LAP-6 | Dense/shared MMQ reuse has no routing dependency and the largest current/Vulkan ratio. |
+| LAP-6 | Integrated candidate | Torch-free, row-scaled hipBLASLt now runs all five source-F16 projections on real pp512 input. Compounded with selected MMQ it improves **127.831 -> 154.321 tok/s** with the same next token and no added scratch; complete quality/clean admission remains open. |
+| LAP-5 | Next | Dense/shared MMQ reuse has no routing dependency and the largest current/Vulkan ratio. |
 | LAP-2 calibration / LAP-3 / LAP-4 | In progress | Explicit D4x3 selected gate/up now runs all 47 sparse layers, reuses compact metadata for exact grouped down, and improves a same-session dirty-tree pp512 diagnostic **76.414 -> 127.607 tok/s** with the same next token. Full quality/repair calibration and a clean A/B are still required before default promotion. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
@@ -609,13 +609,12 @@ Immediate execution queue:
 2. LAP-BW0: run a >64 MiB cold-stream read on this exact host, pin/record the
    supported clock policy, compute manifest+routing active bytes for every
    family, and add GB/s/%-of-achievable columns to the bridge.
-3. LAP-6: implement the raw-pointer hipBLASLt route using real projection
-   activations. Validate the BF16→FP16 range strategy; screen per-row
-   power-of-two scaling because multiplication/division by that scale is exact
-   in binary. Promote only after nonzero data and complete quality gates.
-4. LAP-5: move dense/shared Q4/Q6 onto a dense **64–128 column/row-class**
+3. LAP-5: move dense/shared Q4/Q6 onto a dense **64–128 column/row-class**
    MMQ with `BK_STEP=4` or an equivalent multi-K stage. No route scan,
    compaction, or selected-family repair dependency is allowed.
+4. Run the complete quality and clean A/B gate with the LAP-6 library route
+   compounded into the best linear stack; keep exact tiled as rollback until
+   that gate passes.
 5. Capture exact gate/up and post-SiLU down inputs. Compare FP16/FP32 DS,
    residual plane count, and repair occupancy; then integrate selected gate/up.
 6. Rebuild the bridge from all-layer traces. Reconcile the
@@ -955,6 +954,17 @@ Deliverables:
 Planning checkpoint: first reproduce **0.14–0.18 seconds** on real inputs; do
 not weaken the target to 0.35 seconds unless the measured nonzero-data/range
 contract explains the gap. Reprofile overall throughput after promotion.
+
+First integration result: the session-local `hipblaslt_scaled` route casts one
+BF16 producer row to finite FP16 with an exact power-of-two scale, caches seven
+zero-workspace shape descriptors, and restores FP32/BF16 outputs before their
+existing consumers. It reuses the post-embedding token-ID buffer for row
+scales, so bounded scratch and resident weights do not grow. With D4x3 MMQ held
+constant, a same-session real pp512 diagnostic moves **4.0053 -> 3.3178
+seconds**, or **127.831 -> 154.321 tok/s (1.207x)**, while both routes select
+token **2930**. The measured **687.5 ms** wall reduction captures most of the
+755.7 ms library opportunity. This is an integrated candidate, not a default
+promotion; cumulative KL/category/lifecycle and a clean A/B remain mandatory.
 
 ### LAP-7 — build `KVLiveSpans`-aware cooperative tiled attention
 
