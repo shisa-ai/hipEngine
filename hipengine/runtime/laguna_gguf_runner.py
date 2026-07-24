@@ -25,6 +25,11 @@ from hipengine.kernels.backends import (
     load_backend_kernel_package,
     resolve_backend,
 )
+from hipengine.kernels.hip_gfx1100.convert.cast import (
+    bf16_to_fp16_scaled_rows,
+    f32_scale_rows,
+    f32_scale_rows_to_bf16,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import lm_head_argmax_stage1_blocks
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.gguf import GGUFReader
@@ -50,15 +55,19 @@ from hipengine.loading.laguna_gguf_materialize import (
     LagunaGGUFResidentWeights,
     materialize_laguna_gguf_weights,
 )
-from hipengine.runtime.f16_weight_linear import (
-    launch_f16_weight_linear,
-    launch_f16_weight_linear_triple,
-)
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+)
+from hipengine.runtime.f16_weight_linear import (
+    launch_f16_weight_linear,
+    launch_f16_weight_linear_triple,
+)
+from hipengine.runtime.laguna_f16_hipblaslt import (
+    LagunaF16HipblasLt,
+    resolve_laguna_f16_prefill_mode,
 )
 from hipengine.runtime.laguna_kv import (
     LagunaKVCache,
@@ -712,6 +721,7 @@ class LagunaEagerLibraries:
     gguf_ops: object
     f16_projection: object
     f16_projection_prefill: object
+    cast: object
     attention_gate: object
     kv_attention: object
     dense_silu: object
@@ -1387,6 +1397,7 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
     )
+    from hipengine.kernels.hip_gfx1100.convert.cast import build_cast
     from hipengine.kernels.hip_gfx1100.fused.gguf_ops import build_gguf_ops
     from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
         build_laguna_attention,
@@ -1441,6 +1452,7 @@ def load_laguna_eager_libraries(
             gguf_ops=build_gguf_ops(**kwargs),
             f16_projection=build_laguna_f16_projection(**kwargs),
             f16_projection_prefill=build_laguna_f16_projection_prefill(**kwargs),
+            cast=build_cast(**kwargs),
             attention_gate=build_laguna_attention(**kwargs),
             kv_attention=build_laguna_kv_attention(**kwargs),
             dense_silu=build_paro_silu(**kwargs),
@@ -1524,6 +1536,7 @@ class LagunaGGUFResidentSession:
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
+        self.f16_prefill_mode = resolve_laguna_f16_prefill_mode(self.backend)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1539,6 +1552,7 @@ class LagunaGGUFResidentSession:
         self.kernel_plan: LagunaEagerKernelPlan | None = None
         self.moe_plan: LagunaMoEKernelPlan | None = None
         self.prefill_scratch_plan: LagunaPrefillScratchPlan | None = None
+        self.f16_hipblaslt: LagunaF16HipblasLt | None = None
         self.prefill_scratch_admission_nbytes = DEFAULT_LAGUNA_SCRATCH_BYTES
         self._owns_weights = resident_weights is None
         self._closed = False
@@ -1672,6 +1686,25 @@ class LagunaGGUFResidentSession:
             self.backend,
             mode,
         )
+
+    def set_f16_prefill_mode(self, mode: str) -> None:
+        """Select the explicit rows>1 source-F16 projection route."""
+
+        selected = resolve_laguna_f16_prefill_mode(self.backend, mode)
+        if selected == "hipblaslt_scaled":
+            assert self.weights is not None
+            unsupported = [
+                (layer.layer_id, slot, layer.weight(slot).spec.layout)
+                for layer in self.weights.layers
+                for slot in ("attn_q", "attn_k", "attn_v", "attn_gate", "attn_output")
+                if layer.weight(slot).spec.layout != LAYOUT_DENSE_F16
+            ]
+            if unsupported:
+                raise ValueError(
+                    "Laguna hipBLASLt prefill requires dense F16 attention weights; "
+                    f"first unsupported={unsupported[0]}"
+                )
+        self.f16_prefill_mode = selected
 
     @property
     def resident_nbytes(self) -> int:
@@ -2256,6 +2289,149 @@ class LagunaGGUFResidentSession:
             self.kv_cache.discard_rows()
         self._staged_verifier_tokens = None
 
+    def _ensure_f16_hipblaslt(self) -> LagunaF16HipblasLt:
+        route = self.f16_hipblaslt
+        if route is None:
+            route = LagunaF16HipblasLt()
+            self.f16_hipblaslt = route
+        return route
+
+    def _launch_attention_projections_rows(
+        self,
+        layer: LagunaGGUFResidentLayerWeights,
+        scratch: LagunaRowsScratch,
+        *,
+        rows: int,
+        q_width: int,
+        kv_width: int,
+        heads: int,
+        stream: int,
+    ) -> None:
+        assert self.weights is not None
+        assert self.libraries is not None
+        config = self.weights.config
+        if self.f16_prefill_mode == "retained":
+            launch_laguna_attention_projections(
+                layer.weight("attn_q"),
+                layer.weight("attn_k"),
+                layer.weight("attn_v"),
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.query.ptr,
+                scratch.key.ptr,
+                scratch.value.ptr,
+                scratch.gate_logits.ptr,
+                rows,
+                config.hidden_size,
+                q_width,
+                kv_width,
+                kv_width,
+                heads,
+                backend=self.backend,
+                stream=stream,
+                libraries=self.libraries,
+                runtime=self.runtime,
+                compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
+            )
+            return
+
+        route = self._ensure_f16_hipblaslt()
+        row_scales_ptr = scratch.token_ids.ptr
+        bf16_to_fp16_scaled_rows(
+            scratch.norm.ptr,
+            scratch.gated_context.ptr,
+            row_scales_ptr,
+            rows,
+            config.hidden_size,
+            stream=stream,
+            library=self.libraries.cast,
+            runtime=self.runtime,
+        )
+        for slot, out_ptr, out_features in (
+            ("attn_q", scratch.query.ptr, q_width),
+            ("attn_k", scratch.key.ptr, kv_width),
+            ("attn_v", scratch.value.ptr, kv_width),
+            ("attn_gate", scratch.gate_logits.ptr, heads),
+        ):
+            route.launch(
+                scratch.gated_context.ptr,
+                layer.weight(slot).allocation("raw").tensor.ptr,
+                out_ptr,
+                rows,
+                config.hidden_size,
+                out_features,
+                stream=stream,
+            )
+            f32_scale_rows(
+                out_ptr,
+                row_scales_ptr,
+                rows,
+                out_features,
+                stream=stream,
+                library=self.libraries.cast,
+                runtime=self.runtime,
+            )
+
+    def _launch_attention_output_rows(
+        self,
+        layer: LagunaGGUFResidentLayerWeights,
+        scratch: LagunaRowsScratch,
+        *,
+        rows: int,
+        q_width: int,
+        stream: int,
+    ) -> None:
+        assert self.weights is not None
+        assert self.libraries is not None
+        config = self.weights.config
+        if self.f16_prefill_mode == "retained":
+            launch_laguna_weight_linear(
+                layer.weight("attn_output"),
+                scratch.gated_context.ptr,
+                scratch.attention_output.ptr,
+                rows,
+                q_width,
+                config.hidden_size,
+                backend=self.backend,
+                stream=stream,
+                libraries=self.libraries,
+                runtime=self.runtime,
+                compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
+            )
+            return
+
+        route = self._ensure_f16_hipblaslt()
+        row_scales_ptr = scratch.token_ids.ptr
+        bf16_to_fp16_scaled_rows(
+            scratch.gated_context.ptr,
+            scratch.gated_context.ptr,
+            row_scales_ptr,
+            rows,
+            q_width,
+            stream=stream,
+            library=self.libraries.cast,
+            runtime=self.runtime,
+        )
+        route.launch(
+            scratch.gated_context.ptr,
+            layer.weight("attn_output").allocation("raw").tensor.ptr,
+            scratch.context.ptr,
+            rows,
+            q_width,
+            config.hidden_size,
+            stream=stream,
+        )
+        f32_scale_rows_to_bf16(
+            scratch.context.ptr,
+            row_scales_ptr,
+            scratch.attention_output.ptr,
+            rows,
+            config.hidden_size,
+            stream=stream,
+            library=self.libraries.cast,
+            runtime=self.runtime,
+        )
+
     def _run_layer_rows(
         self,
         layer_id: int,
@@ -2290,27 +2466,14 @@ class LagunaGGUFResidentSession:
             library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
-        launch_laguna_attention_projections(
-            layer.weight("attn_q"),
-            layer.weight("attn_k"),
-            layer.weight("attn_v"),
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.query.ptr,
-            scratch.key.ptr,
-            scratch.value.ptr,
-            scratch.gate_logits.ptr,
-            rows,
-            config.hidden_size,
-            q_width,
-            kv_width,
-            kv_width,
-            heads,
-            backend=self.backend,
+        self._launch_attention_projections_rows(
+            layer,
+            scratch,
+            rows=rows,
+            q_width=q_width,
+            kv_width=kv_width,
+            heads=heads,
             stream=stream,
-            libraries=self.libraries,
-            runtime=self.runtime,
-            compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -2397,18 +2560,12 @@ class LagunaGGUFResidentSession:
             library=self.libraries.attention_gate,
             runtime=self.runtime,
         )
-        launch_laguna_weight_linear(
-            layer.weight("attn_output"),
-            scratch.gated_context.ptr,
-            scratch.attention_output.ptr,
-            rows,
-            q_width,
-            config.hidden_size,
-            backend=self.backend,
+        self._launch_attention_output_rows(
+            layer,
+            scratch,
+            rows=rows,
+            q_width=q_width,
             stream=stream,
-            libraries=self.libraries,
-            runtime=self.runtime,
-            compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
         )
         self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,
@@ -3043,6 +3200,10 @@ class LagunaGGUFResidentSession:
             except BaseException as exc:  # best-effort teardown after HIP failures
                 errors.append(exc)
 
+        if self.f16_hipblaslt is not None:
+            route = self.f16_hipblaslt
+            self.f16_hipblaslt = None
+            release(route.close)
         if self.verifier_scratch is not None:
             scratch = self.verifier_scratch
             self.verifier_scratch = None

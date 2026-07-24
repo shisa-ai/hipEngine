@@ -26,6 +26,20 @@ should be removed or collapsed.
   the exact rollback path; if rejected, remove the runner setter and candidate
   scratch ownership while keeping the registered leaf/repair diagnostics.
 
+## Laguna `f16_prefill_mode=hipblaslt_scaled`
+
+- Added 2026-07-25 as an explicit session-local LAP-6 candidate. Rows greater
+  than one cast each BF16 producer row once into existing FP16-sized scratch,
+  use an exact power-of-two row scale, run cached zero-workspace hipBLASLt
+  FP16-input/F16-weight contractions with FP32 output, and restore the scale
+  before the next boundary. Decode and the retained custom projection route
+  remain unchanged.
+- Remove the selector after the canonical category/teacher-forced quality,
+  clean pp512, memory, lifecycle, and decode-neutral gates. If accepted, make
+  the library route the gfx1151 package capability and retain exact tiled as
+  rollback; if rejected, remove the session route and keep the standalone
+  library ceiling/range diagnostics.
+
 ## Priority Cleanup (do first)
 
 **Revalidate the gfx1151 GGUF graph default on the current stack and retire

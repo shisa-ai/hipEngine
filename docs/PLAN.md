@@ -1332,12 +1332,15 @@ corrected the actual Vulkan comparator from a 32x32 small tile to a 64x64
 medium tile on RADV gfx1151 and showed that the **344.56 tok/s** Vulkan row is
 a compatibility floor, not a hardware ceiling. Next establish a same-host
 locked-clock bandwidth/active-byte ledger and ablate the shipping
-**0.0459275** maximum KL debt. Then promote the measured hipBLASLt source-F16
-opportunity and low-risk dense/shared quant family before calibrating and
-integrating selected gate/up/down. Streaming families target at least 70% of
-the measured achievable-read ceiling unless profiling proves another limiter.
-The detailed gates, sequence, and T16-lite/X16 replacement-layout screen remain
-owned by `LAGUNA-prefill.md`.
+**0.0459275** maximum KL debt. The torch-free hipBLASLt source-F16 candidate is
+now integrated with exact power-of-two row scaling: compounded with selected
+MMQ it moves a same-session real pp512 diagnostic **127.831 -> 154.321 tok/s**
+with the same next token and no added scratch. It remains explicit pending the
+complete quality/clean gate. The next implementation target is the low-risk
+dense/shared quant family before selected down. Streaming families target at
+least 70% of the measured achievable-read ceiling unless profiling proves
+another limiter. The detailed gates, sequence, and T16-lite/X16
+replacement-layout screen remain owned by `LAGUNA-prefill.md`.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
