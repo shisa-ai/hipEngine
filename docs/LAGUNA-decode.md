@@ -2,9 +2,9 @@
 
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership and P2.1
 exact split attention are implemented and retained as gfx1100 defaults. Both
-P1 IQ3 quality lanes and P2.2 online FP32 partials are rejected, while
-raw-Q5/raw-IQ2 remain later work. The exact SWA tile16 score producer is
-retained as the gfx1100 default from live count 257; P2 is closed.
+P1 IQ3 lanes, the P1 raw-Q5 row4 lane, and P2.2 online FP32 partials are
+rejected, while raw-IQ2 remains later work. The exact SWA tile16 score producer
+is retained as the gfx1100 default from live count 257; P2 is closed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -500,7 +500,9 @@ implementation campaigns:
 2. **Quality-gated raw quant throughput.** If exact IQ3 topology cannot recover
    enough time, only then admit an IQ3-scoped Q8_1/dot4 or raw-row4 sibling.
    Q5 and IQ2 follow only after independent actual-weight wins; the rejected
-   IQ2 Q8_1 path is not repeated.
+   IQ2 Q8_1 path is not repeated. The later raw-Q5 row4 screen won its actual
+   leaves but failed the complete quality gate, leaving raw-IQ2 as the only
+   unadjudicated P1 family.
 3. **Split/online attention.** D4's token4 schedule remains one block per query
    head. llama.cpp HIP instead runs independent tile32 partials and a stable
    combine, reaching 0.558 ms/token at comparable short depth. A Laguna version
@@ -625,6 +627,18 @@ actual layer-1/layer-45 producer+reducer HIP-event time regressed
 **146.14%/93.00%**, with synchronized wall **140.04%/83.37%** slower. It was
 removed before runtime and the 18-prompt gate. Evidence:
 [`...p1-iq3-row4-f32-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq3-row4-f32-rejected.json).
+
+The raw-Q5 lane is also rejected and removed. A source-backed local64 schedule
+adapted llama.cpp Vulkan's four-row ownership and nested-FMA superblock
+association to BF16 activations and two native wave32 reductions. On actual
+layers 0/1 it approximately halves both retained Q5 families: attention-output
+event windows improve **48.12-49.99%** and query/gate improves
+**48.97-50.38%**, with synchronized wall agreeing. Primitive differences are
+only `3.28e-7`, but the mandatory 18-prompt/576-step model gate fails at maximum
+KL **0.461353** versus the `0.05` ceiling. Isolating output only and query/gate
+only also fails at **0.893206/1.35822**, so no role subset is admissible despite
+**98.96-99.13%** top-1 agreement. Evidence:
+[`...p1-q5-row4-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-q5-row4-rejected.json).
 
 Contract and gates:
 
@@ -862,9 +876,10 @@ supported by the evidence.
 
 The implementation loop remains ordered and falsifiable: P0 exact IQ3
 route/output ownership and P2 exact attention split topology are retained; both
-narrow P1 IQ3 quality lanes and P2.2 online partials are rejected. The online
-body proves tile-level ownership is mechanically valuable but violates the
-frozen KL gate, so it is removed. The exact SWA tile16 score producer is retained at live `>=257`; P2 is closed.
-Q5/IQ2 and scheduler work follow. Matching Vulkan still requires large device-work
+narrow P1 IQ3 lanes, P1 raw-Q5 row4, and P2.2 online partials are rejected. The
+online-attention and raw-Q5 bodies prove tile-level ownership is mechanically
+valuable but violate the frozen KL gate, so both are removed. The exact SWA
+tile16 score producer is retained at live `>=257`; P2 is closed. Raw-IQ2 and
+scheduler work follow. Matching Vulkan still requires large device-work
 reductions across several families; launch cleanup alone can move 49 toward
 51, not toward 94.

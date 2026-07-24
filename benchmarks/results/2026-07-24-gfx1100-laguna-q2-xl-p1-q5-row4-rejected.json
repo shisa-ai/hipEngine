@@ -1,0 +1,200 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 51.436,
+    "canonical_ms_per_token": 19.441,
+    "name": "P2 exact split attention plus P0 IQ3 wave4 and D12 exact Q5 wave32x2",
+    "revision": "cb4d11d5d"
+  },
+  "candidate": {
+    "description": "one local64 workgroup owns four adjacent raw-Q5_K output rows; four 16-lane partitions process independent K256 blocks, share each BF16 activation load across the four rows, preserve the reviewed Vulkan nested-FMA superblock association, and reduce through two native wave32 waves",
+    "external_source": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q5_k.comp",
+    "external_source_commit": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "persistent_weight_copy": false,
+    "reusable_workspace_bytes": 0,
+    "scratch_kernel_body": false
+  },
+  "checks": {
+    "actual_weight_event_win": true,
+    "actual_weight_wall_win": true,
+    "combined_18_prompt_kl_le_0_05": false,
+    "combined_18_prompt_top1_ge_0_90": true,
+    "output_only_18_prompt_kl_le_0_05": false,
+    "primitive_cpu_source_quality_pass": true,
+    "query_gate_only_18_prompt_kl_le_0_05": false,
+    "selection_pass": false,
+    "tracked_lifecycle_clean": true
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "reject and remove before clean context profiles or category throughput gate",
+    "next": "retain exact Q5 wave32x2 and adjudicate the independently ranked raw-IQ2 row4 or metadata/scheduler work",
+    "reason": "The source-backed row4 schedule approximately halves all four actual Q5 leaf windows and is primitive-close, but it violates the frozen complete-model quality gate. Combined output plus query/gate reaches maximum KL 0.461353 versus the 0.05 ceiling. Output-only and query/gate-only isolation also fail at maximum KL 0.893206 and 1.35822, so there is no independently admissible Q5 role subset."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p1_q5_vulkan_row4_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "primitive": {
+    "bf16_output_max_abs_vs_exact_actual_layers": 2.384185791015625e-07,
+    "f32_query_gate_max_abs_vs_exact_actual_layers": 3.2782554626464844e-07,
+    "synthetic_cpu_and_exact_sibling_quality_pass": true
+  },
+  "production_rows": [
+    {
+      "event_delta_pct": -48.1171850086301,
+      "event_us": {
+        "retained_wave32x2": 29.434545040130615,
+        "vulkan_row4": 15.271470546722412
+      },
+      "layer_id": 0,
+      "quality": {
+        "bf16_equal": false,
+        "kl_max": 2.412456157831351e-16,
+        "max_abs": 2.384185791015625e-07,
+        "top1_agreement": 1.0
+      },
+      "role": "attention_output",
+      "shape": [3072, 6144],
+      "wall_delta_pct": -48.80690618681929,
+      "wall_us": {
+        "retained_wave32x2": 29.54111434519291,
+        "vulkan_row4": 15.123010380193591
+      }
+    },
+    {
+      "event_delta_pct": -49.99324018335846,
+      "event_us": {
+        "retained_wave32x2": 39.943249225616455,
+        "vulkan_row4": 19.974324703216553
+      },
+      "layer_id": 1,
+      "quality": {
+        "bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "top1_agreement": 1.0
+      },
+      "role": "attention_output",
+      "shape": [3072, 9216],
+      "wall_delta_pct": -48.7640333884932,
+      "wall_us": {
+        "retained_wave32x2": 39.981454610824585,
+        "vulkan_row4": 20.48488473519683
+      }
+    },
+    {
+      "event_delta_pct": -48.971135195275885,
+      "event_us": {
+        "retained_wave32x2": 28.80898952484131,
+        "vulkan_row4": 14.700900316238403
+      },
+      "layer_id": 0,
+      "quality": {
+        "f32_equal": false,
+        "kl_max": 6.679522446380617e-16,
+        "max_abs": 2.682209014892578e-07,
+        "top1_agreement": 1.0
+      },
+      "role": "query_gate",
+      "shape": [[6144, 3072], [48, 3072]],
+      "wall_delta_pct": -48.022418693116244,
+      "wall_us": {
+        "retained_wave32x2": 28.597050113603473,
+        "vulkan_row4": 14.864054974168539
+      }
+    },
+    {
+      "event_delta_pct": -50.37511015166726,
+      "event_us": {
+        "retained_wave32x2": 41.50887966156006,
+        "vulkan_row4": 20.598735809326172
+      },
+      "layer_id": 1,
+      "quality": {
+        "f32_equal": false,
+        "kl_max": 2.316879622382751e-15,
+        "max_abs": 3.2782554626464844e-07,
+        "top1_agreement": 1.0
+      },
+      "role": "query_gate",
+      "shape": [[9216, 3072], [72, 3072]],
+      "wall_delta_pct": -50.11563871622221,
+      "wall_us": {
+        "retained_wave32x2": 41.294475086033344,
+        "vulkan_row4": 20.59948514215648
+      }
+    }
+  ],
+  "protocol": {
+    "actual_weight_counterbalanced_repetitions": 15,
+    "actual_weight_iterations_per_sample": 200,
+    "actual_weight_warmups_per_mode": 50,
+    "quality_prompt_categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "quality_prompts": 18,
+    "quality_teacher_forced_steps_per_prompt": 32,
+    "quality_total_steps": 576
+  },
+  "provenance": {
+    "candidate_source_diff_sha256": "cb308a4fba1be28ba643fd20182df45709242d24dda7f0fd1bb639c8048fe497",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "micro_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_p1_q5_row4.py",
+    "micro_harness_sha256": "805fcd44da2c87600a303c09fa0317b232751a3a5d49c73b76573b9aed8335a5",
+    "micro_raw_sha256": "0eeb38145f7cabfd71e027450fbd4862e6ead0e1d0c44d719d69db4bd83e2a03",
+    "quality_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/laguna_p1_q5_row4_18_quality.py",
+    "quality_harness_sha256": "d2a5399f359b4845e79ca84a2013c0d34156e1194d3049ccd20056af89de88fb",
+    "quality_raw_sha256": "a44750fc8a667d79f07d44b2d758cbd90dcc1731e74f9a1e20e2f9b0f47355dc",
+    "red_kernel_sha256": "da7286c0062c933964667ca5494cfdd03028a85359be3dfbd560553a689b3c5a",
+    "red_runtime_sha256": "6ce1c72cd9d288da8553c3045efed1570310d1eee868d2b50e80c5752a84c7bc",
+    "role_isolation_output_stdout_sha256": "7a8734976f02b532ae9d91b2af4dac899c3431b6ee67087ef8b06fdd96711ee1",
+    "role_isolation_query_gate_stdout_sha256": "57dd3233c59b1453f6a2ffcf3eb7ba3cdeba6662c4d33ac4b13185b678e5568a",
+    "trace_db_sha256": "205cf3c816395526f0d419dc401fd88aaa85aab25d941c169b1eeec2b2b65b14",
+    "trace_harness_sha256": "aa1d0699c1e4ae18ebf2268374bc14a1a0b95aad197a4a41ef0eb7f36e41f932"
+  },
+  "quality": {
+    "combined_output_query_gate": {
+      "categories": {
+        "code": {"max_kl_divergence": 0.07208746257076125, "top1_agreement": 0.9947916666666666},
+        "general_en": {"max_kl_divergence": 0.022126624536197143, "top1_agreement": 0.984375},
+        "general_ja": {"max_kl_divergence": 0.11242291475148287, "top1_agreement": 1.0},
+        "mixed_ja_en": {"max_kl_divergence": 0.46135315773744606, "top1_agreement": 0.9765625}
+      },
+      "finite": true,
+      "max_kl_divergence": 0.46135315773744606,
+      "top1_agreement": 0.9895833333333334,
+      "top1_matches": 570,
+      "total_steps": 576,
+      "worst_prompt": "heldout_mixed_review"
+    },
+    "output_only": {
+      "max_kl_divergence": 0.893206,
+      "top1_agreement": 0.9895833333333334,
+      "top1_matches": 570,
+      "total_steps": 576,
+      "worst_prompt": "heldout_general_ja_migration"
+    },
+    "query_gate_only": {
+      "max_kl_divergence": 1.35822,
+      "top1_agreement": 0.9913194444444444,
+      "top1_matches": 571,
+      "total_steps": 576,
+      "worst_prompt": "heldout_general_ja_migration"
+    }
+  },
+  "resources": {
+    "accum_vgpr": 0,
+    "arch_vgpr": 96,
+    "group_segment_bytes": 32,
+    "private_segment_bytes": 0,
+    "sgpr": 128,
+    "workgroup_size": 64
+  },
+  "source_revision": "cb4d11d5d"
+}
