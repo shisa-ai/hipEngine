@@ -1737,20 +1737,24 @@ because it stays below that crossover and still needs **83.75%** more
 diagnostic throughput to match Vulkan. Explicit tile16 disable retains P2.1;
 other backends do not inherit it. [P2 retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json) and [tile16 retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-retained.json).
 
-A final same-model/same-context natural-greedy completion audit now supplies the
-previously missing cross-engine timing boundary. It uses all **18** category and
-heldout prompts, h16/h32, two repetitions, context 4096, and normalizes both
-engines to synchronized post-TTFT transitions: hipEngine
+The same-model/same-context natural-greedy completion protocol supplies the
+cross-engine timing boundary. It uses all **18** category and heldout prompts,
+h16/h32, two repetitions, context 4096, and normalizes both engines to
+synchronized post-TTFT transitions: hipEngine
 `decode_forward_calls/decode_seconds` versus llama.cpp Vulkan
-`sum(predicted_n - 1) / sum(predicted_ms)`. Retained hipEngine measures
-**51.839/51.432 tok/s** at h16/h32; Vulkan measures
-**64.213/64.336 tok/s**. hipEngine is therefore **19.27%/20.06% slower** and
-still needs **23.87%/25.09%** more throughput; Vulkan-beating completion is not
-achieved. The unavoidable KV difference is disclosed (hipEngine BF16
+`sum(predicted_n - 1) / sum(predicted_ms)`. The pre-current-P4 audit measured
+hipEngine **51.839/51.432 tok/s** and Vulkan **64.213/64.336 tok/s**.
+
+The post-current-P4 reaudit explicitly pins `GGML_VK_VISIBLE_DEVICES=0` and
+reproduces Vulkan at **64.245/64.418 tok/s**. Current hipEngine reaches
+**52.855/52.391 tok/s**, so it remains **17.73%/18.67% slower** and needs
+**21.55%/22.96%** more throughput; Vulkan-beating completion is not achieved.
+Two unpinned 57.1-57.6-tok/s Vulkan diagnostics are excluded from the canonical
+protocol. The unavoidable KV difference is disclosed (hipEngine BF16
 `KVLiveSpans`, Vulkan F16 because this device reports no BF16 support). All 72
-Vulkan native prompt/predicted timing rows are valid; SSE `return_tokens` omits
-one or more token entries for 18 rows, so returned-array completeness is not
-used as the timing gate. [Matched completion audit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json).
+pinned Vulkan native prompt/predicted timing rows are valid; SSE `return_tokens`
+omits one or more token entries for 18 rows, so returned-array completeness is
+not used as the timing gate. [Initial audit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) and [device-pinned current-P4 reaudit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json).
 
 ##### Laguna Q2 XL P4.1 exact split-reducer+gate (retained gfx1100 default)
 
@@ -1799,8 +1803,9 @@ The complete two-order 18-prompt gate moves h16/h32 decode
 **12.207 -> 12.232 (+0.204%)**. Every train/heldout category decode improves;
 all E2E/prefill/TTFT guards, IDs, Poolside oracle, state, and lifecycle pass.
 Relative to the prior retained 51.825 row, h32 improves **1.092%** to **19.087
-ms/token**. The matched Vulkan target still requires **22.80%** more, so
-completion remains open. [Correctness artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-correctness.json) and [retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json).
+ms/token**. The device-pinned matched Vulkan reaudit measures **64.418 tok/s**,
+so hipEngine still requires **22.96%** more and completion remains open.
+[Correctness artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-correctness.json), [retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json), and [matched reaudit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**

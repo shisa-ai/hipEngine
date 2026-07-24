@@ -8,8 +8,8 @@ count 257; P1 and P2 are closed. P3's bit-lossless Q5 T16 replacement screen is
 rejected. P4.1's exact P2-derived split-reducer+softplus-gate body and the
 current-P4 exact head-RMSNorm+RoPE+BF16-KV body are retained as gfx1100
 defaults. A correctness-fenced one-doorbell native-AQL owner is slower and
-rejected; matched Vulkan completion must now be reaudited before another exact
-device-work contraction is selected.
+rejected. The device-pinned matched Vulkan reaudit still fails at both horizons;
+continue only with a new independently winning exact device-work contraction.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -183,15 +183,20 @@ effect.
 | Right-sized context vs 4096-capacity `KVLiveSpans` | Depth control stays at 94.15 tok/s; D12 attention reads live spans rather than all capacity. |
 | Three long repetitions vs ten-prompt category suite | Important for claim eligibility and variance, but not the GPU kernel floor. |
 
-The final completion audit now supplies the closest retained cross-engine
+The matched completion protocol supplies the closest retained cross-engine
 boundary. It runs all 18 category+heldout prompts at context 4096, natural
 greedy h16/h32, and two repetitions, then counts the same post-TTFT transitions:
 hipEngine `decode_forward_calls/decode_seconds` versus llama.cpp Vulkan
-`sum(predicted_n - 1) / sum(predicted_ms)`. Retained hipEngine measures
-**51.839/51.432 tok/s** and Vulkan **64.213/64.336 tok/s**, so hipEngine is
-**19.27%/20.06% slower** and needs **23.87%/25.09%** more throughput. This is a
-much smaller and more actionable gap than the non-equivalent 94.513-tok/s
-`llama-bench` diagnostic, but it still fails the Vulkan-beating objective.
+`sum(predicted_n - 1) / sum(predicted_ms)`. The pre-current-P4 audit measured
+hipEngine **51.839/51.432 tok/s** and Vulkan **64.213/64.336 tok/s**.
+
+The required post-current-P4 reaudit explicitly pins
+`GGML_VK_VISIBLE_DEVICES=0`, reproduces Vulkan at **64.245/64.418 tok/s**
+(within **0.05%/0.13%** of the original), and measures hipEngine at
+**52.855/52.391 tok/s**. hipEngine remains **17.73%/18.67% slower** and needs
+**21.55%/22.96%** more throughput. Two unpinned diagnostics at about
+**57.1-57.6 tok/s** are excluded because they do not follow the user's or the
+canonical explicit-device protocol. The matched objective still fails.
 
 Prompt IDs, natural sampling, horizons, context length, and transition ownership
 match. One unavoidable arithmetic difference remains: hipEngine uses BF16
@@ -201,8 +206,7 @@ The SSE Content-only path omits one or more returned token-array entries for 18
 rows even though `predicted_n` and timings are complete, so returned-array
 length is reported but not used as the timing gate. Cross-engine IDs are also
 reported, not substituted for hipEngine's exact within-engine correctness and
-lifecycle gates. Evidence:
-[`...vulkan-matched-completion-audit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json).
+lifecycle gates. Evidence: [initial audit](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) and [current-P4 device-pinned reaudit](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json).
 
 ## 3. hipEngine D12 profile
 
@@ -915,10 +919,11 @@ The registered two-launch chain remains the rows/prefill, explicit-disable,
 gfx1151, and unsupported fallback. Evidence:
 [`...p4-head-kv-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json).
 
-The formal matched 64.336-tok/s Vulkan target still requires **22.80%** more
-throughput. Reaudit that exact completion protocol with the new default before
-selecting another lane; if it still fails, continue only with a genuinely new
-exact device-work/dispatch contraction whose own body wins independently.
+The device-pinned reaudit is complete: current-P4 measures **52.855/52.391
+tok/s** versus Vulkan **64.245/64.418 tok/s** at h16/h32. It remains
+**17.73%/18.67% slower** and needs **21.55%/22.96%** more throughput, so the
+objective fails at both horizons. Continue only with a genuinely new exact
+device-work/dispatch contraction whose own body wins independently.
 
 ## 9. Do not chase without new evidence
 
@@ -959,7 +964,7 @@ exact device-work/dispatch contraction whose own body wins independently.
 | What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
 | What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
 | Did a bit-lossless Q5 repack help? | [`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json): exact generic/wave32x2 T16 both regress actual global/SWA layers and are not retained. |
-| Does retained hipEngine beat Vulkan under matched natural completion? | Not established. The pre-current-P4 [`...vulkan-matched-completion-audit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) measures Vulkan **64.213/64.336 tok/s**; the new category h32 is **52.391 tok/s**, still **22.80%** short, and the matched completion audit must be rerun. |
+| Does retained hipEngine beat Vulkan under matched natural completion? | No. The device-pinned [`...vulkan-matched-completion-reaudit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json) measures hipEngine **52.855/52.391 tok/s** versus Vulkan **64.245/64.418 tok/s** at h16/h32; hipEngine still needs **21.55%/22.96%** more. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
 ## Bottom line
@@ -983,9 +988,9 @@ frozen KL gate; IQ2 row4 and Q5 T16 instead fail the actual-weight performance
 precondition. All are removed. The exact SWA tile16 score producer is retained
 at live `>=257`; P1-P3 are closed. P4.1's exact gated split reducers and the
 current-P4 exact head+KV body are retained after independent-body, full-state,
-trace, clean-context, and complete-category gates. The matched completion audit
-replaces the non-equivalent 94.513-tok/s headline with a formal **64.336 tok/s**
-h32 target; the new 52.391-tok/s category row still needs **22.80%** more.
-Direct AQL, unchanged graph capture, host packets, and launch cleanup alone are
-mechanically closed. Reaudit matched completion, then continue only with a new
-exact independently winning device-work/dispatch contraction if needed.
+trace, clean-context, and complete-category gates. The device-pinned matched
+reaudit replaces the non-equivalent 94.513-tok/s headline with a formal
+**64.418 tok/s** h32 target; current hipEngine reaches **52.391 tok/s** and still
+needs **22.96%** more. Direct AQL, unchanged graph capture, host packets, and
+launch cleanup alone are mechanically closed. Continue only with a new exact
+independently winning device-work/dispatch contraction.
