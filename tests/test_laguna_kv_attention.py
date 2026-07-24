@@ -493,29 +493,12 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert cache.swa_split_min_live == 65
         assert cache.swa_split_tile16_min_live == 257
         assert cache.split_gate_fusion
-        assert not cache.swa_split_no_max_sync
         assert cache.allocation_count == 245
         assert cache.resident_nbytes == sum(runtime.allocations.values())
         assert sorted(runtime.allocations.values()).count(split_elements * 4) == 2
     finally:
         cache.free()
     assert runtime.allocations == {}
-
-    no_max_sync_runtime = _FakeRuntime()
-    no_max_sync = allocate_laguna_kv_cache(
-        _production_config(),
-        context_length=4096,
-        backend="hip_gfx1100",
-        runtime=no_max_sync_runtime,
-        use_swa_split_no_max_sync=True,
-    )
-    try:
-        assert no_max_sync.swa_split_no_max_sync
-        assert no_max_sync.split_gate_fusion
-        assert no_max_sync.allocation_count == 245
-    finally:
-        no_max_sync.free()
-    assert no_max_sync_runtime.allocations == {}
 
     tile16_runtime = _FakeRuntime()
     tile16 = allocate_laguna_kv_cache(
@@ -565,7 +548,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert rollback.swa_split_min_live is None
         assert rollback.swa_split_tile16_min_live is None
         assert not rollback.split_gate_fusion
-        assert not rollback.swa_split_no_max_sync
         assert rollback.allocation_count == 243
         assert sorted(rollback_runtime.allocations.values()).count(split_elements * 4) == 0
     finally:
@@ -588,15 +570,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             runtime=_FakeRuntime(),
             use_split_attention=False,
             global_split_min_live=127,
-        )
-    with pytest.raises(ValueError, match="cannot be combined"):
-        allocate_laguna_kv_cache(
-            _production_config(),
-            context_length=4096,
-            backend="hip_gfx1100",
-            runtime=_FakeRuntime(),
-            use_split_attention=False,
-            use_swa_split_no_max_sync=True,
         )
     with pytest.raises(ValueError, match="unavailable.*hip_gfx1151"):
         allocate_laguna_kv_cache(
