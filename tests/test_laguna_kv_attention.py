@@ -90,6 +90,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
         laguna_swa_attention_decode_split_exact_bf16_spans,
+        laguna_swa_attention_decode_split_tile16_exact_bf16_spans,
         laguna_swa_attention_prefill_bf16_spans,
         laguna_swa_attention_prefill_wave32_exact_bf16_spans,
         laguna_swa_write_kv_f32_spans,
@@ -155,6 +156,15 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         )
         is laguna_swa_attention_decode_split_exact_bf16_spans
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_attention_decode",
+            quant="bf16",
+            variant="swa_context_split_tile16_exact_spans",
+        )
+        is laguna_swa_attention_decode_split_tile16_exact_bf16_spans
+    )
     load_backend_kernel_package("hip_gfx1151")
     assert (
         resolve(
@@ -168,6 +178,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
     for split_variant in (
         "global_context_split_exact_spans",
         "swa_context_split_exact_spans",
+        "swa_context_split_tile16_exact_spans",
     ):
         assert (
             resolve(
@@ -444,6 +455,22 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         cache.free()
     assert runtime.allocations == {}
 
+    tile16_runtime = _FakeRuntime()
+    tile16 = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=tile16_runtime,
+        swa_split_tile16_min_live=257,
+    )
+    try:
+        assert tile16.swa_split_tile16_min_live == 257
+        assert tile16.allocation_count == 245
+        assert sorted(tile16_runtime.allocations.values()).count(split_elements * 4) == 2
+    finally:
+        tile16.free()
+    assert tile16_runtime.allocations == {}
+
     rollback_runtime = _FakeRuntime()
     rollback = allocate_laguna_kv_cache(
         _production_config(),
@@ -485,6 +512,22 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             backend="hip_gfx1151",
             runtime=_FakeRuntime(),
             global_split_min_live=127,
+        )
+    with pytest.raises(ValueError, match="swa_split_tile16_min_live"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            swa_split_tile16_min_live=513,
+        )
+    with pytest.raises(ValueError, match="unavailable.*hip_gfx1151"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1151",
+            runtime=_FakeRuntime(),
+            swa_split_tile16_min_live=257,
         )
 
 
@@ -554,6 +597,7 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
         build_laguna_kv_attention,
         laguna_global_attention_decode_split_exact_bf16_spans,
         laguna_swa_attention_decode_split_exact_bf16_spans,
+        laguna_swa_attention_decode_split_tile16_exact_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
@@ -613,6 +657,7 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
         output_device = malloc(72 * 128 * 4, runtime=runtime)
         token4_output_device = malloc(72 * 128 * 4, runtime=runtime)
         split_output_device = malloc(72 * 128 * 4, runtime=runtime)
+        tile16_output_device = malloc(72 * 128 * 4, runtime=runtime)
         split_scratch_elements = max(48 * 1026, 72 * 512)
         score_scratch_device = malloc(split_scratch_elements * 4, runtime=runtime)
         physical_scratch_device = malloc(split_scratch_elements * 4, runtime=runtime)
@@ -624,6 +669,7 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                 output_device,
                 token4_output_device,
                 split_output_device,
+                tile16_output_device,
                 score_scratch_device,
                 physical_scratch_device,
             )
@@ -704,10 +750,28 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                 library=kv_library,
                 runtime=runtime,
             )
+            laguna_swa_attention_decode_split_tile16_exact_bf16_spans(
+                query_device.ptr,
+                swa_state.key_cache.ptr,
+                swa_state.value_cache.ptr,
+                tile16_output_device.ptr,
+                score_scratch_device.ptr,
+                physical_scratch_device.ptr,
+                swa_state.spans,
+                min(position + 1, 512),
+                swa_state.q_heads,
+                8,
+                128,
+                128**-0.5,
+                sliding_window=512,
+                library=kv_library,
+                runtime=runtime,
+            )
             runtime.device_synchronize()
             actual = np.empty((72, 128), dtype=np.float32)
             token4_actual = np.empty_like(actual)
             split_actual = np.empty_like(actual)
+            tile16_actual = np.empty_like(actual)
             copy_device_to_host(
                 host_array_ptr(actual),
                 output_device,
@@ -723,8 +787,14 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                 split_output_device,
                 runtime=runtime,
             )
+            copy_device_to_host(
+                host_array_ptr(tile16_actual),
+                tile16_output_device,
+                runtime=runtime,
+            )
             np.testing.assert_array_equal(token4_actual, actual)
             np.testing.assert_array_equal(split_actual, token4_actual)
+            np.testing.assert_array_equal(tile16_actual, split_actual)
             visible = np.arange(max(0, position - 511), position + 1)
             if position == 1025:
                 visible = visible[visible != evicted_position]

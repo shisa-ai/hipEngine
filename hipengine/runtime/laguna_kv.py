@@ -88,6 +88,7 @@ class LagunaKVCache:
         split_physical_scratch: DeviceBuffer | None,
         global_split_min_live: int | None,
         swa_split_min_live: int | None,
+        swa_split_tile16_min_live: int | None,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -100,6 +101,7 @@ class LagunaKVCache:
         self._split_physical_scratch = split_physical_scratch
         self.global_split_min_live = global_split_min_live
         self.swa_split_min_live = swa_split_min_live
+        self.swa_split_tile16_min_live = swa_split_tile16_min_live
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -304,6 +306,11 @@ class LagunaKVCache:
             else self.swa_split_min_live
         )
         use_split = split_threshold is not None and live_count >= split_threshold
+        use_tile16 = (
+            state.attention_type == SLIDING_ATTENTION
+            and self.swa_split_tile16_min_live is not None
+            and live_count >= self.swa_split_tile16_min_live
+        )
         common = (
             query_ptr,
             state.key_cache.ptr,
@@ -316,7 +323,11 @@ class LagunaKVCache:
             variant = (
                 "global_context_split_exact_spans"
                 if state.attention_type == FULL_ATTENTION
-                else "swa_context_split_exact_spans"
+                else (
+                    "swa_context_split_tile16_exact_spans"
+                    if use_tile16
+                    else "swa_context_split_exact_spans"
+                )
             )
             fn = self._resolve("laguna_attention_decode", variant)
             split_common = (
@@ -614,6 +625,7 @@ def allocate_laguna_kv_cache(
     swa_prefill_variant: str | None = None,
     global_split_min_live: int | None = None,
     swa_split_min_live: int | None = None,
+    swa_split_tile16_min_live: int | None = None,
     use_split_attention: bool | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
@@ -634,6 +646,10 @@ def allocate_laguna_kv_cache(
     layer_types, head_counts, sliding_window = _validate_config(config, context)
     has_global = FULL_ATTENTION in layer_types
     has_sliding = SLIDING_ATTENTION in layer_types
+    if use_split_attention is False and swa_split_tile16_min_live is not None:
+        raise ValueError(
+            "use_split_attention=False cannot be combined with split thresholds"
+        )
     selected_global_split, selected_swa_split = resolve_laguna_split_thresholds(
         backend,
         context_length=context,
@@ -652,10 +668,16 @@ def allocate_laguna_kv_cache(
         sliding_window,
         "swa_split_min_live",
     )
+    parsed_swa_tile16 = _validate_split_threshold(
+        swa_split_tile16_min_live,
+        sliding_window,
+        "swa_split_tile16_min_live",
+    )
     _validate_split_backend(
         backend,
         parsed_global_split,
         parsed_swa_split,
+        parsed_swa_tile16,
     )
     buffers: list[DeviceBuffer] = []
 
@@ -696,7 +718,14 @@ def allocate_laguna_kv_cache(
             else None
         )
         row_position = metadata((ctypes.c_int64 * 1)(-1), (1,), DType.INT64)
-        split_enabled = parsed_global_split is not None or parsed_swa_split is not None
+        split_enabled = any(
+            threshold is not None
+            for threshold in (
+                parsed_global_split,
+                parsed_swa_split,
+                parsed_swa_tile16,
+            )
+        )
         split_elements = max(
             (
                 q_heads * (context if attention_type == FULL_ATTENTION else sliding_window)
@@ -820,6 +849,7 @@ def allocate_laguna_kv_cache(
             split_physical_scratch=split_physical_scratch,
             global_split_min_live=parsed_global_split,
             swa_split_min_live=parsed_swa_split,
+            swa_split_tile16_min_live=parsed_swa_tile16,
             runtime=runtime,
         )
     except Exception:
@@ -832,8 +862,12 @@ def _validate_split_backend(
     backend: str,
     global_threshold: int | None,
     swa_threshold: int | None,
+    swa_tile16_threshold: int | None,
 ) -> None:
-    if global_threshold is None and swa_threshold is None:
+    if all(
+        threshold is None
+        for threshold in (global_threshold, swa_threshold, swa_tile16_threshold)
+    ):
         return
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         register_laguna_kv_attention_kernels,
@@ -844,6 +878,7 @@ def _validate_split_backend(
     requested = (
         (global_threshold, "global_context_split_exact_spans"),
         (swa_threshold, "swa_context_split_exact_spans"),
+        (swa_tile16_threshold, "swa_context_split_tile16_exact_spans"),
     )
     for threshold, variant in requested:
         if threshold is None:
