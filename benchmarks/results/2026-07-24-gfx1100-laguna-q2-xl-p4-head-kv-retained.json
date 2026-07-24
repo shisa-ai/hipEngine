@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_head_rmsnorm_rope_kv_retained",
+  "date": "2026-07-24",
+  "status": "retained_default",
+  "performance_claim": true,
+  "performance_claim_scope": "Poolside Laguna S 2.1 UD-Q2_K_XL target-only c=1 greedy AR on Radeon Pro W7900/gfx1100, all 18 train+heldout prompts, h16/h32, two repetitions in both process orders; model load excluded",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "implementation_revision": "367c1f622167653c733896e3a2a1f5972f9961c4",
+    "description": "Exact c=1 head RMSNorm plus partial RoPE plus BF16 KV append on retained P2/P4.1",
+    "registry_keys": [
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/global_f32_bf16_spans",
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/swa_f32_bf16_spans"
+    ],
+    "dispatches_per_token": {"control": 820, "candidate": 772},
+    "workspace_delta_bytes": 0,
+    "persistent_weight_copy_delta_bytes": 0,
+    "default": "LAGUNA_HEAD_KV_FUSION=True on hip_gfx1100",
+    "rollback": "LagunaGGUFResidentSession(..., use_head_kv_fusion=False) or scripts/laguna_target_ar_bench.py --disable-head-kv-fusion",
+    "fallback": "Registered F32 head RMSNorm+partial RoPE followed by registered global/SWA BF16 writer; always retained for rows/prefill, gfx1151, registry miss, and unsupported backends"
+  },
+  "correctness": {
+    "correctness_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-correctness.json",
+    "correctness_artifact_sha256": "570b879baac31dfcca80bc1e870c760abe61846b9fb428ba10ffa1e228ae14d0",
+    "full_logits_and_argmax_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_bf16_kv_and_all_span_fields_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_returned_to_baseline": true,
+    "default_vs_rollback": {
+      "decode_steps": 16,
+      "passed": true,
+      "raw_sha256": "30955ddd94522bb054fa4a3d8387422865f95f40abca3aea4ca886f906a28ddb",
+      "harness_sha256": "1069b83f1a888af0008de4abbc0630d49d2d12d8f90931a71368f3a1c85075aa",
+      "stdout_sha256": "4b849343ff05478b2fb0a027bbff886afdd2e712fd538c2a2f0f45750de5f5a0"
+    }
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_p4_head_kv_clean_profiles.sh",
+    "revision": "367c1f622",
+    "first_process_order": {
+      "summary_sha256": "fc06aaefc9e8cfb9bffcc58bacf0b9da2c8e21ccc0b857026bd05294e92e2bbc",
+      "report_sha256": "300663c152fd7782d90f862bd9556afc76308cc5d2384a678137c4c5ef08a56b",
+      "harness_sha256": {
+        "runner": "03128c90064ca2dfe960b8391db9a2afd7c618df74a4e94b75817fc49a33fbbe",
+        "child": "f7a6b4246cce51a14d64d50eb9466f128e0b357151e352ac2ad2da60a6d1e253",
+        "analyzer": "c5e25e17305c2b441a38e12dc0c1601b81a0649386d2c23bec1d1cdf4a98e50b"
+      },
+      "note": "512/1K/near-4K passed every mechanical row. Short family/span/child improved but kernel sum was +0.0346%, triggering the predeclared reverse confirmation rather than a waiver."
+    },
+    "short_reverse_confirmation": {
+      "command": "bash /tmp/run_laguna_p4_head_kv_short_reverse.sh",
+      "contract_sha256": "dac013f77b5c066e21a1d3583e72ddd4f6c42a260210e278c6b736621f48c7d7",
+      "summary_sha256": "aec6d1d44dd6afc657dc91139489859a546451e01b5a5569ff457ec5ea67276d",
+      "report_sha256": "262c56d5ac027e816c24817f161c0c5817b6e3e5f992788520f5e03a1a93ca6e",
+      "runner_sha256": "95a8bc7e1dc60cd89af392d8588af20971c352bce2ccde23c9d0175c0f023c3f",
+      "analyzer_sha256": "eadcaaacc7fdd34eb9f8bb869ce78d765745d826612ca6ba43ebdad2b8896385",
+      "pooled": {
+        "stable_samples_per_mode": 28,
+        "family_body_ms": {"control": 0.3629220357142857, "candidate": 0.24383939285714287, "delta_pct": -32.81218309678279},
+        "inclusive_window_ms": {"control": 0.6234185, "candidate": 0.24383939285714287, "delta_pct": -60.88672491157339},
+        "kernel_sum_ms": {"control": 15.50335925, "candidate": 15.431725821428572, "delta_pct": -0.462051013695175},
+        "span_median_ms": {"control": 18.847094, "candidate": 18.4110145, "delta_pct": -2.3137758001313014},
+        "profiled_child_tok_s_delta_pct": 1.7225197604895603
+      },
+      "checks_pass": true
+    },
+    "contexts": [
+      {"label": "short_pooled", "kernel_sum_delta_pct": -0.462051013695175, "span_delta_pct": -2.3137758001313014, "profiled_child_tok_s_delta_pct": 1.7225197604895603},
+      {"label": "512", "family_body_delta_pct": -29.840427739266307, "kernel_sum_delta_pct": -0.8732041578498495, "span_delta_pct": -1.7660951054672247, "profiled_child_tok_s_delta_pct": 1.912440991989972},
+      {"label": "1024", "family_body_delta_pct": -31.473680126160232, "kernel_sum_delta_pct": -0.5065948688571464, "span_delta_pct": -1.0891134769733246, "profiled_child_tok_s_delta_pct": 1.407836639827642},
+      {"label": "3968", "family_body_delta_pct": -31.54119270752177, "kernel_sum_delta_pct": -0.1405598075007619, "span_delta_pct": -0.77464936944317, "profiled_child_tok_s_delta_pct": 1.1871255417408078}
+    ],
+    "ids_exact": true,
+    "finite": true,
+    "lifecycle": true,
+    "resource_gate": true,
+    "mechanical_gate_pass": true
+  },
+  "category_gate": {
+    "commands": [
+      "bash /tmp/run_laguna_p4_head_kv_category.sh",
+      "bash /tmp/run_laguna_p4_head_kv_category_reverse.sh"
+    ],
+    "protocol": "all 18 train+heldout prompts; serial and bulk; h16/h32; two repetitions; process order control/candidate then candidate/control; pooled synchronized seconds",
+    "aggregate": {
+      "control": {
+        "h16_decode_tok_s": 52.29644983168492,
+        "h32_decode_tok_s": 51.871816838049355,
+        "h16_e2e_output_tok_s": 6.924529768394323,
+        "h32_e2e_output_tok_s": 12.20709228270609,
+        "prefill_tok_s": 42.9609894494276,
+        "ttft_median_seconds": 1.9353041908470914
+      },
+      "candidate": {
+        "h16_decode_tok_s": 52.85471957754741,
+        "h32_decode_tok_s": 52.39118057387539,
+        "h16_e2e_output_tok_s": 6.931869493807267,
+        "h32_e2e_output_tok_s": 12.232016195303366,
+        "prefill_tok_s": 42.94861757422105,
+        "ttft_median_seconds": 1.9351511835120618
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 1.0675098360582114,
+        "h32_decode_tok_s": 1.0012445437327822,
+        "h16_e2e_output_tok_s": 0.105996012125531,
+        "h32_e2e_output_tok_s": 0.20417567115951218,
+        "prefill_tok_s": -0.02879792892366284,
+        "ttft_median_seconds": -0.007906112938382837
+      }
+    },
+    "all_train_and_heldout_category_decode_improve": true,
+    "worst_category_decode_delta_pct": 0.5974451322336982,
+    "all_e2e_prefill_ttft_guards_pass": true,
+    "all_ids_oracles_and_lifecycle_exact": true,
+    "comparison_sha256": "17873c2d40fe08391cc64a99d33f57e931d9775a02a498c8d324211a2f3cf8bb",
+    "report_sha256": "16a0632fa9d0194fe80c297ac2dfc2d3eef1c90e7f0d2dda86810fbe3d705d10",
+    "harness_sha256": {
+      "forward": "abe7c27e5de77540647fb453466f207e69d72af74d98ae5db4e2a5a09e106827",
+      "reverse": "33545baadc1d68eac17a14460daf05649ddf8336289a454a3449b9d73b94bd37",
+      "benchmark": "47bde4a0d552ff4ce513377d74d15c7d909dde41a8d56355c76ccd7631cb96bc",
+      "comparison": "3565c06791aaa903f30ea5176c4c806e2ea83a5fd942c258d3833a2c5d7813e9"
+    },
+    "raw_sha256": {
+      "control_forward": "5b93b0588c35d1c58d64d806834ebe03159c263188bf1feef7773724dcd67b3b",
+      "candidate_forward": "f98279f434cb6fc565c77e6d6f2894ce9063db7ce43b6d1d17b81a45bd0b961d",
+      "candidate_reverse": "3c3fcbbebb26a6649e229828ba22324959232cc5279fc8e57cb6357d5690a080",
+      "control_reverse": "f28373d2fdc15b929177726287abc18de1034b820e67b4bcc8b7f18d5f1fe009"
+    },
+    "pass": true
+  },
+  "promotion_red": {
+    "result": "failed on absent gfx1100 LAGUNA_HEAD_KV_FUSION capability",
+    "log_sha256": "469eff6f05135ba7ae4bb3b7f0644bd5bdc5bee30257c04a6858c812692535b7"
+  },
+  "topline": {
+    "previous_retained_h32_decode_tok_s": 51.825,
+    "new_h32_decode_tok_s": 52.39118057387539,
+    "new_ms_per_token": 19.08718202274383,
+    "improvement_vs_previous_retained_pct": 1.0924854295714104,
+    "matched_vulkan_h32_tok_s": 64.336,
+    "additional_speedup_required_pct": 22.799294261524693,
+    "objective_met": false
+  },
+  "acceptance": {
+    "correctness": true,
+    "mechanical": true,
+    "category": true,
+    "promote_gfx1100_default": true,
+    "matched_vulkan_beaten": false
+  }
+}

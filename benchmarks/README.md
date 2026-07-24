@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`367c1f622167653c733896e3a2a1f5972f9961c4` for exact W7900 Laguna S 2.1
+UD-Q2_K_XL current-P4 head RMSNorm+RoPE+BF16-KV fusion,
 `46539dedb8b84e4f7511f3320fa740e2f41092a6` for exact W7900 Laguna S 2.1
 UD-Q2_K_XL P4.1 split-reducer+gate fusion,
 `071331863` for the exact W7900 Laguna S 2.1 UD-Q2_K_XL P2 SWA tile16
@@ -1225,10 +1227,11 @@ recoverable from the linked compact artifacts, changelog, and
 
 ### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-24
 
-**Status: exact dense decode, P0 IQ3 wave4 route/output ownership, token4
-score-parallel SWA, raw-Q5 wave32x2 attention output and query/gate, raw-Q6
-attention pairing, and aggregate MoE-tail plus next-RMS fusion are the retained
-W7900 target-only AR default.**
+**Status: exact dense decode, P0 IQ3 wave4 route/output ownership, P2 exact
+split attention plus SWA tile16 scores, P4.1 split-reducer+gate, current-P4 head
+RMSNorm+RoPE+BF16-KV, token4 SWA, raw-Q5 wave32x2, raw-Q6 attention pairing,
+and aggregate MoE-tail plus next-RMS are the retained W7900 target-only AR
+default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1241,13 +1244,15 @@ leaves and improved every mechanical row plus aggregate decode/E2E, but missed
 code h16 E2E and the aggregate TTFT guard. D17 replaced D15's SWA leaf with
 D10's exact token8 schedule, passed every mechanical and category decode/E2E
 row, and crossed 50 tok/s, but still missed the aggregate TTFT guard. All six
-candidates are removed. Clean measured D12 implementation revision
+historical candidates are removed. The historical D14 route was not restored;
+its exact body was separately recomposed and regated over retained P2/P4.1 as
+the current-P4 default described below. Clean measured D12 implementation revision
 `338d3afca01aa884ff3a68e0175566bc51e5ceae` runs the pinned
 `Laguna-S-2.1-UD-Q2_K_XL.gguf`
 (SHA-256 `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
 directly from raw GGUF residency with BF16 KV and a 4-GiB safety reserve. The
-canonical protocol covers all ten `mtpbench-code-general-ja` prompts, all four
-categories and heldouts, prompt lengths 68-122, two balanced repetitions,
+canonical protocol covers all 18 `mtpbench-code-general-ja` train+heldout
+prompts, all four categories, prompt lengths 68-122, two balanced repetitions,
 greedy h16/h32, 128-row prompt chunks, and c=1 eager decode. Model load is
 excluded. D0 is the original `09cca232` baseline; D1 moves raw Q4/Q5/Q6/Q8
 rows=1 projections to exact decode-specialized leaves; D2 removes four idle
@@ -1293,6 +1298,9 @@ slot-order reducer.
 | P0 matched D12 control | 43.017 | 1.871 s | 48.780 | 6.917 | 12.103 |
 | P0 exact D12 + IQ3 wave4 | **42.992** | **1.877 s** | **50.254** | **6.941** | **12.183** |
 | P0 change vs matched D12 | **-0.057%** | **+0.280%** | **+3.022%** | **+0.339%** | **+0.666%** |
+| Current-P4 matched P4.1 control | 42.961 | 1.935 s | 51.872 | 6.925 | 12.207 |
+| Current-P4 exact head RMSNorm+RoPE+KV | **42.949** | **1.935 s** | **52.391** | **6.932** | **12.232** |
+| Current-P4 change vs matched P4.1 | **-0.029%** | **-0.008%** | **+1.001%** | **+0.106%** | **+0.204%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -1764,6 +1772,35 @@ inside the 0.5% non-regression guards. Relative to the prior retained 51.436
 headline this is **+0.757%**, or **19.296 ms/token**. The formal matched Vulkan
 h32 target remains **64.336 tok/s**, so hipEngine still needs **24.14%** more
 throughput and completion is not claimed. [Correctness artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-correctness.json) and [retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-retained.json).
+
+##### Laguna Q2 XL current-P4 exact head RMSNorm+RoPE+KV (retained gfx1100 default)
+
+The current-P4 recomposition ports only historical D14's independently positive
+exact c=1 body onto retained P2/P4.1. One local256 block owns each query/KV
+head, preserves FP32 RMSNorm and partial-RoPE arithmetic, writes F32 Q/K plus
+RNE BF16 K/V, and consumes all five `KVLiveSpans` fields. The registered
+head-plus-writer chain remains the rows/prefill, explicit-disable, gfx1151, and
+unsupported fallback. First/last actual global/SWA layers are bit exact and
+improve inclusive event **33.05-39.36%** and wall **33.41-39.13%**. Full logits,
+48 hidden/47 routed boundaries, active K/V and all span fields, reset, and
+lifecycle are exact with no allocation or persistent-copy delta.
+
+Clean profiling removes 48 launches/token (**820 -> 772**). The first short
+pair had a +0.035% total-kernel noise row despite family **-32.11%**, span
+**-2.22%**, and child **+3.12%**; a predeclared reverse confirmation pools 28
+stable samples per arm and resolves kernel sum **15.503 -> 15.432 ms/token
+(-0.462%)**, family body **-32.81%**, and span **-2.31%**. At 512/1K/near-4K,
+kernel sum improves **0.873%/0.507%/0.141%**, span
+**1.766%/1.089%/0.775%**, and child throughput
+**1.912%/1.408%/1.187%**.
+
+The complete two-order 18-prompt gate moves h16/h32 decode
+**52.296/51.872 -> 52.855/52.391 tok/s (+1.068%/+1.001%)** and h32 E2E
+**12.207 -> 12.232 (+0.204%)**. Every train/heldout category decode improves;
+all E2E/prefill/TTFT guards, IDs, Poolside oracle, state, and lifecycle pass.
+Relative to the prior retained 51.825 row, h32 improves **1.092%** to **19.087
+ms/token**. The matched Vulkan target still requires **22.80%** more, so
+completion remains open. [Correctness artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-correctness.json) and [retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**

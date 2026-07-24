@@ -83,6 +83,11 @@ def _parse_args() -> argparse.Namespace:
         help="use the exact unfused split-reducer plus attention-gate chain",
     )
     parser.add_argument(
+        "--disable-head-kv-fusion",
+        action="store_true",
+        help="use separate exact head RMSNorm/RoPE and BF16 KV append launches",
+    )
+    parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
         default=(16, 32),
@@ -188,6 +193,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_swa_split_tile16=False if args.disable_swa_split_tile16 else None,
         use_split_attention=False if args.disable_split_attention else None,
         use_split_gate_fusion=False if args.disable_split_gate_fusion else None,
+        use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
     )
 
 
@@ -561,6 +567,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_swa_split_tile16=False if args.disable_swa_split_tile16 else None,
             use_split_attention=False if args.disable_split_attention else None,
             use_split_gate_fusion=False if args.disable_split_gate_fusion else None,
+            use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
         )
         load_seconds = time.perf_counter() - load_started
         oracle_gate = _oracle_gate(owner, args)
@@ -632,7 +639,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "pass": passed,
         "performance_claim": claim,
         "performance_claim_scope": (
-            "target-only c=1 greedy AR; canonical 10-prompt four-category suite; "
+            "target-only c=1 greedy AR; canonical 18-prompt train+heldout four-category suite; "
             f"output horizons {list(horizons)}; model load excluded"
         ),
         "provenance": provenance,
@@ -667,6 +674,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_swa_split_tile16": owner.use_swa_split_tile16,
             "use_split_attention": owner.use_split_attention,
             "use_split_gate_fusion": owner.use_split_gate_fusion,
+            "use_head_kv_fusion": owner.use_head_kv_fusion,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {

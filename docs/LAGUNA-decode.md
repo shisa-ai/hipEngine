@@ -5,10 +5,11 @@ exact split attention are implemented and retained as gfx1100 defaults. Both
 P1 IQ3, raw-Q5, and raw-IQ2 lanes plus P2.2 online FP32 partials are rejected.
 The exact SWA tile16 score producer is retained as the gfx1100 default from live
 count 257; P1 and P2 are closed. P3's bit-lossless Q5 T16 replacement screen is
-rejected. P4.1's exact P2-derived split-reducer+softplus-gate body is retained
-as the gfx1100 default at split thresholds. A correctness-fenced one-doorbell
-native-AQL owner is slower and rejected; exact device-work/dispatch fusion is
-the remaining admissible lane.
+rejected. P4.1's exact P2-derived split-reducer+softplus-gate body and the
+current-P4 exact head-RMSNorm+RoPE+BF16-KV body are retained as gfx1100
+defaults. A correctness-fenced one-doorbell native-AQL owner is slower and
+rejected; matched Vulkan completion must now be reaudited before another exact
+device-work contraction is selected.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -35,9 +36,10 @@ hipEngine D12 h32:      48.987 tok/s
 `llama-bench tg128` and hipEngine's canonical h32 suite are not the same
 protocol, so `94.513 / 48.987 = 1.929x` is diagnostic rather than a formal
 product-throughput ratio. Since that frozen diagnosis, retained P0 IQ3, P2.1
-exact split attention, and P4.1 split-reducer+gate fusion move the current
-counterbalanced h32 row to **51.825 tok/s / 19.296 ms/token**; the non-equivalent
-`llama-bench` row still represents an **82.38%** diagnostic gap. However, the
+exact split attention, P4.1 split-reducer+gate fusion, and current-P4 head+KV
+fusion move the current counterbalanced h32 row to **52.391 tok/s / 19.087
+ms/token**; the non-equivalent `llama-bench` row still represents an **80.40%**
+diagnostic gap. However, the
 gap is not explained by prompt depth, sampling, Python, or one missing launch
 flag:
 
@@ -904,21 +906,27 @@ favor. It cannot remove the observed 3.213-ms window. Evidence:
 [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json).
 
 P4 submission ownership is closed: do not restore D8 capture, D16 host packets,
-or this AQL path. P4.1 raises h32 to 51.825 tok/s, but the matched 64.336-tok/s
-Vulkan target still requires **24.14%** more throughput. The next admissible
-lane is a current-P4 recomposition of exact independently winning bodies. Start
-with head RMSNorm+RoPE+KV write: historical D14's body, family, kernel-sum, span,
-profiled-child, and every category decode row all improved, while its only hard
-failure was an unaffected TTFT variance row. Rebase that body over P2/P4.1 and
-the 18-prompt suite rather than restoring the old all-or-none D14 route.
+or this AQL path. The current-P4 recomposition of historical D14's exact body is
+now retained over P2/P4.1: pooled short plus 512/1K/near-4K kernel sum, span,
+and profiled-child rows improve at **772 dispatches/token**, and the two-order
+18-prompt gate moves h32 **51.872 -> 52.391 tok/s (+1.001%)** with every
+train/heldout category decode positive and all E2E/prefill/TTFT guards passing.
+The registered two-launch chain remains the rows/prefill, explicit-disable,
+gfx1151, and unsupported fallback. Evidence:
+[`...p4-head-kv-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json).
+
+The formal matched 64.336-tok/s Vulkan target still requires **22.80%** more
+throughput. Reaudit that exact completion protocol with the new default before
+selecting another lane; if it still fails, continue only with a genuinely new
+exact device-work/dispatch contraction whose own body wins independently.
 
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
 - **Unchanged D10/D13/D15/D17 boundaries:** all have complete rejection
   artifacts; positive diagnostic rows do not waive category/TTFT failures.
-  D14 is excluded only for the explicitly new current-P4/18-prompt recomposition
-  above; its removed historical route is not itself restored.
+  Historical D14 remains removed; only the separately gated current-P4/18-prompt
+  recomposition above is retained over the modern P2/P4.1 path.
 - **More C-side packets:** D16 proved the visible gaps are queue spacing, not
   ctypes transition cost.
 - **Q8_1/MMVQ/dp4a as a default premise:** Vulkan's whole-path control and
@@ -951,7 +959,7 @@ the 18-prompt suite rather than restoring the old all-or-none D14 route.
 | What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
 | What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
 | Did a bit-lossless Q5 repack help? | [`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json): exact generic/wave32x2 T16 both regress actual global/SWA layers and are not retained. |
-| Does retained hipEngine beat Vulkan under matched natural completion? | No. The pre-P4 [`...vulkan-matched-completion-audit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) measures Vulkan **64.213/64.336 tok/s**; P4.1's category h32 is **51.825 tok/s**, still **24.14%** short. |
+| Does retained hipEngine beat Vulkan under matched natural completion? | Not established. The pre-current-P4 [`...vulkan-matched-completion-audit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) measures Vulkan **64.213/64.336 tok/s**; the new category h32 is **52.391 tok/s**, still **22.80%** short, and the matched completion audit must be rerun. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
 ## Bottom line
@@ -962,7 +970,7 @@ Python, sampling, graph replay, a missing compiler flag, or one unfused router.
 The clean GPU trace proves otherwise.
 
 hipEngine has already transferred the broad Qwen playbook and improved Laguna
-from **19.596 to 51.825 tok/s**. The expanded review removes two tempting but
+from **19.596 to 52.391 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
@@ -973,11 +981,11 @@ bit-lossless Q5 T16 replacement are rejected. The online-attention and raw-Q5
 bodies prove tile-level ownership is mechanically valuable but violate the
 frozen KL gate; IQ2 row4 and Q5 T16 instead fail the actual-weight performance
 precondition. All are removed. The exact SWA tile16 score producer is retained
-at live `>=257`; P1-P3 are closed. P4.1's exact gated split reducers are now
-retained after independent-body, full-state, trace, and complete-category gates.
-The matched completion audit replaces the non-equivalent 94.513-tok/s headline
-with a formal **64.336 tok/s** h32 target, but retained hipEngine still needs
-**24.14%** more throughput. Direct AQL, unchanged graph capture, host packets,
-and launch cleanup alone are now mechanically closed. Continue only with exact
-independently winning device-work/dispatch contractions, beginning with the
-current-P4 head+KV recomposition above.
+at live `>=257`; P1-P3 are closed. P4.1's exact gated split reducers and the
+current-P4 exact head+KV body are retained after independent-body, full-state,
+trace, clean-context, and complete-category gates. The matched completion audit
+replaces the non-equivalent 94.513-tok/s headline with a formal **64.336 tok/s**
+h32 target; the new 52.391-tok/s category row still needs **22.80%** more.
+Direct AQL, unchanged graph capture, host packets, and launch cleanup alone are
+mechanically closed. Reaudit matched completion, then continue only with a new
+exact independently winning device-work/dispatch contraction if needed.
