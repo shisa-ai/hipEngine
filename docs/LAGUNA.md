@@ -3573,8 +3573,23 @@ dynamic LDS1024, VGPR<=32, scratch0, 56/80 blocks, exactly 48 fused calls and no
 standalone writer. All-layer hidden/logit/KV/reset/lifecycle parity, improved
 clean short/512/1K/near-4K family/kernel-sum/span/child rows at 727 dispatches,
 and the complete category non-regression gate precede promotion. Any failure
-removes the route. Design evidence:
-`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-design.json`.
+removes the route.
+
+The implementation now clears correctness admission while remaining explicit-
+only. The production global and SWA fixtures match every F32 query/key bit,
+BF16 K/V bit, live count, absolute position, and eviction bit through global
+255/256/4095 and SWA 511/512/513/1024 with permuted/reversed physical offsets.
+Cached tracing names both template siblings at local256/VGPR16/SGPR128,
+dynamic-LDS1024/scratch0 and exactly 56/80 blocks. On actual norm weights,
+layers 0/44 improve inclusive HIP-event and synchronized wall **33.76-34.89%**;
+layers 1/47 improve **41.11-41.54%**. The shared-weight 69-token plus 16-step
+gate matches all 48 hidden rows, complete logits/argmax, final hidden, all K/V
+and `KVLiveSpans`, reset/re-prefill, and lifecycle; tracked ownership returns
+**40,455,911,848 bytes / 1,496 allocations** to zero. The 92-test focused bundle,
+CPU fixtures, Ruff, compileall, and lineage checks pass. These are correctness
+and isolated execution results, not retention: task #299 still owns clean four-
+context and complete category adjudication. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-{design,correctness}.json`.
 
 ## Laguna DFlash Follow-on Plan
 
