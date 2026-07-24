@@ -3724,7 +3724,7 @@ device work or device dispatches.
 Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d16-c-dispatch-rejected.json`.
 
-### D17 token8 attention-boundary bundle (correctness-admitted, default off)
+### D17 token8 attention-boundary bundle (rejected and removed)
 
 The next device-side candidate combines only independently exact, mechanically
 positive components. It restores D15's global/SWA head+KV and global
@@ -3795,6 +3795,30 @@ Any later failure removes the complete bundle.
 
 Correctness evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d17-attention-boundaries-correctness.json`.
+
+Clean matched short/512/1K/near-4K profiles preserve exact IDs/lifecycle and
+remove **96 launches/token (775 -> 679)**. Head-boundary body improves
+**25.73-30.75%**, attention-boundary body **5.64-12.49%**, complete kernel sum
+**1.16-6.97%**, span **3.91-7.50%**, and profiled-child throughput
+**3.89-8.30%**. Every global/SWA family and resource subgate passes, including
+the near-4K global attention body at **-0.010%**.
+
+The complete counterbalanced ten-prompt/four-category gate remains exact and
+moves aggregate h16/h32 decode **49.466/48.971 -> 51.178/50.668 tok/s
+(+3.461%/+3.465%)** plus h16/h32 E2E **6.926/12.122 -> 6.942/12.197
+(+0.229%/+0.623%)**. Every category's two decode and E2E horizons improve, and
+aggregate/category prefill stays within 0.5%. The frozen gate nevertheless
+fails because aggregate median TTFT changes **1.8705 -> 1.8854 s (+0.795%)**,
+outside the 0.5% guard. No favorable-order rerun or threshold waiver is used.
+
+Per the predeclared any-failure rule, all D17 HIP bodies/exports, wrappers and
+registrations, gfx1100 capability, gfx1151 exclusions, runtime selector/plan/
+branches, tests, and refactor-ledger debt are removed together. Standalone
+D10/D14/D15 is not restored. The **50.668 tok/s / 19.736 ms/token** D17 row is
+diagnostic only; canonical D12 remains **48.987 tok/s / 20.414 ms/token**.
+
+Rejection evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d17-attention-boundaries-rejected.json`.
 
 ## Laguna DFlash Follow-on Plan
 
