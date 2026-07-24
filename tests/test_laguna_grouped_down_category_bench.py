@@ -8,6 +8,7 @@ import pytest
 
 import scripts.laguna_grouped_down_category_bench as benchmark
 from scripts.laguna_grouped_down_category_bench import (
+    CUMULATIVE_CONTROL_COMPARISON,
     F16_WMMA_COMP_SWA_COMPARISON,
     GLOBAL_QROW2_ONLINE_COMPARISON,
     GROUPED_COMBINE_COMPARISON,
@@ -17,6 +18,7 @@ from scripts.laguna_grouped_down_category_bench import (
     _aggregate,
     _load_shape_screen,
     _mode_order,
+    _oracle_for_candidate,
     _paired_free_running,
     _promotion_gate,
     _teacher_forced_quality,
@@ -307,6 +309,151 @@ def test_global_qrow2_online_category_resolves_variants_and_screen(
         args,
         comparison=GLOBAL_QROW2_ONLINE_COMPARISON,
     )["pass"] is False
+
+
+def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeSession:
+        def __init__(self, row: dict[str, object]) -> None:
+            self.row = row
+
+        def set_selected_down_mode(self, mode: str) -> None:
+            self.row["selected_down_mode"] = mode
+
+        def prefill(self, _token_ids, *, use_bulk: bool):
+            self.row["f16_prefill_mode"] = benchmark.os.environ.get(
+                "HIPENGINE_LAGUNA_F16_PREFILL"
+            )
+            self.row["use_bulk"] = use_bulk
+            return object()
+
+    def fake_session(
+        _owner,
+        _args,
+        *,
+        global_prefill_variant=None,
+        swa_prefill_variant=None,
+    ):
+        row = {
+            "global_prefill_variant": global_prefill_variant,
+            "swa_prefill_variant": swa_prefill_variant,
+        }
+        calls.append(row)
+        return FakeSession(row)
+
+    monkeypatch.setattr(benchmark, "_session", fake_session)
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "sentinel")
+    for mode in CUMULATIVE_CONTROL_COMPARISON.modes:
+        session = benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=CUMULATIVE_CONTROL_COMPARISON,
+        )
+        benchmark._prefill_for_mode(
+            session,
+            (1, 2),
+            mode,
+            CUMULATIVE_CONTROL_COMPARISON,
+        )
+
+    assert calls == [
+        {
+            "global_prefill_variant": "global_context_rows_spans",
+            "swa_prefill_variant": "swa_context_rows_qrow2_m128_c128_exact_spans",
+            "selected_down_mode": "adaptive_grouped_smallm_fused",
+            "f16_prefill_mode": "tiled",
+            "use_bulk": True,
+        },
+        {
+            "global_prefill_variant": "global_context_rows_qrow2_online_spans",
+            "swa_prefill_variant": "swa_context_rows_qrow2_online_spans",
+            "selected_down_mode": "adaptive_grouped_smallm_fused",
+            "f16_prefill_mode": "wmma_comp_swa",
+            "use_bulk": True,
+        },
+    ]
+    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
+
+    args = SimpleNamespace(
+        shape_screen=tmp_path / "does-not-exist.json",
+        model_sha256="model-sha",
+    )
+    screen = _load_shape_screen(
+        args,
+        comparison=CUMULATIVE_CONTROL_COMPARISON,
+    )
+    assert screen == {
+        "pass": True,
+        "path": None,
+        "sha256": None,
+        "revision": None,
+        "aggregate_speedup": None,
+        "grouped_min_rows": None,
+        "model_sha256": "model-sha",
+        "candidate_variant": None,
+        "comparison": "cumulative_control",
+        "role": "not_applicable_control_ledger",
+    }
+
+
+def test_cumulative_control_reports_performance_without_gating_it() -> None:
+    comparison = CUMULATIVE_CONTROL_COMPARISON
+    rows = _rows(
+        modes=comparison.modes,
+        baseline_prefill=1.0,
+        candidate_prefill=1.2,
+    )
+    gate = _promotion_gate(
+        _aggregate(rows, HORIZONS, comparison=comparison),
+        _paired_free_running(rows, HORIZONS, comparison=comparison),
+        _teacher_forced_quality(_teacher_rows()),
+        {"pass": True},
+        {"pass": True},
+        horizons=HORIZONS,
+        recovered=True,
+        comparison=comparison,
+    )
+
+    assert gate["pass"] is True
+    assert gate["failed_checks"] == []
+    assert gate["policy"]["performance"] == "reported; no admission threshold"
+
+
+def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_oracle(_owner, _args, **kwargs):
+        calls.append(
+            {
+                **kwargs,
+                "f16_prefill_mode": benchmark.os.environ.get(
+                    "HIPENGINE_LAGUNA_F16_PREFILL"
+                ),
+            }
+        )
+        return {"pass": True}
+
+    monkeypatch.setattr(benchmark, "_oracle_gate", fake_oracle)
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "sentinel")
+
+    assert _oracle_for_candidate(
+        object(),
+        SimpleNamespace(),
+        comparison=CUMULATIVE_CONTROL_COMPARISON,
+    ) == {"pass": True}
+    assert calls == [
+        {
+            "global_prefill_variant": "global_context_rows_qrow2_online_spans",
+            "swa_prefill_variant": "swa_context_rows_qrow2_online_spans",
+            "f16_prefill_mode": "wmma_comp_swa",
+        }
+    ]
+    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
 
 
 def test_f16_wmma_comp_swa_category_requires_matching_compensated_screen(

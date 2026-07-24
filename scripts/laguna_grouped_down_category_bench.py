@@ -63,6 +63,18 @@ class CategoryComparison:
     require_exact_free_running: bool = True
     screen_requires_model: bool = True
     screen_candidate_variant: str | None = None
+    require_shape_screen: bool = True
+    require_performance_gate: bool = True
+
+
+@dataclass(frozen=True)
+class PrefillLaneConfiguration:
+    """Explicit cumulative-prefill arithmetic and dispatch configuration."""
+
+    f16_prefill_mode: str
+    global_prefill_variant: str
+    swa_prefill_variant: str
+    selected_down_mode: str
 
 
 GROUPED_DOWN_COMPARISON = CategoryComparison(
@@ -129,6 +141,20 @@ GLOBAL_QROW2_ONLINE_COMPARISON = CategoryComparison(
     execution_mode="global_prefill",
     require_exact_free_running=False,
 )
+CUMULATIVE_CONTROL_COMPARISON = CategoryComparison(
+    name="cumulative_control",
+    modes=("all_exact", "shipping_control"),
+    aggregate_key="shipping_control_vs_all_exact",
+    screen_kind="not_applicable",
+    screen_status="not_applicable",
+    screen_decision_key="not_applicable",
+    require_positive_wall=False,
+    execution_mode="cumulative_prefill",
+    require_exact_free_running=False,
+    screen_requires_model=False,
+    require_shape_screen=False,
+    require_performance_gate=False,
+)
 _GLOBAL_PREFILL_VARIANTS = {
     "global_exact": "global_context_rows_spans",
     "global_qrow2_online": "global_context_rows_qrow2_online_spans",
@@ -137,6 +163,20 @@ _SWA_PREFILL_VARIANTS = {
     "wave32_exact": "swa_context_rows_wave32_exact_spans",
     "qrow2_32_exact": "swa_context_rows_qrow2_m128_c128_exact_spans",
     "qrow2_online": "swa_context_rows_qrow2_online_spans",
+}
+_PREFILL_LANE_CONFIGURATIONS = {
+    "all_exact": PrefillLaneConfiguration(
+        f16_prefill_mode="tiled",
+        global_prefill_variant="global_context_rows_spans",
+        swa_prefill_variant="swa_context_rows_qrow2_m128_c128_exact_spans",
+        selected_down_mode="adaptive_grouped_smallm_fused",
+    ),
+    "shipping_control": PrefillLaneConfiguration(
+        f16_prefill_mode="wmma_comp_swa",
+        global_prefill_variant="global_context_rows_qrow2_online_spans",
+        swa_prefill_variant="swa_context_rows_qrow2_online_spans",
+        selected_down_mode="adaptive_grouped_smallm_fused",
+    ),
 }
 _COMPARISONS = {
     comparison.name: comparison
@@ -147,6 +187,7 @@ _COMPARISONS = {
         SWA_QROW2_COMPARISON,
         SWA_QROW2_ONLINE_COMPARISON,
         GLOBAL_QROW2_ONLINE_COMPARISON,
+        CUMULATIVE_CONTROL_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -228,8 +269,13 @@ def _prefill_for_mode(
     mode: str,
     comparison: CategoryComparison,
 ):
+    f16_mode: str | None = None
     if comparison.execution_mode == "f16_prefill":
-        with _f16_prefill_mode(mode):
+        f16_mode = mode
+    elif comparison.execution_mode == "cumulative_prefill":
+        f16_mode = _PREFILL_LANE_CONFIGURATIONS[mode].f16_prefill_mode
+    if f16_mode is not None:
+        with _f16_prefill_mode(f16_mode):
             return session.prefill(token_ids, use_bulk=True)
     return session.prefill(token_ids, use_bulk=True)
 
@@ -255,12 +301,60 @@ def _session_for_mode(
             args,
             global_prefill_variant=_GLOBAL_PREFILL_VARIANTS[mode],
         )
+    if comparison.execution_mode == "cumulative_prefill":
+        lane = _PREFILL_LANE_CONFIGURATIONS[mode]
+        session = _session(
+            owner,
+            args,
+            global_prefill_variant=lane.global_prefill_variant,
+            swa_prefill_variant=lane.swa_prefill_variant,
+        )
+        session.set_selected_down_mode(lane.selected_down_mode)
+        return session
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
         session.set_selected_down_mode(mode)
-    elif comparison.execution_mode not in {"f16_prefill", "global_prefill"}:
+    elif comparison.execution_mode not in {
+        "f16_prefill",
+        "global_prefill",
+        "cumulative_prefill",
+    }:
         raise ValueError(f"unknown Laguna execution mode {comparison.execution_mode!r}")
     return session
+
+
+def _oracle_for_candidate(
+    owner: LagunaGGUFResidentSession,
+    args: argparse.Namespace,
+    *,
+    comparison: CategoryComparison = GROUPED_DOWN_COMPARISON,
+) -> dict[str, Any]:
+    candidate_mode = comparison.modes[1]
+    if comparison.execution_mode == "f16_prefill":
+        with _f16_prefill_mode(candidate_mode):
+            return _oracle_gate(owner, args)
+    if comparison.execution_mode == "swa_prefill":
+        return _oracle_gate(
+            owner,
+            args,
+            swa_prefill_variant=_SWA_PREFILL_VARIANTS[candidate_mode],
+        )
+    if comparison.execution_mode == "global_prefill":
+        return _oracle_gate(
+            owner,
+            args,
+            global_prefill_variant=_GLOBAL_PREFILL_VARIANTS[candidate_mode],
+        )
+    if comparison.execution_mode == "cumulative_prefill":
+        lane = _PREFILL_LANE_CONFIGURATIONS[candidate_mode]
+        with _f16_prefill_mode(lane.f16_prefill_mode):
+            return _oracle_gate(
+                owner,
+                args,
+                global_prefill_variant=lane.global_prefill_variant,
+                swa_prefill_variant=lane.swa_prefill_variant,
+            )
+    return _oracle_gate(owner, args)
 
 
 def _run_target_mode(
@@ -635,58 +729,72 @@ def _promotion_gate(
         failed.append("free_running_pairs_not_exact")
     if not recovered:
         failed.append("tracked_lifecycle_not_recovered")
-    if comparison.require_positive_wall:
-        if float(comparison_result["prefill_speedup"]) <= 1.0:
+    if comparison.require_performance_gate:
+        aggregate_prefill_speedup = float(comparison_result["prefill_speedup"])
+        if comparison.require_positive_wall and aggregate_prefill_speedup <= 1.0:
             failed.append("aggregate_prefill_not_faster")
-    elif float(comparison_result["prefill_speedup"]) < 0.995:
-        failed.append("aggregate_prefill_below_0.995")
-    for category, values in comparison_result["categories"].items():
-        prefill_speedup = float(values["prefill_speedup"])
-        if comparison.require_positive_wall and prefill_speedup <= 1.0:
-            failed.append(f"{category}_prefill_regressed")
-        elif not comparison.require_positive_wall and prefill_speedup < 0.995:
-            failed.append(f"{category}_prefill_below_0.995")
+        elif (
+            not comparison.require_positive_wall
+            and aggregate_prefill_speedup < 0.995
+        ):
+            failed.append("aggregate_prefill_below_0.995")
+        for category, values in comparison_result["categories"].items():
+            prefill_speedup = float(values["prefill_speedup"])
+            if comparison.require_positive_wall and prefill_speedup <= 1.0:
+                failed.append(f"{category}_prefill_regressed")
+            elif not comparison.require_positive_wall and prefill_speedup < 0.995:
+                failed.append(f"{category}_prefill_below_0.995")
+            for horizon in horizons:
+                if float(values["horizons"][str(horizon)]["e2e_speedup"]) < 0.98:
+                    failed.append(f"{category}_h{horizon}_e2e_below_0.98")
         for horizon in horizons:
-            if float(values["horizons"][str(horizon)]["e2e_speedup"]) < 0.98:
-                failed.append(f"{category}_h{horizon}_e2e_below_0.98")
-    for horizon in horizons:
-        values = comparison_result["horizons"][str(horizon)]
-        e2e_speedup = float(values["e2e_speedup"])
-        if comparison.require_positive_wall and e2e_speedup <= 1.0:
-            failed.append(f"h{horizon}_aggregate_e2e_not_faster")
-        elif not comparison.require_positive_wall and e2e_speedup < 0.995:
-            failed.append(f"h{horizon}_aggregate_e2e_below_0.995")
-        decode_speedup = float(values["decode_speedup"])
-        if not math.isfinite(decode_speedup) or not 0.98 <= decode_speedup <= 1.02:
-            failed.append(f"h{horizon}_decode_outside_2pct")
-    performance_policy = (
-        "aggregate and every-category prefill faster; aggregate E2E faster; "
-        "each-category E2E >= 0.98x; decode within 2%"
-        if comparison.require_positive_wall
-        else "aggregate/category prefill >=0.995x; aggregate E2E >=0.995x; "
-        "each-category E2E >=0.98x; decode within 2%"
-    )
+            values = comparison_result["horizons"][str(horizon)]
+            e2e_speedup = float(values["e2e_speedup"])
+            if comparison.require_positive_wall and e2e_speedup <= 1.0:
+                failed.append(f"h{horizon}_aggregate_e2e_not_faster")
+            elif not comparison.require_positive_wall and e2e_speedup < 0.995:
+                failed.append(f"h{horizon}_aggregate_e2e_below_0.995")
+            decode_speedup = float(values["decode_speedup"])
+            if not math.isfinite(decode_speedup) or not 0.98 <= decode_speedup <= 1.02:
+                failed.append(f"h{horizon}_decode_outside_2pct")
+    if not comparison.require_performance_gate:
+        performance_policy = "reported; no admission threshold"
+    elif comparison.require_positive_wall:
+        performance_policy = (
+            "aggregate and every-category prefill faster; aggregate E2E faster; "
+            "each-category E2E >= 0.98x; decode within 2%"
+        )
+    else:
+        performance_policy = (
+            "aggregate/category prefill >=0.995x; aggregate E2E >=0.995x; "
+            "each-category E2E >=0.98x; decode within 2%"
+        )
     return {
         "pass": not failed,
         "failed_checks": failed,
         "policy": {
             "shape_screen": (
-                "every M16-512 full/SWA family faster and M128 weighted >=2x"
-                if comparison.execution_mode == "f16_prefill"
+                "not applicable to the cumulative control ledger"
+                if not comparison.require_shape_screen
                 else (
-                    (
-                        "quality-gated online SWA attention improves 512/1K/4K wall"
-                        if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
-                        else "exact matrix512/attention128 512/1K/4K output, KV, and wall win"
-                    )
-                    if comparison.execution_mode == "swa_prefill"
+                    "every M16-512 full/SWA family faster and M128 weighted >=2x"
+                    if comparison.execution_mode == "f16_prefill"
                     else (
-                        "quality-gated online global attention improves 512/1K/4K wall"
-                        if comparison.execution_mode == "global_prefill"
+                        (
+                            "quality-gated online SWA attention improves 512/1K/4K wall"
+                            if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
+                            else "exact matrix512/attention128 512/1K/4K output, KV, and wall win"
+                        )
+                        if comparison.execution_mode == "swa_prefill"
                         else (
-                            "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
-                            if comparison.require_positive_wall
-                            else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                            "quality-gated online global attention improves 512/1K/4K wall"
+                            if comparison.execution_mode == "global_prefill"
+                            else (
+                                "direct fallback >=0.995x; rows>=32 grouped shapes "
+                                "and aggregate faster"
+                                if comparison.require_positive_wall
+                                else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                            )
                         )
                     )
                 )
@@ -708,6 +816,19 @@ def _load_shape_screen(
     *,
     comparison: CategoryComparison = GROUPED_DOWN_COMPARISON,
 ) -> dict[str, Any]:
+    if not comparison.require_shape_screen:
+        return {
+            "pass": True,
+            "path": None,
+            "sha256": None,
+            "revision": None,
+            "aggregate_speedup": None,
+            "grouped_min_rows": None,
+            "model_sha256": args.model_sha256,
+            "candidate_variant": None,
+            "comparison": comparison.name,
+            "role": "not_applicable_control_ledger",
+        }
     artifact = json.loads(args.shape_screen.read_text(encoding="utf-8"))
     decision = artifact.get(comparison.screen_decision_key, {})
     model = artifact.get("model", {})
@@ -766,7 +887,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("warmup output tokens must be positive")
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
-    if not args.shape_screen.is_file():
+    if comparison.require_shape_screen and not args.shape_screen.is_file():
         raise FileNotFoundError(
             f"Laguna {comparison.name} shape screen not found: {args.shape_screen}"
         )
@@ -872,23 +993,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 file=sys.stderr,
                 flush=True,
             )
-        if comparison.execution_mode == "f16_prefill":
-            with _f16_prefill_mode(comparison.modes[1]):
-                oracle = _oracle_gate(owner, args)
-        elif comparison.execution_mode == "swa_prefill":
-            oracle = _oracle_gate(
-                owner,
-                args,
-                swa_prefill_variant=_SWA_PREFILL_VARIANTS[comparison.modes[1]],
-            )
-        elif comparison.execution_mode == "global_prefill":
-            oracle = _oracle_gate(
-                owner,
-                args,
-                global_prefill_variant=_GLOBAL_PREFILL_VARIANTS[comparison.modes[1]],
-            )
-        else:
-            oracle = _oracle_gate(owner, args)
+        oracle = _oracle_for_candidate(
+            owner,
+            args,
+            comparison=comparison,
+        )
         resident_nbytes = owner.resident_nbytes
     finally:
         if owner is not None:
@@ -937,7 +1046,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             + (
                 "retained full-model performance gate"
                 if comparison.require_positive_wall
-                else "quality and full-model non-regression gate only"
+                else (
+                    "cumulative quality ledger; performance is reported but not gated"
+                    if not comparison.require_performance_gate
+                    else "quality and full-model non-regression gate only"
+                )
             )
         ),
         "provenance": provenance,
@@ -974,9 +1087,32 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompt_suite": str(args.prompts.resolve()),
             "prompt_suite_sha256": _sha256_bytes(prompt_payload),
             "activation_quantization_included": bool(
-                comparison.execution_mode == "f16_prefill"
+                comparison.execution_mode
+                in {"f16_prefill", "cumulative_prefill"}
             ),
             "decode_route": "identical exact c=1 path for both modes",
+            "prefill_lane_configurations": (
+                {
+                    mode: {
+                        "f16_prefill_mode": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].f16_prefill_mode,
+                        "global_prefill_variant": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].global_prefill_variant,
+                        "swa_prefill_variant": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].swa_prefill_variant,
+                        "selected_down_mode": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].selected_down_mode,
+                        "dense_shared_route": "current exact registered path",
+                    }
+                    for mode in comparison.modes
+                }
+                if comparison.execution_mode == "cumulative_prefill"
+                else None
+            ),
         },
         "shape_screen": shape_screen,
         "load": {"seconds_excluded": load_seconds, "resident_nbytes": resident_nbytes},
@@ -1001,24 +1137,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "notes": [
             "Both modes share resident weights and use isolated bounded request sessions.",
             (
-                "Compensated WMMA applies only to the 36 SWA layers from M16; all "
-                "12 full-attention layers stay exact tiled, M2-15 stay exact tiled, "
-                "and rows==1 stays on GEMV."
-                if comparison.execution_mode == "f16_prefill"
+                "The all-exact lane freezes tiled source-F16 plus exact global and "
+                "context-qualified exact SWA attention. The shipping lane freezes "
+                "gfx1151 compensated source-F16 plus online global/SWA attention; "
+                "both freeze the same exact grouped-down and dense/shared routes."
+                if comparison.execution_mode == "cumulative_prefill"
                 else (
-                    "Online global prefill changes softmax association only on the 12 "
-                    "full-attention layers; all 36 SWA layers and decode stay unchanged."
-                    if comparison.execution_mode == "global_prefill"
+                    "Compensated WMMA applies only to the 36 SWA layers from M16; all "
+                    "12 full-attention layers stay exact tiled, M2-15 stay exact tiled, "
+                    "and rows==1 stays on GEMV."
+                    if comparison.execution_mode == "f16_prefill"
                     else (
-                        "Online SWA prefill changes softmax association only on the 36 "
-                        "sliding-attention layers; global attention and decode stay unchanged."
-                        if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
+                        "Online global prefill changes softmax association only on the 12 "
+                        "full-attention layers; all 36 SWA layers and decode stay unchanged."
+                        if comparison.execution_mode == "global_prefill"
                         else (
-                            "Adaptive grouped down stays BF16 throughout and falls back to "
-                            "direct below 32 rows."
-                            if comparison.require_positive_wall
-                            else "The candidate preserves both BF16 boundaries while removing "
-                            "one launch and the selected-output round trip for rows >=32."
+                            "Online SWA prefill changes softmax association only on the 36 "
+                            "sliding-attention layers; global attention and decode stay unchanged."
+                            if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
+                            else (
+                                "Adaptive grouped down stays BF16 throughout and falls back to "
+                                "direct below 32 rows."
+                                if comparison.require_positive_wall
+                                else "The candidate preserves both BF16 boundaries while removing "
+                                "one launch and the selected-output round trip for rows >=32."
+                            )
                         )
                     )
                 )
