@@ -1,8 +1,8 @@
 # Laguna S 2.1 Decode Gap Analysis — W7900 / UD-Q2_K_XL
 
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership is
-implemented and retained as the gfx1100 default. P1 is in progress: its
-IQ3 Q8_1/dot4 lane is rejected, while raw-IQ3 row4 remains open. P2 remains
+implemented and retained as the gfx1100 default. P1 is in progress: both IQ3
+quality lanes are rejected, while raw-Q5/raw-IQ2 remain later work. P2 remains
 open.
 
 Scope: resident batch-1 autoregressive decode of
@@ -612,6 +612,15 @@ quantization made actual layer-1/layer-45 producer+reducer HIP-event time
 **13.61%/11.03%**. Per the frozen inclusive-win precondition, it was removed
 before runtime or the 18-prompt gate. Evidence:
 [`...p1-iq3-q8-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq3-q8-rejected.json).
+
+The second IQ3 lane is also rejected. A local32 raw-row4 leaf shared each BF16
+activation across four outputs, accumulated all ten routes in FP32, and applied
+routing weights before the final BF16 store. It passed the synthetic CPU/source
+and exact-sibling quality gates, but route serialization overwhelmed reuse:
+actual layer-1/layer-45 producer+reducer HIP-event time regressed
+**146.14%/93.00%**, with synchronized wall **140.04%/83.37%** slower. It was
+removed before runtime and the 18-prompt gate. Evidence:
+[`...p1-iq3-row4-f32-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq3-row4-f32-rejected.json).
 
 Contract and gates:
 
