@@ -12,9 +12,11 @@ from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_quantize_bf16_q8_1,
+    gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     build_gguf_x8_selected_gemv,
+    gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out,
@@ -341,6 +343,86 @@ def _run_dual_direct(
             free(buf, runtime=runtime)
 
 
+def _run_bf16_dual_direct(
+    wrapper,
+    x_bits: np.ndarray,
+    selected: np.ndarray,
+    weights_a: np.ndarray,
+    weights_b: np.ndarray,
+    *,
+    out_features: int,
+    library,
+) -> tuple[np.ndarray, np.ndarray]:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    x_rows, in_features = x_bits.shape
+    rows = int(selected.size)
+    num_experts = int(weights_a.shape[0])
+    out_a = np.zeros((rows, out_features), dtype=np.uint16)
+    out_b = np.zeros((rows, out_features), dtype=np.uint16)
+    bufs = []
+    try:
+        x_buf = malloc(x_bits.nbytes, runtime=runtime)
+        selected_buf = malloc(selected.nbytes, runtime=runtime)
+        weights_a_buf = malloc(weights_a.nbytes, runtime=runtime)
+        weights_b_buf = malloc(weights_b.nbytes, runtime=runtime)
+        out_a_buf = malloc(out_a.nbytes, runtime=runtime)
+        out_b_buf = malloc(out_b.nbytes, runtime=runtime)
+        bufs.extend(
+            (
+                x_buf,
+                selected_buf,
+                weights_a_buf,
+                weights_b_buf,
+                out_a_buf,
+                out_b_buf,
+            )
+        )
+        copy_host_to_device(
+            x_buf,
+            host_array_ptr(np.ascontiguousarray(x_bits)),
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            selected_buf,
+            host_array_ptr(np.ascontiguousarray(selected)),
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            weights_a_buf,
+            host_array_ptr(np.ascontiguousarray(weights_a)),
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            weights_b_buf,
+            host_array_ptr(np.ascontiguousarray(weights_b)),
+            runtime=runtime,
+        )
+        wrapper(
+            x_buf.ptr,
+            selected_buf.ptr,
+            weights_a_buf.ptr,
+            weights_b_buf.ptr,
+            out_a_buf.ptr,
+            out_b_buf.ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_a), out_a_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_b), out_b_buf, runtime=runtime)
+        return out_a, out_b
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+
 def _run_compact(wrapper, x_bits: np.ndarray, expert_start: np.ndarray, tiles: np.ndarray) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -392,6 +474,15 @@ def test_x8_selected_registry_and_contract() -> None:
             backend="hip_gfx1100",
             layer="moe_linear",
             quant="gguf_q4_k_x8_v1",
+            variant="selected_dual_x8_exact_gemv_decode_bf16_bf16_out",
+        )
+        is gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_x8_v1",
             variant="selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
         )
         is gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out
@@ -434,6 +525,70 @@ def test_x8_selected_registry_and_contract() -> None:
     )
     with pytest.raises(ValueError, match="divisible by 8"):
         gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(1, 2, 3, 4, 1, 1, 1, 256, 10)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("x_rows,top_k", [(1, 10), (3, 4)])
+def test_q4_x8_selected_dual_exact_matches_raw_bits_and_cpu_source_gate(
+    x_rows: int,
+    top_k: int,
+) -> None:
+    rng = np.random.default_rng(20260725 + x_rows)
+    in_features = 512
+    out_features = 24
+    experts = 4
+    rows = x_rows * top_k
+    x_f32 = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x_bits = _bf16_bits(x_f32)
+    qweight_a = _weights(
+        "q4",
+        out_features=out_features,
+        in_features=in_features,
+        experts=experts,
+    )
+    qweight_b = np.ascontiguousarray(np.roll(qweight_a, shift=3, axis=1))
+    selected = ((np.arange(rows, dtype=np.int64) * 3 + 1) % experts).astype(np.int64)
+
+    got_a_bits, got_b_bits = _run_bf16_dual_direct(
+        gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out,
+        x_bits,
+        selected,
+        _tiles("q4", qweight_a),
+        _tiles("q4", qweight_b),
+        out_features=out_features,
+        library=build_gguf_x8_selected_gemv(load=True),
+    )
+    raw_a_bits, raw_b_bits = _run_bf16_dual_direct(
+        gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+        x_bits,
+        selected,
+        qweight_a,
+        qweight_b,
+        out_features=out_features,
+        library=build_gguf_q4_k_gemv(load=True),
+    )
+    np.testing.assert_array_equal(got_a_bits, raw_a_bits)
+    np.testing.assert_array_equal(got_b_bits, raw_b_bits)
+
+    x_bf16 = _bf16_to_f32(x_bits)
+    x_row_for_output = np.arange(rows, dtype=np.int64) // top_k
+    for qweight, got_bits in (
+        (qweight_a, got_a_bits),
+        (qweight_b, got_b_bits),
+    ):
+        exact = _exact_oracle(
+            "q4",
+            x_bf16,
+            x_row_for_output,
+            selected,
+            qweight,
+        )
+        got = _bf16_to_f32(got_bits)
+        np.testing.assert_allclose(got, exact, rtol=1.0e-2, atol=1.0e-3)
+        kl_mean, kl_max = _softmax_kl(exact, got)
+        assert kl_mean <= 0.05
+        assert kl_max <= 0.05
+        assert _top1(exact, got) >= 0.90
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

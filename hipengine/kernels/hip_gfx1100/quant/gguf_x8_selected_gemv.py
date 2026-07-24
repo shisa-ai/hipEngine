@@ -16,6 +16,7 @@ _X8_COLS = 8
 _ALLOWED_THREADS = {64, 128, 256}
 _DEFAULT_THREADS = 64
 
+_Q4_DUAL_EXACT_BF16 = "hipengine_gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out"
 _Q4_DUAL_DIRECT_BF16 = "hipengine_gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q5_DIRECT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q5_DIRECT_F32 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out"
@@ -62,6 +63,45 @@ def build_gguf_x8_selected_gemv(
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
+    )
+
+
+def gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16-input selected-dual Q4X8 GEMV."""
+
+    _launch_dual_direct(
+        _Q4_DUAL_EXACT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        threads=256,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
 
 
@@ -505,6 +545,16 @@ def register_gguf_x8_selected_gemv_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "moe_linear",
             "gguf_q4_k_x8_v1",
+            "selected_dual_x8_exact_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_x8_v1",
             "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
         ),
         gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -551,6 +601,7 @@ register_gguf_x8_selected_gemv_kernels()
 
 __all__ = [
     "build_gguf_x8_selected_gemv",
+    "gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out",
     "gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out",
