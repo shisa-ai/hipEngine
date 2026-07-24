@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-24**
+Last reviewed: **2026-07-25**
 
 The current Laguna arithmetic-prefill control packet is
 [`2026-07-24-gfx1151-laguna-prefill-lap0-control.json`](results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
@@ -620,7 +620,8 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 X8 MMQ32 live-row screen | 2026-07-24 | clean measured `84c50b205`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit primitive; natural-shape body gate passed; runtime default unchanged**: clamping live rows and bypassing padded-route dot work makes byte-neutral X8 positive at every frozen shape. Producer-pack-inclusive speedups over retained direct are **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**; X8 time falls **18.65–36.45%** versus the prior layout screen. Raw/X8 checksums remain exact; focused tests report 29 passes; cached X8 resources are local128/VGPR48/LDS2048B/scratch0. An all-full synthetic control regresses **8.34%**, explicitly reserving separate full/tail symbols for an integrated-profile need. [`artifact`](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json). | Yes for the exact one-layer natural-routing leaf scope only; no full-model or default claim | Add an exact X8 decode/fallback and keep decode within 2%; then run integrated all-layer performance, category quality, milestone-shape, and lifecycle gates. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 exact X8 decode gate | 2026-07-25 | clean measured `420bf8392`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; c1/c2/c4/c8 producer rows with top-10 | **Rejected sole-resident X8 premise; current T16 residency unchanged**: the optimized local128 X8 fallback is BF16-bit exact at every shape and catches T16 at c4/c8, but c1/c2 T16 -> X8 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate. X8/T16 pair bytes are **905,969,664/931,135,488**; the temporary comparison peaks at **1,837,482,624 bytes** and returns to zero. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json). | Negative layout decision; no runtime/default claim | Keep T16 as the sole resident expert layout and add a direct T16 MMQ32 consumer; do not retry dynamic X8-to-T16 reconstruction or add a complete T16 sidecar. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 X8 MMQ32 live-row screen | 2026-07-24 | clean measured `84c50b205`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit prefill control; natural-shape body gate passed; runtime default unchanged**: clamping live rows and bypassing padded-route dot work makes byte-neutral X8 positive at every frozen shape. Producer-pack-inclusive speedups over retained direct are **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**; X8 time falls **18.65–36.45%** versus the prior layout screen. Raw/X8 checksums remain exact; focused tests report 29 passes; cached X8 resources are local128/VGPR48/LDS2048B/scratch0. An all-full synthetic control regresses **8.34%**. The 2026-07-25 exact-decode row supersedes X8 as a resident candidate but preserves it as the MMQ ceiling. [`artifact`](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json). | Yes for the exact one-layer natural-routing leaf scope only; no full-model or default claim | Port the proven arithmetic/live-row schedule to direct T16 addressing, then run repair, integrated all-layer performance, category quality, milestone-shape, and lifecycle gates. |
 | Radeon RX 7900 XTX GPU1, gfx1100 | Qwen3.6-35B-A3B UD-Q3_K_M native prefill/decode, c2/c4/c8, and NextN diagnostic | 2026-07-22 | merged branch tip `5c76b408`; exact model/artifact identities and cached GPU1 traces retained | **Accepted direct-Q3 path / rejected MTP diagnostic**: exact fully-bulk prefill reaches **848.543/831.393 tok/s** at 512/4K; graph decode retains **101.216/108.383 tok/s** at c1 and native c8 reaches **207.780/211.177 aggregate tok/s** with exact IDs/full logits and no c>N serial fallback. The blk.40 NextN B1/B2/B3 row is exact but only **0.544x/0.346x/0.271x** AR and remains disabled. | Yes for the declared direct/native-Q3 scopes; no MTP promotion | Rerun after Q3 quant kernels, native-row ownership, MTP transaction/state, model, compiler/runtime, or GPU policy changes. |
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean profile-aware BF16 frontier `5a49b16d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; clean external-format screen `d0b56364`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness outcome**: on the physical 24 GB XTX, the automatic all-768 low-memory prefill profile makes **208 Ki BF16 the recommended safe cap** at **23.623 GiB whole-device peak / 0.361 GiB free**. **220 Ki physically completes** at 23.908 GiB but leaves only **0.076 GiB (~78 MiB)** and is edge-only; a 232 Ki low-profile screen exceeds capacity. Compact 256K INT8 fits at 22.971 GiB tracked but remains unsupported. External-format S1 lowers mean KL to **0.13342**, but the winning Hadamard group32 row rejects 4K/16 at **0.15512 KL** despite **94.12% top-1**. | Current diagnostic table | Rerun after chunk policy, model/runtime, or allocator changes; do not promote 220 Ki without more margin, and require matched-context plus broader task quality before INT8 support. |
 | Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV protocol/arithmetic isolation | 2026-07-13 | clean harness `a344d32a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Repeated-token pass superseded as representative quality evidence**: native Q8_0/F16 at 4K/16 is **0.000006 KL / 100% top-1** on repeated token 9707 but **0.075654/1.26009 mean/max KL / 94.12% top-1** on exact mixed `mixed_v1`, failing the KL gate; an exact rerun reproduces every row. Mixed K-only and V-only Q8 reach **0.09668** and **0.24322** mean KL, while full Q8 improves through non-additive K/V interaction. The old 128K repeated row remains a saturation control, not broad fidelity evidence. No performance claim. | Current diagnostic table | Require multiple mixed/natural prompt families after cache arithmetic, format, model/build, or protocol changes; do not promote from repeated-token rows. |
@@ -1923,15 +1924,16 @@ tile32 loses at M32–M64, misses the 2x premise at M122/M128, and passes at
 M256/M512; LAP-1 next builds a smaller-row or mixed full32-plus-tail schedule.
 [LAP-1 MMQ32 all-shape screen](results/2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json).
 
-The byte-neutral X8 replacement layout is now the retained LAP-1 layout
+The byte-neutral X8 replacement layout is the retained LAP-1 prefill-control
 primitive. It is BF16-bit identical to raw MMQ32, uses the same
 **905,969,664 bytes** for the actual layer-1 gate/up pair, and improves raw at
 all seven natural shapes by **9.82–12.14%**. Producer-pack-inclusive X8 reaches
 **0.766/1.011/1.105/1.693/1.735/2.957/4.554x** retained direct at
 M32/55/64/122/128/256/512. Cached resources remain local128, VGPR120,
-LDS2048B, and scratch0. That initial layout-only result selected X8 over
-raw/T16 but did not change the runtime default: M32 still lost and M128 was
-below the 2x LAP-1 gate.
+LDS2048B, and scratch0. That initial prefill-only result provisionally selected
+X8 over raw/T16 but did not change the runtime default: M32 still lost and M128
+was below the 2x LAP-1 gate. The exact-decode result below later supersedes the
+resident-layout conclusion.
 [LAP-1 retained X8 layout primitive](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-layout-retained.json).
 
 The retained live-row schedule closes the LAP-1 natural-shape body gate without
@@ -1945,8 +1947,21 @@ local128, VGPR48, LDS2048B, scratch0. The explicit all-full synthetic control
 regresses **0.3881 -> 0.4204 ms (+8.34%)**; natural routing remains the
 promotion scope, and separate full/tail symbols are deferred unless an
 integrated trace exposes that cost. Runtime defaults remain unchanged pending
-an exact X8 decode/fallback and full-model gates.
+a direct T16 MMQ consumer, arithmetic repair, and full-model gates.
 [LAP-1 retained X8 live-row primitive](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json).
+
+The clean exact-decode gate rejects X8 as the sole production representation.
+The optimized local128 fallback dynamically constructs T16-shaped K256 tiles
+in LDS and is BF16-bit exact at c1/c2/c4/c8, but retained T16 -> X8 moves c1
+**0.157223 -> 0.174663 ms (+11.093%)** and c2
+**0.351996 -> 0.362511 ms (+2.987%)**. X8 catches T16 at c4/c8, but c=1 is the
+campaign target and the decode limit is 2%. The comparison records
+**905,969,664/931,135,488 bytes** for X8/T16, peaks at
+**1,837,482,624 tracked bytes** while both are temporarily resident, and
+returns to zero. T16 remains the sole shipping expert layout; X8 remains only
+the frozen MMQ ceiling. LAP-1 next adds direct T16 addressing to the proven
+MMQ32 body, with no layout transpose or duplicate full-family sidecar.
+[Rejected sole-resident X8 layout](results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json).
 
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
