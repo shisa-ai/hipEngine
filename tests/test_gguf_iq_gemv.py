@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+    gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
     gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
     gguf_iq4_xs_selected_gemv_bf16_bf16_out,
@@ -344,6 +345,12 @@ def test_iq_gemv_registry_and_build_plan() -> None:
         backend="hip_gfx1100",
         layer="moe_linear",
         quant="gguf_iq3_xxs",
+        variant="selected_gemv_decode_k1024_wave4_bf16_bf16_out",
+    ) is gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq3_xxs",
         variant="selected_gemv_decode_tile4_bf16_bf16_out",
     ) is gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out
     assert resolve(
@@ -499,6 +506,32 @@ def test_selected_iq_real_fixture_rows_match_cpu_oracle(
         np.max(np.abs(actual_f32 - expected_f32) / np.maximum(np.abs(expected_f32), 1.0))
     )
     assert max_rel <= 0.02
+
+
+def test_iq3_selected_k1024_wave4_is_bit_exact_to_local128(iq_library) -> None:
+    top_k = 10
+    in_features = 1024
+    out_features = 19
+    qweight = _make_iq3_weight(9, out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(_make_x(top_k, in_features))
+    selected = np.asarray([8, 0, 5, 2, 7, -1, 3, 8, 1, 6], dtype=np.int64)
+    baseline = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=128,
+    )
+    candidate = _run_selected(
+        gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=32,
+    )
+    np.testing.assert_array_equal(candidate, baseline)
 
 
 @pytest.mark.parametrize("tokens", [1, 2, 5, 8])

@@ -623,6 +623,69 @@ __global__ void gguf_iq2_xs_selected_dual_silu_gemv_tile2_kernel(
   }
 }
 
+__launch_bounds__(32, 16)
+__global__ void gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  constexpr int IN_FEATURES = 1024;
+  constexpr int BLOCKS = IN_FEATURES / QK_K;
+  const int lane = threadIdx.x;
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  constexpr int ROW_BYTES = BLOCKS * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * ROW_BYTES;
+  const uint8_t* __restrict__ weight_row = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * ROW_BYTES
+      : qweight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * IN_FEATURES;
+
+  // Reconstruct the local128 baseline's four independent wave partitions in
+  // one wave. Each accumulator keeps the same 32-lane dot and shuffle tree;
+  // lane zero then adds wave totals in the original 0..3 order.
+  float partials[BLOCKS] = {0.0f, 0.0f, 0.0f, 0.0f};
+  if (valid_expert) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      const int x_offset = block_idx * QK_K + lane * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const uint8_t* __restrict__ block =
+          weight_row + static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+      partials[block_idx] = iq3_xxs_group_dot(block, lane, x_values);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      partials[block_idx] += __shfl_down(partials[block_idx], offset);
+    }
+  }
+  if (lane == 0) {
+    float total = 0.0f;
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      total += partials[block_idx];
+    }
+    out[static_cast<int64_t>(row) * out_features + out_col] =
+        float_to_bf16_bits(total);
+  }
+}
+
 __launch_bounds__(256, 2)
 __global__ void gguf_iq3_xxs_selected_gemv_kernel(
     const uint16_t* __restrict__ x,
@@ -1198,6 +1261,39 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out
       static_cast<int>(rows),
       static_cast<int>(num_experts),
       static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight == nullptr ||
+      out == nullptr || x_rows <= 0 || rows <= 0 || rows % x_rows != 0 ||
+      num_experts <= 0 || in_features != 1024 || out_features <= 0 ||
+      threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32U);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
+  gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
       static_cast<int>(out_features));
   return static_cast<int>(hipGetLastError());
 }

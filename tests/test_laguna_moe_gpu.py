@@ -33,6 +33,7 @@ from hipengine.models.laguna import LAGUNA_GGUF
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
+    resolve_laguna_iq3_c1_down_schedule,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     run_laguna_moe_c1,
@@ -172,6 +173,39 @@ def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
             backend="hip_gfx1151",
             iq3_selected_down_tile=4,
         )
+
+
+def test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    baseline = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    wave4 = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="wave4_reduce",
+        iq3_selected_down_tile=4,
+    )
+    row4 = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="row4_reduce",
+    )
+    assert not baseline.c1_selected_down_keys
+    assert wave4.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_k1024_wave4_bf16_bf16_out"
+    )
+    assert wave4.selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_tile4_bf16_bf16_out"
+    )
+    assert row4.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_tile4_bf16_bf16_out"
+    )
+    assert resolve_laguna_iq3_c1_down_schedule("hip_gfx1100") == "serial_weighted"
+    assert (
+        resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", "wave4_reduce")
+        == "wave4_reduce"
+    )
+    with pytest.raises(ValueError, match="IQ3 c=1 down schedule"):
+        resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", "invalid")
 
 
 def test_laguna_selected_down_default_is_backend_qualified() -> None:

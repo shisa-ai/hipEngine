@@ -69,6 +69,7 @@ from hipengine.runtime.laguna_moe import (
     LagunaMoEKernelPlan,
     LagunaMoEScratch,
     allocate_laguna_moe_scratch,
+    resolve_laguna_iq3_c1_down_schedule,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     run_laguna_moe_c1_components,
@@ -1502,6 +1503,7 @@ class LagunaGGUFResidentSession:
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
         iq3_selected_down_tile: int = 1,
+        iq3_c1_down_schedule: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1527,6 +1529,10 @@ class LagunaGGUFResidentSession:
         self.use_q5_wave32x2_output = self._q5_output_variant is not None
         self.use_q5_wave32x2_query_gate = self._q5_query_gate_variant is not None
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
+        self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
+            self.backend,
+            iq3_c1_down_schedule,
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1604,6 +1610,7 @@ class LagunaGGUFResidentSession:
                 config,
                 backend=self.backend,
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
+                iq3_c1_down_schedule=self.iq3_c1_down_schedule,
             )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(

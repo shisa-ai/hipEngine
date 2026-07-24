@@ -60,6 +60,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--chunk-size", type=int, default=64)
     parser.add_argument(
+        "--iq3-c1-down-schedule",
+        choices=("serial_weighted", "wave4_reduce", "row4_reduce"),
+        default=None,
+    )
+    parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
         default=(16, 32),
@@ -158,6 +163,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached_build=args.require_cached_build,
         prefill_chunk_size=args.chunk_size,
+        iq3_c1_down_schedule=args.iq3_c1_down_schedule,
     )
 
 
@@ -524,6 +530,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
+            iq3_c1_down_schedule=args.iq3_c1_down_schedule,
         )
         load_seconds = time.perf_counter() - load_started
         oracle_gate = _oracle_gate(owner, args)
@@ -623,6 +630,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompt_tokens_max": max(prompt["prompt_tokens"] for prompt in prompts),
             "context_length": args.context_length,
             "prefill_chunk_size": args.chunk_size,
+            "iq3_c1_down_schedule": owner.iq3_c1_down_schedule,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {
