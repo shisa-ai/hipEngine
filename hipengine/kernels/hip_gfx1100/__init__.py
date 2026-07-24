@@ -9,6 +9,10 @@ LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
 # Other backends retain the separately registered pack8 fallbacks.
 LAGUNA_Q5_WAVE32X2_OUTPUT = True
 LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
+# Clean P0 leaf/full-state/context/category evidence admits one exact local32
+# wave per (route, output), followed by the registered slot-order reducer.
+# Other backends retain the serial weighted composite.
+LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -69,6 +73,7 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
+    "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SWA_DECODE_VARIANT",

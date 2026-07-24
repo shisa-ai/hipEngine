@@ -177,32 +177,29 @@ def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
 
 def test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
-    baseline = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    wave4 = resolve_laguna_moe_plan(
+    default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    rollback = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="serial_weighted",
+    )
+    wave4_with_verifier_tile4 = resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1100",
         iq3_c1_down_schedule="wave4_reduce",
         iq3_selected_down_tile=4,
     )
-    row4 = resolve_laguna_moe_plan(
-        config,
-        backend="hip_gfx1100",
-        iq3_c1_down_schedule="row4_reduce",
-    )
-    assert not baseline.c1_selected_down_keys
-    assert wave4.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
+    assert not rollback.c1_selected_down_keys
+    assert default.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
         "selected_gemv_decode_k1024_wave4_bf16_bf16_out"
     )
-    assert wave4.selected_down_keys["gguf_iq3_xxs"].variant == (
+    assert wave4_with_verifier_tile4.selected_down_keys["gguf_iq3_xxs"].variant == (
         "selected_gemv_decode_tile4_bf16_bf16_out"
     )
-    assert row4.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
-        "selected_gemv_decode_tile4_bf16_bf16_out"
-    )
-    assert resolve_laguna_iq3_c1_down_schedule("hip_gfx1100") == "serial_weighted"
+    assert resolve_laguna_iq3_c1_down_schedule("hip_gfx1100") == "wave4_reduce"
     assert (
-        resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", "wave4_reduce")
-        == "wave4_reduce"
+        resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", "serial_weighted")
+        == "serial_weighted"
     )
     with pytest.raises(ValueError, match="IQ3 c=1 down schedule"):
         resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", "invalid")

@@ -49,7 +49,6 @@ _IQ3_C1_DOWN_VARIANTS = MappingProxyType(
     {
         "serial_weighted": None,
         "wave4_reduce": "selected_gemv_decode_k1024_wave4_bf16_bf16_out",
-        "row4_reduce": "selected_gemv_decode_tile4_bf16_bf16_out",
     }
 )
 _SILU_VARIANT = "out"
