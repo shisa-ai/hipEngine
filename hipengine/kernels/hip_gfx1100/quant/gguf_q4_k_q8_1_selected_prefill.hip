@@ -520,6 +520,12 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   const int64_t padded_base = expert_start_mmq32[expert_id];
   const int64_t tile_row_in_expert =
       static_cast<int64_t>(tile_row) * MMQ_N - padded_base;
+  const int64_t remaining_rows = expert_count - tile_row_in_expert;
+  const int valid_rows =
+      remaining_rows <= 0
+          ? 0
+          : (remaining_rows >= MMQ_N ? MMQ_N
+                                     : static_cast<int>(remaining_rows));
 
   const int64_t blocks_per_weight_row = in_features / QK_K;
   const int64_t q8_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
@@ -642,6 +648,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
 
 #pragma unroll
     for (int wsic = 0; wsic < WNITER; ++wsic) {
+      if (wsic * 4 + tiwc >= valid_rows) continue;
       const q8_1_mmq32_cache activation_cache =
           activation_tile[wsic * 4 + tiwc];
       const float xd = fp16_bits_to_float(activation_cache.ds[0]);
