@@ -287,6 +287,8 @@ __global__ void laguna_global_attention_decode_bf16_kernel(
   }
 }
 
+constexpr int LAGUNA_SPLIT_SCORE_TILE = 16;
+
 // Exact split topology: independent wave32 score blocks expose token-level
 // parallelism, then a local256 reducer replays the retained global softmax and
 // value accumulation order. Scratch is caller-owned and reusable.
@@ -989,6 +991,88 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_split_exact_scores_ke
     score_scratch[idx] =
         physical_slot >= 0 ? dot : -3.4028234663852886e38f;
     physical_scratch[idx] = static_cast<int32_t>(physical_slot);
+  }
+}
+
+// Exact SWA score tile. It retains the token4 kernel's strided dimensions,
+// ordered products, and reconstructed 128-thread
+// reduction tree for each logical slot before the unchanged exact reducer.
+__global__ __launch_bounds__(256)
+void laguna_swa_attention_split_tile16_exact_scores_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  const int64_t q_head = static_cast<int64_t>(blockIdx.x);
+  const int64_t tile_base =
+      static_cast<int64_t>(blockIdx.y) * LAGUNA_SPLIT_SCORE_TILE;
+  if (q_head >= num_q_heads || tile_base >= scan_slots) return;
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  const int64_t live_count = live_counts[0];
+  const int64_t context_len =
+      live_count < capacity ? live_count : capacity;
+  const int64_t query_position = row_positions[0];
+  const int64_t q_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / q_group;
+  const int64_t q_offset = q_head * head_dim;
+  float q_values[4];
+#pragma unroll
+  for (int part = 0; part < 4; ++part) {
+    q_values[part] = query[q_offset + lane + part * 32];
+  }
+
+  for (int item = wave; item < LAGUNA_SPLIT_SCORE_TILE; item += 8) {
+    const int64_t logical_slot = tile_base + item;
+    const int64_t key_position =
+        logical_slot < context_len && logical_slot < scan_slots
+            ? token_positions[logical_slot]
+            : -1;
+    const bool visible = logical_slot < context_len &&
+                         logical_slot < scan_slots && query_position >= 0 &&
+                         evict_mask[logical_slot] == 0 && key_position >= 0 &&
+                         key_position <= query_position &&
+                         key_position > query_position - sliding_window;
+    int64_t physical_slot = -1;
+    if (visible) {
+      physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+      if (physical_slot < 0 || physical_slot >= capacity) physical_slot = -1;
+    }
+
+    float products[4] = {};
+    if (physical_slot >= 0) {
+      const int64_t key_base =
+          (physical_slot * num_kv_heads + kv_head) * head_dim;
+#pragma unroll
+      for (int part = 0; part < 4; ++part) {
+        const int64_t dim = lane + part * 32;
+        products[part] = laguna_ordered_mul_f32(
+            q_values[part],
+            laguna_bf16_bits_to_float(key_cache[key_base + dim]));
+      }
+    }
+    const float dot = laguna_wave32_sum_128_exact(
+        products[0], products[1], products[2], products[3]);
+    if (lane == 0 && logical_slot < scan_slots) {
+      const int64_t idx = q_head * scratch_stride + logical_slot;
+      score_scratch[idx] =
+          physical_slot >= 0 ? dot : -3.4028234663852886e38f;
+      physical_scratch[idx] = static_cast<int32_t>(physical_slot);
+    }
   }
 }
 
@@ -1826,6 +1910,85 @@ extern "C" int hipengine_laguna_swa_attention_decode_split_exact_bf16_spans(
       dim3(static_cast<unsigned int>(num_q_heads),
            static_cast<unsigned int>(scan_slots)),
       dim3(32),
+      0,
+      stream,
+      query,
+      key_cache,
+      score_scratch,
+      physical_scratch,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      capacity,
+      sliding_window,
+      scratch_stride,
+      scan_slots,
+      num_q_heads,
+      num_kv_heads,
+      head_dim);
+  int error = static_cast<int>(hipGetLastError());
+  if (error != static_cast<int>(hipSuccess)) return error;
+  hipLaunchKernelGGL(
+      laguna_swa_attention_split_exact_reduce_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads)),
+      dim3(128),
+      0,
+      stream,
+      value_cache,
+      score_scratch,
+      physical_scratch,
+      out,
+      live_counts,
+      row_positions,
+      capacity,
+      scratch_stride,
+      scan_slots,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_swa_attention_decode_split_tile16_exact_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || score_scratch == nullptr || physical_scratch == nullptr ||
+      capacity <= 0 || sliding_window <= 0 || sliding_window > capacity ||
+      scratch_stride < scan_slots || scan_slots <= 0 || scan_slots > capacity ||
+      num_q_heads <= 0 || num_kv_heads <= 0 ||
+      num_q_heads % num_kv_heads != 0 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t score_tiles =
+      (scan_slots + LAGUNA_SPLIT_SCORE_TILE - 1) / LAGUNA_SPLIT_SCORE_TILE;
+  hipLaunchKernelGGL(
+      laguna_swa_attention_split_tile16_exact_scores_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads),
+           static_cast<unsigned int>(score_tiles)),
+      dim3(256),
       0,
       stream,
       query,

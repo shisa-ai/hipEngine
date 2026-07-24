@@ -3,8 +3,9 @@
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership and P2.1
 exact split attention are implemented and retained as gfx1100 defaults. Both
 P1 IQ3 quality lanes and P2.2 online FP32 partials are rejected, while
-raw-Q5/raw-IQ2 remain later work. An exact tile32 score-producer refinement is
-next before P2 closes.
+raw-Q5/raw-IQ2 remain later work. An exact SWA tile16 score producer is
+correctness-admitted at live count 257 and enters clean profile/promotion gates
+before P2 closes.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -700,6 +701,22 @@ Evidence:
 and
 [`...p2-split-exact-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json).
 
+A post-P2.2 exact refinement is now explicit/default-off. One local256 block
+owns a 16-slot SWA score tile: eight waves preserve every retained 128-D dot
+and write the same score/physical scratch for the unchanged reducer. Two
+independent boundary screens select live `>=257`; 257/511/512 event and wall
+rows are all positive and byte exact. At actual layers 1/47 and live 257, hot
+counterbalanced event windows improve **0.36%/0.44%** and synchronized wall
+**0.78%/0.36%**. A 150-transition shared-weight gate, including all-layer
+capture after the crossover, matches complete logits, 48 hidden boundaries,
+47 routed outputs, active K/V and all `KVLiveSpans`, reset, and lifecycle
+exactly. The score kernel is local256/VGPR32/LDS0/scratch0 at the intended
+`72 x 17` grid; no new allocation is added. The tiled global sibling has later
+regressions and is removed. This is correctness admission, not a throughput
+claim; clean 512/1K/near-4K profiles and the unchanged complete promotion gate
+remain. Evidence:
+[`...p2-swa-tile16-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-correctness.json).
+
 #### P2.2 Quality-gated online partials
 
 If exact split is insufficient, let each tile emit FP32 `m`, `l`, and 128-wide
@@ -725,11 +742,11 @@ retained. All online kernels, wrappers, workspace, selectors, and tests are
 removed. Evidence:
 [`...p2-online-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-online-rejected.json).
 
-The mechanical result identifies one exact follow-up: tile 32 score production
-can share query loads and reduce workgroup count while feeding the retained
-logical-slot-order reducer. This keeps P2.1 arithmetic rather than attempting
-another online association. It must win the same exact primitive/full-state,
-resource, context-family, and complete promotion gates.
+The mechanical result identified the exact tiled-score follow-up above. The
+selected SWA tile is 16 rather than 32 tokens, and the global sibling is
+removed; this preserves P2.1 arithmetic instead of attempting another online
+association. Clean context-family and complete promotion gates still decide
+whether the explicit SWA path becomes a gfx1100 default.
 
 #### P2.3 `KVLiveSpans`, memory, and crossover
 
@@ -843,8 +860,8 @@ The implementation loop remains ordered and falsifiable: P0 exact IQ3
 route/output ownership and P2 exact attention split topology are retained; both
 narrow P1 IQ3 quality lanes and P2.2 online partials are rejected. The online
 body proves tile-level ownership is mechanically valuable but violates the
-frozen KL gate, so it is removed. One exact tile32 score-producer refinement
-now feeds the retained reducer before P2 closes; Q5/IQ2 and scheduler work
-follow independent wins. Matching Vulkan still requires large device-work
+frozen KL gate, so it is removed. The exact SWA tile16 score producer now
+enters clean long-context promotion gates at live `>=257`; Q5/IQ2 and scheduler
+work follow its adjudication. Matching Vulkan still requires large device-work
 reductions across several families; launch cleanup alone can move 49 toward
 51, not toward 94.
