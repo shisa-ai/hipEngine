@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile Laguna prefill at 512, 1K, and 4K matrix-chunk lengths."""
+"""Profile Laguna prefill at retained long-context and LAP-0 row lengths."""
 
 from __future__ import annotations
 
@@ -36,6 +36,8 @@ from scripts.laguna_target_ar_bench import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
+LAP0_LENGTHS = (128, 512, 1024, 4096)
+PROFILE_LENGTH_SETS = (DEFAULT_LENGTHS, LAP0_LENGTHS)
 DEFAULT_CHUNK_SIZE = 128
 PROFILE_CHUNK_SIZES = (128, 256, 512)
 DEFAULT_OUTPUT = Path(
@@ -105,8 +107,10 @@ def _summarize_samples(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     lengths = tuple(int(value) for value in args.lengths)
-    if lengths != DEFAULT_LENGTHS:
-        raise ValueError(f"retained LPF-5 profiling requires exact lengths {DEFAULT_LENGTHS}")
+    if lengths not in PROFILE_LENGTH_SETS:
+        raise ValueError(
+            f"retained Laguna profiling requires one of {PROFILE_LENGTH_SETS}"
+        )
     if args.chunk_size not in PROFILE_CHUNK_SIZES:
         raise ValueError(f"Laguna profiling chunk size must be one of {PROFILE_CHUNK_SIZES}")
     if args.context_length < max(lengths):
@@ -133,7 +137,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         build_profile=f"laguna_prefill_long_context_matrix{args.chunk_size}",
-        timing_protocol=f"prefill_only_512_1024_4096_matrix{args.chunk_size}_attention128",
+        timing_protocol=(
+            "prefill_only_"
+            + "_".join(str(length) for length in lengths)
+            + f"_matrix{args.chunk_size}_attention128"
+        ),
         warmups=1,
         repetitions=args.repetitions,
     )
