@@ -146,6 +146,42 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "laguna_routed_shared_combine" in sparse_sequence
 
 
+def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    baseline = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    tile2 = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_selected_down_tile=2,
+    )
+    tile4 = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_selected_down_tile=4,
+    )
+    assert baseline.selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_bf16_bf16_out"
+    )
+    assert tile2.selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_tile2_bf16_bf16_out"
+    )
+    assert tile4.selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_tile4_bf16_bf16_out"
+    )
+    with pytest.raises(ValueError, match="IQ3 selected-down output tile"):
+        resolve_laguna_moe_plan(
+            config,
+            backend="hip_gfx1100",
+            iq3_selected_down_tile=3,
+        )
+    with pytest.raises(LookupError, match="required Laguna kernel"):
+        resolve_laguna_moe_plan(
+            config,
+            backend="hip_gfx1151",
+            iq3_selected_down_tile=2,
+        )
+
+
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (

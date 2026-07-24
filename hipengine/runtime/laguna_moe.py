@@ -39,6 +39,13 @@ _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+_IQ3_SELECTED_DOWN_VARIANTS = MappingProxyType(
+    {
+        1: "selected_gemv_decode_bf16_bf16_out",
+        2: "selected_gemv_decode_tile2_bf16_bf16_out",
+        4: "selected_gemv_decode_tile4_bf16_bf16_out",
+    }
+)
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
@@ -239,9 +246,16 @@ def resolve_laguna_moe_plan(
     config: LagunaGGUFConfig,
     *,
     backend: str,
+    iq3_selected_down_tile: int = 1,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
+    try:
+        iq3_selected_down_variant = _IQ3_SELECTED_DOWN_VARIANTS[
+            int(iq3_selected_down_tile)
+        ]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("unsupported Laguna IQ3 selected-down output tile") from exc
     if config.expert_gating_func != "sigmoid":
         raise ValueError("Laguna MoE plan requires sigmoid expert gating")
     if not config.expert_weights_norm:
@@ -342,7 +356,7 @@ def resolve_laguna_moe_plan(
                 backend,
                 "moe_linear",
                 "gguf_iq3_xxs",
-                "selected_gemv_decode_bf16_bf16_out",
+                iq3_selected_down_variant,
             ),
             "gguf_iq4_xs": KernelKey(
                 backend,
