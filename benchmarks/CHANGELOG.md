@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-24
 
+- [device-pinned matched Laguna completion reaudit, Vulkan still faster] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / all 18 natural-greedy category+heldout prompts at context 4096 and transition-normalized h16/h32: current-P4 hipEngine **52.855/52.391 tok/s** versus `GGML_VK_VISIBLE_DEVICES=0` llama.cpp Vulkan **64.245/64.418 tok/s** (**-17.73%/-18.67%**), requiring **+21.55%/+22.96%** more hipEngine throughput; pinned Vulkan reproduces the prior row within 0.13%, all correctness/lifecycle/memory/selector/trace gates pass, but completion fails; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json`.
+
 - [retained gfx1100 Laguna Q2 XL current-P4 exact head RMSNorm+RoPE+KV] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained P4.1 -> exact c=1 head+KV fusion removes 48 launches/token and moves two-order 18-prompt h32 decode **51.872 -> 52.391 tok/s (+1.001%)**, or prior retained **51.825 -> 52.391 (+1.092%)**; pooled short and every long kernel/span/child row improve, every train/heldout category decode is positive, and full logits/hidden/routed/KV/spans/reset/lifecycle remain exact; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json`.
 
 - [rejected gfx1100 Laguna Q2 XL P4 native-AQL submission] Radeon Pro W7900 / clean post-P4.1 820-dispatch short profile has **15.676 ms** kernels, **18.760 ms** dispatch span, and **3.213 ms** span-minus-kernel; a correctness-fenced one-doorbell direct-AQL owner is **0.560-0.758% slower** than HIP across five 51-repetition processes even with packet construction excluded, so no runtime path is retained; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json`.
