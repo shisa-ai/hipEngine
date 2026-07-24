@@ -90,6 +90,7 @@ for the bridge.
 | Cumulative modeled step | Modeled pp512 wall | Modeled tok/s | Evidence used |
 | --- | ---: | ---: | --- |
 | Current shipping trace | 6.7033 s | 76.381 | fresh matrix512/attention128 pass |
+| Apply measured LAP-1 live-row X8 leaf ratio | 3.6799 s | 139.1 | scale gate/up by 9.3297 / 52.3805 ms; not integrated |
 | Match Vulkan selected Q4 gate/up | 3.6707 s | 139.5 | save 3.6786 - 0.6461 s |
 | Then match Vulkan selected Q4/Q6 down | 2.9372 s | 174.3 | save 1.1001 - 0.3665 s |
 | Then match Vulkan dense/shared quant | 2.3586 s | 217.1 | save 0.6415 - 0.0629 s |
@@ -103,6 +104,13 @@ gaps explain **99.740%** of the fresh hipEngine-minus-Vulkan kernel-sum gap and
 leave **20.4 ms** between the modeled hipEngine wall and the user Vulkan wall.
 A new runtime, graphs, Python removal, or a different benchmark definition is
 not required to explain the 4.5x gap.
+
+The new LAP-1 row is also modeled, not a full-model claim. Applying its clean
+actual-layer M512 ratio (**9.3297 / 52.3805 = 0.17811**) to the measured
+**3.6786-second** gate/up family gives **0.6552 seconds**, within 1.4% of
+Vulkan's **0.6461-second** family. This says the source-faithful body can close
+the first mapped gap; exact X8 fallback and runtime integration must now prove
+that the ratio transfers across all 47 sparse layers.
 
 At 512 rows, selected Q4 gate/up is **3.6786 seconds / 54.99%**, selected
 Q4/Q6 down **1.1001 seconds / 16.45%**, source-F16 **0.8941 seconds / 13.37%**,
@@ -124,10 +132,13 @@ in every category. Only **0.0040725** remains below the 0.05 KL ceiling; the
 New approximate paths therefore compare directly with all-exact, and repaired
 BF16 equality is strongly preferred.
 
-Natural routing confirms that literal 32-row padding is not viable by itself.
+Natural routing showed that literal 32-row padded arithmetic was not viable.
 At M512, padding factors are **1.0219/1.0684/1.1650/1.3801/1.8662x** for
-2/4/8/16/32-row tiles; M256 reaches **2.9295x** at tile32. LAP-1 must retain a
-partial-tile or smaller-row schedule around the source-faithful 32x32 body.
+2/4/8/16/32-row tiles; M256 reaches **2.9295x** at tile32. LAP-1 now keeps the
+32x32 shared tile but bypasses dot accumulation for padded routes. That makes
+all seven natural shapes positive without a second small-row kernel; geometry
+and weight loads remain padded and are revisited only if the integrated trace
+shows a material ceiling.
 
 Two repeated BF16 activation captures at depths 2/11/20/30/39/48 are
 bit-identical for M32/55/64/122/128/256/512 without persisting raw activations.
@@ -218,12 +229,12 @@ unchecked numerical policy.
 | Expert-major compensated F16 WMMA | 176.001 tok/s at M512; full suite max KL 0.527791 | Natural-row matrix reuse is fast enough; arithmetic accumulation is the blocker. |
 | Gate/up-only / down-only F16 bisection | KL 0.988050 / 1.183662 | Neither projection can be admitted alone; combined error partly cancels. |
 | Global-only / SWA-only F16 bisection | KL 0.628301 / 1.205779 | No architecture-defined layer scope is safe; arbitrary layer tuning is forbidden. |
+| Byte-neutral X8 MMQ32 with live-row skip | **1.197/1.567/1.704/2.526/2.587/4.092/5.614x** retained at M32/55/64/122/128/256/512 | The packed-dot body and natural-shape schedule now pass; exact X8 fallback and integration are next. |
 
-The existing
+The older scalar and independent-WMMA variants in
 `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}`
-is therefore a primitive and negative-control library, not the next production
-body. Its own source correctly describes the scalar/independent-WMMA mappings
-as prototypes that lack llama.cpp-style shared-tile reuse.
+remain negative controls. The new shared-tile X8 MMQ32 symbol is the candidate
+primitive, but it is still explicit-only and has no runtime route.
 
 ### Transfer from the successful Qwen3.x campaign
 
@@ -326,10 +337,11 @@ Measured LAP-1 decision: X8 wins. It preserves every original 144-byte Q4_K
 block, changes only the order to
 `[expert,out_pack8,k_block,col_in_pack8]`, and occupies exactly the same bytes
 as raw. On the actual layer-1 gate/up pair it is BF16-bit identical to raw
-MMQ32 and improves all seven natural shapes by **9.82–12.14%**. Generic
-Q4_K `pack8` is not the chosen format because its materialized FP32 metadata
-expands residency. The remaining layout work is an exact X8 decode/fallback,
-not another resident-format screen.
+MMQ32. X8 first improved raw by **9.82–12.14%**; the retained live-row schedule
+then reduces X8 time by another **18.65–36.45%** and makes every frozen natural
+shape positive. Generic Q4_K `pack8` is not the chosen format because its
+materialized FP32 metadata expands residency. The only remaining LAP-1 layout
+work is an exact X8 decode/fallback, not another resident-format or tail screen.
 
 ## Quality strategy
 
@@ -403,8 +415,29 @@ Current progress:
 | Task | State | Result / next condition |
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
-| LAP-1 | In progress | The packed-dot body passes its synthetic gate; byte-neutral X8 is exact and wins every natural shape by 9.82–12.14% over raw. M256/M512 reach 2.957x/4.554x retained, but M32 still loses and M128 is only 1.735x. Keep X8 fixed; next add an X8-native exact fallback or full-tile-plus-tail schedule. |
+| LAP-1 | In progress: body/shape gate passed | Byte-neutral X8 plus the live-row schedule is exact versus raw and reaches **1.197/1.567/1.704/2.526/2.587/4.092/5.614x** retained at M32/55/64/122/128/256/512. The only exit-gate blocker is an exact X8 decode/fallback with decode within 2%. |
 | LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
+
+Immediate execution queue:
+
+1. Add an exact BF16-input X8 Q4_K decode/selected fallback with a CPU-source
+   oracle and cached gfx1151 trace. Benchmark c=1 plus small decode-shaped route
+   counts against the retained T16 leaf on actual gate/up weights; require no
+   duplicate full expert set and <=2% decode regression.
+2. Prove a one-resident-set materialization lane: stream raw Q4_K into X8,
+   release raw/T16 ownership for the selected family, route decode to the exact
+   fallback, and keep MMQ32 explicit for prefill. This is lifecycle and memory
+   proof, not yet a default.
+3. Capture exact gate/up projection inputs from the complete calibration split,
+   freeze residual-plane and BF16-boundary repair policy, and pass the all-queued
+   bit-exact test (LAP-2).
+4. Integrate one candidate gate/up route behind the four-axis registry, run the
+   frozen M32/55/64/122/128/256/512 leaf crossover plus 128/512/1K/4K
+   full-model profile, then run the complete category/heldout, h16/h32, Poolside,
+   and lifecycle gate (LAP-3).
+5. Rebuild the family bridge from that integrated trace. Start selected down
+   only if gate/up remains admitted; revisit split full/tail symbols only if the
+   trace attributes a material ceiling to full-tile predicate work.
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
 
@@ -466,7 +499,7 @@ expert sidecar, and a viable exact fallback. A smaller exact non-regressive
 sub-window may still be retained under repository policy, but it does not
 advance the parity campaign.
 
-Partial result: the first gfx1151 body now maps Vulkan's 32-column by 32-row
+Result so far: the first gfx1151 body maps Vulkan's 32-column by 32-row
 Q4_K x Q8_1 tile to four wave32s in one 128-thread workgroup. It stages
 20 bytes of Q4_K data per column and 36 bytes of DS4-Q8_1 data per routed row
 for each K32 interval, reuses both tiles across the workgroup, and emits native
@@ -515,25 +548,39 @@ The resident-layout screen selects the existing byte-exact Q4_K X8 format.
 Raw and X8 share the complete packed-dot arithmetic body; X8 changes only the
 weight-block address. Two uneven/empty-expert fixtures, including a nonidentity
 source-row map, are BF16-bit identical to raw and pass the independent CPU
-KL/top-1 gate. Cached tracing remains local128, VGPR120, LDS 2,048 bytes, and
-scratch0.
+KL/top-1 gate.
 
 On the clean actual-weight screen, X8 improves raw MMQ32 by
 **12.14/11.81/11.79/11.53/11.70/11.47/9.82%** at
 M32/55/64/122/128/256/512. Its inclusive speedups over retained direct are
 **0.766/1.011/1.105/1.693/1.735/2.957/4.554x**. Raw and X8 checksums match
 exactly at every shape, both gate/up pairs occupy **905,969,664 bytes**, and
-all tracked temporary buffers return to zero. This retains X8 as the resident
-layout winner, but does not change a runtime default: M32 still loses and M128
-does not satisfy the LAP-1 2x gate.
+all tracked temporary buffers return to zero. That layout-only screen retained
+X8 as the resident winner but did not change a runtime default because M32
+still lost and M128 had not yet satisfied the LAP-1 2x gate.
 
-The next bounded branch is scheduling on X8, not another format. First test a
-full-tile-plus-tail schedule that keeps MMQ32 for complete row groups and
-avoids paying a complete decoded tile for sparse residue. If that cannot beat
-the measured all-MMQ ceiling, add an exact X8-native small-M decode fallback
-and select its crossover from all seven natural shapes. Decode must remain
-within 2%, and the fallback must make a single X8 resident set sufficient.
-No threshold, small-row prototype, or runtime default was retained.
+The retained live-row schedule closes that body/shape gap without a second
+geometry: it clamps the natural row count once per tile and skips packed-dot
+accumulation for padded routes while preserving live-output arithmetic. Clean
+producer-pack-inclusive X8 now measures **3.309/4.064/4.283/5.211/5.331/
+6.515/9.330 ms**, or **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**
+retained at M32/55/64/122/128/256/512. Relative to the prior X8 screen, time
+falls **36.45/35.57/35.22/32.77/32.77/27.41/18.65%**. Raw and X8 checksums
+remain exact at every shape; the focused bundle reports 29 passes. Cached
+tracing is local128, raw/X8 VGPR **40/48**, SGPR128, LDS 2,048 bytes, and zero
+scratch.
+
+This schedule has a recorded boundary: an all-full synthetic tile moves
+**0.3881 -> 0.4204 ms (+8.34%)**. Natural Laguna routing is positive at every
+frozen shape, so do not add another tail geometry now. If the integrated trace
+shows full-tile predicate cost is material, separate full and tail metadata
+into two symbols; otherwise avoid the extra launch and code.
+
+The next and only remaining LAP-1 branch is an exact X8-native decode/fallback.
+It must make X8 the single resident Q4_K expert set, preserve exact decode, and
+keep decode within 2%. After that, start LAP-2 calibration and LAP-3 runtime
+integration. No threshold, small-row prototype, or runtime default was
+retained.
 Evidence:
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
 The all-shape crossover packet is
@@ -544,6 +591,8 @@ The rejected whole-expert mixed packet is
 [`2026-07-24-gfx1151-laguna-q4-k-mixed-exact-rejected.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mixed-exact-rejected.json).
 The retained X8 layout packet is
 [`2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-layout-retained.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-layout-retained.json).
+The retained live-row schedule packet is
+[`2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json).
 
 ### LAP-2 — calibrate residual Q8_1 and exact repair
 
@@ -771,6 +820,7 @@ Likely reused or extended files:
 - `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.{hip,py}`
 - `hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.{hip,py}`
 - `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.{hip,py}`
+- `hipengine/kernels/hip_gfx1100/quant/gguf_x8_selected_gemv.{hip,py}`
 - `hipengine/kernels/hip_gfx1100/linear/laguna_f16_projection.{hip,py}`
 - `hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip`
 - `hipengine/runtime/laguna_moe.py`
@@ -824,6 +874,8 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json`
 - `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json`
 - `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-layer-family-rejected.json`
+- `benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-layout-retained.json`
+- `benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-swa-retained.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json`
