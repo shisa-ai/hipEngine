@@ -1,9 +1,9 @@
 # Laguna S 2.1 Decode Gap Analysis — W7900 / UD-Q2_K_XL
 
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership is
-implemented and retained as the gfx1100 default. P1 is in progress: both IQ3
-quality lanes are rejected, while raw-Q5/raw-IQ2 remain later work. P2 remains
-open.
+implemented and retained as the gfx1100 default. Both P1 IQ3 quality lanes are
+rejected, while raw-Q5/raw-IQ2 remain later work. P2.1 exact split attention is
+correctness-admitted and default-off; clean full-model promotion is pending.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -671,6 +671,19 @@ reassociation:
 This stage determines whether split ownership alone is enough. It must be byte
 exact to current context/gated outputs and full-model state.
 
+Implementation status: the default-off exact producer/reducer is now admitted
+for clean measurement. Independent synthetic crossover runs select global
+`>=127` and SWA `>=65`: the first three buckets are positive and no later
+measured bucket regresses. At live count 128, actual layer 0/44 global event
+windows improve **9.08%/8.53%** and layer 1/47 SWA improves
+**13.31%/13.22%**, with synchronized wall agreeing and F32 outputs bit-exact.
+A 16-step shared-weight gate matches full logits, all 48 hidden boundaries, all
+47 sparse routed outputs, active K/V plus every `KVLiveSpans` field, reset, and
+lifecycle exactly. The two reusable scratch buffers total **1,572,864 bytes**;
+all four kernels are scratch-free. This is correctness/execution admission, not
+a retained throughput claim or backend default. Evidence:
+[`...p2-split-exact-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-correctness.json).
+
 #### P2.2 Quality-gated online partials
 
 If exact split is insufficient, let each tile emit FP32 `m`, `l`, and 128-wide
@@ -792,9 +805,10 @@ wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
 The implementation loop remains ordered and falsifiable: P0 exact IQ3
-route/output ownership is retained; next adjudicate the narrow P1 IQ3 quality
-ladder and implement P2 exact attention split topology, admitting FP32 online
-attention only if exact ownership is insufficient. Q5/IQ2 and scheduler work
-follow independent wins. Matching
+route/output ownership is retained; both narrow P1 IQ3 quality lanes are
+rejected; and P2 exact attention split topology is correctness-admitted pending
+clean context/category promotion. Admit FP32 online attention only if exact
+ownership is insufficient. Q5/IQ2 and scheduler work follow independent wins.
+Matching
 Vulkan still requires large device-work reductions across several families;
 launch cleanup alone can move 49 toward 51, not toward 94.
