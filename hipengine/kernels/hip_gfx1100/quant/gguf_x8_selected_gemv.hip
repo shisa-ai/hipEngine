@@ -84,6 +84,25 @@ __device__ inline uint8_t q4_k_min(const uint8_t* scales, int subblock) {
   return (scales[8 + idx] >> 4) | ((scales[4 + idx] >> 2) & 0x30u);
 }
 
+__device__ inline float q4_k_exact_weight(
+    const uint8_t* __restrict__ block,
+    int k_in_block) {
+  const int subblock = k_in_block >> 5;
+  const int lane = k_in_block & 31;
+  const float d = fp16_bytes_to_float(block);
+  const float dmin = fp16_bytes_to_float(block + 2);
+  const uint8_t* __restrict__ scales = block + 4;
+  const uint8_t* __restrict__ qs = block + 16;
+  const uint8_t packed = qs[(subblock >> 1) * 32 + lane];
+  const uint8_t q =
+      (subblock & 1) ? (packed >> 4) : (packed & 0x0Fu);
+  const float scale =
+      static_cast<float>(q4_k_scale(scales, subblock));
+  const float minv =
+      static_cast<float>(q4_k_min(scales, subblock));
+  return d * scale * static_cast<float>(q) - dmin * minv;
+}
+
 __device__ inline int x8_dp4a_u8_s8(uint32_t a, uint32_t b, int c) {
 #if defined(__HIP_DEVICE_COMPILE__)
   return __builtin_amdgcn_sudot4(true, static_cast<int>(a), true, static_cast<int>(b), c, false);
@@ -244,6 +263,139 @@ __device__ inline const uint8_t* x8_tile_ptr(
       r6 += xchg[g * 8 + 6]; \
       r7 += xchg[g * 8 + 7]; \
     } \
+}
+
+__global__ __launch_bounds__(256, 2)
+void gguf_q4_x8_selected_dual_exact_gemv_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint16_t* __restrict__ out_a,
+    uint16_t* __restrict__ out_b,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_pack = blockIdx.x;
+  const int row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+  const int blocks_per_row = in_features / QK_K;
+  const int out_packed = out_features / X8_COLS;
+
+  float acc_a0 = 0.0f, acc_a1 = 0.0f, acc_a2 = 0.0f, acc_a3 = 0.0f;
+  float acc_a4 = 0.0f, acc_a5 = 0.0f, acc_a6 = 0.0f, acc_a7 = 0.0f;
+  float acc_b0 = 0.0f, acc_b1 = 0.0f, acc_b2 = 0.0f, acc_b3 = 0.0f;
+  float acc_b4 = 0.0f, acc_b5 = 0.0f, acc_b6 = 0.0f, acc_b7 = 0.0f;
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    const int block_idx = k / QK_K;
+    const int k_in_block = k - block_idx * QK_K;
+    const float xv = bf16_bits_to_float(x_row_ptr[k]);
+    const uint8_t* __restrict__ tile_a =
+        x8_tile_ptr<Q4_K_BLOCK_BYTES>(
+            tiles_a,
+            expert_id,
+            out_pack,
+            block_idx,
+            out_packed,
+            blocks_per_row);
+    const uint8_t* __restrict__ tile_b =
+        x8_tile_ptr<Q4_K_BLOCK_BYTES>(
+            tiles_b,
+            expert_id,
+            out_pack,
+            block_idx,
+            out_packed,
+            blocks_per_row);
+
+    acc_a0 += xv * q4_k_exact_weight(tile_a + 0 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_a1 += xv * q4_k_exact_weight(tile_a + 1 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_a2 += xv * q4_k_exact_weight(tile_a + 2 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_a3 += xv * q4_k_exact_weight(tile_a + 3 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_a4 += xv * q4_k_exact_weight(tile_a + 4 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_a5 += xv * q4_k_exact_weight(tile_a + 5 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_a6 += xv * q4_k_exact_weight(tile_a + 6 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_a7 += xv * q4_k_exact_weight(tile_a + 7 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b0 += xv * q4_k_exact_weight(tile_b + 0 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b1 += xv * q4_k_exact_weight(tile_b + 1 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b2 += xv * q4_k_exact_weight(tile_b + 2 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b3 += xv * q4_k_exact_weight(tile_b + 3 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b4 += xv * q4_k_exact_weight(tile_b + 4 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b5 += xv * q4_k_exact_weight(tile_b + 5 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b6 += xv * q4_k_exact_weight(tile_b + 6 * Q4_K_BLOCK_BYTES, k_in_block);
+    acc_b7 += xv * q4_k_exact_weight(tile_b + 7 * Q4_K_BLOCK_BYTES, k_in_block);
+  }
+
+  const int64_t out_base =
+      static_cast<int64_t>(row) * out_features + (out_pack << 3);
+  {
+    GGUF_X8_REDUCE(
+        acc_a0,
+        acc_a1,
+        acc_a2,
+        acc_a3,
+        acc_a4,
+        acc_a5,
+        acc_a6,
+        acc_a7,
+        ar0,
+        ar1,
+        ar2,
+        ar3,
+        ar4,
+        ar5,
+        ar6,
+        ar7);
+    if (tid == 0) {
+      store_output<uint16_t>(out_a, out_base + 0, ar0);
+      store_output<uint16_t>(out_a, out_base + 1, ar1);
+      store_output<uint16_t>(out_a, out_base + 2, ar2);
+      store_output<uint16_t>(out_a, out_base + 3, ar3);
+      store_output<uint16_t>(out_a, out_base + 4, ar4);
+      store_output<uint16_t>(out_a, out_base + 5, ar5);
+      store_output<uint16_t>(out_a, out_base + 6, ar6);
+      store_output<uint16_t>(out_a, out_base + 7, ar7);
+    }
+  }
+  __syncthreads();
+  {
+    GGUF_X8_REDUCE(
+        acc_b0,
+        acc_b1,
+        acc_b2,
+        acc_b3,
+        acc_b4,
+        acc_b5,
+        acc_b6,
+        acc_b7,
+        br0,
+        br1,
+        br2,
+        br3,
+        br4,
+        br5,
+        br6,
+        br7);
+    if (tid == 0) {
+      store_output<uint16_t>(out_b, out_base + 0, br0);
+      store_output<uint16_t>(out_b, out_base + 1, br1);
+      store_output<uint16_t>(out_b, out_base + 2, br2);
+      store_output<uint16_t>(out_b, out_base + 3, br3);
+      store_output<uint16_t>(out_b, out_base + 4, br4);
+      store_output<uint16_t>(out_b, out_base + 5, br5);
+      store_output<uint16_t>(out_b, out_base + 6, br6);
+      store_output<uint16_t>(out_b, out_base + 7, br7);
+    }
+  }
 }
 
 template <typename out_t>
@@ -622,6 +774,51 @@ int launch_q4_x8_selected_dual_direct(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q4_x8_selected_dual_exact(
+    const void* x,
+    const void* selected,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out_a,
+    void* out_b,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out_a || !out_b ||
+      x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 ||
+      num_experts <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % X8_COLS) != 0 ||
+      threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(256);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / X8_COLS),
+      static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL(
+      gguf_q4_x8_selected_dual_exact_gemv_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<uint16_t*>(out_a),
+      reinterpret_cast<uint16_t*>(out_b),
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename out_t, int qtype>
 int launch_x8_selected_compact(
     const void* xq,
@@ -658,6 +855,16 @@ int launch_x8_selected_compact(
 }
 
 }  // namespace
+
+extern "C" int hipengine_gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a,
+    const void* tiles_b, void* out_a, void* out_b, int64_t x_rows,
+    int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_q4_x8_selected_dual_exact(
+      x, selected, tiles_a, tiles_b, out_a, out_b, x_rows, rows,
+      num_experts, in_features, out_features, threads, stream);
+}
 
 extern "C" int hipengine_gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
     const void* xq, const void* selected, const void* tiles_a, const void* tiles_b,
