@@ -1714,6 +1714,19 @@ candidate tests are removed together; standalone D14 is not restored.
 Canonical D12 remains **48.987 tok/s / 20.414 ms/token**. [D15 rejection
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-rejected.json).
 
+##### Laguna Q2 XL c=1 decode D16 (selection-rejected)
+
+D16 screened host-only function-pointer packets around three exact adjacent
+pairs whose D12 trace gaps sum to **0.5326 ms/token**: Q5 output+add/RMSNorm,
+router projection+selection, and Q5 shared pair+SiLU. Both actual attention
+widths and two actual router/shared layers preserve every intermediate/output
+bit over 50 warmups and 15x500 counterbalanced iterations. The packets do not
+reduce device submission cost: HIP-event changes range **-0.198% to +0.161%**
+and wall changes **-0.563% to +0.016%**. No source or runtime route is retained;
+the apparent trace gaps are queue-submission spacing rather than removable
+ctypes overhead. [D16 rejection
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d16-c-dispatch-rejected.json).
+
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 

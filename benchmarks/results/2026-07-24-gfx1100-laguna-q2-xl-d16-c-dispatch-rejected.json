@@ -1,0 +1,340 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 48.987,
+    "canonical_ms_per_token": 20.414,
+    "name": "D12 exact raw-Q5 wave32x2",
+    "revision_at_probe": "36261a039",
+    "short_trace_sha256": "439d4874c84711c9442c3dbac8147516656b3843fea0544b63e1c0a51d5995d9",
+    "short_trace_source": "/tmp/laguna-q2-xl-d15-clean-7a9dd1f60-short-control-v1/epyc_kernel_trace.csv"
+  },
+  "candidate": {
+    "boundaries": [
+      "Q5 attention output -> add+RMSNorm (47/token)",
+      "F32 router projection -> Laguna sigmoid/correction/top-k (47/token)",
+      "Q5 shared gate/up pair -> separate SiLU (46/token)"
+    ],
+    "description": "host-only function-pointer packets around three exact two-kernel boundaries",
+    "device_dispatch_count_changed": false,
+    "device_kernels_changed": false,
+    "math_changed": false,
+    "persistent_source_retained": false
+  },
+  "checks": {
+    "all_event_positive": false,
+    "all_exact": true,
+    "all_wall_positive": false,
+    "selection_pass": false
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "reject before runtime implementation",
+    "estimated_full_token_savings_ms": "approximately zero; far below the 0.414 ms D12-to-50 gap",
+    "next": "rank a device-work or device-dispatch contraction; do not pursue more host-only packets",
+    "prior_evidence": [
+      "benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-prewarm-off-baseline.json",
+      "benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-prewarm-on-diagnostic.json"
+    ],
+    "reason": "The packet preserves all outputs but is neutral: four of six HIP-event rows improve only 0.005-0.198%, two regress 0.009-0.161%, and one wall row regresses 0.016%. The trace gaps are HIP queue-submission spacing rather than removable Python/ctypes transitions."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_d16_c_dispatch_selection_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "counterbalanced_repetitions": 15,
+    "iterations_per_sample": 500,
+    "warmups_per_mode": 50
+  },
+  "provenance": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_d16_c_dispatch.py",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "harness_sha256": "498cd061af88e4cf32580f3a695e6bdb6a3513d7c577337da72054e1b16e336e",
+    "probe_source_sha256": "956402af3c534646f52f7016fa9dbbbb4905535e496a6a9ed3138b69dda22c1e",
+    "raw_sha256": "c073fe46859b13d758a1f394ad01e54b23bb2208da23d22f80ab177f195fd159"
+  },
+  "rows": [
+    {
+      "all_exact": true,
+      "event_us_range": {
+        "control": [
+          36.166282653808594,
+          39.73285675048828
+        ],
+        "packet": [
+          36.22188186645508,
+          41.150657653808594
+        ]
+      },
+      "exact_fields": {
+        "attention": true,
+        "norm": true,
+        "post_attention": true
+      },
+      "medians": {
+        "control": {
+          "event_us": 36.63804626464844,
+          "wall_us": 36.863300018012524
+        },
+        "packet": {
+          "event_us": 36.69718551635742,
+          "wall_us": 36.655917996540666
+        }
+      },
+      "name": "q5_output_add_rms_layer0_k6144",
+      "packet_vs_control_pct": {
+        "event_us": 0.16141486170360153,
+        "wall_us": -0.5625704192802172
+      },
+      "wall_us_range": {
+        "control": [
+          36.29957209341228,
+          40.5393720138818
+        ],
+        "packet": [
+          36.35479393415153,
+          41.02409793995321
+        ]
+      }
+    },
+    {
+      "all_exact": true,
+      "event_us_range": {
+        "control": [
+          47.50337600708008,
+          48.48197937011719
+        ],
+        "packet": [
+          47.1802864074707,
+          47.950225830078125
+        ]
+      },
+      "exact_fields": {
+        "attention": true,
+        "norm": true,
+        "post_attention": true
+      },
+      "medians": {
+        "control": {
+          "event_us": 47.94343566894531,
+          "wall_us": 47.90263599716127
+        },
+        "packet": {
+          "event_us": 47.84853744506836,
+          "wall_us": 47.91011591441929
+        }
+      },
+      "name": "q5_output_add_rms_layer1_k9216",
+      "packet_vs_control_pct": {
+        "event_us": -0.19793788774804533,
+        "wall_us": 0.015614834345378803
+      },
+      "wall_us_range": {
+        "control": [
+          47.66343208029866,
+          48.23241988196969
+        ],
+        "packet": [
+          46.97254206985235,
+          48.18189796060324
+        ]
+      }
+    },
+    {
+      "all_exact": true,
+      "event_us_range": {
+        "control": [
+          17.117576599121094,
+          17.214536666870117
+        ],
+        "packet": [
+          17.097015380859375,
+          17.165496826171875
+        ]
+      },
+      "exact_fields": {
+        "logits": true,
+        "routing": true,
+        "routing_scores": true,
+        "scaled": true,
+        "selected": true,
+        "selection_scores": true
+      },
+      "medians": {
+        "control": {
+          "event_us": 17.144376754760742,
+          "wall_us": 17.175442073494196
+        },
+        "packet": {
+          "event_us": 17.143495559692383,
+          "wall_us": 17.15564215555787
+        }
+      },
+      "name": "router_projection_select_layer1",
+      "packet_vs_control_pct": {
+        "event_us": -0.005139848948521042,
+        "wall_us": -0.11528039774231225
+      },
+      "wall_us_range": {
+        "control": [
+          17.134781926870346,
+          17.21556205302477
+        ],
+        "packet": [
+          17.136842012405396,
+          17.218864057213068
+        ]
+      }
+    },
+    {
+      "all_exact": true,
+      "event_us_range": {
+        "control": [
+          17.09389305114746,
+          17.23845672607422
+        ],
+        "packet": [
+          17.152854919433594,
+          17.19973373413086
+        ]
+      },
+      "exact_fields": {
+        "logits": true,
+        "routing": true,
+        "routing_scores": true,
+        "scaled": true,
+        "selected": true,
+        "selection_scores": true
+      },
+      "medians": {
+        "control": {
+          "event_us": 17.188295364379883,
+          "wall_us": 17.216061940416694
+        },
+        "packet": {
+          "event_us": 17.177894592285156,
+          "wall_us": 17.21118181012571
+        }
+      },
+      "name": "router_projection_select_layer46",
+      "packet_vs_control_pct": {
+        "event_us": -0.0605107829149909,
+        "wall_us": -0.028346379723043214
+      },
+      "wall_us_range": {
+        "control": [
+          17.18628196977079,
+          17.248723888769746
+        ],
+        "packet": [
+          17.18164188787341,
+          17.231322126463056
+        ]
+      }
+    },
+    {
+      "all_exact": true,
+      "event_us_range": {
+        "control": [
+          21.461849212646484,
+          21.99497413635254
+        ],
+        "packet": [
+          21.455209732055664,
+          22.412818908691406
+        ]
+      },
+      "exact_fields": {
+        "gate": true,
+        "silu": true,
+        "up": true
+      },
+      "medians": {
+        "control": {
+          "event_us": 21.50092887878418,
+          "wall_us": 21.53880405239761
+        },
+        "packet": {
+          "event_us": 21.485050201416016,
+          "wall_us": 21.533943945541978
+        }
+      },
+      "name": "q5_shared_pair_silu_layer1",
+      "packet_vs_control_pct": {
+        "event_us": -0.073851122701174,
+        "wall_us": -0.022564423000492884
+      },
+      "wall_us_range": {
+        "control": [
+          21.484462078660727,
+          22.589637897908688
+        ],
+        "packet": [
+          21.4819039683789,
+          22.384236101061106
+        ]
+      }
+    },
+    {
+      "all_exact": true,
+      "event_us_range": {
+        "control": [
+          21.529451370239258,
+          21.59857177734375
+        ],
+        "packet": [
+          21.531131744384766,
+          21.60392951965332
+        ]
+      },
+      "exact_fields": {
+        "gate": true,
+        "silu": true,
+        "up": true
+      },
+      "medians": {
+        "control": {
+          "event_us": 21.55881118774414,
+          "wall_us": 21.596406120806932
+        },
+        "packet": {
+          "event_us": 21.560651779174805,
+          "wall_us": 21.590666146948934
+        }
+      },
+      "name": "q5_shared_pair_silu_layer46",
+      "packet_vs_control_pct": {
+        "event_us": 0.008537536762287523,
+        "wall_us": -0.026578375243968555
+      },
+      "wall_us_range": {
+        "control": [
+          21.554164122790098,
+          21.650186041370034
+        ],
+        "packet": [
+          21.552803926169872,
+          21.66262618266046
+        ]
+      }
+    }
+  ],
+  "schema": 1,
+  "status": "selection_rejected_no_runtime_change",
+  "trace_selection": {
+    "hypothesis": "one Python-to-C transition per pair might recover enough of the apparent gaps to exceed 50 tok/s",
+    "measured_adjacent_gap_ms_per_token": {
+      "q5_output_to_add_rmsnorm": 0.1772,
+      "q5_shared_pair_to_silu": 0.1753,
+      "router_projection_to_selection": 0.1801,
+      "sum": 0.5326
+    }
+  }
+}
