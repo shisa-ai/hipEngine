@@ -175,6 +175,8 @@ class LagunaEagerKernelPlan:
     add_rmsnorm_key: KernelKey
     add_key: KernelKey
     moe_tail_next_rmsnorm_key: KernelKey
+    global_head_kv_key: KernelKey
+    swa_head_kv_key: KernelKey
     attention_gate_key: KernelKey
     dense_silu_key: KernelKey
     argmax_key: KernelKey
@@ -186,22 +188,30 @@ class LagunaEagerKernelPlan:
     add_rmsnorm: Callable
     add: Callable
     moe_tail_next_rmsnorm: Callable | None
+    global_head_kv: Callable | None
+    swa_head_kv: Callable | None
     attention_gate: Callable
     dense_silu: Callable
     argmax: Callable
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
-        optional = (
+        optional_tail = (
             (self.moe_tail_next_rmsnorm_key,)
             if self.moe_tail_next_rmsnorm is not None
+            else ()
+        )
+        optional_head_kv = (
+            (self.global_head_kv_key, self.swa_head_kv_key)
+            if self.global_head_kv is not None and self.swa_head_kv is not None
             else ()
         )
         return (
             self.rmsnorm_key,
             self.add_rmsnorm_key,
             self.add_key,
-            *optional,
+            *optional_tail,
+            *optional_head_kv,
             self.attention_gate_key,
             self.dense_silu_key,
             self.argmax_key,
@@ -1114,6 +1124,17 @@ class LagunaDFlashVerifyResult:
         return len(self.committed_input_ids)
 
 
+def resolve_laguna_head_kv_fusion(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the architecture-qualified head/KV candidate with explicit rollback."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
+
+
 def resolve_laguna_q5_wave32x2_variants(
     backend: str,
     *,
@@ -1143,6 +1164,7 @@ def resolve_laguna_eager_kernel_plan(
     *,
     backend: str,
     use_moe_tail_next_rmsnorm: bool = True,
+    use_head_kv_fusion: bool = False,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
 
@@ -1163,6 +1185,12 @@ def resolve_laguna_eager_kernel_plan(
     if config.leading_dense_block_count != 1:
         raise ValueError("Laguna S 2.1 eager execution requires one leading dense layer")
 
+    if bool(use_head_kv_fusion):
+        # Importing the family performs ordinary gfx1100 registration; backend
+        # packages may then alias or explicitly exclude these candidate keys.
+        from hipengine.kernels.hip_gfx1100.attention import laguna_kv as _laguna_kv
+
+        del _laguna_kv
     load_backend_kernel_package(backend)
     keys = {
         "rmsnorm": KernelKey(backend, "rmsnorm", "gguf_f32_weight", "bf16_out"),
@@ -1173,6 +1201,18 @@ def resolve_laguna_eager_kernel_plan(
             "moe_tail+next_rmsnorm",
             "bf16",
             "laguna_aggregate_gguf_f32_weight_out",
+        ),
+        "global_head_kv": KernelKey(
+            backend,
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "global_f32_bf16_spans",
+        ),
+        "swa_head_kv": KernelKey(
+            backend,
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "swa_f32_bf16_spans",
         ),
         "attention_gate": KernelKey(
             backend, "attention_gate", "f32", "softplus_broadcast_bf16_out"
@@ -1189,14 +1229,20 @@ def resolve_laguna_eager_kernel_plan(
             "positions_f32",
         ),
     }
-    optional_name = "moe_tail_next_rmsnorm"
-    required = {name: key for name, key in keys.items() if name != optional_name}
+    optional_names = {"moe_tail_next_rmsnorm", "global_head_kv", "swa_head_kv"}
+    required = {name: key for name, key in keys.items() if name not in optional_names}
     functions = {name: _resolve_exact(key) for name, key in required.items()}
-    tail_key = keys[optional_name]
+    tail_key = keys["moe_tail_next_rmsnorm"]
     tail = (
         _resolve_exact(tail_key)
         if bool(use_moe_tail_next_rmsnorm) and is_registered(tail_key)
         else None
+    )
+    head_kv_keys = (keys["global_head_kv"], keys["swa_head_kv"])
+    head_kv = (
+        tuple(_resolve_exact(key) for key in head_kv_keys)
+        if bool(use_head_kv_fusion) and all(is_registered(key) for key in head_kv_keys)
+        else (None, None)
     )
     return LagunaEagerKernelPlan(
         backend=backend,
@@ -1204,6 +1250,8 @@ def resolve_laguna_eager_kernel_plan(
         add_rmsnorm_key=keys["add_rmsnorm"],
         add_key=keys["add"],
         moe_tail_next_rmsnorm_key=tail_key,
+        global_head_kv_key=keys["global_head_kv"],
+        swa_head_kv_key=keys["swa_head_kv"],
         attention_gate_key=keys["attention_gate"],
         dense_silu_key=keys["dense_silu"],
         argmax_key=keys["argmax"],
@@ -1215,6 +1263,8 @@ def resolve_laguna_eager_kernel_plan(
         add_rmsnorm=functions["add_rmsnorm"],
         add=functions["add"],
         moe_tail_next_rmsnorm=tail,
+        global_head_kv=head_kv[0],
+        swa_head_kv=head_kv[1],
         attention_gate=functions["attention_gate"],
         dense_silu=functions["dense_silu"],
         argmax=functions["argmax"],
@@ -1507,6 +1557,7 @@ class LagunaGGUFResidentSession:
         use_split_attention: bool | None = None,
         use_split_gate_fusion: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
+        use_head_kv_fusion: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
         iq3_selected_down_tile: int = 1,
@@ -1532,6 +1583,10 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
+        requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
+            self.backend,
+            use_head_kv_fusion,
+        )
         self._q5_output_variant, self._q5_query_gate_variant = (
             resolve_laguna_q5_wave32x2_variants(
                 self.backend,
@@ -1539,6 +1594,7 @@ class LagunaGGUFResidentSession:
                 query_gate=use_q5_wave32x2_query_gate,
             )
         )
+        self.use_head_kv_fusion = False
         self.use_q5_wave32x2_output = self._q5_output_variant is not None
         self.use_q5_wave32x2_query_gate = self._q5_query_gate_variant is not None
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
@@ -1598,6 +1654,11 @@ class LagunaGGUFResidentSession:
                 config,
                 backend=self.backend,
                 use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
+                use_head_kv_fusion=requested_head_kv_fusion,
+            )
+            self.use_head_kv_fusion = (
+                self.kernel_plan.global_head_kv is not None
+                and self.kernel_plan.swa_head_kv is not None
             )
             self.libraries = load_laguna_eager_libraries(
                 backend=self.backend,
@@ -2734,32 +2795,63 @@ class LagunaGGUFResidentSession:
             query_gate_decode_variant=self._q5_query_gate_variant,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
-        launch_laguna_head_rmsnorm_rope(
-            scratch.query.ptr,
-            scratch.key.ptr,
-            layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
-            layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
-            scratch.position.ptr,
-            scratch.query_rotated.ptr,
-            scratch.key_rotated.ptr,
-            config.rms_norm_eps,
-            1,
-            heads,
-            config.head_count_kv,
-            config.key_length,
-            rope,
-            backend=self.backend,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
+        head_kv = (
+            self.kernel_plan.global_head_kv
+            if layer.attention_type == FULL_ATTENTION
+            else self.kernel_plan.swa_head_kv
         )
-        self.kv_cache.append(
-            layer_id,
-            scratch.key_rotated.ptr,
-            scratch.value.ptr,
-            stream=stream,
-            library=self.libraries.kv_attention,
-        )
+        if head_kv is None:
+            launch_laguna_head_rmsnorm_rope(
+                scratch.query.ptr,
+                scratch.key.ptr,
+                layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
+                layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
+                scratch.position.ptr,
+                scratch.query_rotated.ptr,
+                scratch.key_rotated.ptr,
+                config.rms_norm_eps,
+                1,
+                heads,
+                config.head_count_kv,
+                config.key_length,
+                rope,
+                backend=self.backend,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
+            self.kv_cache.append(
+                layer_id,
+                scratch.key_rotated.ptr,
+                scratch.value.ptr,
+                stream=stream,
+                library=self.libraries.kv_attention,
+            )
+        else:
+            kv_state = self.kv_cache.layer(layer_id)
+            head_kv(
+                scratch.query.ptr,
+                scratch.key.ptr,
+                scratch.value.ptr,
+                layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
+                layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
+                rope.cos.tensor.ptr,
+                rope.sin.tensor.ptr,
+                scratch.query_rotated.ptr,
+                scratch.key_rotated.ptr,
+                kv_state.key_cache.ptr,
+                kv_state.value_cache.ptr,
+                kv_state.append_spans,
+                config.rms_norm_eps,
+                heads,
+                config.head_count_kv,
+                config.key_length,
+                rope.config.rotary_dim,
+                rope.max_positions,
+                stream=stream,
+                library=self.libraries.kv_attention,
+                runtime=self.runtime,
+            )
         attention_gated = self.kv_cache.attend(
             layer_id,
             scratch.query_rotated.ptr,
@@ -3373,4 +3465,6 @@ __all__ = [
     "launch_laguna_moe_tail_next_rmsnorm",
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",
+    "resolve_laguna_head_kv_fusion",
+    "resolve_laguna_q5_wave32x2_variants",
 ]
