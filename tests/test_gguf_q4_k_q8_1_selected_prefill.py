@@ -11,6 +11,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     build_gguf_q4_k_q8_1_selected_prefill,
     gguf_q4_k_q8_1_wmma_i8_probe_16x16,
     gguf_q8_1_mmq_ds4_pack_bf16,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
@@ -32,6 +33,7 @@ from hipengine.quant.gguf_q4_k import (
     gguf_q4_k_mmq_tile16_preview_matmul,
     pack_gguf_q4_k_mmq_tile16_preview,
     pack_q8_1_mmq_ds4_from_bf16,
+    repack_gguf_q4_k_tile16,
 )
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
 from tests.test_gguf_q4_k_selected_wmma_prefill import (
@@ -140,6 +142,15 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
         )
         is gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
+        )
+        is gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
     )
     assert (
         resolve(
@@ -658,7 +669,7 @@ def _mmq32_metadata(fixture) -> tuple[np.ndarray, np.ndarray, int]:
 
 
 def _run_q8_1_ds4_mmq32_selected_dual_gpu(
-    fixture, *, source_remap: bool = False, x8: bool = False
+    fixture, *, source_remap: bool = False, layout: str = "raw"
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -674,16 +685,20 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         compact_to_source = compact_to_source[::-1].copy()
         source_x = fixture.x_host[::-1].copy()
     q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(source_x)
-    qweight_a = (
-        repack_gguf_q4_k_x8(fixture.qweight_a).tiles
-        if x8
-        else fixture.qweight_a
-    )
-    qweight_b = (
-        repack_gguf_q4_k_x8(fixture.qweight_b).tiles
-        if x8
-        else fixture.qweight_b
-    )
+    if layout == "raw":
+        qweight_a = fixture.qweight_a
+        qweight_b = fixture.qweight_b
+        launcher = gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    elif layout == "x8":
+        qweight_a = repack_gguf_q4_k_x8(fixture.qweight_a).tiles
+        qweight_b = repack_gguf_q4_k_x8(fixture.qweight_b).tiles
+        launcher = gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    elif layout == "t16":
+        qweight_a = repack_gguf_q4_k_tile16(fixture.qweight_a).tiles
+        qweight_b = repack_gguf_q4_k_tile16(fixture.qweight_b).tiles
+        launcher = gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    else:
+        raise ValueError(f"unsupported MMQ32 weight layout: {layout}")
     expert_start_mmq32, tile_expert, mmq_total_rows = _mmq32_metadata(fixture)
 
     bufs = []
@@ -723,11 +738,6 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
                 runtime=runtime,
             )
 
-        launcher = (
-            gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
-            if x8
-            else gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
-        )
         launcher(
             q8_ds4_dev.ptr,
             compact_to_source_dev.ptr,
@@ -913,7 +923,52 @@ def test_q4_k_x8_q8_1_ds4_mmq32_selected_prefill_matches_raw_mmq32(
         fixture, source_remap=source_remap
     )
     actual = _run_q8_1_ds4_mmq32_selected_dual_gpu(
-        fixture, source_remap=source_remap, x8=True
+        fixture, source_remap=source_remap, layout="x8"
+    )
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_array_equal(actual, raw)
+    np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
+    assert _max_softmax_kl(expected, actual) <= 0.05
+    assert float(
+        np.mean(np.argmax(expected, axis=-1) == np.argmax(actual, axis=-1))
+    ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b", "source_remap"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, False, id="empty-middle-tail"),
+        pytest.param(
+            [0, 17, 31],
+            512,
+            32,
+            64,
+            True,
+            id="empty-first-multi-block-source-remap",
+        ),
+    ],
+)
+def test_q4_k_t16_q8_1_ds4_mmq32_selected_prefill_matches_raw_mmq32(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    source_remap: bool,
+) -> None:
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=23,
+    )
+    raw = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap
+    )
+    actual = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="t16"
     )
     expected = _q8_1_ds4_selected_reference(fixture)
     np.testing.assert_array_equal(actual, raw)
