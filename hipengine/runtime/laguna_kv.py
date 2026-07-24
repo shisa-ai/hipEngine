@@ -614,6 +614,35 @@ def resolve_laguna_split_thresholds(
     )
 
 
+def resolve_laguna_swa_split_tile16_threshold(
+    backend: str,
+    *,
+    sliding_window: int,
+    swa_split_tile16_min_live: int | None = None,
+    use_swa_split_tile16: bool | None = None,
+) -> int | None:
+    """Resolve the explicit SWA tile16 crossover or backend-qualified default."""
+
+    window = int(sliding_window)
+    if window <= 0:
+        raise ValueError("Laguna SWA tile16 threshold capacity must be positive")
+    if use_swa_split_tile16 is False:
+        if swa_split_tile16_min_live is not None:
+            raise ValueError(
+                "use_swa_split_tile16=False cannot be combined with an explicit threshold"
+            )
+        return None
+    if swa_split_tile16_min_live is not None:
+        return int(swa_split_tile16_min_live)
+    default = backend_package_capability(
+        backend,
+        "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
+        None,
+    )
+    parsed = None if default is None else int(default)
+    return parsed if parsed is not None and parsed <= window else None
+
+
 def allocate_laguna_kv_cache(
     config: _LagunaKVConfig,
     *,
@@ -626,6 +655,7 @@ def allocate_laguna_kv_cache(
     global_split_min_live: int | None = None,
     swa_split_min_live: int | None = None,
     swa_split_tile16_min_live: int | None = None,
+    use_swa_split_tile16: bool | None = None,
     use_split_attention: bool | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
@@ -646,7 +676,9 @@ def allocate_laguna_kv_cache(
     layer_types, head_counts, sliding_window = _validate_config(config, context)
     has_global = FULL_ATTENTION in layer_types
     has_sliding = SLIDING_ATTENTION in layer_types
-    if use_split_attention is False and swa_split_tile16_min_live is not None:
+    if use_split_attention is False and (
+        swa_split_tile16_min_live is not None or use_swa_split_tile16 is True
+    ):
         raise ValueError(
             "use_split_attention=False cannot be combined with split thresholds"
         )
@@ -668,8 +700,18 @@ def allocate_laguna_kv_cache(
         sliding_window,
         "swa_split_min_live",
     )
+    selected_swa_tile16 = (
+        None
+        if use_split_attention is False
+        else resolve_laguna_swa_split_tile16_threshold(
+            backend,
+            sliding_window=sliding_window,
+            swa_split_tile16_min_live=swa_split_tile16_min_live,
+            use_swa_split_tile16=use_swa_split_tile16,
+        )
+    )
     parsed_swa_tile16 = _validate_split_threshold(
-        swa_split_tile16_min_live,
+        selected_swa_tile16,
         sliding_window,
         "swa_split_tile16_min_live",
     )
@@ -968,5 +1010,6 @@ __all__ = [
     "allocate_laguna_kv_cache",
     "resolve_laguna_split_thresholds",
     "resolve_laguna_swa_decode_variant",
+    "resolve_laguna_swa_split_tile16_threshold",
     "resolve_laguna_swa_prefill_variant",
 ]

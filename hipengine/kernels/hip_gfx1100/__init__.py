@@ -19,6 +19,9 @@ LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
 # not inherit these architecture-local thresholds.
 LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
 LAGUNA_SWA_SPLIT_MIN_LIVE = 65
+# P2's exact post-online refinement reduces the retained SWA score-producer
+# sub-window at 257/511/512 without changing dispatches, memory, or arithmetic.
+LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -85,6 +88,7 @@ __all__ = [
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
+    "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",

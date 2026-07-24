@@ -68,6 +68,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
     parser.add_argument(
+        "--disable-swa-split-tile16",
+        action="store_true",
+        help="roll back the architecture-qualified SWA exact tile16 crossover",
+    )
+    parser.add_argument(
         "--disable-split-attention",
         action="store_true",
         help="roll back architecture-qualified Laguna split-attention defaults",
@@ -175,6 +180,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
         swa_split_tile16_min_live=args.swa_split_tile16_min_live,
+        use_swa_split_tile16=False if args.disable_swa_split_tile16 else None,
         use_split_attention=False if args.disable_split_attention else None,
     )
 
@@ -546,6 +552,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
+            use_swa_split_tile16=False if args.disable_swa_split_tile16 else None,
             use_split_attention=False if args.disable_split_attention else None,
         )
         load_seconds = time.perf_counter() - load_started
@@ -650,6 +657,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_min_live": owner.global_split_min_live,
             "swa_split_min_live": owner.swa_split_min_live,
             "swa_split_tile16_min_live": owner.swa_split_tile16_min_live,
+            "use_swa_split_tile16": owner.use_swa_split_tile16,
             "use_split_attention": owner.use_split_attention,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,

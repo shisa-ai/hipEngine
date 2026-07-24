@@ -424,6 +424,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
     from hipengine.runtime.laguna_kv import (
         allocate_laguna_kv_cache,
         resolve_laguna_split_thresholds,
+        resolve_laguna_swa_split_tile16_threshold,
     )
 
     assert resolve_laguna_split_thresholds(
@@ -436,6 +437,15 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         context_length=4096,
         sliding_window=512,
     ) == (None, None)
+    assert resolve_laguna_swa_split_tile16_threshold(
+        "hip_gfx1100", sliding_window=512
+    ) == 257
+    assert resolve_laguna_swa_split_tile16_threshold(
+        "hip_gfx1100", sliding_window=512, use_swa_split_tile16=False
+    ) is None
+    assert resolve_laguna_swa_split_tile16_threshold(
+        "hip_gfx1151", sliding_window=512
+    ) is None
 
     runtime = _FakeRuntime()
     cache = allocate_laguna_kv_cache(
@@ -448,6 +458,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
     try:
         assert cache.global_split_min_live == 127
         assert cache.swa_split_min_live == 65
+        assert cache.swa_split_tile16_min_live == 257
         assert cache.allocation_count == 245
         assert cache.resident_nbytes == sum(runtime.allocations.values())
         assert sorted(runtime.allocations.values()).count(split_elements * 4) == 2
@@ -471,6 +482,23 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         tile16.free()
     assert tile16_runtime.allocations == {}
 
+    tile16_rollback_runtime = _FakeRuntime()
+    tile16_rollback = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=tile16_rollback_runtime,
+        use_swa_split_tile16=False,
+    )
+    try:
+        assert tile16_rollback.global_split_min_live == 127
+        assert tile16_rollback.swa_split_min_live == 65
+        assert tile16_rollback.swa_split_tile16_min_live is None
+        assert tile16_rollback.allocation_count == 245
+    finally:
+        tile16_rollback.free()
+    assert tile16_rollback_runtime.allocations == {}
+
     rollback_runtime = _FakeRuntime()
     rollback = allocate_laguna_kv_cache(
         _production_config(),
@@ -482,6 +510,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
     try:
         assert rollback.global_split_min_live is None
         assert rollback.swa_split_min_live is None
+        assert rollback.swa_split_tile16_min_live is None
         assert rollback.allocation_count == 243
         assert sorted(rollback_runtime.allocations.values()).count(split_elements * 4) == 0
     finally:
@@ -512,6 +541,15 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             backend="hip_gfx1151",
             runtime=_FakeRuntime(),
             global_split_min_live=127,
+        )
+    with pytest.raises(ValueError, match="cannot be combined"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            swa_split_tile16_min_live=257,
+            use_swa_split_tile16=False,
         )
     with pytest.raises(ValueError, match="swa_split_tile16_min_live"):
         allocate_laguna_kv_cache(
