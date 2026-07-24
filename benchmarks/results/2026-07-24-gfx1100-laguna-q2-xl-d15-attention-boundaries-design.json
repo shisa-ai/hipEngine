@@ -1,0 +1,220 @@
+{
+  "admission": {
+    "actual_weight": "Global layers 0/44 and SWA layers 1/47 must improve attention+gate and complete head-through-gate HIP-event and synchronized-wall medians while remaining bit-exact.",
+    "canonical": "Two complete process-order pairs over all ten prompts/four categories; aggregate and every-category h16/h32 decode and E2E improve, category prefill and aggregate TTFT stay within 0.5%, all IDs/oracle/lifecycle pass.",
+    "full_model": "All 48 hidden/context/gated-context taps, full logits/argmax, K/V/spans, reset, and lifecycle must match shared-weight D12 exactly.",
+    "mechanical": "Clean short/512/1K/near-4K D14 and D15 family windows, complete kernel sum, span, and profiled-child rows must all improve with exactly 775 -> 679 dispatches/token.",
+    "red_green": [
+      "RED collection fails on all four missing composite keys/wrappers",
+      "global/SWA page/ring fixtures compare the complete four-kernel chain with the two-kernel bundle",
+      "F32 query/key/context, BF16 K/V/gated context, and every KVLiveSpans field are bit-exact",
+      "extreme gate logits and signed-zero/non-finite/BF16-boundary values are covered"
+    ],
+    "resources": "D14 retains local256/VGPR<=32/dynamic-LDS1024/scratch0; D15 global stays local256/VGPR<=48 and SWA local128/VGPR<=32, both with unchanged dynamic LDS and scratch0.",
+    "retention": "Promote the all-four-key gfx1100 capability only if every gate passes; otherwise remove the complete bundle. Never retain or reintroduce standalone D14 default-off debt."
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json",
+    "artifact_sha256": "c02d1351fc07572ea4cb23cc6693be19343537158c050394374f0a021ac84769",
+    "h32_decode_tok_s": 48.987,
+    "ms_per_token": 20.414,
+    "name": "D12 exact raw-Q5 wave32x2"
+  },
+  "category_anchor": {
+    "d14_diagnostic_h32_decode_tok_s": 49.27383570247856,
+    "d14_diagnostic_ms_per_token": 20.294746405336134,
+    "interpretation": "This is planning arithmetic over a rejected diagnostic D14 category row, not an additive or retained claim. The new all-or-none bundle must be remeasured from D12.",
+    "plus_d15_short_gap_only": {
+      "remaining_ms": 20.106959833907563,
+      "tok_s": 49.73402285877353
+    },
+    "plus_d15_short_zero_increment": {
+      "remaining_ms": 19.987641619621847,
+      "tok_s": 50.030915053945186
+    }
+  },
+  "date": "2026-07-24",
+  "kernel_design": {
+    "attention_gate_component": {
+      "contract": "Keep the current global or token4 attention arithmetic and F32 context store. Each query-head block loads its F32 gate, evaluates the existing >20/log1p(exp) softplus expression, multiplies the rounded F32 context, and writes the same BF16 gated context. The registered attention then attention_gate chain remains the mandatory fallback.",
+      "global_geometry": "unchanged local256 one block/query-head; target VGPR<=48, scratch0",
+      "keys": [
+        "laguna_attention_decode+attention_gate/bf16/global_softplus_bf16_spans",
+        "laguna_attention_decode+attention_gate/bf16/swa_token4_exact_softplus_bf16_spans"
+      ],
+      "swa_geometry": "unchanged local128 token4 exact one block/query-head; target VGPR<=32, dynamic LDS unchanged, scratch0"
+    },
+    "head_kv_component": {
+      "contract": "Preserve F32 query/key scratch, BF16 K/V, complete KVLiveSpans, and the registered head+writer fallback exactly.",
+      "keys": [
+        "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/global_f32_bf16_spans",
+        "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/swa_f32_bf16_spans"
+      ],
+      "source": "reintroduce the exact 7081f64dc global/SWA D14 siblings"
+    },
+    "runtime": "One default-off session selector resolves all four keys or none. c=1 gfx1100 may execute two fused boundaries; rows>1, gfx1151, key/shape miss, explicit disable, and unsupported capture modes execute the existing four-kernel chain.",
+    "synchronization": "Both composites are block-local. The two surviving kernel completion boundaries still order head/KV before attention/gate and attention/gate before output projection; no producer counter, cooperative launch, or cross-block barrier is introduced."
+  },
+  "kind": "hipengine_laguna_q2_xl_d15_attention_boundaries_design",
+  "lineage": {
+    "external_parent": null,
+    "narrow_check": "python3 scripts/check_lineage.py --kind kernel --file hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip --file hipengine/kernels/hip_gfx1100/fused/laguna_attention.hip --diff stat",
+    "note": "Both components are in-tree exact specializations of current Laguna kernels. D14's internal implementation/correctness source is commit 7081f64dc; no external kernel is ported."
+  },
+  "models": [
+    {
+      "calls_per_token": {
+        "gate": 48,
+        "global": 12,
+        "swa": 36
+      },
+      "combined_measured_d14_plus_d15_gap_only": {
+        "remaining_ms": 19.8499735,
+        "savings_ms": 0.5640265,
+        "tok_s": 50.37790100828094
+      },
+      "combined_measured_d14_plus_d15_zero_increment": {
+        "remaining_ms": 19.73065528571429,
+        "savings_ms": 0.6833447142857143,
+        "tok_s": 50.682553899972916
+      },
+      "cross_check_combined_zero_increment_ms_from_d12_trace": 0.6759023571428572,
+      "d12_trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-short-candidate-v1/epyc_kernel_trace.csv",
+      "d12_trace_sha256": "95024673f518c9b9a577ee9097155eade80500a685a39e4070f68e0203924306",
+      "d15_attention_gate_gap_ms": 0.1877865714285714,
+      "d15_gate_body_ms": 0.11931821428571429,
+      "d15_zero_increment_savings_ms": 0.3071047857142857,
+      "label": "short",
+      "measured_d14_inclusive_window_savings_ms": 0.3762399285714286,
+      "stable_tokens": 14
+    },
+    {
+      "calls_per_token": {
+        "gate": 48,
+        "global": 12,
+        "swa": 36
+      },
+      "combined_measured_d14_plus_d15_gap_only": {
+        "remaining_ms": 19.619202833333336,
+        "savings_ms": 0.7947971666666667,
+        "tok_s": 50.970470538231254
+      },
+      "combined_measured_d14_plus_d15_zero_increment": {
+        "remaining_ms": 19.50326816666667,
+        "savings_ms": 0.9107318333333333,
+        "tok_s": 51.27345793814778
+      },
+      "cross_check_combined_zero_increment_ms_from_d12_trace": 0.899105,
+      "d12_trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-512-candidate-v1/epyc_kernel_trace.csv",
+      "d12_trace_sha256": "67f8f6be2900cc8b0301cd73c090f3d0ec162e195e6987ae3e425f508e680f36",
+      "d15_attention_gate_gap_ms": 0.3942876666666667,
+      "d15_gate_body_ms": 0.11593466666666667,
+      "d15_zero_increment_savings_ms": 0.5102223333333333,
+      "label": "512",
+      "measured_d14_inclusive_window_savings_ms": 0.40050949999999996,
+      "stable_tokens": 6
+    },
+    {
+      "calls_per_token": {
+        "gate": 48,
+        "global": 12,
+        "swa": 36
+      },
+      "combined_measured_d14_plus_d15_gap_only": {
+        "remaining_ms": 19.682804,
+        "savings_ms": 0.731196,
+        "tok_s": 50.80576934058785
+      },
+      "combined_measured_d14_plus_d15_zero_increment": {
+        "remaining_ms": 19.567821666666667,
+        "savings_ms": 0.8461783333333333,
+        "tok_s": 51.10430874906618
+      },
+      "cross_check_combined_zero_increment_ms_from_d12_trace": 0.891767,
+      "d12_trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-1024-candidate-v1/epyc_kernel_trace.csv",
+      "d12_trace_sha256": "625d1a2b59622fc9612c599d85ae0799969027f0475dc3dedf09cc0cc63fa9e9",
+      "d15_attention_gate_gap_ms": 0.39676100000000003,
+      "d15_gate_body_ms": 0.11498233333333334,
+      "d15_zero_increment_savings_ms": 0.5117433333333333,
+      "label": "1024",
+      "measured_d14_inclusive_window_savings_ms": 0.3344349999999999,
+      "stable_tokens": 6
+    },
+    {
+      "calls_per_token": {
+        "gate": 48,
+        "global": 12,
+        "swa": 36
+      },
+      "combined_measured_d14_plus_d15_gap_only": {
+        "remaining_ms": 19.609481333333335,
+        "savings_ms": 0.8045186666666666,
+        "tok_s": 50.99573940796394
+      },
+      "combined_measured_d14_plus_d15_zero_increment": {
+        "remaining_ms": 19.4860325,
+        "savings_ms": 0.9279675,
+        "tok_s": 51.31881002456503
+      },
+      "cross_check_combined_zero_increment_ms_from_d12_trace": 0.9777910000000001,
+      "d12_trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-3968-candidate-v1/epyc_kernel_trace.csv",
+      "d12_trace_sha256": "1438490d37a22c4e145c10ac7904cbd6343d074e8100dad8f096791e339dd9da",
+      "d15_attention_gate_gap_ms": 0.46359883333333335,
+      "d15_gate_body_ms": 0.12344883333333334,
+      "d15_zero_increment_savings_ms": 0.5870476666666666,
+      "label": "3968",
+      "measured_d14_inclusive_window_savings_ms": 0.3409198333333333,
+      "stable_tokens": 6
+    }
+  ],
+  "next_action": "Task #301 implements the default-off all-or-none bundle with RED/GREEN and actual-weight admission. Task #302 runs clean context and canonical retain-or-remove gates.",
+  "performance_claim": false,
+  "rejected_alternatives": [
+    {
+      "name": "standalone D15 attention+gate",
+      "reason": "short zero-increment ceiling is only 49.734 tok/s and repeats D14's marginal-suite risk"
+    },
+    {
+      "name": "standalone D14 head+KV",
+      "reason": "already rejected and removed after aggregate/per-category E2E and TTFT failures"
+    },
+    {
+      "name": "Q5 output+RMS or IQ3 down+MoE tail",
+      "reason": "requires completion across 1,536/3,072 producer workgroups; D11 rejects that risk class"
+    },
+    {
+      "name": "token8 SWA, graph replay, D13 pair+SiLU",
+      "reason": "each has a completed full-suite or mechanical rejection and remains removed"
+    }
+  ],
+  "schema": 1,
+  "selection": {
+    "all_or_none": true,
+    "dispatches_per_token": {
+      "candidate": 679,
+      "control": 775,
+      "removed": 96
+    },
+    "memory_read_traffic_removed_bytes_per_token": {
+      "combined": 1818624,
+      "d14_rotated_key_f32_reread": 196608,
+      "d15_attention_context_f32_reread": 1622016
+    },
+    "name": "D15 all-or-none exact head/KV plus attention/gate boundary bundle",
+    "reason": "Standalone attention+gate has only a 49.734 tok/s short zero-increment ceiling. Bundling it with the previously exact/mechanically positive D14 boundary is the only current block-local, counter-free candidate whose measured/gap model clears 50 tok/s at every profiled context. D14 remains rejected as a standalone route.",
+    "standalone_d14_status": "rejected_removed_by_full_suite",
+    "standalone_d15_short_zero_increment_tok_s": 49.73418269417904
+  },
+  "source_evidence": {
+    "attention_gate_analysis": "/tmp/laguna-q2-xl-d14-attention-gate-window.json",
+    "attention_gate_analysis_sha256": "5c3bc52a45f30a7292dc1f1197b826efd3dba337e54f3faa14dfa14fe297c9ba",
+    "attention_gate_harness_sha256": "c6bdb6227f83f983a9349ea915f4ff7df27c4558d141d341dd2eaf228b734bba",
+    "attention_windows_analysis": "/tmp/laguna-q2-xl-d14-attention-windows.json",
+    "attention_windows_analysis_sha256": "1c5b3ba063782b8af8a8cb84f563df97389b6a98979c4569f5b324c03f8758df",
+    "attention_windows_harness_sha256": "bdbd6882c5671b663fdeb26e7bb55b6bbe8b3a973f12963a387c949652ac00c0",
+    "d14_rejection_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-rejected.json",
+    "d14_rejection_sha256": "6ba86c705327412ea947439f9ca06249f5415050f7fde13cf878386168805b0e",
+    "source_revision": "338d3afca"
+  },
+  "status": "selected_for_red_green"
+}

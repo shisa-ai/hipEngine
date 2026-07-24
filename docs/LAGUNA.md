@@ -3611,6 +3611,60 @@ candidate's diagnostic **49.274 tok/s / 20.295 ms/token** is not retained.
 Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-{design,correctness,rejected}.json`.
 
+### D15 paired head/KV and attention/gate boundaries (exact, selected)
+
+The standalone attention-decode plus softplus-gate leaf is structurally safe but
+too small to justify repeating D14's marginal category gamble. It would remove
+48 launches/token, yet the short D12 trace exposes only **0.188 ms/token** of
+attention-to-gate gap and **0.119 ms** of gate body. Even the impossible
+zero-increment ceiling saves **0.307 ms** and models only **49.734 tok/s** from
+D12. At 512/1K/near-4K the same ceiling is larger (**0.510/0.512/0.587 ms**),
+but the canonical short-prompt suite still decides promotion.
+
+D15 therefore selects an **all-or-none** two-boundary bundle. It reintroduces
+the exact, mechanically positive D14 global/SWA head+KV siblings only together
+with new `laguna_attention_decode+attention_gate/bf16/{global_softplus_bf16_spans,swa_token4_exact_softplus_bf16_spans}`
+siblings. The new attention kernels retain the current global local256 or SWA
+token4-exact local128 arithmetic, preserve the F32 context output, load one F32
+gate per query head, reproduce the existing `value > 20 ? value :
+log1p(exp(value))` expression, and write the same BF16 gated context. Thus the
+output projection sees the identical activation ABI. The existing head, writer,
+attention, and gate registrations remain the mandatory four-kernel fallback.
+D14 remains rejected and is never selectable alone.
+
+The bundle removes **96 launches/token (775 -> 679)** and
+**1,818,624 bytes/token** of rereads: 196,608 B of just-rotated F32 keys plus
+1,622,016 B of F32 attention context. Both composites remain block-local and
+counter-free. Kernel completion still orders head/KV before attention/gate and
+attention/gate before output projection, so no cooperative launch or cross-block
+barrier is introduced. One default-off session selector resolves all four keys
+or none; rows>1, gfx1151, registry/shape misses, explicit disable, and unsupported
+capture modes keep the current chain.
+
+D14's measured inclusive-window savings plus D15's gap-only bound models
+**50.378/50.970/50.806/50.996 tok/s** at short/512/1K/near-4K; adding the gate
+body as a strict zero-increment ceiling models **50.683/51.273/51.104/51.319**.
+These are candidate-ranking bounds, not additive or retained claims. A more
+conservative anchor starts from D14's rejected diagnostic **49.274 tok/s**:
+D15's short gap-only bound reaches **49.734**, while its zero-increment ceiling
+barely reaches **50.031**. The complete bundle must therefore win on current
+source rather than relying on the model.
+
+RED/GREEN compares the complete four-kernel chain with the two-kernel bundle
+across global page and SWA ring boundaries, extreme gate logits, signed zero,
+non-finite classes, and BF16 boundaries. F32 query/key/context, BF16 K/V/gated
+context, and every `KVLiveSpans` field must be bit-exact. Actual global layers
+0/44 and SWA layers 1/47 must improve attention+gate and complete head-through-
+gate HIP-event and synchronized-wall medians. Resource limits are D14's prior
+local256/VGPR<=32/dynamic-LDS1024/scratch0, D15 global local256/VGPR<=48, and
+D15 SWA local128/VGPR<=32 with unchanged dynamic LDS and scratch0. All-layer
+context/gated-context/hidden/logit/KV/reset/lifecycle parity, clean four-context
+family/kernel-sum/span/child wins at 679 dispatches, and the complete
+counterbalanced category non-regression gate precede all-four-key promotion.
+Any failure removes the complete bundle without restoring standalone D14 debt.
+Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-design.json`.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
