@@ -98,7 +98,7 @@ def gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out(
         num_experts,
         in_features,
         out_features,
-        threads=256,
+        threads=128,
         stream=stream,
         library=library,
         runtime=runtime,

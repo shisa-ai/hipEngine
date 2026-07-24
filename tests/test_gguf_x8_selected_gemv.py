@@ -528,14 +528,17 @@ def test_x8_selected_registry_and_contract() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("x_rows,top_k", [(1, 10), (3, 4)])
+@pytest.mark.parametrize(
+    "x_rows,top_k,in_features",
+    [(1, 10, 3_072), (3, 4, 512)],
+)
 def test_q4_x8_selected_dual_exact_matches_raw_bits_and_cpu_source_gate(
     x_rows: int,
     top_k: int,
+    in_features: int,
 ) -> None:
     rng = np.random.default_rng(20260725 + x_rows)
-    in_features = 512
-    out_features = 24
+    out_features = 32
     experts = 4
     rows = x_rows * top_k
     x_f32 = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
@@ -546,6 +549,19 @@ def test_q4_x8_selected_dual_exact_matches_raw_bits_and_cpu_source_gate(
         in_features=in_features,
         experts=experts,
     )
+    if in_features == 3_072:
+        blocks = qweight_a.reshape(
+            experts,
+            out_features,
+            in_features // QK_K,
+            Q4_K_BLOCK_BYTES,
+        )
+        blocks[..., 4:] = rng.integers(
+            0,
+            256,
+            size=blocks[..., 4:].shape,
+            dtype=np.uint8,
+        )
     qweight_b = np.ascontiguousarray(np.roll(qweight_a, shift=3, axis=1))
     selected = ((np.arange(rows, dtype=np.int64) * 3 + 1) % experts).astype(np.int64)
 

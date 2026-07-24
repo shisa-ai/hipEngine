@@ -18,6 +18,19 @@ constexpr int X8_COLS = 8;
 constexpr int Q4_K_BLOCK_BYTES = 144;
 constexpr int Q5_K_BLOCK_BYTES = 176;
 constexpr int Q6_K_BLOCK_BYTES = 210;
+constexpr int Q4_X16_COLS = 2 * X8_COLS;
+constexpr int Q4_X16_SUBBLOCKS = 8;
+constexpr int Q4_X16_D_OFFSET = 0;
+constexpr int Q4_X16_DMIN_OFFSET =
+    Q4_X16_D_OFFSET + Q4_X16_COLS * 2;
+constexpr int Q4_X16_SCALE_OFFSET =
+    Q4_X16_DMIN_OFFSET + Q4_X16_COLS * 2;
+constexpr int Q4_X16_MIN_OFFSET =
+    Q4_X16_SCALE_OFFSET + Q4_X16_SUBBLOCKS * Q4_X16_COLS;
+constexpr int Q4_X16_Q_OFFSET =
+    Q4_X16_MIN_OFFSET + Q4_X16_SUBBLOCKS * Q4_X16_COLS;
+constexpr int Q4_X16_TILE_BYTES =
+    Q4_X16_Q_OFFSET + QK_K * (Q4_X16_COLS / 2);
 
 struct gguf_q8_1_block {
   half_t d;
@@ -101,6 +114,29 @@ __device__ inline float q4_k_exact_weight(
   const float minv =
       static_cast<float>(q4_k_min(scales, subblock));
   return d * scale * static_cast<float>(q) - dmin * minv;
+}
+
+__device__ inline float q4_x16_exact_weight(
+    const uint8_t* __restrict__ tile,
+    int k_in_block,
+    int col) {
+  const int subblock = k_in_block >> 5;
+  const int lane = k_in_block & 31;
+  const float d =
+      fp16_bytes_to_float(tile + Q4_X16_D_OFFSET + col * 2);
+  const float dmin =
+      fp16_bytes_to_float(tile + Q4_X16_DMIN_OFFSET + col * 2);
+  const float scale = static_cast<float>(
+      tile[Q4_X16_SCALE_OFFSET + subblock * Q4_X16_COLS + col]);
+  const float minv = static_cast<float>(
+      tile[Q4_X16_MIN_OFFSET + subblock * Q4_X16_COLS + col]);
+  const uint8_t packed =
+      tile[Q4_X16_Q_OFFSET +
+           (subblock * 32 + lane) * (Q4_X16_COLS / 2) +
+           (col >> 1)];
+  const float q = static_cast<float>(
+      (col & 1) ? (packed >> 4) : (packed & 0x0Fu));
+  return d * scale * q - dmin * minv;
 }
 
 __device__ inline int x8_dp4a_u8_s8(uint32_t a, uint32_t b, int c) {
@@ -265,7 +301,7 @@ __device__ inline const uint8_t* x8_tile_ptr(
     } \
 }
 
-__global__ __launch_bounds__(256, 2)
+__global__ __launch_bounds__(128, 2)
 void gguf_q4_x8_selected_dual_exact_gemv_kernel(
     const uint16_t* __restrict__ x,
     const int64_t* __restrict__ selected,
@@ -278,7 +314,7 @@ void gguf_q4_x8_selected_dual_exact_gemv_kernel(
     int num_experts,
     int in_features,
     int out_features) {
-  const int out_pack = blockIdx.x;
+  const int out_tile = blockIdx.x;
   const int row = blockIdx.y;
   const int tid = threadIdx.x;
   if (row >= rows) return;
@@ -292,15 +328,22 @@ void gguf_q4_x8_selected_dual_exact_gemv_kernel(
   const int blocks_per_row = in_features / QK_K;
   const int out_packed = out_features / X8_COLS;
 
-  float acc_a0 = 0.0f, acc_a1 = 0.0f, acc_a2 = 0.0f, acc_a3 = 0.0f;
-  float acc_a4 = 0.0f, acc_a5 = 0.0f, acc_a6 = 0.0f, acc_a7 = 0.0f;
-  float acc_b0 = 0.0f, acc_b1 = 0.0f, acc_b2 = 0.0f, acc_b3 = 0.0f;
-  float acc_b4 = 0.0f, acc_b5 = 0.0f, acc_b6 = 0.0f, acc_b7 = 0.0f;
-  for (int k = tid; k < in_features; k += blockDim.x) {
-    const int block_idx = k / QK_K;
-    const int k_in_block = k - block_idx * QK_K;
-    const float xv = bf16_bits_to_float(x_row_ptr[k]);
-    const uint8_t* __restrict__ tile_a =
+  float acc_a[2 * X8_COLS];
+  float acc_b[2 * X8_COLS];
+#pragma unroll
+  for (int col = 0; col < 2 * X8_COLS; ++col) {
+    acc_a[col] = 0.0f;
+    acc_b[col] = 0.0f;
+  }
+  constexpr int DUAL_X16_TILE_WORDS =
+      (2 * Q4_X16_TILE_BYTES + 3) / 4;
+  __shared__ uint32_t transformed_words[DUAL_X16_TILE_WORDS];
+  uint8_t* __restrict__ tile_a =
+      reinterpret_cast<uint8_t*>(transformed_words);
+  uint8_t* __restrict__ tile_b = tile_a + Q4_X16_TILE_BYTES;
+  const int out_pack = out_tile * 2;
+  for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+    const uint8_t* __restrict__ source_a0 =
         x8_tile_ptr<Q4_K_BLOCK_BYTES>(
             tiles_a,
             expert_id,
@@ -308,7 +351,15 @@ void gguf_q4_x8_selected_dual_exact_gemv_kernel(
             block_idx,
             out_packed,
             blocks_per_row);
-    const uint8_t* __restrict__ tile_b =
+    const uint8_t* __restrict__ source_a1 =
+        x8_tile_ptr<Q4_K_BLOCK_BYTES>(
+            tiles_a,
+            expert_id,
+            out_pack + 1,
+            block_idx,
+            out_packed,
+            blocks_per_row);
+    const uint8_t* __restrict__ source_b0 =
         x8_tile_ptr<Q4_K_BLOCK_BYTES>(
             tiles_b,
             expert_id,
@@ -316,45 +367,129 @@ void gguf_q4_x8_selected_dual_exact_gemv_kernel(
             block_idx,
             out_packed,
             blocks_per_row);
+    const uint8_t* __restrict__ source_b1 =
+        x8_tile_ptr<Q4_K_BLOCK_BYTES>(
+            tiles_b,
+            expert_id,
+            out_pack + 1,
+            block_idx,
+            out_packed,
+            blocks_per_row);
 
-    acc_a0 += xv * q4_k_exact_weight(tile_a + 0 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_a1 += xv * q4_k_exact_weight(tile_a + 1 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_a2 += xv * q4_k_exact_weight(tile_a + 2 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_a3 += xv * q4_k_exact_weight(tile_a + 3 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_a4 += xv * q4_k_exact_weight(tile_a + 4 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_a5 += xv * q4_k_exact_weight(tile_a + 5 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_a6 += xv * q4_k_exact_weight(tile_a + 6 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_a7 += xv * q4_k_exact_weight(tile_a + 7 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b0 += xv * q4_k_exact_weight(tile_b + 0 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b1 += xv * q4_k_exact_weight(tile_b + 1 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b2 += xv * q4_k_exact_weight(tile_b + 2 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b3 += xv * q4_k_exact_weight(tile_b + 3 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b4 += xv * q4_k_exact_weight(tile_b + 4 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b5 += xv * q4_k_exact_weight(tile_b + 5 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b6 += xv * q4_k_exact_weight(tile_b + 6 * Q4_K_BLOCK_BYTES, k_in_block);
-    acc_b7 += xv * q4_k_exact_weight(tile_b + 7 * Q4_K_BLOCK_BYTES, k_in_block);
+    if (tid < Q4_X16_COLS) {
+      const int col = tid;
+      const uint8_t* __restrict__ block_a =
+          col < X8_COLS
+              ? source_a0 + col * Q4_K_BLOCK_BYTES
+              : source_a1 + (col - X8_COLS) * Q4_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ block_b =
+          col < X8_COLS
+              ? source_b0 + col * Q4_K_BLOCK_BYTES
+              : source_b1 + (col - X8_COLS) * Q4_K_BLOCK_BYTES;
+      tile_a[Q4_X16_D_OFFSET + col * 2 + 0] = block_a[0];
+      tile_a[Q4_X16_D_OFFSET + col * 2 + 1] = block_a[1];
+      tile_a[Q4_X16_DMIN_OFFSET + col * 2 + 0] = block_a[2];
+      tile_a[Q4_X16_DMIN_OFFSET + col * 2 + 1] = block_a[3];
+      tile_b[Q4_X16_D_OFFSET + col * 2 + 0] = block_b[0];
+      tile_b[Q4_X16_D_OFFSET + col * 2 + 1] = block_b[1];
+      tile_b[Q4_X16_DMIN_OFFSET + col * 2 + 0] = block_b[2];
+      tile_b[Q4_X16_DMIN_OFFSET + col * 2 + 1] = block_b[3];
+#pragma unroll
+      for (int subblock = 0;
+           subblock < Q4_X16_SUBBLOCKS;
+           ++subblock) {
+        tile_a[Q4_X16_SCALE_OFFSET +
+               subblock * Q4_X16_COLS + col] =
+            q4_k_scale(block_a + 4, subblock);
+        tile_a[Q4_X16_MIN_OFFSET +
+               subblock * Q4_X16_COLS + col] =
+            q4_k_min(block_a + 4, subblock);
+        tile_b[Q4_X16_SCALE_OFFSET +
+               subblock * Q4_X16_COLS + col] =
+            q4_k_scale(block_b + 4, subblock);
+        tile_b[Q4_X16_MIN_OFFSET +
+               subblock * Q4_X16_COLS + col] =
+            q4_k_min(block_b + 4, subblock);
+      }
+    }
+
+    const int pair = tid >> 5;
+    const int lane = tid & 31;
+#pragma unroll
+    for (int col_pair = 0;
+         col_pair < Q4_X16_COLS / 2;
+         ++col_pair) {
+      const int even_col = 2 * col_pair;
+      const int odd_col = even_col + 1;
+      const uint8_t* __restrict__ even_a =
+          even_col < X8_COLS
+              ? source_a0 + even_col * Q4_K_BLOCK_BYTES
+              : source_a1 + (even_col - X8_COLS) * Q4_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ odd_a =
+          odd_col < X8_COLS
+              ? source_a0 + odd_col * Q4_K_BLOCK_BYTES
+              : source_a1 + (odd_col - X8_COLS) * Q4_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ even_b =
+          even_col < X8_COLS
+              ? source_b0 + even_col * Q4_K_BLOCK_BYTES
+              : source_b1 + (even_col - X8_COLS) * Q4_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ odd_b =
+          odd_col < X8_COLS
+              ? source_b0 + odd_col * Q4_K_BLOCK_BYTES
+              : source_b1 + (odd_col - X8_COLS) * Q4_K_BLOCK_BYTES;
+      const uint8_t packed_even_a =
+          even_a[16 + pair * 32 + lane];
+      const uint8_t packed_odd_a =
+          odd_a[16 + pair * 32 + lane];
+      const uint8_t packed_even_b =
+          even_b[16 + pair * 32 + lane];
+      const uint8_t packed_odd_b =
+          odd_b[16 + pair * 32 + lane];
+      const int low_subblock = 2 * pair;
+      const int high_subblock = low_subblock + 1;
+      const int low_offset =
+          Q4_X16_Q_OFFSET +
+          (low_subblock * 32 + lane) * (Q4_X16_COLS / 2) +
+          col_pair;
+      const int high_offset =
+          Q4_X16_Q_OFFSET +
+          (high_subblock * 32 + lane) * (Q4_X16_COLS / 2) +
+          col_pair;
+      tile_a[low_offset] =
+          (packed_even_a & 0x0Fu) | (packed_odd_a << 4);
+      tile_a[high_offset] =
+          (packed_even_a >> 4) | (packed_odd_a & 0xF0u);
+      tile_b[low_offset] =
+          (packed_even_b & 0x0Fu) | (packed_odd_b << 4);
+      tile_b[high_offset] =
+          (packed_even_b >> 4) | (packed_odd_b & 0xF0u);
+    }
+    __syncthreads();
+
+    const int k_base = block_idx * QK_K;
+    for (int k_in_block = tid;
+         k_in_block < QK_K;
+         k_in_block += blockDim.x) {
+      const float xv =
+          bf16_bits_to_float(x_row_ptr[k_base + k_in_block]);
+#pragma unroll
+      for (int col = 0; col < 2 * X8_COLS; ++col) {
+        acc_a[col] +=
+            xv * q4_x16_exact_weight(tile_a, k_in_block, col);
+        acc_b[col] +=
+            xv * q4_x16_exact_weight(tile_b, k_in_block, col);
+      }
+    }
+    __syncthreads();
   }
 
   const int64_t out_base =
-      static_cast<int64_t>(row) * out_features + (out_pack << 3);
+      static_cast<int64_t>(row) * out_features + (out_tile << 4);
   {
     GGUF_X8_REDUCE(
-        acc_a0,
-        acc_a1,
-        acc_a2,
-        acc_a3,
-        acc_a4,
-        acc_a5,
-        acc_a6,
-        acc_a7,
-        ar0,
-        ar1,
-        ar2,
-        ar3,
-        ar4,
-        ar5,
-        ar6,
-        ar7);
+        acc_a[0], acc_a[1], acc_a[2], acc_a[3],
+        acc_a[4], acc_a[5], acc_a[6], acc_a[7],
+        ar0, ar1, ar2, ar3, ar4, ar5, ar6, ar7);
     if (tid == 0) {
       store_output<uint16_t>(out_a, out_base + 0, ar0);
       store_output<uint16_t>(out_a, out_base + 1, ar1);
@@ -369,22 +504,26 @@ void gguf_q4_x8_selected_dual_exact_gemv_kernel(
   __syncthreads();
   {
     GGUF_X8_REDUCE(
-        acc_b0,
-        acc_b1,
-        acc_b2,
-        acc_b3,
-        acc_b4,
-        acc_b5,
-        acc_b6,
-        acc_b7,
-        br0,
-        br1,
-        br2,
-        br3,
-        br4,
-        br5,
-        br6,
-        br7);
+        acc_a[8], acc_a[9], acc_a[10], acc_a[11],
+        acc_a[12], acc_a[13], acc_a[14], acc_a[15],
+        ar8, ar9, ar10, ar11, ar12, ar13, ar14, ar15);
+    if (tid == 0) {
+      store_output<uint16_t>(out_a, out_base + 8, ar8);
+      store_output<uint16_t>(out_a, out_base + 9, ar9);
+      store_output<uint16_t>(out_a, out_base + 10, ar10);
+      store_output<uint16_t>(out_a, out_base + 11, ar11);
+      store_output<uint16_t>(out_a, out_base + 12, ar12);
+      store_output<uint16_t>(out_a, out_base + 13, ar13);
+      store_output<uint16_t>(out_a, out_base + 14, ar14);
+      store_output<uint16_t>(out_a, out_base + 15, ar15);
+    }
+  }
+  __syncthreads();
+  {
+    GGUF_X8_REDUCE(
+        acc_b[0], acc_b[1], acc_b[2], acc_b[3],
+        acc_b[4], acc_b[5], acc_b[6], acc_b[7],
+        br0, br1, br2, br3, br4, br5, br6, br7);
     if (tid == 0) {
       store_output<uint16_t>(out_b, out_base + 0, br0);
       store_output<uint16_t>(out_b, out_base + 1, br1);
@@ -394,6 +533,23 @@ void gguf_q4_x8_selected_dual_exact_gemv_kernel(
       store_output<uint16_t>(out_b, out_base + 5, br5);
       store_output<uint16_t>(out_b, out_base + 6, br6);
       store_output<uint16_t>(out_b, out_base + 7, br7);
+    }
+  }
+  __syncthreads();
+  {
+    GGUF_X8_REDUCE(
+        acc_b[8], acc_b[9], acc_b[10], acc_b[11],
+        acc_b[12], acc_b[13], acc_b[14], acc_b[15],
+        br8, br9, br10, br11, br12, br13, br14, br15);
+    if (tid == 0) {
+      store_output<uint16_t>(out_b, out_base + 8, br8);
+      store_output<uint16_t>(out_b, out_base + 9, br9);
+      store_output<uint16_t>(out_b, out_base + 10, br10);
+      store_output<uint16_t>(out_b, out_base + 11, br11);
+      store_output<uint16_t>(out_b, out_base + 12, br12);
+      store_output<uint16_t>(out_b, out_base + 13, br13);
+      store_output<uint16_t>(out_b, out_base + 14, br14);
+      store_output<uint16_t>(out_b, out_base + 15, br15);
     }
   }
 }
@@ -791,13 +947,13 @@ int launch_q4_x8_selected_dual_exact(
   if (!x || !selected || !tiles_a || !tiles_b || !out_a || !out_b ||
       x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 ||
       num_experts <= 0 || in_features <= 0 || out_features <= 0 ||
-      (in_features % QK_K) != 0 || (out_features % X8_COLS) != 0 ||
-      threads != 256) {
+      (in_features % QK_K) != 0 || (out_features % (2 * X8_COLS)) != 0 ||
+      threads != 128) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const dim3 block(256);
+  const dim3 block(128);
   const dim3 grid(
-      static_cast<unsigned int>(out_features / X8_COLS),
+      static_cast<unsigned int>(out_features / (2 * X8_COLS)),
       static_cast<unsigned int>(rows));
   hipLaunchKernelGGL(
       gguf_q4_x8_selected_dual_exact_gemv_kernel,
