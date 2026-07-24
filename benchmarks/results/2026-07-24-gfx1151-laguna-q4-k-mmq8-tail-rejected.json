@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T18:36:25+09:00",
+  "kind": "hipengine_laguna_lap1_q4_k_mmq8_tail_screen",
+  "status": "rejected",
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "Rejected one-layer Laguna Q4_K gate/up tail diagnostics on gfx1151; no runtime-default or full-model speed claim.",
+  "repo": {
+    "base_revision": "0359c10cef6442c39fbc31d8d347bcfafd9f3d08",
+    "candidate_state": "Each prototype was measured from a dirty diagnostic worktree, then removed. Tracked source returned exactly to the committed MMQ32 state.",
+    "unrelated_untracked_artifacts_excluded": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "up_tensor": "blk.1.ffn_up_exps.weight",
+    "shape_each": [
+      256,
+      1024,
+      3072
+    ],
+    "quant": "Q4_K"
+  },
+  "protocol": {
+    "routing_source": "/tmp/laguna-lap1-routing-all-shapes.json",
+    "routing_sha256": "0d29540b03047650c6ce85352a8514d6df3b8e8397ac434ad014a8d9cdfa3f16",
+    "rows": [
+      32,
+      55,
+      64,
+      122,
+      128,
+      256,
+      512
+    ],
+    "warmups": 2,
+    "samples": 7,
+    "burst": 3,
+    "timing": "counter-rotated HIP-event elapsed time",
+    "inclusive_scope": "one BF16 producer-row DS4 Q8_1 pack plus one dual raw-Q4_K gate/up launch",
+    "screen_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 32,55,64,122,128,256,512 --layer 1 --modes retained-direct,t16-wmma,raw-mmq8,raw-mmq32 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output <candidate-output>"
+  },
+  "controls": {
+    "retained_direct": "exact production gate/up body",
+    "raw_mmq32": "committed 32-column x 32-row packed-dot body",
+    "t16_wmma": "resident-layout diagnostic only; prior full-model M16 route failed quality at max KL 1.10017"
+  },
+  "candidates": {
+    "one_wave_32_columns_x_8_rows": {
+      "design": "One wave32 owns one 32-column x 8-row tile.",
+      "screen_sha256": "86653449a4e1fd5813a48e0aee13782be7426183eec930d48afa3a93b1f253a5",
+      "trace_csv_sha256": "785060922b749a68ed3622f25a66877084a47c8dd7dd187e14e31762ec727388",
+      "profile_json_sha256": "70a041405dfe9a751cda2e96db4a9fd20b9ddbd0c49a3d7b31fc0bfb29b4735b",
+      "trace": {
+        "local_size": 32,
+        "allocated_vgpr": 96,
+        "allocated_sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0,
+        "five_call_median_us": 405.151,
+        "five_call_min_us": 404.269,
+        "five_call_max_us": 415.771
+      },
+      "correctness": {
+        "focused_tests_passed": 26,
+        "checksum_matches_mmq32": true
+      },
+      "inclusive_ms": {
+        "32": 7.396098,
+        "55": 8.939706,
+        "64": 9.418888,
+        "122": 12.023003,
+        "128": 12.525627,
+        "256": 16.157658,
+        "512": 26.710823
+      },
+      "speedup_vs_retained": {
+        "32": 0.535298,
+        "55": 0.711235,
+        "64": 0.774578,
+        "122": 1.092228,
+        "128": 1.09795,
+        "256": 1.645151,
+        "512": 1.962094
+      }
+    },
+    "four_wave_64_columns_x_8_rows": {
+      "design": "Four wave32s cooperatively own one 64-column x 8-row tile.",
+      "screen_sha256": "ae3909709f197ac5bb80e14cb07cb8243ef31495c7060aa001c373f82e4c4758",
+      "trace_csv_sha256": "1d423c8a8ed78a229041c293443383c4b6d2b2a16ac31b454c746b4326478b74",
+      "profile_json_sha256": "f007a555c52eab053736762b00b8d90eea38faf0f328cc3531fe10f7e22dc78c",
+      "trace": {
+        "local_size": 128,
+        "allocated_vgpr": 80,
+        "allocated_sgpr": 128,
+        "lds_bytes": 2048,
+        "scratch_bytes": 0,
+        "candidate_call_range_us": [
+          522,
+          531
+        ]
+      },
+      "correctness": {
+        "focused_tests_passed": true,
+        "checksum_matches_mmq32": true
+      },
+      "inclusive_ms": {
+        "32": 9.478192,
+        "55": 11.576399,
+        "64": 11.901493,
+        "122": 15.820985,
+        "128": 14.824476,
+        "256": 20.13901,
+        "512": 32.334783
+      },
+      "speedup_vs_retained": {
+        "32": 0.417578,
+        "55": 0.548706,
+        "64": 0.611484,
+        "122": 0.829032,
+        "128": 0.925526,
+        "256": 1.315817,
+        "512": 1.616051
+      }
+    },
+    "wave_local_16_columns_x_8_rows": {
+      "design": "Paired lanes own one 16-column x 8-row tile and exchange decoded values with wave shuffles.",
+      "screen_sha256": "1192636e3e102bceb8d8bef96e620edcb117fc9499b476b9638ee49f17a9655f",
+      "profile_json_sha256": "b9eb8de72993fe4936b2ea88154b67a88a073c60c6e845059c411668704c557a",
+      "synthetic_call_ms": 0.427502,
+      "correctness": {
+        "targeted_wrapper_and_cpu_oracle_tests_passed": 5,
+        "primitive_kl_top1_gate_passed": true,
+        "natural_checksum_matches_mmq32": false,
+        "qualification": "The prototype did not FP16-round the composed weight scale/min. It passed the focused primitive gate, but was removed without repairing the natural checksum because performance already rejected it."
+      },
+      "inclusive_ms": {
+        "32": 6.246867,
+        "55": 7.721197,
+        "64": 8.013267,
+        "122": 10.450709,
+        "128": 10.838373,
+        "256": 14.81676,
+        "512": 25.031029
+      },
+      "speedup_vs_retained": {
+        "32": 0.633214,
+        "55": 0.82285,
+        "64": 0.910088,
+        "122": 1.257915,
+        "128": 1.269312,
+        "256": 1.794721,
+        "512": 2.096089
+      }
+    }
+  },
+  "decision": {
+    "reason": "Every 8-row geometry is slower than committed MMQ32 at every declared natural shape. Cutting row padding does not compensate for repeatedly decoding the same K3072 Q4_K weights; the small tile costs roughly the same per tile as MMQ32.",
+    "retained_code": false,
+    "default_changed": false,
+    "lap1_state": "in_progress",
+    "next": "Keep MMQ32 for sufficiently populated experts and screen a mixed schedule with the existing exact grouped-small-M T16 leaf for sparse experts or tails. Evaluate a lossless resident replacement layout before any runtime promotion."
+  }
+}

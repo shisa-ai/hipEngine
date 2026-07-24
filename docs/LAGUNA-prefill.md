@@ -394,7 +394,7 @@ Current progress:
 | Task | State | Result / next condition |
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
-| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise; the full natural-shape screen selects a smaller-row tail schedule before replacement-layout and exact-fallback work. |
+| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise. Three smaller-row packed-dot geometries lost to MMQ32 at every natural shape; next screen a mixed MMQ32 plus exact grouped-small-M schedule before replacement-layout work. |
 | LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
@@ -483,13 +483,30 @@ speedups are **0.680/0.899/0.985/1.515/1.551/2.645/4.117x** over retained
 direct at the same shapes. Literal tile32 therefore loses at M32–M64, is
 positive but below the 2x gate at M122/M128, and passes only M256/M512.
 
-LAP-1 remains open for a smaller-row or mixed full32-plus-tail schedule, a
-lossless MMQ-native replacement layout, and an exact decode fallback. No
-runtime default changed.
+Three follow-up 8-row designs close the smaller packed-dot branch. A one-wave
+32x8 body, four-wave cooperative 64x8 body, and paired-lane wave-local 16x8
+body all lose to MMQ32 at every declared natural shape. At M128 they reach only
+**1.098/0.926/1.269x** retained-direct versus **1.563x** for MMQ32; at M512
+they reach **1.962/1.616/2.096x** versus **4.174x**. The first two reproduce
+MMQ32 checksums exactly; the 16x8 primitive passes its focused KL/top-1 gate but
+its natural diagnostic omitted one FP16 metadata-rounding step and was removed
+without repair after the performance rejection. Cached traces show that lower
+padding and VGPR do not offset repeated K3072 weight decode: the one-wave 32x8
+tile costs about 405 us and the cooperative 64x8 tile about 522-531 us, versus
+about 41 us per MMQ32 tile at the natural M128 leaf.
+
+LAP-1 therefore remains open for a mixed schedule: use MMQ32 only for
+sufficiently populated expert groups and route sparse experts or tails through
+the existing exact grouped-small-M leaf. The next screen must measure this
+crossover before choosing a lossless resident replacement layout and exact
+decode fallback. No small-row prototype was retained and no runtime default
+changed.
 Evidence:
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
 The all-shape crossover packet is
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json).
+The rejected small-row packet is
+[`2026-07-24-gfx1151-laguna-q4-k-mmq8-tail-rejected.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq8-tail-rejected.json).
 
 ### LAP-2 — calibrate residual Q8_1 and exact repair
 
