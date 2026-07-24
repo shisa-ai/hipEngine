@@ -3700,6 +3700,30 @@ tok/s / 20.414 ms/token**.
 Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-{design,correctness,rejected}.json`.
 
+### D16 C-side two-launch packets (exact, selection-rejected)
+
+The retained D12 short trace contains **0.1772/0.1801/0.1753 ms/token** between
+Q5 attention output and add/RMSNorm, router projection and selection, and the Q5
+shared pair and SiLU. A host-only function-pointer dispatcher tested whether one
+Python-to-C transition per pair could recover their **0.5326 ms** sum without
+changing any device kernel, math, or dispatch count. The approach follows the
+existing PARO C dispatcher rather than duplicating kernel bodies.
+
+Fifty warmups and 15 counterbalanced 500-iteration samples at both actual Q5
+attention widths and two actual router/shared layers preserve every attention,
+norm, residual, logit, score, selected-ID, routing-weight, gate/up, and SiLU bit.
+They do not show a useful timing contraction. Packet-vs-control HIP-event deltas
+range from **-0.198% to +0.161%**; wall deltas range from **-0.563% to +0.016%**,
+with the only large-looking wall row contradicted by its regressive event row.
+The full-token savings are therefore approximately zero, not 0.533 ms. The
+trace gaps are HIP queue-submission spacing, consistent with prior PARO C
+packet evidence, rather than removable ctypes transitions. No runtime selector,
+wrapper, registry key, or source is retained; the next candidate must reduce
+device work or device dispatches.
+
+Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d16-c-dispatch-rejected.json`.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
