@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_decode_gap_analysis",
+  "date": "2026-07-24",
+  "status": "diagnostic_complete",
+  "pass": true,
+  "performance_claim": false,
+  "comparison_scope": "Same W7900 and exact Laguna UD-Q2_K_XL file, but different engine protocols; measurements establish bottleneck bounds and transfer priorities, not a formal generated-token cross-engine speed ratio.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "hip_backend": "hip_gfx1100",
+    "vulkan_driver": "RADV NAVI31",
+    "vulkan_subgroup_size": 64,
+    "vulkan_shared_memory_bytes": 65536,
+    "vulkan_integer_dot": true
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "file_bytes": 39684584480,
+    "parameters": 117561977600,
+    "active_encoded_weight_proxy_gb_per_token": 4.144,
+    "active_weight_proxy_caveat": "Counts each dense/router tensor once plus ten selected rows from rank-3 expert tensors, one embedding row, and the full lm-head. It is not a DRAM counter and excludes cache, KV, activation, metadata, and dequant traffic."
+  },
+  "sources": {
+    "hipengine_revision": "2f7c5c9fb",
+    "hipengine_d12_implementation_revision": "338d3afca01aa884ff3a68e0175566bc51e5ceae",
+    "llamacpp_source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "llamacpp_binary_sha256": "0d466d22faf045c7bfd8c03bac28fd8f581a3a82edafacf99e51202ab5988759",
+    "prior_protocol_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json",
+    "hipengine_d12_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json",
+    "hipengine_d9_profile_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-residual-profile.json",
+    "qwen_q4_reference_artifact": "benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json"
+  },
+  "clean_wall_measurements": {
+    "user_reported_llamacpp_vulkan_tg128": {
+      "tok_s": 93.67,
+      "stddev_tok_s": 0.16
+    },
+    "independent_llamacpp_vulkan_tg128": {
+      "command": "GGML_VK_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -fa on -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 0 -n 128 -r 3 -o json",
+      "tok_s": 94.512989,
+      "stddev_tok_s": 0.140616,
+      "samples_tok_s": [94.6513, 94.5176, 94.3701],
+      "ms_per_token": 10.580556287347974
+    },
+    "llamacpp_vulkan_matched_average_depth": {
+      "command": "GGML_VK_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -fa on -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 0 -n 31 -d 86 -r 3 -o json",
+      "purpose": "Match the hipEngine h32 timed call count and mean timed position without claiming prompt, sampling, KV, or arithmetic equivalence.",
+      "tok_s": 94.151664,
+      "stddev_tok_s": 0.331287,
+      "ms_per_token": 10.621161193709758
+    },
+    "hipengine_d12_canonical": {
+      "protocol": "Ten prompts across code/general_en/general_ja/mixed_ja_en, two complete counterbalanced process-order pairs, natural greedy trajectories, h32, BF16 KV, exact state/KV/lifecycle gates.",
+      "tok_s": 48.986821075337886,
+      "ms_per_token": 20.4136536735478,
+      "dispatches_per_token": 775
+    },
+    "diagnostic_ratio_only": {
+      "llamacpp_over_hipengine": 1.9293554250978329,
+      "wall_gap_ms_per_token": 9.833097386199825,
+      "formal_cross_engine_speed_ratio_eligible": false
+    }
+  },
+  "llamacpp_vulkan_ablations": [
+    {
+      "name": "default",
+      "tok_s": 94.512989,
+      "ms_per_token": 10.580556287347974
+    },
+    {
+      "name": "disable_graph_optimize",
+      "environment": {"GGML_VK_DISABLE_GRAPH_OPTIMIZE": "1"},
+      "tok_s": 93.489331,
+      "ms_per_token": 10.696407700254053,
+      "delta_tok_s_pct": -1.0830871087994076
+    },
+    {
+      "name": "disable_fusion",
+      "environment": {"GGML_VK_DISABLE_FUSION": "1"},
+      "tok_s": 74.864648,
+      "ms_per_token": 13.357439415196342,
+      "delta_tok_s_pct": -20.789037790350704
+    },
+    {
+      "name": "disable_graph_optimize_and_fusion",
+      "environment": {
+        "GGML_VK_DISABLE_GRAPH_OPTIMIZE": "1",
+        "GGML_VK_DISABLE_FUSION": "1"
+      },
+      "tok_s": 74.514127,
+      "ms_per_token": 13.420273983750759,
+      "delta_tok_s_pct": -21.15990850739046
+    },
+    {
+      "name": "disable_mmvq",
+      "environment": {"GGML_VK_DISABLE_MMVQ": "1"},
+      "tok_s": 98.568447,
+      "ms_per_token": 10.145234407517853,
+      "delta_tok_s_pct": 4.2909001639975575
+    }
+  ],
+  "hipengine_d12_short_profile": {
+    "method": "Cached rocprofv3 kernel trace; first two rows excluded; 14 stable natural c=1 decode steps after the 69-token code_merge_intervals prompt.",
+    "kernel_sum_ms_per_token": 16.48574592857143,
+    "dispatch_span_median_ms_per_token": 19.566539,
+    "canonical_wall_minus_kernel_sum_ms_per_token": 3.9279077449763697,
+    "kernel_only_zero_overhead_ceiling_tok_s": 60.65846242764794,
+    "families_ms_per_token": [
+      {"family": "selected_iq2_dual_silu", "ms": 2.3584291428571427, "calls": 46},
+      {"family": "q5_attention_output_wave32x2", "ms": 2.185993214285718, "calls": 47},
+      {"family": "swa_attention_decode_token4", "ms": 2.1529605, "calls": 36},
+      {"family": "selected_iq3_weighted_down", "ms": 2.1306495, "calls": 45},
+      {"family": "q5_query_gate_wave32x2", "ms": 1.837707714285715, "calls": 47},
+      {"family": "q6_attention_pair", "ms": 0.9451904285714285, "calls": 48},
+      {"family": "q5_shared_pair", "ms": 0.90494, "calls": 46},
+      {"family": "q6_bf16_projection", "ms": 0.6014591428571429, "calls": 50},
+      {"family": "global_attention_decode", "ms": 0.5182608571428572, "calls": 12},
+      {"family": "add_rmsnorm", "ms": 0.3951195, "calls": 48},
+      {"family": "router_select", "ms": 0.3938002857142857, "calls": 47},
+      {"family": "moe_tail_next_rmsnorm", "ms": 0.38920528571428575, "calls": 47},
+      {"family": "q4_lm_head", "ms": 0.3825281428571428, "calls": 1},
+      {"family": "router_projection", "ms": 0.32261071428571425, "calls": 47}
+    ],
+    "top_four_device_families_ms": 8.82803235714286,
+    "top_four_device_families_share_pct": 53.549486904581045,
+    "top_five_including_q5_query_gate_ms": 10.665740071428575,
+    "top_five_including_q5_query_gate_share_pct": 64.69673933858093,
+    "hot_resource_summary": "Q5 wave32x2 local32/VGPR96/LDS0/scratch0; IQ2 tile2 local64/VGPR136/LDS512/scratch0; IQ3 weighted down local128/VGPR32/LDS512/scratch0; SWA token4 local128/VGPR24/dynamic-LDS4120/scratch0; MoE tail local256/VGPR16/scratch0."
+  },
+  "context_scaling": [
+    {"prompt_tokens": 69, "kernel_sum_ms": 16.48574592857143, "span_ms": 19.566539},
+    {"prompt_tokens": 512, "kernel_sum_ms": 29.661983499999998, "span_ms": 32.9867225},
+    {"prompt_tokens": 1024, "kernel_sum_ms": 32.686842166666665, "span_ms": 36.001511},
+    {"prompt_tokens": 3968, "kernel_sum_ms": 49.383206, "span_ms": 52.774251}
+  ],
+  "amdahl_bounds": {
+    "kernel_sum_alone_exceeds_llamacpp_clean_wall_ms": 5.905189641223455,
+    "minimum_kernel_sum_reduction_if_all_non_kernel_time_disappears_pct": 35.819972398028874,
+    "required_kernel_sum_ms_if_current_non_kernel_residual_remains": 6.652648542371605,
+    "required_kernel_sum_reduction_if_current_non_kernel_residual_remains_pct": 59.64605683482052,
+    "vulkan_fusion_gain_ms": 2.776883127848368,
+    "vulkan_fusion_gain_as_pct_of_hipengine_to_vulkan_wall_gap": 28.240167047928978,
+    "vulkan_graph_optimize_gain_ms": 0.11585141290607837,
+    "vulkan_graph_optimize_gain_as_pct_of_hipengine_to_vulkan_wall_gap": 1.1781782317001053,
+    "conclusion": "Submission, sampling, readback, and boundary fusion cannot close the gap alone. Even Vulkan with all fusion disabled is 74.865 tok/s, so most missing performance is in format-specific operator/device work."
+  },
+  "active_weight_proxy_effective_gb_s": {
+    "hipengine_d12_wall": 203.00138653620022,
+    "hipengine_d12_kernel_sum": 251.36866830017308,
+    "llamacpp_vulkan_default_wall": 391.661826416,
+    "llamacpp_vulkan_no_fusion_wall": 310.239101312,
+    "llamacpp_vulkan_no_mmvq_wall": 408.4676443680001,
+    "caveat": "Derived from the same 4.144-GB active encoded-weight proxy; these are not hardware-counter bandwidth measurements."
+  },
+  "vulkan_dependency_group_logger": {
+    "command": "GGML_VK_VISIBLE_DEVICES=0 GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_CONCURRENT=1 GGML_VK_PERF_LOGGER_FREQUENCY=1 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -fa 1 -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 0 -n 4 -r 1 -o json",
+    "purpose": "Identify fused/concurrent dependency groups after one warmup token; never use logger duration as product wall time.",
+    "timed_group_sum_us": [15794.5, 16432.7, 20872.6, 20444.7],
+    "timed_group_sum_median_us": 18438.7,
+    "logger_wall_tok_s": 15.10936,
+    "logger_wall_ms_per_token": 66.184142,
+    "dependency_groups_per_token": 767,
+    "top_group_medians_us": [
+      {"group": "paired IQ2_XS selected gate/up", "median_us": 2674.36},
+      {"group": "SWA Q5 query plus two Q6 K/V projections", "median_us": 2312.68},
+      {"group": "IQ3_XXS selected down plus routing multiply", "median_us": 1619.94},
+      {"group": "SWA Q5 attention output plus residual add", "median_us": 1581.02},
+      {"group": "shared Q5 gate/up plus multi-add", "median_us": 1221.34},
+      {"group": "RMS norm plus multiply", "median_us": 1093.44},
+      {"group": "SWA flash attention plus per-head Q5 gate projection", "median_us": 881.62},
+      {"group": "global Q5 query plus two Q6 K/V projections", "median_us": 714.42},
+      {"group": "SWA RMS/RoPE/KV set-rows boundary", "median_us": 673.56},
+      {"group": "top-k MoE sigmoid/bias/normalization", "median_us": 498.34}
+    ],
+    "raw_log_sha256": "16f6ebe31f6e0b2250c8b033ee40948262f892017f9a5360fea45c6eb49fc363",
+    "interpretation": "The logger proves structural grouping: attention with gate projection, Q/K/V projection groups, selected gate/up pairs, selected-down weighting, output+residual, RMS/RoPE/KV, and complete router normalization. Its instrumentation is highly perturbative and some groups overlap, so absolute or additive attribution to the clean 10.581-ms wall is invalid."
+  },
+  "qwen_reference": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M",
+    "workload": "4K/128",
+    "hipengine_tok_s": 100.52232318014667,
+    "llamacpp_hip_tok_s": 79.768,
+    "llamacpp_vulkan_tok_s": 103.066,
+    "hipengine_vs_llamacpp_hip_pct": 26.018357211095513,
+    "hipengine_vs_llamacpp_vulkan_pct": -2.4680077036591475,
+    "reason_not_transferable_as_ratio": "Qwen uses 40 layers, hidden 2048, top-8, Q4/Q5/Q6/Q8 layouts, GDN/full-attention mixture, and graph replay; Laguna uses 48 layers, hidden 3072, top-10, IQ2/IQ3/Q5/Q6 layouts, global/SWA attention, softplus head gates, and eager execution."
+  },
+  "principal_findings": [
+    "The user's 93.67 tok/s llama.cpp Vulkan result is independently reproduced at 94.513 tok/s on the same model, binary lineage, and W7900.",
+    "A matched mean-context-depth control remains 94.152 tok/s; prompt depth does not explain the approximately 1.93x diagnostic gap.",
+    "hipEngine D12 is device-work bound: its 16.486-ms kernel sum is already 55.8% above llama.cpp Vulkan's complete 10.581-ms wall.",
+    "Vulkan fusion is important but not the primary explanation: disabling all fusion still leaves llama.cpp at 74.865 tok/s, 52.8% above hipEngine D12.",
+    "The hot Laguna kernels already use the standard Qwen optimization hygiene: format-specific rows=1 leaves, wave32 schedules, fused selected operations, shape-right-sized workgroups, no scratch, and the decode unroll600 plus mcumode build profile.",
+    "The genuinely open gap is a compound raw-IQ3/raw-IQ2/Q5/attention schedule and graph-level execution problem; no single launch-removal candidate has a 9.83-ms bound."
+  ],
+  "limitations": [
+    "llama-bench tg128 evaluates forced random tokens and excludes sampling; hipEngine D12 times natural greedy trajectories and includes GPU argmax, synchronization, and scalar reads.",
+    "llama.cpp uses F16 KV and a right-sized context; hipEngine uses BF16 KV, a 4096-token admitted allocation, and KVLiveSpans.",
+    "The Vulkan perf logger is perturbative and cannot provide clean per-group wall attribution.",
+    "The active-weight bandwidth values are source-byte proxies, not measured HBM transactions.",
+    "No code or default-path performance change is made by this diagnostic artifact."
+  ]
+}
