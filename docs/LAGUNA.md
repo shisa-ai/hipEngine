@@ -3527,7 +3527,7 @@ stays **48.987 tok/s / 20.414 ms/token**, still **0.414 ms / 2.068% throughput**
 from 50 tok/s. Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-{design,correctness,rejected}.json`.
 
-### D14 head norm + RoPE + BF16 KV append (exact, selected)
+### D14 head norm + RoPE + BF16 KV append (exact, rejected and removed)
 
 The retained D12 traces expose a safer attention boundary than D13's doubled
 Q5 workgroup. Every layer launches the local256 F32 head RMSNorm+partial-RoPE
@@ -3575,7 +3575,7 @@ clean short/512/1K/near-4K family/kernel-sum/span/child rows at 727 dispatches,
 and the complete category non-regression gate precede promotion. Any failure
 removes the route.
 
-The implementation now clears correctness admission while remaining explicit-
+The implementation cleared correctness admission while remaining explicit-
 only. The production global and SWA fixtures match every F32 query/key bit,
 BF16 K/V bit, live count, absolute position, and eviction bit through global
 255/256/4095 and SWA 511/512/513/1024 with permuted/reversed physical offsets.
@@ -3586,10 +3586,30 @@ layers 1/47 improve **41.11-41.54%**. The shared-weight 69-token plus 16-step
 gate matches all 48 hidden rows, complete logits/argmax, final hidden, all K/V
 and `KVLiveSpans`, reset/re-prefill, and lifecycle; tracked ownership returns
 **40,455,911,848 bytes / 1,496 allocations** to zero. The 92-test focused bundle,
-CPU fixtures, Ruff, compileall, and lineage checks pass. These are correctness
-and isolated execution results, not retention: task #299 still owns clean four-
-context and complete category adjudication. Evidence:
-`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-{design,correctness}.json`.
+CPU fixtures, Ruff, compileall, and lineage checks cleared correctness admission.
+
+Clean cache-only short/512/1K/near-4K profiles preserve exact IDs, finite logits,
+teardown, and **775 -> 727 dispatches/token**. The fused body improves
+**33.71%/40.21%/32.13%/34.45%**, its inclusive boundary improves
+**60.60%/62.45%/57.30%/58.72%**, complete kernel sum improves
+**0.430%/1.478%/0.072%/0.116%**, span improves
+**1.146%/2.717%/0.851%/0.485%**, and profiled-child throughput improves
+**1.905%/3.639%/0.517%/1.150%**. Thus every mechanical row admits the complete
+category gate.
+
+The two-pair counterbalanced category result nevertheless rejects promotion.
+Every category's h16/h32 decode improves and aggregate h32 decode moves
+**48.964 -> 49.274 tok/s (+0.634%)**, but aggregate h16/h32 E2E changes
+**6.921 -> 6.911 (-0.140%)** / **12.113 -> 12.107 (-0.050%)**, unchanged
+prefill changes **-0.263%**, and median TTFT regresses **0.798%**. Code regresses
+both E2E horizons **0.343%/0.248%**; general-English and general-Japanese regress
+h16 E2E **0.101%/0.021%**. Per the frozen any-failure rule, the HIP body/export,
+ctypes wrappers, registry keys, runtime selector/plan branch, backend aliases,
+and candidate tests are removed. The registered head+writer chain is again the
+only route. Canonical D12 remains **48.987 tok/s / 20.414 ms/token**; the
+candidate's diagnostic **49.274 tok/s / 20.295 ms/token** is not retained.
+Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-{design,correctness,rejected}.json`.
 
 ## Laguna DFlash Follow-on Plan
 

@@ -1223,8 +1223,10 @@ h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
 span/child rows, but failed the clean short kernel-sum gate. The exact D13 Q5
 shared pair+SiLU leaf shortened its local launch window but regressed total
-kernel sum at every context. All three candidates are removed. Clean measured
-D12 implementation revision
+kernel sum at every context. D14's exact head/RoPE+KV composite passed every
+mechanical row and improved every category's decode, but failed aggregate and
+per-category E2E/TTFT non-regression. All four candidates are removed. Clean
+measured D12 implementation revision
 `338d3afca01aa884ff3a68e0175566bc51e5ceae` runs the pinned
 `Laguna-S-2.1-UD-Q2_K_XL.gguf`
 (SHA-256 `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
@@ -1664,6 +1666,28 @@ mechanical gate therefore fails, the category suite is skipped, and the kernel,
 wrapper/registry, runtime selector, and tests are removed. D12 remains
 **48.987 tok/s / 20.414 ms/token**. [D13 rejection
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-rejected.json).
+
+##### Laguna Q2 XL c=1 decode D14 (rejected and removed)
+
+D14 tested separately registered global/SWA c=1 head-RMSNorm+partial-RoPE+BF16
+KV-write composites. Synthetic page/ring transitions and the complete
+shared-weight gate preserve every query/key, K/V, `KVLiveSpans`, hidden/logit,
+reset, and lifecycle bit. Actual global/SWA endpoints improve the inclusive
+two-launch boundary **33.76-41.54%**, and cached tracing confirms
+local256/VGPR16/dynamic-LDS1024/scratch0 at 56/80 blocks.
+
+Clean short/512/1K/near-4K profiles improve the fused body
+**32.13-40.21%**, inclusive boundary **57.30-62.45%**, complete kernel sum
+**0.072-1.478%**, span **0.485-2.717%**, and profiled-child throughput
+**0.517-3.639%**, with exact IDs/lifecycle and **775 -> 727 dispatches/token**.
+The full suite still fails the frozen non-regression gate. Aggregate h32 decode
+improves **48.964 -> 49.274 tok/s (+0.634%)**, and every category's decode is
+positive, but h16/h32 E2E changes **-0.140%/-0.050%**, TTFT changes **+0.798%**,
+code regresses both E2E horizons, and general-English/general-Japanese regress
+h16 E2E. The kernel/wrappers/registry/runtime selector/tests are removed; the
+head+writer chain is again the only route. Canonical D12 remains
+**48.987 tok/s / 20.414 ms/token**. [D14 rejection
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-rejected.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
