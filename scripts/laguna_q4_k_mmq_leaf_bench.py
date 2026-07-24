@@ -1,0 +1,608 @@
+#!/usr/bin/env python3
+"""Benchmark Laguna selected Q4_K gate/up leaves on actual weights and routes.
+
+The screen keeps one layer's raw GGUF and resident T16 gate/up tensors live
+together only to produce a counterbalanced leaf comparison.  This temporary
+one-layer allocation is not a proposed runtime sidecar.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import statistics
+import subprocess
+import sys
+from typing import Any, Callable, Sequence
+
+import numpy as np
+
+from hipengine.core.hip import get_hip_runtime
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+    memory_stats,
+    reset_memory_stats,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    build_gguf_q4_k_q8_1_selected_prefill,
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q8_1_mmq_ds4_pack_bf16,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+    build_gguf_q4_k_t16_selected_prefill,
+    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+    build_gguf_t16_selected_gemv,
+    gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+)
+from hipengine.loading.gguf import GGUFReader
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
+DEFAULT_CACHE = Path(
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1"
+)
+DEFAULT_ROUTING = Path("/tmp/laguna-lap0-routing-8d26a9562.json")
+DEFAULT_OUTPUT = Path("/tmp/laguna-q4-k-mmq-leaf.raw.json")
+MODEL_SHA256 = "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+MODES = ("retained-direct", "t16-wmma", "raw-mmq32")
+HIDDEN = 3_072
+OUT_FEATURES = 1_024
+EXPERTS = 256
+TOP_K = 10
+Q8_DS4_BYTES_PER_128 = 144
+
+
+def _parse_csv_ints(value: str) -> tuple[int, ...]:
+    parsed = tuple(int(item) for item in value.split(",") if item.strip())
+    if not parsed or any(item <= 0 for item in parsed):
+        raise argparse.ArgumentTypeError("expected comma-separated positive integers")
+    if tuple(sorted(set(parsed))) != parsed:
+        raise argparse.ArgumentTypeError("values must be sorted and unique")
+    return parsed
+
+
+def _parse_modes(value: str) -> tuple[str, ...]:
+    parsed = tuple(item.strip() for item in value.split(",") if item.strip())
+    if not parsed or len(set(parsed)) != len(parsed):
+        raise argparse.ArgumentTypeError("modes must be non-empty and unique")
+    unknown = tuple(mode for mode in parsed if mode not in MODES)
+    if unknown:
+        raise argparse.ArgumentTypeError(f"unknown modes: {unknown}")
+    return parsed
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("model", nargs="?", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--routing-json", type=Path, default=DEFAULT_ROUTING)
+    parser.add_argument("--rows", type=_parse_csv_ints, default=(256, 512))
+    parser.add_argument("--layer", type=int, default=1)
+    parser.add_argument("--modes", type=_parse_modes, default=MODES)
+    parser.add_argument("--warmups", type=int, default=2)
+    parser.add_argument("--samples", type=int, default=7)
+    parser.add_argument("--burst", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=20260724)
+    parser.add_argument("--compiler-version-file", type=Path)
+    parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    return parser.parse_args()
+
+
+def _git_revision() -> str | None:
+    try:
+        return subprocess.check_output(
+            ("git", "rev-parse", "HEAD"), cwd=ROOT, text=True
+        ).strip()
+    except Exception:
+        return None
+
+
+def _tracked_status() -> list[str]:
+    try:
+        out = subprocess.check_output(
+            ("git", "status", "--short", "--untracked-files=no"),
+            cwd=ROOT,
+            text=True,
+        )
+    except Exception:
+        return []
+    return [line for line in out.splitlines() if line]
+
+
+def _bf16_bits(values: np.ndarray) -> np.ndarray:
+    bits = np.asarray(values, dtype=np.float32).view(np.uint32)
+    rounded = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+    return np.ascontiguousarray((rounded >> 16).astype(np.uint16))
+
+
+def _bf16_to_f32(values: np.ndarray) -> np.ndarray:
+    return (np.asarray(values, dtype=np.uint16).astype(np.uint32) << 16).view(
+        np.float32
+    )
+
+
+def _load_counts(
+    payload: dict[str, Any], *, rows: int, layer: int
+) -> np.ndarray:
+    try:
+        record = payload["routing"][str(rows)]["patterns"]["natural"]["layers"][
+            str(layer)
+        ]
+    except KeyError as exc:
+        raise ValueError(
+            f"routing artifact has no natural rows={rows}, layer={layer}"
+        ) from exc
+    if (
+        record.get("per_expert_counts_encoding")
+        != "uint16_le_dense_expert_id_order_base64"
+    ):
+        raise ValueError("unsupported per-expert count encoding")
+    counts = np.frombuffer(
+        base64.b64decode(record["per_expert_counts_u16_le_base64"]),
+        dtype="<u2",
+    ).astype(np.int64)
+    if counts.shape != (EXPERTS,):
+        raise ValueError(f"expected {EXPERTS} expert counts, got {counts.shape}")
+    if int(counts.sum()) != rows * TOP_K:
+        raise ValueError("natural route count does not equal rows * top_k")
+    return counts
+
+
+def _tile_metadata(
+    counts: np.ndarray, tile_rows: int
+) -> tuple[np.ndarray, np.ndarray, int]:
+    padded = ((counts + tile_rows - 1) // tile_rows) * tile_rows
+    starts = np.zeros(counts.size + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(padded)
+    tile_expert = np.repeat(
+        np.arange(counts.size, dtype=np.int64), padded // tile_rows
+    )
+    total_rows = int(starts[-1])
+    if tile_expert.size != total_rows // tile_rows:
+        raise AssertionError("tile metadata is inconsistent")
+    return starts, np.ascontiguousarray(tile_expert), total_rows
+
+
+def _stable_compact_to_source(counts: np.ndarray) -> np.ndarray:
+    """Realize the recorded expert degrees as stable, valid top-k source rows."""
+
+    rows = int(counts.sum()) // TOP_K
+    remaining = counts.astype(np.int64, copy=True)
+    by_expert: list[list[int]] = [[] for _ in range(counts.size)]
+    expert_ids = np.arange(counts.size, dtype=np.int64)
+    for source_row in range(rows):
+        chosen = np.lexsort((expert_ids, -remaining))[:TOP_K]
+        if np.any(remaining[chosen] <= 0):
+            raise ValueError("recorded expert counts do not admit a top-k replay")
+        for expert in chosen:
+            by_expert[int(expert)].append(source_row)
+        remaining[chosen] -= 1
+    if np.any(remaining):
+        raise ValueError("recorded expert counts were not exhausted")
+    compact_to_source = np.asarray(
+        [row for expert_rows in by_expert for row in expert_rows],
+        dtype=np.int64,
+    )
+    replayed = np.bincount(compact_to_source, minlength=rows)
+    if compact_to_source.size != rows * TOP_K or np.any(replayed != TOP_K):
+        raise AssertionError("reconstructed routing is not a valid top-k assignment")
+    return np.ascontiguousarray(compact_to_source)
+
+
+def _route_metadata(counts: np.ndarray) -> dict[str, np.ndarray | int]:
+    starts = np.zeros(counts.size + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+    compact_rows = int(starts[-1])
+    compact_experts = np.repeat(
+        np.arange(counts.size, dtype=np.int64), counts
+    )
+    compact_to_source = _stable_compact_to_source(counts)
+    starts16, tile_expert16, total16 = _tile_metadata(counts, 16)
+    starts32, tile_expert32, total32 = _tile_metadata(counts, 32)
+    return {
+        "starts": starts,
+        "compact_experts": np.ascontiguousarray(compact_experts),
+        "compact_to_source": np.ascontiguousarray(compact_to_source),
+        "starts16": starts16,
+        "tile_expert16": tile_expert16,
+        "total16": total16,
+        "starts32": starts32,
+        "tile_expert32": tile_expert32,
+        "total32": total32,
+    }
+
+
+def _cache_tiles(
+    cache_root: Path, *, layer: int, slot: str
+) -> tuple[np.ndarray, dict[str, Any]]:
+    manifest = json.loads((cache_root / "manifest.json").read_text(encoding="utf-8"))
+    entry = manifest["entries"][f"layers.{layer}.{slot}"]
+    if entry["layout"] != "gguf_q4_k_t16_v1":
+        raise ValueError(f"{slot} does not use the expected Q4_K T16 layout")
+    allocation = entry["allocations"]["tiles"]
+    tiles = np.load(cache_root / allocation["file"], mmap_mode="r")
+    if tuple(tiles.shape) != (EXPERTS, OUT_FEATURES // 16, HIDDEN // 256, 2368):
+        raise ValueError(f"unexpected {slot} T16 shape: {tiles.shape}")
+    return tiles, entry
+
+
+def _upload(runtime, values: np.ndarray):
+    array = np.asarray(values)
+    if not array.flags.c_contiguous:
+        array = np.ascontiguousarray(array)
+    buffer = malloc(array.nbytes, runtime=runtime)
+    copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+    return buffer
+
+
+def _event_ms(runtime, fn: Callable[[], None], *, burst: int) -> float:
+    start = runtime.event_create()
+    end = runtime.event_create()
+    try:
+        runtime.event_record(start)
+        for _ in range(burst):
+            fn()
+        runtime.event_record(end)
+        runtime.event_synchronize(end)
+        return float(runtime.event_elapsed_time_ms(start, end)) / burst
+    finally:
+        runtime.event_destroy(end)
+        runtime.event_destroy(start)
+
+
+def _mode_order(modes: Sequence[str], sample: int) -> tuple[str, ...]:
+    offset = sample % len(modes)
+    return tuple(modes[offset:]) + tuple(modes[:offset])
+
+
+def main() -> None:
+    args = _parse_args()
+    if args.layer <= 0:
+        raise SystemExit("--layer must name a sparse layer above zero")
+    if args.warmups < 0 or args.samples <= 0 or args.burst <= 0:
+        raise SystemExit("warmups must be non-negative; samples/burst must be positive")
+    if args.compiler_version_file is not None:
+        import os
+
+        os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
+            args.compiler_version_file
+        )
+
+    routing = json.loads(args.routing_json.read_text(encoding="utf-8"))
+    reader = GGUFReader(args.model)
+    raw_gate = np.asarray(
+        reader.tensor_data(f"blk.{args.layer}.ffn_gate_exps.weight")
+    )
+    raw_up = np.asarray(reader.tensor_data(f"blk.{args.layer}.ffn_up_exps.weight"))
+    expected_raw_shape = (EXPERTS, OUT_FEATURES, HIDDEN * 144 // 256)
+    if (
+        raw_gate.shape != expected_raw_shape
+        or raw_up.shape != expected_raw_shape
+        or raw_gate.dtype != np.uint8
+        or raw_up.dtype != np.uint8
+    ):
+        raise ValueError(
+            f"expected raw Q4_K gate/up shape {expected_raw_shape}, got "
+            f"{raw_gate.shape}/{raw_up.shape}"
+        )
+    tiles_gate, gate_entry = _cache_tiles(
+        args.repacked_cache, layer=args.layer, slot="ffn_gate_exps"
+    )
+    tiles_up, up_entry = _cache_tiles(
+        args.repacked_cache, layer=args.layer, slot="ffn_up_exps"
+    )
+
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    mmq_library = build_gguf_q4_k_q8_1_selected_prefill(
+        load=True, require_cached=args.require_cached_build
+    )
+    wmma_library = build_gguf_q4_k_t16_selected_prefill(
+        load=True, require_cached=args.require_cached_build
+    )
+    direct_library = build_gguf_t16_selected_gemv(
+        load=True, require_cached=args.require_cached_build
+    )
+
+    resident_buffers = []
+    results: dict[str, Any] = {}
+    try:
+        raw_gate_dev = _upload(runtime, raw_gate)
+        raw_up_dev = _upload(runtime, raw_up)
+        tiles_gate_dev = _upload(runtime, tiles_gate)
+        tiles_up_dev = _upload(runtime, tiles_up)
+        resident_buffers.extend(
+            (raw_gate_dev, raw_up_dev, tiles_gate_dev, tiles_up_dev)
+        )
+
+        for rows in args.rows:
+            counts = _load_counts(routing, rows=rows, layer=args.layer)
+            metadata = _route_metadata(counts)
+            compact_rows = int(metadata["starts"][-1])
+            rng = np.random.default_rng(args.seed + rows + args.layer * 1000)
+            source_x = _bf16_bits(
+                rng.normal(0.0, 0.55, size=(rows, HIDDEN)).astype(np.float32)
+            )
+            compact_x = np.ascontiguousarray(
+                source_x[np.asarray(metadata["compact_to_source"])]
+            )
+            out_shape = (compact_rows, OUT_FEATURES)
+            out_bytes = compact_rows * OUT_FEATURES * np.dtype(np.uint16).itemsize
+            q8_bytes = rows * (HIDDEN // 128) * Q8_DS4_BYTES_PER_128
+
+            shape_buffers = []
+            try:
+                source_x_dev = _upload(runtime, source_x)
+                compact_x_dev = _upload(runtime, compact_x)
+                selected_dev = _upload(runtime, metadata["compact_experts"])
+                starts_dev = _upload(runtime, metadata["starts"])
+                starts16_dev = _upload(runtime, metadata["starts16"])
+                tile_expert16_dev = _upload(runtime, metadata["tile_expert16"])
+                starts32_dev = _upload(runtime, metadata["starts32"])
+                tile_expert32_dev = _upload(runtime, metadata["tile_expert32"])
+                compact_to_source_dev = _upload(
+                    runtime, metadata["compact_to_source"]
+                )
+                q8_dev = malloc(q8_bytes, runtime=runtime)
+                out_a_dev = malloc(out_bytes, runtime=runtime)
+                out_b_dev = malloc(out_bytes, runtime=runtime)
+                out_dual_dev = malloc(2 * out_bytes, runtime=runtime)
+                shape_buffers.extend(
+                    (
+                        source_x_dev,
+                        compact_x_dev,
+                        selected_dev,
+                        starts_dev,
+                        starts16_dev,
+                        tile_expert16_dev,
+                        starts32_dev,
+                        tile_expert32_dev,
+                        compact_to_source_dev,
+                        q8_dev,
+                        out_a_dev,
+                        out_b_dev,
+                        out_dual_dev,
+                    )
+                )
+
+                def retained_direct() -> None:
+                    gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
+                        source_x_dev.ptr,
+                        selected_dev.ptr,
+                        tiles_gate_dev.ptr,
+                        tiles_up_dev.ptr,
+                        out_a_dev.ptr,
+                        out_b_dev.ptr,
+                        rows,
+                        compact_rows,
+                        EXPERTS,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        library=direct_library,
+                        runtime=runtime,
+                    )
+
+                def t16_wmma() -> None:
+                    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+                        compact_x_dev.ptr,
+                        starts_dev.ptr,
+                        starts16_dev.ptr,
+                        tile_expert16_dev.ptr,
+                        tiles_gate_dev.ptr,
+                        tiles_up_dev.ptr,
+                        out_dual_dev.ptr,
+                        compact_rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total16"]),
+                        library=wmma_library,
+                        runtime=runtime,
+                    )
+
+                def raw_mmq32() -> None:
+                    gguf_q8_1_mmq_ds4_pack_bf16(
+                        source_x_dev.ptr,
+                        q8_dev.ptr,
+                        rows,
+                        HIDDEN,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+                        q8_dev.ptr,
+                        compact_to_source_dev.ptr,
+                        starts_dev.ptr,
+                        starts32_dev.ptr,
+                        tile_expert32_dev.ptr,
+                        raw_gate_dev.ptr,
+                        raw_up_dev.ptr,
+                        out_dual_dev.ptr,
+                        compact_rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total32"]),
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+
+                launchers = {
+                    "retained-direct": retained_direct,
+                    "t16-wmma": t16_wmma,
+                    "raw-mmq32": raw_mmq32,
+                }
+                for _ in range(args.warmups):
+                    for mode in args.modes:
+                        launchers[mode]()
+                runtime.device_synchronize()
+
+                samples: dict[str, list[float]] = {
+                    mode: [] for mode in args.modes
+                }
+                for sample in range(args.samples):
+                    for mode in _mode_order(args.modes, sample):
+                        samples[mode].append(
+                            _event_ms(runtime, launchers[mode], burst=args.burst)
+                        )
+
+                sanity: dict[str, Any] = {}
+                for mode in args.modes:
+                    launchers[mode]()
+                    runtime.device_synchronize()
+                    if mode == "retained-direct":
+                        host_a = np.empty(out_shape, dtype=np.uint16)
+                        host_b = np.empty(out_shape, dtype=np.uint16)
+                        copy_device_to_host(
+                            host_array_ptr(host_a), out_a_dev, runtime=runtime
+                        )
+                        copy_device_to_host(
+                            host_array_ptr(host_b), out_b_dev, runtime=runtime
+                        )
+                        values = np.concatenate((host_a, host_b), axis=1)
+                    else:
+                        values = np.empty(
+                            (compact_rows, 2 * OUT_FEATURES), dtype=np.uint16
+                        )
+                        copy_device_to_host(
+                            host_array_ptr(values), out_dual_dev, runtime=runtime
+                        )
+                    values_f32 = _bf16_to_f32(values)
+                    sanity[mode] = {
+                        "finite": bool(np.isfinite(values_f32).all()),
+                        "checksum_f64": float(values_f32.astype(np.float64).sum()),
+                        "max_abs": float(np.max(np.abs(values_f32))),
+                    }
+
+                medians = {
+                    mode: statistics.median(values)
+                    for mode, values in samples.items()
+                }
+                shape_result: dict[str, Any] = {
+                    "rows": rows,
+                    "compact_rows": compact_rows,
+                    "active_experts": int(np.count_nonzero(counts)),
+                    "max_expert_rows": int(counts.max()),
+                    "route_count_sha256": hashlib.sha256(
+                        counts.astype("<u2").tobytes()
+                    ).hexdigest(),
+                    "padding": {
+                        "t16_rows": int(metadata["total16"]),
+                        "t16_factor": int(metadata["total16"]) / compact_rows,
+                        "mmq32_rows": int(metadata["total32"]),
+                        "mmq32_factor": int(metadata["total32"]) / compact_rows,
+                    },
+                    "samples_ms": samples,
+                    "median_ms": medians,
+                    "sanity": sanity,
+                }
+                if "retained-direct" in medians:
+                    shape_result["speedup_vs_retained"] = {
+                        mode: medians["retained-direct"] / value
+                        for mode, value in medians.items()
+                        if mode != "retained-direct"
+                    }
+                results[str(rows)] = shape_result
+                print(
+                    f"rows={rows} active={shape_result['active_experts']} "
+                    f"max={shape_result['max_expert_rows']} "
+                    + " ".join(
+                        f"{mode}={medians[mode]:.3f}ms"
+                        for mode in args.modes
+                    ),
+                    flush=True,
+                )
+            finally:
+                for buffer in reversed(shape_buffers):
+                    free(buffer, runtime=runtime)
+    finally:
+        for buffer in reversed(resident_buffers):
+            free(buffer, runtime=runtime)
+
+    stats = memory_stats()
+    artifact = {
+        "schema": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "kind": "hipengine_laguna_q4_k_mmq_actual_leaf",
+        "status": "diagnostic",
+        "performance_claim": False,
+        "scope": "actual one-layer weights plus natural per-expert count replay",
+        "model": {
+            "path": str(args.model.resolve()),
+            "sha256": MODEL_SHA256,
+            "layer": args.layer,
+            "gate_tensor": f"blk.{args.layer}.ffn_gate_exps.weight",
+            "up_tensor": f"blk.{args.layer}.ffn_up_exps.weight",
+        },
+        "routing": {
+            "artifact": str(args.routing_json.resolve()),
+            "rows": list(args.rows),
+            "top_k": TOP_K,
+            "qualification": (
+                "Per-expert counts are the recorded natural counts. The leaf "
+                "reconstructs a deterministic lane order because raw selected "
+                "IDs were intentionally not persisted."
+            ),
+        },
+        "layouts": {
+            "raw_q4_k_bytes": int(raw_gate.nbytes + raw_up.nbytes),
+            "t16_bytes": int(tiles_gate.nbytes + tiles_up.nbytes),
+            "t16_entries": {
+                "gate": gate_entry,
+                "up": up_entry,
+            },
+            "temporary_side_by_side_leaf_only": True,
+        },
+        "protocol": {
+            "modes": list(args.modes),
+            "warmups": args.warmups,
+            "samples": args.samples,
+            "burst": args.burst,
+            "timing": "counter-rotated HIP-event elapsed time",
+            "raw_mmq32_inclusive": "BF16 producer-row DS4 pack plus one dual gate/up MMQ launch",
+            "activation_pack": "once per producer row; compact rows index producer Q8 blocks",
+        },
+        "repo": {
+            "revision": _git_revision(),
+            "tracked_status": _tracked_status(),
+        },
+        "memory": {
+            "tracked_peak_bytes": stats["peak_allocated_bytes"],
+            "tracked_after_bytes": stats["current_allocated_bytes"],
+        },
+        "results": results,
+        "notes": [
+            "The retained-direct mode is the exact production gate/up body named by LAP-0.",
+            "T16 WMMA is a diagnostic layout/body control, not the shipping route.",
+            "This leaf does not select a quality policy or change runtime dispatch.",
+        ],
+    }
+    if not all(
+        mode["finite"]
+        for shape in results.values()
+        for mode in shape["sanity"].values()
+    ):
+        artifact["status"] = "failed_nonfinite"
+        raise SystemExit("non-finite output in leaf screen")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(json.dumps(artifact, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

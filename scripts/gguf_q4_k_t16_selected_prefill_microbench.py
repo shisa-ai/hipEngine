@@ -11,6 +11,11 @@ It builds a synthetic compact-selected MoE fixture and can time either:
 * ``q8-1-ds4-dot``: the same scalar dot prototype fed by llama.cpp-style
   DS4 ``block_q8_1_mmq`` activation blocks, isolating layout effects before a
   tiled WMMA/MMQ port.
+* ``q8-1-ds4-mmq32``: the source-faithful Vulkan-style 32x32 packed-dot tile.
+  One 128-thread/four-wave block stages and reuses both Q4_K weights and Q8_1
+  activations at every K32 step.
+* ``q8-1-ds4-mmq32-pack``: the same MMQ32 body with BF16->DS4 activation
+  packing included in the timed loop.
 * ``q8-1-ds4-wmma``: a first wave32 integer-WMMA prototype over the DS4 layout
   and raw Q4_K nibbles. It validates the MMA decomposition before a wider
   shared-memory tiled MMQ port.
@@ -101,17 +106,21 @@ def _make_activation(rows: int, hidden: int, *, seed: int) -> np.ndarray:
 
 
 def _make_uniform_compact_metadata(
-    experts: int, rows_per_expert: int
+    experts: int, rows_per_expert: int, *, tile_rows: int = 16
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
     counts = np.full(experts, rows_per_expert, dtype=np.int64)
     expert_start_compact = np.zeros(experts + 1, dtype=np.int64)
     expert_start_compact[1:] = np.cumsum(counts)
 
-    padded_counts = ((counts + 15) // 16) * 16
+    padded_counts = ((counts + tile_rows - 1) // tile_rows) * tile_rows
     expert_start_wmma = np.zeros(experts + 1, dtype=np.int64)
     expert_start_wmma[1:] = np.cumsum(padded_counts)
     tile_expert = np.asarray(
-        [expert for expert, padded in enumerate(padded_counts) for _ in range(int(padded) // 16)],
+        [
+            expert
+            for expert, padded in enumerate(padded_counts)
+            for _ in range(int(padded) // tile_rows)
+        ],
         dtype=np.int64,
     )
     compact_rows = int(expert_start_compact[-1])
@@ -153,6 +162,8 @@ def parse_args() -> argparse.Namespace:
             "selected-wmma",
             "q8-1-dot",
             "q8-1-ds4-dot",
+            "q8-1-ds4-mmq32",
+            "q8-1-ds4-mmq32-pack",
             "q8-1-ds4-wmma",
             "q8-1-ds4-wmma32",
             "q8-1-ds4-wmma32-pack",
@@ -185,6 +196,11 @@ def main() -> None:
         raise SystemExit("--hidden must be divisible by 256 for Q4_K")
     if args.out_features_a % 16 or args.out_features_b % 16:
         raise SystemExit("--out-features-a/b must be divisible by 16")
+    if (
+        args.mode in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}
+        and (args.out_features_a % 32 or args.out_features_b % 32)
+    ):
+        raise SystemExit("--out-features-a/b must be divisible by 32 for MMQ32")
     if args.experts <= 0 or args.rows_per_expert <= 0:
         raise SystemExit("--experts and --rows-per-expert must be positive")
     if args.iters <= 0 or args.warmup < 0:
@@ -217,10 +233,50 @@ def main() -> None:
     variant_extra: dict[str, Any] = {}
     launch: Callable[[], None]
     try:
+        compact_to_source = np.arange(compact_rows, dtype=np.int64)
+        compact_to_source_dev, _ = _copy_to_device(
+            compact_to_source,
+            runtime=runtime,
+        )
         start_compact_dev, _ = _copy_to_device(expert_start_compact, runtime=runtime)
         start_wmma_dev, _ = _copy_to_device(expert_start_wmma, runtime=runtime)
         tile_expert_dev, _ = _copy_to_device(tile_expert, runtime=runtime)
-        bufs.extend((start_compact_dev, start_wmma_dev, tile_expert_dev))
+        bufs.extend(
+            (
+                compact_to_source_dev,
+                start_compact_dev,
+                start_wmma_dev,
+                tile_expert_dev,
+            )
+        )
+        row_tile_start_dev = start_wmma_dev
+        row_tile_expert_dev = tile_expert_dev
+        row_tile_total_rows = wmma_total_rows
+        if args.mode in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}:
+            (
+                _,
+                expert_start_mmq32,
+                mmq32_tile_expert,
+                mmq32_compact_rows,
+                mmq32_total_rows,
+            ) = _make_uniform_compact_metadata(
+                args.experts,
+                args.rows_per_expert,
+                tile_rows=32,
+            )
+            assert mmq32_compact_rows == compact_rows
+            start_mmq32_dev, _ = _copy_to_device(
+                expert_start_mmq32,
+                runtime=runtime,
+            )
+            mmq32_tile_expert_dev, _ = _copy_to_device(
+                mmq32_tile_expert,
+                runtime=runtime,
+            )
+            bufs.extend((start_mmq32_dev, mmq32_tile_expert_dev))
+            row_tile_start_dev = start_mmq32_dev
+            row_tile_expert_dev = mmq32_tile_expert_dev
+            row_tile_total_rows = mmq32_total_rows
 
         if args.mode in {"selected-wmma", "q8-1-ds4-t16-wmma32", "q8-1-ds4-t16-wmma32-pack"}:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
@@ -344,6 +400,7 @@ def main() -> None:
         else:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
                 build_gguf_q4_k_q8_1_selected_prefill,
+                gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out,
@@ -409,7 +466,10 @@ def main() -> None:
                     )
 
             else:
-                pack_in_loop = args.mode == "q8-1-ds4-wmma32-pack"
+                pack_in_loop = args.mode in {
+                    "q8-1-ds4-mmq32-pack",
+                    "q8-1-ds4-wmma32-pack",
+                }
                 if pack_in_loop:
                     q8_ds4 = np.empty((compact_rows, args.hidden // 128, 144), dtype=np.uint8)
                     q8_ds4_dev = malloc(q8_ds4.nbytes, runtime=runtime)
@@ -483,7 +543,11 @@ def main() -> None:
                         "q8-1-ds4-wmma32-ldspack",
                         "q8-1-ds4-wmma32-lds",
                     }
-                    if args.mode == "q8-1-ds4-wmma32-lds":
+                    if args.mode in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}:
+                        ds4_launcher = (
+                            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+                        )
+                    elif args.mode == "q8-1-ds4-wmma32-lds":
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out
                     elif args.mode == "q8-1-ds4-wmma32-ldspack":
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out
@@ -504,10 +568,16 @@ def main() -> None:
                         "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
                         "weight_layout": "raw_gguf_q4_k",
                         "integer_mma": use_wmma,
+                        "packed_integer_dot": args.mode
+                        in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"},
                         "prototype_note": (
-                            "DS4 activation layout with GPU BF16->Q8_1 pack plus wave32 integer-WMMA32 dot tiles in the timed loop; diagnostic runtime-viability probe only."
+                            "Source-faithful 32x32 packed-dot MMQ with GPU BF16->Q8_1 pack in the timed loop and complete per-K32 Q4/Q8 LDS tile reuse over raw Q4_K source blocks."
                             if pack_in_loop
                             else (
+                                "Source-faithful 32x32 packed-dot MMQ with complete per-K32 Q4/Q8 LDS tile reuse over raw Q4_K source blocks."
+                                if args.mode
+                                in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}
+                                else (
                                 "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged packed Q4_K qs bytes; still a diagnostic microbench, not a full runtime MMQ integration."
                                 if args.mode == "q8-1-ds4-wmma32-ldspack"
                                 else (
@@ -518,6 +588,7 @@ def main() -> None:
                                         if use_wmma
                                         else "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation."
                                     )
+                                )
                                 )
                             )
                         ),
@@ -538,9 +609,15 @@ def main() -> None:
                             )
                         ds4_launcher(
                             q8_ds4_dev.ptr,
+                            *(
+                                (compact_to_source_dev.ptr,)
+                                if args.mode
+                                in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}
+                                else ()
+                            ),
                             start_compact_dev.ptr,
-                            start_wmma_dev.ptr,
-                            tile_expert_dev.ptr,
+                            row_tile_start_dev.ptr,
+                            row_tile_expert_dev.ptr,
                             qweight_a_dev.ptr,
                             qweight_b_dev.ptr,
                             out_dev.ptr,
@@ -549,7 +626,7 @@ def main() -> None:
                             args.out_features_a,
                             args.out_features_b,
                             args.experts,
-                            wmma_total_rows,
+                            row_tile_total_rows,
                             stream=stream,
                             library=library,
                             runtime=runtime,
@@ -599,6 +676,7 @@ def main() -> None:
                 "rows_per_expert": args.rows_per_expert,
                 "compact_rows": compact_rows,
                 "wmma_total_rows": wmma_total_rows,
+                "row_tile_total_rows": row_tile_total_rows,
                 "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
             },
             "timing": {
