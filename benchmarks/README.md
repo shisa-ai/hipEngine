@@ -1727,6 +1727,21 @@ because it stays below that crossover and still needs **83.75%** more
 diagnostic throughput to match Vulkan. Explicit tile16 disable retains P2.1;
 other backends do not inherit it. [P2 retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json) and [tile16 retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-retained.json).
 
+A final same-model/same-context natural-greedy completion audit now supplies the
+previously missing cross-engine timing boundary. It uses all **18** category and
+heldout prompts, h16/h32, two repetitions, context 4096, and normalizes both
+engines to synchronized post-TTFT transitions: hipEngine
+`decode_forward_calls/decode_seconds` versus llama.cpp Vulkan
+`sum(predicted_n - 1) / sum(predicted_ms)`. Retained hipEngine measures
+**51.839/51.432 tok/s** at h16/h32; Vulkan measures
+**64.213/64.336 tok/s**. hipEngine is therefore **19.27%/20.06% slower** and
+still needs **23.87%/25.09%** more throughput; Vulkan-beating completion is not
+achieved. The unavoidable KV difference is disclosed (hipEngine BF16
+`KVLiveSpans`, Vulkan F16 because this device reports no BF16 support). All 72
+Vulkan native prompt/predicted timing rows are valid; SSE `return_tokens` omits
+one or more token entries for 18 rows, so returned-array completeness is not
+used as the timing gate. [Matched completion audit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json).
+
 ##### Laguna Q2 XL c=1 decode D13 (rejected and removed)
 
 D13 tested an exact local256 Q5 shared gate/up pair+SiLU composite. Synthetic,

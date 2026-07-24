@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-24
 
+- [matched completion audit, Vulkan still faster] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / all 18 natural-greedy category+heldout prompts at context 4096 and transition-normalized h16/h32: retained hipEngine **51.839/51.432 tok/s** versus llama.cpp Vulkan **64.213/64.336 tok/s** (**-19.27%/-20.06%**), requiring **+23.87%/+25.09%** more hipEngine throughput; correctness/lifecycle/default selectors remain exact, but Vulkan-beating completion fails; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json`.
+
 - [rejected and removed gfx1100 Laguna Q2 XL P3 Q5 T16 replacement] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained raw wave32x2 -> bit-lossless T16 local128 tile16 regresses actual first/last global/SWA attention-output events **16.46-20.51%**, and an exact local32 T16 wave32x2 sibling still regresses events **5.28-9.07%** plus synchronized wall **9.48-11.73%** while raising VGPR **96 -> 104**; candidate source/dispatch/tests are removed, P3 closes, P4 has no new premise, and canonical h32 remains **51.436 tok/s**; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json`.
 
 - [rejected and removed gfx1100 Laguna Q2 XL P1 raw-IQ2 row4] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained exact tile2 -> exact tile4 is BF16-bit equal but mixed/neutral on actual layers (**-1.41% to +0.89%** event/wall), while source-backed Vulkan nested-FMA row4 cuts VGPR **136 -> 72** yet regresses actual events/wall **8.38-10.90%**; both candidates are removed before model/category gates, P1 closes, and canonical h32 remains **51.436 tok/s**; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq2-row4-rejected.json`.

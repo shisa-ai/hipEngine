@@ -5,7 +5,9 @@ exact split attention are implemented and retained as gfx1100 defaults. Both
 P1 IQ3, raw-Q5, and raw-IQ2 lanes plus P2.2 online FP32 partials are rejected.
 The exact SWA tile16 score producer is retained as the gfx1100 default from live
 count 257; P1 and P2 are closed. P3's bit-lossless Q5 T16 replacement screen is
-rejected, and P4 is not reopened without the required new submission premise.
+rejected. The matched completion audit still loses to Vulkan by 20.06% at h32
+and reopens P4 only for a new independently winning P2-derived fused body before
+any genuinely new submission owner.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -177,9 +179,26 @@ effect.
 | Right-sized context vs 4096-capacity `KVLiveSpans` | Depth control stays at 94.15 tok/s; D12 attention reads live spans rather than all capacity. |
 | Three long repetitions vs ten-prompt category suite | Important for claim eligibility and variance, but not the GPU kernel floor. |
 
-A formal cross-engine generated-token ratio would require a llama.cpp harness
-using the same prompts, greedy sampler/readback, KV contract, and output
-accounting. That is not necessary to establish the current bottleneck.
+The final completion audit now supplies the closest retained cross-engine
+boundary. It runs all 18 category+heldout prompts at context 4096, natural
+greedy h16/h32, and two repetitions, then counts the same post-TTFT transitions:
+hipEngine `decode_forward_calls/decode_seconds` versus llama.cpp Vulkan
+`sum(predicted_n - 1) / sum(predicted_ms)`. Retained hipEngine measures
+**51.839/51.432 tok/s** and Vulkan **64.213/64.336 tok/s**, so hipEngine is
+**19.27%/20.06% slower** and needs **23.87%/25.09%** more throughput. This is a
+much smaller and more actionable gap than the non-equivalent 94.513-tok/s
+`llama-bench` diagnostic, but it still fails the Vulkan-beating objective.
+
+Prompt IDs, natural sampling, horizons, context length, and transition ownership
+match. One unavoidable arithmetic difference remains: hipEngine uses BF16
+`KVLiveSpans`, while Vulkan uses F16 KV because the reported device capability
+has no BF16 support. All 72 server-native prompt/predicted timing rows are valid.
+The SSE Content-only path omits one or more returned token-array entries for 18
+rows even though `predicted_n` and timings are complete, so returned-array
+length is reported but not used as the timing gate. Cross-engine IDs are also
+reported, not substituted for hipEngine's exact within-engine correctness and
+lifecycle gates. Evidence:
+[`...vulkan-matched-completion-audit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json).
 
 ## 3. hipEngine D12 profile
 
@@ -849,17 +868,32 @@ A precomputed FP32 scale/min sidecar would be materially larger, while the
 bit-lossless expanded-byte replacement above already loses. P3 is closed until
 new ISA/counter evidence identifies different repeatedly decoded metadata.
 
-### P4 — Device scheduler/fusion (not reopened)
+### P4 — Device scheduler/fusion (reopened by matched completion evidence)
 
-A native graph or command-packet owner could attack the old 3.08-ms short
-span-minus-kernel window, but D8 and D16 already reject capture replay and
-C-side packetization; D11/D13-D17 also show that launch reduction alone is not
-an acceptance premise. P0/P2 lowered device work but did not supply reusable
-dynamic command buffers or a new fused body that wins independently. Therefore
-there is no admissible P4 candidate under the frozen plan, and rerunning the
-removed mechanisms would not be new evidence. P4 remains closed pending one of
-those explicit premises. Any future acceptance must measure queue gaps plus
-unchanged device kernels, not launch count alone.
+D8 and D16 still reject unchanged capture replay and C-side packetization;
+D11/D13-D17 still prove launch reduction alone is not an acceptance premise.
+The final matched audit nevertheless changes the budget: Vulkan's h32 boundary
+is **15.544 ms/transition**, while retained hipEngine is **19.443 ms** and its
+clean short GPU kernel sum is about **15.516 ms**. Device work alone nearly
+fills the Vulkan wall, but roughly 3.9 ms of queue/host span must also disappear.
+Beating Vulkan therefore requires both a new independently winning fused body
+and substantially lower submission spacing; neither half is optional.
+
+The first admissible new body is P2-derived rather than a restoration of D15:
+fuse the retained exact split reducer with the existing softplus head gate and
+BF16 gated-context store. The score producer, logical-slot reduction order,
+`KVLiveSpans` ABI, and below-threshold registered readers remain unchanged.
+Screen global and SWA separately on actual first/last layers; retain only if the
+combined reducer+gate event and synchronized wall beat the current two-launch
+chain exactly. Then run the complete state/category gate before considering a
+scheduler owner. If this boundary does not win independently, remove it and do
+not use its launch reduction to justify graph work.
+
+Only after one or more such exact bodies win may a native scheduler reopen.
+It needs a genuinely new mechanism—reusable dynamic command buffers or an
+AQL/native packet owner—not D8 capture or D16 function-pointer packets. Its
+acceptance metric is matched transition wall plus queue-gap attribution with
+unchanged kernel results, not launch count.
 
 ## 9. Do not chase without new evidence
 
@@ -898,6 +932,7 @@ unchanged device kernels, not launch count alone.
 | What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
 | What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
 | Did a bit-lossless Q5 repack help? | [`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json): exact generic/wave32x2 T16 both regress actual global/SWA layers and are not retained. |
+| Does retained hipEngine beat Vulkan under matched natural completion? | No. [`...vulkan-matched-completion-audit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) measures hipEngine **51.839/51.432** versus Vulkan **64.213/64.336 tok/s** at h16/h32. |
 
 ## Bottom line
 
@@ -918,6 +953,9 @@ bit-lossless Q5 T16 replacement are rejected. The online-attention and raw-Q5
 bodies prove tile-level ownership is mechanically valuable but violate the
 frozen KL gate; IQ2 row4 and Q5 T16 instead fail the actual-weight performance
 precondition. All are removed. The exact SWA tile16 score producer is retained
-at live `>=257`; P1-P3 are closed, and P4 has no new submission premise to
-reopen. Matching Vulkan still requires large device-work reductions across
-several families; launch cleanup alone cannot move the retained 51 toward 94.
+at live `>=257`; P1-P3 are closed. The matched completion audit replaces the
+non-equivalent 94.513-tok/s headline with a formal **64.336 tok/s** h32 target,
+but retained hipEngine still needs **25.09%** more throughput. That evidence
+reopens P4 only in the ordered form above: first prove a P2-derived exact fused
+body, then evaluate a genuinely new submission owner. Launch cleanup alone is
+still not a retainable premise.
