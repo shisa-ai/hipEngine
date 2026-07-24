@@ -1,0 +1,165 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 51.436,
+    "canonical_ms_per_token": 19.441,
+    "name": "P2 exact split attention plus P0 IQ3 wave4 and retained IQ2 tile2",
+    "revision": "2eef8dc0c0004006ce181a07d0ed3d816e8a57f8"
+  },
+  "candidates": {
+    "exact_tile4": {
+      "description": "four adjacent IQ2_XS gate/up output columns share BF16 activation loads while preserving each retained pair16 accumulator, wave reduction, BF16 projection boundary, and fused SiLU",
+      "quality_gated": false
+    },
+    "vulkan_row4": {
+      "description": "one local64 workgroup owns four adjacent IQ2_XS gate/up output columns; four 16-lane partitions process independent K256 blocks with Vulkan nested-FMA selector dots and two native wave32 reductions",
+      "external_source": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_iq2_xs.comp",
+      "external_source_commit": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "quality_gated": true
+    }
+  },
+  "checks": {
+    "actual_weight_exact_tile4_event_win_all_layers": false,
+    "actual_weight_exact_tile4_wall_win_all_layers": false,
+    "actual_weight_vulkan_row4_event_win_all_layers": false,
+    "actual_weight_vulkan_row4_wall_win_all_layers": false,
+    "exact_tile4_bf16_equal": true,
+    "primitive_vulkan_row4_kl_le_0_05": true,
+    "primitive_vulkan_row4_top1_ge_0_90": true,
+    "selection_pass": false,
+    "source_and_dispatch_removed": true
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "reject and remove before runtime or complete-model quality and category gates",
+    "next": "retain exact IQ2 tile2; P1 is closed and further work requires new metadata-sidecar ISA evidence or a new scheduler/fusion premise",
+    "reason": "Exact tile4 is neutral and mixed on actual layers, while the source-backed Vulkan row4 sibling is consistently 8.38-10.90% slower than retained tile2 despite fewer VGPR and primitive-close output. Neither candidate satisfies the mandatory independent actual-weight event and wall win precondition."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p1_iq2_row4_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "production_rows": [
+    {
+      "event_delta_pct": {
+        "exact_tile4": -0.07563960183341045,
+        "vulkan_row4": 9.463586952300961
+      },
+      "event_us": {
+        "exact_tile4": 55.8306884765625,
+        "retained_tile2": 55.87295055389404,
+        "vulkan_row4": 61.16053581237793
+      },
+      "layer_id": 1,
+      "quality": {
+        "exact_tile4_bf16_equal": true,
+        "vulkan_row4_bf16_equal": false,
+        "vulkan_row4_kl_max": 1.1279457342011914e-13,
+        "vulkan_row4_max_abs": 1.52587890625e-05,
+        "vulkan_row4_top1_agreement": 1.0
+      },
+      "role": "selected_iq2_gate_up_silu",
+      "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+      "shape": [256, 1024, 3072],
+      "wall_delta_pct": {
+        "exact_tile4": 0.8928616694815261,
+        "vulkan_row4": 8.384361203182822
+      },
+      "wall_us": {
+        "exact_tile4": 56.52856081724167,
+        "retained_tile2": 56.02830555289984,
+        "vulkan_row4": 60.725921066477895
+      }
+    },
+    {
+      "event_delta_pct": {
+        "exact_tile4": -1.4090408951452416,
+        "vulkan_row4": 10.903208625972095
+      },
+      "event_us": {
+        "exact_tile4": 55.55676460266113,
+        "retained_tile2": 56.350769996643066,
+        "vulkan_row4": 62.49481201171875
+      },
+      "layer_id": 45,
+      "quality": {
+        "exact_tile4_bf16_equal": true,
+        "vulkan_row4_bf16_equal": false,
+        "vulkan_row4_kl_max": 4.539599323728092e-13,
+        "vulkan_row4_max_abs": 3.0517578125e-05,
+        "vulkan_row4_top1_agreement": 1.0
+      },
+      "role": "selected_iq2_gate_up_silu",
+      "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+      "shape": [256, 1024, 3072],
+      "wall_delta_pct": {
+        "exact_tile4": -1.0026590050039697,
+        "vulkan_row4": 9.83704694928631
+      },
+      "wall_us": {
+        "exact_tile4": 56.284209713339806,
+        "retained_tile2": 56.85426411218941,
+        "vulkan_row4": 62.44704476557672
+      }
+    }
+  ],
+  "protocol": {
+    "actual_weight_counterbalanced_repetitions": 15,
+    "actual_weight_iterations_per_sample": 200,
+    "actual_weight_warmups_per_mode": 50,
+    "all_selected_experts_distinct": true,
+    "quality_gate_skipped_reason": "actual-weight event and wall precondition failed",
+    "selected_routes": 10
+  },
+  "provenance": {
+    "candidate_source_diff_sha256": "e8fdacb8efaaadcd15dece6f0e58b5d4f9975e963a9f15caee2f3f95d8b6daa3",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "exact_tile4_red_sha256": "4b051d2ba936a3a7a53087e20b529e70eb82aa17a1014fc010c9c28dfc288bb0",
+    "micro_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_p1_iq2_tile4.py",
+    "micro_harness_sha256": "597fd683cb70355cea9bde0dec153b238540d3313e782f3a8a39cee577bed135",
+    "micro_raw_sha256": "781dc8370f204f3eceaf724933550380a3ea771e01ee3e3d060b195a9f1225d0",
+    "trace_csv_sha256": "d0ca64a00157e341e2c6f5f2675c05574e88216b3498991f20d33c060dfa2a8c",
+    "trace_harness_sha256": "6e4a89330ca4362f06c8eee760f633b5c5477d2c29daefcad2ec86506dcd983b",
+    "vulkan_row4_red_sha256": "34075aa5b0085f65e559e74e1881ba03f71401384c290a66fd8a303091e10ec5"
+  },
+  "resources": {
+    "exact_tile4": {
+      "accum_vgpr": 0,
+      "arch_vgpr": 136,
+      "group_segment_bytes": 512,
+      "grid_size_x_threads": 16384,
+      "grid_size_y": 10,
+      "private_segment_bytes": 0,
+      "sgpr": 128,
+      "workgroup_size": 64
+    },
+    "retained_tile2": {
+      "accum_vgpr": 0,
+      "arch_vgpr": 136,
+      "group_segment_bytes": 512,
+      "grid_size_x_threads": 32768,
+      "grid_size_y": 10,
+      "private_segment_bytes": 0,
+      "sgpr": 128,
+      "workgroup_size": 64
+    },
+    "vulkan_row4": {
+      "accum_vgpr": 0,
+      "arch_vgpr": 72,
+      "group_segment_bytes": 512,
+      "grid_size_x_threads": 16384,
+      "grid_size_y": 10,
+      "private_segment_bytes": 0,
+      "sgpr": 128,
+      "workgroup_size": 64
+    }
+  },
+  "source_revision": "2eef8dc0c0004006ce181a07d0ed3d816e8a57f8"
+}

@@ -2,9 +2,9 @@
 
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership and P2.1
 exact split attention are implemented and retained as gfx1100 defaults. Both
-P1 IQ3 lanes, the P1 raw-Q5 row4 lane, and P2.2 online FP32 partials are
-rejected, while raw-IQ2 remains later work. The exact SWA tile16 score producer
-is retained as the gfx1100 default from live count 257; P2 is closed.
+P1 IQ3, raw-Q5, and raw-IQ2 lanes plus P2.2 online FP32 partials are rejected.
+The exact SWA tile16 score producer is retained as the gfx1100 default from live
+count 257; P1 and P2 are closed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -501,8 +501,9 @@ implementation campaigns:
    enough time, only then admit an IQ3-scoped Q8_1/dot4 or raw-row4 sibling.
    Q5 and IQ2 follow only after independent actual-weight wins; the rejected
    IQ2 Q8_1 path is not repeated. The later raw-Q5 row4 screen won its actual
-   leaves but failed the complete quality gate, leaving raw-IQ2 as the only
-   unadjudicated P1 family.
+   leaves but failed the complete quality gate. Both exact and Vulkan-style
+   raw-IQ2 row4 screens then failed their actual-weight performance precondition,
+   closing P1 without another model-quality run.
 3. **Split/online attention.** D4's token4 schedule remains one block per query
    head. llama.cpp HIP instead runs independent tile32 partials and a stable
    combine, reaching 0.558 ms/token at comparable short depth. A Laguna version
@@ -640,10 +641,22 @@ only also fails at **0.893206/1.35822**, so no role subset is admissible despite
 **98.96-99.13%** top-1 agreement. Evidence:
 [`...p1-q5-row4-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-q5-row4-rejected.json).
 
+The final raw-IQ2 lane is rejected and removed before runtime. An exact tile4
+sibling shared each retained pair16 activation load across four gate/up columns,
+but actual layer-1/layer-45 events changed **-0.08%/-1.41%** while synchronized
+wall changed **+0.89%/-1.00%**: mixed noise, not an independent win. A second
+local64 sibling adapted llama.cpp Vulkan's four-row ownership, four 16-lane K256
+partitions, and nested-FMA selector dots. It cut allocated VGPR **136 -> 72**
+and stayed scratch-free/primitive-close, but actual events regressed
+**9.46%/10.90%** and wall regressed **8.38%/9.84%**. Both bodies, wrappers,
+registry keys, and tests are removed; retained exact tile2 remains the only c=1
+IQ2 route. P1 is closed. Evidence:
+[`...p1-iq2-row4-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq2-row4-rejected.json).
+
 Contract and gates:
 
-- keep the exact D12 sibling registered and fail closed on shape/backend/key
-  misses;
+- keep the exact D12 Q5 and tile2 IQ2 siblings registered and fail closed on
+  shape/backend/key misses;
 - primitive dual oracle: CPU/source math plus current D12 on actual weights,
   edge scales/selectors, distinct routes, and non-finite classes;
 - frozen Poolside first-token gate;
@@ -876,10 +889,11 @@ supported by the evidence.
 
 The implementation loop remains ordered and falsifiable: P0 exact IQ3
 route/output ownership and P2 exact attention split topology are retained; both
-narrow P1 IQ3 lanes, P1 raw-Q5 row4, and P2.2 online partials are rejected. The
-online-attention and raw-Q5 bodies prove tile-level ownership is mechanically
-valuable but violate the frozen KL gate, so both are removed. The exact SWA
-tile16 score producer is retained at live `>=257`; P2 is closed. Raw-IQ2 and
-scheduler work follow. Matching Vulkan still requires large device-work
-reductions across several families; launch cleanup alone can move 49 toward
-51, not toward 94.
+narrow P1 IQ3 lanes, P1 raw-Q5/raw-IQ2 row4, and P2.2 online partials are
+rejected. The online-attention and raw-Q5 bodies prove tile-level ownership is
+mechanically valuable but violate the frozen KL gate; IQ2 row4 instead fails the
+actual-weight performance precondition. All are removed. The exact SWA tile16
+score producer is retained at live `>=257`; P1 and P2 are closed. Sidecar and
+scheduler work now require the new ISA or submission premise defined by P3/P4.
+Matching Vulkan still requires large device-work reductions across several
+families; launch cleanup alone cannot move the retained 51 toward 94.

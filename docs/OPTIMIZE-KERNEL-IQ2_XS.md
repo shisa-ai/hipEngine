@@ -1,8 +1,8 @@
 # IQ2_XS Kernel Optimization Plan
 
-_Status: active gfx1100 optimization ledger for Laguna S 2.1 `UD-Q2_K_XL`.
-Primitive correctness is established; model support and model-level quality remain
-open. Last updated: 2026-07-23._
+_Status: gfx1100 optimization ledger for Laguna S 2.1 `UD-Q2_K_XL`.
+The retained exact tile2 decode is model-integrated; later exact and Vulkan-style
+row4 candidates are rejected and removed. Last updated: 2026-07-24._
 
 This document is the working plan for improving hipEngine's native IQ2_XS
 selected-MoE kernels. It records the current evidence, the most likely
@@ -48,8 +48,10 @@ Three claims must remain separate:
    KL/top-1, prompt categories, memory peak, wall throughput, and long-context
    behavior require the full Laguna runner.
 
-The first is complete for the current scalar kernels. The second is the subject
-of this document. The third remains open even after the model file is present.
+The first and third are complete for the retained exact decode through the
+resident Laguna runner. The second remains the subject of this document;
+approximate candidates still require their own model gate, but only after an
+independent actual-weight performance win.
 
 ## Current implementation
 
@@ -290,7 +292,7 @@ rows must not be added because several use different immediate baselines.
 | P2 | Q8_1 + raw-IQ2 `sudot4` decode | Prequantized fused decode improved 1.47-4.83%, but quantizer-inclusive rotating/hot/repeated changed by +2.27/-1.13/+2.12%. | Primitive KL/top-1 passed; `v_dot4_i32_iu8` present; scratch0. | **Rejected and removed.** Two of three inclusive controls regressed. |
 | P3 | Pair16/shared-scale decode + local geometry | Pair16 vs group8 at matched local64 improved single 10.20-13.50% and dual 4.48-8.86%. Including local256 -> local64, rotating single/dual `49.200/78.784 -> 33.296/56.922 us` (-32.33/-27.75%). | BF16-bit exact; local64, VGPR64/96, scratch0. | **Retained for decode.** Task32 regressed 10.46-31.20%; pair16 prefill regressed up to 5.25%, so both were removed. |
 | P4 | Adaptive batch1/2/4 prefill | Versus unconditional rowbatch4, auto improved every 16/32/64-token case by 0.64-13.09%; balanced 16 `1.378 -> 1.198 ms` (-13.09%). | BF16-bit exact; local256/VGPR88/LDS512B/scratch0. | **Retained for sparse prefill.** Standalone batch2 never won; batch8 regressed 14/15 cases. |
-| P5 | Two-output selected-decode tile | Tile1 -> tile2 improved rotating single/dual `33.569/57.176 -> 30.955/55.964 us` (-7.79/-2.12%); hot/repeated improved 4.04-8.82%. | BF16-bit exact; local64, VGPR80/136, LDS512B, scratch0. | **Retained as decode default.** Tile1 remains rollback. |
+| P5 | Selected-decode output tiles | Tile1 -> tile2 improved rotating single/dual `33.569/57.176 -> 30.955/55.964 us` (-7.79/-2.12%); hot/repeated improved 4.04-8.82%. Later actual-layer exact tile4 was mixed/neutral, while Vulkan-style row4 regressed 9.46-10.90%. | Tile2 and temporary exact tile4 were BF16-bit exact; Vulkan row4 was primitive-close. All were scratch0. | **Tile2 retained as decode default; both row4 candidates rejected and removed.** |
 | P6 | LDS-staged raw-IQ2 x D4-Q8_1 integer MMQ32 | Quantizer-inclusive exact-auto -> MMQ32 improved 256-token cases by 22.49-28.76% and 512-token cases by 45.03-49.86%. It regressed 16-64 tokens by 45.92-129.45% and 128-token hot/Zipf by 10.41-19.97%. | Populated fixture max-relative <=0.05; representative KL max <=0.00453/top-1 >=0.98125; local128/VGPR104/LDS10240B/scratch0. | **Retained explicit, not runtime default.** Requires shape policy, runtime scratch ownership, and Laguna all-layer quality. |
 | P7 | Additional address/reduction/codegen cleanup | No separate post-P6 experiment yet; the high-value selector and shared-scale codegen issues were already removed by P1/P3. | No independent measurement. | **Open only with a new device-code premise.** |
 | P8 | Fuse Q8 quantization into producer | Not attempted. P2 decode was rejected; P6's inclusive D4 quantizer is already only 0.03-0.06 ms in its winning 256/512-token region. | Would change producer/workspace ownership and needs model integration. | **Deferred.** Not justified before runtime/model promotion. |
@@ -477,6 +479,16 @@ with LDS512B. It is promoted to the default while explicit tile1 four-axis
 variants remain for rollback. Evidence:
 [`../benchmarks/results/2026-07-22-gpu1-iq2-xs-output-tile2.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-output-tile2.json).
 
+A later Laguna P1 screen tested the now-justified four-output step. Exact tile4
+kept every pair16 accumulator/reduction and was BF16-bit equal, but actual
+layer-1/layer-45 event/wall deltas were mixed within **-1.41% to +0.89%**.
+A llama.cpp Vulkan `c0bc8591e`-derived row4 sibling used four 16-lane K256
+partitions and nested-FMA selector dots. It reduced VGPR **136 -> 72**, remained
+scratch-free, and was primitive-close, yet regressed actual events
+**9.46%/10.90%** and wall **8.38%/9.84%**. Both were removed before runtime or
+model-quality gates. Evidence:
+[`../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq2-row4-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq2-row4-rejected.json).
+
 ### P6 — Integer MMQ/WMMA for populated prefill
 
 The current direct raw-IQ FP16 WMMA path is a correctness diagnostic, not a
@@ -515,9 +527,10 @@ outputs. Rocprof confirms local128/VGPR104/LDS10240B/scratch0 and the intended
 integer-WMMA symbol.
 
 The explicit four-axis primitive and benchmark route are retained, but are not
-promoted to the Laguna runtime default. D4 is approximate, the all-layer Laguna
-model KL/top-1 gate is unavailable until integration lands, and runtime
-ownership of Q8 scratch plus MMQ tile metadata is still open. The exact adaptive
+promoted to the Laguna runtime default. D4 is approximate, and runtime ownership
+of Q8 scratch plus MMQ tile metadata is still open; the now-available all-layer
+Laguna KL/top-1 gate is deferred until that route has an inclusive production
+shape-policy win. The exact adaptive
 and rowbatch kernels remain registered fallbacks. Evidence:
 [`../benchmarks/results/2026-07-23-gpu1-iq2-xs-mmq32-prefill.json`](../benchmarks/results/2026-07-23-gpu1-iq2-xs-mmq32-prefill.json).
 
@@ -697,10 +710,11 @@ stat -c '%s %n' /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf
 sha256sum /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf
 ```
 
-Expected size and SHA-256 are listed in the objective section. File presence is
-not model support. The other integration lane must still complete exact model
-mapping, all-tensor inventory resolution, runtime allocation, full execution,
-and state/KV behavior before kernel model-level gates begin.
+Expected size and SHA-256 are listed in the objective section. The resident
+Laguna runner now provides exact tensor mapping, all-layer execution, tracked
+runtime allocation, full logits, and state/KV lifecycle gates. The P1 row4
+candidates failed their actual-weight performance precondition, so invoking the
+complete model-quality suite for them was neither necessary nor admissible.
 
 ## Active lane ledger
 
@@ -711,9 +725,10 @@ and state/KV behavior before kernel model-level gates begin.
 | Group width/geometry | complete | pair16/local64 retained for decode; task32 and prefill pair16 rejected |
 | Adaptive rowbatch | complete | exact batch1/2/4 sparse policy retained; rowbatch8 rejected |
 | Output tile2 | complete | exact tile2 retained across cold/hot/repeated routes |
+| Output row4 | rejected; code removed | exact tile4 was mixed/neutral; source-backed Vulkan row4 regressed actual layers 9.46-10.90% in events |
 | Q8_1 `sudot4` | rejected; code removed | primitive/ISA gates passed, but inclusive rotating/repeated decode regressed 2.27/2.12% |
 | Integer MMQ | retained explicit; model gate pending | 22.49-49.86% inclusive win at 256/512 tokens; runtime promotion waits on Laguna all-layer quality and scratch ownership |
-| Laguna model validation | blocked on integration | all-tensor runner plus model-level gates |
+| Laguna model validation | complete for retained decode | resident runner supplies full-model quality/state/lifecycle gates; row4 stopped at its failed leaf precondition |
 
 ## Source lineage
 
@@ -723,6 +738,9 @@ Pinned references:
   `ggml/src/ggml-common.h`, `ggml/src/ggml-quants.c`,
   `ggml/src/ggml-cuda/vecdotq.cuh`, `ggml/src/ggml-cuda/mmvq.cu`, and
   `ggml/src/ggml-cuda/mmq.cuh`;
+- llama.cpp Vulkan `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`:
+  `ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_iq2_xs.comp` row4
+  ownership and nested-FMA reference (evaluated and removed);
 - qwen-kernel `52e240f9c6d91750d0e5e692976cfb67fd9bc603`:
   grouped IQ3/IQ4 scheduling and compact expert-major precedent;
 - hipEngine retained IQ3/IQ4/Q4/Q5/Q6 experiments cited through
