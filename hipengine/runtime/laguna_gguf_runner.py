@@ -1499,6 +1499,8 @@ class LagunaGGUFResidentSession:
         prefill_chunk_size: int = 128,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
+        global_split_min_live: int | None = None,
+        swa_split_min_live: int | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
@@ -1518,6 +1520,8 @@ class LagunaGGUFResidentSession:
             self.backend,
             swa_prefill_variant,
         )
+        self.global_split_min_live = global_split_min_live
+        self.swa_split_min_live = swa_split_min_live
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self._q5_output_variant, self._q5_query_gate_variant = (
             resolve_laguna_q5_wave32x2_variants(
@@ -1635,6 +1639,8 @@ class LagunaGGUFResidentSession:
                 runtime=self.runtime,
                 swa_decode_variant=self.swa_decode_variant,
                 swa_prefill_variant=self.swa_prefill_variant,
+                global_split_min_live=self.global_split_min_live,
+                swa_split_min_live=self.swa_split_min_live,
             )
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(

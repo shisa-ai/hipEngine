@@ -64,6 +64,8 @@ def _parse_args() -> argparse.Namespace:
         choices=("serial_weighted", "wave4_reduce"),
         default=None,
     )
+    parser.add_argument("--global-split-min-live", type=int)
+    parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
@@ -164,6 +166,8 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         require_cached_build=args.require_cached_build,
         prefill_chunk_size=args.chunk_size,
         iq3_c1_down_schedule=args.iq3_c1_down_schedule,
+        global_split_min_live=args.global_split_min_live,
+        swa_split_min_live=args.swa_split_min_live,
     )
 
 
@@ -531,6 +535,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
             iq3_c1_down_schedule=args.iq3_c1_down_schedule,
+            global_split_min_live=args.global_split_min_live,
+            swa_split_min_live=args.swa_split_min_live,
         )
         load_seconds = time.perf_counter() - load_started
         oracle_gate = _oracle_gate(owner, args)
@@ -631,6 +637,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "context_length": args.context_length,
             "prefill_chunk_size": args.chunk_size,
             "iq3_c1_down_schedule": owner.iq3_c1_down_schedule,
+            "global_split_min_live": owner.global_split_min_live,
+            "swa_split_min_live": owner.swa_split_min_live,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {
