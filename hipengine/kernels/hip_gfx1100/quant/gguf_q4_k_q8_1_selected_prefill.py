@@ -26,6 +26,15 @@ _SYMBOL_X8_DS4_MMQ32_BF16 = (
 _SYMBOL_T16_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_T16_DS4X3_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_T16_DS4X3_GUARDED_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_T16_SPARSE_EXACT_CORRECT_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16"
+)
 _SYMBOL_DS4_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_WMMA_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_WMMA32_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out"
@@ -35,6 +44,7 @@ _SYMBOL_DS4_WMMA32_LDSPACK_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wm
 _SYMBOL_DS4_WMMA32_LDS_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out"
 _SYMBOL_WMMA_I8_PROBE = "hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16"
 _SYMBOL_DS4_PACK_BF16 = "hipengine_gguf_q8_1_mmq_ds4_pack_bf16"
+_SYMBOL_DS4X3_PACK_BF16 = "hipengine_gguf_q8_1_mmq_ds4_pack_bf16_d4x3"
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -134,6 +144,44 @@ def gguf_q8_1_mmq_ds4_pack_bf16(
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4_PACK_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_bf16_ptr),
+        ctypes.c_void_p(out_q8_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
+    x_bf16_ptr: int,
+    out_q8_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Pack BF16 activations as primary DS4 plus two residual DS4 planes."""
+
+    _check_positive(rows, "rows")
+    _check_positive(hidden, "hidden")
+    if hidden % _Q8_1_MMQ_BLOCK != 0:
+        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DS4X3_PACK_BF16)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -815,6 +863,247 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    source_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch direct-T16 MMQ32 with three residual DS4 activation planes."""
+
+    _check_positive(source_rows, "source_rows")
+    _check_mmq32_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+    )
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_T16_DS4X3_MMQ32_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(compact_to_source_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_mmq32_ptr),
+        ctypes.c_void_p(mmq_tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(source_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(mmq_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_tiles_ptr: int,
+    max_risks: int,
+    risk_threshold: float,
+    compact_rows: int,
+    source_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch residual T16 MMQ32 and queue uncertain BF16 output tiles."""
+
+    _check_positive(source_rows, "source_rows")
+    _check_positive(max_risks, "max_risks")
+    if risk_threshold < 0:
+        raise ValueError("risk_threshold must be non-negative")
+    _check_mmq32_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+    )
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_T16_DS4X3_GUARDED_MMQ32_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(compact_to_source_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_mmq32_ptr),
+        ctypes.c_void_p(mmq_tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_tiles_ptr),
+        ctypes.c_int64(max_risks),
+        ctypes.c_float(risk_threshold),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(source_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(mmq_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16(
+    source_x_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_tiles_ptr: int,
+    max_risks: int,
+    compact_rows: int,
+    source_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exactly recompute queued T16 gate/up tiles; overflow recomputes all."""
+
+    _check_positive(max_risks, "max_risks")
+    _check_positive(compact_rows, "compact_rows")
+    _check_positive(source_rows, "source_rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features_a, "out_features_a")
+    _check_positive(out_features_b, "out_features_b")
+    _check_positive(num_experts, "num_experts")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_T16_SPARSE_EXACT_CORRECT_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(source_x_ptr),
+        ctypes.c_void_p(compact_to_source_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_tiles_ptr),
+        ctypes.c_int64(max_risks),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(source_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out(
     x_q8_ptr: int,
     expert_start_compact_ptr: int,
@@ -943,6 +1232,16 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
     register(
         KernelKey(
             backend="hip_gfx1100",
+            layer="activation_quant",
+            quant="q8_1_ds4x3",
+            variant="bf16",
+        ),
+        gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
             layer="moe_linear",
             quant="gguf_q4_k",
             variant="selected_dual_q8_1_prefill_compact32_bf16_bf16_out",
@@ -988,6 +1287,36 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
             variant="selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
         ),
         gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear_repair",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_sparse_exact_bf16",
+        ),
+        gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
         replace=replace,
     )
     register(

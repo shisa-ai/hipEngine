@@ -34,9 +34,11 @@ from hipengine.core.memory import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q8_1_mmq_ds4_pack_bf16,
+    gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     build_gguf_q4_k_t16_selected_prefill,
@@ -59,7 +61,13 @@ DEFAULT_ROUTING = Path("/tmp/laguna-lap0-routing-8d26a9562.json")
 DEFAULT_OUTPUT = Path("/tmp/laguna-q4-k-mmq-leaf.raw.json")
 MODEL_SHA256 = "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
 DEFAULT_MODES = ("retained-direct", "t16-wmma", "raw-mmq32")
-MODES = (*DEFAULT_MODES, "t16-grouped-exact", "x8-mmq32", "t16-mmq32")
+MODES = (
+    *DEFAULT_MODES,
+    "t16-grouped-exact",
+    "x8-mmq32",
+    "t16-mmq32",
+    "t16-mmq32-d4x3",
+)
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
 EXPERTS = 256
@@ -406,7 +414,13 @@ def main() -> None:
             )
             out_shape = (compact_rows, OUT_FEATURES)
             out_bytes = compact_rows * OUT_FEATURES * np.dtype(np.uint16).itemsize
-            q8_bytes = rows * (HIDDEN // 128) * Q8_DS4_BYTES_PER_128
+            q8_planes = 3 if "t16-mmq32-d4x3" in effective_modes else 1
+            q8_bytes = (
+                q8_planes
+                * rows
+                * (HIDDEN // 128)
+                * Q8_DS4_BYTES_PER_128
+            )
 
             shape_buffers = []
             try:
@@ -616,6 +630,35 @@ def main() -> None:
                         runtime=runtime,
                     )
 
+                def t16_mmq32_d4x3() -> None:
+                    gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
+                        source_x_dev.ptr,
+                        q8_dev.ptr,
+                        rows,
+                        HIDDEN,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out(
+                        q8_dev.ptr,
+                        compact_to_source_dev.ptr,
+                        starts_dev.ptr,
+                        starts32_dev.ptr,
+                        tile_expert32_dev.ptr,
+                        tiles_gate_dev.ptr,
+                        tiles_up_dev.ptr,
+                        out_dual_dev.ptr,
+                        compact_rows,
+                        rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total32"]),
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+
                 launchers = {
                     "retained-direct": retained_direct,
                     "t16-wmma": t16_wmma,
@@ -623,6 +666,7 @@ def main() -> None:
                     "raw-mmq32": raw_mmq32,
                     "x8-mmq32": x8_mmq32,
                     "t16-mmq32": t16_mmq32,
+                    "t16-mmq32-d4x3": t16_mmq32_d4x3,
                 }
                 for threshold, hybrid in mixed_metadata.items():
                     hybrid_devices = mixed_devices[threshold]
@@ -693,6 +737,7 @@ def main() -> None:
                         )
 
                 sanity: dict[str, Any] = {}
+                sanity_values: dict[str, np.ndarray] = {}
                 for mode in effective_modes:
                     launchers[mode]()
                     runtime.device_synchronize()
@@ -737,11 +782,30 @@ def main() -> None:
                             host_array_ptr(values), out_dual_dev, runtime=runtime
                         )
                     values_f32 = _bf16_to_f32(values)
+                    sanity_values[mode] = values
                     sanity[mode] = {
                         "finite": bool(np.isfinite(values_f32).all()),
                         "checksum_f64": float(values_f32.astype(np.float64).sum()),
                         "max_abs": float(np.max(np.abs(values_f32))),
                     }
+                exact_mode = (
+                    "t16-grouped-exact"
+                    if "t16-grouped-exact" in sanity_values
+                    else None
+                )
+                if exact_mode is not None:
+                    exact_values = sanity_values[exact_mode]
+                    for mode, values in sanity_values.items():
+                        if mode in ("retained-direct", exact_mode):
+                            continue
+                        mismatches = values != exact_values
+                        sanity[mode]["bf16_mismatches_vs_exact"] = int(
+                            np.count_nonzero(mismatches)
+                        )
+                        sanity[mode]["bf16_mismatch_fraction_vs_exact"] = float(
+                            np.mean(mismatches)
+                        )
+                        sanity[mode]["exact_mode"] = exact_mode
 
                 medians = {
                     mode: statistics.median(values)
