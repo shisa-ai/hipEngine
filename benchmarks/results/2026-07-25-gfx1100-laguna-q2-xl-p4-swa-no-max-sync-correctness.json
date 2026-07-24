@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_swa_split_no_max_sync_correctness",
+  "status": "correctness_admitted_default_off",
+  "date": "2026-07-25",
+  "based_on_revision": "7c7b2c527",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "context_length": 4096,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "Retain the exact gated SWA split reducer but omit the block-wide synchronization after each four-score maximum-scan group; only thread 0 participates in that scan and the first weight-publication barrier remains the consumer fence.",
+    "registry_variants": [
+      "swa_context_split_exact_gated_no_max_sync_spans",
+      "swa_context_split_tile16_exact_gated_no_max_sync_spans"
+    ],
+    "explicit_selector": "LagunaGGUFResidentSession(..., use_swa_split_no_max_sync=True)",
+    "default_enabled": false,
+    "rollback": "The retained gated split variants with MAX_SCAN_SYNC=true remain registered and selected by default.",
+    "score_producers_unchanged": true,
+    "softmax_order_unchanged": true,
+    "value_accumulation_order_unchanged": true,
+    "kv_live_spans_abi_unchanged": true,
+    "workspace_change_bytes": 0,
+    "dispatch_change": 0,
+    "candidate_code_patch_sha256": "60f0603fb02fa5d7b33b84ed3f46c282986c890dd5a459d193c63bcab9937760"
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "Only the already catalogued unrelated nano-vllm monolithic references drift; pinned GGML quant parents remain clean.",
+    "source_origin": "Net-new synchronization audit of the in-tree retained P2/P4.1 SWA reducer."
+  },
+  "red_green": {
+    "red_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_split_reduce_max_sync.py",
+    "red_reason": "candidate wrappers were intentionally absent",
+    "red_output_sha256": "e1b19a894f9ed357db34df87f8a2251dd596c55ce1b4c1f25077f62cd48bbfce",
+    "green_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback tests/test_laguna_split_reduce_max_sync.py",
+    "green_result": "3 passed",
+    "regression_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_split_gate_fusion.py tests/test_laguna_split_reduce_max_sync.py tests/test_laguna_gguf_runner.py",
+    "regression_result": "27 passed",
+    "fixture_sha256": "202ccb519c3db8d53b6402dbc4e377e7289b8c07dd7bfef53168f9086d436809"
+  },
+  "leaf_exactness": {
+    "live_counts": [65, 257],
+    "score_producers": ["wave32", "tile16"],
+    "context_f32_bit_exact": true,
+    "gated_bf16_bit_exact": true,
+    "extreme_gate_classes_covered": true
+  },
+  "actual_weight_screen": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_swa_no_max_sync_actual.py",
+    "harness_sha256": "201993dfc0672a4af9291ce212561a18d2a8113d0d1ca842794200ac7a6ed91e",
+    "raw_sha256": "c8700c0f55c8930455b34683e0662bd33abe1b0b0597c175ba535ed4add25395",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "warmups_per_mode": 1000,
+    "counterbalanced_repetitions": 15,
+    "launches_per_sample": 200,
+    "all_context_and_gated_outputs_bit_exact": true,
+    "all_event_and_wall_rows_improve": true,
+    "rows": [
+      {"layer": 1, "live_count": 70, "event_delta_pct": -0.1815734201150443, "wall_delta_pct": -0.20843694517114209},
+      {"layer": 47, "live_count": 70, "event_delta_pct": -0.20324553844907056, "wall_delta_pct": -0.20008466966863203},
+      {"layer": 1, "live_count": 128, "event_delta_pct": -0.41554807198933563, "wall_delta_pct": -0.40593399298871624},
+      {"layer": 47, "live_count": 128, "event_delta_pct": -0.4958006833112871, "wall_delta_pct": -0.45238233404135686},
+      {"layer": 1, "live_count": 257, "event_delta_pct": -0.27571846970528835, "wall_delta_pct": -0.20849972180269072},
+      {"layer": 47, "live_count": 257, "event_delta_pct": -0.21279804135152514, "wall_delta_pct": -0.2890924053996047},
+      {"layer": 1, "live_count": 512, "event_delta_pct": -0.21936484994595773, "wall_delta_pct": -0.18249747758294355},
+      {"layer": 47, "live_count": 512, "event_delta_pct": -0.23804599296081141, "wall_delta_pct": -0.2864494606736434}
+    ]
+  },
+  "full_state_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/laguna_swa_no_max_sync_correctness.py",
+    "harness_sha256": "6e1b3b33c55404b2d6d8f3025087126fbaaf26d9728c1e1d906656d48d4abcd4",
+    "raw_sha256": "c002ab54f4d5d8e4946e5ce97ea4da23d9b09c354422444c5e10e1fda041cba3",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "decode_steps": 16,
+    "full_logits_exact": true,
+    "top1_agreement": 1.0,
+    "kl_divergence": 0.0,
+    "final_hidden_exact": true,
+    "post_layer_hidden_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_kv_and_all_live_span_fields_exact": true,
+    "reset_exact": true,
+    "tracked_returned_to_baseline": true
+  },
+  "rocprof_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-no-max-sync-trace --output-file trace -- .venv/bin/python -u /tmp/laguna_swa_no_max_sync_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --enable-head-kv --enable-swa-no-max-sync --output /tmp/laguna-swa-no-max-sync-trace/bench.json",
+    "harness_sha256": "b46c00c3dd3f7215ae93cbf95e57d99e1cee0b1384eaec689bc79eea58cde724",
+    "csv_sha256": "7d578c7beeb0129286ba0fe8b7ed7b32fbff268d6c14a660adda23e8dc754db0",
+    "bench_sha256": "cca4f6faa1b770b08b8081c9e82fbc6fb19ef770caefb6be580de643dabda5f7",
+    "candidate_calls": 72,
+    "retained_sync_calls": 0,
+    "kernel": "laguna_swa_attention_split_exact_gated_reduce_kernel<false>",
+    "grid_x": 9216,
+    "workgroup": 128,
+    "vgpr": 24,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "finite_logits": true,
+    "tracked_returned_to_baseline": true,
+    "library_sha256": "7fc4922db5d398f73bd57528a2ce511ace1fcbdaafe167b1e41874bf75d5b890"
+  },
+  "correctness_gate": {
+    "required_kl_max": 0.05,
+    "required_top1_min": 0.9,
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true
+  },
+  "next_action": "Commit default-off correctness admission, then run clean short/512/1K/near-4K control/candidate profiles and the complete two-order 18-prompt promotion gate before deciding the gfx1100 default."
+}
