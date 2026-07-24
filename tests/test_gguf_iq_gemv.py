@@ -32,6 +32,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+    gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out,
+    gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
     gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
     gguf_iq4_xs_selected_gemv_bf16_bf16_out,
     gguf_iq4_xs_weighted_selected_down_bf16_bf16_out,
@@ -342,6 +344,18 @@ def test_iq_gemv_registry_and_build_plan() -> None:
     assert resolve(
         backend="hip_gfx1100",
         layer="moe_linear",
+        quant="gguf_iq3_xxs",
+        variant="selected_gemv_decode_tile2_bf16_bf16_out",
+    ) is gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq3_xxs",
+        variant="selected_gemv_decode_tile4_bf16_bf16_out",
+    ) is gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
         quant="gguf_iq4_xs",
         variant="selected_gemv_decode_bf16_bf16_out",
     ) is gguf_iq4_xs_selected_gemv_bf16_bf16_out
@@ -492,6 +506,45 @@ def test_selected_iq_real_fixture_rows_match_cpu_oracle(
         np.max(np.abs(actual_f32 - expected_f32) / np.maximum(np.abs(expected_f32), 1.0))
     )
     assert max_rel <= 0.02
+
+
+@pytest.mark.parametrize(
+    "tiled_launch",
+    [
+        gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out,
+        gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
+    ],
+)
+@pytest.mark.parametrize("tokens", [1, 2, 5, 8])
+def test_iq3_selected_output_tiles_are_bit_exact_to_tile1(
+    iq_library, tiled_launch, tokens: int
+) -> None:
+    top_k = 10
+    in_features = 1024
+    out_features = 19
+    x_bf16 = _f32_to_bf16_u16(_make_x(tokens, in_features))
+    selected = np.asarray(
+        [(-1 if lane % 17 == 0 else (7 * lane + 3) % 5) for lane in range(tokens * top_k)],
+        dtype=np.int64,
+    )
+    qweight = _make_iq3_weight(5, out_features, in_features)
+    tile1 = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=128,
+    )
+    tiled = _run_selected(
+        tiled_launch,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=128,
+    )
+    np.testing.assert_array_equal(tiled, tile1)
 
 
 def test_iq3_laguna_k1024_local128_is_bit_exact_to_local256(iq_library) -> None:

@@ -677,6 +677,82 @@ __global__ void gguf_iq3_xxs_selected_gemv_kernel(
   }
 }
 
+template <int OUTPUT_TILE>
+__launch_bounds__(128, 2)
+__global__ void gguf_iq3_xxs_selected_gemv_output_tile_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  static_assert(OUTPUT_TILE == 2 || OUTPUT_TILE == 4, "IQ3 output tile must be 2 or 4");
+  const int out_col = OUTPUT_TILE * static_cast<int>(blockIdx.x);
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const int valid_columns = min(OUTPUT_TILE, out_features - out_col);
+  const int row_bytes = (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ weight_base = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes
+      : qweight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+
+  float acc[OUTPUT_TILE];
+#pragma unroll
+  for (int column = 0; column < OUTPUT_TILE; ++column) {
+    acc[column] = 0.0f;
+  }
+  if (valid_expert) {
+    const int groups8 = in_features / 8;
+    for (int group8_linear = threadIdx.x; group8_linear < groups8;
+         group8_linear += blockDim.x) {
+      const int block_idx =
+          __builtin_amdgcn_readfirstlane(group8_linear >> 5);
+      const int group8 = group8_linear & 31;
+      const int x_offset = block_idx * QK_K + group8 * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const int64_t block_offset =
+          static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+#pragma unroll
+      for (int column = 0; column < OUTPUT_TILE; ++column) {
+        if (column < valid_columns) {
+          const uint8_t* __restrict__ weight_row =
+              weight_base + static_cast<int64_t>(column) * row_bytes;
+          acc[column] += iq3_xxs_group_dot(
+              weight_row + block_offset, group8, x_values);
+        }
+      }
+    }
+  }
+  if constexpr (OUTPUT_TILE == 2) {
+    reduce_block_pair(acc[0], acc[1]);
+  } else {
+    reduce_block_quad(acc[0], acc[1], acc[2], acc[3]);
+  }
+  if (threadIdx.x == 0) {
+#pragma unroll
+    for (int column = 0; column < OUTPUT_TILE; ++column) {
+      if (column < valid_columns) {
+        out[static_cast<int64_t>(row) * out_features + out_col + column] =
+            float_to_bf16_bits(acc[column]);
+      }
+    }
+  }
+}
+
 __launch_bounds__(256, 2)
 __global__ void gguf_iq3_xxs_selected_dual_silu_gemv_kernel(
     const uint16_t* __restrict__ x,
@@ -952,6 +1028,43 @@ int launch_selected(
   return static_cast<int>(hipGetLastError());
 }
 
+template <int OUTPUT_TILE, typename Kernel>
+int launch_selected_output_tiled(
+    Kernel kernel,
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight == nullptr || out == nullptr ||
+      x_rows <= 0 || rows <= 0 || rows % x_rows != 0 || num_experts <= 0 ||
+      in_features <= 0 || in_features % QK_K != 0 || out_features <= 0 ||
+      threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + OUTPUT_TILE - 1) / OUTPUT_TILE),
+      static_cast<unsigned int>(rows));
+  kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_iq2_xs_selected_gemv_bf16_bf16_out(
@@ -1103,6 +1216,60 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_selected(
       gguf_iq3_xxs_selected_gemv_kernel,
+      x,
+      selected,
+      qweight,
+      out,
+      x_rows,
+      rows,
+      num_experts,
+      in_features,
+      out_features,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_output_tiled<2>(
+      gguf_iq3_xxs_selected_gemv_output_tile_kernel<2>,
+      x,
+      selected,
+      qweight,
+      out,
+      x_rows,
+      rows,
+      num_experts,
+      in_features,
+      out_features,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_output_tiled<4>(
+      gguf_iq3_xxs_selected_gemv_output_tile_kernel<4>,
       x,
       selected,
       qweight,

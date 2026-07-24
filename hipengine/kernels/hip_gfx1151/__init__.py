@@ -144,6 +144,17 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "laguna_aggregate_gguf_f32_weight_out",
         ),
+        # IQ3 selected-down tiling is gfx1100-only pending independent gfx1151 gates.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_gemv_decode_tile2_bf16_bf16_out",
+        ),
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_gemv_decode_tile4_bf16_bf16_out",
+        ),
         (
             "speculative_cycle",
             "w4_gguf",

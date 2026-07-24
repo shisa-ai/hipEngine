@@ -1,0 +1,163 @@
+{
+  "candidate": {
+    "default": false,
+    "fallback": "registered IQ3 selected_gemv_decode_bf16_bf16_out tile1",
+    "keys": [
+      "hip_gfx1100/moe_linear/gguf_iq3_xxs/selected_gemv_decode_tile2_bf16_bf16_out",
+      "hip_gfx1100/moe_linear/gguf_iq3_xxs/selected_gemv_decode_tile4_bf16_bf16_out"
+    ],
+    "name": "Laguna DFlash IQ3 selected-down adjacent-output tiling",
+    "scope": "gfx1100 raw IQ3_XXS selected down; explicit tile2/tile4 only",
+    "selectors": [
+      "LagunaGGUFResidentSession(..., iq3_selected_down_tile=2|4)",
+      "scripts/laguna_dflash_category_bench.py --iq3-selected-down-tile 2|4"
+    ],
+    "unsupported_backend": "gfx1151 aliases are explicitly excluded pending independent gates"
+  },
+  "commands": {
+    "focused_tests": "PYTHONPATH=. uv run pytest -q tests/test_gguf_iq_gemv.py tests/test_laguna_moe_gpu.py tests/test_laguna_dflash_category_bench.py tests/test_gfx1151_backend.py::test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider",
+    "full_state": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/laguna_dflash_iq3_tile_correctness.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat --file hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip",
+    "primitive": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_dflash_iq3_tile.py",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq3-tiles-trace --output-file tiles -- .venv/bin/python -u /tmp/trace_laguna_iq3_tiles.py"
+  },
+  "date": "2026-07-24",
+  "focused_tests": {
+    "collected": 41,
+    "passed": 41,
+    "preexisting_complete_gfx1151_module_failure": "test_gguf_fused_linear_matching_uses_resident_backend calls the tracked-main helper without its three newer required keyword arguments; the modified alias-exclusion test passes independently"
+  },
+  "full_state_gate": {
+    "active_kv_and_live_spans_exact": true,
+    "all_layer_context_exact": true,
+    "all_layer_gated_context_exact": true,
+    "all_layer_hidden_exact": true,
+    "all_sparse_expert_down_exact": true,
+    "bulk_prefill_exact": true,
+    "checks": [
+      {
+        "tile": 2,
+        "verifier_kv_sha256": "2572581563f0f4cd202e3938a8e97a9fa09c7b9112d5c822aeafbff674d9327e"
+      },
+      {
+        "tile": 4,
+        "verifier_kv_sha256": "2572581563f0f4cd202e3938a8e97a9fa09c7b9112d5c822aeafbff674d9327e"
+      }
+    ],
+    "elapsed_seconds": 18.791161225992255,
+    "full_logits_exact": true,
+    "harness_sha256": "bb74ded75f97b49e1aa90eb15d9c82de911b7a0ac6c5dd58b0ab2a817d63ce99",
+    "kl": 0.0,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "raw_sha256": "9322a1f0b3aff61cc8b110c1a3341af88257bd5b4b552e3b2ab3bae7bb19ceea",
+    "reset_exact": true,
+    "six_hidden_captures_exact": true,
+    "target_top1_accept_and_payload_exact": true,
+    "top1_agreement_pct": 100.0,
+    "tracked_peak_allocations": 1544,
+    "tracked_peak_bytes": 40556967706,
+    "tracked_returned_to_baseline": true,
+    "verifier_rows": 5
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "hipengine_laguna_q2_xl_dflash_iq3_selected_down_output_tile_correctness",
+  "lineage": {
+    "external_parent": null,
+    "result": "no external sources selected",
+    "schedule": "hipEngine-original adjacent-output ownership over the retained exact IQ3 tile1 decode"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL mixed raw GGUF",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "next_action": "Task #320 measures tile4 against tile1 in clean same-revision h32 and h128 full category/heldout suites; tile2 remains a bounded control until that decision.",
+  "performance_claim": false,
+  "primitive_gate": {
+    "all_bf16_bit_exact_to_tile1": true,
+    "harness_sha256": "0ed9a37342f6a7a243046a55614ca77116f0d5fb9cc92d0b340065102eb4acd7",
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "in_features": 1024,
+      "launches_per_sample": 200,
+      "num_experts": 256,
+      "out_features": 3072,
+      "selected_rows": 50,
+      "warmups": 50
+    },
+    "raw_sha256": "874dee59b267ef59307bb287b46d8c56943eb8e994625342f1c22a9a0f8e2810",
+    "rows": [
+      {
+        "event_us": {
+          "tile1": 261.78768157958984,
+          "tile2": 205.72546005249023,
+          "tile4": 161.69078826904297
+        },
+        "event_delta_pct": {
+          "tile2": -21.415148791122675,
+          "tile4": -38.235906558542545
+        },
+        "layer_id": 1,
+        "wall_delta_pct": {
+          "tile2": -20.35043777912977,
+          "tile4": -36.5493455376653
+        }
+      },
+      {
+        "event_us": {
+          "tile1": 263.9768981933594,
+          "tile2": 207.54087448120117,
+          "tile4": 165.38042068481445
+        },
+        "event_delta_pct": {
+          "tile2": -21.379152531302037,
+          "tile4": -37.3504189886815
+        },
+        "layer_id": 45,
+        "wall_delta_pct": {
+          "tile2": -20.530241997980315,
+          "tile4": -35.054662454907735
+        }
+      }
+    ]
+  },
+  "red_green": {
+    "green": "new tile2/tile4 registry and exact-output fixtures pass at non-multiple output width, invalid routes, and 1/2/5/8 token shapes",
+    "no_red_rationale": "No standalone pre-implementation RED output was retained. The schedule-only siblings and registry keys were absent on the baseline; the mandatory behavioral oracle is byte equality to the existing CPU-gated tile1 leaf.",
+    "oracle": "existing raw-IQ3 tile1 selected GEMV, independently covered by NumPy GGUF dequant fixtures"
+  },
+  "resource_trace": {
+    "harness_sha256": "08e446458c9a1a771c97571cd41245fe8f788b7ffe4669428f19738592f54535",
+    "resources": {
+      "tile2": {
+        "grid_threads_x": 196608,
+        "grid_y": 50,
+        "kernel": "gguf_iq3_xxs_selected_gemv_output_tile_kernel<2>",
+        "lds_bytes": 512,
+        "local_x": 128,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 32
+      },
+      "tile4": {
+        "grid_threads_x": 98304,
+        "grid_y": 50,
+        "kernel": "gguf_iq3_xxs_selected_gemv_output_tile_kernel<4>",
+        "lds_bytes": 512,
+        "local_x": 128,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 40
+      }
+    },
+    "trace_sha256": "f9683ed90f522fb08f63d083d35dab5cd52a6f11b6c164ff5e2b2d28ebb3a288"
+  },
+  "schema": 1,
+  "selection_revision": "16c2a4e6c53eaf3ff2679133c382525dee494102",
+  "status": "correctness_admitted_default_off_pending_full_measurement"
+}

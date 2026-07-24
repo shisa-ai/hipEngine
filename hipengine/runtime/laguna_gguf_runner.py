@@ -1501,6 +1501,7 @@ class LagunaGGUFResidentSession:
         use_moe_tail_next_rmsnorm: bool = True,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
+        iq3_selected_down_tile: int = 1,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1525,6 +1526,7 @@ class LagunaGGUFResidentSession:
         )
         self.use_q5_wave32x2_output = self._q5_output_variant is not None
         self.use_q5_wave32x2_query_gate = self._q5_query_gate_variant is not None
+        self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1598,7 +1600,11 @@ class LagunaGGUFResidentSession:
                 )
             else:
                 self.weights = resident_weights
-            self.moe_plan = resolve_laguna_moe_plan(config, backend=self.backend)
+            self.moe_plan = resolve_laguna_moe_plan(
+                config,
+                backend=self.backend,
+                iq3_selected_down_tile=self.iq3_selected_down_tile,
+            )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,
