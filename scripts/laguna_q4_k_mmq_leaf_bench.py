@@ -33,6 +33,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
+    gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q8_1_mmq_ds4_pack_bf16,
 )
@@ -46,6 +47,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.loading.gguf import GGUFReader
+from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
@@ -56,7 +58,7 @@ DEFAULT_ROUTING = Path("/tmp/laguna-lap0-routing-8d26a9562.json")
 DEFAULT_OUTPUT = Path("/tmp/laguna-q4-k-mmq-leaf.raw.json")
 MODEL_SHA256 = "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
 DEFAULT_MODES = ("retained-direct", "t16-wmma", "raw-mmq32")
-MODES = (*DEFAULT_MODES, "t16-grouped-exact")
+MODES = (*DEFAULT_MODES, "t16-grouped-exact", "x8-mmq32")
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
 EXPERTS = 256
@@ -345,6 +347,9 @@ def main() -> None:
             f"expected raw Q4_K gate/up shape {expected_raw_shape}, got "
             f"{raw_gate.shape}/{raw_up.shape}"
         )
+    needs_x8 = "x8-mmq32" in args.modes
+    x8_gate = repack_gguf_q4_k_x8(raw_gate).tiles if needs_x8 else None
+    x8_up = repack_gguf_q4_k_x8(raw_up).tiles if needs_x8 else None
     tiles_gate, gate_entry = _cache_tiles(
         args.repacked_cache, layer=args.layer, slot="ffn_gate_exps"
     )
@@ -374,6 +379,10 @@ def main() -> None:
         resident_buffers.extend(
             (raw_gate_dev, raw_up_dev, tiles_gate_dev, tiles_up_dev)
         )
+        x8_gate_dev = _upload(runtime, x8_gate) if x8_gate is not None else None
+        x8_up_dev = _upload(runtime, x8_up) if x8_up is not None else None
+        if x8_gate_dev is not None and x8_up_dev is not None:
+            resident_buffers.extend((x8_gate_dev, x8_up_dev))
 
         for rows in args.rows:
             counts = _load_counts(routing, rows=rows, layer=args.layer)
@@ -549,11 +558,41 @@ def main() -> None:
                         runtime=runtime,
                     )
 
+                def x8_mmq32() -> None:
+                    assert x8_gate_dev is not None and x8_up_dev is not None
+                    gguf_q8_1_mmq_ds4_pack_bf16(
+                        source_x_dev.ptr,
+                        q8_dev.ptr,
+                        rows,
+                        HIDDEN,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+                        q8_dev.ptr,
+                        compact_to_source_dev.ptr,
+                        starts_dev.ptr,
+                        starts32_dev.ptr,
+                        tile_expert32_dev.ptr,
+                        x8_gate_dev.ptr,
+                        x8_up_dev.ptr,
+                        out_dual_dev.ptr,
+                        compact_rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total32"]),
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+
                 launchers = {
                     "retained-direct": retained_direct,
                     "t16-wmma": t16_wmma,
                     "t16-grouped-exact": t16_grouped_exact,
                     "raw-mmq32": raw_mmq32,
+                    "x8-mmq32": x8_mmq32,
                 }
                 for threshold, hybrid in mixed_metadata.items():
                     hybrid_devices = mixed_devices[threshold]
@@ -765,6 +804,11 @@ def main() -> None:
         },
         "layouts": {
             "raw_q4_k_bytes": int(raw_gate.nbytes + raw_up.nbytes),
+            "x8_q4_k_bytes": (
+                int(x8_gate.nbytes + x8_up.nbytes)
+                if x8_gate is not None and x8_up is not None
+                else None
+            ),
             "t16_bytes": int(tiles_gate.nbytes + tiles_up.nbytes),
             "t16_entries": {
                 "gate": gate_entry,
@@ -791,6 +835,7 @@ def main() -> None:
             "burst": args.burst,
             "timing": "counter-rotated HIP-event elapsed time",
             "raw_mmq32_inclusive": "BF16 producer-row DS4 pack plus one dual gate/up MMQ launch",
+            "x8_mmq32_inclusive": "BF16 producer-row DS4 pack plus one dual gate/up X8 MMQ launch",
             "activation_pack": "once per producer row; compact rows index producer Q8 blocks",
         },
         "repo": {
@@ -805,6 +850,7 @@ def main() -> None:
         "notes": [
             "The retained-direct mode is the exact production gate/up body named by LAP-0.",
             "T16 WMMA is a diagnostic layout/body control, not the shipping route.",
+            "X8 is a byte-exact, byte-neutral replacement layout; raw and X8 are resident together only for this leaf comparison.",
             "Mixed modes are a temporary two-layout leaf ceiling, not a resident-layout proposal.",
             "This leaf does not select a quality policy or change runtime dispatch.",
         ],
