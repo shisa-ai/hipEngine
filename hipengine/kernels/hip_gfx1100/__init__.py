@@ -26,6 +26,10 @@ LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 # BF16 store into each retained split reducer. The unfused registered chain is
 # the explicit rollback and remains the below-threshold fallback.
 LAGUNA_SPLIT_GATE_FUSION = True
+# Current-P4 first/last-layer, clean context, full-state, and complete two-order
+# category evidence admits exact c=1 head RMSNorm+RoPE+BF16 KV append fusion.
+# Rows/prefill and other backends retain the registered two-launch fallback.
+LAGUNA_HEAD_KV_FUSION = True
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -87,6 +91,7 @@ GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
+    "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",

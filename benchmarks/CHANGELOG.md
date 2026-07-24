@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-24
 
+- [retained gfx1100 Laguna Q2 XL current-P4 exact head RMSNorm+RoPE+KV] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained P4.1 -> exact c=1 head+KV fusion removes 48 launches/token and moves two-order 18-prompt h32 decode **51.872 -> 52.391 tok/s (+1.001%)**, or prior retained **51.825 -> 52.391 (+1.092%)**; pooled short and every long kernel/span/child row improve, every train/heldout category decode is positive, and full logits/hidden/routed/KV/spans/reset/lifecycle remain exact; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json`.
+
 - [rejected gfx1100 Laguna Q2 XL P4 native-AQL submission] Radeon Pro W7900 / clean post-P4.1 820-dispatch short profile has **15.676 ms** kernels, **18.760 ms** dispatch span, and **3.213 ms** span-minus-kernel; a correctness-fenced one-doorbell direct-AQL owner is **0.560-0.758% slower** than HIP across five 51-repetition processes even with packet construction excluded, so no runtime path is retained; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json`.
 
 - [retained gfx1100 Laguna Q2 XL P4.1 exact split-reducer+gate] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / two-order 18-prompt category+heldout greedy h16/h32: **51.882/51.497 -> 52.229/51.825 tok/s (+0.669%/+0.637%)**, prior retained h32 **51.436 -> 51.825 (+0.757%)**; every category decode row improves, E2E/prefill/TTFT stay within guards, and full logits/hidden/routed/KV/spans/reset/lifecycle remain exact; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-retained.json`.

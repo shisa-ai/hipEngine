@@ -63,9 +63,9 @@ def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
 
 
-def test_laguna_p4_head_kv_is_explicit_and_gfx1100_only_before_retention() -> None:
-    assert not resolve_laguna_head_kv_fusion("hip_gfx1100")
-    assert resolve_laguna_head_kv_fusion("hip_gfx1100", True)
+def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert resolve_laguna_head_kv_fusion("hip_gfx1100")
+    assert not resolve_laguna_head_kv_fusion("hip_gfx1100", False)
     assert not resolve_laguna_head_kv_fusion("hip_gfx1151")
 
     candidate = resolve_laguna_eager_kernel_plan(
