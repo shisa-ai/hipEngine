@@ -4191,6 +4191,21 @@ change the separate >1.10x/no-category-regression automatic-routing policy.
 Evidence and frozen gates:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-dflash-iq3-tile-selection.json`.
 
+The completed gate retains tile4 only as an explicit gfx1100 Q2 XL DFlash
+verifier optimization. Actual layers are exact and tile4 beats tile2; the
+slower tile2 route is removed. Four full-accept cached cycles move the 45-call
+IQ3 family **11.646 -> 7.726 ms/cycle (-33.66%)**, target-verifier kernel sum
+**64.874 -> 60.968 ms (-6.02%)**, and target-verifier wall
+**73.955 -> 70.220 ms (-5.05%)**. Two complete process-order pairs at each
+horizon keep all outputs/state/oracles/lifecycle exact and move h32 DFlash
+**32.307 -> 33.834 tok/s (+4.725%)** plus E2E **+1.413%**; h128 moves
+**27.790 -> 29.050 tok/s (+4.536%)** plus E2E **+3.316%**. Every category and
+heldout decode/E2E row improves. Automatic routing remains blocked: tile4 is
+only **0.6915x** true AR at h32 and **0.6338x** at h128, and the Q2 target has
+no admitted public DFlash route. Tile1 remains the ordinary/unsupported
+fallback. Final evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-dflash-iq3-tile4-retained.json`.
+
 ## Test Matrix
 
 | Layer | CPU deterministic | HIP primitive | Full-model eager | Bulk/graph | Long-context |

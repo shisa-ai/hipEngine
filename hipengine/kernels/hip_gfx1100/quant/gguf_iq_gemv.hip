@@ -1229,33 +1229,6 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
       stream);
 }
 
-extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out(
-    const uint16_t* x,
-    const int64_t* selected,
-    const uint8_t* qweight,
-    uint16_t* out,
-    int64_t x_rows,
-    int64_t rows,
-    int64_t num_experts,
-    int64_t in_features,
-    int64_t out_features,
-    int64_t threads,
-    hipStream_t stream) {
-  return launch_selected_output_tiled<2>(
-      gguf_iq3_xxs_selected_gemv_output_tile_kernel<2>,
-      x,
-      selected,
-      qweight,
-      out,
-      x_rows,
-      rows,
-      num_experts,
-      in_features,
-      out_features,
-      threads,
-      stream);
-}
-
 extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out(
     const uint16_t* x,
     const int64_t* selected,

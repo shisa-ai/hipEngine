@@ -32,7 +32,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
-    gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
     gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
     gguf_iq4_xs_selected_gemv_bf16_bf16_out,
@@ -345,12 +344,6 @@ def test_iq_gemv_registry_and_build_plan() -> None:
         backend="hip_gfx1100",
         layer="moe_linear",
         quant="gguf_iq3_xxs",
-        variant="selected_gemv_decode_tile2_bf16_bf16_out",
-    ) is gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out
-    assert resolve(
-        backend="hip_gfx1100",
-        layer="moe_linear",
-        quant="gguf_iq3_xxs",
         variant="selected_gemv_decode_tile4_bf16_bf16_out",
     ) is gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out
     assert resolve(
@@ -508,16 +501,9 @@ def test_selected_iq_real_fixture_rows_match_cpu_oracle(
     assert max_rel <= 0.02
 
 
-@pytest.mark.parametrize(
-    "tiled_launch",
-    [
-        gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out,
-        gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
-    ],
-)
 @pytest.mark.parametrize("tokens", [1, 2, 5, 8])
-def test_iq3_selected_output_tiles_are_bit_exact_to_tile1(
-    iq_library, tiled_launch, tokens: int
+def test_iq3_selected_output_tile4_is_bit_exact_to_tile1(
+    iq_library, tokens: int
 ) -> None:
     top_k = 10
     in_features = 1024
@@ -537,7 +523,7 @@ def test_iq3_selected_output_tiles_are_bit_exact_to_tile1(
         threads=128,
     )
     tiled = _run_selected(
-        tiled_launch,
+        gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
         iq_library,
         x_bf16=x_bf16,
         selected=selected,

@@ -42,7 +42,6 @@ _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_
 _IQ3_SELECTED_DOWN_VARIANTS = MappingProxyType(
     {
         1: "selected_gemv_decode_bf16_bf16_out",
-        2: "selected_gemv_decode_tile2_bf16_bf16_out",
         4: "selected_gemv_decode_tile4_bf16_bf16_out",
     }
 )

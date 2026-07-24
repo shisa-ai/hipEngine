@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`c7fcf46f9` for the retained explicit-only exact W7900 Laguna S 2.1
+UD-Q2_K_XL DFlash IQ3 selected-down tile4 path,
 `338d3afca01aa884ff3a68e0175566bc51e5ceae` for the measured exact W7900
 Laguna S 2.1 UD-Q2_K_XL raw-Q5 wave32x2 default,
 `30cf6f0755ee53afc1c72e9106fbab887ea067bc` for its preceding measured exact W7900
@@ -1756,8 +1758,36 @@ different tensor recipe on gfx1151.
 
 #### Laguna Q2 XL B4 DFlash decode
 
-**Status: historical D0-relative decode win; current D12 comparison pending.**
-The clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run predates D1-D12 and
+**Status: current tile4 verifier path retained explicit-only; automatic routing remains off.**
+The clean current-revision W7900 gate uses the canonical ten prompts and four
+categories plus four heldouts, 128-row chunks, pinned B4 drafter, 4K capacity,
+and two complete process orders per horizon. h32 uses two internally
+counterbalanced repetitions/process; h128 uses one. Tile4 is exact against
+tile1 for every generated ID, full state/oracle, active KV/`KVLiveSpans`,
+reset, and lifecycle check.
+
+| Horizon / route | Target AR decode | DFlash decode | DFlash E2E | DFlash / AR decode |
+| --- | ---: | ---: | ---: | ---: |
+| h32 tile1 control | 48.990 | 32.307 | 12.118 | 0.6595x |
+| h32 tile4 | 48.930 | **33.834 (+4.725%)** | **12.289 (+1.413%)** | **0.6915x** |
+| h128 tile1 control | 45.775 | 27.790 | 20.452 | 0.6071x |
+| h128 tile4 | 45.837 | **29.050 (+4.536%)** | **21.130 (+3.316%)** | **0.6338x** |
+
+Every category and heldout DFlash decode/E2E row improves at both horizons:
+h32 decode improves **4.51-4.84%** and E2E **1.18-2.03%**; h128 decode
+improves **4.46-4.60%** and E2E **3.01-3.74%**. The 45-call IQ3 family moves
+**11.646 -> 7.726 ms/cycle (-33.66%)**, complete target-verifier kernel sum
+**64.874 -> 60.968 ms (-6.02%)**, and target-verifier wall
+**73.955 -> 70.220 ms (-5.05%)**. Tile2 was exact but slower and is removed;
+tile1 stays the unsupported/ordinary fallback.
+
+The tile4 win is retained only for explicit `iq3_selected_down_tile=4` /
+`--iq3-selected-down-tile 4` use. It does **not** satisfy the automatic-route
+policy (>1.10x true AR with no category/heldout regression versus AR), the Q2
+target has no admitted public DFlash route, and gfx1151 is unmeasured. [Tile4
+retention artifact](results/2026-07-24-gfx1100-laguna-q2-xl-dflash-iq3-tile4-retained.json).
+
+Historical context: the clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run predates D1-D12 and
 uses the same ten prompts, categories/heldouts, 128-row chunks, two balanced
 repetitions, and 32
 visible outputs as the Q4 DFlash protocol. It pairs the pinned Q2 XL target with
@@ -1804,7 +1834,7 @@ before any routing threshold or default promotion.
 Exact benchmark command:
 
 ```bash
-HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_dflash_category_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf /models/hipengine/Laguna-S-2.1-DFlash --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --candidate-budget 4 --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 --output /tmp/laguna-q2-xl-dflash-category.json
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_dflash_category_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf /models/hipengine/Laguna-S-2.1-DFlash --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --candidate-budget 4 --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 --iq3-selected-down-tile 4 --output /tmp/laguna-q2-xl-dflash-category.json
 ```
 
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23

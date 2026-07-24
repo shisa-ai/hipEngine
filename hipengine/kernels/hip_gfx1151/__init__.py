@@ -148,11 +148,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         (
             "moe_linear",
             "gguf_iq3_xxs",
-            "selected_gemv_decode_tile2_bf16_bf16_out",
-        ),
-        (
-            "moe_linear",
-            "gguf_iq3_xxs",
             "selected_gemv_decode_tile4_bf16_bf16_out",
         ),
         (
