@@ -1319,8 +1319,10 @@ The current focused Laguna S 2.1 performance campaign is owned by
 work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
-LAP-0 is complete at the clean gfx1151 control packet; LAP-1 source-faithful
-packed-dot body and resident-layout work is the active next phase.
+LAP-0 is complete at the clean gfx1151 control packet. LAP-1's source-faithful
+packed-dot body, byte-neutral X8 layout, and natural-shape schedule now pass
+their leaf gates; the exact X8 decode/fallback is the remaining LAP-1 blocker
+before residual calibration and runtime integration.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

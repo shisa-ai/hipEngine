@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T10:14:24.909778+00:00",
+  "kind": "hipengine_laguna_lap1_q4_k_x8_mmq32_live_row_screen",
+  "status": "retained_explicit_primitive",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "One actual Laguna sparse-layer Q4_K gate/up pair, producer-row Q8_1 pack included, natural per-expert counts at M32/55/64/122/128/256/512; not a full-model or runtime-default claim.",
+  "repo": {
+    "revision": "84c50b205b865b54070f96ff9b6d2feea653c295",
+    "tracked_clean": true,
+    "unrelated_untracked_artifacts_excluded": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "hip_version": "7.15.0-0000000"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "up_tensor": "blk.1.ffn_up_exps.weight",
+    "shape_each": [
+      256,
+      1024,
+      3072
+    ],
+    "quant": "Q4_K"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 32,55,64,122,128,256,512 --layer 1 --modes retained-direct,raw-mmq32,x8-mmq32 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-lap1-x8-mmq32-ragged-clean.json",
+    "raw_sha256": "2b2998ef20271d9ab71bb7b4e71c58f624ca65d25fe45b7368caa0adc8d82c15",
+    "routing_source": "/tmp/laguna-lap1-routing-all-shapes.json",
+    "routing_sha256": "0d29540b03047650c6ce85352a8514d6df3b8e8397ac434ad014a8d9cdfa3f16",
+    "warmups": 2,
+    "samples": 7,
+    "burst": 3,
+    "timing": "counter-rotated HIP-event elapsed time",
+    "inclusive_scope": "one BF16 producer-row DS4 Q8_1 pack plus one dual gate/up MMQ launch",
+    "routing_qualification": "Natural per-expert counts from complete model execution; stable producer-row order reconstructed as a valid top-10 assignment because selected IDs were intentionally not persisted."
+  },
+  "results": {
+    "32": {
+      "retained_direct_ms": 3.962001164754232,
+      "raw_mmq32_ms": 4.165514945983887,
+      "x8_mmq32_ms": 3.3093090057373047,
+      "x8_speedup_vs_raw": 1.2587265011403255,
+      "x8_speedup_vs_retained": 1.1972291369241626,
+      "x8_time_reduction_vs_prior_layout_screen_pct": 36.44953756113188
+    },
+    "55": {
+      "retained_direct_ms": 6.369173049926758,
+      "raw_mmq32_ms": 5.082665761311849,
+      "x8_mmq32_ms": 4.063968976338704,
+      "x8_speedup_vs_raw": 1.2506654925035636,
+      "x8_speedup_vs_retained": 1.5672297419122647,
+      "x8_time_reduction_vs_prior_layout_screen_pct": 35.57447592097398
+    },
+    "64": {
+      "retained_direct_ms": 7.296233495076497,
+      "raw_mmq32_ms": 5.373666763305664,
+      "x8_mmq32_ms": 4.282901446024577,
+      "x8_speedup_vs_raw": 1.2546790606852614,
+      "x8_speedup_vs_retained": 1.7035725867213027,
+      "x8_time_reduction_vs_prior_layout_screen_pct": 35.216637549957284
+    },
+    "122": {
+      "retained_direct_ms": 13.164966583251953,
+      "raw_mmq32_ms": 6.421701431274414,
+      "x8_mmq32_ms": 5.211016337076823,
+      "x8_speedup_vs_raw": 1.2323318554162772,
+      "x8_speedup_vs_retained": 2.5263721569211173,
+      "x8_time_reduction_vs_prior_layout_screen_pct": 32.76593880667009
+    },
+    "128": {
+      "retained_direct_ms": 13.793893178304037,
+      "raw_mmq32_ms": 6.570568084716797,
+      "x8_mmq32_ms": 5.3310292561848955,
+      "x8_speedup_vs_raw": 1.2325139797523765,
+      "x8_speedup_vs_retained": 2.5874727966087954,
+      "x8_time_reduction_vs_prior_layout_screen_pct": 32.77435591336254
+    },
+    "256": {
+      "retained_direct_ms": 26.655560811360676,
+      "raw_mmq32_ms": 7.722436904907227,
+      "x8_mmq32_ms": 6.514837265014648,
+      "x8_speedup_vs_raw": 1.185361443543266,
+      "x8_speedup_vs_retained": 4.091515985288504,
+      "x8_time_reduction_vs_prior_layout_screen_pct": 27.40631425566017
+    },
+    "512": {
+      "retained_direct_ms": 52.38050333658854,
+      "raw_mmq32_ms": 10.452426274617514,
+      "x8_mmq32_ms": 9.32965342203776,
+      "x8_speedup_vs_raw": 1.120344540337118,
+      "x8_speedup_vs_retained": 5.614410414524029,
+      "x8_time_reduction_vs_prior_layout_screen_pct": 18.651757796345613
+    }
+  },
+  "correctness": {
+    "x8_vs_raw_fixture_bf16_bit_exact": true,
+    "x8_vs_raw_actual_checksum_exact_at_every_shape": true,
+    "all_outputs_finite": true,
+    "fixture_cpu_reference_gate": {
+      "max_softmax_kl_limit": 0.05,
+      "top1_agreement_minimum": 0.9,
+      "passed": true
+    },
+    "focused_tests": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py tests/test_laguna_q4_k_mmq_leaf_bench.py",
+      "passed": 29
+    }
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lap1-x8-mmq32-ragged-trace --output-file x8-mmq32-ragged -- env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py -k 'x8_q8_1_ds4_mmq32'",
+    "csv_sha256": "1080f74db93f9e0151d5c47426648f55c3c6113d811257dcb2469f23647b9c55",
+    "raw_kernel": {
+      "name": "gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel",
+      "workgroup_size": 128,
+      "vgpr": 40,
+      "sgpr": 128,
+      "lds_bytes": 2048,
+      "scratch_bytes": 0
+    },
+    "x8_kernel": {
+      "name": "gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel",
+      "workgroup_size": 128,
+      "vgpr": 48,
+      "sgpr": 128,
+      "lds_bytes": 2048,
+      "scratch_bytes": 0,
+      "tiny_fixture_duration_us": [
+        6.853,
+        16.872
+      ]
+    }
+  },
+  "full_tile_control": {
+    "shape": "E8/K3072/N2048/32 rows per expert, every MMQ tile full",
+    "no_skip_revision": "1e44bb084706262dfd872a874578e67fac93db91",
+    "no_skip_ms": 0.3880660980939865,
+    "live_row_revision": "84c50b205b865b54070f96ff9b6d2feea653c295",
+    "live_row_ms": 0.42041189735755324,
+    "live_row_slowdown_pct": 8.335126263911064,
+    "same_output_checksum": true,
+    "no_skip_raw_sha256": "1435bde7bda8f57b820652ebdaea6cee2f4feddfe367209699dc05eb3f01936a",
+    "live_row_raw_sha256": "80a8c6f9a885c62883187f774965830b1f982f4c2d54078a3502829142cc57ac",
+    "qualification": "Synthetic all-full control only. Natural Laguna routing is positive at every frozen shape; use separate full/tail metadata and symbols if a future integrated profile shows full-tile predicate cost is material."
+  },
+  "memory": {
+    "raw_gate_up_bytes": 905969664,
+    "x8_gate_up_bytes": 905969664,
+    "t16_gate_up_bytes": 931135488,
+    "temporary_side_by_side_tracked_peak_bytes": 2821486144,
+    "tracked_after_bytes": 0
+  },
+  "decision": {
+    "retained_code": true,
+    "resident_layout_winner": "gguf_q4_k_x8_v1",
+    "natural_shape_body_gate_passed": true,
+    "reason": "Skipping padded-route accumulation makes X8 positive at every frozen natural shape and exceeds 2x retained at M128/M256/M512 while preserving exact X8-versus-raw outputs.",
+    "default_changed": false,
+    "blocker": "A single-resident-set runtime route still needs an exact X8 decode/fallback plus integrated full-model performance, quality, decode, and lifecycle gates.",
+    "lap1_state": "in_progress",
+    "next": "Implement and benchmark the exact X8 decode/fallback. Do not add another MMQ tail geometry unless integrated profiling shows the measured all-full control cost matters."
+  }
+}
