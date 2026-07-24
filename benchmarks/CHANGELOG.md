@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-24
 
+- [rejected and removed gfx1100 Laguna Q2 XL P1 raw-IQ2 row4] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained exact tile2 -> exact tile4 is BF16-bit equal but mixed/neutral on actual layers (**-1.41% to +0.89%** event/wall), while source-backed Vulkan nested-FMA row4 cuts VGPR **136 -> 72** yet regresses actual events/wall **8.38-10.90%**; both candidates are removed before model/category gates, P1 closes, and canonical h32 remains **51.436 tok/s**; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq2-row4-rejected.json`.
+
 - [quality-rejected and removed gfx1100 Laguna Q2 XL P1 raw-Q5 row4] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained exact wave32x2 -> Vulkan-style local64 four-row ownership improves actual attention-output and query/gate event windows **48.12-50.38%** with primitive differences at most **3.28e-7**, but combined/output-only/query-gate-only 18-prompt maximum KL is **0.461353/0.893206/1.35822** versus the `0.05` ceiling; all row4 source/dispatch/tests are removed and canonical h32 remains **51.436 tok/s**; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-q5-row4-rejected.json`.
 
 - [retained exact gfx1100 Laguna Q2 XL P2 SWA tile16] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / P2.1 one-slot scores -> local256 tile16 above live 257 improves pooled 512/1K/near-4K SWA attention **0.571%/0.344%/0.208%** and total attention **0.461%/0.272%/0.056%** with unchanged 868 dispatches/token, memory, and exact state; the short fallback gate is non-regressive, so gfx1100 defaults tile16 while canonical h32 remains **51.436 tok/s**; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-retained.json`.
