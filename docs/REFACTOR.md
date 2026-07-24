@@ -14,6 +14,18 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna `selected_gate_up_mode=mmq32_d4x3`
+
+- Added 2026-07-25 as an explicit session-local LAP-3 candidate. It keeps
+  `direct` as the backend default, uses D4x3 producer-row activation packing
+  only from 32 rows, and retains the exact selected gate/up plus regroup/gather
+  chain as the required fallback.
+- Remove the experimental selector after the canonical full-model quality,
+  clean pp512/category, memory, lifecycle, and decode-neutral gates decide the
+  route. If accepted, make MMQ the gfx1151 package capability and retain only
+  the exact rollback path; if rejected, remove the runner setter and candidate
+  scratch ownership while keeping the registered leaf/repair diagnostics.
+
 ## Priority Cleanup (do first)
 
 **Revalidate the gfx1151 GGUF graph default on the current stack and retire

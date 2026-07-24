@@ -598,7 +598,7 @@ Current progress:
 | LAP-BW0 / LAP-Q0 | Next | Measure same-host cold-read bandwidth and active bytes/GB/s; ablate the 0.0459275 shipping KL debt by admitted approximation. |
 | LAP-6 | Ready after LAP-Q0 | Convert the 138.351 ms zero-data library ceiling into a real-input torch-free path with range and quality gates. |
 | LAP-5 | Ready after LAP-6 | Dense/shared MMQ reuse has no routing dependency and the largest current/Vulkan ratio. |
-| LAP-2 calibration / LAP-3 / LAP-4 | Open | Capture real gate/up/down inputs, select DS/repair policy, then integrate selected gate/up and down. |
+| LAP-2 calibration / LAP-3 / LAP-4 | In progress | Explicit D4x3 selected gate/up now runs all 47 sparse layers, reuses compact metadata for exact grouped down, and improves a same-session dirty-tree pp512 diagnostic **76.414 -> 127.607 tok/s** with the same next token. Full quality/repair calibration and a clean A/B are still required before default promotion. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
 Immediate execution queue:
@@ -867,6 +867,16 @@ report encoded and physical GB/s, and continue toward at least **70% of the
 LAP-BW0 achievable-read result** unless profiling proves a different limiter.
 Any exact same-suite non-regressive win is retained even if it misses that
 checkpoint.
+
+First integration result: the explicit `mmq32_d4x3` session route quantizes
+the 512 producer rows once per layer, builds stable compact/source and 32-row
+tile metadata on device, emits compact gate/up, and passes that compact SiLU
+output directly to exact grouped Q4/Q6 down. It does not allocate a weight
+sidecar and keeps c=1 plus rows below 32 on the exact direct route. A
+same-session dirty-tree actual pp512 diagnostic measures **6.7003 -> 4.0123
+seconds**, or **76.414 -> 127.607 tok/s (1.670x)**, with next token **2930** in
+both modes. This proves the production graph uses the intended MMQ body; it is
+not a retained performance or quality claim until the clean canonical gate.
 
 Non-temporal weight loads are not a default lever here. Existing gfx1151
 cold-DRAM decode evidence found a **+14%** isolated rows=1 bandwidth gain but a
