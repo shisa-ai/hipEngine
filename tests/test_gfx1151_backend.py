@@ -189,12 +189,6 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "hip_gfx1100",
             "moe_linear",
             "gguf_iq3_xxs",
-            "selected_gemv_decode_tile2_bf16_bf16_out",
-        ),
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_iq3_xxs",
             "selected_gemv_decode_tile4_bf16_bf16_out",
         ),
     )

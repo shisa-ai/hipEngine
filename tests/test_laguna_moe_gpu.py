@@ -149,11 +149,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
 def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     baseline = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    tile2 = resolve_laguna_moe_plan(
-        config,
-        backend="hip_gfx1100",
-        iq3_selected_down_tile=2,
-    )
     tile4 = resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1100",
@@ -162,9 +157,6 @@ def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
     assert baseline.selected_down_keys["gguf_iq3_xxs"].variant == (
         "selected_gemv_decode_bf16_bf16_out"
     )
-    assert tile2.selected_down_keys["gguf_iq3_xxs"].variant == (
-        "selected_gemv_decode_tile2_bf16_bf16_out"
-    )
     assert tile4.selected_down_keys["gguf_iq3_xxs"].variant == (
         "selected_gemv_decode_tile4_bf16_bf16_out"
     )
@@ -172,13 +164,13 @@ def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
         resolve_laguna_moe_plan(
             config,
             backend="hip_gfx1100",
-            iq3_selected_down_tile=3,
+            iq3_selected_down_tile=2,
         )
     with pytest.raises(LookupError, match="required Laguna kernel"):
         resolve_laguna_moe_plan(
             config,
             backend="hip_gfx1151",
-            iq3_selected_down_tile=2,
+            iq3_selected_down_tile=4,
         )
 
 

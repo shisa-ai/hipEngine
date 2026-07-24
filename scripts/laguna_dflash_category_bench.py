@@ -89,7 +89,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--iq3-selected-down-tile",
         type=int,
-        choices=(1, 2, 4),
+        choices=(1, 4),
         default=1,
         help="explicit gfx1100 IQ3 selected-down output tile (default: baseline tile1)",
     )

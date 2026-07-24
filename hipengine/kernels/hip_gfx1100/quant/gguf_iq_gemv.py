@@ -26,9 +26,6 @@ _SYMBOL_IQ2_DUAL_SILU = (
 )
 _SYMBOL_IQ2_DUAL_SILU_TILE2 = _SYMBOL_IQ2_DUAL_SILU
 _SYMBOL_IQ3_SELECTED = "hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out"
-_SYMBOL_IQ3_SELECTED_TILE2 = (
-    "hipengine_gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out"
-)
 _SYMBOL_IQ3_SELECTED_TILE4 = (
     "hipengine_gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out"
 )
@@ -253,40 +250,6 @@ def _gguf_iq3_xxs_selected_gemv_output_tile_bf16_bf16_out(
         raise ValueError("IQ3 selected output tiles require threads=128")
     _launch_selected(
         symbol,
-        x_ptr,
-        selected_ptr,
-        qweight_ptr,
-        out_ptr,
-        x_rows=x_rows,
-        rows=rows,
-        num_experts=num_experts,
-        in_features=in_features,
-        out_features=out_features,
-        threads=threads,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
-
-
-def gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out(
-    x_ptr: int,
-    selected_ptr: int,
-    qweight_ptr: int,
-    out_ptr: int,
-    *,
-    x_rows: int,
-    rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    threads: int = 128,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    _gguf_iq3_xxs_selected_gemv_output_tile_bf16_bf16_out(
-        _SYMBOL_IQ3_SELECTED_TILE2,
         x_ptr,
         selected_ptr,
         qweight_ptr,
@@ -850,11 +813,6 @@ def register_gguf_iq_gemv_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq3_xxs",
-            "selected_gemv_decode_tile2_bf16_bf16_out",
-            gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out,
-        ),
-        (
-            "gguf_iq3_xxs",
             "selected_gemv_decode_tile4_bf16_bf16_out",
             gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
         ),
@@ -894,7 +852,6 @@ __all__ = [
     "gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_bf16_bf16_out",
-    "gguf_iq3_xxs_selected_gemv_tile2_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out",
     "gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out",
     "gguf_iq4_xs_selected_gemv_bf16_bf16_out",
