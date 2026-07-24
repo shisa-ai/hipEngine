@@ -13,6 +13,12 @@ LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
 LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
+# Clean P2.1 exact split profiles and the complete category/heldout gate admit
+# independent global/SWA crossovers. Registered single-block readers remain the
+# below-threshold and explicit-disable fallback on gfx1100; other backends do
+# not inherit these architecture-local thresholds.
+LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
+LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -73,10 +79,12 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
+    "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SWA_DECODE_VARIANT",
+    "LAGUNA_SWA_SPLIT_MIN_LIVE",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",

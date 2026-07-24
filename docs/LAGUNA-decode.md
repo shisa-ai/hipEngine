@@ -1,9 +1,9 @@
 # Laguna S 2.1 Decode Gap Analysis — W7900 / UD-Q2_K_XL
 
-Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership is
-implemented and retained as the gfx1100 default. Both P1 IQ3 quality lanes are
-rejected, while raw-Q5/raw-IQ2 remain later work. P2.1 exact split attention is
-correctness-admitted and default-off; clean full-model promotion is pending.
+Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership and P2.1
+exact split attention are implemented and retained as gfx1100 defaults. Both
+P1 IQ3 quality lanes are rejected, while raw-Q5/raw-IQ2 remain later work. P2.2
+quality-gated online FP32 partials are next.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -29,7 +29,10 @@ hipEngine D12 h32:      48.987 tok/s
 
 `llama-bench tg128` and hipEngine's canonical h32 suite are not the same
 protocol, so `94.513 / 48.987 = 1.929x` is diagnostic rather than a formal
-product-throughput ratio. However, the gap is not explained by prompt depth,
+product-throughput ratio. Since that frozen diagnosis, retained P0 IQ3 and P2.1
+exact split attention move the current counterbalanced h32 row to **51.436
+tok/s / 19.441 ms/token**; Vulkan still requires another **83.75%** diagnostic
+throughput gain. However, the gap is not explained by prompt depth,
 sampling, Python, or one missing launch flag:
 
 1. A llama.cpp control with the same mean timed context depth as hipEngine still
@@ -671,18 +674,30 @@ reassociation:
 This stage determines whether split ownership alone is enough. It must be byte
 exact to current context/gated outputs and full-model state.
 
-Implementation status: the default-off exact producer/reducer is now admitted
-for clean measurement. Independent synthetic crossover runs select global
-`>=127` and SWA `>=65`: the first three buckets are positive and no later
-measured bucket regresses. At live count 128, actual layer 0/44 global event
-windows improve **9.08%/8.53%** and layer 1/47 SWA improves
+Implementation status: retained on gfx1100. Independent synthetic crossover
+runs select global `>=127` and SWA `>=65`: the first three buckets are positive
+and no later measured bucket regresses. At live count 128, actual layer 0/44
+global event windows improve **9.08%/8.53%** and layer 1/47 SWA improves
 **13.31%/13.22%**, with synchronized wall agreeing and F32 outputs bit-exact.
 A 16-step shared-weight gate matches full logits, all 48 hidden boundaries, all
 47 sparse routed outputs, active K/V plus every `KVLiveSpans` field, reset, and
 lifecycle exactly. The two reusable scratch buffers total **1,572,864 bytes**;
-all four kernels are scratch-free. This is correctness/execution admission, not
-a retained throughput claim or backend default. Evidence:
-[`...p2-split-exact-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-correctness.json).
+all four kernels are scratch-free.
+
+Clean short/512/1K/near-4K profiles improve total attention
+**15.66%/23.28%/22.98%/22.33%**, complete kernel sum
+**2.67%/12.61%/13.44%/16.11%**, span
+**4.65%/11.05%/11.60%/14.63%**, and profiled-child throughput
+**1.19%/12.19%/12.01%/17.58%**. The complete two-order 18-prompt gate keeps
+all IDs and state exact, moves h32 decode **50.093 -> 51.436 tok/s (+2.681%)**
+and E2E **12.098 -> 12.158 (+0.496%)**, and improves every train/heldout
+category decode/E2E row while prefill and TTFT stay within 0.5%. gfx1100 now
+defaults the measured thresholds; `use_split_attention=False`, below-threshold
+calls, gfx1151, and unsupported backends retain the registered readers.
+Evidence:
+[`...p2-split-exact-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-correctness.json)
+and
+[`...p2-split-exact-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json).
 
 #### P2.2 Quality-gated online partials
 
@@ -800,15 +815,14 @@ Python, sampling, graph replay, a missing compiler flag, or one unfused router.
 The clean GPU trace proves otherwise.
 
 hipEngine has already transferred the broad Qwen playbook and improved Laguna
-from **19.596 to 48.987 tok/s**. The expanded review removes two tempting but
+from **19.596 to 51.436 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
 The implementation loop remains ordered and falsifiable: P0 exact IQ3
-route/output ownership is retained; both narrow P1 IQ3 quality lanes are
-rejected; and P2 exact attention split topology is correctness-admitted pending
-clean context/category promotion. Admit FP32 online attention only if exact
-ownership is insufficient. Q5/IQ2 and scheduler work follow independent wins.
-Matching
-Vulkan still requires large device-work reductions across several families;
-launch cleanup alone can move 49 toward 51, not toward 94.
+route/output ownership and P2 exact attention split topology are retained; both
+narrow P1 IQ3 quality lanes are rejected. Exact split is positive but plainly
+insufficient against the target, so P2.2 FP32 online partials now enter their
+quality/performance gates. Q5/IQ2 and scheduler work follow independent wins.
+Matching Vulkan still requires large device-work reductions across several
+families; launch cleanup alone can move 49 toward 51, not toward 94.

@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`ad99721ed6921d86c8cb89975433603881168c80` for the exact W7900 Laguna S 2.1
+UD-Q2_K_XL P2 split attention producer/reducer,
 `54a5751de19e00865754becee3588d041f8d4136` for the exact W7900 Laguna S 2.1
 UD-Q2_K_XL P0 IQ3 wave4 route/output producer,
 `c7fcf46f9` for the retained explicit-only exact W7900 Laguna S 2.1
@@ -1693,6 +1695,30 @@ with every category/horizon positive. gfx1100 therefore defaults
 serial. The P0 row4 c=1 runtime mode is removed; its separately measured tile4
 leaf remains for explicit DFlash verifier rows. [P0 retained
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-retained.json).
+
+##### Laguna Q2 XL P2 exact split attention (retained gfx1100 default)
+
+P2.1 replaces one-block context scans above independently measured crossovers
+with local32 score producers plus local256 global/local128 SWA reducers. Every
+producer consumes all five `KVLiveSpans` fields; global preserves block-256
+paging and SWA preserves ring/wrap/eviction semantics. Synthetic boundaries
+select global live count **127** and SWA **65**. Actual layer 0/44 and 1/47
+context-128 event windows improve **8.53-13.31%**, all F32 outputs and complete
+model state are bit-exact, and the four kernels use VGPR **8/19/7/11** with
+zero private scratch. Two reusable session buffers add **1,572,864 bytes**.
+
+Clean short/512/1K/near-4K profiles improve total attention
+**15.66%/23.28%/22.98%/22.33%**, complete kernel sum
+**2.67%/12.61%/13.44%/16.11%**, span
+**4.65%/11.05%/11.60%/14.63%**, and profiled-child throughput
+**1.19%/12.19%/12.01%/17.58%**. The two-order 18-prompt category/heldout gate
+keeps all IDs/state exact and moves h32 decode **50.093 -> 51.436 tok/s
+(+2.681%)** plus E2E **12.098 -> 12.158 (+0.496%)**, with every category
+positive and prefill/TTFT inside 0.5%. gfx1100 defaults both thresholds;
+`--disable-split-attention`, below-threshold calls, and other backends retain
+the registered readers. The current **19.441 ms/token** row still needs
+**83.75%** more diagnostic throughput to match Vulkan. [P2 retained
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json).
 
 ##### Laguna Q2 XL c=1 decode D13 (rejected and removed)
 
