@@ -1,0 +1,285 @@
+{
+  "created_at": "2026-07-24T21:03:47.770345+00:00",
+  "gate": {
+    "exact": true,
+    "passed": false,
+    "within_two_percent": false
+  },
+  "hardware": {
+    "architecture": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": "1"
+  },
+  "kind": "hipengine_laguna_q4_k_x8_exact_decode_leaf",
+  "layouts": {
+    "candidate_single_resident_layout": "gguf_q4_k_x8_v1",
+    "t16_entries": {
+      "gate": {
+        "allocations": {
+          "tiles": {
+            "file": "0004-3b95f3ef3bd28cb8-tiles.npy",
+            "nbytes": 465567744,
+            "numpy_dtype": "|u1",
+            "runtime_dtype": "int8",
+            "shape": [
+              256,
+              64,
+              12,
+              2368
+            ],
+            "source_dtype": "I8"
+          }
+        },
+        "layout": "gguf_q4_k_t16_v1",
+        "resident_nbytes": 465567744,
+        "source_nbytes": 452984832,
+        "tensor_name": "blk.1.ffn_gate_exps.weight"
+      },
+      "up": {
+        "allocations": {
+          "tiles": {
+            "file": "0005-b6af87338677d0e8-tiles.npy",
+            "nbytes": 465567744,
+            "numpy_dtype": "|u1",
+            "runtime_dtype": "int8",
+            "shape": [
+              256,
+              64,
+              12,
+              2368
+            ],
+            "source_dtype": "I8"
+          }
+        },
+        "layout": "gguf_q4_k_t16_v1",
+        "resident_nbytes": 465567744,
+        "source_nbytes": 452984832,
+        "tensor_name": "blk.1.ffn_up_exps.weight"
+      }
+    },
+    "t16_pair_bytes": 931135488,
+    "temporary_side_by_side_one_layer_only": true,
+    "x8_pair_bytes": 905969664
+  },
+  "memory": {
+    "tracked_after_bytes": 0,
+    "tracked_peak_bytes": 1837482624
+  },
+  "model": {
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "layer": 1,
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "up_tensor": "blk.1.ffn_up_exps.weight"
+  },
+  "notes": [
+    "This qualifies the exact X8 leaf, not full-model decode.",
+    "No raw-Q4 or T16 sidecar is required by the candidate kernel.",
+    "The comparison temporarily co-resides one layer of X8 and T16.",
+    "Runtime dispatch and materialization remain unchanged."
+  ],
+  "performance_claim": false,
+  "protocol": {
+    "burst": 5,
+    "command": "scripts/laguna_q4_k_x8_exact_decode_bench.py --producer-rows 1,2,4,8 --warmups 3 --samples 11 --burst 5 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json",
+    "correctness": "BF16 bit equality to retained exact T16 for gate and up; focused CPU-source primitive gate is in tests/test_gguf_x8_selected_gemv.py",
+    "promotion_gate": "all shapes exact and X8/T16 <= 1.02",
+    "samples": 11,
+    "timing": "counterbalanced HIP-event elapsed time",
+    "warmups": 3
+  },
+  "repo": {
+    "revision": "420bf83922edafbb941467507b66f08247e904a9",
+    "tracked_status": []
+  },
+  "results": {
+    "1": {
+      "bf16_mismatch_gate": 0,
+      "bf16_mismatch_up": 0,
+      "checksum_f64": -67.44313645362854,
+      "finite": true,
+      "median_ms": {
+        "t16": 0.15722260475158692,
+        "x8_exact": 0.17466340065002442
+      },
+      "producer_rows": 1,
+      "samples_ms": {
+        "t16": [
+          0.15802420377731324,
+          0.1575271964073181,
+          0.1483579993247986,
+          0.15763139724731445,
+          0.1531268000602722,
+          0.15722260475158692,
+          0.14942400455474852,
+          0.15808019638061524,
+          0.14975260496139525,
+          0.1585129976272583,
+          0.14867860078811646
+        ],
+        "x8_exact": [
+          0.1766028046607971,
+          0.16969399452209472,
+          0.17546479701995848,
+          0.17343679666519166,
+          0.17643460035324096,
+          0.16764999628067018,
+          0.17466340065002442,
+          0.16845159530639647,
+          0.17636239528656006,
+          0.1691249966621399,
+          0.17758079767227172
+        ]
+      },
+      "selected_routes": 10,
+      "selected_sha256": "86f1c8752f3c901ad51378b48f4356ecbd3e42f036d45964a1d6e003f2fb2400",
+      "x8_over_t16": 1.1109305874049988,
+      "x8_regression_percent": 11.093058740499885
+    },
+    "2": {
+      "bf16_mismatch_gate": 0,
+      "bf16_mismatch_up": 0,
+      "checksum_f64": 273.7226243019104,
+      "finite": true,
+      "median_ms": {
+        "t16": 0.351995587348938,
+        "x8_exact": 0.36251120567321776
+      },
+      "producer_rows": 2,
+      "samples_ms": {
+        "t16": [
+          0.3532779932022095,
+          0.3521398067474365,
+          0.351995587348938,
+          0.3520359992980957,
+          0.3522523880004883,
+          0.351763391494751,
+          0.3548892021179199,
+          0.3497436046600342,
+          0.3496396064758301,
+          0.3502163887023926,
+          0.34911038875579836
+        ],
+        "x8_exact": [
+          0.3621665954589844,
+          0.3626875877380371,
+          0.36251120567321776,
+          0.36364140510559084,
+          0.36343319416046144,
+          0.3627279996871948,
+          0.3637537956237793,
+          0.36219100952148436,
+          0.36074841022491455,
+          0.35846400260925293,
+          0.3608763933181763
+        ]
+      },
+      "selected_routes": 20,
+      "selected_sha256": "762f35433a379b85165f38ffce2f2e16c1f40ae368c1e3e802c501808a6b2ba3",
+      "x8_over_t16": 1.0298742901963016,
+      "x8_regression_percent": 2.987429019630161
+    },
+    "4": {
+      "bf16_mismatch_gate": 0,
+      "bf16_mismatch_up": 0,
+      "checksum_f64": 230.20420210435987,
+      "finite": true,
+      "median_ms": {
+        "t16": 0.6870155811309815,
+        "x8_exact": 0.6864707946777344
+      },
+      "producer_rows": 4,
+      "samples_ms": {
+        "t16": [
+          0.6867434024810791,
+          0.6861502170562744,
+          0.6870155811309815,
+          0.6872642040252686,
+          0.6872079849243165,
+          0.6867671966552734,
+          0.6879213809967041,
+          0.6861100196838379,
+          0.6877932071685791,
+          0.686647605895996,
+          0.6880581855773926
+        ],
+        "x8_exact": [
+          0.6862624168395997,
+          0.688129997253418,
+          0.6853085994720459,
+          0.6881058216094971,
+          0.686791181564331,
+          0.6861822128295898,
+          0.6864707946777344,
+          0.6844590187072754,
+          0.688618803024292,
+          0.685733413696289,
+          0.6880179882049561
+        ]
+      },
+      "selected_routes": 40,
+      "selected_sha256": "ce3f19c758ec5f379f1ad594964380396dbfef54d4a5512c042c9ac3dc7065bf",
+      "x8_over_t16": 0.9992070246029207,
+      "x8_regression_percent": -0.0792975397079343
+    },
+    "8": {
+      "bf16_mismatch_gate": 0,
+      "bf16_mismatch_up": 0,
+      "checksum_f64": 34.84478298202157,
+      "finite": true,
+      "median_ms": {
+        "t16": 1.3504207611083985,
+        "x8_exact": 1.3323789596557618
+      },
+      "producer_rows": 8,
+      "samples_ms": {
+        "t16": [
+          1.3508210182189941,
+          1.3514944076538087,
+          1.3500036239624023,
+          1.3484087944030763,
+          1.3519113540649415,
+          1.3512541770935058,
+          1.3482645988464355,
+          1.3504207611083985,
+          1.3527935981750487,
+          1.3486417770385741,
+          1.3502767562866211
+        ],
+        "x8_exact": [
+          1.3347829818725585,
+          1.33196964263916,
+          1.3293968200683595,
+          1.3323789596557618,
+          1.3322985649108887,
+          1.334967803955078,
+          1.3316253662109374,
+          1.3330280303955078,
+          1.3316659927368164,
+          1.3336697578430177,
+          1.3325156211853026
+        ]
+      },
+      "selected_routes": 80,
+      "selected_sha256": "8a7fbd6bff8dbebe7316dc500b886831617f1acfd63cf7c3ea69ab4b1f48ed23",
+      "x8_over_t16": 0.9866398666458384,
+      "x8_regression_percent": -1.336013335416164
+    }
+  },
+  "schema": 1,
+  "scope": "actual layer-1 K3072/N1024 Q4_K gate/up selected exact leaf",
+  "status": "rejected",
+  "workload": {
+    "experts": 256,
+    "in_features": 3072,
+    "out_features": 1024,
+    "producer_rows": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "selected_policy": "deterministic distinct affine expert IDs; independent of prompt, token ID, output, or category",
+    "top_k": 10
+  }
+}

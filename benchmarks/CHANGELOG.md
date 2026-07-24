@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-25
+
+- [rejected LAP-1 sole-resident X8 layout; exact diagnostic retained] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / optimized local128 X8 decode is BF16-bit exact and catches retained T16 at c4/c8, but c1/c2 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate; keep the existing T16 resident set, preserve X8 only as the MMQ control, and build a direct T16 MMQ32 consumer; `benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json`.
+
 ## 2026-07-24
 
 - [retained explicit LAP-1 gfx1151 Laguna X8 MMQ32 live-row primitive] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / bypassing padded-route dot work moves producer-pack-inclusive X8 M128 **7.930 -> 5.331 ms (-32.77%)** and M512 **11.469 -> 9.330 ms (-18.65%)**, makes all natural M32/55/64/122/128/256/512 shapes positive at **1.197/1.567/1.704/2.526/2.587/4.092/5.614x** retained direct, preserves exact raw/X8 checksums, and lowers cached X8 allocation **VGPR120 -> VGPR48** with LDS2048B/scratch0; the recorded all-full synthetic control regresses 8.34%, and runtime default still waits on exact X8 fallback/full-model gates; `benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json`.

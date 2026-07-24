@@ -1320,9 +1320,12 @@ work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1's source-faithful
-packed-dot body, byte-neutral X8 layout, and natural-shape schedule now pass
-their leaf gates; the exact X8 decode/fallback is the remaining LAP-1 blocker
-before residual calibration and runtime integration.
+packed-dot body and natural-shape schedule pass their leaf gates. The
+byte-neutral X8 layout remains the fastest MMQ control, but its optimized exact
+fallback is **11.093%** slower than retained T16 at c=1 and fails the <=2%
+decode gate. LAP-1 therefore keeps the existing T16 expert layout as the sole
+resident set and next adds a direct T16 MMQ32 consumer—without a per-dispatch
+layout transpose—before residual calibration and runtime integration.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
