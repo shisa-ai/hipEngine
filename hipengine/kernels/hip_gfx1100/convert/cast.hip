@@ -62,6 +62,71 @@ __global__ void fp16_to_bf16_kernel(const half_t* __restrict__ x, uint16_t* __re
   }
 }
 
+__global__ void bf16_to_fp16_scaled_rows_kernel(
+    const uint16_t* __restrict__ x,
+    half_t* __restrict__ out,
+    float* __restrict__ row_scales,
+    int64_t rows,
+    int64_t cols) {
+  const int64_t row = blockIdx.x;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  float max_abs = 0.0f;
+  for (int64_t col = tid; col < cols; col += blockDim.x) {
+    max_abs = fmaxf(max_abs, fabsf(bf16_bits_to_float(x[row * cols + col])));
+  }
+  __shared__ float reduction[256];
+  reduction[tid] = max_abs;
+  __syncthreads();
+  for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+    if (tid < offset) {
+      reduction[tid] = fmaxf(reduction[tid], reduction[tid + offset]);
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    const float row_max = reduction[0];
+    row_scales[row] =
+        row_max <= 65504.0f
+            ? 1.0f
+            : exp2f(ceilf(log2f(row_max / 65504.0f)));
+  }
+  __syncthreads();
+  const float inverse_scale = 1.0f / row_scales[row];
+  for (int64_t col = tid; col < cols; col += blockDim.x) {
+    out[row * cols + col] =
+        static_cast<half_t>(bf16_bits_to_float(x[row * cols + col]) * inverse_scale);
+  }
+}
+
+__global__ void f32_scale_rows_to_bf16_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ row_scales,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t cols) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t count = rows * cols;
+  if (idx < count) {
+    const int64_t row = idx / cols;
+    out[idx] = float_to_bf16_bits(x[idx] * row_scales[row]);
+  }
+}
+
+__global__ void f32_scale_rows_kernel(
+    float* __restrict__ x,
+    const float* __restrict__ row_scales,
+    int64_t rows,
+    int64_t cols) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t count = rows * cols;
+  if (idx < count) {
+    const int64_t row = idx / cols;
+    x[idx] *= row_scales[row];
+  }
+}
+
 __global__ void fp16_to_bf16_strided_rows_kernel(
     const half_t* __restrict__ x,
     uint16_t* __restrict__ out,
@@ -135,6 +200,82 @@ extern "C" int hipengine_fp16_to_bf16(const half_t* x, uint16_t* out, int64_t co
   const int threads = 256;
   const int blocks = static_cast<int>((count + threads - 1) / threads);
   hipLaunchKernelGGL(fp16_to_bf16_kernel, dim3(blocks), dim3(threads), 0, stream, x, out, count);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_bf16_to_fp16_scaled_rows(
+    const uint16_t* x,
+    half_t* out,
+    float* row_scales,
+    int64_t rows,
+    int64_t cols,
+    hipStream_t stream) {
+  if (!x || !out || !row_scales || rows <= 0 || cols <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      bf16_to_fp16_scaled_rows_kernel,
+      dim3(rows),
+      dim3(256),
+      0,
+      stream,
+      x,
+      out,
+      row_scales,
+      rows,
+      cols);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_f32_scale_rows_to_bf16(
+    const float* x,
+    const float* row_scales,
+    uint16_t* out,
+    int64_t rows,
+    int64_t cols,
+    hipStream_t stream) {
+  if (!x || !row_scales || !out || rows <= 0 || cols <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t count = rows * cols;
+  const int threads = 256;
+  const int blocks = static_cast<int>((count + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      f32_scale_rows_to_bf16_kernel,
+      dim3(blocks),
+      dim3(threads),
+      0,
+      stream,
+      x,
+      row_scales,
+      out,
+      rows,
+      cols);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_f32_scale_rows(
+    float* x,
+    const float* row_scales,
+    int64_t rows,
+    int64_t cols,
+    hipStream_t stream) {
+  if (!x || !row_scales || rows <= 0 || cols <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t count = rows * cols;
+  const int threads = 256;
+  const int blocks = static_cast<int>((count + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      f32_scale_rows_kernel,
+      dim3(blocks),
+      dim3(threads),
+      0,
+      stream,
+      x,
+      row_scales,
+      rows,
+      cols);
   return static_cast<int>(hipGetLastError());
 }
 
