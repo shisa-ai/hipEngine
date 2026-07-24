@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture natural and synthetic Laguna routing padding at 256/512 rows."""
+"""Capture natural and synthetic Laguna routing padding at frozen row sets."""
 
 from __future__ import annotations
 
@@ -40,6 +40,11 @@ from scripts.laguna_target_ar_bench import (
 
 ROOT = Path(__file__).resolve().parents[1]
 RETAINED_ROWS = (256, 512)
+LAP1_ROWS = (32, 55, 64, 122, 128, 256, 512)
+ROUTING_PROTOCOL_ROWS = {
+    "retained": RETAINED_ROWS,
+    "lap1": LAP1_ROWS,
+}
 DEFAULT_TILE_ROWS = (2, 4, 8, 16, 32)
 DEFAULT_SEED = 20260723
 DEFAULT_OUTPUT = (
@@ -60,6 +65,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=4096)
+    parser.add_argument(
+        "--protocol",
+        choices=tuple(ROUTING_PROTOCOL_ROWS),
+        default="retained",
+        help="frozen row-shape protocol; historical commands default to retained",
+    )
     parser.add_argument(
         "--rows",
         type=lambda value: _parse_int_tuple(value, name="rows"),
@@ -221,13 +232,17 @@ def _compact_distribution(summary: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    protocol = str(args.protocol)
     rows = tuple(int(value) for value in args.rows)
     tiles = tuple(int(value) for value in args.tile_rows)
-    if rows != RETAINED_ROWS:
-        raise ValueError(f"retained routing replay requires exact rows {RETAINED_ROWS}")
+    expected_rows = ROUTING_PROTOCOL_ROWS[protocol]
+    if rows != expected_rows:
+        raise ValueError(
+            f"{protocol} routing replay requires exact rows {expected_rows}"
+        )
     if tiles != DEFAULT_TILE_ROWS:
         raise ValueError(
-            f"retained routing replay requires exact tile rows {DEFAULT_TILE_ROWS}"
+            f"{protocol} routing replay requires exact tile rows {DEFAULT_TILE_ROWS}"
         )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
@@ -237,8 +252,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("--model-sha256 is required")
     repo = _repo_state()
     if not repo["tracked_clean"]:
-        raise RuntimeError("retained Laguna routing replay requires a clean tracked worktree")
+        raise RuntimeError(
+            f"{protocol} Laguna routing replay requires a clean tracked worktree"
+        )
 
+    build_profile = (
+        "laguna_routing_256_512"
+        if protocol == "retained"
+        else "laguna_lap1_routing_shapes"
+    )
     provenance = collect_artifact_provenance(
         repo_root=ROOT,
         configured_backend=args.backend,
@@ -248,7 +270,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
-        build_profile="laguna_routing_256_512",
+        build_profile=build_profile,
         timing_protocol="untimed_exact_routing_replay_natural_hot_zipf",
         warmups=0,
         repetitions=1,
@@ -344,7 +366,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "kind": "hipengine_laguna_routing_256_512",
+        "kind": (
+            "hipengine_laguna_routing_256_512"
+            if protocol == "retained"
+            else "hipengine_laguna_lap1_routing_shapes"
+        ),
         "status": "accepted_routing_diagnostic" if passed else "rejected",
         "pass": passed,
         "performance_claim": False,
@@ -370,6 +396,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "hip_total_bytes": gpu_total,
         },
         "protocol": {
+            "name": protocol,
             "rows": list(rows),
             "tile_rows": list(tiles),
             "patterns": ["natural", "hot", "zipf"],

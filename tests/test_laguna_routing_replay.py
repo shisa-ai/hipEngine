@@ -5,9 +5,21 @@ import struct
 
 from scripts.laguna_routing_replay import (
     DEFAULT_TILE_ROWS,
+    LAP1_ROWS,
+    RETAINED_ROWS,
+    ROUTING_PROTOCOL_ROWS,
     _routing_distribution_summary,
     _synthetic_selected_by_layer,
 )
+
+
+def test_routing_protocol_rows_are_frozen() -> None:
+    assert RETAINED_ROWS == (256, 512)
+    assert LAP1_ROWS == (32, 55, 64, 122, 128, 256, 512)
+    assert ROUTING_PROTOCOL_ROWS == {
+        "retained": RETAINED_ROWS,
+        "lap1": LAP1_ROWS,
+    }
 
 
 def test_routing_distribution_reports_multi_tile_padding_once() -> None:
