@@ -9,9 +9,9 @@ rejected. P4.1's exact P2-derived split-reducer+softplus-gate body and the
 current-P4 exact head-RMSNorm+RoPE+BF16-KV body are retained as gfx1100
 defaults. A correctness-fenced one-doorbell native-AQL owner is slower and
 rejected. The device-pinned matched Vulkan reaudit still fails at both horizons.
-A fresh exact SWA split-reducer max-scan synchronization contraction is now
-correctness-admitted/default-off after independently winning every actual-layer
-screen; clean context and complete-category promotion gates remain pending.
+A fresh exact SWA split-reducer max-scan synchronization contraction passed
+correctness and actual-layer screens but failed the clean short dispatch-span
+guard; it is rejected and removed before category measurement.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -926,24 +926,29 @@ tok/s** versus Vulkan **64.245/64.418 tok/s** at h16/h32. It remains
 **17.73%/18.67% slower** and needs **21.55%/22.96%** more throughput, so the
 objective fails at both horizons.
 
-The first fresh post-reaudit contraction audits the retained SWA exact split
+The first fresh post-reaudit contraction audited the retained SWA exact split
 reducer itself. Its maximum pass processes four logical scores at a time using
 only thread 0, but the retained body executes a block-wide barrier after every
 four-score group even though no other thread consumes `shared_max` until the
-first weight-publication barrier. A separate gfx1100/default-off sibling omits
+first weight-publication barrier. A separate gfx1100/default-off sibling omitted
 only those redundant max-scan barriers; score production, logical-slot max and
 denominator order, FP32 value FMA order, softplus, BF16 rounding, workspace,
-and dispatch count are unchanged. Synthetic live 65/257, a 16-transition
+and dispatch count stayed unchanged. Synthetic live 65/257, a 16-transition
 shared-weight gate, full logits, all 48 hidden/47 routed boundaries, active
-K/V and every span field, reset, and lifecycle are bit exact (`KL=0`, top-1
-100%). First/last actual SWA layers at live 70/128/257/512 improve inclusive
+K/V and every span field, reset, and lifecycle were bit exact (`KL=0`, top-1
+100%). First/last actual SWA layers at live 70/128/257/512 improved inclusive
 event **0.18-0.50%** and synchronized wall **0.18-0.45%** in every row.
-Cached tracing names the candidate 72 times over two transitions at local128,
-VGPR24, LDS512, scratch0. Evidence:
-[`...p4-swa-no-max-sync-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-no-max-sync-correctness.json).
-This is correctness/mechanical admission, not a retained throughput claim;
-clean context profiles and the unchanged complete-category gate decide whether
-it becomes the gfx1100 default.
+
+The frozen clean gate nevertheless rejects it. Two complete process orders pool
+short reducer/SWA changes of only **-0.0008%/-0.0216%**, while total kernel sum
+changes **+0.446%** and median dispatch span changes **+1.173%**, beyond the
+0.5% guard; profiled child is **-0.167%**. At 512/1K the reducer improves
+**0.557%/0.320%**, but the already-failed short gate stops near-4K and category
+work. No third favorable-order rerun or waiver is used. Candidate bodies,
+exports, wrappers, registry keys, runtime selector, and tests are removed;
+retained current-P4 remains canonical. Evidence:
+[`correctness`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-no-max-sync-correctness.json)
+and [`rejection`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-no-max-sync-rejected.json).
 
 ## 9. Do not chase without new evidence
 
