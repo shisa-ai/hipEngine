@@ -89,6 +89,7 @@ class LagunaKVCache:
         global_split_min_live: int | None,
         swa_split_min_live: int | None,
         swa_split_tile16_min_live: int | None,
+        split_gate_fusion: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -102,6 +103,7 @@ class LagunaKVCache:
         self.global_split_min_live = global_split_min_live
         self.swa_split_min_live = swa_split_min_live
         self.swa_split_tile16_min_live = swa_split_tile16_min_live
+        self.split_gate_fusion = bool(split_gate_fusion)
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -291,14 +293,19 @@ class LagunaKVCache:
         query_ptr: int,
         out_ptr: int,
         *,
+        gate_ptr: int | None = None,
+        gated_out_ptr: int | None = None,
         scale: float = _LAGUNA_HEAD_DIM**-0.5,
         stream: int = 0,
         library=None,
-    ) -> None:
-        """Run ungated global or SWA context attention for the current row."""
+    ) -> bool:
+        """Run context attention, optionally fusing the split-path BF16 gate."""
 
         state = self.layer(layer_id)
         self._check_prepared()
+        if (gate_ptr is None) != (gated_out_ptr is None):
+            raise ValueError("gate_ptr and gated_out_ptr must be provided together")
+        use_gated = gate_ptr is not None and self.split_gate_fusion
         live_count = min(self.position + 1, state.capacity)
         split_threshold = (
             self.global_split_min_live
@@ -321,17 +328,33 @@ class LagunaKVCache:
             if self._split_score_scratch is None or self._split_physical_scratch is None:
                 raise RuntimeError("Laguna split attention scratch is unavailable")
             variant = (
-                "global_context_split_exact_spans"
+                (
+                    "global_context_split_exact_gated_spans"
+                    if use_gated
+                    else "global_context_split_exact_spans"
+                )
                 if state.attention_type == FULL_ATTENTION
                 else (
-                    "swa_context_split_tile16_exact_spans"
+                    (
+                        "swa_context_split_tile16_exact_gated_spans"
+                        if use_gated
+                        else "swa_context_split_tile16_exact_spans"
+                    )
                     if use_tile16
-                    else "swa_context_split_exact_spans"
+                    else (
+                        "swa_context_split_exact_gated_spans"
+                        if use_gated
+                        else "swa_context_split_exact_spans"
+                    )
                 )
             )
             fn = self._resolve("laguna_attention_decode", variant)
+            gated_args = (
+                (int(gate_ptr), int(gated_out_ptr)) if use_gated else ()
+            )
             split_common = (
                 *common,
+                *gated_args,
                 self._split_score_scratch.ptr,
                 self._split_physical_scratch.ptr,
                 state.spans,
@@ -361,7 +384,7 @@ class LagunaKVCache:
                     library=library,
                     runtime=self.runtime,
                 )
-            return
+            return use_gated
 
         fn = self._resolve("laguna_attention_decode", state.attention_variant)
         fallback_common = (*common, state.spans)
@@ -389,6 +412,7 @@ class LagunaKVCache:
                 library=library,
                 runtime=self.runtime,
             )
+        return False
 
     def attend_prefill(
         self,
@@ -657,6 +681,7 @@ def allocate_laguna_kv_cache(
     swa_split_tile16_min_live: int | None = None,
     use_swa_split_tile16: bool | None = None,
     use_split_attention: bool | None = None,
+    use_split_gate_fusion: bool | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -715,11 +740,21 @@ def allocate_laguna_kv_cache(
         sliding_window,
         "swa_split_tile16_min_live",
     )
+    selected_split_gate_fusion = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_SPLIT_GATE_FUSION",
+            False,
+        )
+        if use_split_gate_fusion is None
+        else use_split_gate_fusion
+    )
     _validate_split_backend(
         backend,
         parsed_global_split,
         parsed_swa_split,
         parsed_swa_tile16,
+        split_gate_fusion=selected_split_gate_fusion,
     )
     buffers: list[DeviceBuffer] = []
 
@@ -892,6 +927,7 @@ def allocate_laguna_kv_cache(
             global_split_min_live=parsed_global_split,
             swa_split_min_live=parsed_swa_split,
             swa_split_tile16_min_live=parsed_swa_tile16,
+            split_gate_fusion=(selected_split_gate_fusion and split_enabled),
             runtime=runtime,
         )
     except Exception:
@@ -905,6 +941,8 @@ def _validate_split_backend(
     global_threshold: int | None,
     swa_threshold: int | None,
     swa_tile16_threshold: int | None,
+    *,
+    split_gate_fusion: bool,
 ) -> None:
     if all(
         threshold is None
@@ -917,11 +955,22 @@ def _validate_split_backend(
 
     register_laguna_kv_attention_kernels()
     load_backend_kernel_package(backend)
-    requested = (
+    requested = [
         (global_threshold, "global_context_split_exact_spans"),
         (swa_threshold, "swa_context_split_exact_spans"),
         (swa_tile16_threshold, "swa_context_split_tile16_exact_spans"),
-    )
+    ]
+    if split_gate_fusion:
+        requested.extend(
+            (
+                (global_threshold, "global_context_split_exact_gated_spans"),
+                (swa_threshold, "swa_context_split_exact_gated_spans"),
+                (
+                    swa_tile16_threshold,
+                    "swa_context_split_tile16_exact_gated_spans",
+                ),
+            )
+        )
     for threshold, variant in requested:
         if threshold is None:
             continue

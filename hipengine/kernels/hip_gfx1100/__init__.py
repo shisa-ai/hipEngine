@@ -22,6 +22,10 @@ LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 # P2's exact post-online refinement reduces the retained SWA score-producer
 # sub-window at 257/511/512 without changing dispatches, memory, or arithmetic.
 LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
+# P4.1 exact actual-layer screens admit folding the existing softplus gate and
+# BF16 store into each retained split reducer. The unfused registered chain is
+# the explicit rollback and remains the below-threshold fallback.
+LAGUNA_SPLIT_GATE_FUSION = True
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -86,6 +90,7 @@ __all__ = [
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
+    "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",

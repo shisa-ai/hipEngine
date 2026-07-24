@@ -638,6 +638,7 @@ def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     class Resource:
         def __init__(self, name: str) -> None:
             self.name = name
+            self.split_gate_fusion = False
 
         def free(self, **kwargs) -> None:
             del kwargs
@@ -701,6 +702,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     class Resource:
         def __init__(self, name: str) -> None:
             self.name = name
+            self.split_gate_fusion = False
 
         def free(self, **kwargs) -> None:
             del kwargs
