@@ -1,7 +1,9 @@
 # Laguna S 2.1 Decode Gap Analysis — W7900 / UD-Q2_K_XL
 
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership is
-implemented and retained as the gfx1100 default. P1/P2 remain open.
+implemented and retained as the gfx1100 default. P1 is in progress: its
+IQ3 Q8_1/dot4 lane is rejected, while raw-IQ3 row4 remains open. P2 remains
+open.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -601,6 +603,15 @@ The IQ3-only integer screen is justified by llama.cpp HIP's 1.422-ms family,
 not by a generic MMVQ claim. Vulkan's all-MMVQ-off control and hipEngine's
 rejected IQ2 Q8_1 path prohibit making activation quantization a broad default.
 Each family must win independently before any bundle is tested.
+
+The first lane is now adjudicated and rejected. A source-matched K1024
+IQ3_XXS x Q8_1 signed-dot4 producer was bit-exact to its primitive oracle and
+passed a synthetic exact-sibling quality check, but mandatory activation
+quantization made actual layer-1/layer-45 producer+reducer HIP-event time
+**16.16%/13.63% slower** than retained wave4; synchronized wall regressed
+**13.61%/11.03%**. Per the frozen inclusive-win precondition, it was removed
+before runtime or the 18-prompt gate. Evidence:
+[`...p1-iq3-q8-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq3-q8-rejected.json).
 
 Contract and gates:
 
