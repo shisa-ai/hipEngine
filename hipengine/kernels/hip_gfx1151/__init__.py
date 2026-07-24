@@ -170,6 +170,17 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "swa_context_split_tile16_exact_gated_spans",
         ),
+        # Current-P4 head/KV fusion is W7900-only until independently gated.
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "global_f32_bf16_spans",
+        ),
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "swa_f32_bf16_spans",
+        ),
         # D9 is W7900-only until gfx1151 receives an independent exact/perf gate.
         (
             "moe_tail+next_rmsnorm",
