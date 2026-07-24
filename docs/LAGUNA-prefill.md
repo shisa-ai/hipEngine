@@ -394,7 +394,7 @@ Current progress:
 | Task | State | Result / next condition |
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
-| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise. Three smaller-row packed-dot geometries lost to MMQ32 at every natural shape; next screen a mixed MMQ32 plus exact grouped-small-M schedule before replacement-layout work. |
+| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise. Smaller packed-dot tiles and the existing exact grouped-small-M hybrid both lose; next compare MMQ32 on the byte-exact X8 replacement layout and provide an X8-native fallback. |
 | LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
@@ -495,18 +495,26 @@ padding and VGPR do not offset repeated K3072 weight decode: the one-wave 32x8
 tile costs about 405 us and the cooperative 64x8 tile about 522-531 us, versus
 about 41 us per MMQ32 tile at the natural M128 leaf.
 
-LAP-1 therefore remains open for a mixed schedule: use MMQ32 only for
-sufficiently populated expert groups and route sparse experts or tails through
-the existing exact grouped-small-M leaf. The next screen must measure this
-crossover before choosing a lossless resident replacement layout and exact
-decode fallback. No small-row prototype was retained and no runtime default
-changed.
+The whole-expert mixed screen also rejects the existing exact grouped-small-M
+leaf as a tail. Threshold 1 is simply all-MMQ32; every threshold that sends
+even one active expert to exact is slower at every shape. The lightest true
+mixed case raises M128 **8.867 -> 11.625 ms (+31.10%)** and M512
+**12.524 -> 13.294 ms (+6.15%)** before any device merge/scatter. All-exact
+grouped-small-M itself is **43.622/136.742 ms** at M128/M512.
+
+LAP-1 therefore moves to the resident-layout decision. The next candidate is
+the existing byte-exact Q4_K X8 replacement layout: adapt MMQ32 to consume it
+without a second weight set, then provide an X8-native exact decode/tail
+fallback or a full-tile-plus-tail MMQ body. No threshold, small-row prototype,
+or runtime default was retained.
 Evidence:
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
 The all-shape crossover packet is
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json).
 The rejected small-row packet is
 [`2026-07-24-gfx1151-laguna-q4-k-mmq8-tail-rejected.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq8-tail-rejected.json).
+The rejected whole-expert mixed packet is
+[`2026-07-24-gfx1151-laguna-q4-k-mixed-exact-rejected.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mixed-exact-rejected.json).
 
 ### LAP-2 — calibrate residual Q8_1 and exact repair
 
