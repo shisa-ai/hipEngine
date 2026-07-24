@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_native_aql_submission_rejected",
+  "status": "selection_rejected_no_runtime_change",
+  "date": "2026-07-24",
+  "revision": "4a20c8eb976e5189119417654f19570e8f577c80",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "context_length": 4096,
+    "kv_dtype": "bf16"
+  },
+  "retained_profile": {
+    "description": "clean post-P4.1 short decode profile; stable steps exclude the first two transitions",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-p4-current-short-profile --output-file epyc -- .venv/bin/python -u /tmp/laguna_p2_split_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --global-split-min-live 127 --swa-split-min-live 65 --output /tmp/laguna-p4-current-short-profile/bench.json",
+    "stable_steps": 14,
+    "dispatches_per_token": 820,
+    "kernel_sum_mean_ms_per_token": 15.675529071428578,
+    "dispatch_span_median_ms_per_token": 18.760057,
+    "span_minus_kernel_median_ms_per_token": 3.2132170000000047,
+    "profiled_child_median_ms_per_token": 20.531137473881245,
+    "profiled_child_tok_s": 48.70650743399645,
+    "finite_logits": true,
+    "tracked_returned_to_baseline": true,
+    "trace_sha256": "a4d1719f26bca171f355f565c4bb26f68763b394413f338e017cffe394eafc95",
+    "bench_sha256": "9b4d54081900f759bc05edebd4abc64203cd645e2502235d719b1968e3979fc3",
+    "summary_sha256": "3381ec9ca9ae8ca33a600f4a49a709ab89acef8cd4551d7dc2cf2eb3e37a971d"
+  },
+  "matched_budget": {
+    "vulkan_h32_tok_s": 64.336,
+    "vulkan_ms_per_transition": 15.543397164884357,
+    "retained_kernel_sum_alone_exceeds_vulkan_wall_ms": 0.13213190654422036,
+    "conclusion": "submission-only work cannot beat Vulkan unless accompanied by further exact device-work reduction"
+  },
+  "candidate": {
+    "description": "one native HSA AQL queue; prefill 820 dependent kernel-dispatch packets; ring one doorbell; wait only on the final completion signal",
+    "dependency_contract": "barrier bit on every dispatch, agent-scope acquire/release per dependent kernel, system-scope release on the final packet",
+    "body": "one-workgroup dependent uint32 increment; identical HIP and AQL source body; final value must equal 820",
+    "aql_timing_scope": "doorbell store through final signal only; packet construction is deliberately excluded, favoring AQL",
+    "hip_timing_scope": "all 820 hipLaunchKernel host calls plus final hipDeviceSynchronize",
+    "repetitions_per_process_ordered_pair": 51,
+    "independent_processes": 5,
+    "all_final_values": 820,
+    "runtime_change_attempted": false,
+    "reason_runtime_integration_skipped": "the mechanism fails its generous isolated 820-dispatch precondition in every process"
+  },
+  "measurements": [
+    {"hip_median_us": 4544.235, "aql_median_us": 4573.915, "aql_vs_hip_pct": 0.653135},
+    {"hip_median_us": 4548.105, "aql_median_us": 4573.836, "aql_vs_hip_pct": 0.565752},
+    {"hip_median_us": 4544.785, "aql_median_us": 4573.336, "aql_vs_hip_pct": 0.628215},
+    {"hip_median_us": 4547.665, "aql_median_us": 4573.136, "aql_vs_hip_pct": 0.56009},
+    {"hip_median_us": 4588.356, "aql_median_us": 4623.117, "aql_vs_hip_pct": 0.757592}
+  ],
+  "summary": {
+    "hip_median_of_process_medians_us": 4547.665,
+    "aql_median_of_process_medians_us": 4573.836,
+    "aql_delta_median_pct": 0.628215,
+    "aql_delta_range_pct": [0.56009, 0.757592],
+    "all_processes_aql_slower": true,
+    "safe_dependency_result_exact": true
+  },
+  "source_sha256": {
+    "kernel_source": "f61dd56fffd4959f6e211de8aeec47905688c436d95f5ed354c8ae3905cf52a0",
+    "probe_source": "e863d7962add12dd1f8b99df5265ff6194078b5dca4ceb74912c022afb8a9ab9",
+    "raw_hsaco": "eb79466f6aeffb54a3103b09a355155de3455cc6fd5d3b5b7dbcb294a55bf326",
+    "probe_binary": "ee069e6aa66a35a009531c36e30597a370bfd7e495b70076b08256a598f29c2e",
+    "measurements_jsonl": "e99bdf21c59ff8b26bad41eb2a70a5a376adf17c36c3545c8d61434f50282482"
+  },
+  "prior_mechanisms": {
+    "D8_capture_replay": "already rejected and removed; steady graph replay regressed unprofiled wall",
+    "D16_host_packets": "already rejected; preserved dispatches and did not remove queue spacing",
+    "this_candidate_is_new": true,
+    "new_evidence": "direct AQL packet ownership with one doorbell and packet-build time excluded"
+  },
+  "decision": {
+    "action": "reject before runtime integration",
+    "reason": "correct dependency fences make direct AQL 0.560-0.758% slower than HIP across five independent 820-dispatch processes even when packet construction is free; it cannot remove the measured 3.213-ms span-minus-kernel window",
+    "retained_path": "P4.1 eager HIP submission",
+    "next": "reduce exact device work and dispatch count through independently winning fused bodies; do not restore D8, D16, or this direct-AQL owner"
+  }
+}
