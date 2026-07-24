@@ -3,9 +3,8 @@
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership and P2.1
 exact split attention are implemented and retained as gfx1100 defaults. Both
 P1 IQ3 quality lanes and P2.2 online FP32 partials are rejected, while
-raw-Q5/raw-IQ2 remain later work. An exact SWA tile16 score producer is
-correctness-admitted at live count 257 and enters clean profile/promotion gates
-before P2 closes.
+raw-Q5/raw-IQ2 remain later work. The exact SWA tile16 score producer is
+retained as the gfx1100 default from live count 257; P2 is closed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -701,7 +700,7 @@ Evidence:
 and
 [`...p2-split-exact-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json).
 
-A post-P2.2 exact refinement is now explicit/default-off. One local256 block
+A post-P2.2 exact refinement is now retained on gfx1100. One local256 block
 owns a 16-slot SWA score tile: eight waves preserve every retained 128-D dot
 and write the same score/physical scratch for the unchanged reducer. Two
 independent boundary screens select live `>=257`; 257/511/512 event and wall
@@ -712,10 +711,15 @@ capture after the crossover, matches complete logits, 48 hidden boundaries,
 47 routed outputs, active K/V and all `KVLiveSpans`, reset, and lifecycle
 exactly. The score kernel is local256/VGPR32/LDS0/scratch0 at the intended
 `72 x 17` grid; no new allocation is added. The tiled global sibling has later
-regressions and is removed. This is correctness admission, not a throughput
-claim; clean 512/1K/near-4K profiles and the unchanged complete promotion gate
-remain. Evidence:
-[`...p2-swa-tile16-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-correctness.json).
+regressions and is removed. Two process orders at 512/1K/near-4K improve pooled SWA attention
+**0.571%/0.344%/0.208%** and total attention
+**0.461%/0.272%/0.056%**; complete kernel/span/child metrics remain inside the
+predeclared noise guards. The two-order 18-prompt fallback gate is exact and
+non-regressive. gfx1100 therefore defaults live `>=257`; explicit tile16
+disable retains P2.1 and no other backend inherits it. Evidence:
+[`...p2-swa-tile16-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-correctness.json)
+and
+[`...p2-swa-tile16-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-retained.json).
 
 #### P2.2 Quality-gated online partials
 
@@ -860,8 +864,7 @@ The implementation loop remains ordered and falsifiable: P0 exact IQ3
 route/output ownership and P2 exact attention split topology are retained; both
 narrow P1 IQ3 quality lanes and P2.2 online partials are rejected. The online
 body proves tile-level ownership is mechanically valuable but violates the
-frozen KL gate, so it is removed. The exact SWA tile16 score producer now
-enters clean long-context promotion gates at live `>=257`; Q5/IQ2 and scheduler
-work follow its adjudication. Matching Vulkan still requires large device-work
+frozen KL gate, so it is removed. The exact SWA tile16 score producer is retained at live `>=257`; P2 is closed.
+Q5/IQ2 and scheduler work follow. Matching Vulkan still requires large device-work
 reductions across several families; launch cleanup alone can move 49 toward
 51, not toward 94.

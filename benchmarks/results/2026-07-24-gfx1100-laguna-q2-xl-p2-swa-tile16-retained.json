@@ -1,0 +1,150 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 51.436,
+    "canonical_ms_per_token": 19.441,
+    "name": "P2.1 exact split attention",
+    "revision": "dd929660a"
+  },
+  "candidate": {
+    "canonical_h32_decode_tok_s": 51.436,
+    "canonical_ms_per_token": 19.441,
+    "description": "exact SWA tile16 score producer above live count 257 plus unchanged P2.1 reducer",
+    "dispatches_per_token_long_context": 868,
+    "global_split_min_live": 127,
+    "new_workspace_bytes": 0,
+    "swa_split_min_live": 65,
+    "swa_split_tile16_min_live": 257
+  },
+  "checks": {
+    "all_attention_total_pooled_improve": true,
+    "all_category_fallback_nonregressive": true,
+    "all_ids_and_state_exact": true,
+    "all_swa_attention_pooled_improve": true,
+    "category_quality_and_lifecycle": true,
+    "complete_metric_noise_guards": true,
+    "default_vs_rollback_exact": true,
+    "memory_unchanged": true,
+    "promotion_pass": true
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "retain as gfx1100 default from SWA live count 257",
+    "reason": "Two process orders reduce the SWA attention sub-window and total attention at 512/1K/near-4K while complete kernel/span/child metrics remain within the predeclared noise bounds. The complete short category/heldout fallback gate is exact and non-regressive. The path adds no dispatch, allocation, or arithmetic change.",
+    "rollback": "use_swa_split_tile16=False or --disable-swa-split-tile16 retains the P2.1 one-slot score producer; use_split_attention=False retains registered pre-P2 readers",
+    "scope": "W7900/gfx1100 resident c=1 Laguna S 2.1 UD-Q2_K_XL SWA decode at live count >=257"
+  },
+  "default_state_gate": {
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "decode_transitions": 150,
+    "full_logits_exact": true,
+    "kv_and_spans_exact": true,
+    "max_kl": 0.0,
+    "reset_and_lifecycle": true,
+    "top1_agreement": 1.0
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p2_swa_tile16_retained",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": true,
+  "pooled_long_context_profiles": [
+    {
+      "attention_total_delta_pct": -0.46122383575105674,
+      "kernel_sum_delta_pct": -0.26072253460467376,
+      "profiled_child_tok_s_delta_pct": 0.02478651603265991,
+      "prompt_tokens": 512,
+      "span_delta_pct": -0.2351577649724712,
+      "swa_attention_delta_pct": -0.5712368117157252
+    },
+    {
+      "attention_total_delta_pct": -0.2724728842654289,
+      "kernel_sum_delta_pct": 0.02964678163113188,
+      "profiled_child_tok_s_delta_pct": -0.09954753792007498,
+      "prompt_tokens": 1024,
+      "span_delta_pct": 0.040004948399441354,
+      "swa_attention_delta_pct": -0.34402832814427464
+    },
+    {
+      "attention_total_delta_pct": -0.05558520600902339,
+      "kernel_sum_delta_pct": -0.03443365820171573,
+      "profiled_child_tok_s_delta_pct": 0.3970699246010012,
+      "prompt_tokens": 3968,
+      "span_delta_pct": -0.0987187706648851,
+      "swa_attention_delta_pct": -0.20794138339206292
+    }
+  ],
+  "profile_acceptance": {
+    "attention_total_strictly_improves_each_context": true,
+    "child_throughput_floor_pct": -0.15,
+    "dispatches_unchanged": true,
+    "kernel_sum_ceiling_pct": 0.1,
+    "span_ceiling_pct": 0.1,
+    "swa_subwindow_strictly_improves_each_context": true
+  },
+  "promotion_category_gate": {
+    "candidate": {
+      "h16_decode_tok_s": 51.83916456500798,
+      "h16_e2e_output_tok_s": 6.908502376147756,
+      "h32_decode_tok_s": 51.43176574137347,
+      "h32_e2e_output_tok_s": 12.170212991865963,
+      "prefill_tok_s": 42.9009903876258,
+      "ttft_median_seconds": 1.935989738558419
+    },
+    "candidate_vs_control_pct": {
+      "h16_decode_tok_s": 0.05792478886517127,
+      "h16_e2e_output_tok_s": -0.06628002476045669,
+      "h32_decode_tok_s": 0.041783248817828245,
+      "h32_e2e_output_tok_s": -0.0551767506468015,
+      "prefill_tok_s": -0.08401363561376662,
+      "ttft_median_seconds": 0.008757091460909194
+    },
+    "control": {
+      "h16_decode_tok_s": 51.80915422181216,
+      "h16_e2e_output_tok_s": 6.913084370180022,
+      "h32_decode_tok_s": 51.41028485413491,
+      "h32_e2e_output_tok_s": 12.176931827176675,
+      "prefill_tok_s": 42.93706337559342,
+      "ttft_median_seconds": 1.9358202170114964
+    },
+    "note": "The 18-prompt h32 suite remains below the live-257 tile crossover, so this is a fallback-overhead/non-regression gate rather than the long-context performance denominator.",
+    "protocol": "two complete 18-prompt/two-repetition process orders pooled across train and heldout categories",
+    "worst_category_regression_pct": -0.3925
+  },
+  "provenance": {
+    "category_comparison_sha256": "469f5dae06737e8fd13fc3aa60250e7123c27cf32fe48991ab44bf1f16490a90",
+    "category_harness_sha256": "db59208ad835fe739bd261e253b3040a75ebc15d61b37b159d26c3510e9bdae8",
+    "category_raw_sha256": {
+      "candidate": [
+        "7ccc281234e4e959d757dd974337c0fe10e8fa760343dc31e392d55c7883d305",
+        "a8caa5fad4236839535fd9216882d2f5382c70022a674e1b1a58286b3c02efc1"
+      ],
+      "control": [
+        "b542f06e0e6038a740b6b0fcc37df10c91645fbb7a39f9e566e1b538147d9d24",
+        "ace77cb5ea2530bea296396a2399ab5aaa0ab223d074d2136ad7a794b0cbc334"
+      ]
+    },
+    "default_gate_harness_sha256": "3866d2e69dfa87df43d7ddcda29c79fc744f297efee9ae72b7585d3dcc298ec8",
+    "default_gate_raw_sha256": "7876b6a1d230ab64ef9eb80dcd054e305f60eb4b62b1a302489e57bbb0fa8482",
+    "implementation_revision": "071331863",
+    "pooled_profile_sha256": "72743b5659fe005f4c436d49f5c889139446251a2750f98594b583b8acb1eb9f",
+    "profile_raw_summary_sha256": [
+      "574cb3d6d8e462454b65299f4046d705e8f9dc4abf912a34ac0682a3a5f899c5",
+      "ae30804fe46b983d3c2f42515812126a7a3239e9b47a092711254346bb36b6cd"
+    ],
+    "promotion_red_sha256": "19d781660de3e2a2eca4646f20959feb3be5d2ba21b158560b8d20a563605e2e"
+  },
+  "vulkan_diagnostic_target": {
+    "additional_speedup_required_pct": 83.75,
+    "current_h32_tok_s": 51.436,
+    "note": "The tile16 route starts at live 257 and does not change the short tg128 diagnostic headline.",
+    "tok_s": 94.513
+  }
+}

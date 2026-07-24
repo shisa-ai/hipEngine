@@ -20,8 +20,10 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
-`ad99721ed6921d86c8cb89975433603881168c80` for the exact W7900 Laguna S 2.1
-UD-Q2_K_XL P2 split attention producer/reducer,
+`071331863` for the exact W7900 Laguna S 2.1 UD-Q2_K_XL P2 SWA tile16
+score producer,
+`ad99721ed6921d86c8cb89975433603881168c80` for its exact P2 split attention
+producer/reducer parent,
 `54a5751de19e00865754becee3588d041f8d4136` for the exact W7900 Laguna S 2.1
 UD-Q2_K_XL P0 IQ3 wave4 route/output producer,
 `c7fcf46f9` for the retained explicit-only exact W7900 Laguna S 2.1
@@ -1716,9 +1718,14 @@ keeps all IDs/state exact and moves h32 decode **50.093 -> 51.436 tok/s
 (+2.681%)** plus E2E **12.098 -> 12.158 (+0.496%)**, with every category
 positive and prefill/TTFT inside 0.5%. gfx1100 defaults both thresholds;
 `--disable-split-attention`, below-threshold calls, and other backends retain
-the registered readers. The current **19.441 ms/token** row still needs
-**83.75%** more diagnostic throughput to match Vulkan. [P2 retained
-artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json).
+the registered readers. A retained exact SWA tile16 refinement now takes over
+at live `>=257`. Two process orders improve pooled 512/1K/near-4K SWA attention
+**0.571%/0.344%/0.208%** and total attention
+**0.461%/0.272%/0.056%**, with unchanged dispatches/memory and exact complete
+state. The short canonical row remains **51.436 tok/s / 19.441 ms/token**
+because it stays below that crossover and still needs **83.75%** more
+diagnostic throughput to match Vulkan. Explicit tile16 disable retains P2.1;
+other backends do not inherit it. [P2 retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json) and [tile16 retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-retained.json).
 
 ##### Laguna Q2 XL c=1 decode D13 (rejected and removed)
 
