@@ -74,6 +74,7 @@ from hipengine.runtime.laguna_moe import (
     laguna_moe_scratch_nbytes,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
+    resolve_laguna_selected_gate_up_mode,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
@@ -724,6 +725,7 @@ class LagunaEagerLibraries:
     router_logits: object
     router_select: object
     selected_experts: object
+    selected_prefill: object
     iq_selected_experts: object
     moe_group: object
     routed_sum: object
@@ -768,6 +770,7 @@ class LagunaEagerLibraries:
             "router_logits": self.router_logits,
             "router_select": self.router_select,
             "selected_gate_up": self.selected_experts,
+            "selected_gate_up_prefill": self.selected_prefill,
             "selected_gate_up_iq": self.iq_selected_experts,
             "selected_silu": self.dense_silu,
             "selected_down": self.selected_experts,
@@ -1408,6 +1411,9 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
         build_gguf_q4_k_pack8_gemv,
     )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        build_gguf_q4_k_q8_1_selected_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
         build_gguf_q6_k_embedding,
     )
@@ -1448,6 +1454,7 @@ def load_laguna_eager_libraries(
             router_logits=build_qwen35_router(**kwargs),
             router_select=build_laguna_router(**kwargs),
             selected_experts=build_gguf_t16_selected_gemv(**kwargs),
+            selected_prefill=build_gguf_q4_k_q8_1_selected_prefill(**kwargs),
             iq_selected_experts=build_gguf_iq_gemv(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
@@ -1516,6 +1523,7 @@ class LagunaGGUFResidentSession:
             swa_prefill_variant,
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
+        self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1653,6 +1661,14 @@ class LagunaGGUFResidentSession:
         """Select the explicit diagnostic sparse-down route for later row runs."""
 
         self.selected_down_mode = resolve_laguna_selected_down_mode(
+            self.backend,
+            mode,
+        )
+
+    def set_selected_gate_up_mode(self, mode: str) -> None:
+        """Select the explicit compact selected gate/up prefill candidate."""
+
+        self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(
             self.backend,
             mode,
         )
@@ -2508,6 +2524,7 @@ class LagunaGGUFResidentSession:
             self.rows_moe_scratch,
             rows=rows,
             selected_down_mode=self.selected_down_mode,
+            selected_gate_up_mode=self.selected_gate_up_mode,
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,

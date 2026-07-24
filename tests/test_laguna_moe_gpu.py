@@ -8,6 +8,7 @@ from types import MappingProxyType
 import numpy as np
 import pytest
 
+import hipengine.runtime.laguna_moe as laguna_moe_module
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -35,6 +36,7 @@ from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
+    resolve_laguna_selected_gate_up_mode,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
@@ -83,6 +85,18 @@ def _silu(array: np.ndarray) -> np.ndarray:
     return (value * sigmoid).astype(np.float32)
 
 
+def _max_softmax_kl(reference: np.ndarray, candidate: np.ndarray) -> float:
+    ref = reference.astype(np.float64)
+    cand = candidate.astype(np.float64)
+    ref -= ref.max(axis=-1, keepdims=True)
+    cand -= cand.max(axis=-1, keepdims=True)
+    ref_logp = ref - np.log(np.exp(ref).sum(axis=-1, keepdims=True))
+    cand_logp = cand - np.log(np.exp(cand).sum(axis=-1, keepdims=True))
+    return float(
+        np.max(np.sum(np.exp(ref_logp) * (ref_logp - cand_logp), axis=-1))
+    )
+
+
 def _read_bf16(buffer, shape: tuple[int, ...]) -> np.ndarray:
     bits = np.zeros(shape, dtype=np.uint16)
     copy_device_to_host(host_array_ptr(bits), buffer, bits.nbytes)
@@ -108,6 +122,24 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "laguna_rows",
     )
     assert plan.selected_gate_up_key.quant == "gguf_q4_k_t16_v1"
+    assert plan.selected_gate_up_prefill_key == KernelKey(
+        "hip_gfx1151",
+        "moe_linear",
+        "gguf_q4_k_t16_v1",
+        "selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out",
+    )
+    assert plan.activation_quant_key == KernelKey(
+        "hip_gfx1151", "activation_quant", "q8_1_ds4x3", "bf16"
+    )
+    assert plan.grouped_compact_source_rows_key.variant == (
+        "active_experts_source_rows"
+    )
+    assert plan.mmq_tile_map_key == KernelKey(
+        "hip_gfx1151", "moe_mmq_tile_map", "generic", "tile32"
+    )
+    assert plan.selected_dual_silu_key == KernelKey(
+        "hip_gfx1151", "silu_mul_dual", "bf16", "out"
+    )
     assert set(plan.selected_gate_up_keys) == {
         "gguf_q4_k_t16_v1",
         "gguf_iq2_xs",
@@ -168,6 +200,17 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
             resolve_laguna_selected_down_mode("hip_gfx1151", rejected)
 
 
+def test_laguna_selected_gate_up_default_is_explicit_until_quality_gate() -> None:
+    assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "direct"
+    assert resolve_laguna_selected_gate_up_mode("hip_gfx1151") == "direct"
+    assert (
+        resolve_laguna_selected_gate_up_mode("hip_gfx1151", "mmq32_d4x3")
+        == "mmq32_d4x3"
+    )
+    with pytest.raises(ValueError, match="unsupported Laguna selected gate/up mode"):
+        resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unsafe")
+
+
 def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     with pytest.raises(ValueError, match="sigmoid"):
@@ -189,6 +232,7 @@ def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> Non
 )
 def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     down_qtype: GGMLQuantizationType,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Keep production H/F/top-k and nontrivial rank-3 strides while reducing the
     # synthetic expert inventory; the separate router test covers all 256 IDs.
@@ -236,6 +280,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     bulk_scratch = None
     grouped_scratch = None
     fused_scratch = None
+    mmq_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -397,6 +442,25 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(fused_actual),
             _f32_to_bf16_u16(grouped_actual),
         )
+        monkeypatch.setattr(laguna_moe_module, "_SELECTED_MMQ32_MIN_ROWS", 3)
+        mmq_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
+        mmq_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            mmq_scratch,
+            rows=3,
+            selected_down_mode="grouped_smallm_fused",
+            selected_gate_up_mode="mmq32_d4x3",
+        )
+        mmq_actual = _read_bf16(mmq_output, (3, h))
+        assert np.isfinite(mmq_actual).all()
+        assert _max_softmax_kl(grouped_actual, mmq_actual) <= 0.05
+        assert float(
+            np.mean(
+                np.argmax(grouped_actual, axis=-1)
+                == np.argmax(mmq_actual, axis=-1)
+            )
+        ) >= 0.9
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -415,6 +479,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if mmq_scratch is not None:
+            mmq_scratch.free()
         if fused_scratch is not None:
             fused_scratch.free()
         if grouped_scratch is not None:
