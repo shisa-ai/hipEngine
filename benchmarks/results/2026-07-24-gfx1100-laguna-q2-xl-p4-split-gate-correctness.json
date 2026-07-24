@@ -2,6 +2,7 @@
   "schema": 1,
   "kind": "hipengine_laguna_q2_xl_p4_split_reducer_gate_correctness",
   "status": "passed_exact",
+  "revision": "46539dedb8b84e4f7511f3320fa740e2f41092a6",
   "date": "2026-07-24",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
