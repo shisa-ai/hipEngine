@@ -3724,6 +3724,45 @@ device work or device dispatches.
 Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d16-c-dispatch-rejected.json`.
 
+### D17 token8 attention-boundary bundle (selected, default-off design)
+
+The next device-side candidate combines only independently exact, mechanically
+positive components. It restores D15's global/SWA head+KV and global
+attention+gate leaves, then replaces D15's token4 SWA gate leaf with an exact
+`laguna_attention_decode+attention_gate/bf16/swa_token8_exact_softplus_bf16_spans`
+leaf derived from D10. One all-or-none selector resolves these four keys or
+none. Standalone D10, D14, and D15 remain unselectable; rows>1, gfx1151,
+registry/shape misses, and explicit disable retain the registered head, writer,
+token4 attention, and softplus-gate chain. Dispatches remain D15's **775 ->
+679/token**.
+
+This is selected from a diagnostic composition, not a performance claim. Adding
+D10's measured SWA body savings to the clean D15 traces projects short/512/1K/
+near-4K kernel-sum changes of **-2.18%/-7.32%/-6.48%/-4.27%**, span changes of
+**-4.34%/-7.81%/-7.09%/-4.88%**, and profiled-child gains of
+**+4.44%/+8.60%/+8.49%/+5.68%**. Applying each measured D10 category decode
+ratio to D15 while holding D15 pooled prefill seconds fixed projects aggregate
+h16/h32 decode at **50.812/50.391 tok/s (+2.871%/+3.076%)** and E2E at
+**+0.286%/+0.649%**. Every category's two decode/E2E horizons are positive;
+the narrowest h16 E2E margin is code at **+0.097%**. The unchanged D15 TTFT row
+was **+0.554%**, however, so fresh counterbalanced measurement must pass the
+0.5% guard rather than inheriting or waiving that miss.
+
+RED/GREEN requires token4-chain identity for F32 context, BF16 gated context,
+and complete spans across empty/short/full, 510..513/repeated wrap, reversed
+offsets, eviction, adversarial scores, and extreme/non-finite gates. Actual
+layers 0/44/1/47 must improve every component and complete window in 50-warmup,
+15x500 HIP-event and synchronized-wall samples. The SWA candidate is bounded at
+local256/VGPR<=32/dynamic-LDS<=4136/scratch0. Complete all-layer context/
+gated-context/hidden/logit/KV/reset/lifecycle parity precedes clean four-context
+profiles. Promotion still requires every family/kernel-sum/span/child row
+positive at 679 dispatches plus two complete process-order category pairs with
+all aggregate/category h16/h32 decode/E2E rows positive and prefill/TTFT within
+0.5%. Any failure removes the complete bundle.
+
+Design evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d17-token8-attention-boundaries-design.json`.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
