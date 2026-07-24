@@ -1765,6 +1765,18 @@ headline this is **+0.757%**, or **19.296 ms/token**. The formal matched Vulkan
 h32 target remains **64.336 tok/s**, so hipEngine still needs **24.14%** more
 throughput and completion is not claimed. [Correctness artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-correctness.json) and [retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-retained.json).
 
+A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
+ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
+span-minus-kernel window. A new native submission screen prefilled 820 dependent
+HSA AQL packets, rang one doorbell, and waited only on the final signal. With
+correct barrier and agent/system fence semantics—and packet construction
+excluded in AQL's favor—it is still **0.560-0.758% slower** than the same HIP
+kernel chain across five independent 51-repetition processes. Direct AQL is
+therefore rejected before runtime integration; D8 graph capture and D16 host
+packets remain rejected. The formal Vulkan wall is also **0.132 ms shorter than
+the retained kernel sum alone**, so exact device-work/dispatch fusion remains
+necessary regardless of submission. [AQL rejection artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json).
+
 ##### Laguna Q2 XL c=1 decode D13 (rejected and removed)
 
 D13 tested an exact local256 Q5 shared gate/up pair+SiLU composite. Synthetic,
