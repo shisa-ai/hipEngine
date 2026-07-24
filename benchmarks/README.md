@@ -1906,10 +1906,19 @@ counts, the retained direct leaf versus producer-pack-inclusive raw MMQ32 moves
 **864 MiB** and does not satisfy the campaign arithmetic contract. Synthetic
 source-Q4_K x DS4-Q8_1 fixtures pass at max softmax KL **4.745e-5** and
 **100%** top-1; cached resources are local128, VGPR120, LDS2048B, and
-scratch0. LAP-1 remains open pending M32–M128/partial scheduling, a lossless
+scratch0. LAP-1 remains open pending smaller-row tail scheduling, a lossless
 replacement-layout comparison, and an exact fallback/decode path; no default
 changed.
 [LAP-1 partial packed-dot leaf](results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
+
+The subsequent clean all-shape replay measures inclusive raw-MMQ32 speedups
+**0.680/0.899/0.985/1.515/1.551/2.645/4.117x** at
+M32/55/64/122/128/256/512. Global natural tile32 padding at those shapes is
+**10.857/8.558/7.873/5.108/4.928/2.930/1.866x**, versus
+**2.911/2.402/2.260/1.721/1.691/1.335/1.165x** for tile8. Thus literal
+tile32 loses at M32–M64, misses the 2x premise at M122/M128, and passes at
+M256/M512; LAP-1 next builds a smaller-row or mixed full32-plus-tail schedule.
+[LAP-1 MMQ32 all-shape screen](results/2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json).
 
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure

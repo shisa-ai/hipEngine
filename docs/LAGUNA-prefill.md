@@ -394,7 +394,7 @@ Current progress:
 | Task | State | Result / next condition |
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
-| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise; M32–M128 scheduling, replacement-layout, and exact-fallback work remain. |
+| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise; the full natural-shape screen selects a smaller-row tail schedule before replacement-layout and exact-fallback work. |
 | LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
@@ -475,12 +475,21 @@ Synthetic source-Q4_K x DS4-Q8_1 fixtures pass at maximum softmax KL
 VGPR120, LDS 2,048 bytes, zero scratch, and 64 static
 `v_dot4_i32_iu8` instructions per wave.
 
-This clears only the measured M256/M512 body premise. LAP-1 remains open
-because the routing capture did not contain M32/55/64/122/128, literal
-32-row padding is still excessive, no lossless MMQ-native replacement layout
-or exact decode fallback has been selected, and no runtime default changed.
+The clean LAP-1 routing capture now covers all declared shapes. Across all 47
+sparse layers, natural tile32 padding is **10.857/8.558/7.873/5.108/4.928/
+2.930/1.866x** at M32/55/64/122/128/256/512, versus **2.911/2.402/2.260/
+1.721/1.691/1.335/1.165x** for tile8. The actual layer-1 inclusive MMQ32
+speedups are **0.680/0.899/0.985/1.515/1.551/2.645/4.117x** over retained
+direct at the same shapes. Literal tile32 therefore loses at M32–M64, is
+positive but below the 2x gate at M122/M128, and passes only M256/M512.
+
+LAP-1 remains open for a smaller-row or mixed full32-plus-tail schedule, a
+lossless MMQ-native replacement layout, and an exact decode fallback. No
+runtime default changed.
 Evidence:
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
+The all-shape crossover packet is
+[`2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-shape-screen.json).
 
 ### LAP-2 — calibrate residual Q8_1 and exact repair
 

@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T09:05:19.526628+00:00",
+  "kind": "hipengine_laguna_lap1_q4_k_mmq32_shape_screen",
+  "status": "lap1_partial_tile32_crossover_measured",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "One actual Laguna sparse-layer Q4_K gate/up pair, producer-row Q8_1 pack included, natural per-expert counts at M32/55/64/122/128/256/512; not a full-model or runtime-default claim.",
+  "repo": {
+    "revision": "605a7f833bad710e816cc4625806af39e7ade207",
+    "tracked_clean": true,
+    "unrelated_untracked_artifacts_excluded": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "hip_version": "7.15.0-0000000"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "up_tensor": "blk.1.ffn_up_exps.weight",
+    "shape_each": [
+      256,
+      1024,
+      3072
+    ],
+    "quant": "Q4_K"
+  },
+  "routing_capture": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_routing_replay.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --protocol lap1 --rows 32,55,64,122,128,256,512 --tile-rows 2,4,8,16,32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lap1-routing-all-shapes.json",
+    "raw_sha256": "0d29540b03047650c6ce85352a8514d6df3b8e8397ac434ad014a8d9cdfa3f16",
+    "complete_model_execution": true,
+    "every_natural_lane_accounted": true,
+    "tracked_returned_to_baseline": true,
+    "global_natural_padding_factor": {
+      "32": {
+        "tile2": 1.2147606382978724,
+        "tile4": 1.7231382978723404,
+        "tile8": 2.9106382978723406,
+        "tile16": 5.509574468085106,
+        "tile32": 10.857446808510637
+      },
+      "55": {
+        "tile2": 1.1579110251450677,
+        "tile4": 1.5277369439071566,
+        "tile8": 2.4021663442940038,
+        "tile16": 4.3921083172147,
+        "tile32": 8.557678916827854
+      },
+      "64": {
+        "tile2": 1.1446808510638298,
+        "tile4": 1.4785904255319149,
+        "tile8": 2.2595744680851064,
+        "tile16": 4.06063829787234,
+        "tile32": 7.873404255319149
+      },
+      "122": {
+        "tile2": 1.0855249389605859,
+        "tile4": 1.275130798744332,
+        "tile8": 1.7205441227764213,
+        "tile16": 2.780327868852459,
+        "tile32": 5.108057202650855
+      },
+      "128": {
+        "tile2": 1.0820811170212765,
+        "tile4": 1.2641622340425531,
+        "tile8": 1.6912234042553191,
+        "tile16": 2.700531914893617,
+        "tile32": 4.927659574468085
+      },
+      "256": {
+        "tile2": 1.0435172872340426,
+        "tile4": 1.1339095744680852,
+        "tile8": 1.334906914893617,
+        "tile16": 1.8029255319148936,
+        "tile32": 2.929521276595745
+      },
+      "512": {
+        "tile2": 1.0218916223404255,
+        "tile4": 1.0684175531914895,
+        "tile8": 1.1649601063829786,
+        "tile16": 1.3800531914893617,
+        "tile32": 1.8662234042553192
+      }
+    }
+  },
+  "leaf_protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 32,55,64,122,128,256,512 --layer 1 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-lap1-actual-layer1-all-shapes.json",
+    "raw_sha256": "dcdc77a8d15e43398c3fabd18d1f81dd4636a489289a6e4900949da2ccfc51bb",
+    "warmups": 2,
+    "samples": 7,
+    "burst": 3,
+    "timing": "counter-rotated HIP-event elapsed time",
+    "raw_mmq32_inclusive_scope": "one BF16 producer-row DS4 Q8_1 pack plus one dual raw-Q4_K gate/up MMQ launch",
+    "routing_qualification": "Natural per-expert counts from complete model execution; stable producer-row order reconstructed as a valid top-10 assignment because selected IDs were intentionally not persisted."
+  },
+  "results": {
+    "32": {
+      "active_experts": 143,
+      "max_expert_rows": 9,
+      "raw_mmq32_padding_factor": 14.3,
+      "retained_direct_ms": 3.96955935160319,
+      "t16_wmma_ms": 3.4476906458536782,
+      "raw_mmq32_inclusive_ms": 5.841024398803711,
+      "raw_mmq32_speedup": 0.6795998579318018
+    },
+    "55": {
+      "active_experts": 173,
+      "max_expert_rows": 15,
+      "raw_mmq32_padding_factor": 10.065454545454546,
+      "retained_direct_ms": 6.348547617594401,
+      "t16_wmma_ms": 4.003323237101237,
+      "raw_mmq32_inclusive_ms": 7.063076019287109,
+      "raw_mmq32_speedup": 0.8988360878827372
+    },
+    "64": {
+      "active_experts": 181,
+      "max_expert_rows": 17,
+      "raw_mmq32_padding_factor": 9.05,
+      "retained_direct_ms": 7.28489367167155,
+      "t16_wmma_ms": 4.329588890075684,
+      "raw_mmq32_inclusive_ms": 7.398105621337891,
+      "raw_mmq32_speedup": 0.9846971704026757
+    },
+    "122": {
+      "active_experts": 209,
+      "max_expert_rows": 63,
+      "raw_mmq32_padding_factor": 5.508196721311475,
+      "retained_direct_ms": 13.111989339192709,
+      "t16_wmma_ms": 5.145814895629883,
+      "raw_mmq32_inclusive_ms": 8.653302510579428,
+      "raw_mmq32_speedup": 1.515258402576605
+    },
+    "128": {
+      "active_experts": 213,
+      "max_expert_rows": 63,
+      "raw_mmq32_padding_factor": 5.375,
+      "retained_direct_ms": 13.754674275716146,
+      "t16_wmma_ms": 5.201573371887207,
+      "raw_mmq32_inclusive_ms": 8.866090138753256,
+      "raw_mmq32_speedup": 1.5513799273926985
+    },
+    "256": {
+      "active_experts": 222,
+      "max_expert_rows": 120,
+      "raw_mmq32_padding_factor": 2.9875,
+      "retained_direct_ms": 26.50896962483724,
+      "t16_wmma_ms": 6.274694442749023,
+      "raw_mmq32_inclusive_ms": 10.023422241210938,
+      "raw_mmq32_speedup": 2.644702476550032
+    },
+    "512": {
+      "active_experts": 228,
+      "max_expert_rows": 232,
+      "raw_mmq32_padding_factor": 1.85625,
+      "retained_direct_ms": 52.22039286295573,
+      "t16_wmma_ms": 9.26799201965332,
+      "raw_mmq32_inclusive_ms": 12.6839230855306,
+      "raw_mmq32_speedup": 4.117053730996448
+    }
+  },
+  "correctness": {
+    "all_outputs_finite": true,
+    "kernel_fixture_artifact": "benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json",
+    "kernel_fixture_max_softmax_kl": 4.745148503516438e-05,
+    "kernel_fixture_top1_agreement": 1.0
+  },
+  "memory": {
+    "routing_capture_resident_bytes": 77434399092,
+    "routing_capture_tracked_after_bytes": 0,
+    "leaf_tracked_peak_bytes": 1915514648,
+    "leaf_tracked_after_bytes": 0
+  },
+  "decision": {
+    "literal_mmq32_crossover": "positive at M122 and above, but reaches the required 2x premise only at M256 and M512",
+    "lap1_state": "in_progress",
+    "default_changed": false,
+    "next": "Build a smaller-row or mixed full32-plus-tail packed-dot schedule; use tile8 first because global natural padding is 1.69x at M128 versus 4.93x for tile32."
+  }
+}
