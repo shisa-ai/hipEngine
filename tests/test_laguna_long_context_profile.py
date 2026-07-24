@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from scripts.laguna_long_context_profile import (
+    LAP0_LENGTHS,
+    PROFILE_LENGTH_SETS,
     _parse_chunk_size,
     _parse_lengths,
     _summarize_samples,
@@ -21,6 +23,8 @@ from scripts.laguna_long_context_trace_summary import (
 
 
 def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
+    assert LAP0_LENGTHS == (128, 512, 1024, 4096)
+    assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
     assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)
     assert [_parse_chunk_size(value) for value in ("128", "256", "512")] == [
         128,
