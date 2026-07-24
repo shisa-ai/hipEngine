@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-25
 
+- [retained explicit LAP-1 gfx1151 Laguna direct-T16 MMQ32 primitive] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the resident-layout consumer moves producer-pack-inclusive retained direct to T16 MMQ by **13.869 -> 5.543 ms (2.502x)** at M128, **26.796 -> 6.769 ms (3.959x)** at M256, and **52.799 -> 9.597 ms (5.502x)** at M512 while staying within **4.66%/4.05%/3.02%** of X8, remaining positive at all seven natural shapes, and preserving X8 BF16 bits without a transpose or sidecar; `benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json`.
+
 - [rejected LAP-1 sole-resident X8 layout; exact diagnostic retained] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / optimized local128 X8 decode is BF16-bit exact and catches retained T16 at c4/c8, but c1/c2 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate; keep the existing T16 resident set, preserve X8 only as the MMQ control, and build a direct T16 MMQ32 consumer; `benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json`.
 
 ## 2026-07-24

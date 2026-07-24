@@ -1,0 +1,597 @@
+{
+  "created_at": "2026-07-24T21:24:42.218518+00:00",
+  "kind": "hipengine_laguna_q4_k_mmq_actual_leaf",
+  "layouts": {
+    "raw_q4_k_bytes": 905969664,
+    "t16_bytes": 931135488,
+    "t16_entries": {
+      "gate": {
+        "allocations": {
+          "tiles": {
+            "file": "0004-3b95f3ef3bd28cb8-tiles.npy",
+            "nbytes": 465567744,
+            "numpy_dtype": "|u1",
+            "runtime_dtype": "int8",
+            "shape": [
+              256,
+              64,
+              12,
+              2368
+            ],
+            "source_dtype": "I8"
+          }
+        },
+        "layout": "gguf_q4_k_t16_v1",
+        "resident_nbytes": 465567744,
+        "source_nbytes": 452984832,
+        "tensor_name": "blk.1.ffn_gate_exps.weight"
+      },
+      "up": {
+        "allocations": {
+          "tiles": {
+            "file": "0005-b6af87338677d0e8-tiles.npy",
+            "nbytes": 465567744,
+            "numpy_dtype": "|u1",
+            "runtime_dtype": "int8",
+            "shape": [
+              256,
+              64,
+              12,
+              2368
+            ],
+            "source_dtype": "I8"
+          }
+        },
+        "layout": "gguf_q4_k_t16_v1",
+        "resident_nbytes": 465567744,
+        "source_nbytes": 452984832,
+        "tensor_name": "blk.1.ffn_up_exps.weight"
+      }
+    },
+    "temporary_side_by_side_leaf_only": true,
+    "x8_q4_k_bytes": 905969664
+  },
+  "memory": {
+    "tracked_after_bytes": 0,
+    "tracked_peak_bytes": 2821486144
+  },
+  "model": {
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "layer": 1,
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "up_tensor": "blk.1.ffn_up_exps.weight"
+  },
+  "notes": [
+    "The retained-direct mode is the exact production gate/up body named by LAP-0.",
+    "T16 WMMA is a diagnostic layout/body control, not the shipping route.",
+    "X8 is a byte-exact, byte-neutral replacement layout; raw and X8 are resident together only for this leaf comparison.",
+    "T16 MMQ reads the existing resident T16 bytes directly without a layout transpose or sidecar.",
+    "Mixed modes are a temporary two-layout leaf ceiling, not a resident-layout proposal.",
+    "This leaf does not select a quality policy or change runtime dispatch."
+  ],
+  "performance_claim": true,
+  "protocol": {
+    "activation_pack": "once per producer row; compact rows index producer Q8 blocks",
+    "burst": 3,
+    "mixed_scope": "MMQ32 for whole experts whose natural row count is greater than or equal to the global threshold; exact T16 grouped-small-M for every other active expert. Timing includes both bodies in separate diagnostic output buffers. Host sanity reconstructs disjoint expert rows; device merge/scatter cost is omitted.",
+    "mixed_thresholds": [],
+    "modes": [
+      "retained-direct",
+      "x8-mmq32",
+      "t16-mmq32"
+    ],
+    "raw_mmq32_inclusive": "BF16 producer-row DS4 pack plus one dual gate/up MMQ launch",
+    "samples": 7,
+    "t16_mmq32_inclusive": "BF16 producer-row DS4 pack plus one dual gate/up direct-T16 MMQ launch",
+    "timing": "counter-rotated HIP-event elapsed time",
+    "warmups": 2,
+    "x8_mmq32_inclusive": "BF16 producer-row DS4 pack plus one dual gate/up X8 MMQ launch"
+  },
+  "repo": {
+    "revision": "272ee08d539a40aefabb67943e60b48d6043cfa4",
+    "tracked_status": []
+  },
+  "results": {
+    "122": {
+      "active_experts": 209,
+      "compact_rows": 1220,
+      "max_expert_rows": 63,
+      "median_ms": {
+        "retained-direct": 13.30410130818685,
+        "t16-mmq32": 5.398586908976237,
+        "x8-mmq32": 5.162608782450358
+      },
+      "mixed": {},
+      "padding": {
+        "mmq32_factor": 5.508196721311475,
+        "mmq32_rows": 6720,
+        "t16_factor": 2.9377049180327868,
+        "t16_rows": 3584
+      },
+      "route_count_sha256": "980b547af415c7ba4e4e5a596b7e0fc7f4d6cc2791626db6039f3c5ffbed7e5c",
+      "rows": 122,
+      "samples_ms": {
+        "retained-direct": [
+          13.16378402709961,
+          13.184182484944662,
+          13.30410130818685,
+          13.319491068522135,
+          13.329322814941406,
+          13.31219736735026,
+          13.2273317972819
+        ],
+        "t16-mmq32": [
+          5.398586908976237,
+          5.39181391398112,
+          5.3771711985270185,
+          5.420345942179362,
+          5.414402008056641,
+          5.423592249552409,
+          5.395700454711914
+        ],
+        "x8-mmq32": [
+          5.162608782450358,
+          5.16025956471761,
+          5.190394401550293,
+          5.196672757466634,
+          5.153204600016276,
+          5.171826362609863,
+          5.150933901468913
+        ]
+      },
+      "sanity": {
+        "retained-direct": {
+          "checksum_f64": 4391.602863419801,
+          "finite": true,
+          "max_abs": 4.5
+        },
+        "t16-mmq32": {
+          "checksum_f64": 350.384866023378,
+          "finite": true,
+          "max_abs": 6.125
+        },
+        "x8-mmq32": {
+          "checksum_f64": 350.384866023378,
+          "finite": true,
+          "max_abs": 6.125
+        }
+      },
+      "speedup_vs_retained": {
+        "t16-mmq32": 2.4643673488086493,
+        "x8-mmq32": 2.5770113267951804
+      }
+    },
+    "128": {
+      "active_experts": 213,
+      "compact_rows": 1280,
+      "max_expert_rows": 63,
+      "median_ms": {
+        "retained-direct": 13.8691775004069,
+        "t16-mmq32": 5.5425364176432295,
+        "x8-mmq32": 5.295606295267741
+      },
+      "mixed": {},
+      "padding": {
+        "mmq32_factor": 5.375,
+        "mmq32_rows": 6880,
+        "t16_factor": 2.8625,
+        "t16_rows": 3664
+      },
+      "route_count_sha256": "563becf96e36051c89a3fe7dcdd6af572ed7bb2d176d74116bf600c8b07484c2",
+      "rows": 128,
+      "samples_ms": {
+        "retained-direct": [
+          13.878156026204428,
+          13.8691775004069,
+          13.802210489908854,
+          14.63437525431315,
+          13.814835866292318,
+          13.857983907063803,
+          13.928021748860678
+        ],
+        "t16-mmq32": [
+          5.558860143025716,
+          5.546703974405925,
+          5.530072530110677,
+          5.563575108846028,
+          5.533545811971028,
+          5.533385594685872,
+          5.5425364176432295
+        ],
+        "x8-mmq32": [
+          5.295606295267741,
+          5.282127380371094,
+          5.475169499715169,
+          5.309565544128418,
+          5.278306643168132,
+          5.2802839279174805,
+          5.298097292582194
+        ]
+      },
+      "sanity": {
+        "retained-direct": {
+          "checksum_f64": -5771.810297307093,
+          "finite": true,
+          "max_abs": 4.875
+        },
+        "t16-mmq32": {
+          "checksum_f64": -2990.132693510037,
+          "finite": true,
+          "max_abs": 6.09375
+        },
+        "x8-mmq32": {
+          "checksum_f64": -2990.132693510037,
+          "finite": true,
+          "max_abs": 6.09375
+        }
+      },
+      "speedup_vs_retained": {
+        "t16-mmq32": 2.50231598952746,
+        "x8-mmq32": 2.6189970944027077
+      }
+    },
+    "256": {
+      "active_experts": 222,
+      "compact_rows": 2560,
+      "max_expert_rows": 120,
+      "median_ms": {
+        "retained-direct": 26.795547485351562,
+        "t16-mmq32": 6.769011815388997,
+        "x8-mmq32": 6.505303700764974
+      },
+      "mixed": {},
+      "padding": {
+        "mmq32_factor": 2.9875,
+        "mmq32_rows": 7648,
+        "t16_factor": 1.81875,
+        "t16_rows": 4656
+      },
+      "route_count_sha256": "9b14c720bb09ed9fcdf05f7e59898c45dc1ac5cbf68407056dcf140f99e6ed56",
+      "rows": 256,
+      "samples_ms": {
+        "retained-direct": [
+          26.893409729003906,
+          26.795547485351562,
+          26.764811197916668,
+          26.876177469889324,
+          27.51221211751302,
+          26.744211832682293,
+          26.780306498209637
+        ],
+        "t16-mmq32": [
+          6.7410532633463545,
+          6.769011815388997,
+          6.7580305735270185,
+          6.824516296386719,
+          6.752207438151042,
+          6.98309326171875,
+          6.842376073201497
+        ],
+        "x8-mmq32": [
+          6.505303700764974,
+          6.522162119547526,
+          6.474646250406901,
+          6.52950922648112,
+          6.46482785542806,
+          6.479281107584636,
+          6.53378423055013
+        ]
+      },
+      "sanity": {
+        "retained-direct": {
+          "checksum_f64": -7567.101633856801,
+          "finite": true,
+          "max_abs": 6.0625
+        },
+        "t16-mmq32": {
+          "checksum_f64": -4959.6995467623055,
+          "finite": true,
+          "max_abs": 7.71875
+        },
+        "x8-mmq32": {
+          "checksum_f64": -4959.6995467623055,
+          "finite": true,
+          "max_abs": 7.71875
+        }
+      },
+      "speedup_vs_retained": {
+        "t16-mmq32": 3.958561192703679,
+        "x8-mmq32": 4.119030981167046
+      }
+    },
+    "32": {
+      "active_experts": 143,
+      "compact_rows": 320,
+      "max_expert_rows": 9,
+      "median_ms": {
+        "retained-direct": 3.9706846872965493,
+        "t16-mmq32": 3.3832114537556968,
+        "x8-mmq32": 3.2914908727010093
+      },
+      "mixed": {},
+      "padding": {
+        "mmq32_factor": 14.3,
+        "mmq32_rows": 4576,
+        "t16_factor": 7.15,
+        "t16_rows": 2288
+      },
+      "route_count_sha256": "9067e1f452e0f20e9b9857bdbcd6f6ec884e250605ffeadc8fab545f2ca09bae",
+      "rows": 32,
+      "samples_ms": {
+        "retained-direct": [
+          3.9922850926717124,
+          3.9803028106689453,
+          3.956698417663574,
+          3.9706846872965493,
+          3.989281336466471,
+          3.9610684712727866,
+          3.9610023498535156
+        ],
+        "t16-mmq32": [
+          3.38091246287028,
+          3.395793596903483,
+          3.3782240549723306,
+          3.3832114537556968,
+          3.3978122075398765,
+          3.3740208943684897,
+          3.3882214228312173
+        ],
+        "x8-mmq32": [
+          3.2781197230021157,
+          3.301937739054362,
+          3.2914908727010093,
+          3.27526060740153,
+          3.31050173441569,
+          3.277721087137858,
+          3.3028481801350913
+        ]
+      },
+      "sanity": {
+        "retained-direct": {
+          "checksum_f64": -2973.5081583489664,
+          "finite": true,
+          "max_abs": 6.59375
+        },
+        "t16-mmq32": {
+          "checksum_f64": 122.89615040412173,
+          "finite": true,
+          "max_abs": 5.0625
+        },
+        "x8-mmq32": {
+          "checksum_f64": 122.89615040412173,
+          "finite": true,
+          "max_abs": 5.0625
+        }
+      },
+      "speedup_vs_retained": {
+        "t16-mmq32": 1.1736436641844243,
+        "x8-mmq32": 1.2063483815886116
+      }
+    },
+    "512": {
+      "active_experts": 228,
+      "compact_rows": 5120,
+      "max_expert_rows": 232,
+      "median_ms": {
+        "retained-direct": 52.798828125,
+        "t16-mmq32": 9.596640268961588,
+        "x8-mmq32": 9.315178553263346
+      },
+      "mixed": {},
+      "padding": {
+        "mmq32_factor": 1.85625,
+        "mmq32_rows": 9504,
+        "t16_factor": 1.371875,
+        "t16_rows": 7024
+      },
+      "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9",
+      "rows": 512,
+      "samples_ms": {
+        "retained-direct": [
+          52.798828125,
+          53.27021789550781,
+          53.83336385091146,
+          52.70195007324219,
+          52.79234822591146,
+          52.5752207438151,
+          53.92350769042969
+        ],
+        "t16-mmq32": [
+          9.592378616333008,
+          9.59625244140625,
+          9.596640268961588,
+          9.819818496704102,
+          9.61039924621582,
+          9.561079661051432,
+          10.024149576822916
+        ],
+        "x8-mmq32": [
+          9.329070409138998,
+          9.26020876566569,
+          9.387834548950195,
+          9.315178553263346,
+          9.247050603230795,
+          9.81193733215332,
+          9.31032943725586
+        ]
+      },
+      "sanity": {
+        "retained-direct": {
+          "checksum_f64": -214.92456447603763,
+          "finite": true,
+          "max_abs": 6.03125
+        },
+        "t16-mmq32": {
+          "checksum_f64": -1534.5540234066139,
+          "finite": true,
+          "max_abs": 6.6875
+        },
+        "x8-mmq32": {
+          "checksum_f64": -1534.5540234066139,
+          "finite": true,
+          "max_abs": 6.6875
+        }
+      },
+      "speedup_vs_retained": {
+        "t16-mmq32": 5.501803406736756,
+        "x8-mmq32": 5.668042520398411
+      }
+    },
+    "55": {
+      "active_experts": 173,
+      "compact_rows": 550,
+      "max_expert_rows": 15,
+      "median_ms": {
+        "retained-direct": 6.375522613525391,
+        "t16-mmq32": 4.173083305358887,
+        "x8-mmq32": 4.055341402689616
+      },
+      "mixed": {},
+      "padding": {
+        "mmq32_factor": 10.065454545454546,
+        "mmq32_rows": 5536,
+        "t16_factor": 5.032727272727273,
+        "t16_rows": 2768
+      },
+      "route_count_sha256": "5ad84e392bff0052548b5004b16221a82409f36212ec88dc9fe6e154e95171d5",
+      "rows": 55,
+      "samples_ms": {
+        "retained-direct": [
+          6.370243072509766,
+          6.369791666666667,
+          6.371969223022461,
+          6.39121691385905,
+          6.391218821207683,
+          6.375522613525391,
+          6.652829488118489
+        ],
+        "t16-mmq32": [
+          4.1750186284383135,
+          4.170004208882649,
+          4.165509223937988,
+          4.187535921732585,
+          4.173083305358887,
+          4.178239504496257,
+          4.1665910085042315
+        ],
+        "x8-mmq32": [
+          4.026821136474609,
+          4.048261006673177,
+          4.031656901041667,
+          4.060029983520508,
+          4.055341402689616,
+          4.106678644816081,
+          4.0811506907145185
+        ]
+      },
+      "sanity": {
+        "retained-direct": {
+          "checksum_f64": 603.5272201091284,
+          "finite": true,
+          "max_abs": 5.1875
+        },
+        "t16-mmq32": {
+          "checksum_f64": 19.124694873578846,
+          "finite": true,
+          "max_abs": 5.5625
+        },
+        "x8-mmq32": {
+          "checksum_f64": 19.124694873578846,
+          "finite": true,
+          "max_abs": 5.5625
+        }
+      },
+      "speedup_vs_retained": {
+        "t16-mmq32": 1.5277726675952599,
+        "x8-mmq32": 1.5721296878474806
+      }
+    },
+    "64": {
+      "active_experts": 181,
+      "compact_rows": 640,
+      "max_expert_rows": 17,
+      "median_ms": {
+        "retained-direct": 7.345024108886719,
+        "t16-mmq32": 4.418625513712565,
+        "x8-mmq32": 4.265978813171387
+      },
+      "mixed": {},
+      "padding": {
+        "mmq32_factor": 9.05,
+        "mmq32_rows": 5792,
+        "t16_factor": 4.55,
+        "t16_rows": 2912
+      },
+      "route_count_sha256": "ffa7f23a144278bd94f2671957f1cb1a02c38b3c4fc23343db41a57f8599b95d",
+      "rows": 64,
+      "samples_ms": {
+        "retained-direct": [
+          7.393727620442708,
+          7.29808235168457,
+          7.301408767700195,
+          7.298215230305989,
+          7.5212758382161455,
+          7.502306620279948,
+          7.345024108886719
+        ],
+        "t16-mmq32": [
+          4.415325164794922,
+          4.418625513712565,
+          4.425278027852376,
+          4.422218640645345,
+          4.416688919067383,
+          4.453678448994954,
+          4.401112238566081
+        ],
+        "x8-mmq32": [
+          4.279483477274577,
+          4.261569976806641,
+          4.26235834757487,
+          4.260661760965983,
+          4.265978813171387,
+          4.369226137797038,
+          4.28956953684489
+        ]
+      },
+      "sanity": {
+        "retained-direct": {
+          "checksum_f64": -2190.17795418296,
+          "finite": true,
+          "max_abs": 5.34375
+        },
+        "t16-mmq32": {
+          "checksum_f64": -1710.3037420905312,
+          "finite": true,
+          "max_abs": 5.46875
+        },
+        "x8-mmq32": {
+          "checksum_f64": -1710.3037420905312,
+          "finite": true,
+          "max_abs": 5.46875
+        }
+      },
+      "speedup_vs_retained": {
+        "t16-mmq32": 1.6622870813768893,
+        "x8-mmq32": 1.7217676014256451
+      }
+    }
+  },
+  "routing": {
+    "artifact": "/tmp/laguna-lap1-routing-all-shapes.json",
+    "qualification": "Per-expert counts are the recorded natural counts. The leaf reconstructs a deterministic lane order because raw selected IDs were intentionally not persisted.",
+    "rows": [
+      32,
+      55,
+      64,
+      122,
+      128,
+      256,
+      512
+    ],
+    "top_k": 10
+  },
+  "schema": 1,
+  "scope": "actual one-layer weights plus natural per-expert count replay",
+  "status": "retained_explicit_primitive"
+}

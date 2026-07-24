@@ -1319,13 +1319,13 @@ The current focused Laguna S 2.1 performance campaign is owned by
 work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
-LAP-0 is complete at the clean gfx1151 control packet. LAP-1's source-faithful
-packed-dot body and natural-shape schedule pass their leaf gates. The
-byte-neutral X8 layout remains the fastest MMQ control, but its optimized exact
-fallback is **11.093%** slower than retained T16 at c=1 and fails the <=2%
-decode gate. LAP-1 therefore keeps the existing T16 expert layout as the sole
-resident set and next adds a direct T16 MMQ32 consumer—without a per-dispatch
-layout transpose—before residual calibration and runtime integration.
+LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
+source-faithful packed-dot body, live-row schedule, and direct resident-T16
+consumer pass every leaf gate. Producer-pack-inclusive direct T16 reaches
+**2.502x/3.959x/5.502x** retained at M128/M256/M512, stays within
+**4.66%/4.05%/3.02%** of the X8 ceiling, remains positive at all natural
+shapes, and adds no resident sidecar or layout transpose. LAP-2 now owns
+residual calibration and exact repair before LAP-3 runtime integration.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

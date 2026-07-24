@@ -5,8 +5,8 @@ Last updated: 2026-07-25
 Status: active successor to the completed LPF/AR-O campaign in
 [`LAGUNA.md`](LAGUNA.md). The prior bounded tasks are closed; this plan starts a
 new arithmetic and data-layout campaign. It does not reactivate the rejected
-expert-major F16 runtime routes. LAP-1 is in a bounded resident-layout reset
-after the exact X8 decode gate rejected X8 as the sole production layout.
+expert-major F16 runtime routes. LAP-1 is complete with a direct resident-T16
+MMQ32 consumer; LAP-2 residual calibration and exact repair are active.
 
 ## Outcome
 
@@ -35,15 +35,17 @@ Selected Q4 gate/up is first, then Q4/Q6 down, dense/shared Q4/Q6, source-F16
 projection, and finally cooperative tiled attention. Submission and graph work
 remain deferred.
 
-The 2026-07-25 layout checkpoint changed item 5. X8 remains the fastest proven
-MMQ32 input and an important arithmetic control, but its optimized exact
-fallback is **1.11093x** retained T16 at c=1 and **1.02987x** at c=2 on the
-actual layer-1 gate/up pair. It catches T16 at c=4/c=8 and is BF16-bit exact,
-but the campaign target is c=1 and the <=2% decode gate is mandatory. The prior
-“X8 wins” resident decision is therefore reversed: do not add a complete T16
-sidecar to X8, and do not integrate X8 into the runtime. The immediate attack
-is to teach the proven MMQ32 body to consume the already-resident T16 bytes
-directly.
+The first 2026-07-25 layout checkpoint changed item 5. X8 remains the fastest
+proven MMQ32 input and an important arithmetic control, but its optimized
+exact fallback is **1.11093x** retained T16 at c=1 and **1.02987x** at c=2 on
+the actual layer-1 gate/up pair. It catches T16 at c=4/c=8 and is BF16-bit
+exact, but the campaign target is c=1 and the <=2% decode gate is mandatory.
+The prior “X8 wins” resident decision is therefore reversed: do not add a
+complete T16 sidecar to X8, and do not integrate X8 into the runtime. The
+direct T16 consumer now passes the frozen leaf gate at
+**2.502x/3.959x/5.502x** retained on M128/M256/M512 and within
+**4.66%/4.05%/3.02%** of X8, so the immediate attack moves to repaired
+arithmetic on that sole-resident layout.
 
 This document uses stable `LAP-*` labels (“Laguna arithmetic prefill”). Numeric
 task-tracker IDs may be assigned separately; the labels deliberately do not
@@ -102,7 +104,7 @@ for the bridge.
 | Cumulative modeled step | Modeled pp512 wall | Modeled tok/s | Evidence used |
 | --- | ---: | ---: | --- |
 | Current shipping trace | 6.7033 s | 76.381 | fresh matrix512/attention128 pass |
-| Apply measured LAP-1 live-row X8 leaf ratio | 3.6799 s | 139.1 | scale gate/up by 9.3297 / 52.3805 ms; not integrated |
+| Apply measured LAP-1 direct-T16 leaf ratio | 3.6933 s | 138.6 | scale gate/up by 9.5966 / 52.7988 ms; not integrated |
 | Match Vulkan selected Q4 gate/up | 3.6707 s | 139.5 | save 3.6786 - 0.6461 s |
 | Then match Vulkan selected Q4/Q6 down | 2.9372 s | 174.3 | save 1.1001 - 0.3665 s |
 | Then match Vulkan dense/shared quant | 2.3586 s | 217.1 | save 0.6415 - 0.0629 s |
@@ -118,12 +120,13 @@ A new runtime, graphs, Python removal, or a different benchmark definition is
 not required to explain the 4.5x gap.
 
 The new LAP-1 row is also modeled, not a full-model claim. Applying its clean
-actual-layer M512 ratio (**9.3297 / 52.3805 = 0.17811**) to the measured
-**3.6786-second** gate/up family gives **0.6552 seconds**, within 1.4% of
-Vulkan's **0.6461-second** family. This says the source-faithful body can close
-the first mapped gap; a direct T16 consumer, repair, and runtime integration
-must now prove that the ratio transfers across all 47 sparse layers. X8 remains
-the measured body ceiling used by this model, not the selected resident layout.
+actual-layer direct-T16 M512 ratio
+(**9.5966 / 52.7988 = 0.18176**) to the measured **3.6786-second** gate/up
+family gives **0.6686 seconds**, within 3.5% of Vulkan's **0.6461-second**
+family. This says the sole-resident body can close the first mapped gap; repair
+and runtime integration must now prove that the ratio transfers across all 47
+sparse layers. X8 remains the measured body ceiling, not the selected resident
+layout.
 
 At 512 rows, selected Q4 gate/up is **3.6786 seconds / 54.99%**, selected
 Q4/Q6 down **1.1001 seconds / 16.45%**, source-F16 **0.8941 seconds / 13.37%**,
@@ -245,12 +248,13 @@ unchecked numerical policy.
 | Global-only / SWA-only F16 bisection | KL 0.628301 / 1.205779 | No architecture-defined layer scope is safe; arbitrary layer tuning is forbidden. |
 | Byte-neutral X8 MMQ32 with live-row skip | **1.197/1.567/1.704/2.526/2.587/4.092/5.614x** retained at M32/55/64/122/128/256/512 | The packed-dot body and natural-shape schedule pass. X8 remains the prefill ceiling/control, not the resident winner. |
 | Exact X8 decode, direct/staged/transformed | Direct X8 is **4.693x** T16; raw LDS staging is **2.081x**; the optimized transform is exact but clean c1/c2 is **1.11093x/1.02987x** T16 | Per-dispatch layout recovery cannot meet the <=2% c=1 decode gate. Keep T16 resident and add a direct T16 MMQ address specialization. |
+| Direct resident-T16 MMQ32 | **1.174/1.528/1.662/2.464/2.502/3.959/5.502x** retained at M32/55/64/122/128/256/512 | LAP-1 passes: T16 matches X8 BF16 bits, stays within 4.66%/4.05%/3.02% at primary shapes, and needs no transpose or sidecar. |
 
 The older scalar and independent-WMMA variants in
 `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}`
 remain negative controls. The shared-tile X8 MMQ32 symbol remains the
-arithmetic/performance control, while the planned T16-native sibling is the
-candidate primitive. Neither has a runtime route.
+arithmetic/performance control, while the direct T16-native sibling is the
+retained LAP-1 candidate primitive. Neither has a runtime route yet.
 
 ### Transfer from the successful Qwen3.x campaign
 
@@ -356,17 +360,16 @@ resident-memory advantage and violate the one-set premise.
 The selected production premise is therefore **T16 resident, T16-native
 MMQ32**. T16 is only **25,165,824 bytes (2.778%)** larger than X8 for the
 actual gate/up pair, is already the shipping allocation, and adds zero bytes
-relative to the current runtime. The next kernel must read T16's expanded
-`d/dmin/scale/min` and interleaved Q4 payload directly while building the same
-20-byte per-column MMQ cache used by the proven raw/X8 body. It must not
-transpose T16 back to raw/X8 in LDS.
+relative to the current runtime. The direct consumer reads T16's expanded
+`d/dmin/scale/min` and interleaved Q4 payload while building the same 20-byte
+per-column MMQ cache used by the proven raw/X8 body; it never transposes T16
+back to raw/X8 in LDS.
 
-X8 remains a frozen upper-bound control. Admit T16-native MMQ when it keeps all
-natural shapes positive, retains the >=2x M128/M256/M512 body premise, and is
-within 10% of X8 at those primary shapes. If it misses, allow one profiler/ISA
-audit and one bounded unified-layout alternative; do not reopen direct,
-staged, or dynamically transformed X8 decode. No materializer or runtime
-integration starts before this leaf decision passes.
+X8 remains a frozen upper-bound control. Clean direct T16 is positive at every
+natural shape, reaches **2.502x/3.959x/5.502x** retained on
+M128/M256/M512, and is within **4.66%/4.05%/3.02%** of X8. The leaf decision
+therefore passes. No new materializer is needed; LAP-2 repair and LAP-3
+integration must preserve the existing one-set T16 residency and exact decode.
 
 ## Quality strategy
 
@@ -440,33 +443,24 @@ Current progress:
 | Task | State | Result / next condition |
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
-| LAP-1 | In progress: arithmetic/shape gate passed; resident reset | X8 proves the MMQ32 ceiling at **1.197/1.567/1.704/2.526/2.587/4.092/5.614x** retained, but exact X8 decode rejects the sole-layout premise at **1.11093x** T16 for c1. Add a direct T16 MMQ32 consumer and preserve the existing exact T16 decode path. |
-| LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
+| LAP-1 | Complete | Direct resident-T16 MMQ32 is BF16-bit identical to X8, positive at all seven natural shapes, **2.502x/3.959x/5.502x** retained at M128/M256/M512, and within **4.66%/4.05%/3.02%** of X8 with no transpose or sidecar. |
+| LAP-2 | In progress | Capture exact selected gate/up inputs, calibrate residual planes and BF16-boundary repair, and prove the bounded all-queued exact fallback. |
+| LAP-3–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
 
 Immediate execution queue:
 
-1. Add a T16 address specialization to the proven local128 MMQ32 body. It must
-   read the resident T16 payload directly, preserve the raw/X8 MMQ arithmetic
-   and live-row schedule, and pass raw/X8 bit equality plus the CPU-source
-   KL/top-1 gate. Trace the intended packed-dot symbol and reject any hidden
-   per-K layout transpose.
-2. Run the actual layer-1 M32/55/64/122/128/256/512 comparison with producer
-   packing included. Require every shape positive, >=2x at M128/M256/M512, and
-   T16-native time within 10% of X8 on those primary shapes. If it misses, use
-   one resource/ISA audit and at most one unified-layout prototype before
-   changing premise.
-3. Prove the existing T16 materializer is the sole resident expert set for
+1. Prove the existing T16 materializer is the sole resident expert set for
    exact decode and candidate prefill: no raw/X8 sidecar, unchanged c1
    decode, bounded load scratch, exact lifecycle recovery, and published
    resident/context bytes.
-4. Capture exact gate/up projection inputs from the complete calibration split,
+2. Capture exact gate/up projection inputs from the complete calibration split,
    freeze residual-plane and BF16-boundary repair policy, and pass the all-queued
    bit-exact test (LAP-2).
-5. Integrate one candidate gate/up route behind the four-axis registry, run the
+3. Integrate one candidate gate/up route behind the four-axis registry, run the
    frozen M32/55/64/122/128/256/512 leaf crossover plus 128/512/1K/4K
    full-model profile, then run the complete category/heldout, h16/h32, Poolside,
    and lifecycle gate (LAP-3).
-6. Rebuild the family bridge from that integrated trace. Start selected down
+4. Rebuild the family bridge from that integrated trace. Start selected down
    only if gate/up remains admitted; revisit split full/tail symbols only if the
    trace attributes a material ceiling to full-tile predicate work.
 
@@ -622,13 +616,15 @@ mismatch counts are zero, the temporary comparison peak is
 **1,837,482,624 bytes**, and tracked ownership returns to zero. The c=1 target
 therefore rejects X8 as the sole resident representation.
 
-LAP-1 now has one bounded branch: reuse the proven arithmetic and live-row
-schedule with direct T16 addressing. The current T16 representation already
-interleaves Q4 nibbles and expands scale/min metadata for 16 columns, so the
-consumer should fill the existing 20-byte MMQ cache directly rather than
-reconstructing raw/X8. If that body passes the frozen gate, proceed immediately
-to LAP-2 calibration and LAP-3 integration. No threshold, small-row prototype,
-X8 materializer, or runtime default is retained.
+The direct-T16 branch closes LAP-1. Its clean producer-pack-inclusive times are
+**3.383/4.173/4.419/5.399/5.543/6.769/9.597 ms**, or
+**1.174/1.528/1.662/2.464/2.502/3.959/5.502x** retained direct at
+M32/55/64/122/128/256/512. T16 is only **4.66%/4.05%/3.02%** behind X8 at
+the primary shapes. T16/X8 BF16 checksums match at every shape, focused tests
+report 31 passes, and cached tracing reports local128/VGPR48/LDS2048B/scratch0
+with packed-dot ISA. Proceed immediately to LAP-2 calibration and LAP-3
+integration. No threshold, small-row prototype, X8 materializer, or runtime
+default is retained.
 Evidence:
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
 The all-shape crossover packet is
@@ -643,6 +639,8 @@ The retained live-row schedule packet is
 [`2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json).
 The exact X8 decode rejection is
 [`2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json).
+The retained direct-T16 consumer is
+[`2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json).
 
 ### LAP-2 — calibrate residual Q8_1 and exact repair
 
