@@ -1,8 +1,7 @@
 # Laguna S 2.1 Decode Gap Analysis — W7900 / UD-Q2_K_XL
 
-Status: expanded diagnostic plan complete; P0 exact-IQ3 implementation is in
-progress. The first candidate is correctness-admitted but no runtime default has
-changed yet.
+Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership is
+implemented and retained as the gfx1100 default. P1/P2 remain open.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -560,9 +559,14 @@ exact row4 producer improves **18.91%/14.96%**, so wave4 advances. Its cached
 trace is local32/VGPR88/LDS0/scratch0 with the intended 30,720
 `(route, output)` workgroups. Full logits, all 48 hidden boundaries, all 47
 routed outputs, active KV/`KVLiveSpans`, reset, and lifecycle are exact through
-16 model steps. It remains explicit pending clean context profiles and the
-complete category gate; D12 is still the default. Evidence:
-[`...p0-iq3-wave4-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-correctness.json).
+16 model steps. Clean short/512/1K/near-4K profiles improve the inclusive IQ3
+family **24.98-26.19%**, complete kernel sum **1.00-3.21%**, span
+**0.63-1.82%**, and profiled-child throughput **1.09-1.52%**. The complete
+counterbalanced category gate moves h32 decode **48.780 -> 50.254 tok/s
+(+3.022%)** and E2E **12.103 -> 12.183 (+0.666%)**, with every category and
+horizon positive and prefill/TTFT inside guard. gfx1100 now defaults wave4;
+`serial_weighted` and all unmeasured backends remain exact fallback. Evidence:
+[`...p0-iq3-wave4-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-retained.json).
 
 The experiment definitions are:
 
@@ -767,10 +771,10 @@ from **19.596 to 48.987 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
-The implementation loop remains ordered and falsifiable: finish promotion of
-the admitted exact IQ3 wave4 route/output schedule, implement exact attention
-split topology, then admit narrowly scoped quality-gated IQ3 and FP32 online
-attention only if exact schedules are insufficient. Q5/IQ2 and scheduler work
+The implementation loop remains ordered and falsifiable: P0 exact IQ3
+route/output ownership is retained; next adjudicate the narrow P1 IQ3 quality
+ladder and implement P2 exact attention split topology, admitting FP32 online
+attention only if exact ownership is insufficient. Q5/IQ2 and scheduler work
 follow independent wins. Matching
 Vulkan still requires large device-work reductions across several families;
 launch cleanup alone can move 49 toward 51, not toward 94.

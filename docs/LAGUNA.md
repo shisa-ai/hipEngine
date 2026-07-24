@@ -2505,6 +2505,14 @@ counterbalanced four-effective-repetition gate reaches **48.987 tok/s (20.414
 ms/token)**, **+4.124%** over the paired D9 control, with every category's
 decode/E2E positive and unaffected prefill neutral. Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json`.
+P0 implementation `54a5751de` then assigns one exact local32 wave to each
+IQ3 `(route, output)`, writes BF16 route rows, and applies the registered
+slot-order reducer. Clean context profiles improve the inclusive IQ3 family
+**24.98-26.19%** and complete kernel sum **1.00-3.21%**. Its counterbalanced
+four-effective-repetition gate reaches **50.254 tok/s (19.899 ms/token)**,
+**+3.022%** over matched D12, with every category/horizon positive and unchanged
+memory. gfx1100 defaults wave4; serial weighted remains fallback. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-retained.json`.
 
 The frozen clean D0 at `e6120872` profiles 16 c=1 rows after the canonical
 69-token `code_merge_intervals` bulk prefill; the stable 14 rows contain exactly
@@ -2823,19 +2831,23 @@ Proceed in measured Amdahl order:
    query/gate leaves improve every formal actual-weight leaf **13.63-24.80%**,
    every clean context kernel/span/child row, and every counterbalanced category
    decode/E2E row. gfx1100 defaults both roles and retains pack8 fallback;
-   canonical h32 decode is **48.987 tok/s**.
+   canonical h32 decode is **48.987 tok/s**; and
+19. **DONE (P0 IQ3 ownership):** exact wave4 beats exact row4 on both actual
+   layers, improves clean short/512/1K/near-4K family/kernel/span/child rows,
+   and moves matched h32 **48.780 -> 50.254 tok/s (+3.022%)** with every
+   category/horizon positive. gfx1100 defaults wave4 and keeps serial fallback.
 
-**50 tok/s is a credible W7900 target, not a current claim.** Retained D12 must
-reduce the canonical **20.414 ms to 20 ms**, another **0.414 ms / 2.03% wall**
-or **2.07% throughput**. Its clean short kernel sum is **16.486 ms** and median
-span is **19.567 ms**, so the measured device window does not impose a 20-ms
-floor. The rejected tile16 traffic model was not cache-visible, ROCm graph
+**50 tok/s is now a retained W7900 claim: 50.254 tok/s / 19.899 ms/token.** The
+clean short kernel sum is **16.012 ms** and median span is **19.331 ms**. This is
+still **9.318 ms/token** above the 94.513 tok/s Vulkan diagnostic wall and needs
+another **88.07% throughput**, so it closes P0 rather than the campaign. The
+rejected tile16 traffic model was not cache-visible, ROCm graph
 replay regressed, D10's positive mechanical/h32 diagnostics were not retainable
 after h16 category regressions, and D11's launch contraction failed the clean
 short kernel-sum gate. The near-4K profile remains led by global attention.
 Every retained candidate uses the full category/heldout suite and the same
-exact/quality lanes above. Laguna DFlash/MTP economics must use D12 or a later
-true-AR baseline rather than the historical D0 row.
+exact/quality lanes above. Laguna DFlash/MTP economics must use the P0 wave4
+default or a later true-AR baseline rather than historical D0/D12 rows.
 
 ### D8 one-step graph replay (exact, performance-rejected, removed)
 

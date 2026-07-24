@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`54a5751de19e00865754becee3588d041f8d4136` for the exact W7900 Laguna S 2.1
+UD-Q2_K_XL P0 IQ3 wave4 route/output producer,
 `c7fcf46f9` for the retained explicit-only exact W7900 Laguna S 2.1
 UD-Q2_K_XL DFlash IQ3 selected-down tile4 path,
 `338d3afca01aa884ff3a68e0175566bc51e5ceae` for the measured exact W7900
@@ -1217,9 +1219,10 @@ recoverable from the linked compact artifacts, changelog, and
 
 ### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-24
 
-**Status: exact dense/IQ3 decode, token4 score-parallel SWA, raw-Q5 wave32x2
-attention output and query/gate, raw-Q6 attention pairing, and aggregate
-MoE-tail plus next-RMS fusion are the retained W7900 target-only AR default.**
+**Status: exact dense decode, P0 IQ3 wave4 route/output ownership, token4
+score-parallel SWA, raw-Q5 wave32x2 attention output and query/gate, raw-Q6
+attention pairing, and aggregate MoE-tail plus next-RMS fusion are the retained
+W7900 target-only AR default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1256,7 +1259,9 @@ preserving every singleton reduction tree and F32 output. D9 contracts each of
 preserving both add roundings and the exact RMS reduction order. D12 replaces
 the 47 raw-Q5 attention-output and 47 unequal query/gate pack8 calls with
 local32 two-output siblings that reconstruct the same four logical wave
-partials without LDS or barriers.
+partials without LDS or barriers. P0 then replaces 45 serial weighted IQ3 down
+calls with one exact local32 wave per `(route, output)` plus the registered
+slot-order reducer.
 
 | hipEngine route | Prefill tok/s | Median TTFT | Decode tok/s, h32 | E2E tok/s, h16 | E2E tok/s, h32 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -1277,9 +1282,20 @@ partials without LDS or barriers.
 | D9 exact D7 + aggregate MoE-tail/next-RMS | 43.190 | 1.871 s | 47.132 | 6.909 | 12.038 |
 | D9 change vs D7 | +0.224% | -0.117% | +1.560% | +0.411% | +0.555% |
 | D9 counterbalanced control for D12 | 43.021 | 1.873 s | 47.046 | 6.884 | 11.997 |
-| D12 exact D9 + raw-Q5 wave32x2 | **43.028** | **1.874 s** | **48.987** | **6.923** | **12.117** |
-| D12 change vs paired D9 | **+0.016%** | **+0.032%** | **+4.124%** | **+0.564%** | **+1.001%** |
+| D12 exact D9 + raw-Q5 wave32x2 | 43.028 | 1.874 s | 48.987 | 6.923 | 12.117 |
+| D12 change vs paired D9 | +0.016% | +0.032% | +4.124% | +0.564% | +1.001% |
+| P0 matched D12 control | 43.017 | 1.871 s | 48.780 | 6.917 | 12.103 |
+| P0 exact D12 + IQ3 wave4 | **42.992** | **1.877 s** | **50.254** | **6.941** | **12.183** |
+| P0 change vs matched D12 | **-0.057%** | **+0.280%** | **+3.022%** | **+0.339%** | **+0.666%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
+
+P0 also pools two complete process-order pairs. Every category improves h16/h32
+decode by **2.80-3.16%** and E2E by **0.30-0.76%**; unaffected prefill is
+**-0.057% aggregate** and remains within **-0.152% to +0.077%** by category.
+Full logits, all 48 hidden boundaries, all 47 routed outputs, active KV/
+`KVLiveSpans`, reset, IDs, Poolside quality, and lifecycle are exact. The
+[gfx1100 P0 retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-retained.json)
+pins all raw hashes and the unchanged 40.068-GB resident footprint.
 
 D12 pools two complete process-order pairs (control/candidate then candidate/
 control), for four effective repetitions and 40 runs per mode. Every category
@@ -1653,6 +1669,30 @@ The counterbalanced canonical gate moves h32 decode **47.046 -> 48.987 tok/s
 positive and unaffected prefill/TTFT inside 0.5%. D12 is **20.414 ms/token**,
 still **0.414 ms / 2.068% throughput** from 50 tok/s. [D12 retained
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json).
+
+##### Laguna Q2 XL P0 exact IQ3 ownership (retained gfx1100 default)
+
+P0 screens both exact schedules from `docs/LAGUNA-decode.md` on actual
+E256/K1024/N3072 weights with ten distinct routes. Producer+reducer events pick
+wave4 over row4: layer 1 improves **50.101 -> 31.896 us (-36.34%)** versus
+row4 **40.626 us (-18.91%)**; layer 45 improves **49.172 -> 33.000 us
+(-32.89%)** versus row4 **41.819 us (-14.96%)**. The retained producer launches
+one local32 wave per `(route, output)`, preserves four independent K256
+shuffle trees plus their original add order, and writes each BF16 route before
+the unchanged slot-order FMA reducer. It is VGPR88/SGPR128/LDS0/scratch0 and
+adds no allocation or persistent weight copy.
+
+Clean short/512/1K/near-4K profiles reduce the inclusive IQ3 family
+**24.98-26.19%**, complete kernel sum **1.00-3.21%**, and dispatch span
+**0.63-1.82%**, while profiled-child throughput improves **1.09-1.52%**. The
+45 producer plus 47 reducer calls increase dispatches **775 -> 820/token**, but
+the device-body saving dominates. The counterbalanced canonical gate moves h32
+**48.780 -> 50.254 tok/s (+3.022%)** and E2E **12.103 -> 12.183 (+0.666%)**
+with every category/horizon positive. gfx1100 therefore defaults
+`wave4_reduce`; `serial_weighted` remains exact rollback and other backends stay
+serial. The P0 row4 c=1 runtime mode is removed; its separately measured tile4
+leaf remains for explicit DFlash verifier rows. [P0 retained
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-retained.json).
 
 ##### Laguna Q2 XL c=1 decode D13 (rejected and removed)
 
