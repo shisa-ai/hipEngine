@@ -11,7 +11,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     build_gguf_q4_k_q8_1_selected_prefill,
     gguf_q4_k_q8_1_wmma_i8_probe_16x16,
     gguf_q8_1_mmq_ds4_pack_bf16,
+    gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
@@ -119,6 +123,15 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="activation_quant",
+            quant="q8_1_ds4x3",
+            variant="bf16",
+        )
+        is gguf_q8_1_mmq_ds4_pack_bf16_d4x3
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="moe_linear",
             quant="gguf_q4_k",
             variant="selected_dual_q8_1_prefill_compact32_bf16_bf16_out",
@@ -151,6 +164,33 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
         )
         is gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out",
+        )
+        is gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out",
+        )
+        is gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear_repair",
+            quant="gguf_q4_k_t16_v1",
+            variant="selected_dual_sparse_exact_bf16",
+        )
+        is gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16
     )
     assert (
         resolve(
@@ -408,6 +448,244 @@ def test_q8_1_mmq_ds4_pack_bf16_matches_cpu(counts: list[int], in_features: int)
             free(buf, runtime=runtime)
 
     np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_1_mmq_ds4_residual_x3_preserves_primary_and_reconstructs_bf16() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    rows, hidden = 3, 512
+    fixture = _build_compact_fixture(
+        counts=[rows],
+        in_features=hidden,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=29,
+    )
+    primary = pack_q8_1_mmq_ds4_from_bf16(fixture.x_host)
+    packed = np.zeros((3, *primary.shape), dtype=np.uint8)
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+
+    bufs = []
+    try:
+        x_dev = malloc(fixture.x_host.nbytes, runtime=runtime)
+        out_dev = malloc(packed.nbytes, runtime=runtime)
+        bufs.extend((x_dev, out_dev))
+        copy_host_to_device(
+            x_dev,
+            host_array_ptr(np.ascontiguousarray(fixture.x_host)),
+            runtime=runtime,
+        )
+        gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
+            x_dev.ptr,
+            out_dev.ptr,
+            rows,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(packed), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(packed[0], primary)
+    reconstructed = np.zeros((rows, hidden), dtype=np.float32)
+    blocks = packed.reshape(3, rows, hidden // 128, 144)
+    for plane in range(3):
+        scales = blocks[plane, :, :, :16].view(np.float16).astype(np.float32)
+        quants = blocks[plane, :, :, 16:].view(np.int8).astype(np.float32)
+        reconstructed += (
+            quants.reshape(rows, hidden // 128, 4, 32)
+            * scales[..., 0::2, None]
+        ).reshape(rows, hidden)
+    source = _bf16_bits_to_float32(fixture.x_host)
+    relative_l2 = float(
+        np.linalg.norm(reconstructed - source)
+        / max(np.linalg.norm(source), 1e-12)
+    )
+    assert relative_l2 <= 5e-5
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("capacity_divisor", [1, 2])
+def test_q4_k_t16_ds4x3_all_queued_repair_matches_production_exact_bits(
+    capacity_divisor: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+        build_gguf_t16_selected_gemv,
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+    )
+    from tests.test_gguf_t16_selected_gemv_decode import _run_direct_dual
+
+    counts = [4, 0, 5]
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=512,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=37,
+    )
+    selected = np.concatenate(
+        [
+            np.full(count, expert, dtype=np.int64)
+            for expert, count in enumerate(counts)
+        ]
+    )
+    tiles_a = repack_gguf_q4_k_tile16(fixture.qweight_a).tiles
+    tiles_b = repack_gguf_q4_k_tile16(fixture.qweight_b).tiles
+    exact_library = build_gguf_t16_selected_gemv(load=True)
+    exact_a, exact_b = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        fixture.x_host,
+        selected,
+        tiles_a,
+        tiles_b,
+        fixture.out_features_a,
+        np.uint16,
+        exact_library,
+    )
+    exact = np.concatenate((exact_a, exact_b), axis=1)
+
+    source_x = np.ascontiguousarray(fixture.x_host[::-1])
+    compact_to_source = np.arange(
+        fixture.compact_rows - 1, -1, -1, dtype=np.int64
+    )
+    expert_start_mmq32, tile_expert, mmq_total_rows = _mmq32_metadata(
+        fixture
+    )
+    total_risk_tiles = (
+        fixture.compact_rows
+        * (fixture.out_features_a + fixture.out_features_b)
+        // 16
+    )
+    risk_capacity = total_risk_tiles // capacity_divisor
+    actual = np.zeros_like(exact)
+    risk_count = np.zeros((1,), dtype=np.int32)
+    risk_tiles = np.zeros((risk_capacity,), dtype=np.int32)
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+
+    bufs = []
+    try:
+        source_dev = malloc(source_x.nbytes, runtime=runtime)
+        q8_dev = malloc(
+            3 * source_x.shape[0] * (fixture.in_features // 128) * 144,
+            runtime=runtime,
+        )
+        compact_to_source_dev = malloc(
+            compact_to_source.nbytes, runtime=runtime
+        )
+        starts_dev = malloc(
+            fixture.expert_start_compact.nbytes, runtime=runtime
+        )
+        starts32_dev = malloc(
+            expert_start_mmq32.nbytes, runtime=runtime
+        )
+        tile_expert_dev = malloc(tile_expert.nbytes, runtime=runtime)
+        tiles_a_dev = malloc(tiles_a.nbytes, runtime=runtime)
+        tiles_b_dev = malloc(tiles_b.nbytes, runtime=runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        count_dev = malloc(risk_count.nbytes, runtime=runtime)
+        risks_dev = malloc(risk_tiles.nbytes, runtime=runtime)
+        bufs.extend(
+            (
+                source_dev,
+                q8_dev,
+                compact_to_source_dev,
+                starts_dev,
+                starts32_dev,
+                tile_expert_dev,
+                tiles_a_dev,
+                tiles_b_dev,
+                out_dev,
+                count_dev,
+                risks_dev,
+            )
+        )
+        for dev, arr in (
+            (source_dev, source_x),
+            (compact_to_source_dev, compact_to_source),
+            (starts_dev, fixture.expert_start_compact),
+            (starts32_dev, expert_start_mmq32),
+            (tile_expert_dev, tile_expert),
+            (tiles_a_dev, tiles_a),
+            (tiles_b_dev, tiles_b),
+        ):
+            copy_host_to_device(
+                dev,
+                host_array_ptr(np.ascontiguousarray(arr)),
+                runtime=runtime,
+            )
+        runtime.memset(count_dev.ptr, 0, count_dev.nbytes)
+        gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
+            source_dev.ptr,
+            q8_dev.ptr,
+            source_x.shape[0],
+            fixture.in_features,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out(
+            q8_dev.ptr,
+            compact_to_source_dev.ptr,
+            starts_dev.ptr,
+            starts32_dev.ptr,
+            tile_expert_dev.ptr,
+            tiles_a_dev.ptr,
+            tiles_b_dev.ptr,
+            out_dev.ptr,
+            count_dev.ptr,
+            risks_dev.ptr,
+            risk_capacity,
+            float("inf"),
+            fixture.compact_rows,
+            source_x.shape[0],
+            fixture.in_features,
+            fixture.out_features_a,
+            fixture.out_features_b,
+            fixture.num_experts,
+            mmq_total_rows,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16(
+            source_dev.ptr,
+            compact_to_source_dev.ptr,
+            starts_dev.ptr,
+            tiles_a_dev.ptr,
+            tiles_b_dev.ptr,
+            out_dev.ptr,
+            count_dev.ptr,
+            risks_dev.ptr,
+            risk_capacity,
+            fixture.compact_rows,
+            source_x.shape[0],
+            fixture.in_features,
+            fixture.out_features_a,
+            fixture.out_features_b,
+            fixture.num_experts,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(actual), out_dev, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(risk_count), count_dev, runtime=runtime
+        )
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    assert int(risk_count[0]) == total_risk_tiles
+    np.testing.assert_array_equal(actual, exact)
 
 
 def _run_q8_1_selected_dual_gpu(fixture) -> np.ndarray:
@@ -669,7 +947,11 @@ def _mmq32_metadata(fixture) -> tuple[np.ndarray, np.ndarray, int]:
 
 
 def _run_q8_1_ds4_mmq32_selected_dual_gpu(
-    fixture, *, source_remap: bool = False, layout: str = "raw"
+    fixture,
+    *,
+    source_remap: bool = False,
+    layout: str = "raw",
+    activation_passes: int = 1,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -684,6 +966,8 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     if source_remap:
         compact_to_source = compact_to_source[::-1].copy()
         source_x = fixture.x_host[::-1].copy()
+    if activation_passes not in (1, 3):
+        raise ValueError("activation_passes must be 1 or 3")
     q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(source_x)
     if layout == "raw":
         qweight_a = fixture.qweight_a
@@ -696,14 +980,21 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     elif layout == "t16":
         qweight_a = repack_gguf_q4_k_tile16(fixture.qweight_a).tiles
         qweight_b = repack_gguf_q4_k_tile16(fixture.qweight_b).tiles
-        launcher = gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+        launcher = (
+            gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+            if activation_passes == 1
+            else gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out
+        )
     else:
         raise ValueError(f"unsupported MMQ32 weight layout: {layout}")
+    if activation_passes == 3 and layout != "t16":
+        raise ValueError("residual DS4 MMQ32 is currently implemented for T16")
     expert_start_mmq32, tile_expert, mmq_total_rows = _mmq32_metadata(fixture)
 
     bufs = []
     try:
-        q8_ds4_dev = malloc(q8_ds4.nbytes, runtime=runtime)
+        source_x_dev = malloc(source_x.nbytes, runtime=runtime)
+        q8_ds4_dev = malloc(q8_ds4.nbytes * activation_passes, runtime=runtime)
         compact_to_source_dev = malloc(compact_to_source.nbytes, runtime=runtime)
         start_compact_dev = malloc(fixture.expert_start_compact.nbytes, runtime=runtime)
         start_mmq32_dev = malloc(expert_start_mmq32.nbytes, runtime=runtime)
@@ -713,6 +1004,7 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         bufs.extend(
             (
+                source_x_dev,
                 q8_ds4_dev,
                 compact_to_source_dev,
                 start_compact_dev,
@@ -724,7 +1016,7 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             )
         )
         for dev, arr in (
-            (q8_ds4_dev, q8_ds4),
+            (source_x_dev, source_x),
             (compact_to_source_dev, compact_to_source),
             (start_compact_dev, fixture.expert_start_compact),
             (start_mmq32_dev, expert_start_mmq32),
@@ -737,8 +1029,23 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
                 host_array_ptr(np.ascontiguousarray(arr)),
                 runtime=runtime,
             )
+        if activation_passes == 1:
+            copy_host_to_device(
+                q8_ds4_dev,
+                host_array_ptr(np.ascontiguousarray(q8_ds4)),
+                runtime=runtime,
+            )
+        else:
+            gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
+                source_x_dev.ptr,
+                q8_ds4_dev.ptr,
+                source_x.shape[0],
+                fixture.in_features,
+                library=library,
+                runtime=runtime,
+            )
 
-        launcher(
+        launch_args = [
             q8_ds4_dev.ptr,
             compact_to_source_dev.ptr,
             start_compact_dev.ptr,
@@ -748,11 +1055,20 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             qweight_b_dev.ptr,
             out_dev.ptr,
             fixture.compact_rows,
+        ]
+        if activation_passes == 3:
+            launch_args.append(source_x.shape[0])
+        launch_args.extend(
+            [
             fixture.in_features,
             fixture.out_features_a,
             fixture.out_features_b,
             fixture.num_experts,
             mmq_total_rows,
+            ]
+        )
+        launcher(
+            *launch_args,
             library=library,
             runtime=runtime,
         )
@@ -976,6 +1292,41 @@ def test_q4_k_t16_q8_1_ds4_mmq32_selected_prefill_matches_raw_mmq32(
     assert _max_softmax_kl(expected, actual) <= 0.05
     assert float(
         np.mean(np.argmax(expected, axis=-1) == np.argmax(actual, axis=-1))
+    ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_k_t16_q8_1_ds4x3_mmq32_reduces_exact_projection_error() -> None:
+    fixture = _build_compact_fixture(
+        counts=[4, 0, 5],
+        in_features=256,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=23,
+    )
+    primary = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, layout="t16"
+    )
+    residual = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, layout="t16", activation_passes=3
+    )
+    expected = fixture.reference
+    expected_f64 = expected.astype(np.float64)
+    primary_f64 = primary.astype(np.float64)
+    residual_f64 = residual.astype(np.float64)
+    expected_norm = max(float(np.linalg.norm(expected_f64)), 1e-12)
+    primary_relative_l2 = float(
+        np.linalg.norm(primary_f64 - expected_f64) / expected_norm
+    )
+    residual_relative_l2 = float(
+        np.linalg.norm(residual_f64 - expected_f64) / expected_norm
+    )
+
+    assert residual_relative_l2 <= 0.7 * primary_relative_l2
+    assert _max_softmax_kl(expected, residual) <= 0.05
+    assert float(
+        np.mean(np.argmax(expected, axis=-1) == np.argmax(residual, axis=-1))
     ) >= 0.9
 
 
