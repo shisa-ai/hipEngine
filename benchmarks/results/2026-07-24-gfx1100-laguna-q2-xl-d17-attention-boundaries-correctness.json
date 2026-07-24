@@ -1,0 +1,350 @@
+{
+  "actual_endpoint_gate": {
+    "all_event_and_wall_windows_improve": true,
+    "all_exact": true,
+    "harness_sha256": "a10cdf6f985e4ec83d98d7f6a37626d218a1eadb89f50e1b54b038da02bc354d",
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "iterations_per_sample": 500,
+      "live_context": 102,
+      "position": 101,
+      "warmups_per_mode": 50
+    },
+    "raw_sha256": "656a572c927a7d9c702274d0a41fb5f7c5246a7a83ec662988982454361bdf66",
+    "rows": [
+      {
+        "attention_type": "full_attention",
+        "exact": {
+          "context_f32_bits": true,
+          "evict_mask": true,
+          "gated_bf16_bits": true,
+          "key_bf16_bits": true,
+          "key_f32_bits": true,
+          "live_counts": true,
+          "query_f32_bits": true,
+          "token_positions": true,
+          "value_bf16_bits": true
+        },
+        "layer": 0,
+        "q_heads": 48,
+        "rotary_dim": 64,
+        "windows": {
+          "attention_gate": {
+            "candidate_event_us": 35.205936431884766,
+            "candidate_wall_us": 35.3210240136832,
+            "control_event_us": 40.755462646484375,
+            "control_wall_us": 40.81443790346384,
+            "event_delta_pct": -13.61664389075048,
+            "wall_delta_pct": -13.4594868187917
+          },
+          "head_kv": {
+            "candidate_event_us": 8.61520004272461,
+            "candidate_wall_us": 8.637097897008061,
+            "control_event_us": 13.429911613464355,
+            "control_wall_us": 13.425082201138139,
+            "event_delta_pct": -35.8506571697217,
+            "wall_delta_pct": -35.66446918086034
+          },
+          "head_through_gate": {
+            "candidate_event_us": 44.21768569946289,
+            "candidate_wall_us": 44.25402614288032,
+            "control_event_us": 55.42916488647461,
+            "control_wall_us": 55.49902003258467,
+            "event_delta_pct": -20.226678879203995,
+            "wall_delta_pct": -20.26160801236161
+          }
+        }
+      },
+      {
+        "attention_type": "full_attention",
+        "exact": {
+          "context_f32_bits": true,
+          "evict_mask": true,
+          "gated_bf16_bits": true,
+          "key_bf16_bits": true,
+          "key_f32_bits": true,
+          "live_counts": true,
+          "query_f32_bits": true,
+          "token_positions": true,
+          "value_bf16_bits": true
+        },
+        "layer": 44,
+        "q_heads": 48,
+        "rotary_dim": 64,
+        "windows": {
+          "attention_gate": {
+            "candidate_event_us": 35.34751892089844,
+            "candidate_wall_us": 35.46258597634733,
+            "control_event_us": 40.89011764526367,
+            "control_wall_us": 40.92905996367335,
+            "event_delta_pct": -13.554861280784891,
+            "wall_delta_pct": -13.355972485509815
+          },
+          "head_kv": {
+            "candidate_event_us": 8.341097831726074,
+            "candidate_wall_us": 8.397395955398679,
+            "control_event_us": 13.42169189453125,
+            "control_wall_us": 13.417624169960618,
+            "event_delta_pct": -37.8536037239485,
+            "wall_delta_pct": -37.41517984831643
+          },
+          "head_through_gate": {
+            "candidate_event_us": 44.16258239746094,
+            "candidate_wall_us": 44.19112601317465,
+            "control_event_us": 55.288185119628906,
+            "control_wall_us": 55.3455981425941,
+            "event_delta_pct": -20.122929877504802,
+            "wall_delta_pct": -20.154217324891356
+          }
+        }
+      },
+      {
+        "attention_type": "sliding_attention",
+        "exact": {
+          "context_f32_bits": true,
+          "evict_mask": true,
+          "gated_bf16_bits": true,
+          "key_bf16_bits": true,
+          "key_f32_bits": true,
+          "live_counts": true,
+          "query_f32_bits": true,
+          "token_positions": true,
+          "value_bf16_bits": true
+        },
+        "layer": 1,
+        "q_heads": 72,
+        "rotary_dim": 128,
+        "windows": {
+          "attention_gate": {
+            "candidate_event_us": 46.877662658691406,
+            "candidate_wall_us": 46.924381982535124,
+            "control_event_us": 59.33970260620117,
+            "control_wall_us": 59.40407398156822,
+            "event_delta_pct": -21.001183693508175,
+            "wall_delta_pct": -21.008141635042186
+          },
+          "head_kv": {
+            "candidate_event_us": 7.680891990661621,
+            "candidate_wall_us": 7.742946036159992,
+            "control_event_us": 13.394012451171875,
+            "control_wall_us": 13.412604108452797,
+            "event_delta_pct": -42.654286617528115,
+            "wall_delta_pct": -42.271120704440335
+          },
+          "head_through_gate": {
+            "candidate_event_us": 54.233154296875,
+            "candidate_wall_us": 54.266003891825676,
+            "control_event_us": 73.91986846923828,
+            "control_wall_us": 73.98807187564671,
+            "event_delta_pct": -26.6325070377471,
+            "wall_delta_pct": -26.65573988327243
+          }
+        }
+      },
+      {
+        "attention_type": "sliding_attention",
+        "exact": {
+          "context_f32_bits": true,
+          "evict_mask": true,
+          "gated_bf16_bits": true,
+          "key_bf16_bits": true,
+          "key_f32_bits": true,
+          "live_counts": true,
+          "query_f32_bits": true,
+          "token_positions": true,
+          "value_bf16_bits": true
+        },
+        "layer": 47,
+        "q_heads": 72,
+        "rotary_dim": 128,
+        "windows": {
+          "attention_gate": {
+            "candidate_event_us": 46.93058395385742,
+            "candidate_wall_us": 46.99256387539208,
+            "control_event_us": 59.355533599853516,
+            "control_wall_us": 59.421873884275556,
+            "event_delta_pct": -20.933094005622344,
+            "wall_delta_pct": -20.917061675115846
+          },
+          "head_kv": {
+            "candidate_event_us": 7.771492004394531,
+            "candidate_wall_us": 7.848667912185192,
+            "control_event_us": 13.385292053222656,
+            "control_wall_us": 13.40408413670957,
+            "event_delta_pct": -41.940063963539295,
+            "wall_delta_pct": -41.4456979519387
+          },
+          "head_through_gate": {
+            "candidate_event_us": 54.21516036987305,
+            "candidate_wall_us": 54.296783870086074,
+            "control_event_us": 73.87783813476562,
+            "control_wall_us": 73.97047197446227,
+            "event_delta_pct": -26.61512337302635,
+            "wall_delta_pct": -26.596677808367076
+          }
+        }
+      }
+    ]
+  },
+  "candidate": {
+    "default": false,
+    "fail_closed": "all four keys resolve or all four candidate callables are disabled; rows>1 and gfx1151 retain fallback",
+    "fallback": "registered head+writer and attention+softplus-gate chain",
+    "keys": [
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/global_f32_bf16_spans",
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/swa_f32_bf16_spans",
+      "laguna_attention_decode+attention_gate/bf16/global_softplus_bf16_spans",
+      "laguna_attention_decode+attention_gate/bf16/swa_token8_exact_softplus_bf16_spans"
+    ],
+    "name": "D17 all-or-none head/KV plus token8 attention/gate boundary bundle",
+    "selector": "LagunaGGUFResidentSession(..., use_attention_boundary_fusion=True)"
+  },
+  "date": "2026-07-24",
+  "full_model_gate": {
+    "all_layer_context_checks": 48,
+    "all_layer_gated_context_checks": 48,
+    "all_layer_hidden_checks": 48,
+    "decode_steps": 16,
+    "full_kv_and_live_spans_exact": true,
+    "full_logits_exact": true,
+    "generated_ids": [
+      268,
+      1172,
+      7024,
+      69452,
+      56703,
+      1117,
+      268,
+      341,
+      558,
+      572,
+      9489,
+      95,
+      268,
+      370,
+      658
+    ],
+    "harness_sha256": "ba64749900bf3fde1f273c064da5d4f8623cd5bc8005360f4d403aa35db4a4df",
+    "kl": 0.0,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "raw_sha256": "8051a7a58b7e5d07717c7a88ddda5363538f27e14e0656997eeb4eb3641ded44",
+    "reset_exact": true,
+    "top1_agreement_pct": 100.0,
+    "tracked_peak_allocations": 1496,
+    "tracked_peak_bytes": 40455911848,
+    "tracked_returned_to_baseline": true
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "hipengine_laguna_q2_xl_d17_attention_boundaries_correctness",
+  "lineage": {
+    "external_parent": null,
+    "internal_sources": {
+      "d10_token8": "aef8c082d70652da438b981fcfc5790e4ac9c4d5",
+      "d15_boundaries": "7a9dd1f609db181ec6f08a270f4fb8cd267ecd38"
+    },
+    "narrow_check": "python3 scripts/check_lineage.py --kind kernel --file hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip --file hipengine/kernels/hip_gfx1100/fused/laguna_attention.hip --diff stat",
+    "result": "no external sources selected"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL mixed raw GGUF",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "next_action": "Task #306 runs the frozen clean short/512/1K/near-4K mechanical gate at 775->679 dispatches/token, then two complete counterbalanced category pairs only if every mechanical row improves.",
+  "performance_claim": false,
+  "red_green": {
+    "edge_classes": "signed zero, magnitude/BF16 boundaries, extreme and non-finite gates, global page transitions, SWA empty/short/full, wrap/reuse, reversed offsets, eviction, and adversarial scores",
+    "exact_fields": [
+      "F32 query",
+      "F32 key",
+      "F32 context",
+      "BF16 key cache",
+      "BF16 value cache",
+      "BF16 gated context",
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask",
+      "row_positions"
+    ],
+    "production_fixture": "four-kernel chain versus the two-kernel bundle across global 0/255/256/1024 plus SWA empty/short/full, 510..513/repeated wrap, reversed offsets, eviction, adversarial scores, and extreme/non-finite gates",
+    "production_fixture_result": "4 passed",
+    "red": "collection failed on the missing D17 all-or-none resolver before any implementation was restored",
+    "red_output_sha256": "1fb3800fcbb1f53ca61aedad755a34aa3a56ddd63e7203a32d80275486aa81d5",
+    "wide_focused_result": "94 passed with one Starlette warning"
+  },
+  "resource_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d17-boundary-trace --output-file d17 -- .venv/bin/python -m pytest -q tests/test_laguna_attention_boundary_fusion.py::test_laguna_d17_two_boundary_bundle_is_bit_exact_to_four_kernel_chain",
+    "resources": {
+      "attention_gate_global": {
+        "calls": 4,
+        "duration_us_max": 91.68,
+        "duration_us_min": 11.08,
+        "dynamic_lds_bytes_fixture": 4644,
+        "grid_x_threads": [
+          12288
+        ],
+        "kernel": "void (anonymous namespace)::laguna_global_attention_decode_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, float*, float const*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, float)",
+        "local_x": 256,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "static_lds_bytes": 0,
+        "vgpr": 40
+      },
+      "attention_gate_swa": {
+        "calls": 7,
+        "duration_us_max": 96.32,
+        "duration_us_min": 5.32,
+        "dynamic_lds_bytes": 4136,
+        "grid_x_threads": [
+          18432
+        ],
+        "kernel": "(anonymous namespace)::laguna_swa_attention_decode_token8_exact_softplus_gate_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, float const*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, float)",
+        "local_x": 256,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "static_lds_bytes": 0,
+        "vgpr": 24
+      },
+      "head_kv_global": {
+        "calls": 4,
+        "duration_us_max": 7.52,
+        "duration_us_min": 5.4,
+        "dynamic_lds_bytes": 1024,
+        "grid_x_threads": [
+          14336
+        ],
+        "kernel": "void (anonymous namespace)::laguna_head_rmsnorm_partial_rotary_write_kv_f32_bf16_kernel<true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, float, long, long, long, long, long, long, long, long)",
+        "local_x": 256,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "static_lds_bytes": 0,
+        "vgpr": 16
+      },
+      "head_kv_swa": {
+        "calls": 7,
+        "duration_us_max": 14.24,
+        "duration_us_min": 4.08,
+        "dynamic_lds_bytes": 1024,
+        "grid_x_threads": [
+          20480
+        ],
+        "kernel": "void (anonymous namespace)::laguna_head_rmsnorm_partial_rotary_write_kv_f32_bf16_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, float, long, long, long, long, long, long, long, long)",
+        "local_x": 256,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "static_lds_bytes": 0,
+        "vgpr": 16
+      }
+    },
+    "test_source_sha256": "143b8d88f22fd2fee13fddf1d74a0b48030542418a74847359d2c48a105bfe22",
+    "trace_sha256": "9c39d46645164ead56eda0aa4127e96323c67c49934d112408aadf65db669b10"
+  },
+  "schema": 1,
+  "status": "correctness_admitted_default_off"
+}

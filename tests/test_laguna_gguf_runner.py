@@ -19,6 +19,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_hidden_rows,
     capture_laguna_hidden_tap,
     capture_laguna_routing_rows,
+    resolve_laguna_attention_boundary_fusion,
     resolve_laguna_eager_kernel_plan,
     resolve_laguna_q5_wave32x2_variants,
 )
@@ -60,6 +61,91 @@ class _FakeRuntime:
 
 def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
+
+
+def test_laguna_d17_boundaries_are_all_or_none_and_gfx1100_only() -> None:
+    assert not resolve_laguna_attention_boundary_fusion("hip_gfx1100")
+    assert resolve_laguna_attention_boundary_fusion("hip_gfx1100", True)
+    assert not resolve_laguna_attention_boundary_fusion("hip_gfx1151")
+
+    candidate = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_attention_boundary_fusion=True,
+    )
+    candidate_functions = (
+        candidate.global_head_kv,
+        candidate.swa_head_kv,
+        candidate.global_attention_gate,
+        candidate.swa_attention_gate,
+    )
+    candidate_keys = (
+        candidate.global_head_kv_key,
+        candidate.swa_head_kv_key,
+        candidate.global_attention_gate_key,
+        candidate.swa_attention_gate_key,
+    )
+    assert all(fn is not None for fn in candidate_functions)
+    assert all(key in candidate.kernel_keys for key in candidate_keys)
+    assert candidate.swa_attention_gate_key.variant == (
+        "swa_token8_exact_softplus_bf16_spans"
+    )
+
+    rollback = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_attention_boundary_fusion=False,
+    )
+    rollback_functions = (
+        rollback.global_head_kv,
+        rollback.swa_head_kv,
+        rollback.global_attention_gate,
+        rollback.swa_attention_gate,
+    )
+    assert all(fn is None for fn in rollback_functions)
+    assert all(key not in rollback.kernel_keys for key in candidate_keys)
+
+    unsupported = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1151",
+        use_attention_boundary_fusion=True,
+    )
+    assert all(
+        fn is None
+        for fn in (
+            unsupported.global_head_kv,
+            unsupported.swa_head_kv,
+            unsupported.global_attention_gate,
+            unsupported.swa_attention_gate,
+        )
+    )
+
+
+def test_laguna_d17_missing_one_key_disables_the_complete_bundle(monkeypatch) -> None:
+    import hipengine.runtime.laguna_gguf_runner as runner
+
+    original = runner.is_registered
+
+    def _missing_swa_gate(key) -> bool:
+        if key.variant == "swa_token8_exact_softplus_bf16_spans":
+            return False
+        return original(key)
+
+    monkeypatch.setattr(runner, "is_registered", _missing_swa_gate)
+    plan = runner.resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_attention_boundary_fusion=True,
+    )
+    assert all(
+        fn is None
+        for fn in (
+            plan.global_head_kv,
+            plan.swa_head_kv,
+            plan.global_attention_gate,
+            plan.swa_attention_gate,
+        )
+    )
 
 
 def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() -> None:
