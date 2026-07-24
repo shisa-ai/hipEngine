@@ -1,0 +1,230 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 51.436,
+    "canonical_ms_per_token": 19.441,
+    "name": "P2.1 exact split attention plus P0 IQ3 wave4",
+    "revision": "dd929660a"
+  },
+  "candidate": {
+    "description": "tile32 global/SWA producers emit FP32 (m, l, o) partials and a local128 reducer merges them in ascending tile order with stable max rescaling",
+    "head_dim": 128,
+    "kv_live_spans_fields": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask",
+      "row_positions"
+    ],
+    "partial_stride_floats": 130,
+    "persistent_weight_copy": false,
+    "reusable_workspace_bytes": 3194880,
+    "tile_tokens": 32
+  },
+  "checks": {
+    "actual_query_kv_event_win": true,
+    "actual_query_kv_wall_win": true,
+    "complete_18_prompt_kl_le_0_05": false,
+    "complete_18_prompt_top1_ge_0_90": true,
+    "global_only_18_prompt_kl_le_0_05": false,
+    "primitive_attention_rtol_atol_le_3e_4": true,
+    "selection_pass": false,
+    "swa_only_18_prompt_kl_le_0_05": false,
+    "tracked_lifecycle_clean": true
+  },
+  "crossover": {
+    "global_first_three_positive_live_counts": [
+      63,
+      64,
+      65
+    ],
+    "global_later_regression": false,
+    "swa_first_three_positive_live_counts": [
+      63,
+      64,
+      65
+    ],
+    "swa_later_regression": false,
+    "tested_global_live_counts": [
+      1,
+      31,
+      32,
+      33,
+      63,
+      64,
+      65,
+      66,
+      67,
+      127,
+      128,
+      129,
+      255,
+      256,
+      257,
+      511,
+      512,
+      1024,
+      4095,
+      4096
+    ],
+    "tested_swa_live_counts": [
+      1,
+      31,
+      32,
+      33,
+      63,
+      64,
+      65,
+      66,
+      67,
+      127,
+      128,
+      129,
+      255,
+      256,
+      257,
+      511,
+      512
+    ]
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "reject and remove before clean context profiles or category throughput gate",
+    "next": "retain exact P2.1 and screen an exact tile32 score-producer refinement before leaving P2",
+    "reason": "The source-backed online schedule is mechanically large and primitive-close, but it violates the frozen model-quality gate. Combined global+SWA, global-only, and SWA-only all exceed maximum KL 0.05 on the complete 18-prompt teacher-forced suite. Threshold behavior is non-monotonic, and thresholds that never engage on the failing prompt are not a valid quality fix."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p2_online_attention_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "primitive": {
+    "max_abs_global_across_boundaries": 2.60770320892334e-08,
+    "max_abs_swa_across_boundaries": 3.3527612686157227e-08,
+    "rtol": 0.0003,
+    "atol": 0.0003
+  },
+  "production_rows_at_live_128": [
+    {
+      "attention_type": "full_attention",
+      "event_delta_pct": -52.56084187798314,
+      "event_us": {
+        "online": 17.117998123168945,
+        "retained_exact_split": 36.084110260009766
+      },
+      "layer_id": 0,
+      "max_abs": 8.940696716308594e-08,
+      "wall_delta_pct": -52.42119293728151,
+      "wall_us": {
+        "online": 17.143158009275794,
+        "retained_exact_split": 36.031079944223166
+      }
+    },
+    {
+      "attention_type": "sliding_attention",
+      "event_delta_pct": -66.51531375400589,
+      "event_us": {
+        "online": 18.104787826538086,
+        "retained_exact_split": 54.0688591003418
+      },
+      "layer_id": 1,
+      "max_abs": 1.1920928955078125e-07,
+      "wall_delta_pct": -66.30055953625043,
+      "wall_us": {
+        "online": 18.23071390390396,
+        "retained_exact_split": 54.09797211177647
+      }
+    },
+    {
+      "attention_type": "full_attention",
+      "event_delta_pct": -52.58348994709375,
+      "event_us": {
+        "online": 17.105636596679688,
+        "retained_exact_split": 36.07527542114258
+      },
+      "layer_id": 44,
+      "max_abs": 2.980232238769531e-07,
+      "wall_delta_pct": -52.50635206567766,
+      "wall_us": {
+        "online": 17.12301792576909,
+        "retained_exact_split": 36.05328011326492
+      }
+    },
+    {
+      "attention_type": "sliding_attention",
+      "event_delta_pct": -66.56210528067975,
+      "event_us": {
+        "online": 18.084550857543945,
+        "retained_exact_split": 54.08399963378906
+      },
+      "layer_id": 47,
+      "max_abs": 2.682209014892578e-07,
+      "wall_delta_pct": -66.46791672330401,
+      "wall_us": {
+        "online": 18.13379186205566,
+        "retained_exact_split": 54.07893005758524
+      }
+    }
+  ],
+  "provenance": {
+    "actual_attention_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_p2_online_actual.py",
+    "actual_attention_harness_sha256": "eceff4b9e85cbc0cd7c89de705df6fd05fcf3d5fd8b4202b40f36e37ebc31a71",
+    "actual_attention_raw_sha256": "30719aece0361c197e27b3c8b4f98a620afab22159c1b370ae20408a40043297",
+    "candidate_source_diff_sha256": "363f6b6a3a3679fa052760f551ff859ddbea9078c95ff687054ec69b11bc4194",
+    "combined_quality_harness_sha256": "c77a421d0e45600944a360144d8dfc34418d2cef498ca9df8818a9c5e78d9239",
+    "combined_quality_stdout_sha256": "f19c8081ee50be147035452b176c1925c182458ad920b4b8c8ce539c907c4189",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "full_state_harness_sha256": "1ddfc9e561213d06470c5e514282ebf0b453c3add093046dddd92f87707cab88",
+    "full_state_raw_sha256": "6dd24ee5ca5f18d4c18e7ca89040e19fcaaaf34e2f9baea23d9eaf8c48529784",
+    "global_quality_harness_sha256": "2cf6d1c7f982b46162c98b5fc1860a960889459b1000e2878875bae9e3b3beea",
+    "global_quality_stdout_sha256": "db35721f0ef599b1eaf9b0abed134cbef49798c9ca94b7ef0f941e732a379c4d",
+    "micro_harness_sha256": "b610ece58de1a90cfe8830d1acec4692642dd64d8c71cbfeea7b09dd45867e25",
+    "micro_raw_sha256": "3a3ce53a6f755e4c529880ebc5a340e1d7b547df3fd4187f9c3b57a278d7ec2b",
+    "red_sha256": "2d213db0993063228d79dd930aba1d579da3c3526e3862d684a826a74d24afdd",
+    "swa_quality_harness_sha256": "c575deddc8b22e1b95a708e0ede1cb44e1b5ea742d400fa8ca688c793a980238",
+    "swa_quality_stdout_sha256": "db1893208301ad9968c76c1556ca586f5cd67d4db38c7a9fb8c0151e59aa4681",
+    "threshold_screen_sha256": "2fdfb0b0e8a931a720c7fb3fef00cc875a3ea52b0080f33ebe3bddcc25d36bb9"
+  },
+  "quality": {
+    "combined_global_swa": {
+      "max_kl_divergence": 1.77384,
+      "top1_agreement": 0.9913194444444444,
+      "top1_matches": 571,
+      "total_steps": 576,
+      "worst_prompt": "heldout_general_ja_migration"
+    },
+    "global_only": {
+      "max_kl_divergence": 1.16169,
+      "top1_agreement": 0.9895833333333334,
+      "top1_matches": 570,
+      "total_steps": 576,
+      "worst_prompt": "heldout_general_ja_migration"
+    },
+    "single_prompt_16_step_state_gate": {
+      "max_kl_divergence": 0.01939827062811679,
+      "metadata_state_exact": true,
+      "top1_agreement": 1.0
+    },
+    "swa_only": {
+      "max_kl_divergence": 1.64542,
+      "top1_agreement": 0.984375,
+      "top1_matches": 567,
+      "total_steps": 576,
+      "worst_prompt": "heldout_general_ja_migration"
+    },
+    "threshold_diagnostic": {
+      "note": "On general_ja_explain, global-only max KL is non-monotonic: threshold 100 passes at 0.04088, threshold 104 fails at 0.06714, threshold 112 fails at 0.24835, and thresholds 124/127 do not engage in the measured horizon.",
+      "thresholds_that_did_not_engage": [
+        124,
+        127
+      ]
+    }
+  },
+  "source_revision": "dd929660a792e3b0641e4b2cc9d5b73749d5041a"
+}

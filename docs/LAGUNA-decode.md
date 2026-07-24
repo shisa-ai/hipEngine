@@ -2,8 +2,9 @@
 
 Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership and P2.1
 exact split attention are implemented and retained as gfx1100 defaults. Both
-P1 IQ3 quality lanes are rejected, while raw-Q5/raw-IQ2 remain later work. P2.2
-quality-gated online FP32 partials are next.
+P1 IQ3 quality lanes and P2.2 online FP32 partials are rejected, while
+raw-Q5/raw-IQ2 remain later work. An exact tile32 score-producer refinement is
+next before P2 closes.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -711,6 +712,25 @@ the llama.cpp GQA6 path. SWA's GQA9 starts at tile1; query-head tile3 is allowed
 only after tile1 wins and a resource trace supports the extra state. Do not
 jump directly to all six/nine heads.
 
+Implementation status: rejected and removed. The tile32 producer plus ascending
+stable merge was within `3.36e-8` of the retained primitive across the boundary
+matrix and cut actual context-128 global/SWA event windows by **52.56-66.56%**.
+It nevertheless fails the mandatory 18-prompt model gate whether enabled for
+both policies, global only, or SWA only: maximum KL is
+**1.77384/1.16169/1.64542** versus the `0.05` ceiling. Top-1 remains
+**98.44-99.13%**, but it cannot substitute for KL. A global threshold sweep is
+non-monotonic, and thresholds `124/127` only appear exact because the candidate
+does not engage on the measured failing prompt; no prompt-shaped threshold is
+retained. All online kernels, wrappers, workspace, selectors, and tests are
+removed. Evidence:
+[`...p2-online-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-online-rejected.json).
+
+The mechanical result identifies one exact follow-up: tile 32 score production
+can share query loads and reduce workgroup count while feeding the retained
+logical-slot-order reducer. This keeps P2.1 arithmetic rather than attempting
+another online association. It must win the same exact primitive/full-state,
+resource, context-family, and complete promotion gates.
+
 #### P2.3 `KVLiveSpans`, memory, and crossover
 
 Every producer consumes all five fields: `base_offsets`, `live_counts`,
@@ -821,8 +841,10 @@ supported by the evidence.
 
 The implementation loop remains ordered and falsifiable: P0 exact IQ3
 route/output ownership and P2 exact attention split topology are retained; both
-narrow P1 IQ3 quality lanes are rejected. Exact split is positive but plainly
-insufficient against the target, so P2.2 FP32 online partials now enter their
-quality/performance gates. Q5/IQ2 and scheduler work follow independent wins.
-Matching Vulkan still requires large device-work reductions across several
-families; launch cleanup alone can move 49 toward 51, not toward 94.
+narrow P1 IQ3 quality lanes and P2.2 online partials are rejected. The online
+body proves tile-level ownership is mechanically valuable but violates the
+frozen KL gate, so it is removed. One exact tile32 score-producer refinement
+now feeds the retained reducer before P2 closes; Q5/IQ2 and scheduler work
+follow independent wins. Matching Vulkan still requires large device-work
+reductions across several families; launch cleanup alone can move 49 toward
+51, not toward 94.
