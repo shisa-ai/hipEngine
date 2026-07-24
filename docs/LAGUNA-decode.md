@@ -1,6 +1,7 @@
 # Laguna S 2.1 Decode Gap Analysis — W7900 / UD-Q2_K_XL
 
-Status: diagnostic complete. No runtime default changes in this analysis.
+Status: expanded diagnostic and pre-implementation plan complete. No runtime
+default changes in this analysis.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -10,7 +11,9 @@ does **not** replace the canonical benchmark or make an apples-to-apples
 cross-engine throughput claim.
 
 Compact evidence:
-[`2026-07-24-gfx1100-laguna-q2-xl-decode-gap-analysis.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-decode-gap-analysis.json).
+
+- [`2026-07-24-gfx1100-laguna-q2-xl-decode-gap-analysis.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-decode-gap-analysis.json)
+- [`2026-07-24-gfx1100-laguna-q2-xl-hip-vulkan-isa-attention-review.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-hip-vulkan-isa-attention-review.json)
 
 ## Executive answer
 
@@ -41,6 +44,11 @@ sampling, Python, or one missing launch flag:
    **98.568 tok/s**. Blindly porting integer-dot activation quantization is not
    the answer; hipEngine's inclusive IQ2 Q8_1/dp4a attempt independently
    regressed.
+6. A clean same-commit llama.cpp HIP build reaches only
+   **55.621 +/- 0.210 tok/s**. Its **1.699x** same-source Vulkan deficit proves
+   that most of the backend gap survives inside llama.cpp, but its open HIP
+   kernels expose two concrete schedules worth adapting: selected IQ3 down is
+   **1.422 ms/token**, and tiled attention is **0.558 ms/token**.
 
 The direct conclusion is:
 
@@ -309,6 +317,103 @@ This proxy excludes cache, activations, KV, and dequant traffic, but the same
 model/active-row accounting makes the scale useful: Vulkan is processing the
 active raw model at roughly twice D12's wall-level effective rate.
 
+### 4.5 What the HIP-versus-Vulkan history changes
+
+[`HIP-vs-VULKAN-HISTORY.md`](HIP-vs-VULKAN-HISTORY.md) helps mainly as an
+**exclusion matrix**. Its legacy notebook ratios must not be transferred, and
+the current gfx1100 timing-contract-v2 companion in
+[`HIP-vs-VULKAN.md`](HIP-vs-VULKAN.md) is the relevant dashboard:
+
+- HIP wins every retained serialized geometry, reduction, memory/waitcnt,
+  VOPD, sampler, and two-stage-reduction row on W7900.
+- Vulkan's serialized packed-dot lead is only **1.052-1.133x**, not the old
+  gfx1151 **3-4x**.
+- Vulkan's repeatable broad advantage is tiny command-buffer replay:
+  **2.437-10.122x** for the bounded serialized dispatch matrix. That is runtime
+  evidence, not proof of better ACO code generation.
+- Production-shaped combined Q4 selected-dual, Q6 selected-down, and dense-Q8
+  controls mostly favor HIP on gfx1100.
+
+Therefore the history does not support another generic wave64, VOPD, LDS,
+reduction, waitcnt, or hand-ISA sweep. It changes P0 to a much narrower
+question: what is different about Laguna's exact raw-IQ3 ownership and its
+attention algorithm? The answer has to come from those production slices, not
+a backend-wide compiler narrative.
+
+### 4.6 Same-source llama.cpp HIP isolation
+
+The old reference HIP binary predates Laguna support. A clean temporary gfx1100
+HIP build was therefore made from the exact llama.cpp Vulkan source commit
+`c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, without modifying the dirty
+read-only reference tree. The resulting `llama-bench` and `libggml-hip.so`
+hashes are retained in the compact artifact.
+
+| llama.cpp HIP control | tok/s | ms/token |
+| --- | ---: | ---: |
+| short, FlashAttention on | **55.621 +/- 0.210** | **17.979** |
+| depth 86 / n31 | 55.324 +/- 0.778 | 18.075 |
+| short, FlashAttention off | 52.200 | 19.157 |
+| short, HIP graphs off | 55.376 | 18.058 |
+
+The same-source Vulkan/HIP ratio is **1.699x**. Context depth is again
+negligible. FlashAttention saves about **1.18 ms/token**, while HIP graph replay
+saves only about **0.08 ms/token** in this bounded run.
+
+The depth-matched trace records **13.729 ms of GPU kernels/token** and
+**1,874 dispatches/token**. It does not reveal a ready-made HIP endpoint near
+94 tok/s, but it makes the implementation split concrete:
+
+| Family | hipEngine D12 | llama.cpp HIP | Directional read |
+| --- | ---: | ---: | --- |
+| selected IQ2 gate/up | 2.358 ms | 2.465 ms | hipEngine is already slightly faster |
+| selected IQ3 down | **2.131 ms** | **1.422 ms** | llama.cpp saves 0.709 ms before shared quantization accounting |
+| Q6 projection families | 1.546 ms | 1.618 ms | near parity |
+| major Q5 families | 4.929 ms | 4.199 ms | llama.cpp leads, but family boundaries differ |
+| attention context bodies | **2.671 ms** | **0.558 ms** | largest direct algorithmic gap |
+
+These are diagnostic family comparisons, not a product-throughput A/B:
+llama.cpp uses forced tokens and F16 KV, while hipEngine uses natural greedy
+trajectories and BF16 `KVLiveSpans`. The useful result is causal. llama.cpp HIP
+pays more launches yet has lower kernel sum, so Python and graph submission do
+not explain its lead. Its IQ3 and FlashAttention sources are implementation
+references; the complete engine is not a performance target by itself.
+
+### 4.7 Raw-IQ3 ISA and ownership breakdown
+
+The exact K1024/N3072/top-10 selected-down comparison is:
+
+| Path | Arithmetic | Ownership | Resources / static body | Observed IQ3 down |
+| --- | --- | --- | --- | ---: |
+| hipEngine D12 | BF16 input, FP32 scalar FMA, BF16 each route, slot-order weighted FMA | local128, one output block, **ten routes serial** | VGPR32, LDS512 B, scratch0, 343 instructions, two barriers, no dot4 | **2.131 ms/token** |
+| llama.cpp HIP | Q8_1 activation + dot4, F32 output | one wave32 per `(route, output)`, routes grid-parallel | VGPR72, LDS0, 547 instructions, eight dot4 | **1.422 ms/token** |
+| llama.cpp Vulkan, MMVQ off | raw IQ3 + F32 activation/FMA | subgroup64, **four adjacent output rows/workgroup**, routes grid-parallel | VGPR60, 2 KiB allocated LDS, 1,590 shaderstats instructions, 128 FMA, no barrier | warmed logger **~1.163 ms/token** |
+
+The Vulkan timing is from the deliberately perturbed logger and is directional
+only. Its source/ISA structure is still unambiguous: preload the 1-KiB IQ3
+codebook, share each activation load over four output rows, process K1024 in
+two eight-value iterations per lane, and subgroup-reduce without a workgroup
+barrier. The shader is much larger than hipEngine's. Its advantage is
+ownership/reuse, not a shorter ACO program.
+
+hipEngine currently repeats a four-wave reduction and barrier sequence for
+each of ten serial routes inside every output block. llama.cpp HIP instead
+exposes route/output parallelism and uses Q8_1 dot4. That path wins despite
+more static instructions and registers. The two source-backed hypotheses are
+therefore:
+
+1. move routes into the grid and tile adjacent output rows while preserving the
+   current per-route BF16 and slot-order weighting boundaries; then
+2. if exact topology is insufficient, test one IQ3-only Q8_1 or Vulkan-style
+   raw-row4 arithmetic sibling under the quality gate.
+
+A same-source compiler control prevents misattribution. Clang 23 changes the
+hipEngine body from **343 to 329 instructions**, waitcnt-family instructions
+from **24 to 20**, delays from **25 to 19**, and NOPs from **12 to 1**, but
+raises logical VGPR from **32 to 33**. On actual layer weights and ten distinct
+routes it is bit-exact and **4.80% slower** by paired median than Clang 22.
+Compiler upgrade and static instruction count are not the next premise; Clang
+22 remains the comparison baseline.
+
 ## 5. Why Qwen3.6 is competitive while Laguna is not
 
 The current Qwen3.6-35B-A3B Q4_K_M W7900 row demonstrates that hipEngine's
@@ -376,29 +481,29 @@ Sources reviewed:
 | Qwen LCP-D2 parallel attention output reduction | Crossed over at 32K; Laguna's admitted target is <=4K and its near-4K cost is the context scan, not only final reduction | **Not a short-decode transfer** |
 | Prefix cache, c>N scheduling, serving policy | Changes TTFT/aggregate serving, not one c=1 model-step kernel floor | **Orthogonal** |
 
-### 6.2 What the audit did find missing
+### 6.2 What the expanded audit leaves open
 
-There are open implementation-quality gaps, but they are format-specific:
+The review resolves the old broad-compiler question and leaves three scoped
+implementation campaigns:
 
-1. **Raw IQ3_XXS selected-down schedule.** D12 still spends 2.131 ms/token here.
-   Vulkan groups selected IQ3 down and route weighting in a materially shorter
-   perturbed window. hipEngine has already fixed addressing, local size, and
-   weighting, but has not performed a Vulkan/RADV-vs-HIP ISA and multi-output
-   schedule port comparable to D12's Q5 work.
-2. **Compound raw quant throughput.** IQ2, Q5 output, Q5 query/gate, and IQ3
-   together dominate the device. Each needs actual-weight code-object comparison
-   against the Vulkan shader; another generic fusion cannot substitute.
-3. **Attention algorithm, not head-dimension remapping.** D4 was a large win,
-   but SWA is still 2.153 ms at short depth and 13.1 ms at a full window.
-   D10 token8 helped mechanically but failed the complete gate. A future route
-   needs a new online/split algorithm or a declared quality-gated reassociation.
-4. **Quality-gated Vulkan arithmetic.** Exact bit identity to old HIP boundaries
-   prevents direct adoption of subgroup reduction/order and some post-op fusion.
-   A separately registered quality lane may be required to approach Vulkan,
-   subject to KL <= 0.05, top-1 >= 90%, and the complete category/heldout gate.
-5. **Submission only after device work.** D12 has 3.08 ms between kernel sum and
-   dispatch span, but deleting all of it still caps at 60.66 tok/s. A new
-   scheduler is useful only after the kernel sum falls substantially.
+1. **Raw IQ3 ownership.** The missing mechanism is now identified: D12 loops
+   ten routes serially and repeats reductions/barriers, while both reference
+   backends expose route/output parallelism and Vulkan reuses activations across
+   four output rows. Exact route-parallel and row4 screens come before any new
+   arithmetic.
+2. **Quality-gated raw quant throughput.** If exact IQ3 topology cannot recover
+   enough time, only then admit an IQ3-scoped Q8_1/dot4 or raw-row4 sibling.
+   Q5 and IQ2 follow only after independent actual-weight wins; the rejected
+   IQ2 Q8_1 path is not repeated.
+3. **Split/online attention.** D4's token4 schedule remains one block per query
+   head. llama.cpp HIP instead runs independent tile32 partials and a stable
+   combine, reaching 0.558 ms/token at comparable short depth. A Laguna version
+   must retain the full `KVLiveSpans` ABI and use separate global/SWA crossover
+   policies.
+
+Submission remains downstream. D12 has 3.08 ms between kernel sum and dispatch
+span, but deleting all of it still caps at 60.66 tok/s. A new scheduler becomes
+useful only after the IQ3 and attention bodies fall substantially.
 
 ## 7. Root-cause attribution
 
@@ -443,57 +548,144 @@ This list is for a future AR reopening. It does not supersede the queued
 Laguna DFlash/MTP campaign, and rejected D10–D17 code must not simply be
 restored unchanged.
 
-### P0 — Raw IQ3 selected-down Vulkan/HIP ISA and exact schedule audit
+### P0 — Exact raw-IQ3 ownership screens
 
-Why first:
+The ISA/source audit is complete; implementation has not started. Freeze the
+experiment order so a quality-traded result cannot hide an exact alternative:
 
-- 2.131 ms/token, 12.92% of D12 kernel sum;
-- current body is scratch-free and already has wave-uniform/local128 fixes, so
-  the next premise must come from instruction/decode structure;
-- Vulkan's perturbed selected-down group is the clearest remaining relative
-  advantage, while its IQ2 group is not faster than hipEngine's.
+1. **Route-parallel exact producer.** Put `(route, output)` in the grid, write
+   each route's BF16 result, then apply the current routing weights in original
+   slot order. This isolates removal of ten serial reductions/barriers.
+2. **Exact row4 producer.** Add four adjacent output rows per ownership unit,
+   sharing activation/codebook work while retaining each row's current dot tree,
+   BF16 route boundary, and final slot-order weighted FMA.
+3. Compare both against D12 on actual
+   `blk.1.ffn_down_exps.weight` K1024/N3072 with ten distinct/cold routes. Do not
+   enter a full-model run unless inclusive producer+reducer time wins.
 
-Screen:
-
-1. Extract HIP HSACO and RADV final ISA for the exact K1024/N3072/top-10 shape.
-2. Compare codebook/grid decode, scalar vs vector address chains, load width,
-   waitcnts, VGPR, subgroup reduction, and output-row ownership.
-3. Prototype one source-backed multi-output/wave-owned exact sibling only if
-   the ISA gives a concrete mechanism.
-4. Require actual layer weights, cold/distinct routes, BF16-bit equality,
-   scratch0, and a family win before a full-model run.
-
-A 0.5-ms family saving would be useful for 50 tok/s, but cannot be extrapolated
+Required admission: BF16-bit equality, scratch0, no duplicated persistent
+weights, Clang 22 baseline, exact registry fallback, actual code-object resource
+capture, and a cached trace showing the intended route/output grid. A
+0.5-ms family saving would be useful for 50 tok/s, but cannot be extrapolated
 to Vulkan parity.
 
-### P1 — Quality-gated raw-IQ/Q5 subgroup lane
+### P1 — Quality-gated quant family ladder
 
-The exact lane has harvested most launch-preserving changes. Build a separate
-registered candidate that follows Vulkan's reduction/FMA association and F16
-or BF16 boundary intentionally, rather than claiming bit identity. Start with
-one top family and compare logits against the CPU/source oracle.
+Only after P0 is adjudicated, test separately registered arithmetic variants in
+this order:
 
-Promotion requires:
+1. IQ3 Q8_1/dot4, including activation quantization and reusable workspace in
+   the timed window;
+2. raw-IQ3 Vulkan-style row4 F32 association;
+3. raw-Q5 row4;
+4. raw-IQ2 row4.
 
-- KL <= 0.05 and top-1 >= 90% on fixture inputs;
-- full ten-prompt category plus heldout teacher-forced/free-running quality;
-- no prompt-conditioned route or benchmark-specific logic;
-- exact lifecycle/KV ownership even when arithmetic is quality-gated;
-- retained exact D12 fallback.
+The IQ3-only integer screen is justified by llama.cpp HIP's 1.422-ms family,
+not by a generic MMVQ claim. Vulkan's all-MMVQ-off control and hipEngine's
+rejected IQ2 Q8_1 path prohibit making activation quantization a broad default.
+Each family must win independently before any bundle is tested.
 
-### P2 — New SWA/global online attention algorithm
+Contract and gates:
 
-Do not repeat one-wave/two-wave head remaps or token8 unchanged. The next design
-must change the algorithm:
+- keep the exact D12 sibling registered and fail closed on shape/backend/key
+  misses;
+- primitive dual oracle: CPU/source math plus current D12 on actual weights,
+  edge scales/selectors, distinct routes, and non-finite classes;
+- frozen Poolside first-token gate;
+- all **18 prompts**: ten train/category rows plus eight category-heldouts with
+  matched token history, maximum KL `<= 0.05`, and top-1 agreement `>= 90%`;
+- deterministic free-running/category runs, with complete-ID agreement reported
+  but not substituted for the declared quality gate;
+- exact KV/state ownership and lifecycle, no prompt/token-conditioned policy;
+- scratch0 kernel bodies, bounded reusable Q8_1 activation workspace, no
+  persistent weight copy, and actual-weight inclusive event/wall wins.
 
-- more independent slot batches with fewer block barriers;
-- online/split softmax with bounded partials;
-- exact `KVLiveSpans`, ring wrap, absolute positions, and eviction semantics;
-- separate global and SWA crossover policies;
-- attention-output oracle before model benchmarking.
+### P2 — Laguna split/online attention family
 
-At a full 512-token SWA window this is mandatory; near 4K the global scan is an
-additional independent requirement.
+This is now a source-backed plan, not a request for another head remap.
+llama.cpp HIP's depth-matched trace runs:
+
+- 36 SWA tile launches at **0.357 ms/token**;
+- 12 global tile launches at **0.090 ms/token**;
+- 48 split combines at **0.112 ms/token**.
+
+The source uses tile32 online softmax partials `(m, l, o)`, local `(32,2)`
+workgroups, eight partial blocks at the padded-256 depth, then a local128
+combine. The observed SWA/global tiles use 5,632 B LDS and VGPR136/VGPR120;
+SWA reports 32 B scratch per thread while global and combine are scratch-free.
+The existing in-tree Qwen split-K producer/reducer already supplies a second
+reference for deterministic FP32 partial merging, but it does not implement
+Laguna's ring, head shapes, or exact arithmetic.
+
+#### P2.1 Exact split topology first
+
+Implement a score-tile producer and a logical-slot-order reducer before online
+reassociation:
+
+- one wave computes one 128-D dot with the current global or token4 reduction
+  tree;
+- independent blocks write score plus physical-slot scratch;
+- the reducer performs max, denominator, and value accumulation in the current
+  logical-slot order;
+- the final admitted reducer may also reproduce the existing softplus gate and
+  write both F32 context and BF16 gated context, but the old D14-D17 head/KV
+  bodies are not restored.
+
+This stage determines whether split ownership alone is enough. It must be byte
+exact to current context/gated outputs and full-model state.
+
+#### P2.2 Quality-gated online partials
+
+If exact split is insufficient, let each tile emit FP32 `m`, `l`, and 128-wide
+unnormalized `o`; merge partials in ascending split order using stable max
+rescaling. Keep F32 Q and BF16 K/V first so only the softmax association changes.
+Any F16 tile arithmetic is a later, separately gated candidate.
+
+Start with one query head per tile. Then test global query-head tile2, matching
+the llama.cpp GQA6 path. SWA's GQA9 starts at tile1; query-head tile3 is allowed
+only after tile1 wins and a resource trace supports the extra state. Do not
+jump directly to all six/nine heads.
+
+#### P2.3 `KVLiveSpans`, memory, and crossover
+
+Every producer consumes all five fields: `base_offsets`, `live_counts`,
+`token_positions`, `evict_mask`, and `row_positions`.
+
+- Global attention retains block-size-256 page translation and absolute causal
+  visibility.
+- SWA retains physical ring offsets, 511/512/513 and repeated wrap, absolute
+  positions, stale-slot rejection, explicit eviction, and the 512-token window.
+- One session-owned reusable scratch allocation is bounded by the largest mode:
+  about **3.20 MB** for global tile32 FP32 partials, or **1.57 MB** for exact
+  score/slot scratch. There is no per-token allocation, duplicate KV, or
+  persistent weight copy.
+
+The runtime does not assume a crossover. Measure SWA and global independently
+at live/tile boundaries. Select the lowest live count with three consecutive
+positive buckets and no later regression; keep the existing D12 attention+gate
+chain below that point. Thresholds belong in backend capability metadata, never
+in prompt/category/token logic.
+
+#### P2.4 RED and promotion gates
+
+Before a model run:
+
+- CPU-reference and current-kernel fixtures at 0/1/31/32/33, 63/64/65,
+  127/128/129, 255/256/257, 511/512/513, 1K, and 4095/4096;
+- reversed/permuted physical offsets, ring reuse, all/sparse eviction, stale
+  positions, GQA6/GQA9, tied/extreme scores, and denominator underflow;
+- exact lane byte parity; online lane keeps the existing attention primitive
+  `rtol=atol=3e-4`, then passes the same 18-prompt KL/top-1 suite as P1;
+- balanced actual-query/KV inclusive producer+reduce(+gate) screens at the first
+  and last global/SWA layers;
+- cached `rocprofv3` symbols, grid/counts, plausible duration, VGPR/SGPR/LDS,
+  and zero or explicitly justified bounded scratch;
+- clean short/512/1K/near-4K family, complete kernel-sum, dispatch-span, and
+  child-wall wins, followed by the unchanged category/heldout promotion gate.
+
+At a full 512-token SWA window this algorithm is mandatory; near 4K the global
+scan is a separate requirement. The short **4.79x** llama-HIP attention ratio is
+a mechanism/ceiling observation, not a projected Laguna speedup.
 
 ### P3 — Quant metadata sidecar/repack only after ISA evidence
 
@@ -520,8 +712,9 @@ alone.
   artifacts; positive diagnostic rows do not waive category/TTFT failures.
 - **More C-side packets:** D16 proved the visible gaps are queue spacing, not
   ctypes transition cost.
-- **Q8_1/MMVQ/dp4a as a default premise:** both engines' controls reject it for
-  this short Laguna path.
+- **Q8_1/MMVQ/dp4a as a default premise:** Vulkan's whole-path control and
+  hipEngine's IQ2 experiment reject it broadly. An IQ3-only inclusive screen is
+  allowed only because the llama.cpp HIP IQ3 family supplies new direct evidence.
 - **Wave64 as a blanket switch:** hipEngine's default is intentionally wave32;
   prior controlled wave64 probes were generally slower and Vulkan subgroup size
   alone is not a portable reason.
@@ -544,6 +737,10 @@ alone.
 | Why is Qwen competitive? | [`...gguf-final-optimization-sweep.json`](../benchmarks/results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json) |
 | Which Qwen tactics were considered? | [`OPTIMIZE.md`](OPTIMIZE.md), [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md), Q3/Q4 artifacts, and `WORKLOG.md` |
 | Compact conclusions and logger hashes | [`...decode-gap-analysis.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-decode-gap-analysis.json) |
+| What does the corrected HIP/Vulkan history transfer? | [`HIP-vs-VULKAN.md`](HIP-vs-VULKAN.md), [`HIP-vs-VULKAN-HISTORY.md`](HIP-vs-VULKAN-HISTORY.md) |
+| What does same-source llama.cpp HIP isolate? | [`...hip-vulkan-isa-attention-review.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-hip-vulkan-isa-attention-review.json), `/tmp/laguna-llamacpp-hip-depth-profile-summary.json` hash therein |
+| What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
+| What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
 
 ## Bottom line
 
@@ -553,8 +750,13 @@ Python, sampling, graph replay, a missing compiler flag, or one unfused router.
 The clean GPU trace proves otherwise.
 
 hipEngine has already transferred the broad Qwen playbook and improved Laguna
-from **19.596 to 48.987 tok/s**. The remaining route to llama.cpp-class speed is
-narrower and harder: raw IQ3/IQ2/Q5 code generation, a stronger attention
-algorithm, and eventually a scheduler that compounds independently faster
-kernels. Matching Vulkan requires large device-work reductions across several
-families; launch cleanup alone can move 49 toward 51, not toward 94.
+from **19.596 to 48.987 tok/s**. The expanded review removes two tempting but
+wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
+supported by the evidence.
+
+The next implementation loop is now ordered and falsifiable: exact IQ3
+route/output ownership, exact attention split topology, then narrowly scoped
+quality-gated IQ3 and FP32 online attention only if exact schedules are
+insufficient. Q5/IQ2 and scheduler work follow independent wins. Matching
+Vulkan still requires large device-work reductions across several families;
+launch cleanup alone can move 49 toward 51, not toward 94.
