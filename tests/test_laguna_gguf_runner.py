@@ -20,6 +20,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_hidden_tap,
     capture_laguna_routing_rows,
     resolve_laguna_eager_kernel_plan,
+    resolve_laguna_head_kv_fusion,
     resolve_laguna_q5_wave32x2_variants,
 )
 from tests._laguna_synthetic import make_laguna_info
@@ -60,6 +61,40 @@ class _FakeRuntime:
 
 def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
+
+
+def test_laguna_d14_head_kv_is_explicit_and_gfx1100_only_before_retention() -> None:
+    assert not resolve_laguna_head_kv_fusion("hip_gfx1100")
+    assert resolve_laguna_head_kv_fusion("hip_gfx1100", True)
+    assert not resolve_laguna_head_kv_fusion("hip_gfx1151")
+
+    candidate = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_head_kv_fusion=True,
+    )
+    assert candidate.global_head_kv is not None
+    assert candidate.swa_head_kv is not None
+    assert candidate.global_head_kv_key in candidate.kernel_keys
+    assert candidate.swa_head_kv_key in candidate.kernel_keys
+
+    rollback = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_head_kv_fusion=False,
+    )
+    assert rollback.global_head_kv is None
+    assert rollback.swa_head_kv is None
+    assert rollback.global_head_kv_key not in rollback.kernel_keys
+    assert rollback.swa_head_kv_key not in rollback.kernel_keys
+
+    unsupported = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1151",
+        use_head_kv_fusion=True,
+    )
+    assert unsupported.global_head_kv is None
+    assert unsupported.swa_head_kv is None
 
 
 def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() -> None:
