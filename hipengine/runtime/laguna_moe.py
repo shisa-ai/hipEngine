@@ -45,6 +45,13 @@ _IQ3_SELECTED_DOWN_VARIANTS = MappingProxyType(
         4: "selected_gemv_decode_tile4_bf16_bf16_out",
     }
 )
+_IQ3_C1_DOWN_VARIANTS = MappingProxyType(
+    {
+        "serial_weighted": None,
+        "wave4_reduce": "selected_gemv_decode_k1024_wave4_bf16_bf16_out",
+        "row4_reduce": "selected_gemv_decode_tile4_bf16_bf16_out",
+    }
+)
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
@@ -59,6 +66,27 @@ _SELECTED_DOWN_MODES = frozenset(
 )
 _BASELINE_SELECTED_DOWN_MODE = "direct"
 _GROUPED_SMALLM_MIN_ROWS = 32
+
+
+def resolve_laguna_iq3_c1_down_schedule(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve the exact c=1 IQ3 producer/reducer schedule or its fallback."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
+            "serial_weighted",
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _IQ3_C1_DOWN_VARIANTS:
+        raise ValueError("unsupported Laguna IQ3 c=1 down schedule")
+    return parsed
 
 
 def resolve_laguna_selected_down_mode(
@@ -113,6 +141,8 @@ class LagunaMoEKernelPlan:
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
     selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
+    c1_selected_down_keys: Mapping[str, KernelKey]
+    c1_selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_weighted_down_keys: Mapping[str, KernelKey]
     selected_weighted_down_routes: Mapping[str, LagunaMoESelectedRoute]
     routed_sum_key: KernelKey
@@ -154,6 +184,7 @@ class LagunaMoEKernelPlan:
             *tuple(self.selected_gate_up_keys.values()),
             self.selected_silu_key,
             *tuple(self.selected_down_keys.values()),
+            *tuple(self.c1_selected_down_keys.values()),
             *tuple(self.selected_weighted_down_keys.values()),
             self.routed_sum_key,
             self.routed_sum_rows_key,
@@ -246,6 +277,7 @@ def resolve_laguna_moe_plan(
     *,
     backend: str,
     iq3_selected_down_tile: int = 1,
+    iq3_c1_down_schedule: str | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -255,6 +287,10 @@ def resolve_laguna_moe_plan(
         ]
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("unsupported Laguna IQ3 selected-down output tile") from exc
+    iq3_c1_schedule = resolve_laguna_iq3_c1_down_schedule(
+        backend,
+        iq3_c1_down_schedule,
+    )
     if config.expert_gating_func != "sigmoid":
         raise ValueError("Laguna MoE plan requires sigmoid expert gating")
     if not config.expert_weights_norm:
@@ -418,6 +454,31 @@ def resolve_laguna_moe_plan(
     selected_downs = MappingProxyType(
         {quant: route.function for quant, route in selected_down_routes.items()}
     )
+    iq3_c1_variant = _IQ3_C1_DOWN_VARIANTS[iq3_c1_schedule]
+    c1_selected_down_keys = MappingProxyType(
+        {}
+        if iq3_c1_variant is None
+        else {
+            "gguf_iq3_xxs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq3_xxs",
+                iq3_c1_variant,
+            )
+        }
+    )
+    c1_selected_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="raw_iq",
+                allocation_name="raw",
+                library_key="selected_down_iq",
+            )
+            for quant, key in c1_selected_down_keys.items()
+        }
+    )
     selected_weighted_down_keys = MappingProxyType(
         {
             "gguf_iq3_xxs": KernelKey(
@@ -457,6 +518,8 @@ def resolve_laguna_moe_plan(
         selected_down_key=keys["selected_down"],
         selected_down_keys=selected_down_keys,
         selected_down_routes=selected_down_routes,
+        c1_selected_down_keys=c1_selected_down_keys,
+        c1_selected_down_routes=c1_selected_down_routes,
         selected_weighted_down_keys=selected_weighted_down_keys,
         selected_weighted_down_routes=selected_weighted_down_routes,
         routed_sum_key=keys["routed_sum"],
@@ -927,6 +990,36 @@ def _launch_weighted_selected_down(
         return False
     plan = scratch.plan
     weight = layer.weight("ffn_down_exps")
+    try:
+        producer_route = plan.c1_selected_down_routes[weight.spec.quant_key]
+        producer_launch = _SELECTED_DOWN_ABIS[producer_route.abi]
+    except KeyError:
+        pass
+    else:
+        producer_launch(
+            producer_route,
+            plan,
+            weight.allocation(producer_route.allocation_name).tensor.ptr,
+            scratch,
+            lanes=plan.top_k,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+        plan.routed_sum(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            plan.top_k,
+            plan.hidden_size,
+            **_stage_kwargs(
+                "routed_sum",
+                libraries,
+                stream=stream,
+                runtime=runtime,
+            ),
+        )
+        return True
     try:
         route = plan.selected_weighted_down_routes[weight.spec.quant_key]
         launch = _SELECTED_WEIGHTED_DOWN_ABIS[route.abi]
@@ -1462,6 +1555,7 @@ __all__ = [
     "LagunaMoEKernelPlan",
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",
+    "resolve_laguna_iq3_c1_down_schedule",
     "resolve_laguna_moe_plan",
     "resolve_laguna_selected_down_mode",
     "run_laguna_moe_c1",

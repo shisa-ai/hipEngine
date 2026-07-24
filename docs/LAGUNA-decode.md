@@ -1,7 +1,8 @@
 # Laguna S 2.1 Decode Gap Analysis — W7900 / UD-Q2_K_XL
 
-Status: expanded diagnostic and pre-implementation plan complete. No runtime
-default changes in this analysis.
+Status: expanded diagnostic plan complete; P0 exact-IQ3 implementation is in
+progress. The first candidate is correctness-admitted but no runtime default has
+changed yet.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -544,14 +545,26 @@ headline explanation. Perfect cleanup does not reach the Vulkan floor.
 
 ## 8. Ranked future experiments
 
-This list is for a future AR reopening. It does not supersede the queued
-Laguna DFlash/MTP campaign, and rejected D10–D17 code must not simply be
-restored unchanged.
+This list governs the reopened AR campaign. It does not supersede retained
+Laguna DFlash/MTP work, and rejected D10–D17 code must not simply be restored
+unchanged.
 
 ### P0 — Exact raw-IQ3 ownership screens
 
-The ISA/source audit is complete; implementation has not started. Freeze the
-experiment order so a quality-traded result cannot hide an exact alternative:
+The ISA/source audit is complete. P0 implementation began on 2026-07-24 in the
+frozen order below so a quality-traded result cannot hide an exact alternative.
+The exact local32 wave4 route/output producer plus slot-order reducer is
+BF16-bit exact and improves actual layer-1/layer-45 inclusive HIP-event time
+**36.34%/32.89%** versus D12's serial weighted composite. The independently
+exact row4 producer improves **18.91%/14.96%**, so wave4 advances. Its cached
+trace is local32/VGPR88/LDS0/scratch0 with the intended 30,720
+`(route, output)` workgroups. Full logits, all 48 hidden boundaries, all 47
+routed outputs, active KV/`KVLiveSpans`, reset, and lifecycle are exact through
+16 model steps. It remains explicit pending clean context profiles and the
+complete category gate; D12 is still the default. Evidence:
+[`...p0-iq3-wave4-correctness.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-correctness.json).
+
+The experiment definitions are:
 
 1. **Route-parallel exact producer.** Put `(route, output)` in the grid, write
    each route's BF16 result, then apply the current routing weights in original
@@ -754,9 +767,10 @@ from **19.596 to 48.987 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
-The next implementation loop is now ordered and falsifiable: exact IQ3
-route/output ownership, exact attention split topology, then narrowly scoped
-quality-gated IQ3 and FP32 online attention only if exact schedules are
-insufficient. Q5/IQ2 and scheduler work follow independent wins. Matching
+The implementation loop remains ordered and falsifiable: finish promotion of
+the admitted exact IQ3 wave4 route/output schedule, implement exact attention
+split topology, then admit narrowly scoped quality-gated IQ3 and FP32 online
+attention only if exact schedules are insufficient. Q5/IQ2 and scheduler work
+follow independent wins. Matching
 Vulkan still requires large device-work reductions across several families;
 launch cleanup alone can move 49 toward 51, not toward 94.
