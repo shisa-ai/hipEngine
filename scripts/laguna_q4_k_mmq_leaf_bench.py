@@ -42,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
+    gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.loading.gguf import GGUFReader
@@ -54,7 +55,8 @@ DEFAULT_CACHE = Path(
 DEFAULT_ROUTING = Path("/tmp/laguna-lap0-routing-8d26a9562.json")
 DEFAULT_OUTPUT = Path("/tmp/laguna-q4-k-mmq-leaf.raw.json")
 MODEL_SHA256 = "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
-MODES = ("retained-direct", "t16-wmma", "raw-mmq32")
+DEFAULT_MODES = ("retained-direct", "t16-wmma", "raw-mmq32")
+MODES = (*DEFAULT_MODES, "t16-grouped-exact")
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
 EXPERTS = 256
@@ -88,7 +90,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--routing-json", type=Path, default=DEFAULT_ROUTING)
     parser.add_argument("--rows", type=_parse_csv_ints, default=(256, 512))
     parser.add_argument("--layer", type=int, default=1)
-    parser.add_argument("--modes", type=_parse_modes, default=MODES)
+    parser.add_argument("--modes", type=_parse_modes, default=DEFAULT_MODES)
+    parser.add_argument(
+        "--mixed-thresholds",
+        type=_parse_csv_ints,
+        default=(),
+        help=(
+            "Also time whole-expert hybrids. MMQ32 owns experts with at least "
+            "each threshold's row count; exact grouped-small-M owns the rest."
+        ),
+    )
     parser.add_argument("--warmups", type=int, default=2)
     parser.add_argument("--samples", type=int, default=7)
     parser.add_argument("--burst", type=int, default=3)
@@ -223,6 +234,44 @@ def _route_metadata(counts: np.ndarray) -> dict[str, np.ndarray | int]:
     }
 
 
+def _mixed_metadata(
+    counts: np.ndarray, *, min_mmq_rows: int
+) -> dict[str, np.ndarray | int]:
+    """Partition active experts between whole-expert MMQ32 and exact leaves."""
+
+    if min_mmq_rows <= 0:
+        raise ValueError("min_mmq_rows must be positive")
+    dense_counts = np.asarray(counts, dtype=np.int64)
+    if dense_counts.ndim != 1 or np.any(dense_counts < 0):
+        raise ValueError("counts must be a one-dimensional nonnegative array")
+
+    mmq_mask = dense_counts >= min_mmq_rows
+    exact_mask = (dense_counts > 0) & ~mmq_mask
+    padded = np.where(
+        mmq_mask,
+        ((dense_counts + 31) // 32) * 32,
+        0,
+    )
+    starts32 = np.zeros(dense_counts.size + 1, dtype=np.int64)
+    starts32[1:] = np.cumsum(padded)
+    tile_expert32 = np.repeat(
+        np.arange(dense_counts.size, dtype=np.int64), padded // 32
+    )
+    total32 = int(starts32[-1])
+    if tile_expert32.size != total32 // 32:
+        raise AssertionError("mixed MMQ32 metadata is inconsistent")
+
+    return {
+        "starts32": np.ascontiguousarray(starts32),
+        "tile_expert32": np.ascontiguousarray(tile_expert32),
+        "total32": total32,
+        "mmq_experts": np.ascontiguousarray(np.flatnonzero(mmq_mask)),
+        "exact_experts": np.ascontiguousarray(np.flatnonzero(exact_mask)),
+        "mmq_compact_rows": int(dense_counts[mmq_mask].sum()),
+        "exact_compact_rows": int(dense_counts[exact_mask].sum()),
+    }
+
+
 def _cache_tiles(
     cache_root: Path, *, layer: int, slot: str
 ) -> tuple[np.ndarray, dict[str, Any]]:
@@ -329,6 +378,14 @@ def main() -> None:
         for rows in args.rows:
             counts = _load_counts(routing, rows=rows, layer=args.layer)
             metadata = _route_metadata(counts)
+            mixed_metadata = {
+                threshold: _mixed_metadata(counts, min_mmq_rows=threshold)
+                for threshold in args.mixed_thresholds
+            }
+            mixed_mode_names = tuple(
+                f"mixed-ge{threshold}" for threshold in args.mixed_thresholds
+            )
+            effective_modes = (*args.modes, *mixed_mode_names)
             compact_rows = int(metadata["starts"][-1])
             rng = np.random.default_rng(args.seed + rows + args.layer * 1000)
             source_x = _bf16_bits(
@@ -354,10 +411,37 @@ def main() -> None:
                 compact_to_source_dev = _upload(
                     runtime, metadata["compact_to_source"]
                 )
+                active_experts = np.ascontiguousarray(
+                    np.flatnonzero(counts > 0), dtype=np.int64
+                )
+                active_experts_dev = _upload(runtime, active_experts)
+                active_count_dev = _upload(
+                    runtime, np.asarray([active_experts.size], dtype=np.int64)
+                )
                 q8_dev = malloc(q8_bytes, runtime=runtime)
                 out_a_dev = malloc(out_bytes, runtime=runtime)
                 out_b_dev = malloc(out_bytes, runtime=runtime)
                 out_dual_dev = malloc(2 * out_bytes, runtime=runtime)
+                mixed_devices: dict[int, dict[str, Any]] = {}
+                for threshold, hybrid in mixed_metadata.items():
+                    hybrid_devices: dict[str, Any] = {
+                        "starts32": _upload(runtime, hybrid["starts32"]),
+                        "exact_count": _upload(
+                            runtime,
+                            np.asarray(
+                                [len(hybrid["exact_experts"])], dtype=np.int64
+                            ),
+                        ),
+                    }
+                    if int(hybrid["total32"]) > 0:
+                        hybrid_devices["tile_expert32"] = _upload(
+                            runtime, hybrid["tile_expert32"]
+                        )
+                    if len(hybrid["exact_experts"]) > 0:
+                        hybrid_devices["exact_experts"] = _upload(
+                            runtime, hybrid["exact_experts"]
+                        )
+                    mixed_devices[threshold] = hybrid_devices
                 shape_buffers.extend(
                     (
                         source_x_dev,
@@ -369,11 +453,18 @@ def main() -> None:
                         starts32_dev,
                         tile_expert32_dev,
                         compact_to_source_dev,
+                        active_experts_dev,
+                        active_count_dev,
                         q8_dev,
                         out_a_dev,
                         out_b_dev,
                         out_dual_dev,
                     )
+                )
+                shape_buffers.extend(
+                    buffer
+                    for hybrid_devices in mixed_devices.values()
+                    for buffer in hybrid_devices.values()
                 )
 
                 def retained_direct() -> None:
@@ -412,6 +503,24 @@ def main() -> None:
                         runtime=runtime,
                     )
 
+                def t16_grouped_exact() -> None:
+                    gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out(
+                        compact_x_dev.ptr,
+                        starts_dev.ptr,
+                        active_experts_dev.ptr,
+                        active_count_dev.ptr,
+                        tiles_gate_dev.ptr,
+                        tiles_up_dev.ptr,
+                        out_a_dev.ptr,
+                        out_b_dev.ptr,
+                        compact_rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        library=direct_library,
+                        runtime=runtime,
+                    )
+
                 def raw_mmq32() -> None:
                     gguf_q8_1_mmq_ds4_pack_bf16(
                         source_x_dev.ptr,
@@ -443,27 +552,82 @@ def main() -> None:
                 launchers = {
                     "retained-direct": retained_direct,
                     "t16-wmma": t16_wmma,
+                    "t16-grouped-exact": t16_grouped_exact,
                     "raw-mmq32": raw_mmq32,
                 }
+                for threshold, hybrid in mixed_metadata.items():
+                    hybrid_devices = mixed_devices[threshold]
+
+                    def mixed_launcher(
+                        *,
+                        _hybrid=hybrid,
+                        _devices=hybrid_devices,
+                    ) -> None:
+                        if int(_hybrid["total32"]) > 0:
+                            gguf_q8_1_mmq_ds4_pack_bf16(
+                                source_x_dev.ptr,
+                                q8_dev.ptr,
+                                rows,
+                                HIDDEN,
+                                library=mmq_library,
+                                runtime=runtime,
+                            )
+                            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+                                q8_dev.ptr,
+                                compact_to_source_dev.ptr,
+                                starts_dev.ptr,
+                                _devices["starts32"].ptr,
+                                _devices["tile_expert32"].ptr,
+                                raw_gate_dev.ptr,
+                                raw_up_dev.ptr,
+                                out_dual_dev.ptr,
+                                compact_rows,
+                                HIDDEN,
+                                OUT_FEATURES,
+                                OUT_FEATURES,
+                                EXPERTS,
+                                int(_hybrid["total32"]),
+                                library=mmq_library,
+                                runtime=runtime,
+                            )
+                        if len(_hybrid["exact_experts"]) > 0:
+                            gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out(
+                                compact_x_dev.ptr,
+                                starts_dev.ptr,
+                                _devices["exact_experts"].ptr,
+                                _devices["exact_count"].ptr,
+                                tiles_gate_dev.ptr,
+                                tiles_up_dev.ptr,
+                                out_a_dev.ptr,
+                                out_b_dev.ptr,
+                                compact_rows,
+                                HIDDEN,
+                                OUT_FEATURES,
+                                EXPERTS,
+                                library=direct_library,
+                                runtime=runtime,
+                            )
+
+                    launchers[f"mixed-ge{threshold}"] = mixed_launcher
                 for _ in range(args.warmups):
-                    for mode in args.modes:
+                    for mode in effective_modes:
                         launchers[mode]()
                 runtime.device_synchronize()
 
                 samples: dict[str, list[float]] = {
-                    mode: [] for mode in args.modes
+                    mode: [] for mode in effective_modes
                 }
                 for sample in range(args.samples):
-                    for mode in _mode_order(args.modes, sample):
+                    for mode in _mode_order(effective_modes, sample):
                         samples[mode].append(
                             _event_ms(runtime, launchers[mode], burst=args.burst)
                         )
 
                 sanity: dict[str, Any] = {}
-                for mode in args.modes:
+                for mode in effective_modes:
                     launchers[mode]()
                     runtime.device_synchronize()
-                    if mode == "retained-direct":
+                    if mode in ("retained-direct", "t16-grouped-exact"):
                         host_a = np.empty(out_shape, dtype=np.uint16)
                         host_b = np.empty(out_shape, dtype=np.uint16)
                         copy_device_to_host(
@@ -473,6 +637,29 @@ def main() -> None:
                             host_array_ptr(host_b), out_b_dev, runtime=runtime
                         )
                         values = np.concatenate((host_a, host_b), axis=1)
+                    elif mode.startswith("mixed-ge"):
+                        threshold = int(mode.removeprefix("mixed-ge"))
+                        hybrid = mixed_metadata[threshold]
+                        values = np.empty(
+                            (compact_rows, 2 * OUT_FEATURES), dtype=np.uint16
+                        )
+                        copy_device_to_host(
+                            host_array_ptr(values), out_dual_dev, runtime=runtime
+                        )
+                        if len(hybrid["exact_experts"]) > 0:
+                            host_a = np.empty(out_shape, dtype=np.uint16)
+                            host_b = np.empty(out_shape, dtype=np.uint16)
+                            copy_device_to_host(
+                                host_array_ptr(host_a), out_a_dev, runtime=runtime
+                            )
+                            copy_device_to_host(
+                                host_array_ptr(host_b), out_b_dev, runtime=runtime
+                            )
+                            for expert in hybrid["exact_experts"]:
+                                begin = int(metadata["starts"][expert])
+                                end = int(metadata["starts"][expert + 1])
+                                values[begin:end, :OUT_FEATURES] = host_a[begin:end]
+                                values[begin:end, OUT_FEATURES:] = host_b[begin:end]
                     else:
                         values = np.empty(
                             (compact_rows, 2 * OUT_FEATURES), dtype=np.uint16
@@ -505,6 +692,25 @@ def main() -> None:
                         "mmq32_rows": int(metadata["total32"]),
                         "mmq32_factor": int(metadata["total32"]) / compact_rows,
                     },
+                    "mixed": {
+                        str(threshold): {
+                            "min_mmq_rows": threshold,
+                            "mmq_experts": len(hybrid["mmq_experts"]),
+                            "exact_experts": len(hybrid["exact_experts"]),
+                            "mmq_compact_rows": int(hybrid["mmq_compact_rows"]),
+                            "exact_compact_rows": int(
+                                hybrid["exact_compact_rows"]
+                            ),
+                            "mmq32_rows": int(hybrid["total32"]),
+                            "mmq32_padding_factor_over_mmq_rows": (
+                                int(hybrid["total32"])
+                                / int(hybrid["mmq_compact_rows"])
+                                if int(hybrid["mmq_compact_rows"]) > 0
+                                else None
+                            ),
+                        }
+                        for threshold, hybrid in mixed_metadata.items()
+                    },
                     "samples_ms": samples,
                     "median_ms": medians,
                     "sanity": sanity,
@@ -521,7 +727,7 @@ def main() -> None:
                     f"max={shape_result['max_expert_rows']} "
                     + " ".join(
                         f"{mode}={medians[mode]:.3f}ms"
-                        for mode in args.modes
+                        for mode in effective_modes
                     ),
                     flush=True,
                 )
@@ -567,7 +773,19 @@ def main() -> None:
             "temporary_side_by_side_leaf_only": True,
         },
         "protocol": {
-            "modes": list(args.modes),
+            "modes": [
+                *args.modes,
+                *(f"mixed-ge{threshold}" for threshold in args.mixed_thresholds),
+            ],
+            "mixed_thresholds": list(args.mixed_thresholds),
+            "mixed_scope": (
+                "MMQ32 for whole experts whose natural row count is greater "
+                "than or equal to the global threshold; exact T16 grouped-"
+                "small-M for every other active expert. Timing includes both "
+                "bodies in separate diagnostic output buffers. Host sanity "
+                "reconstructs disjoint expert rows; device merge/scatter cost "
+                "is omitted."
+            ),
             "warmups": args.warmups,
             "samples": args.samples,
             "burst": args.burst,
@@ -587,6 +805,7 @@ def main() -> None:
         "notes": [
             "The retained-direct mode is the exact production gate/up body named by LAP-0.",
             "T16 WMMA is a diagnostic layout/body control, not the shipping route.",
+            "Mixed modes are a temporary two-layout leaf ceiling, not a resident-layout proposal.",
             "This leaf does not select a quality policy or change runtime dispatch.",
         ],
     }
