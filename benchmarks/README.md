@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`46539dedb8b84e4f7511f3320fa740e2f41092a6` for exact W7900 Laguna S 2.1
+UD-Q2_K_XL P4.1 split-reducer+gate fusion,
 `071331863` for the exact W7900 Laguna S 2.1 UD-Q2_K_XL P2 SWA tile16
 score producer,
 `ad99721ed6921d86c8cb89975433603881168c80` for its exact P2 split attention
