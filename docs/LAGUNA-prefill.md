@@ -6,7 +6,11 @@ Status: active successor to the completed LPF/AR-O campaign in
 [`LAGUNA.md`](LAGUNA.md). The prior bounded tasks are closed; this plan starts a
 new arithmetic and data-layout campaign. It does not reactivate the rejected
 expert-major F16 runtime routes. LAP-1 is complete with a direct resident-T16
-MMQ32 consumer; LAP-2 residual calibration and exact repair are active.
+MMQ32 consumer. The first LAP-2 three-plane/guarded/exact-repair primitives are
+implemented and traced; real projection-input calibration and runtime
+admission remain open. The execution order below was re-audited on 2026-07-25
+after correcting the Vulkan comparator geometry and adding an absolute
+bandwidth target.
 
 ## Outcome
 
@@ -17,10 +21,24 @@ The primary external control is the current local llama.cpp Vulkan build at
 **344.56 +/- 3.16 tok/s** at pp512. hipEngine's retained matrix512/attention128
 default measures **76.226 tok/s** at 512 rows, a **4.520x** gap.
 
+That Vulkan row is now a compatibility floor, not the optimization ceiling.
+Strix Halo has a **256 GB/s** theoretical LPDDR5X roof and the existing
+local/reference large-read evidence is about **221 GB/s**. The first exact
+active-byte lower bound puts current selected gate/up at only **9.85 GB/s**,
+the Vulkan family at about **56.1 GB/s**, and the direct-T16 leaf extrapolation
+at about **80.3 GB/s**. Parity therefore still leaves most of the measured
+memory roof unused. Before any final throughput target is called complete, this
+campaign must rerun a same-host cold-stream read with locked/recorded clock
+policy, publish encoded and physical bytes for every family, and report GB/s
+plus percent of achievable bandwidth. The interim streaming-family target is
+**at least 70% of the measured same-host read ceiling** (about **155 GB/s** if
+the 221 GB/s anchor reproduces).
+
 The first design is:
 
-1. source-faithful Q4_K/Q6_K packed integer-dot MMQ over natural expert-major
-   rows;
+1. source-arithmetic Q4_K/Q6_K packed integer-dot MMQ over natural
+   expert-major rows, with geometry calibrated to the shader that actually
+   runs on gfx1151;
 2. one activation quantization per producer row, before top-10 expansion where
    possible;
 3. residual Q8_1 planes plus conservative BF16-boundary detection;
@@ -31,9 +49,12 @@ The first design is:
 6. exact fallbacks selected by quant, projection role, and measured shape—not
    prompt, token, or hand-picked layer ID.
 
-Selected Q4 gate/up is first, then Q4/Q6 down, dense/shared Q4/Q6, source-F16
-projection, and finally cooperative tiled attention. Submission and graph work
-remain deferred.
+The remaining work is no longer strictly numeric by `LAP-*` label. First
+attribute the shipping KL debt, then take the already-measured hipBLASLt
+source-F16 opportunity, then the low-risk dense/shared quant family. In
+parallel, finish real-input DS/repair calibration before promoting selected
+gate/up/down. Cooperative tiled attention remains last. Submission and graph
+work remain deferred.
 
 The first 2026-07-25 layout checkpoint changed item 5. X8 remains the fastest
 proven MMQ32 input and an important arithmetic control, but its optimized
@@ -44,8 +65,10 @@ The prior “X8 wins” resident decision is therefore reversed: do not add a
 complete T16 sidecar to X8, and do not integrate X8 into the runtime. The
 direct T16 consumer now passes the frozen leaf gate at
 **2.502x/3.959x/5.502x** retained on M128/M256/M512 and within
-**4.66%/4.05%/3.02%** of X8, so the immediate attack moves to repaired
-arithmetic on that sole-resident layout.
+**4.66%/4.05%/3.02%** of X8. Its guarded repair primitives are also
+implemented. The immediate attack is now the absolute-bandwidth/KL audit,
+source-F16 library promotion, and dense/shared MMQ before selected-family
+runtime promotion.
 
 This document uses stable `LAP-*` labels (“Laguna arithmetic prefill”). Numeric
 task-tracker IDs may be assigned separately; the labels deliberately do not
@@ -119,6 +142,28 @@ leave **20.4 ms** between the modeled hipEngine wall and the user Vulkan wall.
 A new runtime, graphs, Python removal, or a different benchmark definition is
 not required to explain the 4.5x gap.
 
+The table is useful for attribution but is no longer the completion target. Its
+comparator is itself far below the memory roof. At M512 the routing capture
+touches **10,237 / 12,032 = 85.08%** of all layer/expert groups. Multiplying
+that fraction by the raw **905,969,664-byte** gate/up pair and 47 sparse layers
+gives a **36.228 GB encoded-weight lower bound** for the selected gate/up
+family:
+
+| Selected gate/up path | Family wall | Encoded-weight-equivalent GB/s | % of 221 GB/s read anchor |
+| --- | ---: | ---: | ---: |
+| Current shipping trace | 3.6786 s | 9.85 | 4.46% |
+| llama.cpp Vulkan | 0.6461 s | 56.1 | 25.4% |
+| LAP-1 direct-T16 leaf, `47 x 9.5966 ms` | 0.4510 s | 80.3 | 36.3% |
+| Interim bandwidth target | 0.2337 s | 155 | 70.1% |
+
+These are source-encoded lower-bound rates, not memory-controller counters:
+T16 physically reads 2.778% more bytes, padding/reloads can add traffic, and
+other tensors overlap the family window. LAP-BW0 therefore must publish both
+encoded-equivalent and measured/counter-derived traffic. The full 62–68 GB
+whole-pass traffic estimate from review is plausible but is not admitted until
+the per-family byte ledger is computed directly from the manifest and routing
+capture.
+
 The new LAP-1 row is also modeled, not a full-model claim. Applying its clean
 actual-layer direct-T16 M512 ratio
 (**9.5966 / 52.7988 = 0.18176**) to the measured **3.6786-second** gate/up
@@ -128,13 +173,29 @@ and runtime integration must now prove that the ratio transfers across all 47
 sparse layers. X8 remains the measured body ceiling, not the selected resident
 layout.
 
+There is an unresolved bridge inconsistency: the family trace averages
+**78.27 ms/layer**, whereas the retained layer-1 leaf is **52.80 ms**.
+Likewise, ratio scaling predicts **0.6686 s**, but summing the direct-T16
+layer-1 leaf across 47 layers predicts **0.4510 s**. Layer/routing variation,
+kernel-family attribution, and one-layer representativeness must be reconciled
+with an all-layer candidate trace before either projection gates LAP-3.
+
 At 512 rows, selected Q4 gate/up is **3.6786 seconds / 54.99%**, selected
 Q4/Q6 down **1.1001 seconds / 16.45%**, source-F16 **0.8941 seconds / 13.37%**,
 dense/shared quant **0.6415 seconds / 9.59%**, and measured global+SWA
 attention **0.2779 seconds / 4.16%**. The respective hipEngine/Vulkan ratios
 are **5.694x/3.001x/3.188x/10.198x/7.075x**. Named non-`other` families cover
 **99.653%** of kernel time, while span-minus-sum is **0.151%**. Gate/up remains
-the first target; attention remains below its start threshold.
+the largest family, but opportunity/risk order now moves the already-measured
+source-F16 and dense/shared routes ahead of selected-family promotion.
+
+The source-F16 library ceiling is materially stronger than the old LAP-6
+checkpoint. At M512, `12 x 2.583908 + 36 x 2.981794 = 138.351 ms` for the
+measured inclusive hipBLASLt full/SWA families, versus **894.070 ms** shipping
+and **280.5 ms** Vulkan. That is a potential **755.719 ms** reduction and about
+**2.03x** faster than the comparator family. It is still a ceiling, not a
+runtime result: timing buffers were zero-filled, the inclusive path includes a
+BF16→F32→FP16 activation cast, and real-input range/quality are unproven.
 
 ### LAP-0 cumulative quality and shape evidence
 
@@ -147,6 +208,14 @@ in every category. Only **0.0040725** remains below the 0.05 KL ceiling; the
 `mixed_ja_en_translate` trajectory is the only non-exact free-running pair.
 New approximate paths therefore compare directly with all-exact, and repaired
 BF16 equality is strongly preferred.
+
+The **0.0459275** debt is not yet attributed to individual admitted
+approximations. Before another approximate runtime path is promoted, run
+one-factor ablations for compensated source-F16, global online attention, and
+SWA online attention against the all-exact lane. This decides whether
+hipBLASLt/FP32 accumulation buys back enough KL headroom for simpler expert
+arithmetic. It also prevents spending LAP-2 effort to solve a budget constraint
+whose primary consumer can be removed faster.
 
 Natural routing showed that literal 32-row padded arithmetic was not viable.
 At M512, padding factors are **1.0219/1.0684/1.1650/1.3801/1.8662x** for
@@ -165,6 +234,14 @@ only **7.67**. These are post-layer proxies rather than exact projection
 inputs, but they already reject a single global or row-wide scale as the LAP-2
 premise. Exact projection-input calibration remains required before selecting
 residual planes.
+
+LAP-0 used `performance_level=auto` and recorded only a post-run idle sample
+(`622 MHz` gfx, `1000 MHz` memory). That is insufficient for close cross-backend
+or roofline claims: a 6.7-second HIP run and a 1.49-second Vulkan run can have
+different power/thermal trajectories on the shared-memory APU. LAP-BW0 and all
+new external/roofline rows must pin the supported performance policy when
+possible and record in-kernel or sampled load clocks; otherwise the result is
+explicitly qualified as clock-unbounded.
 
 The compact LAP-0 evidence packet is
 [`2026-07-24-gfx1151-laguna-prefill-lap0-control.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
@@ -211,12 +288,14 @@ The mechanisms matter more than the API:
 2. A device pass counts routes per expert. Subgroup ballots compact matching
    `(token, route-slot)` row IDs into natural expert-major tiles.
 3. Q4_K/Q6_K `MUL_MAT_ID` uses packed integer dot, not cooperative matrix.
-   The small K-quant shader owns a 32x32 output/row tile, stages weight and
-   activation blocks, and reuses each decoded weight tile across up to 32 routed
-   rows.
-4. On AMD, large routed matmul is disabled. The Laguna top-10 routed width
-   selects the small path, and its `WMITER=1` specialization limits register
-   pressure.
+   On this RADV device the actual Q4_K pp512 comparator is the **medium**
+   `matmul_id_subgroup_q4_k_q8_1` pipeline, not the small pipeline. The backend
+   disables large routed matmul on AMD; with `m=1024`, `n=512`, neither
+   dimension satisfies the small `<=32` branch, so `!mm_l` selects medium.
+4. The medium K-quant specialization is local128 over two wave64 subgroups with
+   **BM=64 output columns, BN=64 routed rows, BK=32, WMITER=1, TM=2, TN=2**,
+   32 FP32 accumulators per lane, and about 3.9 KiB LDS. Routed MMQ forces
+   `BK_STEP=1`; the non-ID dense shader defaults to `BK_STEP=4`.
 5. Flash attention owns 16 query rows by 64 key rows in a 256-thread
    cooperative-matrix block, performs both QK and PV, and maintains online
    softmax state. The graph gives each layer all 512 query rows instead of four
@@ -228,6 +307,23 @@ The Vulkan subgroup is 64 and its attention KV is F16, while hipEngine uses
 wave32 kernels, BF16 KV, `KVLiveSpans`, and stricter quality gates. The plan
 therefore transfers the tiling/dataflow, not literal shader constants or
 unchecked numerical policy.
+
+This correction changes the next MMQ target. hipEngine's first local128 body is
+**32 columns x 32 rows over four wave32s**, with `TM=1`, `WNITER=8`, and eight
+accumulators per lane. Per K32 interval it performs about 64 packed dots per
+lane between the same two workgroup barriers; the running Vulkan medium shader
+performs about 256. The first body remains a valid and fast LAP-1 leaf, but it
+is not source-faithful geometry. The next expert kernel screen is a 64x64-class
+tile or equivalent work-per-barrier schedule, with enough register/occupancy
+evidence to justify any deviation.
+
+hipEngine also retains two structural advantages the comparator lacks:
+device-resident expert compaction launches only populated tiles, and the dual
+gate/up body can reuse one activation tile for both projections. Vulkan
+dispatches expert/row tiles broadly, scans the route-ID matrix inside surviving
+workgroups, and issues gate and up as separate `MUL_MAT_ID` operations.
+Matching its per-tile efficiency should therefore beat, not merely tie, its
+family wall.
 
 ## What prior hipEngine work proved
 
@@ -249,6 +345,9 @@ unchecked numerical policy.
 | Byte-neutral X8 MMQ32 with live-row skip | **1.197/1.567/1.704/2.526/2.587/4.092/5.614x** retained at M32/55/64/122/128/256/512 | The packed-dot body and natural-shape schedule pass. X8 remains the prefill ceiling/control, not the resident winner. |
 | Exact X8 decode, direct/staged/transformed | Direct X8 is **4.693x** T16; raw LDS staging is **2.081x**; the optimized transform is exact but clean c1/c2 is **1.11093x/1.02987x** T16 | Per-dispatch layout recovery cannot meet the <=2% c=1 decode gate. Keep T16 resident and add a direct T16 MMQ address specialization. |
 | Direct resident-T16 MMQ32 | **1.174/1.528/1.662/2.464/2.502/3.959/5.502x** retained at M32/55/64/122/128/256/512 | LAP-1 passes: T16 matches X8 BF16 bits, stays within 4.66%/4.05%/3.02% at primary shapes, and needs no transpose or sidecar. |
+| Guarded T16 D4x3 primitive | Projection relative L2 **0.002922 -> 0.001826** on the finite CPU fixture; all-queued and forced-overflow correction are BF16-bit exact; dirty actual leaf is **1.289x/2.510x** retained at M128/M512 | LAP-2 arithmetic/repair foundation is implemented (`d9bb6ad88`); real-input threshold, repair rate, and runtime quality remain open. |
+| hipBLASLt inclusive source-F16 ceiling | M512 weighted 12-full/36-SWA family is **138.351 ms** vs **894.070 ms** shipping and **280.5 ms** Vulkan | Move the real-input library route ahead of selected-family promotion; zero-filled timing and BF16→FP16 range remain explicit blockers. |
+| Dense/shared quant family | **0.6415 s** shipping vs **0.0629 s** Vulkan; principal Q4 kernel is one wave32 | Low-risk direct reuse target with no routing or new quality surface; execute before selected down. |
 
 The older scalar and independent-WMMA variants in
 `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}`
@@ -291,7 +390,8 @@ The target gate/up flow is:
 BF16 hidden [M, 3072]
   -> residual Q8_1 pack once per token row
   -> existing device route count/prefix/compact metadata
-  -> expert-major packed-dot Q4_K MMQ, 32 output columns x up to 32 natural rows
+  -> expert-major packed-dot Q4_K MMQ
+     (current 32x32 leaf; next screen 64x64-class work per barrier)
   -> BF16 candidate gate/up + device risk queue
   -> exact sparse Q4 correction for uncertain outputs
   -> existing exact SiLU/product boundary
@@ -320,6 +420,34 @@ Important ownership rules:
   on device. No scalar D2H scheduling boundary is admitted.
 - A queue overflow executes the complete exact projection or fails the
   candidate closed. It never truncates repairs.
+
+### Activation metadata range is a correctness gate
+
+The current DS4 block stores both activation scale and raw 32-value sum in
+FP16. That is not automatically safe for every Laguna projection role:
+
+- a block sum can overflow FP16 once a 32-element block's magnitude is roughly
+  above 2,048;
+- gate/up inputs are post-RMSNorm and are probably the safer case, but this must
+  be measured rather than assumed;
+- down inputs are `SiLU(gate) * up` with no normalization immediately before
+  packing and are the primary overflow/range exposure;
+- late-layer massive-activation rows also contain quiet blocks whose DS values
+  can become FP16 subnormals with little effective mantissa.
+
+Before down work, capture the actual gate, up, and post-SiLU down inputs across
+the calibration split and record per-block scale/sum exponents, FP16
+overflow/subnormal counts, and output error. Screen FP32 DS storage
+(144→160 bytes per 128 activations) and real-weight FP32 `d*scale/dmin*min`
+cache values independently. The latter showed no benefit on the current finite
+gate/up fixture and was removed from `d9bb6ad88`; it is not promoted by
+speculation.
+
+A preliminary finite gate/up fixture also shows that metadata precision alone
+does not remove Q8 quantization error: three residual planes reduce projection
+relative L2 **0.002922 -> 0.001826**, while plain one-plane remains outside the
+desired exact boundary. Therefore LAP-2 is not deleted yet. Real projection
+captures can still simplify its plane count or repair threshold.
 
 ## Resident weight-layout decision
 
@@ -370,6 +498,25 @@ natural shape, reaches **2.502x/3.959x/5.502x** retained on
 M128/M256/M512, and is within **4.66%/4.05%/3.02%** of X8. The leaf decision
 therefore passes. No new materializer is needed; LAP-2 repair and LAP-3
 integration must preserve the existing one-set T16 residency and exact decode.
+
+That decision unblocks current work but does not prove expanded metadata is the
+best permanent streaming layout. The 2.778% is paid on every bandwidth-bound
+pass. One bounded replacement screen remains open:
+
+- **T16-lite:** keep T16's 16-column Q4 nibble interleave and FP16 `d/dmin`, but
+  retain the source-packed 6-bit scale/min field. Per 16 columns/K256 this is
+  `2048 + 32 + 32 + 192 = 2304 bytes`, byte-neutral with raw/X8 instead of
+  T16's 2,368 bytes.
+- **X16:** the cheaper control, grouping 16 source blocks without expanded
+  scale/min metadata.
+
+Both are compatible with the closed-work rules: neither is X8 direct decode,
+a sidecar, nor a per-dispatch T16→raw transpose. Admit at most one
+materializer/decode/MMQ screen after the higher-value library/dense work. It
+must beat current T16 on both exact c1 decode and prefill GB/s before replacing
+the resident format. The prior 4.69x direct-X8 result is recorded as an
+untuned-kernel failure, not proof that byte-neutral layouts are intrinsically
+bad.
 
 ## Quality strategy
 
@@ -423,14 +570,17 @@ Every artifact records:
 
 ## Campaign sequence
 
+`LAP-*` numbers remain stable work-package names; execution order is now
+opportunity/risk ordered:
+
 ```text
 LAP-0 current oracle/profile
-  -> LAP-1 source-faithful body + sole-resident T16 consumer
-  -> LAP-2 residual arithmetic + exact repair
-  -> LAP-3 selected Q4 gate/up
-  -> LAP-4 selected Q4/Q6 down
+  -> LAP-1 packed-dot body + sole-resident T16 consumer
+  -> LAP-BW0 same-host bandwidth/clock/byte ledger + LAP-Q0 KL ablation
+  -> LAP-6 source-F16 hipBLASLt real-input route
   -> LAP-5 dense/shared Q4/Q6
-  -> LAP-6 source-F16
+  -> LAP-2 real-input DS/risk calibration (primitive already implemented)
+  -> LAP-3 selected Q4 gate/up, then LAP-4 selected Q4/Q6 down
   -> LAP-7 tiled attention
   -> LAP-8 residual/final parity
 ```
@@ -444,25 +594,36 @@ Current progress:
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
 | LAP-1 | Complete | Direct resident-T16 MMQ32 is BF16-bit identical to X8, positive at all seven natural shapes, **2.502x/3.959x/5.502x** retained at M128/M256/M512, and within **4.66%/4.05%/3.02%** of X8 with no transpose or sidecar. |
-| LAP-2 | In progress | Capture exact selected gate/up inputs, calibrate residual planes and BF16-boundary repair, and prove the bounded all-queued exact fallback. |
-| LAP-3–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
+| LAP-2 primitive | Complete | Three-plane pack, direct/guarded T16 MMQ, bounded queue, and overflow-safe exact correction landed in `d9bb6ad88`; 35 focused tests and cached trace pass. |
+| LAP-BW0 / LAP-Q0 | Next | Measure same-host cold-read bandwidth and active bytes/GB/s; ablate the 0.0459275 shipping KL debt by admitted approximation. |
+| LAP-6 | Ready after LAP-Q0 | Convert the 138.351 ms zero-data library ceiling into a real-input torch-free path with range and quality gates. |
+| LAP-5 | Ready after LAP-6 | Dense/shared MMQ reuse has no routing dependency and the largest current/Vulkan ratio. |
+| LAP-2 calibration / LAP-3 / LAP-4 | Open | Capture real gate/up/down inputs, select DS/repair policy, then integrate selected gate/up and down. |
+| LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
 Immediate execution queue:
 
-1. Prove the existing T16 materializer is the sole resident expert set for
-   exact decode and candidate prefill: no raw/X8 sidecar, unchanged c1
-   decode, bounded load scratch, exact lifecycle recovery, and published
-   resident/context bytes.
-2. Capture exact gate/up projection inputs from the complete calibration split,
-   freeze residual-plane and BF16-boundary repair policy, and pass the all-queued
-   bit-exact test (LAP-2).
-3. Integrate one candidate gate/up route behind the four-axis registry, run the
-   frozen M32/55/64/122/128/256/512 leaf crossover plus 128/512/1K/4K
-   full-model profile, then run the complete category/heldout, h16/h32, Poolside,
-   and lifecycle gate (LAP-3).
-4. Rebuild the family bridge from that integrated trace. Start selected down
-   only if gate/up remains admitted; revisit split full/tail symbols only if the
-   trace attributes a material ceiling to full-tile predicate work.
+1. LAP-Q0: run one-factor exact-vs-shipping ablations for compensated F16,
+   global online attention, and SWA online attention; publish each component's
+   maximum KL/top-1 contribution.
+2. LAP-BW0: run a >64 MiB cold-stream read on this exact host, pin/record the
+   supported clock policy, compute manifest+routing active bytes for every
+   family, and add GB/s/%-of-achievable columns to the bridge.
+3. LAP-6: implement the raw-pointer hipBLASLt route using real projection
+   activations. Validate the BF16→FP16 range strategy; screen per-row
+   power-of-two scaling because multiplication/division by that scale is exact
+   in binary. Promote only after nonzero data and complete quality gates.
+4. LAP-5: move dense/shared Q4/Q6 onto a dense **64–128 column/row-class**
+   MMQ with `BK_STEP=4` or an equivalent multi-K stage. No route scan,
+   compaction, or selected-family repair dependency is allowed.
+5. Capture exact gate/up and post-SiLU down inputs. Compare FP16/FP32 DS,
+   residual plane count, and repair occupancy; then integrate selected gate/up.
+6. Rebuild the bridge from all-layer traces. Reconcile the
+   **78.27 ms/layer vs 52.80 ms layer-1** discrepancy before using a leaf ratio
+   as a family forecast.
+7. After pp512 work, screen matrix chunks 1024/2048 for 1K/4K prompts with
+   measured scratch/context admission. This is a separate long-prompt win and
+   receives no pp512 credit.
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
 
@@ -492,7 +653,7 @@ at max KL **0.0459275** and **319/320** top-1; all profile, routing, activation,
 cursor, determinism, Poolside, and tracked-lifecycle checks pass. Public runtime
 defaults are unchanged.
 
-### LAP-1 — reproduce the packed-dot body and choose the resident layout
+### LAP-1 — establish packed-dot reuse and choose the resident layout
 
 Before implementation, read [`KERNELS.md`](KERNELS.md) and run:
 
@@ -502,8 +663,8 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 
 Deliverables:
 
-- implement one standalone source-faithful 32x32 Q4_K x Q8_1 packed-dot MMQ
-  body using staged weight/activation tiles and register reuse;
+- implement one standalone staged Q4_K x Q8_1 packed-dot MMQ body and establish
+  the first natural-shape crossover;
 - use actual Laguna K3072/N1024 expert weights and natural M32/55/64/122/128/
   256/512 routing replays;
 - compare raw source blocks, X8, and a direct current-T16 consumer;
@@ -526,12 +687,19 @@ per-dispatch layout transpose. Existing exact T16 decode remains bitwise and
 performance unchanged. A smaller exact non-regressive sub-window may still be
 retained under repository policy, but it does not advance the parity campaign.
 
-Result so far: the first gfx1151 body maps Vulkan's 32-column by 32-row
-Q4_K x Q8_1 tile to four wave32s in one 128-thread workgroup. It stages
+Result: the first gfx1151 body uses a 32-column by 32-row Q4_K x Q8_1 tile over
+four wave32s in one 128-thread workgroup. It stages
 20 bytes of Q4_K data per column and 36 bytes of DS4-Q8_1 data per routed row
 for each K32 interval, reuses both tiles across the workgroup, and emits native
 packed integer dot instructions. Q8_1 is packed once per producer row; compact
 expert rows carry only a source-row index.
+
+The post-LAP-1 source audit corrects the original attribution: Vulkan's actual
+gfx1151 comparator is the medium **64x64** routed tile over two wave64s, not
+this 32x32 tile. LAP-1 remains complete because its gates were measured against
+retained and X8 bodies, not because the geometry matched Vulkan. A widened
+64x64-class schedule, K64 nibble reuse, and more work per barrier remain active
+performance levers for later expert integration.
 
 On actual layer-1 K3072/N1024 gate/up weights and natural routing counts,
 including the producer-row pack, the raw body moves M256 **26.612 -> 10.047 ms
@@ -622,9 +790,10 @@ The direct-T16 branch closes LAP-1. Its clean producer-pack-inclusive times are
 M32/55/64/122/128/256/512. T16 is only **4.66%/4.05%/3.02%** behind X8 at
 the primary shapes. T16/X8 BF16 checksums match at every shape, focused tests
 report 31 passes, and cached tracing reports local128/VGPR48/LDS2048B/scratch0
-with packed-dot ISA. Proceed immediately to LAP-2 calibration and LAP-3
-integration. No threshold, small-row prototype, X8 materializer, or runtime
-default is retained.
+with packed-dot ISA. The guarded LAP-2 primitive has since landed; follow the
+revised LAP-BW0/LAP-Q0 → LAP-6 → LAP-5 execution queue before selected-family
+calibration and integration. No threshold, small-row prototype, X8
+materializer, or runtime default is retained.
 Evidence:
 [`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
 The all-shape crossover packet is
@@ -663,6 +832,15 @@ the primitive gate; post-repair mismatch is zero or the complete repository
 quality lane passes without worsening the cumulative exact-oracle ledger; and
 inclusive speed still satisfies LAP-1's primary body premise.
 
+Primitive result: `d9bb6ad88` adds byte-stable DS4x3 packing, direct and guarded
+three-pass T16 MMQ32, a bounded 16-column risk queue, and exact correction with
+a deterministic full-projection overflow fallback. Both all-queued and forced
+overflow tests are BF16-bit exact; the focused bundle reports **35 passed** and
+cached tracing names all three new kernels. Dirty actual layer-1 inclusive
+D4x3 is **1.289x** retained at M128 and **2.510x** at M512. The task remains
+open only for real gate/up/down captures, FP32 DS/range screening, threshold and
+queue occupancy, and complete model admission.
+
 ### LAP-3 — promote selected Q4 gate/up
 
 Deliverables:
@@ -673,43 +851,65 @@ Deliverables:
   existing lane order;
 - test separate versus paired gate/up only after the shared-tile body works;
 - preserve the separate exact SiLU chain and current selected/grouped fallback;
+- screen a 64x64-class tile or equivalent 32x32 multi-output schedule so each
+  barrier feeds about four times the current packed-dot work;
+- screen 4–8 K32 stages per barrier/double buffering within the available LDS,
+  and a K64 step that consumes both Q4 nibble planes from one source fetch;
 - choose row/occupancy crossovers from M32/55/64/68/96/122/128/256/512
   measurements, not a blanket M32 policy;
 - run the full canonical category, Poolside, h16/h32, lifecycle, and cached
   trace gates before changing the backend capability.
 
-Planning checkpoint: reduce the measured 3.674-second family toward
-**1.0 second or less** and reach roughly **135-140 tok/s** overall at pp512.
+Planning checkpoint: the first integrated route must transfer the clean leaf
+gain across all 47 sparse layers and resolve the 78.27-versus-52.80 ms/layer
+bridge discrepancy. The family is not complete merely at Vulkan parity:
+report encoded and physical GB/s, and continue toward at least **70% of the
+LAP-BW0 achievable-read result** unless profiling proves a different limiter.
 Any exact same-suite non-regressive win is retained even if it misses that
 checkpoint.
+
+Non-temporal weight loads are not a default lever here. Existing gfx1151
+cold-DRAM decode evidence found a **+14%** isolated rows=1 bandwidth gain but a
+**0.68x** rows>1 regression and flat/slower end-to-end decode. Permit one
+rows>1 MMQ screen only after the byte/counter audit shows cache pollution is a
+measured limiter; otherwise preserve row reuse through cache.
 
 ### LAP-4 — promote selected Q4/Q6 down
 
 Deliverables:
 
 - pack the exact BF16 SiLU/product output once per compact routed row;
-- add separate source-faithful Q4_K and Q6_K packed-dot leaves;
+- add separate source-arithmetic Q4_K and Q6_K packed-dot leaves;
 - repair before the BF16 down boundary;
 - retain the current ordered route-weighted combine as an unfused fallback;
 - test weighted/fused output only after the unfused projection is admitted;
 - carry forward the gate/up default and reprofile all families.
 
-Planning checkpoint: selected gate/up plus down at **1.3 seconds or less** and
-overall pp512 around **165-175 tok/s**. The prior 176 tok/s F16 diagnostic makes
-this a demonstrated scheduling target, not a quality claim.
+Planning checkpoint: selected gate/up plus down must both report
+GB/s/%-of-achievable against LAP-BW0. Continue each streaming family toward
+the 70% floor unless a measured arithmetic, occupancy, or repair limiter
+supersedes the bandwidth model. The prior 176 tok/s F16 diagnostic remains a
+demonstrated scheduling checkpoint, not the campaign target or a quality
+claim.
 
 ### LAP-5 — reuse the MMQ engine for dense and shared experts
+
+Execute this immediately after LAP-6, before selected down. Shipping is
+**0.6415 s** versus **0.0629 s** Vulkan, the worst mapped ratio, and the family
+has no routing metadata or new projection-role quality surface.
 
 Deliverables:
 
 - apply the admitted Q4/Q6 body to layer-0 dense gate/up/down and all shared
   experts;
 - use dense row tiles directly—no route-count or padded expert machinery;
+- target a 64x64/128x128-class dense tile with four K32 stages per barrier
+  (`BK_STEP=4` control), rather than inheriting routed 32x32 geometry;
 - pair gate/up only where the inclusive real-model leaf wins;
 - preserve exact rank-2 pack8/raw-Q6 fallbacks and shared-expert addition order;
 - reject another duplicate pack8/T16 sidecar unless the total resident/context
   budget is explicitly better than the replacement-layout design;
-- reprofile before touching source-F16.
+- reprofile before selected down or attention work.
 
 Planning checkpoint: reduce the 0.640-second family toward **0.12 seconds or
 less** and cross **200 tok/s** pp512.
@@ -721,10 +921,18 @@ weighted M128 projection screen, but reaches only about 45-52% of the measured
 inclusive hipBLASLt ceiling. It is retained only on SWA layers because the
 all-layer quality route failed.
 
+Execute this before LAP-5/LAP-2 integration. The measured M512 inclusive
+hipBLASLt family is **138.351 ms**, not 350 ms: it is about **2.03x** faster
+than the Vulkan source-F16 family and offers a measured **755.719 ms** reduction
+from shipping if the real-input contract passes.
+
 Deliverables:
 
 - compare the custom compensated path with a torch-free, raw-pointer
   hipBLASLt route using the already measured inclusive conversion contract;
+- validate nonzero real projection buffers and BF16 dynamic range; screen a
+  per-row power-of-two scale for BF16→FP16 conversion so scale/unscale itself
+  is exact in binary and overflow is impossible;
 - reduce the current high-VGPR custom path only when a profile identifies a
   concrete occupancy or data-movement limit;
 - add BF16-boundary exact repair or a higher-accuracy accumulation mode so
@@ -734,8 +942,9 @@ Deliverables:
 - include Q/K/V/O and per-head attention-gate projections in the full model
   gate and cumulative exact-oracle ledger.
 
-Planning checkpoint: reduce source-F16 from 0.895 seconds toward
-**0.35 seconds or less** and reach roughly **275-290 tok/s** pp512.
+Planning checkpoint: first reproduce **0.14–0.18 seconds** on real inputs; do
+not weaken the target to 0.35 seconds unless the measured nonzero-data/range
+contract explains the gap. Reprofile overall throughput after promotion.
 
 ### LAP-7 — build `KVLiveSpans`-aware cooperative tiled attention
 
@@ -784,13 +993,14 @@ a valid smaller win:
 
 | Milestone | pp512 target | Interpretation |
 | --- | ---: | --- |
-| Expert gate/up | 135-140 tok/s | Primary 53% mapped gap is materially closed. |
-| All selected experts | 165-175 tok/s | Fast expert-major scheduling is quality-safe. |
-| All quant linear | >=200 tok/s | Dense/shared reuse is working. |
-| Quant + source-F16 | 275-290 tok/s | Linear projection architecture is comparator-class. |
+| Historical gate/up checkpoint | 135-140 tok/s | Primary mapped gap is materially closed; not an exit target. |
+| Historical selected-expert checkpoint | 165-175 tok/s | Fast expert-major scheduling is quality-safe; not an exit target. |
+| Historical all-quant checkpoint | >=200 tok/s | Dense/shared reuse is working; not an exit target. |
+| Historical linear checkpoint | 275-290 tok/s | Linear projection architecture is comparator-class; not an exit target. |
 | Gap substantially closed | >=310 tok/s | Within 10% of the 344.56 Vulkan control. |
-| Parity band | >=327.3 tok/s | Within 5% of the Vulkan control. |
-| Stretch | >=344.56 tok/s | Match/beat the qualified external row. |
+| Compatibility floor | >=344.56 tok/s | Match/beat the qualified external row; no longer definition-of-done by itself. |
+| Streaming-family floor | >=70% of measured read roof | About 155 GB/s if the same-host anchor is 221 GB/s; report each mapped family. |
+| Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.
@@ -858,7 +1068,9 @@ Do not repeat:
 - X8 exact decode via local256, direct raw addressing, raw LDS staging, output
   widening alone, or dynamic X8-to-T16 reconstruction;
 - per-dispatch T16-to-raw/X8 shared transposes. Direct T16 MMQ addressing is
-  explicitly the next design and is not part of this closed work;
+  already implemented and is not part of this closed work;
+- blanket non-temporal weight loads for rows>1 without a new cache/traffic
+  profile; the prior gfx1151 control regressed rows>1 to 0.68x;
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - AOTriton Laguna head-dim-128 adaptation without a newly supported geometry;
 - graph replay or launch-count work while span-minus-sum is sub-percent.
@@ -901,19 +1113,22 @@ land.
 
 The campaign is complete when one of these conditions is documented:
 
-1. hipEngine reaches at least the **327.3 tok/s parity band** at pp512 under its
+1. hipEngine reaches the LAP-BW0 roofline-derived pp512 target under its
    retained quality/lifecycle protocol, with no 128/1K/4K or category
-   regression and a qualified comparison to Vulkan; or
+   regression, and each mapped streaming family reaches at least 70% of the
+   same-host achievable read ceiling (or has a measured non-bandwidth limiter);
+   or
 2. every mapped family has a retained non-regressive route or a prospectively
    rejected new arithmetic premise, a fresh profile explains at least 99.5% of
    remaining wall, and the residual blocker is explicit enough to require a new
    architecture rather than more local tuning.
 
-Matching **344.56 tok/s** is the stretch outcome. Because the Vulkan control
-uses a different token stream, F16 KV, and backend numerical policy, “beat
-llama.cpp” requires a matched timing/token/KV contract or an explicit
-qualification. The unqualified engineering goal is simpler: remove the measured
-5.23-second hipEngine family deficit while preserving hipEngine's stricter
+Matching **344.56 tok/s** is the first external floor. Because the Vulkan
+control uses a different token stream, F16 KV, and backend numerical policy,
+“beat llama.cpp” still requires a matched timing/token/KV contract or an
+explicit qualification. The engineering goal is now stronger: remove the
+measured 5.23-second deficit, then continue until the major streaming families
+are close to the same-host bandwidth roof while preserving hipEngine's stricter
 correctness contract.
 
 ## Evidence index
@@ -930,6 +1145,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-layout-retained.json`
 - `benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json`
+- `benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-swa-retained.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json`
