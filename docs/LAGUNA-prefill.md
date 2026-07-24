@@ -80,27 +80,67 @@ At 76.226 tok/s, pp512 is **6.7169 seconds**. The Vulkan control is
 
 ### Family bridge budget
 
-The last homologous family trace was captured immediately before the SWA-online
-promotion. Gate/up, down, dense/shared, and source-F16 times remain directly
-measured. The current attention estimate below subtracts the measured
-**0.4586-second** SWA-online wall saving from the prior attention family; LAP-0
-must replace that one inferred value with a clean post-campaign trace.
+LAP-0 replaced the pre-campaign inference with a clean cached trace at unchanged
+shipping defaults. The single profiled 512-row pass measures **76.381 tok/s**,
+**6.703260 seconds** synchronized wall, **6.689356 seconds** kernel sum, and
+**6.699478 seconds** kernel span. This does not replace the repeated retained
+**76.226 tok/s** headline; it is the internally consistent attribution row used
+for the bridge.
 
 | Cumulative modeled step | Modeled pp512 wall | Modeled tok/s | Evidence used |
 | --- | ---: | ---: | --- |
-| Current shipping default | 6.7169 s | 76.226 | retained full-model screen |
-| Match Vulkan selected Q4 gate/up | 3.6888 s | 138.8 | save 3.6741 - 0.6461 s |
-| Then match Vulkan selected Q4/Q6 down | 2.9552 s | 173.3 | save 1.1001 - 0.3665 s |
-| Then match Vulkan dense/shared quant | 2.3778 s | 215.3 | save 0.6403 - 0.0629 s |
-| Then match Vulkan source-F16 | 1.7631 s | 290.4 | save 0.8952 - 0.2805 s |
-| Then match estimated-current attention to Vulkan | 1.5172 s | 337.5 | save estimated 0.2852 - 0.0393 s |
+| Current shipping trace | 6.7033 s | 76.381 | fresh matrix512/attention128 pass |
+| Match Vulkan selected Q4 gate/up | 3.6707 s | 139.5 | save 3.6786 - 0.6461 s |
+| Then match Vulkan selected Q4/Q6 down | 2.9372 s | 174.3 | save 1.1001 - 0.3665 s |
+| Then match Vulkan dense/shared quant | 2.3586 s | 217.1 | save 0.6415 - 0.0629 s |
+| Then match Vulkan source-F16 | 1.7450 s | 293.4 | save 0.8941 - 0.2805 s |
+| Then match measured current attention to Vulkan | 1.5064 s | 339.9 | save 0.2779 - 0.0393 s |
 | llama.cpp Vulkan control | 1.4860 s | 344.56 | user unprofiled pp512 |
 
 This is an Amdahl model, not a performance claim. It assumes independent family
-savings and mixes one inferred current attention value with measured family
-times. Its important conclusion is robust: the measured family gaps explain
-all but about 31 ms of the headline difference. A new runtime, graphs, Python
-removal, or a different benchmark definition is not required to explain 5x.
+savings across different numerical/runtime contracts. The five mapped kernel
+gaps explain **99.740%** of the fresh hipEngine-minus-Vulkan kernel-sum gap and
+leave **20.4 ms** between the modeled hipEngine wall and the user Vulkan wall.
+A new runtime, graphs, Python removal, or a different benchmark definition is
+not required to explain the 4.5x gap.
+
+At 512 rows, selected Q4 gate/up is **3.6786 seconds / 54.99%**, selected
+Q4/Q6 down **1.1001 seconds / 16.45%**, source-F16 **0.8941 seconds / 13.37%**,
+dense/shared quant **0.6415 seconds / 9.59%**, and measured global+SWA
+attention **0.2779 seconds / 4.16%**. The respective hipEngine/Vulkan ratios
+are **5.694x/3.001x/3.188x/10.198x/7.075x**. Named non-`other` families cover
+**99.653%** of kernel time, while span-minus-sum is **0.151%**. Gate/up remains
+the first target; attention remains below its start threshold.
+
+### LAP-0 cumulative quality and shape evidence
+
+The all-exact versus shipping-control category run passes, but the remaining
+approximate budget is narrow. Shipping improves weighted prefill **53.596 ->
+70.546 tok/s (1.31627x)** and h16/h32 E2E **1.18198x/1.12459x**, while decode
+is neutral. Across 320 teacher-forced steps it reaches maximum KL
+**0.0459275**, **319/320 (99.6875%)** top-1, and at least **98.4375%** top-1
+in every category. Only **0.0040725** remains below the 0.05 KL ceiling; the
+`mixed_ja_en_translate` trajectory is the only non-exact free-running pair.
+New approximate paths therefore compare directly with all-exact, and repaired
+BF16 equality is strongly preferred.
+
+Natural routing confirms that literal 32-row padding is not viable by itself.
+At M512, padding factors are **1.0219/1.0684/1.1650/1.3801/1.8662x** for
+2/4/8/16/32-row tiles; M256 reaches **2.9295x** at tile32. LAP-1 must retain a
+partial-tile or smaller-row schedule around the source-faithful 32x32 body.
+
+Two repeated BF16 activation captures at depths 2/11/20/30/39/48 are
+bit-identical for M32/55/64/122/128/256/512 without persisting raw activations.
+Late-layer residuals contain sparse extreme outliers: at depth 48/M512,
+absolute p99 is
+**16.25**, p99.9 **127,488**, and maximum **950,272**, while row-RMS p95 is
+only **7.67**. These are post-layer proxies rather than exact projection
+inputs, but they already reject a single global or row-wide scale as the LAP-2
+premise. Exact projection-input calibration remains required before selecting
+residual planes.
+
+The compact LAP-0 evidence packet is
+[`2026-07-24-gfx1151-laguna-prefill-lap0-control.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
 
 The rejected expert-major F16 diagnostic independently supports the same
 conclusion. At M512 it reached **176.001 tok/s** versus **76.395 tok/s** for the
@@ -349,7 +389,15 @@ LAP-0 current oracle/profile
 Reprofile after every promoted task. A later task does not start from the
 pre-campaign Amdahl table.
 
-### LAP-0 — freeze the current control and cumulative quality ledger
+Current progress:
+
+| Task | State | Result / next condition |
+| --- | --- | --- |
+| LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
+| LAP-1 | Next | Build and screen the source-faithful packed-dot body and resident layouts. |
+| LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
+
+### LAP-0 — freeze the current control and cumulative quality ledger (complete)
 
 Deliverables:
 
@@ -369,6 +417,13 @@ Deliverables:
 Exit gate: one current bridge table whose families sum to at least 99.5% of
 kernel time, plus a cumulative quality baseline. No optimization code lands in
 this task.
+
+Result: passed at
+[`2026-07-24-gfx1151-laguna-prefill-lap0-control.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
+Named non-`other` coverage is **99.653%** at M512; cumulative quality is finite
+at max KL **0.0459275** and **319/320** top-1; all profile, routing, activation,
+cursor, determinism, Poolside, and tracked-lifecycle checks pass. Public runtime
+defaults are unchanged.
 
 ### LAP-1 — reproduce the packed-dot body and choose the resident layout
 
@@ -674,6 +729,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json`
 - `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-screen.json`

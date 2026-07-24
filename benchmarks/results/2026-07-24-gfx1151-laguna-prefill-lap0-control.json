@@ -1,0 +1,631 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T08:03:41Z",
+  "kind": "hipengine_laguna_prefill_lap0_control_profile",
+  "status": "accepted_attribution_and_quality_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M c=1 shipping-control attribution, cumulative all-exact quality debt, routing, activation proxies, and unchanged Vulkan comparator on Radeon 8060S/gfx1151",
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "sampled_fingerprint": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8",
+    "size_bytes": 75173103200,
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "asic": "gfx1151",
+    "compute_units": 40,
+    "backend": "hip_gfx1151",
+    "hip_total_bytes": 128849018880,
+    "rocm": "7.15.0-0000000",
+    "hipcc_llvm_revision": "aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "os_kernel": "7.1.3-2-cachyos",
+    "clock_policy": {
+      "performance_level": "auto",
+      "gfx_levels_mhz": [
+        600,
+        616,
+        2900
+      ],
+      "memory_levels_mhz": [
+        400,
+        800,
+        1000
+      ],
+      "post_run_idle_sample": {
+        "gfx_mhz": 622,
+        "memory_mhz": 1000,
+        "gfx_activity_percent": 0,
+        "socket_power_w": 15,
+        "temperature_c": 43
+      },
+      "qualification": "Clocks were not locked. The dynamic sample was taken after the workload and is an idle/post-run state, not an in-kernel frequency measurement."
+    }
+  },
+  "source_revisions": {
+    "cumulative_quality": "89cb4e6e628cf3adbf33b4a704f5c531cc743569",
+    "profile_and_routing": "8d26a9562f4e914c8dd64ca4c10d6e28c3c69ee7",
+    "activation_capture": "41d21a4744204fd2c1c7b9bc4c1fc425690bf53c",
+    "tracked_clean_for_each_measurement": true,
+    "untracked_shared_artifacts_excluded": true
+  },
+  "commands": {
+    "cumulative_quality": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison cumulative_control --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-24-gfx1151-laguna-prefill-cumulative-control-category.raw.json",
+    "profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lap0-profile-8d26a9562-Cyaexo --output-file lap0 -- env -u HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL -u HIPENGINE_LAGUNA_SELECTED_PREFILL -u HIPENGINE_LAGUNA_F16_PREFILL .venv/bin/python3 -u scripts/laguna_long_context_profile.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1151 --context-length 4096 --lengths 128,512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lap0-profile-8d26a9562-Cyaexo/child.json",
+    "profile_summary": "PYTHONPATH=. .venv/bin/python3 scripts/laguna_long_context_trace_summary.py --child /tmp/laguna-lap0-profile-8d26a9562-Cyaexo/child.json --trace /tmp/laguna-lap0-profile-8d26a9562-Cyaexo/lap0_kernel_trace.csv --output /tmp/laguna-lap0-profile-8d26a9562-Cyaexo/summary.json",
+    "routing": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_routing_replay.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1151 --context-length 4096 --rows 256,512 --tile-rows 2,4,8,16,32 --seed 20260723 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lap0-routing-8d26a9562.json",
+    "activation": "env -u HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL -u HIPENGINE_LAGUNA_SELECTED_PREFILL -u HIPENGINE_LAGUNA_F16_PREFILL PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_prefill_activation_stats.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1151 --context-length 4096 --repetitions 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-24-gfx1151-laguna-prefill-activation-stats-41d21a474.json"
+  },
+  "raw_sources": {
+    "cumulative_quality_sha256": "03e399623a4b338810ca0c4b35cd5e16d768dd5b9d92b1bd22de8571c894c40c",
+    "profile_child_sha256": "09de073ea85131c939cfb90925cad1fb2031b0b42fe6301844c203db076196e7",
+    "profile_trace_sha256": "f31a1a190a82d1c0bb0f14a0d4a013b5853399e3f1d83e11dae9906119074070",
+    "profile_summary_sha256": "d4c4f30f9b906aa7de7c342c3ca2fbef4f41b37635c2a3feb778fb019029a7f3",
+    "routing_sha256": "a8ec037db99a1d18046044a9a628e1d35e37b85c4c02c27de0ade2023c18f172",
+    "activation_sha256": "d7912e22eb1000a4303515cb20a3d4334371c33085bcf47da15b81ba79b96959"
+  },
+  "shipping_profile": {
+    "protocol": {
+      "matrix_rows": 512,
+      "attention_rows": 128,
+      "lengths": [
+        128,
+        512,
+        1024,
+        4096
+      ],
+      "repetitions": 1,
+      "warmup_rows": 128,
+      "timing_scope": "reset through synchronized first-token projection; resident model load excluded"
+    },
+    "load_seconds_excluded": 49.81223818601575,
+    "resident_nbytes": 77434399092,
+    "rows": {
+      "128": {
+        "wall_seconds": 1.7354267959017307,
+        "tok_s": 73.75707249782955,
+        "kernel_sum_seconds": 1.725869149,
+        "kernel_span_seconds": 1.732397199,
+        "span_minus_sum_percent": 0.37682178219684365,
+        "dispatches": 1196,
+        "named_non_other_coverage_percent": 99.63683382348935,
+        "next_token_id": 81
+      },
+      "512": {
+        "wall_seconds": 6.7032596609788015,
+        "tok_s": 76.38074994774085,
+        "kernel_sum_seconds": 6.689355585,
+        "kernel_span_seconds": 6.699477599,
+        "span_minus_sum_percent": 0.1510866160894525,
+        "dispatches": 1484,
+        "named_non_other_coverage_percent": 99.65288735656291,
+        "next_token_id": 2930
+      },
+      "1024": {
+        "wall_seconds": 13.69612923101522,
+        "tok_s": 74.76564967575852,
+        "kernel_sum_seconds": 13.663187936,
+        "kernel_span_seconds": 13.689575155,
+        "span_minus_sum_percent": 0.19275411180574362,
+        "dispatches": 2967,
+        "named_non_other_coverage_percent": 99.66151818875193,
+        "next_token_id": 95
+      },
+      "4096": {
+        "wall_seconds": 57.67004656395875,
+        "tok_s": 71.02473890769876,
+        "kernel_sum_seconds": 57.535385258,
+        "kernel_span_seconds": 57.662195883,
+        "span_minus_sum_percent": 0.21991986787549028,
+        "dispatches": 11865,
+        "named_non_other_coverage_percent": 99.67829819828266,
+        "next_token_id": 7772
+      }
+    },
+    "family_table_512": {
+      "selected_q4_gate_up": {
+        "seconds": 3.678571676,
+        "calls": 47,
+        "share_percent": 54.991420761795254
+      },
+      "selected_q4_q6_down": {
+        "seconds": 1.100080008,
+        "calls": 47,
+        "share_percent": 16.44523144302247
+      },
+      "source_f16_projection": {
+        "seconds": 0.894070119,
+        "calls": 240,
+        "share_percent": 13.365564255618803
+      },
+      "dense_shared_quant_projection": {
+        "seconds": 0.64149528,
+        "calls": 144,
+        "share_percent": 9.589791899214758
+      },
+      "global_attention": {
+        "seconds": 0.046655291,
+        "calls": 48,
+        "share_percent": 0.6974556877289997
+      },
+      "swa_attention": {
+        "seconds": 0.231290989,
+        "calls": 144,
+        "share_percent": 3.4575974630297663
+      },
+      "router": {
+        "seconds": 0.03186812,
+        "calls": 94,
+        "share_percent": 0.4764004483699456
+      },
+      "norm_rope_gate": {
+        "seconds": 0.024563887,
+        "calls": 193,
+        "share_percent": 0.3672085702108778
+      },
+      "activation_reduce_residual": {
+        "seconds": 0.015562104,
+        "calls": 237,
+        "share_percent": 0.2326398081587406
+      },
+      "prefill_kv_write": {
+        "seconds": 0.000787636,
+        "calls": 192,
+        "share_percent": 0.011774467510236265
+      },
+      "embedding": {
+        "seconds": 0.000036669,
+        "calls": 1,
+        "share_percent": 0.0005481693944066213
+      },
+      "lm_head_argmax": {
+        "seconds": 0.001154207,
+        "calls": 3,
+        "share_percent": 0.017254382508655353
+      },
+      "other": {
+        "seconds": 0.023219599,
+        "calls": 94,
+        "share_percent": 0.34711264343708825
+      }
+    },
+    "major_family_seconds_by_length": {
+      "128": {
+        "selected_q4_gate_up": 0.909099261,
+        "selected_q4_q6_down": 0.327789005,
+        "source_f16_projection": 0.282064383,
+        "dense_shared_quant_projection": 0.159385366,
+        "attention": 0.02120566
+      },
+      "512": {
+        "selected_q4_gate_up": 3.678571676,
+        "selected_q4_q6_down": 1.100080008,
+        "source_f16_projection": 0.894070119,
+        "dense_shared_quant_projection": 0.64149528,
+        "attention": 0.27794628
+      },
+      "1024": {
+        "selected_q4_gate_up": 7.35971049,
+        "selected_q4_q6_down": 2.182508304,
+        "source_f16_projection": 1.793460794,
+        "dense_shared_quant_projection": 1.26207567,
+        "attention": 0.872534202
+      },
+      "4096": {
+        "selected_q4_gate_up": 29.505455283,
+        "selected_q4_q6_down": 8.674960859,
+        "source_f16_projection": 7.173911032,
+        "dense_shared_quant_projection": 5.038626945,
+        "attention": 6.372363562
+      }
+    },
+    "principal_resources": {
+      "selected_q4_gate_up": {
+        "kernel": "q4_k_t16_selected_dual_direct_gemv_kernel",
+        "workgroup": 128,
+        "vgpr": 200,
+        "sgpr": 128,
+        "lds_bytes": 1024,
+        "scratch_bytes": 0
+      },
+      "selected_q4_down": {
+        "kernel": "qk_t16_selected_grouped_smallm_kernel<Q4>",
+        "workgroup": 128,
+        "vgpr": 184,
+        "sgpr": 128,
+        "lds_bytes": 1024,
+        "scratch_bytes": 0
+      },
+      "selected_q6_down": {
+        "kernel": "qk_t16_selected_grouped_smallm_kernel<Q6>",
+        "workgroup": 128,
+        "vgpr": 168,
+        "sgpr": 128,
+        "lds_bytes": 1024,
+        "scratch_bytes": 0
+      },
+      "source_f16_exact": {
+        "kernel": "laguna_f16w_tiled_exact_kernel",
+        "workgroup": 256,
+        "vgpr": 96,
+        "sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "source_f16_compensated_large": {
+        "kernel": "laguna_f16w_wmma_large_kernel",
+        "workgroup": 256,
+        "vgpr": 152,
+        "sgpr": 128,
+        "lds_bytes": 9216,
+        "scratch_bytes": 0
+      },
+      "dense_q4": {
+        "kernel": "gguf_q4_k_pack8_prefill_out_kernel",
+        "workgroup": 32,
+        "vgpr": 96,
+        "sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "dense_q6": {
+        "kernel": "gguf_k_prefill_out_kernel<Q6>",
+        "workgroup": 128,
+        "vgpr": 16,
+        "sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "global_attention": {
+        "kernel": "laguna_global_attention_prefill_qrow2_online_bf16_kernel",
+        "workgroup": 32,
+        "vgpr": 48,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "swa_attention": {
+        "kernel": "laguna_swa_attention_prefill_qrow2_online_bf16_kernel",
+        "workgroup": 32,
+        "vgpr": 56,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    },
+    "correctness": {
+      "pass": true,
+      "final_positions_exact": true,
+      "next_tokens_deterministic": true,
+      "tracked_returned_to_baseline": true,
+      "tracked_peak_bytes": 77434399092,
+      "tracked_peak_allocations": 1395,
+      "tracked_after_bytes": 0,
+      "tracked_after_allocations": 0
+    }
+  },
+  "cumulative_quality": {
+    "lanes": {
+      "all_exact": {
+        "f16": "tiled",
+        "global_attention": "global_context_rows_spans",
+        "swa_attention": "swa_context_rows_qrow2_m128_c128_exact_spans",
+        "selected_down": "adaptive_grouped_smallm_fused",
+        "dense_shared": "current exact registered path"
+      },
+      "shipping_control": {
+        "f16": "wmma_comp_swa",
+        "global_attention": "global_context_rows_qrow2_online_spans",
+        "swa_attention": "swa_context_rows_qrow2_online_spans",
+        "selected_down": "adaptive_grouped_smallm_fused",
+        "dense_shared": "current exact registered path"
+      }
+    },
+    "performance": {
+      "all_exact_prefill_seconds": 48.36218836589251,
+      "all_exact_prefill_tok_s": 53.595589603799056,
+      "shipping_prefill_seconds": 36.74172493699007,
+      "shipping_prefill_tok_s": 70.54649732545573,
+      "shipping_prefill_speedup": 1.316274302549237,
+      "all_exact_ttft_median_seconds": 1.5223903369624168,
+      "shipping_ttft_median_seconds": 1.1653738459572196,
+      "ttft_speedup": 1.3063536154030895,
+      "h16_e2e_speedup": 1.1819817610595225,
+      "h32_e2e_speedup": 1.1245871243324015,
+      "h16_decode_speedup": 1.0000427371088072,
+      "h32_decode_speedup": 1.000013058198596,
+      "category_prefill_speedups": {
+        "code": 1.3015247167742854,
+        "general_en": 1.2992033167450208,
+        "general_ja": 1.3303791588036733,
+        "mixed_ja_en": 1.3360641616375382
+      }
+    },
+    "quality": {
+      "pass": true,
+      "finite": true,
+      "teacher_forced_steps": 320,
+      "max_kl_divergence": 0.045927469440858404,
+      "kl_threshold": 0.05,
+      "kl_headroom": 0.004072530559141599,
+      "top1_matches": 319,
+      "top1_agreement": 0.996875,
+      "top1_threshold": 0.9,
+      "categories": {
+        "code": {
+          "max_kl": 0.033272473621750134,
+          "top1": "128/128"
+        },
+        "general_en": {
+          "max_kl": 0.010114930349926747,
+          "top1": "64/64"
+        },
+        "general_ja": {
+          "max_kl": 0.018954980885829777,
+          "top1": "64/64"
+        },
+        "mixed_ja_en": {
+          "max_kl": 0.045927469440858404,
+          "top1": "63/64"
+        }
+      },
+      "free_running_exact_pairs": 27,
+      "free_running_total_pairs": 30,
+      "only_differing_prompt": "mixed_ja_en_translate",
+      "same_mode_repeat_deterministic": true,
+      "poolside_kl": 0.00009721235133095365,
+      "poolside_top1": 94557,
+      "poolside_reference_top1": 94557
+    },
+    "lifecycle": {
+      "tracked_peak_bytes": 77900501084,
+      "tracked_peak_allocations": 2077,
+      "tracked_total_allocated_bytes": 109290522128,
+      "tracked_total_freed_bytes": 109290522128,
+      "tracked_after_bytes": 0,
+      "tracked_after_allocations": 0
+    },
+    "policy_implication": "The shipping control passes but consumes 91.85% of the allowed KL ceiling. LAP candidates must be compared directly with all-exact; BF16-bit-exact repair is preferred over spending more approximate budget."
+  },
+  "routing": {
+    "pass": true,
+    "top_k": 10,
+    "sparse_layers": 47,
+    "tile_rows": [
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "natural": {
+      "256": {
+        "actual_lanes": 120320,
+        "active_expert_groups": 9807,
+        "max_expert_lanes": 207,
+        "padding_factors": {
+          "2": 1.0435172872340426,
+          "4": 1.1339095744680852,
+          "8": 1.334906914893617,
+          "16": 1.8029255319148936,
+          "32": 2.929521276595745
+        },
+        "selected_ids_sha256": "55e106a4313b8620118ff7c236c85e4731d9bb565d8cc6e373c4ba88e6c62945"
+      },
+      "512": {
+        "actual_lanes": 240640,
+        "active_expert_groups": 10237,
+        "max_expert_lanes": 452,
+        "padding_factors": {
+          "2": 1.0218916223404255,
+          "4": 1.0684175531914895,
+          "8": 1.1649601063829786,
+          "16": 1.3800531914893617,
+          "32": 1.8662234042553192
+        },
+        "selected_ids_sha256": "007fe4a2f9f518ba387098922aa7b870449eb6632e01ab1b0013938397f1925f"
+      }
+    },
+    "controls": {
+      "hot_padding_factor_all_tiles": 1.0,
+      "zipf_256_padding_factors": {
+        "2": 1.0497672872340424,
+        "4": 1.1570478723404256,
+        "8": 1.419813829787234,
+        "16": 2.0490691489361703,
+        "32": 3.421276595744681
+      },
+      "zipf_512_padding_factors": {
+        "2": 1.0250249335106383,
+        "4": 1.0750166223404256,
+        "8": 1.1818151595744681,
+        "16": 1.4647606382978724,
+        "32": 2.1336436170212765
+      }
+    },
+    "tracked_returned_to_baseline": true,
+    "implication": "A source-faithful 32-row body needs natural partial-tile handling: padding every M512 expert group to 32 rows adds 86.62%, versus 6.84% at tile4 and 16.50% at tile8."
+  },
+  "activation_proxies": {
+    "pass": true,
+    "capture_point": "post-layer residual hidden BF16",
+    "depths": [
+      2,
+      11,
+      20,
+      30,
+      39,
+      48
+    ],
+    "rows": [
+      32,
+      55,
+      64,
+      122,
+      128,
+      256,
+      512
+    ],
+    "columns": [
+      "rows",
+      "mean_abs",
+      "rms",
+      "abs_p99",
+      "abs_p99_9",
+      "abs_max",
+      "row_rms_p95",
+      "zero_fraction"
+    ],
+    "by_depth": {
+      "2": [
+        [32, 0.06295375937285523, 0.11033862519666883, 0.34375, 0.8218515625001146, 4.21875, 0.1527148614621156, 0.0003458658854166667],
+        [55, 0.06118070903431737, 0.10497325841211201, 0.33203125, 0.76171875, 4.21875, 0.15178782305520436, 0.0003255208333333333],
+        [64, 0.06388558191489817, 0.10693065338045077, 0.3359375, 0.74609375, 4.21875, 0.15690032912570728, 0.0003306070963541667],
+        [122, 0.07183815178949936, 0.11028573302017611, 0.33626953124996817, 0.7109375, 4.21875, 0.15951974619002254, 0.0003281890368852459],
+        [128, 0.07116979517134799, 0.10956067836002824, 0.3359375, 0.70703125, 4.21875, 0.15878892362823166, 0.0003255208333333333],
+        [256, 0.07098547036124121, 0.10806328846407244, 0.33203125, 0.6875, 4.21875, 0.15793116873702148, 0.0003344217936197917],
+        [512, 0.07011226853652867, 0.1065754747246293, 0.330078125, 0.671875, 4.21875, 0.15730534916148015, 0.0003153483072916667]
+      ],
+      "11": [
+        [32, 0.1818305549871487, 0.7851852145774804, 1.374765625000009, 3.198390625000229, 218.0, 0.5618119137171916, 0.0002543131510416667],
+        [55, 0.15779962820762938, 0.6108059333865256, 1.0234375, 2.734375, 218.0, 0.3992912950998989, 0.0003787878787878788],
+        [64, 0.15674190014639558, 0.57169929722152, 0.95703125, 2.59375, 218.0, 0.3685895393930041, 0.0004069010416666667],
+        [122, 0.14669843099990992, 0.4343040295784735, 0.73046875, 2.1875, 218.0, 0.3009192408856512, 0.00043491717896174863],
+        [128, 0.1450278065991976, 0.4259785231064261, 0.71875, 2.15625, 218.0, 0.29862376298828736, 0.00043487548828125],
+        [256, 0.13273810444419118, 0.3290240342258038, 0.61328125, 1.859375, 218.0, 0.2863661921145194, 0.000415802001953125],
+        [512, 0.12223975286906352, 0.26495187851919055, 0.55078125, 1.65625, 218.0, 0.25841607993905735, 0.0004100799560546875]
+      ],
+      "20": [
+        [32, 0.5064099948698034, 1.325974245335731, 4.5625, 8.5, 270.0, 2.5534621903871755, 0.0006306966145833334],
+        [55, 0.44183214464873977, 1.0570785868352812, 3.65625, 7.53125, 270.0, 1.141761248921079, 0.0006510416666666666],
+        [64, 0.4239116507815197, 0.9924141187495963, 3.40625, 7.25, 270.0, 0.9226611409346718, 0.0006561279296875],
+        [122, 0.3606960459159372, 0.7690120126968448, 2.3620312499997453, 6.28803125000195, 270.0, 0.6522714797091175, 0.0006803919057377049],
+        [128, 0.354095749091357, 0.7540262851408405, 2.296875, 6.21875, 270.0, 0.6478317678903355, 0.0006688435872395834],
+        [256, 0.29872711272158387, 0.5864722387675136, 1.5078125, 5.28125, 270.0, 0.5825701262684019, 0.0007273356119791666],
+        [512, 0.25406832168725185, 0.46818906353846623, 1.1484375, 4.3125, 270.0, 0.49772310843295037, 0.0007883707682291666]
+      ],
+      "30": [
+        [32, 1.48959466877083, 3.5040380500647563, 13.25, 26.5, 604.0, 4.7977392425415895, 0.0004475911458333333],
+        [55, 1.1816599585793235, 2.7481582880515245, 9.9375, 23.505125000003318, 604.0, 3.3410718282364047, 0.0004083806818181818],
+        [64, 1.0994027016373973, 2.5653488464386203, 9.125, 22.674125000001368, 604.0, 3.252422121800571, 0.0004628499348958333],
+        [122, 0.8729999672031142, 1.9494274764933617, 6.0625, 19.25, 604.0, 1.8972419489852683, 0.0005042904713114754],
+        [128, 0.8600798787083477, 1.9108711118031476, 5.84375, 19.0, 604.0, 1.8646218872038671, 0.000518798828125],
+        [256, 0.7757850611039127, 1.5084607639943577, 3.96875, 15.25, 604.0, 1.250291523365098, 0.0005811055501302084],
+        [512, 0.7138087814867807, 1.2485908735349684, 3.03125, 11.75, 604.0, 1.1645144041278814, 0.0006243387858072916]
+      ],
+      "39": [
+        [32, 3.181193849692742, 7.7921960230861815, 33.5, 61.75, 1088.0, 16.253290446887377, 0.0004475911458333333],
+        [55, 2.652421503356009, 6.233516974608767, 26.25, 56.0, 1088.0, 8.482800462464834, 0.00046164772727272726],
+        [64, 2.460877515375614, 5.813525456196183, 24.25, 54.25, 1088.0, 7.9273067955955865, 0.0004679361979166667],
+        [122, 1.9340988073518368, 4.3902104119952545, 15.0, 46.25, 1088.0, 4.005562020282297, 0.0005336407103825137],
+        [128, 1.9126563781561952, 4.305487639452251, 14.3125, 46.0, 1088.0, 3.820008527030102, 0.0005289713541666666],
+        [256, 1.6957096717475604, 3.3609389816568167, 8.5625, 37.0, 1088.0, 2.8111937529423443, 0.0005366007486979166],
+        [512, 1.5841641708587606, 2.7621998744319933, 6.375, 28.25, 1088.0, 2.4496507685527487, 0.0005639394124348959]
+      ],
+      "48": [
+        [32, 5346.957895603031, 39394.19210717142, 206848.0, 503808.0, 950272.0, 252.43735063922637, 0.0012613932291666667],
+        [55, 3112.4213764299047, 30048.71088355506, 115712.0, 460883.96800005436, 950272.0, 7.595595150545902, 0.001171875],
+        [64, 2675.1163506228477, 27855.900561922386, 89088.0, 439076.8640000224, 950272.0, 7.504337525426436, 0.0011749267578125],
+        [122, 1404.8080085050212, 20175.638152313535, 434.0, 350208.0, 950272.0, 7.52243518409753, 0.0011073044740437159],
+        [128, 1339.090101708658, 19697.096433285424, 384.0, 344064.0, 950272.0, 7.468142208084246, 0.0011011759440104167],
+        [256, 671.2971842437206, 13927.950934678127, 19.625, 242688.0, 950272.0, 7.349738943867344, 0.0011304219563802083],
+        [512, 337.6206866747622, 9848.549384325299, 16.25, 127488.0, 950272.0, 7.668367745751201, 0.0011685689290364583]
+      ]
+    },
+    "repeat_capture_sha256": [
+      "0daad5e7cf1f9201827db2138ca2a64ef1200248c5b978762057ea5f4876b2a7",
+      "0daad5e7cf1f9201827db2138ca2a64ef1200248c5b978762057ea5f4876b2a7"
+    ],
+    "all_values_finite": true,
+    "raw_activations_persisted": false,
+    "capture_buffers_nbytes": 18874368,
+    "tracked_peak_bytes": 77453273460,
+    "tracked_after_bytes": 0,
+    "qualification": "These are post-layer residual proxies. LAP-2 must capture exact projection inputs before freezing residual scaling. The late-layer distribution has sparse extreme outliers, selecting block-local residual scaling plus exact repair rather than one global/row scale."
+  },
+  "vulkan_comparator": {
+    "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json",
+    "artifact_sha256": "160b5b1cbea4f14ba5fbb8316d8287cbfe482558f079f7995cf7b6fb070832b2",
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "build_number": 10107,
+    "binary_sha256": "cbda2edf0cd97f7577ce28f52b2f2c2ecb2d2cfa7a7c326b2e1af94d2081527f",
+    "tracked_clean_reverified": true,
+    "rerun": false,
+    "rerun_reason": "Source revision, binary, model, driver/backend identity, and hardware are unchanged.",
+    "user_pp512_tok_s": 344.56,
+    "user_pp512_stddev": 3.16,
+    "user_pp512_wall_seconds": 1.4859530996052936,
+    "internal_operation_sum_seconds": 1.478897165,
+    "families_seconds": {
+      "selected_q4_gate_up": 0.64605921,
+      "selected_q4_q6_down": 0.366533386,
+      "source_f16_projection": 0.280486679,
+      "dense_shared_quant_projection": 0.062907,
+      "attention": 0.03928673,
+      "remaining": 0.08362416
+    },
+    "qualification": "Same device and GGUF, but Vulkan uses a different synthetic token stream, F16 KV, complete 512-row attention, and its own numerical policy."
+  },
+  "measured_bridge_512": {
+    "basis": "Fresh hipEngine wall with each fresh homologous family replaced cumulatively by the unchanged Vulkan internal family time.",
+    "homologous_ratios": {
+      "selected_q4_gate_up": 5.693861520834909,
+      "selected_q4_q6_down": 3.00130915768748,
+      "source_f16_projection": 3.1875671321988164,
+      "dense_shared_quant_projection": 10.197518241213219,
+      "attention": 7.074813302099717
+    },
+    "steps": [
+      {
+        "step": "current shipping",
+        "wall_seconds": 6.7032596609788015,
+        "modeled_tok_s": 76.38074994774085
+      },
+      {
+        "step": "match Vulkan selected Q4 gate/up",
+        "wall_seconds": 3.6707471949788016,
+        "modeled_tok_s": 139.48113907173
+      },
+      {
+        "step": "then match selected Q4/Q6 down",
+        "wall_seconds": 2.9372005729788016,
+        "modeled_tok_s": 174.315640787428
+      },
+      {
+        "step": "then match dense/shared quant",
+        "wall_seconds": 2.3586122929788015,
+        "modeled_tok_s": 217.076796183985
+      },
+      {
+        "step": "then match source-F16",
+        "wall_seconds": 1.7450288529788015,
+        "modeled_tok_s": 293.40489077072
+      },
+      {
+        "step": "then match attention",
+        "wall_seconds": 1.5063693029788015,
+        "modeled_tok_s": 339.890091352456
+      }
+    ],
+    "mapped_kernel_gap_coverage_percent": 99.73959945735447,
+    "modeled_final_wall_over_vulkan_wall_seconds": 0.020416203373506914,
+    "interpretation": "The fresh measured families still explain essentially the complete gap. Selected gate/up remains first; attention is only 4.16% of current kernel sum and stays deferred until later linear work changes the profile."
+  },
+  "lap0_exit_gate": {
+    "pass": true,
+    "current_profile_complete": true,
+    "measured_attention_replaced_inference": true,
+    "named_family_coverage_at_512_percent": 99.65288735656291,
+    "minimum_required_percent": 99.5,
+    "cumulative_quality_frozen": true,
+    "routing_frozen": true,
+    "activation_proxies_frozen": true,
+    "vulkan_identity_unchanged": true,
+    "next_task": "LAP-1 source-faithful packed-dot Q4_K x Q8_1 MMQ body and resident-layout screen"
+  }
+}

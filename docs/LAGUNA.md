@@ -16,8 +16,9 @@ complete through the rejected expert-major F16 route. Its active successor is
 [`LAGUNA-prefill.md`](LAGUNA-prefill.md): a source-faithful packed integer-dot
 Q4_K/Q6_K MMQ plan with residual-Q8_1 calibration, bounded exact repair,
 resident-layout gates, and a staged path from selected experts through
-dense/shared, source-F16, and tiled attention. This support document remains the
-model contract and historical evidence index.
+dense/shared, source-F16, and tiled attention. Its LAP-0 control/profile is
+complete and LAP-1 packed-dot body/layout work is next. This support document
+remains the model contract and historical evidence index.
 
 The support boundary does not claim exact Poolside free-running greedy-32
 identity after the documented low-margin token-30 split, contexts above 4K,
