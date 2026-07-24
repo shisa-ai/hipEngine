@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T18:46:53+09:00",
+  "kind": "hipengine_laguna_lap1_q4_k_mmq32_mixed_exact_screen",
+  "status": "rejected",
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "Rejected one-layer, two-layout whole-expert crossover diagnostic; no runtime-default or full-model speed claim.",
+  "repo": {
+    "revision": "1c5ef7b484fd69ac33f50481aa52bc3bb789c5d8",
+    "tracked_clean": true,
+    "unrelated_untracked_artifacts_excluded": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "up_tensor": "blk.1.ffn_up_exps.weight",
+    "shape_each": [
+      256,
+      1024,
+      3072
+    ]
+  },
+  "protocol": {
+    "routing_source": "/tmp/laguna-lap1-routing-all-shapes.json",
+    "routing_sha256": "0d29540b03047650c6ce85352a8514d6df3b8e8397ac434ad014a8d9cdfa3f16",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 32,55,64,122,128,256,512 --layer 1 --modes retained-direct,t16-grouped-exact,raw-mmq32 --mixed-thresholds 1,2,3,4,5,6,8,10,12,16,24,32,48,64 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-lap1-mixed-whole-expert-screen.json",
+    "raw_sha256": "598cfdc9e2e5fbe660841957fabe54d5f5817ca940cd16090c84deed14dc2fc3",
+    "timing": "counter-rotated HIP-event elapsed time",
+    "warmups": 2,
+    "samples": 7,
+    "burst": 3,
+    "partition": "MMQ32 owns every whole expert whose natural count is at least the global threshold; the existing exact T16 grouped-small-M leaf owns every other active expert.",
+    "qualification": "The temporary raw+T16 pair is a two-layout performance ceiling. Bodies write separate diagnostic buffers and host sanity reconstructs every disjoint expert row; a device merge/scatter is not timed."
+  },
+  "results": {
+    "32": {
+      "retained_direct_ms": 3.972536,
+      "raw_mmq32_ms": 5.83904,
+      "t16_grouped_exact_ms": 17.421087,
+      "best_true_mixed_threshold": 2,
+      "best_true_mixed_ms": 9.951466,
+      "penalty_vs_all_mmq_percent": 70.429821
+    },
+    "55": {
+      "retained_direct_ms": 6.339653,
+      "raw_mmq32_ms": 7.062684,
+      "t16_grouped_exact_ms": 24.246859,
+      "best_true_mixed_threshold": 2,
+      "best_true_mixed_ms": 10.316365,
+      "penalty_vs_all_mmq_percent": 46.068624
+    },
+    "64": {
+      "retained_direct_ms": 7.260082,
+      "raw_mmq32_ms": 7.397633,
+      "t16_grouped_exact_ms": 26.836121,
+      "best_true_mixed_threshold": 2,
+      "best_true_mixed_ms": 10.644348,
+      "penalty_vs_all_mmq_percent": 43.888567
+    },
+    "122": {
+      "retained_direct_ms": 13.083234,
+      "raw_mmq32_ms": 8.662567,
+      "t16_grouped_exact_ms": 41.912916,
+      "best_true_mixed_threshold": 2,
+      "best_true_mixed_ms": 11.428787,
+      "penalty_vs_all_mmq_percent": 31.933029
+    },
+    "128": {
+      "retained_direct_ms": 13.672178,
+      "raw_mmq32_ms": 8.866804,
+      "t16_grouped_exact_ms": 43.621521,
+      "best_true_mixed_threshold": 2,
+      "best_true_mixed_ms": 11.624688,
+      "penalty_vs_all_mmq_percent": 31.103477
+    },
+    "256": {
+      "retained_direct_ms": 26.373629,
+      "raw_mmq32_ms": 9.993025,
+      "t16_grouped_exact_ms": 73.918503,
+      "best_true_mixed_threshold": 2,
+      "best_true_mixed_ms": 10.842059,
+      "penalty_vs_all_mmq_percent": 8.496266
+    },
+    "512": {
+      "retained_direct_ms": 52.14271,
+      "raw_mmq32_ms": 12.523659,
+      "t16_grouped_exact_ms": 136.741801,
+      "best_true_mixed_threshold": 2,
+      "best_true_mixed_ms": 13.293928,
+      "penalty_vs_all_mmq_percent": 6.150509
+    }
+  },
+  "correctness_and_ownership": {
+    "all_reconstructed_outputs_finite": true,
+    "every_active_expert_assigned_once": true,
+    "tracked_peak_bytes": 1915578288,
+    "tracked_after_bytes": 0
+  },
+  "decision": {
+    "reason": "Threshold 1 is equivalent to all-MMQ32. Every true mixed threshold is slower at every declared natural shape; even sending only one-row experts to the existing exact grouped leaf adds 6.15% at M512 and 31.10% at M128.",
+    "retained_code": false,
+    "default_changed": false,
+    "lap1_state": "in_progress",
+    "next": "Do not tune the threshold further. Compare MMQ32 on the existing byte-exact X8 replacement layout, then add an X8-native exact decode/tail fallback or a full-tile-plus-tail MMQ body if the layout screen wins."
+  }
+}
