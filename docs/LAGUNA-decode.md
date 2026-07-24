@@ -4,7 +4,8 @@ Status: expanded diagnostic plan complete; P0 exact-IQ3 ownership and P2.1
 exact split attention are implemented and retained as gfx1100 defaults. Both
 P1 IQ3, raw-Q5, and raw-IQ2 lanes plus P2.2 online FP32 partials are rejected.
 The exact SWA tile16 score producer is retained as the gfx1100 default from live
-count 257; P1 and P2 are closed.
+count 257; P1 and P2 are closed. P3's bit-lossless Q5 T16 replacement screen is
+rejected, and P4 is not reopened without the required new submission premise.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -820,23 +821,45 @@ At a full 512-token SWA window this algorithm is mandatory; near 4K the global
 scan is a separate requirement. The short **4.79x** llama-HIP attention ratio is
 a mechanism/ceiling observation, not a projected Laguna speedup.
 
-### P3 — Quant metadata sidecar/repack only after ISA evidence
+### P3 — Quant metadata sidecar/repack (rejected and closed)
 
 Qwen Q4 benefited from T16/repacked layouts, but Laguna's 39.68-GB model leaves
-limited W7900 headroom and Vulkan is already fast on raw layouts. A sidecar is
-justified only if P0 identifies repeatedly decoded scales/codebook metadata
-that can be compacted without duplicating full weights. Record the complete
-resident-byte cost and reject any route that causes paging or loses cold-route
-performance.
+limited W7900 headroom and Vulkan is already fast on raw layouts. The concrete
+source-backed screen therefore reused the existing bit-lossless Q5_K T16
+replacement format, whose expanded scale/min fields add only **2.2727%** over
+raw Q5_K. Replacing every model Q5 tensor would add **48,710,784 bytes** rather
+than retaining a second 2.14-GB copy; replacing only the 47 Q5 attention-output
+tensors would add **19,021,824 bytes**.
 
-### P4 — Device scheduler/fusion after kernel sum falls
+The existing local128 T16 tile16 leaf is BF16-bit equal to retained raw Q5 but
+regresses first/last global/SWA attention-output HIP events **16.46-20.51%**
+and synchronized wall **13.03-17.54%**. A RED-first exact T16 wave32x2 sibling
+then reproduced the retained raw kernel's accumulator and reduction tree while
+coalescing each output pair's quant and metadata bytes. It is also byte exact,
+local32/LDS0/scratch0, but raises VGPR **96 -> 104** and regresses the same four
+actual layers by **5.28-9.07% event** and **9.48-11.73% wall**. The mandatory
+actual-weight precondition therefore fails before replacement materialization,
+model quality, or category gates. Candidate source/wrapper/tests are removed;
+raw Q5 wave32x2 remains the default. Evidence:
+[`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json).
 
-A native graph or command-packet owner can attack the 3.08-ms short
-span-minus-kernel window, but D8 and D16 invalidate the old mechanisms. Reopen
-only with a new premise such as reusable dynamic command buffers or a
-fused-kernel set whose body already wins independently. The acceptance target
-must be measured queue gaps plus unchanged device kernels, not launch count
-alone.
+No smaller scale/min sidecar is justified: retained raw wave32x2 already decodes
+each output/superblock's coefficients once and broadcasts them within its wave.
+A precomputed FP32 scale/min sidecar would be materially larger, while the
+bit-lossless expanded-byte replacement above already loses. P3 is closed until
+new ISA/counter evidence identifies different repeatedly decoded metadata.
+
+### P4 — Device scheduler/fusion (not reopened)
+
+A native graph or command-packet owner could attack the old 3.08-ms short
+span-minus-kernel window, but D8 and D16 already reject capture replay and
+C-side packetization; D11/D13-D17 also show that launch reduction alone is not
+an acceptance premise. P0/P2 lowered device work but did not supply reusable
+dynamic command buffers or a new fused body that wins independently. Therefore
+there is no admissible P4 candidate under the frozen plan, and rerunning the
+removed mechanisms would not be new evidence. P4 remains closed pending one of
+those explicit premises. Any future acceptance must measure queue gaps plus
+unchanged device kernels, not launch count alone.
 
 ## 9. Do not chase without new evidence
 
@@ -874,6 +897,7 @@ alone.
 | What does same-source llama.cpp HIP isolate? | [`...hip-vulkan-isa-attention-review.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-hip-vulkan-isa-attention-review.json), `/tmp/laguna-llamacpp-hip-depth-profile-summary.json` hash therein |
 | What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
 | What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
+| Did a bit-lossless Q5 repack help? | [`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json): exact generic/wave32x2 T16 both regress actual global/SWA layers and are not retained. |
 
 ## Bottom line
 
@@ -889,11 +913,11 @@ supported by the evidence.
 
 The implementation loop remains ordered and falsifiable: P0 exact IQ3
 route/output ownership and P2 exact attention split topology are retained; both
-narrow P1 IQ3 lanes, P1 raw-Q5/raw-IQ2 row4, and P2.2 online partials are
-rejected. The online-attention and raw-Q5 bodies prove tile-level ownership is
-mechanically valuable but violate the frozen KL gate; IQ2 row4 instead fails the
-actual-weight performance precondition. All are removed. The exact SWA tile16
-score producer is retained at live `>=257`; P1 and P2 are closed. Sidecar and
-scheduler work now require the new ISA or submission premise defined by P3/P4.
-Matching Vulkan still requires large device-work reductions across several
-families; launch cleanup alone cannot move the retained 51 toward 94.
+narrow P1 IQ3 lanes, P1 raw-Q5/raw-IQ2 row4, P2.2 online partials, and P3's
+bit-lossless Q5 T16 replacement are rejected. The online-attention and raw-Q5
+bodies prove tile-level ownership is mechanically valuable but violate the
+frozen KL gate; IQ2 row4 and Q5 T16 instead fail the actual-weight performance
+precondition. All are removed. The exact SWA tile16 score producer is retained
+at live `>=257`; P1-P3 are closed, and P4 has no new submission premise to
+reopen. Matching Vulkan still requires large device-work reductions across
+several families; launch cleanup alone cannot move the retained 51 toward 94.
