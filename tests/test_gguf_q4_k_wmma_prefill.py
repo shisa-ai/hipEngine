@@ -41,6 +41,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     _ALLOWED_TILES,
     _default_tiles,
     build_gguf_q4_k_prefill,
+    gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_bf16_f32_out,
     gguf_q4_k_wmma_prefill_bf16_fp16_out,
@@ -55,6 +56,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
 from tests.test_gguf_q4_k_gemv import make_q4_k_weight
 
 
@@ -107,6 +109,15 @@ def test_gguf_q4_k_wmma_prefill_registry_and_build_plan() -> None:
             variant="wmma_prefill_dual_bf16_bf16_out",
         )
         is gguf_q4_k_wmma_prefill_dual_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q4_k",
+            variant="pack8_wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out
     )
 
     artifact = plan_gguf_q4_k_prefill_build(compiler_version="test-compiler")
@@ -419,6 +430,93 @@ def test_gguf_q4_k_wmma_prefill_handles_unaligned_rows_and_out_features() -> Non
         out_dtype="f32",
     )
     np.testing.assert_allclose(actual, reference, **_TOLERANCES[("bf16", "f32")])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_q4_k_pack8_wmma_is_bf16_exact_to_raw_wmma() -> None:
+    rows, in_features, out_features = 37, 512, 80
+    activation = _make_activation(rows, in_features, seed=11)
+    host_in = _prepare_input(activation, "bf16")
+    raw = make_q4_k_weight(out_features, in_features)
+    packed = repack_gguf_q4_k_pack8(raw)
+    raw_out = np.empty((rows, out_features), dtype=np.uint16)
+    pack8_out = np.empty_like(raw_out)
+
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_prefill(load=True)
+    buffers = []
+
+    def upload(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        copy_host_to_device(
+            buffer,
+            host_array_ptr(np.ascontiguousarray(array)),
+            runtime=runtime,
+        )
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = upload(host_in)
+        raw_dev = upload(raw)
+        qweight_dev = upload(packed.qweight)
+        scales_dev = upload(packed.scales)
+        mins_dev = upload(packed.mins)
+        raw_out_dev = malloc(raw_out.nbytes, runtime=runtime)
+        pack8_out_dev = malloc(pack8_out.nbytes, runtime=runtime)
+        buffers.extend((raw_out_dev, pack8_out_dev))
+
+        gguf_q4_k_wmma_prefill_bf16_bf16_out(
+            x_dev.ptr,
+            raw_dev.ptr,
+            raw_out_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            tile_m=64,
+            tile_n=16,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out(
+            x_dev.ptr,
+            qweight_dev.ptr,
+            scales_dev.ptr,
+            mins_dev.ptr,
+            pack8_out_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(raw_out),
+            raw_out_dev,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(pack8_out),
+            pack8_out_dev,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(pack8_out, raw_out)
+    reference = _cpu_q4_k_reference(
+        _decode_input_for_cpu_reference(host_in, "bf16"),
+        raw,
+    )
+    np.testing.assert_allclose(
+        _bf16_bits_to_float32(pack8_out),
+        reference,
+        **_TOLERANCES[("bf16", "bf16")],
+    )
 
 
 def _run_q4_k_wmma_dual_prefill_gpu(

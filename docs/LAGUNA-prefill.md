@@ -597,7 +597,7 @@ Current progress:
 | LAP-2 primitive | Complete | Three-plane pack, direct/guarded T16 MMQ, bounded queue, and overflow-safe exact correction landed in `d9bb6ad88`; 35 focused tests and cached trace pass. |
 | LAP-BW0 / LAP-Q0 | Next | Measure same-host cold-read bandwidth and active bytes/GB/s; ablate the 0.0459275 shipping KL debt by admitted approximation. |
 | LAP-6 | Integrated candidate | Torch-free, row-scaled hipBLASLt now runs all five source-F16 projections on real pp512 input. Compounded with selected MMQ it improves **127.831 -> 154.321 tok/s** with the same next token and no added scratch; complete quality/clean admission remains open. |
-| LAP-5 | Next | Dense/shared MMQ reuse has no routing dependency and the largest current/Vulkan ratio. |
+| LAP-5 | Integrated candidate | A resident-pack8 64x16 wave32 WMMA consumer is BF16-bit identical to the raw-Q4 WMMA oracle. The M512/K3072/N1024 leaf improves **1.2695 -> 0.2407 ms (5.275x)**; compounded real pp512 reaches **163.881 tok/s** with next token 2930. The first exact rowtile8 attempt regressed and was removed. Complete quality/clean admission remains open. |
 | LAP-2 calibration / LAP-3 / LAP-4 | In progress | Explicit D4x3 selected gate/up now runs all 47 sparse layers, reuses compact metadata for exact grouped down, and improves a same-session dirty-tree pp512 diagnostic **76.414 -> 127.607 tok/s** with the same next token. Full quality/repair calibration and a clean A/B are still required before default promotion. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
@@ -609,10 +609,10 @@ Immediate execution queue:
 2. LAP-BW0: run a >64 MiB cold-stream read on this exact host, pin/record the
    supported clock policy, compute manifest+routing active bytes for every
    family, and add GB/s/%-of-achievable columns to the bridge.
-3. LAP-5: move dense/shared Q4/Q6 onto a dense **64–128 column/row-class**
-   MMQ with `BK_STEP=4` or an equivalent multi-K stage. No route scan,
-   compaction, or selected-family repair dependency is allowed.
-4. Run the complete quality and clean A/B gate with the LAP-6 library route
+3. LAP-4: move selected Q4/Q6 down onto the direct-T16 packed-dot path and
+   consume the existing compact post-SiLU rows. Keep exact grouped down as
+   fallback and calibrate DS/repair on real post-SiLU inputs.
+4. Run the complete quality and clean A/B gate with the LAP-5/LAP-6 routes
    compounded into the best linear stack; keep exact tiled as rollback until
    that gate passes.
 5. Capture exact gate/up and post-SiLU down inputs. Compare FP16/FP32 DS,
@@ -907,10 +907,28 @@ Execute this immediately after LAP-6, before selected down. Shipping is
 **0.6415 s** versus **0.0629 s** Vulkan, the worst mapped ratio, and the family
 has no routing metadata or new projection-role quality surface.
 
-Deliverables:
+Integrated candidate:
 
-- apply the admitted Q4/Q6 body to layer-0 dense gate/up/down and all shared
-  experts;
+- `pack8_wmma_prefill_bf16_bf16_out` consumes the already-resident Q4 pack8
+  words plus FP32 effective scale/min planes directly. It adds no weight
+  sidecar and does not invalidate the 66-GiB repacked cache.
+- One wave computes a 64-column x 16-row tile with FP16 WMMA operands and FP32
+  accumulation. It is BF16-bit identical to the existing raw-Q4 WMMA kernel
+  on the independent synthetic fixture and passes that kernel's CPU-reference
+  KL/top-1 tolerance.
+- The M512/K3072/N1024 leaf improves **1.2695 -> 0.2407 ms (5.275x)**. A
+  same-session compounded pp512 screen improves the retained dense route
+  **154.071 -> 162.274 tok/s** with 64x32; the selected 64x16 default then
+  reaches **163.881 tok/s**, always with next token 2930.
+- Cached tracing names
+  `gguf_q4_k_pack8_prefill_wmma_kernel<unsigned short,unsigned short,64,16>`
+  at **23.244 us** on the boundary fixture, local32, VGPR88, SGPR128, zero
+  LDS, and zero scratch.
+
+Remaining deliverables:
+
+- cover the raw-Q6 layer-0 dense down if a post-LAP-4 profile still justifies
+  it; the Q4 layer-0 gate/up and all Q4 shared projections are wired now;
 - use dense row tiles directly—no route-count or padded expert machinery;
 - target a 64x64/128x128-class dense tile with four K32 stages per barrier
   (`BK_STEP=4` control), rather than inheriting routed 32x32 geometry;
@@ -920,8 +938,10 @@ Deliverables:
   budget is explicitly better than the replacement-layout design;
 - reprofile before selected down or attention work.
 
-Planning checkpoint: reduce the 0.640-second family toward **0.12 seconds or
-less** and cross **200 tok/s** pp512.
+Planning checkpoint remains to reduce the full 0.640-second family toward
+**0.12 seconds or less** and cross **200 tok/s** pp512. The current graph
+transfer saves about 0.20 seconds rather than the full leaf-ratio forecast, so
+reprofile before spending more work on Q6 dense down.
 
 ### LAP-6 — close the source-F16 projection gap
 

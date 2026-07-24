@@ -34,6 +34,7 @@ from hipengine.models.laguna import LAGUNA_GGUF
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
+    resolve_laguna_dense_q4_prefill_mode,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
@@ -176,6 +177,16 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "selected_expert_mlp" in sparse_sequence
     assert "laguna_shared_expert" in sparse_sequence
     assert "laguna_routed_shared_combine" in sparse_sequence
+
+
+def test_laguna_dense_q4_prefill_mode_is_explicit_and_fail_closed() -> None:
+    assert resolve_laguna_dense_q4_prefill_mode("hip_gfx1151") == "retained"
+    assert (
+        resolve_laguna_dense_q4_prefill_mode("hip_gfx1151", "wmma_pack8")
+        == "wmma_pack8"
+    )
+    with pytest.raises(ValueError, match="dense/shared Q4"):
+        resolve_laguna_dense_q4_prefill_mode("hip_gfx1151", "rowtile8")
 
 
 def test_laguna_selected_down_default_is_backend_qualified() -> None:

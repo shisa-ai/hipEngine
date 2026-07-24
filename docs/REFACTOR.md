@@ -40,6 +40,18 @@ should be removed or collapsed.
   rollback; if rejected, remove the session route and keep the standalone
   library ceiling/range diagnostics.
 
+## Laguna `dense_q4_prefill_mode=wmma_pack8`
+
+- Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16
+  use a 64x16 wave32 WMMA consumer over the existing rank-2 Q4 pack8 bytes and
+  effective FP32 scale/min planes. It adds no sidecar, leaves decode unchanged,
+  and retains the exact pack8 FMA path as fallback.
+- Remove the selector after the canonical cumulative category/teacher-forced
+  quality, clean pp512, memory, lifecycle, and decode-neutral gates. If
+  accepted, make the WMMA route a gfx1151 package capability and keep only the
+  exact fallback. If rejected, remove the runner mode and retain the separately
+  registered leaf/oracle only if it remains useful to another model.
+
 ## Priority Cleanup (do first)
 
 **Revalidate the gfx1151 GGUF graph default on the current stack and retire

@@ -60,6 +60,8 @@ _GROUPED_SMALLM_MIN_ROWS = 32
 _SELECTED_GATE_UP_MODES = frozenset({"direct", "mmq32_d4x3"})
 _BASELINE_SELECTED_GATE_UP_MODE = "direct"
 _SELECTED_MMQ32_MIN_ROWS = 32
+_DENSE_Q4_PREFILL_MODES = frozenset({"retained", "wmma_pack8"})
+_BASELINE_DENSE_Q4_PREFILL_MODE = "retained"
 _Q8_1_DS4_BLOCK_BYTES = 144
 _Q8_1_DS4_RESIDUAL_PLANES = 3
 _MMQ32_ROWS = 32
@@ -104,6 +106,27 @@ def resolve_laguna_selected_down_mode(
     parsed = str(selected)
     if parsed not in _SELECTED_DOWN_MODES:
         raise ValueError("unsupported Laguna selected-down mode")
+    return parsed
+
+
+def resolve_laguna_dense_q4_prefill_mode(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve the retained dense/shared Q4 route or pack8 WMMA candidate."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_DENSE_Q4_PREFILL_MODE",
+            _BASELINE_DENSE_Q4_PREFILL_MODE,
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _DENSE_Q4_PREFILL_MODES:
+        raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
     return parsed
 
 
@@ -1451,6 +1474,7 @@ def run_laguna_moe_rows(
     rows: int,
     selected_down_mode: str = "direct",
     selected_gate_up_mode: str = "direct",
+    dense_q4_prefill_mode: str = "retained",
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
@@ -1469,6 +1493,9 @@ def run_laguna_moe_rows(
             "selected_gate_up_mode must be one of "
             f"{tuple(sorted(_SELECTED_GATE_UP_MODES))}"
         )
+    if dense_q4_prefill_mode not in _DENSE_Q4_PREFILL_MODES:
+        raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
+    use_q4_pack8_wmma = dense_q4_prefill_mode == "wmma_pack8"
     if tokens <= 0 or tokens > scratch.max_rows:
         raise ValueError(f"rows must be within [1, {scratch.max_rows}]")
     validate_laguna_moe_layer(layer, plan)
@@ -1585,6 +1612,7 @@ def run_laguna_moe_rows(
         libraries=libraries,
         use_wmma_prefill=False,
         use_gemv_decode=tokens == 1,
+        use_q4_pack8_wmma=use_q4_pack8_wmma,
     )
     launch_gguf_linear(
         shared_up,
@@ -1599,6 +1627,7 @@ def run_laguna_moe_rows(
         libraries=libraries,
         use_wmma_prefill=False,
         use_gemv_decode=tokens == 1,
+        use_q4_pack8_wmma=use_q4_pack8_wmma,
     )
     plan.shared_silu(
         scratch.shared_gate.ptr,
@@ -1621,6 +1650,7 @@ def run_laguna_moe_rows(
         libraries=libraries,
         use_wmma_prefill=False,
         use_gemv_decode=tokens == 1,
+        use_q4_pack8_wmma=use_q4_pack8_wmma,
     )
     if use_grouped_fused_combine:
         plan.grouped_weighted_sum_shared_add(
@@ -1684,6 +1714,7 @@ __all__ = [
     "laguna_moe_scratch_nbytes",
     "resolve_laguna_moe_plan",
     "resolve_laguna_selected_down_mode",
+    "resolve_laguna_dense_q4_prefill_mode",
     "resolve_laguna_selected_gate_up_mode",
     "run_laguna_moe_c1",
     "run_laguna_moe_rows",
