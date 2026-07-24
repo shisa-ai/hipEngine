@@ -1227,8 +1227,10 @@ kernel sum at every context. D14's exact head/RoPE+KV composite passed every
 mechanical row and improved every category's decode, but failed aggregate and
 per-category E2E/TTFT non-regression. D15 paired D14 with exact attention+gate
 leaves and improved every mechanical row plus aggregate decode/E2E, but missed
-code h16 E2E and the aggregate TTFT guard. All five candidates are removed.
-Clean measured D12 implementation revision
+code h16 E2E and the aggregate TTFT guard. D17 replaced D15's SWA leaf with
+D10's exact token8 schedule, passed every mechanical and category decode/E2E
+row, and crossed 50 tok/s, but still missed the aggregate TTFT guard. All six
+candidates are removed. Clean measured D12 implementation revision
 `338d3afca01aa884ff3a68e0175566bc51e5ceae` runs the pinned
 `Laguna-S-2.1-UD-Q2_K_XL.gguf`
 (SHA-256 `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
@@ -1726,6 +1728,28 @@ and wall changes **-0.563% to +0.016%**. No source or runtime route is retained;
 the apparent trace gaps are queue-submission spacing rather than removable
 ctypes overhead. [D16 rejection
 artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d16-c-dispatch-rejected.json).
+
+##### Laguna Q2 XL c=1 decode D17 (rejected and removed)
+
+D17 tested one all-or-none bundle of D15's exact global/SWA head+KV and global
+attention+gate leaves plus a D10-derived token8 SWA attention+gate leaf. The
+production empty/wrap/eviction/adversarial fixture, actual layers 0/44/1/47,
+all 48 context/gated-context/hidden taps, complete logits/KV/`KVLiveSpans`,
+reset, and lifecycle are bit-exact. Cached resources stay within
+local256/VGPR24/dynamic-LDS4136/scratch0 for the token8 leaf.
+
+Clean short/512/1K/near-4K profiles remove **96 launches/token (775 -> 679)**,
+improve head-boundary body **25.73-30.75%**, attention-boundary body
+**5.64-12.49%**, complete kernel sum **1.16-6.97%**, span **3.91-7.50%**, and
+profiled-child throughput **3.89-8.30%**. The counterbalanced full suite moves
+h32 decode **48.971 -> 50.668 tok/s (+3.465%)** and h32 E2E
+**12.122 -> 12.197 (+0.623%)**; every category improves both decode/E2E
+horizons and prefill stays within guard. The frozen gate still fails because
+aggregate TTFT changes **1.8705 -> 1.8854 s (+0.795%)**, beyond 0.5%. All D17
+source/dispatch/tests are removed without restoring standalone D10/D14/D15.
+The **50.668 tok/s** row is diagnostic only; canonical D12 remains
+**48.987 tok/s**. [D17 rejection
+artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d17-attention-boundaries-rejected.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
