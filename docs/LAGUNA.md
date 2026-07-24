@@ -3611,7 +3611,7 @@ candidate's diagnostic **49.274 tok/s / 20.295 ms/token** is not retained.
 Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-{design,correctness,rejected}.json`.
 
-### D15 paired head/KV and attention/gate boundaries (exact, selected)
+### D15 paired head/KV and attention/gate boundaries (exact, correctness-admitted)
 
 The standalone attention-decode plus softplus-gate leaf is structurally safe but
 too small to justify repeating D14's marginal category gamble. It would remove
@@ -3662,8 +3662,29 @@ context/gated-context/hidden/logit/KV/reset/lifecycle parity, clean four-context
 family/kernel-sum/span/child wins at 679 dispatches, and the complete
 counterbalanced category non-regression gate precede all-four-key promotion.
 Any failure removes the complete bundle without restoring standalone D14 debt.
+Correctness admission is complete without changing the default. The production
+page/ring fixture compares the complete four-kernel chain with the two-kernel
+bundle at global positions 0/255/256/1024 and SWA positions
+0/1/511/512/513/1024. F32 query/key/context, BF16 K/V/gated context, and all
+five `KVLiveSpans` fields are bit-exact, including extreme/non-finite gates.
+The shared-weight model gate additionally matches all 48 context,
+gated-context, and post-layer hidden taps, 17 complete logit/argmax
+checkpoints, all K/V/span bytes, reset, and teardown through 16 decode steps;
+**40,455,911,848 bytes / 1,496 allocations** return to zero.
+
+The frozen actual-endpoint screen is exact and positive at layers 0/44/1/47.
+Head+KV improves **33.65-41.93% HIP-event** and **34.19-41.73% wall**;
+attention+gate improves **9.23-13.63% / 9.25-13.49%**; complete
+head-through-gate improves **17.02-20.22% / 17.08-20.33%**. Cached tracing
+records global/SWA head+KV at local256/VGPR16/dynamic-LDS1024/scratch0,
+global attention+gate at local256/VGPR40/scratch0, and SWA attention+gate at
+local128/VGPR24/scratch0, all within the frozen ceilings. The single
+`use_attention_boundary_fusion` selector remains default-off and resolves all
+four keys or none; Task #302 decides retain-or-remove from clean four-context
+and complete category gates.
+
 Evidence:
-`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-design.json`.
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-{design,correctness}.json`.
 
 ## Laguna DFlash Follow-on Plan
 

@@ -144,6 +144,28 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "laguna_aggregate_gguf_f32_weight_out",
         ),
+        # D15's paired boundary bundle is admitted only on W7900 until an
+        # independent gfx1151 correctness and retention gate exists.
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "global_f32_bf16_spans",
+        ),
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "swa_f32_bf16_spans",
+        ),
+        (
+            "laguna_attention_decode+attention_gate",
+            "bf16",
+            "global_softplus_bf16_spans",
+        ),
+        (
+            "laguna_attention_decode+attention_gate",
+            "bf16",
+            "swa_token4_exact_softplus_bf16_spans",
+        ),
         (
             "speculative_cycle",
             "w4_gguf",
