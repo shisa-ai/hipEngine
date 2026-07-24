@@ -4158,6 +4158,39 @@ known prompt IDs, benchmark categories, candidate token IDs, or fixed-suite
 reranks. Any adaptive controller must use online, model-general economics and
 pass the full train/heldout category gate.
 
+### D6 — gfx1100 Q2 XL follow-on profile and IQ3 tile selection
+
+The retained gfx1100 D12 target changes the DFlash conclusion materially but
+not favorably enough for routing promotion. On merged main `602335abd`, the
+canonical ten-prompt/two-repeat h32 gate remains exact on all 20 pairs and moves
+true AR/DFlash to **48.980/32.434 tok/s (0.6622x)**. Category ratios are
+`0.9222x/0.5128x/0.6938x/0.5094x` for code/general-English/general-Japanese/
+mixed. A ten-prompt h128 run is also exact but falls to **45.938/27.920 tok/s
+(0.6078x)**. The fixed-budget h32 sweep rejects B1/B2/B3 at
+`0.5325x/0.6198x/0.6607x`; B4 remains the admitted operating point, not an
+automatic route.
+
+A four-cycle cached profile attributes **11.986 ms** to proposal, **74.028 ms**
+to target verify, and **2.182 ms** to draft-context commit. Target verification
+is device-bound at **64.961 ms kernel sum**. Existing raw-Q5/Q6 rowtile5 leaves
+consume 28.871 ms but already amortize weights at VGPR24. The clearest missing
+exact reuse is the 45-launch IQ3_XXS selected-down family: **11.646 ms/cycle**,
+local128/VGPR32/LDS512/scratch0, with one workgroup per output column and
+selected lane.
+
+D6 therefore selects separately registered tile2 and bounded tile4 siblings.
+Each block reuses one eight-value BF16 activation group across adjacent output
+columns while keeping each IQ3 decode, accumulator sequence, wave tree, and
+cross-wave order identical to tile1. The route is gfx1100 Laguna verifier
+rows>1 only; tile1 remains the fail-closed fallback and target c=1 AR is
+unchanged. Tile4 is admissible only if it beats tile2 at both actual early/late
+layer endpoints within VGPR64/LDS2048/scratch0. Full hidden/logit/KV/spans/
+lifecycle parity, a clean family/cycle profile, and exact non-regressive h32 plus
+h128 category gates decide retention. Even a retained verifier win does not
+change the separate >1.10x/no-category-regression automatic-routing policy.
+Evidence and frozen gates:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-dflash-iq3-tile-selection.json`.
+
 ## Test Matrix
 
 | Layer | CPU deterministic | HIP primitive | Full-model eager | Bulk/graph | Long-context |
