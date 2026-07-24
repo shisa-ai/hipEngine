@@ -394,7 +394,7 @@ Current progress:
 | Task | State | Result / next condition |
 | --- | --- | --- |
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
-| LAP-1 | Next | Build and screen the source-faithful packed-dot body and resident layouts. |
+| LAP-1 | In progress | The raw-Q4_K packed-dot body passes its synthetic quality gate and clears the inclusive M256/M512 leaf premise; M32–M128 scheduling, replacement-layout, and exact-fallback work remain. |
 | LAP-2–LAP-8 | Blocked on predecessor | Preserve the frozen order and reprofile after every promotion. |
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
@@ -456,6 +456,31 @@ the primary M128/M256/M512 shapes, positive natural-routing walls, no full
 expert sidecar, and a viable exact fallback. A smaller exact non-regressive
 sub-window may still be retained under repository policy, but it does not
 advance the parity campaign.
+
+Partial result: the first gfx1151 body now maps Vulkan's 32-column by 32-row
+Q4_K x Q8_1 tile to four wave32s in one 128-thread workgroup. It stages
+20 bytes of Q4_K data per column and 36 bytes of DS4-Q8_1 data per routed row
+for each K32 interval, reuses both tiles across the workgroup, and emits native
+packed integer dot instructions. Q8_1 is packed once per producer row; compact
+expert rows carry only a source-row index.
+
+On actual layer-1 K3072/N1024 gate/up weights and natural routing counts,
+including the producer-row pack, the raw body moves M256 **26.612 -> 10.047 ms
+(2.649x)** and M512 **52.522 -> 12.720 ms (4.129x)** versus the retained
+direct leaf. The current T16 WMMA diagnostic measures **6.297/9.307 ms**, but
+uses a larger resident representation and its arithmetic is not quality-safe.
+The raw layout is **864 MiB** for the pair versus **888 MiB** for T16.
+Synthetic source-Q4_K x DS4-Q8_1 fixtures pass at maximum softmax KL
+**4.745e-5** and **100%** top-1. A cached trace reports local128, allocated
+VGPR120, LDS 2,048 bytes, zero scratch, and 64 static
+`v_dot4_i32_iu8` instructions per wave.
+
+This clears only the measured M256/M512 body premise. LAP-1 remains open
+because the routing capture did not contain M32/55/64/122/128, literal
+32-row padding is still excessive, no lossless MMQ-native replacement layout
+or exact decode fallback has been selected, and no runtime default changed.
+Evidence:
+[`2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
 
 ### LAP-2 — calibrate residual Q8_1 and exact repair
 

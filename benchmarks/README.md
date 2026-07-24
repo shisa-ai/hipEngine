@@ -1897,6 +1897,20 @@ use block-local residual scaling and exact repair rather than another unchecked
 one-plane Q8 route.
 [LAP-0 control packet](results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
 
+The first LAP-1 packed-dot leaf is positive but not a runtime candidate yet.
+On actual layer-1 Q4_K K3072/N1024 gate/up weights with natural routing
+counts, the retained direct leaf versus producer-pack-inclusive raw MMQ32 moves
+**26.612 -> 10.047 ms (2.649x)** at M256 and **52.522 -> 12.720 ms
+(4.129x)** at M512. The current T16 WMMA diagnostic measures
+**6.297/9.307 ms** but uses **888 MiB** for the pair versus raw Q4_K's
+**864 MiB** and does not satisfy the campaign arithmetic contract. Synthetic
+source-Q4_K x DS4-Q8_1 fixtures pass at max softmax KL **4.745e-5** and
+**100%** top-1; cached resources are local128, VGPR120, LDS2048B, and
+scratch0. LAP-1 remains open pending M32–M128/partial scheduling, a lossless
+replacement-layout comparison, and an exact fallback/decode path; no default
+changed.
+[LAP-1 partial packed-dot leaf](results/2026-07-24-gfx1151-laguna-q4-k-mmq32-leaf.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row

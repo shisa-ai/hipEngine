@@ -134,6 +134,41 @@ __device__ inline int pack_q4_k_u8x4(
   return static_cast<int>(out);
 }
 
+__device__ inline int gguf_q4_k_mmq_dp4a(uint32_t q4, uint32_t q8, int acc) {
+#if defined(__HIP_DEVICE_COMPILE__)
+  return __builtin_amdgcn_sudot4(
+      true,
+      static_cast<int>(q4),
+      true,
+      static_cast<int>(q8),
+      acc,
+      false);
+#else
+  const int8_t x0 = static_cast<int8_t>(q8 & 0xFFu);
+  const int8_t x1 = static_cast<int8_t>((q8 >> 8) & 0xFFu);
+  const int8_t x2 = static_cast<int8_t>((q8 >> 16) & 0xFFu);
+  const int8_t x3 = static_cast<int8_t>((q8 >> 24) & 0xFFu);
+  return acc + static_cast<int>(q4 & 0xFFu) * static_cast<int>(x0) +
+      static_cast<int>((q4 >> 8) & 0xFFu) * static_cast<int>(x1) +
+      static_cast<int>((q4 >> 16) & 0xFFu) * static_cast<int>(x2) +
+      static_cast<int>((q4 >> 24) & 0xFFu) * static_cast<int>(x3);
+#endif
+}
+
+struct alignas(4) q4_k_mmq32_cache {
+  // Matches the Vulkan Q4_K MMQ shared/register cache: four words hold two
+  // nibble planes each, followed by FP16-rounded (d*scale, dmin*min).
+  uint32_t qs[4];
+  uint16_t dm[2];
+};
+static_assert(sizeof(q4_k_mmq32_cache) == 20, "unexpected Q4_K MMQ cache size");
+
+struct alignas(4) q8_1_mmq32_cache {
+  int32_t qs[8];
+  uint16_t ds[2];
+};
+static_assert(sizeof(q8_1_mmq32_cache) == 36, "unexpected Q8_1 MMQ cache size");
+
 __device__ inline float wave32_sum(float value) {
 #pragma unroll
   for (int offset = 16; offset > 0; offset >>= 1) {
@@ -225,6 +260,41 @@ bool valid_q8_1_selected_dual_common(
       wmma_total_rows > 0 && (wmma_total_rows % 16) == 0 &&
       (in_features % QK_K) == 0 && (out_features_a % 16) == 0 &&
       (out_features_b % 16) == 0;
+}
+
+bool valid_q8_1_selected_dual_mmq32(
+    const void* x_q8,
+    const void* compact_to_source,
+    const void* expert_start_compact,
+    const void* expert_start_mmq32,
+    const void* tile_expert,
+    const void* qweight_a,
+    const void* qweight_b,
+    const void* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows) {
+  return compact_to_source != nullptr && valid_q8_1_selected_dual_common(
+             x_q8,
+             x_q8,
+             x_q8,
+             expert_start_compact,
+             expert_start_mmq32,
+             tile_expert,
+             qweight_a,
+             qweight_b,
+             out,
+             compact_rows,
+             in_features,
+             out_features_a,
+             out_features_b,
+             num_experts,
+             mmq_total_rows) &&
+      (out_features_a % 32) == 0 && (out_features_b % 32) == 0 &&
+      (mmq_total_rows % 32) == 0;
 }
 
 // One 256-thread block computes a scalar 16-row x 16-column output tile.  This
@@ -391,6 +461,212 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(
       }
     }
     out[compact_row * out_features_total + global_col] = float_to_bf16_bits(acc);
+  }
+}
+
+// Source-faithful translation of llama.cpp Vulkan's small K-quant MMQ tile.
+//
+// Vulkan uses one 64-lane subgroup for a 32-output-column x 32-routed-row
+// result tile. gfx1151 executes wave32, so this block uses four waves: all four
+// reuse the same 32 decoded Q4_K rows and 32 Q8_1 rows, while each wave owns one
+// routed-row residue. Each lane therefore keeps eight FP32 accumulators instead
+// of the 16 required by a literal two-wave mapping. WMITER remains one,
+// matching Vulkan's K-quant pressure control.
+__launch_bounds__(128, 2)
+__global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_q8,
+    const int64_t* __restrict__ compact_to_source,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_mmq32,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows) {
+  constexpr int MMQ_M = 32;
+  constexpr int MMQ_N = 32;
+  constexpr int MMQ_K = 32;
+  constexpr int THREADS = 128;
+  constexpr int TM = 1;
+  constexpr int WNITER = 8;
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int tile_col = static_cast<int>(blockIdx.x);
+  const int tile_row = static_cast<int>(blockIdx.y);
+  const int64_t expert_id = tile_expert[tile_row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int64_t global_col_base = static_cast<int64_t>(tile_col) * MMQ_M;
+  if (global_col_base >= out_features_total) return;
+
+  const bool use_b = global_col_base >= out_features_a;
+  const int64_t local_col_base =
+      use_b ? (global_col_base - out_features_a) : global_col_base;
+  const int64_t local_out_features = use_b ? out_features_b : out_features_a;
+  const uint8_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
+
+  const int64_t compact_base = expert_start_compact[expert_id];
+  const int64_t expert_count =
+      expert_start_compact[expert_id + 1] - compact_base;
+  const int64_t padded_base = expert_start_mmq32[expert_id];
+  const int64_t tile_row_in_expert =
+      static_cast<int64_t>(tile_row) * MMQ_N - padded_base;
+
+  const int64_t blocks_per_weight_row = in_features / QK_K;
+  const int64_t q8_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
+  const int64_t weight_row_bytes =
+      blocks_per_weight_row * Q4_K_BLOCK_BYTES;
+  const int64_t expert_bytes = local_out_features * weight_row_bytes;
+  const uint8_t* __restrict__ expert_base =
+      qweight + expert_id * expert_bytes;
+
+  __shared__ q4_k_mmq32_cache weight_tile[MMQ_M];
+  __shared__ q8_1_mmq32_cache activation_tile[MMQ_N];
+
+  float acc[WNITER * TM];
+#pragma unroll
+  for (int i = 0; i < WNITER * TM; ++i) acc[i] = 0.0f;
+
+  const int tiwr = tid & 31;
+  const int tiwc = tid >> 5;
+  const int load_weight_part = tid & 3;
+  const int load_weight_col = tid >> 2;
+  const int load_activation_part = tid & 3;
+  const int load_activation_row = tid >> 2;
+  const int k32_iters = static_cast<int>(in_features / MMQ_K);
+
+  for (int k32 = 0; k32 < k32_iters; ++k32) {
+    const int weight_block = k32 >> 3;
+    const int subblock = k32 & 7;
+
+#pragma unroll
+    for (int col_offset = load_weight_col;
+         col_offset < MMQ_M;
+         col_offset += THREADS * 8 / MMQ_K) {
+      const int64_t local_col = local_col_base + col_offset;
+      const bool valid_col = local_col < local_out_features;
+      uint32_t packed_q4 = 0;
+      uint16_t packed_scale = 0;
+      uint16_t packed_min = 0;
+      if (valid_col) {
+        const uint8_t* __restrict__ block =
+            expert_base + local_col * weight_row_bytes +
+            static_cast<int64_t>(weight_block) * Q4_K_BLOCK_BYTES;
+        const uint8_t* __restrict__ scales = block + 4;
+        const uint8_t* __restrict__ qs = block + Q4_K_QS_OFFSET;
+        const int lane8 = load_weight_part * 8;
+        const uint32_t low =
+            static_cast<uint32_t>(pack_q4_k_u8x4(qs, subblock, lane8));
+        const uint32_t high =
+            static_cast<uint32_t>(pack_q4_k_u8x4(qs, subblock, lane8 + 4));
+        packed_q4 = low | (high << 4);
+        if (load_weight_part == 0) {
+          const float d = fp16_bytes_to_float(block);
+          const float dmin = fp16_bytes_to_float(block + 2);
+          packed_scale = float_to_fp16_bits(
+              d * static_cast<float>(gguf_q4_k_scale(scales, subblock)));
+          packed_min = float_to_fp16_bits(
+              dmin * static_cast<float>(gguf_q4_k_min(scales, subblock)));
+        }
+      }
+      weight_tile[col_offset].qs[load_weight_part] = packed_q4;
+      if (load_weight_part == 0) {
+        weight_tile[col_offset].dm[0] = packed_scale;
+        weight_tile[col_offset].dm[1] = packed_min;
+      }
+    }
+
+    const int64_t local_route = tile_row_in_expert + load_activation_row;
+    const bool valid_route =
+        local_route >= 0 && local_route < expert_count;
+    if (valid_route) {
+      const int64_t compact_row = compact_base + local_route;
+      const int64_t source_row = compact_to_source[compact_row];
+      const block_q8_1_mmq_ds4& xb =
+          x_q8[source_row * q8_blocks_per_row + (k32 >> 2)];
+      const int ds4_idx = k32 & 3;
+      const int32_t* __restrict__ x_words =
+          reinterpret_cast<const int32_t*>(
+              xb.qs + ds4_idx * Q8_1_BLOCK +
+              load_activation_part * 8);
+#pragma unroll
+      for (int word = 0; word < 2; ++word) {
+        activation_tile[load_activation_row]
+            .qs[load_activation_part * 2 + word] = x_words[word];
+      }
+      if (load_activation_part == 0) {
+        activation_tile[load_activation_row].ds[0] =
+            xb.ds4[2 * ds4_idx + 0];
+        activation_tile[load_activation_row].ds[1] =
+            xb.ds4[2 * ds4_idx + 1];
+      }
+    } else {
+#pragma unroll
+      for (int word = 0; word < 2; ++word) {
+        activation_tile[load_activation_row]
+            .qs[load_activation_part * 2 + word] = 0;
+      }
+      if (load_activation_part == 0) {
+        activation_tile[load_activation_row].ds[0] = 0;
+        activation_tile[load_activation_row].ds[1] = 0;
+      }
+    }
+    __syncthreads();
+
+    q4_k_mmq32_cache weight_cache[TM];
+#pragma unroll
+    for (int cr = 0; cr < TM; ++cr) {
+      weight_cache[cr] = weight_tile[tiwr * TM + cr];
+    }
+
+#pragma unroll
+    for (int wsic = 0; wsic < WNITER; ++wsic) {
+      const q8_1_mmq32_cache activation_cache =
+          activation_tile[wsic * 4 + tiwc];
+      const float xd = fp16_bits_to_float(activation_cache.ds[0]);
+      const float xsum = fp16_bits_to_float(activation_cache.ds[1]);
+#pragma unroll
+      for (int cr = 0; cr < TM; ++cr) {
+        int dot = 0;
+#pragma unroll
+        for (int qword = 0; qword < 8; ++qword) {
+          const uint32_t q4_word =
+              (weight_cache[cr].qs[qword >> 1] >>
+               ((qword & 1) * 4)) &
+              0x0F0F0F0Fu;
+          dot = gguf_q4_k_mmq_dp4a(
+              q4_word,
+              static_cast<uint32_t>(activation_cache.qs[qword]),
+              dot);
+        }
+        const float dscale = fp16_bits_to_float(weight_cache[cr].dm[0]);
+        const float dmin = fp16_bits_to_float(weight_cache[cr].dm[1]);
+        acc[wsic * TM + cr] +=
+            xd * dscale * static_cast<float>(dot) - dmin * xsum;
+      }
+    }
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int wsic = 0; wsic < WNITER; ++wsic) {
+    const int64_t local_route = tile_row_in_expert + wsic * 4 + tiwc;
+    if (local_route < 0 || local_route >= expert_count) continue;
+    const int64_t compact_row = compact_base + local_route;
+#pragma unroll
+    for (int cr = 0; cr < TM; ++cr) {
+      const int64_t global_col = global_col_base + tiwr * TM + cr;
+      if (global_col < out_features_total) {
+        out[compact_row * out_features_total + global_col] =
+            float_to_bf16_bits(acc[wsic * TM + cr]);
+      }
+    }
   }
 }
 
@@ -1766,6 +2042,68 @@ int launch_selected_dual_q8_1_ds4_wmma32_lds_compact32(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_selected_dual_q8_1_ds4_mmq32_compact32(
+    const block_q8_1_mmq_ds4* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  if (!valid_q8_1_selected_dual_mmq32(
+          x_q8,
+          compact_to_source,
+          expert_start_compact,
+          expert_start_mmq32,
+          tile_expert,
+          qweight_a,
+          qweight_b,
+          out,
+          compact_rows,
+          in_features,
+          out_features_a,
+          out_features_b,
+          num_experts,
+          mmq_total_rows)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int64_t row_tiles = mmq_total_rows / 32;
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features_total / 32),
+      static_cast<unsigned int>(row_tiles));
+  hipLaunchKernelGGL(
+      gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x_q8,
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_selected_dual_q8_1_ds4_compact32(
     const block_q8_1_mmq_ds4* x_q8,
     const int64_t* expert_start_compact,
@@ -1884,6 +2222,40 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf1
       out_features_b,
       num_experts,
       wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
       stream);
 }
 

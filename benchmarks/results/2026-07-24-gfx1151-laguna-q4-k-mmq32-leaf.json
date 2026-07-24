@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T08:59:04.803274+00:00",
+  "kind": "hipengine_laguna_lap1_q4_k_mmq32_actual_leaf",
+  "status": "lap1_partial_leaf_passed",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "One actual Laguna sparse-layer Q4_K gate/up pair, producer-row Q8_1 pack included, natural per-expert counts at M256/M512; not a full-model or runtime-default claim.",
+  "repo": {
+    "base_revision": "f93fda135cb10b6617761004b20c76d32b58035e",
+    "candidate_state": "tracked implementation dirty during measurement; committed by the logical unit that owns this artifact",
+    "unrelated_untracked_artifacts_excluded": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "hip_version": "7.15.0-0000000",
+    "llvm_revision": "aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "up_tensor": "blk.1.ffn_up_exps.weight",
+    "shape_each": [
+      256,
+      1024,
+      3072
+    ],
+    "quant": "Q4_K"
+  },
+  "source_lineage": {
+    "reference_repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "files": [
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mmq.comp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mmq_funcs.glsl",
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mmq_shmem_types.glsl",
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_id_funcs.glsl"
+    ],
+    "translation": "32 output columns x 32 routed rows x K32, complete shared Q4/Q8 tile reuse, WMITER=1, native packed integer dot; Vulkan's 64-lane subgroup is mapped to four gfx1151 wave32s to keep eight FP32 accumulators per lane.",
+    "lineage_checker": "blocked before port because /home/lhl/amd-gpu-tuning and its declared nano-vllm-amd/atlas peers are absent; local llama.cpp source was audited directly and remained read-only"
+  },
+  "layouts": {
+    "raw_q4_k_pair_bytes": 905969664,
+    "raw_q4_k_pair_mib": 864.0,
+    "current_t16_pair_bytes": 931135488,
+    "current_t16_pair_mib": 888.0,
+    "t16_over_raw_percent": 2.777777777777768,
+    "temporary_side_by_side_leaf_only": true,
+    "runtime_sidecar_proposed": false
+  },
+  "protocol": {
+    "routing_source": "/tmp/laguna-lap0-routing-8d26a9562.json",
+    "routing_source_revision": "8d26a9562",
+    "routing": "recorded natural per-expert counts; deterministic stable producer-row order reconstructed as a valid bipartite assignment with ten distinct experts per row because raw selected IDs were intentionally not persisted",
+    "top_k": 10,
+    "warmups": 2,
+    "samples": 7,
+    "burst": 3,
+    "timing": "counter-rotated HIP-event elapsed time",
+    "candidate_inclusive_scope": "one BF16 producer-row DS4 Q8_1 pack plus one dual raw-Q4_K gate/up MMQ launch",
+    "activation_storage": "packed once per producer row; compact rows map back to producer Q8 blocks",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --layer 1 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-lap1-actual-layer1-stable-routing.json"
+  },
+  "results": {
+    "256": {
+      "active_experts": 222,
+      "compact_rows": 2560,
+      "max_expert_rows": 120,
+      "padding": {
+        "raw_mmq32_rows": 7648,
+        "raw_mmq32_factor": 2.9875,
+        "t16_rows": 4656,
+        "t16_factor": 1.81875
+      },
+      "median_ms": {
+        "retained_direct": 26.61235809326172,
+        "t16_wmma_control": 6.296836217244466,
+        "raw_mmq32_inclusive": 10.047134399414062
+      },
+      "raw_mmq32_vs_retained": {
+        "speedup": 2.6487510801899616,
+        "wall_reduction_percent": 62.246358010799476
+      },
+      "samples_ms": {
+        "retained_direct": [
+          26.348248799641926,
+          26.61235809326172,
+          26.562838236490887,
+          26.630813598632812,
+          27.658526102701824,
+          26.577011108398438,
+          26.747347513834637
+        ],
+        "t16_wmma_control": [
+          6.265291849772136,
+          6.470546722412109,
+          6.2826493581136065,
+          6.296836217244466,
+          6.288715998331706,
+          6.298654556274414,
+          6.4339752197265625
+        ],
+        "raw_mmq32_inclusive": [
+          10.01500129699707,
+          10.407796859741211,
+          10.047134399414062,
+          10.040778477986654,
+          10.028223037719727,
+          10.053524017333984,
+          10.08271344502767
+        ]
+      }
+    },
+    "512": {
+      "active_experts": 228,
+      "compact_rows": 5120,
+      "max_expert_rows": 232,
+      "padding": {
+        "raw_mmq32_rows": 9504,
+        "raw_mmq32_factor": 1.85625,
+        "t16_rows": 7024,
+        "t16_factor": 1.371875
+      },
+      "median_ms": {
+        "retained_direct": 52.52209981282552,
+        "t16_wmma_control": 9.307259877522787,
+        "raw_mmq32_inclusive": 12.720008850097656
+      },
+      "raw_mmq32_vs_retained": {
+        "speedup": 4.129093024367061,
+        "wall_reduction_percent": 75.78160641819672
+      },
+      "samples_ms": {
+        "retained_direct": [
+          53.166056315104164,
+          52.38409932454427,
+          52.34796651204427,
+          52.63318379720052,
+          53.73558553059896,
+          52.28370157877604,
+          52.52209981282552
+        ],
+        "t16_wmma_control": [
+          9.346506754557291,
+          9.277150472005209,
+          9.307259877522787,
+          9.303119659423828,
+          9.288880030314127,
+          9.32033920288086,
+          9.337010701497396
+        ],
+        "raw_mmq32_inclusive": [
+          12.720008850097656,
+          12.714466094970703,
+          12.649983723958334,
+          12.7322998046875,
+          12.757012685139975,
+          12.609790802001953,
+          12.738258361816406
+        ]
+      }
+    }
+  },
+  "correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q",
+    "result": "24 passed",
+    "oracle": "CPU source Q4_K x DS4-Q8_1 projection with BF16 output",
+    "cases": [
+      "counts 4/0/5, K256, N32+32, identity producer map",
+      "counts 0/17/31, K512, N32+64, non-identity producer map"
+    ],
+    "max_softmax_kl": 4.745148503516438e-05,
+    "top1_agreement": 1.0,
+    "max_abs": 0.12359238,
+    "finite_actual_weight_outputs": true
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-lap1-mmq32-source-map-trace -o mmq32-source-map -- env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-ds4-mmq32 --hidden 3072 --out-features-a 1024 --out-features-b 1024 --experts 8 --rows-per-expert 32 --warmup 1 --iters 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/laguna-lap1-mmq32-source-map-profile.json",
+    "kernel": "gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel",
+    "dispatches": 5,
+    "duration_us": {
+      "median": 362.956,
+      "min": 351.174,
+      "max": 415.974
+    },
+    "workgroup_size": 128,
+    "allocated_vgpr": 120,
+    "logical_vgpr": 113,
+    "allocated_sgpr": 128,
+    "logical_sgpr": 39,
+    "lds_allocated_bytes": 2048,
+    "lds_logical_bytes": 1792,
+    "scratch_bytes": 0,
+    "wavefront_size": 32,
+    "static_v_dot4_i32_iu8_per_wave": 64,
+    "csv_sha256": "4b8474592adbc5286895ece49f68aad03eec5a64d6fda5cc448c745e361e27a3"
+  },
+  "memory": {
+    "tracked_peak_bytes": 1915514648,
+    "tracked_after_bytes": 0
+  },
+  "raw_sources": {
+    "actual_leaf_json_sha256": "24fcb10d90d01c5d21aca0e0025664ea6d2321206fc0323c96046b5a31e209ed",
+    "profile_json_sha256": "a7661217bfa2794c99a3859fe07c7e6776a6826ed98ad634e93210827fad79aa"
+  },
+  "decision": {
+    "lap1_state": "in_progress",
+    "body_premise_at_measured_shapes": "passed",
+    "default_changed": false,
+    "next": "Capture natural M32/55/64/122/128 counts, screen partial/smaller-row scheduling, compare a lossless MMQ-native replacement layout and exact fallback/decode before closing LAP-1."
+  }
+}
