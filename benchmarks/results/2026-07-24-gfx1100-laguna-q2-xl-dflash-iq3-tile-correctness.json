@@ -128,8 +128,11 @@
   },
   "red_green": {
     "green": "new tile2/tile4 registry and exact-output fixtures pass at non-multiple output width, invalid routes, and 1/2/5/8 token shapes",
-    "no_red_rationale": "No standalone pre-implementation RED output was retained. The schedule-only siblings and registry keys were absent on the baseline; the mandatory behavioral oracle is byte equality to the existing CPU-gated tile1 leaf.",
-    "oracle": "existing raw-IQ3 tile1 selected GEMV, independently covered by NumPy GGUF dequant fixtures"
+    "kernel_red": "collection failed because the tile2/tile4 wrappers were absent",
+    "kernel_red_sha256": "7771eed30b1bd559c94b088606b30e320598e9745094b845fd30b7ca57109287",
+    "oracle": "existing raw-IQ3 tile1 selected GEMV, independently covered by NumPy GGUF dequant fixtures",
+    "plan_red": "the Laguna MoE-plan fixture failed because iq3_selected_down_tile was not accepted",
+    "plan_red_sha256": "a9b3439f3a14bbadd729871c44d83ad563706fda21b35c35413b7f1daae30bd9"
   },
   "resource_trace": {
     "harness_sha256": "08e446458c9a1a771c97571cd41245fe8f788b7ffe4669428f19738592f54535",
