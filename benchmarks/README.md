@@ -1,6 +1,12 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-23**
+Last reviewed: **2026-07-24**
+
+The current Laguna arithmetic-prefill control packet is
+[`2026-07-24-gfx1151-laguna-prefill-lap0-control.json`](results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
+It combines clean source revisions `89cb4e6e6` (cumulative quality),
+`8d26a9562` (profile/routing), and `41d21a474` (activation proxies); it changes
+no retained runtime default.
 
 Latest retained hipEngine revisions in this scoreboard:
 `1d6566de3f6ec394d6a3e34e2f37e2a70250368c` for the quality-gated gfx1151
@@ -1869,6 +1875,27 @@ prompt outcomes. Exact grouped-small-M remains default, all temporary runtime
 and benchmark selectors are removed, and only the independently tested kernel
 leaf/oracle/trace remain as diagnostic evidence.
 [Rejected expert-major layer-family bisection](results/2026-07-24-gfx1151-laguna-expert-major-wmma-layer-family-rejected.json).
+
+The successor LAP-0 control packet closes the stale-attribution gap without
+changing defaults. A clean cached matrix512/attention128 trace measures
+**73.757/76.381/74.766/71.025 tok/s** at 128/512/1K/4K. At M512, selected Q4
+gate/up, selected Q4/Q6 down, source-F16, dense/shared quant, and attention own
+**54.99%/16.45%/13.37%/9.59%/4.16%** of kernel sum; named non-`other` coverage
+is **99.653%** and span-minus-sum is **0.151%**. Replacing those measured
+families cumulatively with the unchanged Vulkan family times models
+**139.5/174.3/217.1/293.4/339.9 tok/s** and explains **99.740%** of the
+kernel-sum gap.
+
+The complete all-exact versus shipping-control lane measures **53.596 -> 70.546
+tok/s (1.31627x)** with max KL **0.0459275**, **319/320** top-1, neutral
+decode, deterministic repeats, Poolside, and lifecycle pass. That leaves only
+**0.0040725** KL headroom. Natural M512 routing has tile4/8/16/32 padding
+factors **1.068/1.165/1.380/1.866x**, and deterministic post-layer BF16
+proxies expose sparse late-depth outliers. LAP-1 therefore starts with the
+source-faithful packed-dot gate/up body plus partial-tile handling; LAP-2 must
+use block-local residual scaling and exact repair rather than another unchecked
+one-plane Q8 route.
+[LAP-0 control packet](results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
 
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
