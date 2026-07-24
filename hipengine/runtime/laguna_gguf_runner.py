@@ -1505,6 +1505,7 @@ class LagunaGGUFResidentSession:
         swa_split_tile16_min_live: int | None = None,
         use_swa_split_tile16: bool | None = None,
         use_split_attention: bool | None = None,
+        use_split_gate_fusion: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
@@ -1529,6 +1530,7 @@ class LagunaGGUFResidentSession:
         self.swa_split_tile16_min_live = swa_split_tile16_min_live
         self.use_swa_split_tile16 = use_swa_split_tile16
         self.use_split_attention = use_split_attention
+        self.use_split_gate_fusion = use_split_gate_fusion
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self._q5_output_variant, self._q5_query_gate_variant = (
             resolve_laguna_q5_wave32x2_variants(
@@ -1665,7 +1667,9 @@ class LagunaGGUFResidentSession:
                 swa_split_tile16_min_live=self.swa_split_tile16_min_live,
                 use_swa_split_tile16=self.use_swa_split_tile16,
                 use_split_attention=self.use_split_attention,
+                use_split_gate_fusion=self.use_split_gate_fusion,
             )
+            self.use_split_gate_fusion = self.kv_cache.split_gate_fusion
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
@@ -2756,24 +2760,27 @@ class LagunaGGUFResidentSession:
             stream=stream,
             library=self.libraries.kv_attention,
         )
-        self.kv_cache.attend(
+        attention_gated = self.kv_cache.attend(
             layer_id,
             scratch.query_rotated.ptr,
             scratch.context.ptr,
+            gate_ptr=scratch.gate_logits.ptr,
+            gated_out_ptr=scratch.gated_context.ptr,
             stream=stream,
             library=self.libraries.kv_attention,
         )
-        self.kernel_plan.attention_gate(
-            scratch.context.ptr,
-            scratch.gate_logits.ptr,
-            scratch.gated_context.ptr,
-            1,
-            heads,
-            config.value_length,
-            stream=stream,
-            library=self.libraries.attention_gate,
-            runtime=self.runtime,
-        )
+        if not attention_gated:
+            self.kernel_plan.attention_gate(
+                scratch.context.ptr,
+                scratch.gate_logits.ptr,
+                scratch.gated_context.ptr,
+                1,
+                heads,
+                config.value_length,
+                stream=stream,
+                library=self.libraries.attention_gate,
+                runtime=self.runtime,
+            )
         launch_laguna_weight_linear(
             layer.weight("attn_output"),
             scratch.gated_context.ptr,

@@ -1742,6 +1742,27 @@ Vulkan native prompt/predicted timing rows are valid; SSE `return_tokens` omits
 one or more token entries for 18 rows, so returned-array completeness is not
 used as the timing gate. [Matched completion audit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json).
 
+##### Laguna Q2 XL P4.1 exact split-reducer+gate (retained gfx1100 default)
+
+P4.1 folds the existing FP32 softplus per-head gate and RNE BF16 store into the
+retained exact global/SWA split reducers while retaining the F32 context. The
+score producers, logical-slot reduction order, `KVLiveSpans` ABI, and scratch
+allocation are unchanged; the registered unfused chain remains the
+below-threshold, explicit-disable, registry-miss, and non-gfx1100 fallback.
+First/last actual global/SWA layers at live 128/257 are bit-exact and improve
+the inclusive event **3.00-10.05%** and synchronized wall **2.89-9.60%**. Full
+logits, all 48 hidden and 47 routed boundaries, K/V, every span field, reset,
+and lifecycle remain exact; tracing names the expected local256/local128 gated
+reducers at VGPR24/LDS512/scratch0 with no standalone gate.
+
+The two-order 18-prompt category/heldout gate moves h16/h32 decode
+**51.882/51.497 -> 52.229/51.825 tok/s (+0.669%/+0.637%)**. Every train and
+heldout category improves both decode horizons; E2E, prefill, and TTFT remain
+inside the 0.5% non-regression guards. Relative to the prior retained 51.436
+headline this is **+0.757%**, or **19.296 ms/token**. The formal matched Vulkan
+h32 target remains **64.336 tok/s**, so hipEngine still needs **24.14%** more
+throughput and completion is not claimed. [Correctness artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-correctness.json) and [retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-retained.json).
+
 ##### Laguna Q2 XL c=1 decode D13 (rejected and removed)
 
 D13 tested an exact local256 Q5 shared gate/up pair+SiLU composite. Synthetic,

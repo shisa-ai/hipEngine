@@ -19,6 +19,9 @@ _SYMBOL_GLOBAL_ATTENTION = "hipengine_laguna_global_attention_decode_bf16_spans"
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT = (
     "hipengine_laguna_global_attention_decode_split_exact_bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED = (
+    "hipengine_laguna_global_attention_decode_split_exact_gated_bf16_spans"
+)
 _SYMBOL_GLOBAL_PREFILL = "hipengine_laguna_global_attention_prefill_bf16_spans"
 _SYMBOL_SWA_WRITE = "hipengine_laguna_swa_write_kv_f32_bf16_spans"
 _SYMBOL_SWA_WRITE_ROWS = "hipengine_laguna_swa_write_kv_rows_f32_bf16_spans"
@@ -29,8 +32,14 @@ _SYMBOL_SWA_ATTENTION_TOKEN4_EXACT = (
 _SYMBOL_SWA_ATTENTION_SPLIT_EXACT = (
     "hipengine_laguna_swa_attention_decode_split_exact_bf16_spans"
 )
+_SYMBOL_SWA_ATTENTION_SPLIT_EXACT_GATED = (
+    "hipengine_laguna_swa_attention_decode_split_exact_gated_bf16_spans"
+)
 _SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT = (
     "hipengine_laguna_swa_attention_decode_split_tile16_exact_bf16_spans"
+)
+_SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT_GATED = (
+    "hipengine_laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans"
 )
 _SYMBOL_SWA_PREFILL = "hipengine_laguna_swa_attention_prefill_bf16_spans"
 _SYMBOL_SWA_PREFILL_WAVE32_EXACT = (
@@ -290,6 +299,71 @@ def laguna_global_attention_decode_split_exact_bf16_spans(
         ctypes.c_void_p(key_cache_ptr),
         ctypes.c_void_p(value_cache_ptr),
         ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(score_scratch_ptr),
+        ctypes.c_void_p(physical_scratch_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(parsed_scan),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_decode_split_exact_gated_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact split global attention and fuse its BF16 softplus gate."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    if int(max_context_len) != capacity:
+        raise ValueError("max_context_len must equal the global span capacity")
+    parsed_scan = _check_split_scan_slots(scan_slots, capacity)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 13
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(gated_out_ptr),
         ctypes.c_void_p(score_scratch_ptr),
         ctypes.c_void_p(physical_scratch_ptr),
         ctypes.c_void_p(spans.base_offsets.ptr),
@@ -661,6 +735,52 @@ def laguna_swa_attention_decode_split_exact_bf16_spans(
     _check_launch(runtime, err)
 
 
+def laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact split SWA and fuse its BF16 softplus gate."""
+
+    _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+        _SYMBOL_SWA_ATTENTION_SPLIT_EXACT_GATED,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        gate_ptr,
+        gated_out_ptr,
+        score_scratch_ptr,
+        physical_scratch_ptr,
+        spans,
+        scan_slots,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        sliding_window=sliding_window,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def laguna_swa_attention_decode_split_tile16_exact_bf16_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -702,6 +822,116 @@ def laguna_swa_attention_decode_split_tile16_exact_bf16_spans(
         ctypes.c_void_p(key_cache_ptr),
         ctypes.c_void_p(value_cache_ptr),
         ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(score_scratch_ptr),
+        ctypes.c_void_p(physical_scratch_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(window),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(parsed_scan),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact tile16 split SWA and fuse its BF16 softplus gate."""
+
+    _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+        _SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT_GATED,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        gate_ptr,
+        gated_out_ptr,
+        score_scratch_ptr,
+        physical_scratch_ptr,
+        spans,
+        scan_slots,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        sliding_window=sliding_window,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+    symbol: str,
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    parsed_scan = _check_split_scan_slots(scan_slots, capacity)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if window <= 0 or window > capacity:
+        raise ValueError("sliding_window must be in [1, ring capacity]")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 13
+        + [ctypes.c_int64] * 7
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(gated_out_ptr),
         ctypes.c_void_p(score_scratch_ptr),
         ctypes.c_void_p(physical_scratch_ptr),
         ctypes.c_void_p(spans.base_offsets.ptr),
@@ -876,6 +1106,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_split_exact_gated_spans",
+            laguna_global_attention_decode_split_exact_gated_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "swa_context_spans",
             laguna_swa_attention_decode_bf16_spans,
         ),
@@ -891,8 +1126,18 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "swa_context_split_exact_gated_spans",
+            laguna_swa_attention_decode_split_exact_gated_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "swa_context_split_tile16_exact_spans",
             laguna_swa_attention_decode_split_tile16_exact_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
+            "swa_context_split_tile16_exact_gated_spans",
+            laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans,
         ),
         (
             "laguna_attention_prefill",
@@ -1003,13 +1248,16 @@ __all__ = [
     "build_laguna_kv_attention",
     "laguna_global_attention_decode_bf16_spans",
     "laguna_global_attention_decode_split_exact_bf16_spans",
+    "laguna_global_attention_decode_split_exact_gated_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",
     "laguna_global_write_kv_f32_spans",
     "laguna_global_write_kv_rows_f32_spans",
     "laguna_swa_attention_decode_bf16_spans",
     "laguna_swa_attention_decode_token4_exact_bf16_spans",
     "laguna_swa_attention_decode_split_exact_bf16_spans",
+    "laguna_swa_attention_decode_split_exact_gated_bf16_spans",
     "laguna_swa_attention_decode_split_tile16_exact_bf16_spans",
+    "laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans",
     "laguna_swa_attention_prefill_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
     "laguna_swa_write_kv_f32_spans",

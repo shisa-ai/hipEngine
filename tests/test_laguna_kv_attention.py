@@ -85,12 +85,15 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         laguna_global_attention_decode_bf16_spans,
         laguna_global_attention_decode_split_exact_bf16_spans,
+        laguna_global_attention_decode_split_exact_gated_bf16_spans,
         laguna_global_attention_prefill_bf16_spans,
         laguna_global_write_kv_rows_f32_spans,
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
         laguna_swa_attention_decode_split_exact_bf16_spans,
+        laguna_swa_attention_decode_split_exact_gated_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_bf16_spans,
+        laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans,
         laguna_swa_attention_prefill_bf16_spans,
         laguna_swa_attention_prefill_wave32_exact_bf16_spans,
         laguna_swa_write_kv_f32_spans,
@@ -134,6 +137,15 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             backend="hip_gfx1100",
             layer="laguna_attention_decode",
             quant="bf16",
+            variant="global_context_split_exact_gated_spans",
+        )
+        is laguna_global_attention_decode_split_exact_gated_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_attention_decode",
+            quant="bf16",
             variant="swa_context_spans",
         )
         is laguna_swa_attention_decode_bf16_spans
@@ -165,6 +177,24 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         )
         is laguna_swa_attention_decode_split_tile16_exact_bf16_spans
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_attention_decode",
+            quant="bf16",
+            variant="swa_context_split_exact_gated_spans",
+        )
+        is laguna_swa_attention_decode_split_exact_gated_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_attention_decode",
+            quant="bf16",
+            variant="swa_context_split_tile16_exact_gated_spans",
+        )
+        is laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans
+    )
     load_backend_kernel_package("hip_gfx1151")
     assert (
         resolve(
@@ -177,8 +207,11 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
     )
     for split_variant in (
         "global_context_split_exact_spans",
+        "global_context_split_exact_gated_spans",
         "swa_context_split_exact_spans",
+        "swa_context_split_exact_gated_spans",
         "swa_context_split_tile16_exact_spans",
+        "swa_context_split_tile16_exact_gated_spans",
     ):
         assert (
             resolve(
@@ -459,6 +492,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert cache.global_split_min_live == 127
         assert cache.swa_split_min_live == 65
         assert cache.swa_split_tile16_min_live == 257
+        assert cache.split_gate_fusion
         assert cache.allocation_count == 245
         assert cache.resident_nbytes == sum(runtime.allocations.values())
         assert sorted(runtime.allocations.values()).count(split_elements * 4) == 2
@@ -476,6 +510,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
     )
     try:
         assert tile16.swa_split_tile16_min_live == 257
+        assert tile16.split_gate_fusion
         assert tile16.allocation_count == 245
         assert sorted(tile16_runtime.allocations.values()).count(split_elements * 4) == 2
     finally:
@@ -494,6 +529,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert tile16_rollback.global_split_min_live == 127
         assert tile16_rollback.swa_split_min_live == 65
         assert tile16_rollback.swa_split_tile16_min_live is None
+        assert tile16_rollback.split_gate_fusion
         assert tile16_rollback.allocation_count == 245
     finally:
         tile16_rollback.free()
@@ -511,6 +547,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert rollback.global_split_min_live is None
         assert rollback.swa_split_min_live is None
         assert rollback.swa_split_tile16_min_live is None
+        assert not rollback.split_gate_fusion
         assert rollback.allocation_count == 243
         assert sorted(rollback_runtime.allocations.values()).count(split_elements * 4) == 0
     finally:

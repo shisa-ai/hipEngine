@@ -148,12 +148,27 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         (
             "laguna_attention_decode",
             "bf16",
+            "global_context_split_exact_gated_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
             "swa_context_split_exact_spans",
         ),
         (
             "laguna_attention_decode",
             "bf16",
+            "swa_context_split_exact_gated_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
             "swa_context_split_tile16_exact_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_tile16_exact_gated_spans",
         ),
         # D9 is W7900-only until gfx1151 receives an independent exact/perf gate.
         (
