@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_production",
+  "revision": "7ecd940b9b2c42eaf14a2d6692426de3574d8384",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "change": {
+    "route": "hipblaslt_range_direct",
+    "worst_gated_attention_bf16_abs_bound": 7957.538643636415,
+    "runtime_admission_bound": 15915.07728727283,
+    "fp16_max_finite": 65504.0,
+    "admission_margin_ratio": 4.115845548069255,
+    "exact_cast_sequence_scaled_ms": 3.4039320945739746,
+    "exact_cast_sequence_direct_ms": 2.6800050735473633,
+    "exact_cast_sequence_change_percent": -21.2673755208156
+  },
+  "clean_selector_unset": {
+    "protocol": "matrix chunk 512, attention chunk 128, seven repetitions, alternating 512/1024/4096 order",
+    "pp512_samples_tok_s": [
+      508.28390382282305,
+      503.3533335270685,
+      503.19814658600023,
+      505.4214530571226,
+      505.1854817985307,
+      504.6273619542121,
+      506.12695245545973
+    ],
+    "pp512_median_tok_s": 505.1854817985307,
+    "pp512_minimum_tok_s": 503.19814658600023,
+    "pp512_median_wall_ms": 1013.489141012542,
+    "prior_production_median_tok_s": 503.8692736684947,
+    "relative_change_percent": 0.26122016142264837,
+    "median_wall_change_ms": -2.6474379701539874,
+    "pp1024_median_tok_s": 454.0305782792836,
+    "pp1024_change_percent": 0.3256777791099674,
+    "pp4096_median_tok_s": 357.91057576370105,
+    "pp4096_change_percent": 0.258811594209285,
+    "next_token_ids": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "lifecycle": "pass",
+    "raw_sha256": "50c7ac53aac10ac29a09df58ae61bb94b2fbd4e69fa89d98af60b25112ee9afc"
+  },
+  "correctness": {
+    "complete_state_vs_norm_direct": "All logits, final and pre-final hidden, live KV, spans, cursor, token, and token logit are exact.",
+    "transferred_max_kl": 0.04954258196634279,
+    "transferred_top1_matches": 316,
+    "transferred_total_steps": 320,
+    "minimum_category_top1_percent": 96.875,
+    "poolside": "pass",
+    "decode": "neutral",
+    "determinism": "pass",
+    "lifecycle": "pass"
+  },
+  "cached_profile": {
+    "pp512_tok_s": 510.94584004117405,
+    "pp1024_tok_s": 457.9901116465303,
+    "pp4096_tok_s": 359.6305973785586,
+    "pp512_kernel_span_ms": 997.982624,
+    "pp512_kernel_sum_ms": 987.181709,
+    "pp512_dispatches": 1886,
+    "families_ms": {
+      "selected_gate_up": 318.558706,
+      "selected_down": 201.764573,
+      "global_attention": 44.01847,
+      "sliding_attention": 173.291307,
+      "source_f16_contractions": 123.906814,
+      "dense_shared": 52.642372,
+      "router": 23.343822,
+      "activation": 17.703514,
+      "norm": 24.699756,
+      "other": 5.208745,
+      "kv": 0.831796,
+      "lm_head": 1.174604,
+      "embedding": 0.03723
+    },
+    "source_f16_dispatches": 240,
+    "bf16_to_fp16_scaled_rows_dispatches": 0,
+    "f32_scale_rows_to_bf16_dispatches": 0,
+    "child_sha256": "a0af3ebe3800dc9506e4ff24af2182f7c789f30d4a78fe3836fcdaf5d89fd53d",
+    "trace_sha256": "2c03f6cea9cf092911df4d794cb1d4a458ba1bc7eda397fa7f13efd041137386",
+    "summary_sha256": "ffceefd77ce3fa1ee1c4537b1c18771db6bca3fecfae29a7230cae98d71e75fb"
+  },
+  "decision": {
+    "retained": true,
+    "scope": "gfx1151 production default",
+    "rollback": "hipblaslt_norm_direct and hipblaslt_scaled remain explicit for one release",
+    "next": "Return to aligned selected-expert weight consumption and the attention ceiling toward 700 tok/s."
+  }
+}

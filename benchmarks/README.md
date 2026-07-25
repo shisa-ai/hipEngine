@@ -3,12 +3,12 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-f16-norm-direct-production.json`](results/2026-07-26-gfx1151-laguna-f16-norm-direct-production.json).
+[`2026-07-26-gfx1151-laguna-f16-output-range-direct-production.json`](results/2026-07-26-gfx1151-laguna-f16-output-range-direct-production.json).
 It binds matched A/B, clean selector-unset timing, complete-state exactness, and
-cached attribution to direct attention-RMSNorm BF16-to-FP16 consumption at
-revision `1bac6ead5`. Conservative median pp512 is **503.869 tok/s**, all seven
-clean samples are at least **501.790 tok/s**, the independent cached trace is
-**507.067 tok/s**, and absolute maximum KL remains **0.049542582**. The
+cached attribution to statically range-proven direct F16 projection boundaries
+at revision `7ecd940b9`. Conservative median pp512 is **505.185 tok/s**, all
+seven clean samples are at least **503.198 tok/s**, the independent cached trace
+is **510.946 tok/s**, and absolute maximum KL remains **0.049542582**. The
 declared 500 tok/s production gate is closed; the active stretch target is
 700 tok/s.
 
@@ -46,11 +46,13 @@ separate 2x reserve. Removing the final row reduction/scale improves the exact
 48-layer cast sequence **3.404 -> 2.680 ms (-21.27%)**. Seven-pair pp512 is
 complete-state exact and moves **505.805 -> 506.284 tok/s (+0.095%)**; the
 aggregate change is inside run variance, so the measured sub-window is the
-retention evidence. gfx1151 selects the candidate; published production remains
-**503.869 tok/s** pending the clean selector-unset refresh.
-[`artifact`](results/2026-07-26-gfx1151-laguna-f16-output-range-direct-candidate.json).
+retention evidence. Clean selector-unset publication retains the route at
+**505.185 tok/s** median and **503.198 tok/s** minimum; 1K/4K also improve
+**0.326%/0.259%**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-f16-output-range-direct-production.json).
 
 Latest retained hipEngine revisions in this scoreboard:
+`7ecd940b9` for exact static-range direct F16 boundaries in Laguna production,
 `1bac6ead5` for the exact direct attention-norm cast in Laguna production,
 `238eb28cd1c748c1755ac8871db4c0e140c3fee4` for exact eight-token
 Laguna router-logit reuse,
