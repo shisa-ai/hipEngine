@@ -63,6 +63,10 @@ should be removed or collapsed.
   rollback added 2026-07-26. Remove the environment branch after the clean
   16x32 publication and one release window remain non-regressive; explicit
   `tile_m`/`tile_n` arguments stay for tests and microbenchmarks.
+- `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` is the temporary Q4 pack8
+  shape-policy rollback added 2026-07-26. Remove it after clean publication,
+  a confirming family trace, and one non-regressive release window; explicit
+  tile arguments remain part of the primitive test/microbenchmark surface.
 
 ## Priority Cleanup (do first)
 

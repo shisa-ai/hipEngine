@@ -27,6 +27,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q4_k_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_prefill.so"
 _Q4_K_BLOCK = 256
+_Q4_K_DENSE_WMMA_TILE_ENV = "HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE"
 _Q6_K_DENSE_WMMA_TILE_ENV = "HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE"
 
 # Allowed (tile_m, tile_n) for the WMMA prefill kernels. Mirrors the PARO
@@ -117,6 +118,38 @@ def _default_q6_tiles(
             f"expected one of: {allowed}"
         )
     return tile
+
+
+def _default_q4_pack8_tiles(
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> tuple[int, int]:
+    """Return the measured gfx1151 pack8 tile for a dense Q4 shape."""
+
+    value = os.environ.get(_Q4_K_DENSE_WMMA_TILE_ENV, "").strip().lower()
+    if value:
+        try:
+            tile_m_raw, tile_n_raw = value.split("x", 1)
+            tile = int(tile_m_raw), int(tile_n_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{_Q4_K_DENSE_WMMA_TILE_ENV} must name a supported tile as MxN"
+            ) from exc
+        if tile not in _ALLOWED_TILES:
+            allowed = ", ".join(f"{m}x{n}" for m, n in sorted(_ALLOWED_TILES))
+            raise ValueError(
+                f"{_Q4_K_DENSE_WMMA_TILE_ENV}={value!r} is unsupported; "
+                f"expected one of: {allowed}"
+            )
+        return tile
+
+    shape = int(rows), int(in_features), int(out_features)
+    if shape == (512, 1024, 3072):
+        return 64, 32
+    if shape == (512, 3072, 12288):
+        return 32, 32
+    return 64, 16
 
 
 def _resolve_tiles(rows: int, out_features: int, tile_m: int | None, tile_n: int | None) -> tuple[int, int]:
@@ -350,6 +383,59 @@ def _make_pack8_wrapper(variant: str):
     return wrapper
 
 
+def _make_pack8_gfx1151_wrapper(variant: str):
+    sym = _symbol(variant)
+
+    def wrapper(
+        x_ptr: int,
+        qweight_ptr: int,
+        scales_ptr: int,
+        mins_ptr: int,
+        out_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        tile_m: int | None = None,
+        tile_n: int | None = None,
+        threads: int = 0,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        if tile_m is None and tile_n is None:
+            tile_m, tile_n = _default_q4_pack8_tiles(
+                rows,
+                in_features,
+                out_features,
+            )
+        _launch_pack8(
+            sym,
+            x_ptr,
+            qweight_ptr,
+            scales_ptr,
+            mins_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            tile_m=tile_m,
+            tile_n=tile_n,
+            threads=threads,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    wrapper.__name__ = f"gguf_q4_k_{variant}_gfx1151"
+    wrapper.__qualname__ = wrapper.__name__
+    wrapper.__doc__ = (
+        "Launch resident-pack8 GGUF Q4_K WMMA prefill with the measured "
+        f"gfx1151 shape policy (C symbol: {sym})."
+    )
+    return wrapper
+
+
 def _make_q6_wrapper(
     variant: str,
     *,
@@ -384,6 +470,9 @@ gguf_q4_k_wmma_prefill_f32_fp16_out = _make_wrapper("wmma_prefill_f32_fp16_out")
 gguf_q4_k_wmma_prefill_f32_f32_out = _make_wrapper("wmma_prefill_f32_f32_out")
 gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out = _make_pack8_wrapper(
     "pack8_wmma_prefill_bf16_bf16_out"
+)
+gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out = (
+    _make_pack8_gfx1151_wrapper("pack8_wmma_prefill_bf16_bf16_out")
 )
 gguf_q6_k_wmma_prefill_bf16_bf16_out = _make_q6_wrapper(
     "wmma_prefill_bf16_bf16_out"
@@ -451,6 +540,7 @@ register_gguf_q4_k_prefill_kernels()
 
 __all__ = [
     "_ALLOWED_TILES",
+    "_default_q4_pack8_tiles",
     "_default_q6_tiles",
     "_default_tiles",
     "build_gguf_q4_k_prefill",
@@ -466,6 +556,7 @@ __all__ = [
     "gguf_q4_k_wmma_prefill_f32_fp16_out",
     "gguf_q4_k_wmma_prefill_f32_f32_out",
     "gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out",
+    "gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out",
     "gguf_q4_k_wmma_prefill_dual_bf16_bf16_out",
     "gguf_q6_k_wmma_prefill_bf16_bf16_out",
     "gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out",

@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T04:14:00+09:00",
+  "kind": "hipengine_laguna_q4_pack8_shape_policy_candidate",
+  "status": "retained_candidate_pending_clean_production_gate",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M resident-pack8 Q4 dense/shared WMMA tiles on gfx1151",
+  "repo": {
+    "base_revision": "134c5b433",
+    "tracked_clean": false,
+    "qualification": "Candidate measurements were made in the implementation worktree; clean selector-unset publication and a refreshed family trace remain required."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "scope": "gfx1151 four-axis registry override; gfx1100 remains on its existing 64x16 pack8 wrapper",
+    "policy": {
+      "M512_K3072_N1024": "64x16",
+      "M512_K1024_N3072": "64x32",
+      "M512_K3072_N12288": "32x32",
+      "all_other_shapes": "64x16"
+    },
+    "rollback": "HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16",
+    "resident_layout": "unchanged resident Q4_K pack8 qweight plus FP32 scale/min planes",
+    "arithmetic": "unchanged FP16 WMMA operands, FP32 K accumulation order, and BF16 stores"
+  },
+  "actual_weight_leaf": {
+    "scope": "one actual resident model weight per shape; all six supported tiles; nine counter-rotated burst-three HIP-event samples",
+    "shapes": [
+      {
+        "shape_mkn": [
+          512,
+          3072,
+          1024
+        ],
+        "call_count": 94,
+        "rollback_64x16_median_ms": 0.24258732795715332,
+        "candidate_tile": "64x16",
+        "candidate_median_ms": 0.24258732795715332
+      },
+      {
+        "shape_mkn": [
+          512,
+          1024,
+          3072
+        ],
+        "call_count": 24,
+        "rollback_64x16_median_ms": 0.2818613251050313,
+        "candidate_tile": "64x32",
+        "candidate_median_ms": 0.24162566661834717
+      },
+      {
+        "shape_mkn": [
+          512,
+          3072,
+          12288
+        ],
+        "call_count": 2,
+        "rollback_64x16_median_ms": 2.6073039372762046,
+        "candidate_tile": "32x32",
+        "candidate_median_ms": 2.214580694834391
+      }
+    ],
+    "call_weighted_median_ms": {
+      "rollback_64x16": 34.78248850504557,
+      "candidate_shape_policy": 33.03138621648153,
+      "change_percent": -5.034436476015869
+    },
+    "all_six_tiles_bf16_byte_identical_on_each_shape": true
+  },
+  "actual_weight_correctness": {
+    "weights_checked": 120,
+    "expected_weights": 120,
+    "policy_counts": {
+      "64x16": 94,
+      "64x32": 24,
+      "32x32": 2
+    },
+    "total_bf16_mismatches_vs_64x16": 0,
+    "checksum_xor": "0xe348e99d"
+  },
+  "validation": {
+    "red": "The focused files failed collection because the gfx1151 shape policy and wrapper did not exist.",
+    "green": "The policy/rollback tests, gfx1151 registry test, and explicit 64x32/32x32 BF16 byte-identity fixtures pass.",
+    "affected_bundle": "tests/test_gguf_q4_k_wmma_prefill.py, tests/test_gfx1151_backend.py, tests/test_gguf_linear_dispatch.py, tests/test_laguna_gguf_runner.py, and tests/test_laguna_moe_gpu.py all pass with two expected skips.",
+    "all_full_model_runs_same_next_token": true,
+    "next_token": 2930
+  },
+  "full_model": {
+    "scope": "one resident owner; matrix512/attention128; one 128-row warmup per mode; seven counterbalanced synchronized pp512 repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_pack8_shape_ab.py --repetitions 7 --output /tmp/laguna-q4-pack8-shape-policy-fullmodel.json",
+    "rollback_64x16_samples_tok_s": [
+      489.9710603953144,
+      489.0355376319811,
+      487.83182734957194,
+      486.5087068514254,
+      488.200595904222,
+      490.8523848210522,
+      490.91315908633015
+    ],
+    "rollback_64x16_median_tok_s": 489.0355376319811,
+    "selector_unset_shape_policy_samples_tok_s": [
+      491.0136725034524,
+      489.10486013129434,
+      487.42646957755284,
+      486.883243707521,
+      495.4039939340484,
+      491.5291592710178,
+      491.75684804072273
+    ],
+    "selector_unset_shape_policy_median_tok_s": 491.0136725034524,
+    "speedup": 1.004044971621183,
+    "improvement_percent": 0.4044971621183002,
+    "paired_repetitions_won": 6,
+    "paired_repetitions_total": 7,
+    "complete_sample_separation": false,
+    "median_wall_reduction_ms": 4.217857029289007,
+    "raw_json_sha256": "c8ce2a9b94280707c3b723ca321b74f12e28329088b238f337fd9c53fa3e0454",
+    "raw_json_committed": false
+  },
+  "decision": {
+    "action": "Retain the exact gfx1151 Q4 pack8 shape policy as a candidate default because the named leaf window improves 5.03%, all 120 outputs are byte-identical, and the full-model median improves with six of seven paired wins.",
+    "production_publication_pending": true,
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  }
+}
