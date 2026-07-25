@@ -1,0 +1,126 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 58.42484306154226,
+    "canonical_ms_per_token": 17.116,
+    "dispatches_per_token": 723,
+    "name": "retained mixed attention projections",
+    "revision": "3d9f41b1e"
+  },
+  "candidate": {
+    "description": "one exact heterogeneous c=1 dispatch for selected IQ2_XS grid64 gate/up+SiLU and shared Q5_K gate/up",
+    "launch_contraction_if_integrated": 1,
+    "removed": true,
+    "selected_owner": "local128 with threads 0..63 preserving retained local64 IQ2 work and reduction; threads 64..127 contribute +0",
+    "shared_owner": "retained local128 Q5_K pack8 coefficient-hoisting body"
+  },
+  "checks": {
+    "actual_first_last_event_improve": false,
+    "actual_first_last_wall_improve": false,
+    "all_three_outputs_bf16_bit_exact": true,
+    "category_gate_skipped_after_precondition_failure": true,
+    "full_model_state_gate_skipped_after_precondition_failure": true,
+    "kernel_trace_skipped_after_precondition_failure": true,
+    "performance_precondition_pass": false,
+    "production_shape_oracle_pass": true,
+    "runtime_selector_added": false
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "reject and remove before runtime integration",
+    "next": "retain the selected-IQ2 and shared-Q5 two-launch chain and choose a new exact contraction that does not double selected-block wave ownership",
+    "reason": "The local128 heterogeneous launch regresses inclusive event and synchronized wall on both first and last actual sparse layers; launch removal does not recover the cost of the inactive second selected wave.",
+    "vulkan_target_tok_s": 64.41823922786776
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0; GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_mixed_moe_gate_up_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "in_features": 3072,
+    "launches_per_sample": 200,
+    "layers": [
+      1,
+      46
+    ],
+    "num_experts": 256,
+    "order": "counterbalanced",
+    "repetitions": 15,
+    "selected_experts": [
+      193,
+      7,
+      89,
+      221,
+      3,
+      127,
+      44,
+      255,
+      18,
+      166
+    ],
+    "selected_features": 1024,
+    "shared_features": 1024,
+    "top_k": 10,
+    "warmups": 50
+  },
+  "provenance": {
+    "candidate_code_patch_sha256": "e765a54ef2ce3a4eb2d472e7e4e37ff0d8bfb5aabe364b667fd3d5ecec332b24",
+    "candidate_code_object_sha256": "eacad640cd7e26f8007bbec38d6abfa5a1e81c5697ef4c0e2efc7b0d80e56ac5",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq2_q5_mixed_moe_actual.py",
+    "harness_sha256": "9b361f1cad9b29a59bd173dca2de064f3c9ab8722c86bdb4e16953e83df3df41",
+    "oracle_sha256": "2126be3bec35d6b278526a447803d4c99e455a59ded086b2b7bbdafb4e9cf143",
+    "oracle_stdout_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "raw_stdout_sha256": "73ad72480920c51a72ddecb232c10a9073614439372eddc6b3e44ac056a55cde"
+  },
+  "results": [
+    {
+      "candidate": {
+        "event_us": 58.58081340789795,
+        "wall_us": 59.166980208829045
+      },
+      "control": {
+        "event_us": 56.75240993499756,
+        "wall_us": 56.77095032297075
+      },
+      "delta_pct": {
+        "event": 3.2217195269673704,
+        "wall": 4.220521009824996
+      },
+      "layer": 1,
+      "quality": {
+        "selected_output_bf16_equal": true,
+        "shared_gate_output_bf16_equal": true,
+        "shared_up_output_bf16_equal": true
+      }
+    },
+    {
+      "candidate": {
+        "event_us": 59.35537338256836,
+        "wall_us": 59.90519071929157
+      },
+      "control": {
+        "event_us": 56.97978496551514,
+        "wall_us": 57.09070013836026
+      },
+      "delta_pct": {
+        "event": 4.1691775749785,
+        "wall": 4.929858232795081
+      },
+      "layer": 46,
+      "quality": {
+        "selected_output_bf16_equal": true,
+        "shared_gate_output_bf16_equal": true,
+        "shared_up_output_bf16_equal": true
+      }
+    }
+  ],
+  "schema": 1,
+  "status": "rejected_removed"
+}
