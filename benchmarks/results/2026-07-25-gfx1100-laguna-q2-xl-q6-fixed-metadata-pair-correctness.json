@@ -1,0 +1,190 @@
+{
+  "actual_weight_screen": {
+    "all_bit_exact": true,
+    "all_event_and_wall_positive": true,
+    "event_improvement_pct_range": [
+      21.92383464559494,
+      40.51948546743712
+    ],
+    "hardware": "AMD Radeon Pro W7900 / gfx1100 device 0",
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "layers": "first/last Q6 K/V layers 0/46 plus the only Q6 query/gate layer 47",
+      "warmups_per_mode": 50
+    },
+    "queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "rows": [
+      {
+        "bit_exact": true,
+        "candidate_event_us": 16.55990481376648,
+        "candidate_wall_us": 16.442009946331382,
+        "event_delta_pct": -21.92383464559494,
+        "layer_id": 0,
+        "max_abs": 0.0,
+        "retained_event_us": 21.209936141967773,
+        "retained_wall_us": 21.50527434423566,
+        "role": "kv",
+        "shapes": [
+          [1024, 3072],
+          [1024, 3072]
+        ],
+        "wall_delta_pct": -23.54429112066385
+      },
+      {
+        "bit_exact": true,
+        "candidate_event_us": 16.05650544166565,
+        "candidate_wall_us": 16.09036000445485,
+        "event_delta_pct": -22.278151664428737,
+        "layer_id": 46,
+        "max_abs": 0.0,
+        "retained_event_us": 20.658934116363525,
+        "retained_wall_us": 20.78987075947225,
+        "role": "kv",
+        "shapes": [
+          [1024, 3072],
+          [1024, 3072]
+        ],
+        "wall_delta_pct": -22.604809858551988
+      },
+      {
+        "bit_exact": true,
+        "candidate_event_us": 43.028483390808105,
+        "candidate_wall_us": 43.70436421595514,
+        "event_delta_pct": -40.51948546743712,
+        "layer_id": 47,
+        "max_abs": 0.0,
+        "retained_event_us": 72.34046936035156,
+        "retained_wall_us": 71.65252580307424,
+        "role": "query_gate",
+        "shapes": [
+          [9216, 3072],
+          [72, 3072]
+        ],
+        "wall_delta_pct": -39.00513104580605
+      }
+    ],
+    "wall_improvement_pct_range": [
+      22.604809858551988,
+      39.00513104580605
+    ]
+  },
+  "baseline": {
+    "canonical_h32_decode_tok_s": 57.7109131212639,
+    "canonical_ms_per_token": 17.328,
+    "name": "retained expanded-grid IQ2 plus exact raw-Q5 fixed metadata",
+    "revision": "ae622d4f4"
+  },
+  "candidate": {
+    "default": false,
+    "description": "exact c=1 raw-Q6 attention-pair sibling transferring the retained singleton's local128 cooperative d*scale schedule into the flattened pair",
+    "fallback": "the registered generic raw-Q6 pair remains default; rows>1, gfx1151, unsupported backends, explicit disable, and registry misses retain existing exact pair/singleton routes",
+    "persistent_weight_copy": false,
+    "registered_keys": [
+      [
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q6_k",
+        "pack8_fixed_meta_gemv_decode_bf16_f32_out"
+      ]
+    ],
+    "reusable_workspace_bytes": 0,
+    "unchanged_boundaries": [
+      "raw 210-byte Q6_K blocks",
+      "flattened equal/unequal projection-pack ownership",
+      "each thread's exact [t, t+128] accumulation order per superblock",
+      "eight accumulator chains",
+      "wave32 16/8/4/2/1 reduction trees",
+      "logical wave-group 0/1/2/3 final addition",
+      "F32 stores"
+    ]
+  },
+  "date": "2026-07-25",
+  "decision": {
+    "action": "admit default-off for clean context and complete-category promotion gates",
+    "additional_speedup_required_pct_before_candidate": 11.622283800137122,
+    "promotion_contract": "freeze and run both process orders at short/512/1K/near-4K, then both complete 18-prompt/two-repetition orders before any backend capability/default change",
+    "vulkan_target_tok_s": 64.41823922786776
+  },
+  "isa": {
+    "candidate": {
+      "allocated_vgpr_in_trace": 48,
+      "ds_bpermute": 40,
+      "global_load_static_instructions": 17,
+      "instructions": 544,
+      "lds_bytes_in_trace": 1024,
+      "logical_vgpr": 44,
+      "scratch_bytes": 0,
+      "text_bytes": 3140
+    },
+    "interpretation": "the cooperative metadata schedule halves static global-load instructions, contracts text and logical VGPR, and preserves the 40 reduction shuffles; timing decides despite adding 512 bytes of LDS over the retained pair",
+    "retained": {
+      "ds_bpermute": 40,
+      "global_load_static_instructions": 33,
+      "instructions": 620,
+      "logical_vgpr": 51,
+      "scratch_bytes": 0,
+      "text_bytes": 3616
+    }
+  },
+  "kind": "hipengine_laguna_q2_xl_q6_fixed_metadata_pair_correctness",
+  "model_state_gate": {
+    "active_kv_and_live_spans_exact": true,
+    "bulk_prefill_exact": true,
+    "decode_transitions": 16,
+    "full_logits_exact": true,
+    "hidden_boundaries": 48,
+    "passed": true,
+    "peak_active_allocations": 1500,
+    "peak_allocated_bytes": 40459057576,
+    "reset_exact": true,
+    "routed_boundaries": 47,
+    "tracked_returned_to_baseline": true
+  },
+  "performance_claim": false,
+  "provenance": {
+    "actual_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_q6_fixed_meta_actual.py",
+    "actual_harness_sha256": "8e78ee2fc326ba9d040232e1cd0654ed3dd8ccbbe449eb1d70cfc37ae74369dd",
+    "actual_raw_sha256": "d584edeb9b82e72cf0e2a83b78225d1b43123c677e54bacc8b2e6ecd7386e8ee",
+    "candidate_disassembly_sha256": "e8798d245a6dba60b94d3710e28e3353a11db37cfbff64dc95c5c1676ee13f64",
+    "code_object_sha256": "1a5c4cab0b9098101b089395e5ab600c99351cbe0c196a7b3c26786735bb85a5",
+    "library_sha256": "1e5ff66ec0077ac8f6f5c64d75011d3fc5a604a3fdfb2c918ee64b81c1518604",
+    "retained_disassembly_sha256": "a06e29066c77d37a86f1ff9476c16c4db0a03fea55f779eb390a3128e1e7a173",
+    "state_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/laguna_q6_fixed_meta_correctness.py",
+    "state_harness_sha256": "914296e8284fdece562bee0846d2dff0d3c66e3dc19597e690f9019bfb5223a5",
+    "state_raw_sha256": "28c96954275dba02208b239f824e25ae4b4e391f8415629d3744772e225b7def",
+    "trace_child_sha256": "f85bac1a058f22aff4ba8c8865f60fc820d9b878c98d37892f7a1b79ab409a9b",
+    "trace_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-fixed-meta-trace -- uv run python -u /tmp/trace_laguna_q6_fixed_meta_model.py",
+    "trace_csv_sha256": "a4fdd959d46ff3b65cec72d254b5c546a425ec9e3cd4201d3fd09a90f494ad58",
+    "trace_harness_sha256": "4a109db2fccfbb043675b7576938b8ef7cffbec380385e60dbd12cf22ac40be5"
+  },
+  "red_green": {
+    "focused_green": "candidate registry, synthetic BF16/F32 bit equality, gfx1100-only resolver, both Q6 attention roles, and explicit benchmark CLI tests pass",
+    "kernel_red": "candidate wrapper and registry key absent",
+    "kernel_red_sha256": "3183fade7c70d1bcd9743147892dcfad81c2130f9b07d6354255d11cd7245e43",
+    "runtime_red": "gfx1100-only resolver and Q6 pair selector absent",
+    "runtime_red_sha256": "2a01096b013037fac9a9d5bcc82e50ac9662c07ef97519623b3419f179db64fe"
+  },
+  "schema": 1,
+  "status": "correctness_admitted_pending_formal_performance_gate",
+  "trace": {
+    "cached_build": true,
+    "candidate_calls": 96,
+    "candidate_duration_us_max": 46.08,
+    "candidate_duration_us_median": 17.84,
+    "candidate_duration_us_min": 17.321,
+    "candidate_grid_workitems": {
+      "148608": 2,
+      "32768": 94
+    },
+    "candidate_resources": [
+      [128, 48, 128, 1024, 0]
+    ],
+    "compiler_ran_under_profiler": false,
+    "decode_transitions": 2,
+    "finite_logits": true,
+    "prefill_q6_singleton_calls": 100,
+    "retained_pair_decode_calls": 0,
+    "tracked_returned_to_baseline": true
+  }
+}

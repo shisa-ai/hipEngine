@@ -17,6 +17,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q6_k_pack8_gemv_bf16_f32_out,
+    gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out,
     register_gguf_k_gemv_kernels,
 )
@@ -66,6 +67,53 @@ def _run_singleton(fn, x: np.ndarray, qweight: np.ndarray, *, library) -> np.nda
             free(buffer)
 
 
+def _run_pair(
+    fn,
+    x: np.ndarray,
+    qweight_a: np.ndarray,
+    qweight_b: np.ndarray,
+    *,
+    library,
+) -> tuple[np.ndarray, np.ndarray]:
+    rows, in_features = x.shape
+    out_a = np.empty((rows, qweight_a.shape[0]), dtype=np.float32)
+    out_b = np.empty((rows, qweight_b.shape[0]), dtype=np.float32)
+    buffers = [
+        malloc(x.nbytes),
+        malloc(qweight_a.nbytes),
+        malloc(qweight_b.nbytes),
+        malloc(out_a.nbytes),
+        malloc(out_b.nbytes),
+    ]
+    x_buf, weight_a_buf, weight_b_buf, out_a_buf, out_b_buf = buffers
+    try:
+        copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
+        copy_host_to_device(
+            weight_a_buf, host_array_ptr(qweight_a), qweight_a.nbytes
+        )
+        copy_host_to_device(
+            weight_b_buf, host_array_ptr(qweight_b), qweight_b.nbytes
+        )
+        fn(
+            x_buf.ptr,
+            weight_a_buf.ptr,
+            weight_b_buf.ptr,
+            out_a_buf.ptr,
+            out_b_buf.ptr,
+            rows,
+            in_features,
+            qweight_a.shape[0],
+            qweight_b.shape[0],
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_a), out_a_buf, out_a.nbytes)
+        copy_device_to_host(host_array_ptr(out_b), out_b_buf, out_b.nbytes)
+        return out_a, out_b
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
 def test_q6_k_decode_pair_registry_key_resolves() -> None:
     register_gguf_k_gemv_kernels()
     assert resolve(
@@ -74,6 +122,12 @@ def test_q6_k_decode_pair_registry_key_resolves() -> None:
         quant="gguf_q6_k",
         variant="pack8_gemv_decode_bf16_f32_out",
     ) is gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear_pair",
+        quant="gguf_q6_k",
+        variant="pack8_fixed_meta_gemv_decode_bf16_f32_out",
+    ) is gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out
 
 
 def test_q6_k_decode_pair_wrapper_rejects_unaligned_shape() -> None:
@@ -89,6 +143,45 @@ def test_q6_k_decode_pair_wrapper_rejects_unaligned_shape() -> None:
             out_features=1024,
             out_features_b=1023,
         )
+    with pytest.raises(ValueError, match="rows must be exactly 1"):
+        gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out(
+            1,
+            2,
+            3,
+            4,
+            5,
+            rows=2,
+            in_features=256,
+            out_features=8,
+            out_features_b=8,
+        )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q6_k_fixed_metadata_pair_is_f32_bit_exact() -> None:
+    rows, in_features = 1, 512
+    rng = np.random.default_rng(20260731)
+    x = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(rows, in_features)))
+    qweight_a = make_q6_k_weight(8, in_features)
+    qweight_b = make_q6_k_weight(16, in_features)[::-1].copy()
+    library = build_gguf_k_gemv(load=True)
+
+    expected = _run_pair(
+        gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out,
+        x,
+        qweight_a,
+        qweight_b,
+        library=library,
+    )
+    actual = _run_pair(
+        gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out,
+        x,
+        qweight_a,
+        qweight_b,
+        library=library,
+    )
+    np.testing.assert_array_equal(actual[0], expected[0])
+    np.testing.assert_array_equal(actual[1], expected[1])
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

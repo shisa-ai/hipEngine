@@ -79,6 +79,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="roll back exact fixed-metadata Q5 c=1 query/gate",
     )
+    parser.add_argument(
+        "--enable-q6-fixed-meta-pair",
+        action="store_true",
+        help="enable the exact gfx1100 fixed-metadata Q6 c=1 attention-pair candidate",
+    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -214,6 +219,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_q5_fixed_meta_query_gate=(
             False if args.disable_q5_fixed_meta_query_gate else None
         ),
+        use_q6_fixed_meta_pair=True if args.enable_q6_fixed_meta_pair else None,
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
         swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -598,6 +604,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_q5_fixed_meta_query_gate=(
                 False if args.disable_q5_fixed_meta_query_gate else None
             ),
+            use_q6_fixed_meta_pair=(
+                True if args.enable_q6_fixed_meta_pair else None
+            ),
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -719,6 +728,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_iq2_grid64": owner.use_iq2_grid64,
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
             "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,
+            "use_q6_fixed_meta_pair": owner.use_q6_fixed_meta_pair,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {

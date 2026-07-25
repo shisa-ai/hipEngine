@@ -115,6 +115,13 @@ def _make_unequal_dual_pack8_wrapper(quant: str, symbol: str):
     return wrapper
 
 
+def _make_q6_fixed_meta_pair_pack8_wrapper(symbol: str):
+    def wrapper(*args, **kwargs) -> None:
+        _launch_q6_fixed_meta_pair(symbol, *args, **kwargs)
+
+    return wrapper
+
+
 def _make_wave32x2_wrapper(symbol: str):
     def wrapper(*args, **kwargs) -> None:
         kwargs.setdefault("threads", 32)
@@ -248,6 +255,11 @@ gguf_q6_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q6_k", _symbol("g
 gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out = _make_unequal_dual_pack8_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "pair_pack8_gemv_decode_bf16_f32_out")
 )
+gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_q6_fixed_meta_pair_pack8_wrapper(
+        _symbol("gguf_q6_k", "pair_pack8_fixed_meta_gemv_decode_bf16_f32_out")
+    )
+)
 gguf_q6_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "selected_gemv_bf16_bf16_out"))
 gguf_q6_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "selected_silu_gemv_bf16_bf16_out")
@@ -308,6 +320,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             "pack8_gemv_decode_bf16_f32_out",
         ),
         gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q6_k",
+            "pack8_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
+        gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out,
         replace=replace,
     )
     register(
@@ -449,6 +471,47 @@ def _launch_unequal_dual(
         stream,
     )
     _check_launch(runtime, err)
+
+
+def _launch_q6_fixed_meta_pair(
+    symbol: str,
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    out_features_b: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if rows != 1:
+        raise ValueError("rows must be exactly 1 for GGUF Q6_K fixed-metadata decode")
+    if threads != 128:
+        raise ValueError("threads must be 128 for GGUF Q6_K fixed-metadata decode")
+    _launch_unequal_dual(
+        "gguf_q6_k",
+        symbol,
+        x_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features,
+        out_features_b,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        require_pack8=True,
+    )
 
 
 def _launch_wave32x2(
@@ -796,6 +859,7 @@ __all__ = [
     "gguf_q6_k_gemv_bf16_f32_out",
     "gguf_q6_k_gemv_bf16_fp16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
+    "gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_silu_gemv_bf16_bf16_out",
