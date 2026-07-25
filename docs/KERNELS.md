@@ -586,9 +586,13 @@ and token 2930 throughout. Cached pp512 tracing cuts Q4
 **132.467 -> 122.312 ms (-7.67%)**. Both are local128/LDS4096B/scratch0;
 Q4/Q6 use VGPR56/72. gfx1151 selects the combined row-vector mode, retains the
 scalar-staged MMQ as explicit rollback, and removes the temporary quant-scoped
-runtime selectors. Clean selector-unset publication remains required.
-Evidence:
-`benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`.
+runtime selectors. Clean committed production confirms scalar-down
+**379.827 -> 385.997 tok/s (+1.625%)** with complete sample separation and
+token 2930 throughout. Cached tracing measures
+**388.014/358.319/296.060 tok/s** at 512/1K/4K, cuts selected down
+**276.556 -> 254.006 ms (-8.15%)**, and cuts total kernel sum
+**1,326.263 -> 1,304.061 ms (-1.67%)**. Evidence:
+`benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-{candidate,production}.json`.
 
 The routing-qualified hybrid keeps MMQ128x32 for experts at or below 32 rows
 and tests MMQ128x64 only above 32. Frozen natural pp512 routing predicts

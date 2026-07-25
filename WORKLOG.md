@@ -179032,3 +179032,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`.
   A clean selector-unset production confirmation remains mandatory before the
   topline changes.
+
+## 2026-07-25 — Publish row-vector selected-down Laguna production
+
+- At clean committed runtime revision `69cc0d369`, the one-load five-pair gate
+  measures explicit scalar down **379.827 tok/s** median
+  (**379.827/379.614/379.681/382.099/380.303**) versus selector-unset combined
+  Q4/Q6 row-vector down **385.997**
+  (**387.019/385.997/385.413/385.458/387.093**): **+1.625%**, complete sample
+  separation, and token 2930 throughout. This is **+1.629%** over the prior
+  published 379.811 production row.
+- The clean cached all-family trace measures
+  **388.014/358.319/296.060 tok/s** at 512/1K/4K with exact tokens
+  **2930/95/7772**, positions, determinism, and all **77,461,325,460** tracked
+  bytes returned after close. Raw CSV/child/summary SHA-256 values are
+  `4b884c43...51c0` / `2b1c5888...fd02` / `ecfa4d3d...b1d`.
+- At pp512, selected down falls **276.556 -> 254.006 ms (-8.15%)** and kernel
+  sum falls **1,326.263 -> 1,304.061 ms (-1.67%)**. Current families are
+  gate/up **537.396 ms**, down **254.006 ms**, attention **216.727 ms**,
+  source-F16 **131.081 ms**, and dense/shared **70.674 ms**. The next bounded
+  performance task remains a genuinely key-parallel attention body while the
+  expert family needs a new less-weight/LDS-work premise.
+- Published
+  `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, and post-350
+  plan. The 500 production gate and 700 stretch remain open.
