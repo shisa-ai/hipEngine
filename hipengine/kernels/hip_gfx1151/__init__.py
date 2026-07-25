@@ -168,6 +168,11 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         (
             "laguna_attention_decode",
             "bf16",
+            "swa_context_split_exact_gated_wave_local_dim2_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
             "swa_context_split_tile16_exact_spans",
         ),
         (
@@ -179,6 +184,11 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "laguna_attention_decode",
             "bf16",
             "swa_context_split_tile16_exact_gated_wave_local_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
         ),
         # Current-P4 head/KV fusion is W7900-only until independently gated.
         (

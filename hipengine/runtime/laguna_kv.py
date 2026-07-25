@@ -91,6 +91,7 @@ class LagunaKVCache:
         swa_split_tile16_min_live: int | None,
         split_gate_fusion: bool,
         swa_split_wave_local: bool,
+        swa_split_wave_local_dim2: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -106,6 +107,7 @@ class LagunaKVCache:
         self.swa_split_tile16_min_live = swa_split_tile16_min_live
         self.split_gate_fusion = bool(split_gate_fusion)
         self.swa_split_wave_local = bool(swa_split_wave_local)
+        self.swa_split_wave_local_dim2 = bool(swa_split_wave_local_dim2)
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -329,35 +331,31 @@ class LagunaKVCache:
         if use_split:
             if self._split_score_scratch is None or self._split_physical_scratch is None:
                 raise RuntimeError("Laguna split attention scratch is unavailable")
-            variant = (
-                (
+            if state.attention_type == FULL_ATTENTION:
+                variant = (
                     "global_context_split_exact_gated_spans"
                     if use_gated
                     else "global_context_split_exact_spans"
                 )
-                if state.attention_type == FULL_ATTENTION
-                else (
-                    (
-                        (
-                            "swa_context_split_tile16_exact_gated_wave_local_spans"
-                            if self.swa_split_wave_local and use_gated
-                            else "swa_context_split_tile16_exact_gated_spans"
-                        )
-                        if use_gated
-                        else "swa_context_split_tile16_exact_spans"
+            elif use_tile16:
+                if not use_gated:
+                    variant = "swa_context_split_tile16_exact_spans"
+                elif self.swa_split_wave_local_dim2:
+                    variant = (
+                        "swa_context_split_tile16_exact_gated_wave_local_dim2_spans"
                     )
-                    if use_tile16
-                    else (
-                        (
-                            "swa_context_split_exact_gated_wave_local_spans"
-                            if self.swa_split_wave_local and use_gated
-                            else "swa_context_split_exact_gated_spans"
-                        )
-                        if use_gated
-                        else "swa_context_split_exact_spans"
-                    )
-                )
-            )
+                elif self.swa_split_wave_local:
+                    variant = "swa_context_split_tile16_exact_gated_wave_local_spans"
+                else:
+                    variant = "swa_context_split_tile16_exact_gated_spans"
+            elif not use_gated:
+                variant = "swa_context_split_exact_spans"
+            elif self.swa_split_wave_local_dim2:
+                variant = "swa_context_split_exact_gated_wave_local_dim2_spans"
+            elif self.swa_split_wave_local:
+                variant = "swa_context_split_exact_gated_wave_local_spans"
+            else:
+                variant = "swa_context_split_exact_gated_spans"
             fn = self._resolve("laguna_attention_decode", variant)
             gated_args = (
                 (int(gate_ptr), int(gated_out_ptr)) if use_gated else ()
@@ -693,6 +691,7 @@ def allocate_laguna_kv_cache(
     use_split_attention: bool | None = None,
     use_split_gate_fusion: bool | None = None,
     use_swa_split_wave_local: bool | None = None,
+    use_swa_split_wave_local_dim2: bool | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -716,6 +715,7 @@ def allocate_laguna_kv_cache(
         swa_split_tile16_min_live is not None
         or use_swa_split_tile16 is True
         or use_swa_split_wave_local is True
+        or use_swa_split_wave_local_dim2 is True
     ):
         raise ValueError(
             "use_split_attention=False cannot be combined with split thresholds"
@@ -775,6 +775,19 @@ def allocate_laguna_kv_cache(
             else use_swa_split_wave_local
         )
     )
+    selected_swa_split_wave_local_dim2 = (
+        False
+        if use_split_attention is False
+        else bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_SWA_SPLIT_WAVE_LOCAL_DIM2",
+                False,
+            )
+            if use_swa_split_wave_local_dim2 is None
+            else use_swa_split_wave_local_dim2
+        )
+    )
     if selected_swa_split_wave_local and (
         parsed_swa_split is None or not selected_split_gate_fusion
     ):
@@ -782,6 +795,8 @@ def allocate_laguna_kv_cache(
             "SWA wave-local reduction requires exact split attention and "
             "split-gate fusion"
         )
+    if selected_swa_split_wave_local_dim2 and not selected_swa_split_wave_local:
+        raise ValueError("SWA local64 dim2 reduction requires the wave-local reducer")
     _validate_split_backend(
         backend,
         parsed_global_split,
@@ -789,6 +804,7 @@ def allocate_laguna_kv_cache(
         parsed_swa_tile16,
         split_gate_fusion=selected_split_gate_fusion,
         swa_split_wave_local=selected_swa_split_wave_local,
+        swa_split_wave_local_dim2=selected_swa_split_wave_local_dim2,
     )
     buffers: list[DeviceBuffer] = []
 
@@ -963,6 +979,9 @@ def allocate_laguna_kv_cache(
             swa_split_tile16_min_live=parsed_swa_tile16,
             split_gate_fusion=(selected_split_gate_fusion and split_enabled),
             swa_split_wave_local=(selected_swa_split_wave_local and split_enabled),
+            swa_split_wave_local_dim2=(
+                selected_swa_split_wave_local_dim2 and split_enabled
+            ),
             runtime=runtime,
         )
     except Exception:
@@ -979,6 +998,7 @@ def _validate_split_backend(
     *,
     split_gate_fusion: bool,
     swa_split_wave_local: bool,
+    swa_split_wave_local_dim2: bool,
 ) -> None:
     if all(
         threshold is None
@@ -1017,6 +1037,19 @@ def _validate_split_backend(
                 (
                     swa_tile16_threshold,
                     "swa_context_split_tile16_exact_gated_wave_local_spans",
+                ),
+            )
+        )
+    if swa_split_wave_local_dim2:
+        requested.extend(
+            (
+                (
+                    swa_threshold,
+                    "swa_context_split_exact_gated_wave_local_dim2_spans",
+                ),
+                (
+                    swa_tile16_threshold,
+                    "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
                 ),
             )
         )
