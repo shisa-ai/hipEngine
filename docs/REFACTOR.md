@@ -24,12 +24,12 @@ should be removed or collapsed.
   the same 160-byte block and pairs with `mmq64x32_d4_f32` down. It retains
   direct/exact selected and grouped-down paths as required fallbacks;
   D4x2/D4x3 remain diagnostics.
-- Remove the experimental selector after the canonical full-model quality,
-  clean pp512/category, memory, lifecycle, and decode-neutral gates decide the
-  route. If accepted, make MMQ the gfx1151 package capability and retain only
-  the exact rollback path; if rejected, remove the runner setter and candidate
-  scratch ownership while keeping the registered leaf/repair diagnostics.
-  The repaired pre-admission compounded pp512 samples are
+- Promoted on gfx1151 after the clean category gate passed at max KL
+  0.040724836, 317/320 top-1, 2.615x aggregate prefill, flat decode, and exact
+  lifecycle recovery. Retain the explicit exact/D4x2/D4x3 rollback modes for
+  one release and remove the rejected D4 gate default candidate plus redundant
+  selectors after clean selector-unset pp512/milestone publication and the
+  rollback window. Pre-admission pp512 samples were
   353.951/356.082/356.473 tok/s.
 
 ## Laguna `f16_prefill_mode=hipblaslt_scaled`
@@ -40,11 +40,10 @@ should be removed or collapsed.
   FP16-input/F16-weight contractions with FP32 output, and restore the scale
   before the next boundary. Decode and the retained custom projection route
   remain unchanged.
-- Remove the selector after the canonical category/teacher-forced quality,
-  clean pp512, memory, lifecycle, and decode-neutral gates. If accepted, make
-  the library route the gfx1151 package capability and retain exact tiled as
-  rollback; if rejected, remove the session route and keep the standalone
-  library ceiling/range diagnostics.
+- Promoted as the gfx1151 package capability by the clean compounded category
+  gate. Retain exact tiled as rollback for one release; remove the session
+  selector after clean selector-unset pp512/milestone publication and the
+  rollback window.
 
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
@@ -52,11 +51,10 @@ should be removed or collapsed.
   use 64x16 wave32 WMMA consumers over existing rank-2 Q4 pack8 bytes/effective
   FP32 scale/min planes and raw Q6_K bytes. They add no sidecar, leave decode
   unchanged, and retain exact pack8/raw FMA paths as fallbacks.
-- Remove the selector after the canonical cumulative category/teacher-forced
-  quality, clean pp512, memory, lifecycle, and decode-neutral gates. If
-  accepted, make the WMMA route a gfx1151 package capability and keep only the
-  exact fallback. If rejected, remove the runner mode and retain the separately
-  registered leaf/oracle only if it remains useful to another model.
+- Promoted as the gfx1151 package capability by the clean compounded category
+  gate. Keep the exact fallback for one release; remove the session selector
+  after clean selector-unset pp512/milestone publication and the rollback
+  window.
 
 ## Priority Cleanup (do first)
 

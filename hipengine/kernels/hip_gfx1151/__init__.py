@@ -53,9 +53,19 @@ LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow2_online_spans"
 # shapes. Exact context-qualified qrow2 and wave32 remain explicit rollback and
 # every unmeasured backend retains its independently measured default.
 LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow2_online_spans"
-# Clean AR-O1 shape/micro/category gates admit exact grouped Q4/Q6 down plus
-# routing/shared combine from 32 bulk rows. Other backends retain direct GEMV.
-LAGUNA_SELECTED_DOWN_MODE = "adaptive_grouped_smallm_fused"
+# Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
+# 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
+# Other backends retain their exact selected gate/up route.
+LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32"
+# The same admission keeps post-SiLU selected down on the range-safe D4
+# resident-T16 64x32 integer-dot route. Exact grouped/direct remain rollbacks.
+LAGUNA_SELECTED_DOWN_MODE = "mmq64x32_d4_f32"
+# Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
+# for dense/shared rows while preserving the exact low-row fallback.
+LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
+# Clean LAP-6 admission selects power-of-two row-scaled hipBLASLt for source-F16
+# rows>1 projections. Decode remains on the existing exact GEMV route.
+LAGUNA_F16_PREFILL_MODE = "hipblaslt_scaled"
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -266,11 +276,14 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
+    "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
+    "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_SELECTED_DOWN_MODE",
+    "LAGUNA_SELECTED_GATE_UP_MODE",
     "LAGUNA_SWA_PREFILL_VARIANT",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",

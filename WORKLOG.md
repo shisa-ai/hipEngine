@@ -178518,3 +178518,38 @@ Vulkan local sizes verbatim will close the measured gap.
   tests/test_laguna_target_ar_bench.py` passes with two expected skips.
   `py_compile` passes. Backend defaults remain unchanged until the clean
   complete category gate admits this exact revision.
+
+## 2026-07-25 — Admit and promote the compounded Laguna prefill routes
+
+- Clean revision `319dfdf3a` runs
+  `HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run
+  python3 -u scripts/laguna_grouped_down_category_bench.py --comparison
+  prefill_350 --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build --output
+  benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json`.
+  The retained artifact passes every promotion check; SHA-256 is
+  `eb255229e60bdea599ee7b47c7a94b32b94182157fa1d3abf318b299ee262dff`.
+- Candidate versus shipping aggregate natural-prompt prefill is
+  **70.192 -> 183.563 tok/s (2.61516x)**. Every category is positive:
+  code/general_en/general_ja/mixed are
+  **2.455/2.365/2.762/2.954x**. Aggregate h16/h32 E2E improves
+  **1.55246x/1.32234x** and decode ratios are
+  **0.999979/0.999900x**, well inside the 2% gate.
+- The complete 320-step teacher-forced lane passes at maximum KL
+  **0.040724836** and **317/320 (99.0625%)** top-1. Per-category top-1 is
+  code **128/128**, general_en **62/64**, general_ja **64/64**, and mixed
+  **63/64**. Poolside passes at KL **0.0000175125** with equal top-1.
+  Candidate repeats are deterministic; the admitted approximate lane reports
+  the expected general_en/mixed free-running differences rather than requiring
+  exact shipping IDs.
+- Tracked ownership returns exactly to zero
+  (**109,859,542,160 allocated/freed bytes**, zero active allocations), and
+  the clean artifact records revision `319dfdf3a`.
+- Promoted the admitted gfx1151 package capabilities together:
+  `LAGUNA_SELECTED_GATE_UP_MODE=mmq128x32_d8_f32`,
+  `LAGUNA_SELECTED_DOWN_MODE=mmq64x32_d4_f32`,
+  `LAGUNA_F16_PREFILL_MODE=hipblaslt_scaled`, and
+  `LAGUNA_DENSE_Q4_PREFILL_MODE=wmma_pack8`. gfx1100 and explicit exact
+  rollback modes are unchanged. The focused backend/resolver/runner bundle
+  passes with two expected HIP skips. Next commit this promotion, then measure
+  selector-unset production pp512 on the clean revision.
