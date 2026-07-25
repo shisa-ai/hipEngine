@@ -179989,3 +179989,40 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next: commit, run the same seven-repeat A/B from the clean revision, and
   publish the all-family trace. The 500 production milestone closes only if
   the clean candidate median and every clean candidate sample remain >=500.
+
+## 2026-07-26 — Publish exact router-token production and close 500 gate
+
+- At clean committed revision `238eb28cd`, the same counterbalanced
+  seven-repeat one-owner pp512 A/B improves explicit tile-4 rollback
+  **497.624649 -> 503.348994 tok/s (+1.150334%)**, wins all seven pairs,
+  reduces median wall **11.701 ms**, and selects token 2930 in all fourteen
+  runs. Every production sample exceeds 500; the minimum is
+  **501.697758 tok/s**. Raw SHA-256:
+  `5f077355516428b20d0338a78cd95a6629262c39bc51c5729178463f8b1d4ebc`.
+- A clean tracked cached-only all-family trace measures
+  **504.631/452.733/357.083 tok/s** at 512/1K/4K. The pp512 wall/span/kernel
+  sum are **1,014.603/1,009.492/998.198 ms** across 2,078 dispatches. Router
+  falls from the prior **30.658 ms** family to **23.315 ms**. Dominant
+  remaining families are selected gate/up **319.358 ms**, selected down
+  **202.643 ms**, global+SWA attention **218.516 ms**, source-F16
+  **134.442 ms**, and dense/shared **52.952 ms**.
+- Trace hashes: child
+  `45c616b62fafa2dc33a1e66b61cdb57965707e85d27666b3dffaa5e475858636`,
+  kernel CSV
+  `6f3cf59470538a47e02c4fd4077c4c89bc2d5d335b6dd694b0e135763313929c`,
+  summary
+  `c4cd3301dfd5744e7f43590c8e62811bdc9038698493562b11900ac117c235f5`.
+  Tracked allocation peaks at **77,461,325,460 bytes** and returns to zero;
+  all final positions and tokens are exact and deterministic.
+- Because router logits, selected IDs, scaled routing weights, and complete MoE
+  BF16 output are byte-identical, direct all-exact quality transfers unchanged:
+  maximum KL **0.049542582**, **316/320** top-1, minimum category
+  **96.875%**, Poolside/decode/determinism/lifecycle pass. Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`
+  and refreshed the rollup, changelog, plan, kernel catalog, and refactor
+  trigger.
+- The declared production 500 tok/s gate is closed. Continue toward 700 from
+  the refreshed 1.017-second clean median and 0.998-second kernel ledger; the
+  first target is a materially wider exact selected gate/up consumer, followed
+  by an attention premise distinct from rejected qrow8/key-split/synchronous
+  WMMA routes.

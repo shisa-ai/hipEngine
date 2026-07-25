@@ -18,10 +18,12 @@ elsewhere; the clean absolute gate passes at maximum KL 0.0495426 and 316/320
 top-1. The compounded routes are gfx1151 package defaults. The exact
 pair-decode wave-column D8 gate/up remap plus Q4-only D4 down remap first
 reached **448.203 tok/s**; Q6 down retains its bit-identical row-vector stage.
-A direct per-column Q4 gate/up decode and the corresponding Q4-down decode are
-now retained production: clean selector-unset pp512 reaches
-**480.629 tok/s**, with direct all-exact quality and cached all-family tracing
-complete. The campaign remains active toward the 500 gate and 700 stretch.
+A direct per-column Q4 gate/up decode, the corresponding Q4-down decode,
+parallel stable compaction, and exact eight-token router-logit reuse are now
+retained production. Clean selector-unset pp512 reaches **503.349 tok/s**, with
+every clean sample above 500, direct all-exact quality, and cached all-family
+tracing complete. The 500 gate is closed; the campaign remains active toward
+the 700 stretch.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -35,8 +37,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **480.629 tok/s**
-selector-unset, **6.306x** the old row and **39.493%** above the Vulkan
+The quality-admitted production default now measures **503.349 tok/s**
+selector-unset, **6.603x** the old row and **46.074%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -623,48 +625,47 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | Clean revision `d39cbb5ba` directly gates production against all-exact at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle. Direct per-column Q4-down decode moves pair-decode rollback **473.963 -> 480.629 tok/s (+1.406%)**; all seven production samples are **477.298–485.019** with token 2930. |
+| Production publication | Complete/current | Clean revision `238eb28cd` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle. Eight-token router reuse moves tile-4 rollback **497.625 -> 503.349 tok/s (+1.150%)**; all seven production samples are **501.698–508.379 tok/s** with token 2930, closing the 500 gate. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
-| LAP-7–LAP-8 | Current scalar production retained | Attention is **218.164 ms / 20.85%** of kernel sum. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, and qhead3 sharing all completed negative gates. Source-qualified qrow4 remains production; attention needs a new async/library-class premise before reopening. |
+| LAP-7–LAP-8 | Current scalar production retained | Attention is **218.516 ms / 21.89%** of kernel sum. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, and qhead3 sharing all completed negative gates. Source-qualified qrow4 remains production; attention needs a new async/library-class premise before reopening. |
 
-## Post-350 campaign — 500 production gate, 700 stretch
+## Post-500 campaign — 700 production stretch
 
-The 350 tok/s milestone proves the compounded production package, but it is
-not a roofline result. The current stable-parallel-compaction production trace
-measures **1.023336 seconds** synchronized pp512 wall, **1.018444 seconds**
-kernel span, and **1.006892 seconds** kernel sum. Only
-**16.443 ms / 1.61%** of wall lies outside the summed kernels, so graphs,
+The 350 and 500 tok/s milestones prove the compounded production package, but
+they are not roofline results. The current router-token production trace
+measures **1.014603 seconds** synchronized pp512 wall, **1.009492 seconds**
+kernel span, and **0.998198 seconds** kernel sum. Only
+**16.405 ms / 1.61%** of wall lies outside the summed kernels, so graphs,
 Python removal, and submission
 tuning are explicitly closed until a later trace changes that conclusion.
 
-The next primary gate is **at least 500 tok/s selector-unset production
-pp512**: at least three clean repetitions, median and every sample at or above
-500 tok/s, with the same model/quant/KV/queue policy and all existing
-correctness, quality, decode, determinism, memory, and lifecycle gates. The
-stretch gate is **700 tok/s** under the same contract. The 700 row is a target,
-not a performance claim, until LAP-BW0 supplies locked-clock physical traffic
-and achievable-bandwidth evidence.
+The achieved 500 gate required at least three clean selector-unset pp512
+repetitions with median and every sample at or above 500 tok/s. The next
+production gate is **700 tok/s** under the same model/quant/KV/queue policy and
+all existing correctness, quality, decode, determinism, memory, and lifecycle
+gates. The 700 row is a target, not a performance claim, until LAP-BW0 supplies
+locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **319.438 ms** | **31.73%** | Direct per-column decode is retained. T16 K64 nibble reuse is inapplicable because adjacent K32 payloads are stored separately. Gate-only MMQ followed by up-MMQ+SiLU was exact but regressed full-model median **498.012 -> 497.210 tok/s** because splitting the dual weight consumer cost more than removing the SiLU pass; that shape is closed. |
-| Selected D4 Q4/Q6 down | **202.525 ms** | **20.11%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. |
-| Global + SWA attention | **218.767 ms** | **21.73%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
-| Scaled hipBLASLt source-F16 | **133.631 ms** | **13.27%** | The contractions are at the measured library ceiling, but the refreshed trace exposes **9.53 ms** of scale/cast/restore kernels; permit exact producer/consumer fusion screens. |
-| Q4/Q6 WMMA dense/shared | **52.917 ms** | **5.26%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
-| Router, norms, reductions, metadata, KV/tails | **79.615 ms** | **7.91%** | Stable parallel compaction cuts **16.752 -> 2.564 ms** in the published trace; the retained one-block prefix follow-up projects another **1.407 ms** saving. Exact eight-token router reuse improves the M512 leaf **0.5833 -> 0.4350 ms (1.341x)** and dirty pp512 **498.361 -> 502.995 tok/s**; clean publication is in progress. |
+| Selected D8 Q4 gate/up | **319.358 ms** | **31.99%** | Direct per-column decode is retained. T16 K64 nibble reuse is inapplicable because adjacent K32 payloads are stored separately. Gate-only MMQ followed by up-MMQ+SiLU was exact but regressed full-model median **498.012 -> 497.210 tok/s** because splitting the dual weight consumer cost more than removing the SiLU pass; that shape is closed. |
+| Selected D4 Q4/Q6 down | **202.643 ms** | **20.30%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. |
+| Global + SWA attention | **218.516 ms** | **21.89%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; the next attention screen must use a materially different reuse/fusion premise. |
+| Scaled hipBLASLt source-F16 | **134.442 ms** | **13.47%** | The contractions are at the measured library ceiling; exact producer/consumer fusion and scale/cast/restore removal remain admissible. |
+| Q4/Q6 WMMA dense/shared | **52.952 ms** | **5.30%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
+| Router | **23.315 ms** | **2.34%** | Eight-token reuse is production and cuts the prior **30.658 ms** family. Tile 4 remains rollback; tile 16 is slower at every stable leaf shape. |
+| Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **46.972 ms** | **4.71%** | The one-block prefix and parallel compaction are retained. Touch a residual family only with a named exact fusion/data-movement premise. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
-- The cached attribution pass crosses 500 at **500.325 tok/s**, but the
-  conservative clean median is **497.408 tok/s** and the declared
-  minimum/median three-sample gate remains open. Only **5.336 ms** of clean
-  median wall must be removed.
-- Reducing global+SWA attention from **217.7 ms** toward **100 ms** models to
-  roughly **534 tok/s** with every other family unchanged.
+- The clean production median is **503.349 tok/s**, all seven samples are at
+  least **501.698 tok/s**, and cached attribution independently measures
+  **504.631 tok/s**. The declared 500 gate is closed.
+- Reducing global+SWA attention from **218.5 ms** toward **100 ms** models to
+  roughly **570 tok/s** with every other family unchanged.
 - Combining **2x** selected experts with an **80 ms** attention window models
-  to roughly **766 tok/s**. The 700 stretch is therefore inside the current
+  to roughly **829 tok/s**. The 700 stretch is therefore inside the current
   measured Amdahl envelope, but requires both expert and attention wins.
 - The frozen routing byte lower bound makes the current gate/up window about
   **114.0 GB/s encoded-weight-equivalent**, only **51.6%** of the existing
@@ -686,16 +687,16 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Commit the exact **eight-token router-logit tile**, then run the clean
-   seven-repeat pp512 gate. The dirty candidate wins all seven pairs at
-   **502.995 tok/s** median and **500.946 tok/s** minimum; clean evidence must
-   reproduce both median and minimum at or above 500.
-2. Publish the post-router all-family trace and close the 500 milestone if the
-   clean gate passes. The
-   gate-only MMQ then up-MMQ+SiLU boundary is closed: it was BF16-byte exact
-   but changed **498.012 -> 497.210 tok/s (-0.161%)**, winning only one of
-   seven paired repetitions. Do not retry without a single cooperative
-   dual-weight consumer that avoids the split-dispatch cost.
+1. Attack the **319.358 ms selected gate/up** family with a materially wider
+   exact consumer: preserve the direct per-column decode and arithmetic order,
+   but screen more routed-row reuse per loaded weight without repeating the
+   rejected 64-row F32-partial-spill design. Gate on actual-weight leaf timing,
+   BF16-byte identity, and full-model wall.
+2. Reopen the **218.516 ms attention** family only with a different premise
+   from the rejected qrow8, scalar key split, and synchronous-LDS WMMA tiles.
+   Candidate premises are an async-copy pipeline, a supported library-class
+   kernel, or a materially fused online-softmax/PV schedule around the existing
+   `KVLiveSpans` ABI.
 3. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1376,11 +1377,39 @@ Absolute quality remains **0.049542582** maximum KL and **316/320** top-1 by
 byte-exact transfer. Evidence:
 [`2026-07-26-gfx1151-laguna-parallel-compact-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-production.json).
 
+Thirty-third post-350 screen: **one-block parallel prefix retained**. The
+parallel compactor's remaining one-thread loop over 256 expert counts was
+replaced by a Blelloch exclusive scan plus ballot active-ID compaction.
+Production-shape metadata and complete MoE BF16 output remain byte-exact.
+Cached tracing cuts prefix **32.34 -> 2.404 us/layer**, projecting
+**1.407 ms** pp512 savings without caller-visible scratch. Evidence:
+[`2026-07-26-gfx1151-laguna-parallel-prefix-scan.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-parallel-prefix-scan.json).
+
+Thirty-fourth post-350 screen: **eight-token router-logit reuse retained in
+production; 500 gate closed**. The wider workgroup preserves every
+token/expert K traversal, per-thread products, 256-thread reduction tree, and
+F32 store. Production router logits, selected IDs, scaled routing weights, and
+complete MoE BF16 output are byte-exact. The M512 leaf improves
+**0.583252 -> 0.434974 ms (1.341x)**.
+
+Clean committed seven-pair pp512 improves explicit tile-4 rollback
+**497.625 -> 503.349 tok/s (+1.150%)**, wins every pair, reduces median wall
+**11.701 ms**, selects token 2930 throughout, and keeps every production sample
+above 500 (**minimum 501.698 tok/s**). Cached all-family tracing independently
+measures **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
+**30.658 -> 23.315 ms**. Absolute quality remains **0.049542582** maximum KL
+and **316/320** top-1 by exact transfer. Evidence:
+[`2026-07-26-gfx1151-laguna-router-token-tile8-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json).
+
 Production evidence:
 
+- [`2026-07-26-gfx1151-laguna-router-token-tile8-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json)
+  is current production: conservative clean median **503.349 tok/s**, clean
+  minimum **501.698 tok/s**, cached trace **504.631 tok/s**, and unchanged
+  maximum KL **0.049542582**. The 500 production gate is closed.
 - [`2026-07-26-gfx1151-laguna-parallel-compact-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-production.json)
-  is current production: conservative clean median **497.408 tok/s**, cached
-  trace **500.325 tok/s**, and unchanged maximum KL **0.049542582**.
+  is the superseded exact parallel-compaction publication at
+  **497.408 tok/s** median and **500.325 tok/s** cached trace.
 - [`2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json)
   is the superseded Q6 rows64 publication at **492.640 tok/s** median and
   **493.509 tok/s** cached trace.
@@ -1700,9 +1729,10 @@ zero. Exact reconstructed-sum pp512 repeats at
 **353.951/356.082/356.473 tok/s**, always token **2930**. The tempting raw-sum
 variant was faster but failed quality and was removed. gfx1151 now defaults to
 this D8 gate/up route and the admitted D4 down route. The clean selector-unset
-publication initially closed the 350 check at **354.820 tok/s** median;
-subsequent exact SWA and row-vector improvements raise current production to
-**386.552 tok/s** after the separate absolute-quality hipBLASLt repair.
+publication initially closed the 350 check at **354.820 tok/s** median.
+Subsequent exact attention, expert, dense/shared, metadata, and router
+improvements raise current production to **503.349 tok/s** after the separate
+absolute-quality hipBLASLt repair.
 
 Non-temporal weight loads are not a default lever here. Existing gfx1151
 cold-DRAM decode evidence found a **+14%** isolated rows=1 bandwidth gain but a
@@ -1877,9 +1907,9 @@ a valid smaller win:
 | Streaming-family floor | >=70% of measured read roof | About 155 GB/s if the same-host anchor is 221 GB/s; report each mapped family. |
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
-The 350 production target is achieved and current production is
-**480.629 tok/s**. The 500 gate, 700 stretch, and stronger
-streaming/roofline rows remain active targets.
+The 350 and 500 production targets are achieved and current production is
+**503.349 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+active targets.
 
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.
@@ -2007,15 +2037,19 @@ Matching **344.56 tok/s** is the first external floor. Because the Vulkan
 control uses a different token stream, F16 KV, and backend numerical policy,
 “beat llama.cpp” still requires a matched timing/token/KV contract or an
 explicit qualification. The engineering goal is now stronger: reduce the
-current conservative **1.039-second** pp512 wall through the 500 tok/s
-production gate and toward the 700 tok/s stretch, then continue until the
-major streaming families are close to the same-host bandwidth roof while
-preserving hipEngine's stricter correctness contract.
+current conservative **1.017-second** pp512 wall from the achieved 500 tok/s
+production gate toward the 700 tok/s stretch, then continue until the major
+streaming families are close to the same-host bandwidth roof while preserving
+hipEngine's stricter correctness contract.
 
 ## Evidence index
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-candidate.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-prefix-scan.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`

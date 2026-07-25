@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_production",
+  "revision": "238eb28cd1c748c1755ac8871db4c0e140c3fee4",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "rollback": "four tokens per router-logit workgroup",
+    "production": "eight tokens per router-logit workgroup",
+    "exactness": "Every token and expert retains the same K traversal, per-thread products, 256-thread reduction tree, F32 logit store, selected IDs, scaled routing weights, and complete MoE BF16 output."
+  },
+  "protocol": {
+    "tokens": 512,
+    "matrix_chunk_rows": 512,
+    "attention_chunk_rows": 128,
+    "repetitions": 7,
+    "order": "counterbalanced",
+    "resident_owner": "shared",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_router_token_tile_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-router-token-tile-clean-238eb28cd.json"
+  },
+  "results": {
+    "token_tile_4_rollback": {
+      "samples_tok_s": [
+        497.6246485523061,
+        498.01211604713814,
+        495.5374025936849,
+        496.8520101474056,
+        496.9667537554478,
+        498.9338184189944,
+        500.2878794828553
+      ],
+      "median_tok_s": 497.6246485523061,
+      "median_wall_ms": 1028.8879409
+    },
+    "token_tile_8_production": {
+      "samples_tok_s": [
+        503.3489941514725,
+        501.9805293776052,
+        502.1661850087917,
+        501.6977584711221,
+        508.37929514950474,
+        505.02388487202074,
+        503.408909623567
+      ],
+      "median_tok_s": 503.3489941514725,
+      "minimum_tok_s": 501.6977584711221,
+      "median_wall_ms": 1017.1868941
+    },
+    "relative_change_percent": 1.15033401497,
+    "median_wall_change_ms": -11.7010468,
+    "paired_wins": 7,
+    "paired_samples": 7,
+    "next_token_id": 2930
+  },
+  "correctness": {
+    "router_logits_f32_exact": true,
+    "selected_ids_exact": true,
+    "scaled_routing_weights_exact": true,
+    "complete_moe_bf16_output_exact": true,
+    "full_model_next_token_equal": true,
+    "quality_gate_transfer": {
+      "reason": "The router projection, routing metadata, and complete production-shape MoE output are byte-identical to the admitted route.",
+      "max_kl": 0.04954258196634279,
+      "top1_matches": 316,
+      "top1_total": 320,
+      "min_category_top1_percent": 96.875,
+      "poolside": "pass",
+      "decode": "neutral",
+      "determinism": "pass",
+      "lifecycle": "pass"
+    }
+  },
+  "cached_profile": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-router-tile8-profile.EFI2sr --output-file epyc -- .venv/bin/python -u scripts/laguna_long_context_profile.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1151 --context-length 4096 --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-post-router-tile8-profile.EFI2sr/child.json",
+    "tok_s": {
+      "512": 504.63079176726404,
+      "1024": 452.7331671554494,
+      "4096": 357.0825828908823
+    },
+    "next_token_ids": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "pp512": {
+      "wall_ms": 1014.603168,
+      "kernel_span_ms": 1009.491864,
+      "kernel_sum_ms": 998.198302,
+      "dispatches": 2078,
+      "families_ms": {
+        "selected_q4_gate_up": 319.358291,
+        "selected_q4_q6_down": 202.642663,
+        "global_attention": 44.080632,
+        "swa_attention": 174.435215,
+        "source_f16_projection": 134.442353,
+        "dense_shared_quant_projection": 52.952278,
+        "router": 23.314849,
+        "activation_reduce_residual": 18.773601,
+        "norm_rope_gate": 24.789384,
+        "kv": 0.844058,
+        "lm_head": 1.172441,
+        "embedding": 0.037109,
+        "other": 1.355428
+      }
+    },
+    "router_family_ms": {
+      "prior_parallel_compaction_trace": 30.658,
+      "token_tile_8_trace": 23.314849,
+      "change_ms": -7.343151
+    },
+    "tracked_peak_bytes": 77461325460,
+    "tracked_returned_to_zero": true,
+    "exact_final_positions": true,
+    "deterministic": true,
+    "sha256": {
+      "child": "45c616b62fafa2dc33a1e66b61cdb57965707e85d27666b3dffaa5e475858636",
+      "kernel_trace": "6f3cf59470538a47e02c4fd4077c4c89bc2d5d335b6dd694b0e135763313929c",
+      "summary": "c4cd3301dfd5744e7f43590c8e62811bdc9038698493562b11900ac117c235f5",
+      "agent": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+    }
+  },
+  "gate_status": {
+    "production_default": true,
+    "500_tok_s_gate": "closed",
+    "reason": "All seven clean production samples exceed 500 tok/s and the clean median is 503.349 tok/s.",
+    "next_target_tok_s": 700
+  },
+  "raw_ab_sha256": "5f077355516428b20d0338a78cd95a6629262c39bc51c5729178463f8b1d4ebc"
+}
