@@ -179117,3 +179117,26 @@ Vulkan local sizes verbatim will close the measured gap.
   screen. Production remains 385.997 tok/s. Persistent K256 slabs are closed
   while they require global partial spills. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`.
+
+## 2026-07-25 — Reject planar D8 LDS weight cache
+
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` could not
+  complete because the configured read-only reference checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. ROCm and gfx1151 were
+  healthy; this in-tree specialization used the current production body as its
+  sole lineage.
+- Added a RED/GREEN diagnostic selector that replaced the D8 kernel's
+  40-byte-per-column AoS LDS cache with quant and FP32-metadata planes. It
+  changed no global bytes, arithmetic, or K order. The 0/7/18/33-row K512/N128
+  focused oracle became BF16 byte-identical to production and passed the CPU
+  quality gate.
+- Thirty-one counter-rotated, burst-five actual layer-1 pp512 samples measured
+  production 10.708847 ms and planar 10.695574 ms: only -0.124%. The cached
+  candidate trace reports local128, VGPR80, SGPR128, LDS6656B, scratch0,
+  exactly matching production resources. Raw result/trace SHA-256 values are
+  `6d287b6c...9cf3` / `93e659bf...7d8`.
+- Removed every diagnostic C/Python/harness/test surface. Production remains
+  385.997 tok/s. Planar LDS alone is closed; the next expert premise must
+  reduce global decode/load work or materially change the consume schedule.
+  Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-weight-soa-rejected.json`.

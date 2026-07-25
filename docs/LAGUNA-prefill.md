@@ -676,7 +676,7 @@ Immediate execution queue:
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
    around a wave-transpose/direct-consume primitive instead. Persistent K256
    weight slabs with F32 partial spills also completed a negative actual-weight
-   gate.
+   gate, and merely planarizing the existing 40-byte LDS records is neutral.
 3. Apply any further winning expert schedule to Q4/Q6 down, then run clean
    selector-unset pp512 and the complete
    category/decode/determinism/lifecycle gate. Retain every exact same-suite
@@ -952,6 +952,22 @@ before adding the required small-expert launch. The candidate was removed
 without a full-model screen. Do not retry persistent K256 slabs while
 accumulation requires global partial spills. Evidence:
 [`2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json).
+
+Fifteenth post-350 screen: **neutral and removed before integration**. The hot
+D8 body stores each decoded output column as a 40-byte LDS record: eight packed
+quant words followed by two FP32 metadata values. A structure-of-arrays
+specialization made each wave's same-plane loads contiguous while preserving
+global bytes, arithmetic, and K order. The focused 0/7/18/33-row K512/N128
+oracle was BF16 byte-identical to production.
+
+On the actual layer-1 pp512 leaf, 31 counter-rotated pack-inclusive samples move
+only **10.709 -> 10.696 ms (-0.124%)**. The candidate traces with exactly the
+production resource footprint: local128, VGPR80, SGPR128, LDS6656B, scratch0.
+That is noise-scale and cannot materially move the 537 ms all-layer family, so
+all candidate surfaces were removed. The next expert body must reduce global
+decode/load work or change the wave-level consume schedule, not just rearrange
+the current LDS record. Evidence:
+[`2026-07-25-gfx1151-laguna-weight-soa-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-weight-soa-rejected.json).
 
 Production evidence:
 
@@ -1567,6 +1583,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-25-gfx1151-laguna-weight-soa-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`
