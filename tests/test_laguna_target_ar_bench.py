@@ -162,16 +162,18 @@ def test_q5_fixed_metadata_cli_is_defaults_on_with_role_scoped_disable(
     assert args.disable_q5_fixed_meta_query_gate
 
 
-def test_q5_shared_fixed_metadata_cli_is_explicit_and_default_off(monkeypatch) -> None:
+def test_q5_shared_fixed_metadata_cli_defaults_on_with_explicit_disable(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
-    assert not benchmark._parse_args().use_q5_shared_fixed_meta
+    assert not benchmark._parse_args().disable_q5_shared_fixed_meta
 
     monkeypatch.setattr(
         benchmark.sys,
         "argv",
-        ["laguna_target_ar_bench.py", "--use-q5-shared-fixed-meta"],
+        ["laguna_target_ar_bench.py", "--disable-q5-shared-fixed-meta"],
     )
-    assert benchmark._parse_args().use_q5_shared_fixed_meta
+    assert benchmark._parse_args().disable_q5_shared_fixed_meta
 
 
 def test_mixed_attention_projection_cli_defaults_on_with_explicit_disable(
