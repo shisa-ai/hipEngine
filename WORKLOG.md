@@ -179269,3 +179269,29 @@ Vulkan local sizes verbatim will close the measured gap.
   harness, and test surfaces. Production remains the 128x32/local128 body at
   **386.552 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json`.
+
+## 2026-07-26 — Promote Laguna wave-column expert consumer candidate
+
+- Implemented the open wave-transpose/direct-consume premise without changing
+  resident T16 bytes or D8 arithmetic. Four wave32 groups each own 32 output
+  columns and all 32 routed rows; each lane retains 32 accumulators. Even lanes
+  decode adjacent T16 column pairs, wave shuffles distribute the high-nibble
+  columns, and decoded weights stay in registers instead of the 5,120-byte
+  shared weight cache.
+- RED failed on the missing `wave_cols` wrapper ABI. GREEN passed seven Q4
+  D4/D8 CPU-reference configurations, including BF16 byte equality against
+  row-vector production. The complete focused kernel/runtime/backend/category/
+  publication/profile bundle reports **81 passed**.
+- The actual layer-1 natural-pp512 leaf, including one D8 pack, improves
+  **11.467 -> 8.086 ms (1.418x; -29.49%)**. The one-owner seven-pair full-model
+  screen improves **385.941 -> 433.380 tok/s (+12.29%)** with complete sample
+  separation and token 2930 in all 14 runs.
+- Cached `rocprofv3 --kernel-trace` names
+  `gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_...<1,false,true,128,true,true>`
+  at local128, VGPR80, SGPR128, **1,536 B LDS**, and zero scratch; production
+  used 6,656 B LDS at the same VGPR count. Raw trace/child SHA-256 values are
+  `15c3203...009d` / `e85480b...372`.
+- gfx1151 now selects `mmq128x32_d8_f32_wavecols`; row-vector remains explicit
+  rollback pending clean selector-unset production, all-family trace, and
+  canonical absolute-quality publication. Candidate evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-candidate.json`.

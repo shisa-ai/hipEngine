@@ -754,7 +754,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         session.swa_prefill_variant
         == "swa_context_rows_qrow4_m128_online_spans"
     )
-    assert session.selected_gate_up_mode == "mmq128x32_d8_f32_rowvec"
+    assert session.selected_gate_up_mode == "mmq128x32_d8_f32_wavecols"
     assert session.selected_down_mode == "mmq64x32_d4_f32_rowvec"
     assert session.dense_q4_prefill_mode == "wmma_pack8"
     assert session.f16_prefill_mode == "hipblaslt_scaled"

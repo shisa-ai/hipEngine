@@ -221,7 +221,7 @@ _PREFILL_LANE_CONFIGURATIONS = {
         global_prefill_variant="global_context_rows_qrow2_online_spans",
         swa_prefill_variant="swa_context_rows_qrow2_online_spans",
         selected_down_mode="mmq64x32_d4_f32_rowvec",
-        selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+        selected_gate_up_mode="mmq128x32_d8_f32_wavecols",
         f16_projection_mode="hipblaslt_scaled",
         dense_q4_prefill_mode="wmma_pack8",
     ),

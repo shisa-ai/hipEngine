@@ -30,7 +30,7 @@ HORIZONS = (16, 32)
 CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
 
 
-def test_production_absolute_comparison_uses_current_rowvec_defaults() -> None:
+def test_production_absolute_comparison_uses_current_defaults() -> None:
     assert PRODUCTION_ABSOLUTE_COMPARISON.modes == (
         "all_exact",
         "production_absolute_candidate",
@@ -39,7 +39,7 @@ def test_production_absolute_comparison_uses_current_rowvec_defaults() -> None:
     lane = benchmark._PREFILL_LANE_CONFIGURATIONS[
         "production_absolute_candidate"
     ]
-    assert lane.selected_gate_up_mode == "mmq128x32_d8_f32_rowvec"
+    assert lane.selected_gate_up_mode == "mmq128x32_d8_f32_wavecols"
     assert lane.selected_down_mode == "mmq64x32_d4_f32_rowvec"
     assert lane.f16_projection_mode == "hipblaslt_scaled"
     assert lane.dense_q4_prefill_mode == "wmma_pack8"

@@ -33,12 +33,14 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q8_1_mmq_ds4_pack_bf16,
     gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
+    gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     build_gguf_q4_k_t16_selected_prefill,
@@ -67,6 +69,8 @@ MODES = (
     "x8-mmq32",
     "t16-mmq32",
     "t16-mmq32-d4x3",
+    "t16-mmq128x32-d8-f32",
+    "t16-mmq128x32-d8-f32-wavecols",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -415,11 +419,16 @@ def main() -> None:
             out_shape = (compact_rows, OUT_FEATURES)
             out_bytes = compact_rows * OUT_FEATURES * np.dtype(np.uint16).itemsize
             q8_planes = 3 if "t16-mmq32-d4x3" in effective_modes else 1
+            q8_block_bytes = (
+                160
+                if any("d8-f32" in mode for mode in effective_modes)
+                else Q8_DS4_BYTES_PER_128
+            )
             q8_bytes = (
                 q8_planes
                 * rows
                 * (HIDDEN // 128)
-                * Q8_DS4_BYTES_PER_128
+                * q8_block_bytes
             )
 
             shape_buffers = []
@@ -659,6 +668,41 @@ def main() -> None:
                         runtime=runtime,
                     )
 
+                def t16_mmq128_d8_f32(*, wave_cols: bool) -> None:
+                    gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+                        source_x_dev.ptr,
+                        q8_dev.ptr,
+                        rows,
+                        HIDDEN,
+                        residual_passes=1,
+                        split16=True,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+                        q8_dev.ptr,
+                        compact_to_source_dev.ptr,
+                        starts_dev.ptr,
+                        starts32_dev.ptr,
+                        tile_expert32_dev.ptr,
+                        tiles_gate_dev.ptr,
+                        tiles_up_dev.ptr,
+                        out_dual_dev.ptr,
+                        compact_rows,
+                        rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total32"]),
+                        residual_passes=1,
+                        split16=True,
+                        rowvec=True,
+                        wave_cols=wave_cols,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+
                 launchers = {
                     "retained-direct": retained_direct,
                     "t16-wmma": t16_wmma,
@@ -667,6 +711,12 @@ def main() -> None:
                     "x8-mmq32": x8_mmq32,
                     "t16-mmq32": t16_mmq32,
                     "t16-mmq32-d4x3": t16_mmq32_d4x3,
+                    "t16-mmq128x32-d8-f32": lambda: t16_mmq128_d8_f32(
+                        wave_cols=False
+                    ),
+                    "t16-mmq128x32-d8-f32-wavecols": (
+                        lambda: t16_mmq128_d8_f32(wave_cols=True)
+                    ),
                 }
                 for threshold, hybrid in mixed_metadata.items():
                     hybrid_devices = mixed_devices[threshold]
