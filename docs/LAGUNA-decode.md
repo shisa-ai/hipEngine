@@ -16,8 +16,8 @@ wave-local reducer that removes all remaining block barriers and reducer LDS is
 retained as the gfx1100 default after exact model-state, trace, clean-context,
 and complete-category gates. A subsequent exact local32 IQ2 tile2 reconstruction
 is bit exact but slower on both first/last actual layers and is removed. A
-separate, c=1-only wave64 code-object build of the unchanged tile2 source is
-correctness-admitted and remains default-off pending clean promotion gates.
+separate, c=1-only wave64 code-object build of the unchanged tile2 source also
+fails its clean promotion gate and is removed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -999,10 +999,17 @@ improve events **0.73%/3.49%** plus wall **1.33%/4.06%**. The shared-weight gate
 matches full logits, all 48 hidden/47 routed boundaries, active K/V and spans,
 reset, and lifecycle through 16 decode transitions. Cached runtime tracing
 shows 92 c=1 candidate calls at local64/VGPR96/LDS512/scratch0 while all 46 bulk
-prefill calls remain wave32/VGPR136. The candidate is separately registered and
-default-off; clean short/512/1K/near-4K and both complete category orders still
-decide promotion. Evidence:
-[`...iq2-wave64-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-correctness.json).
+prefill calls remain wave32/VGPR136.
+
+The frozen clean gate does not preserve that actual-layer result. Two process
+orders pool short/512 IQ2 changes of **-0.037%/-0.134%**, but 1K regresses
+**+0.404%**; one 1K order is **+0.96%** and the reverse is **-0.15%**. The
+512 profiled child also regresses **-0.562%**, beyond its 0.5% guard. The failed
+1K target and 512 child gates stop near-4K and all category work. The wave64
+build/wrapper, c=1 route/library owner, CLI selector, tests, and refactor debt
+are removed; retained wave32 tile2 remains canonical. Evidence:
+[`correctness`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-correctness.json)
+and [`rejection`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-rejected.json).
 
 ## 9. Do not chase without new evidence
 

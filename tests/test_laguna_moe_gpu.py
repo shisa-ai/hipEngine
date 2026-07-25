@@ -175,34 +175,6 @@ def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
         )
 
 
-def test_laguna_iq2_wave64_route_is_explicit_and_default_off() -> None:
-    config = laguna_gguf_config_from_metadata(make_laguna_info())
-    retained = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    candidate = resolve_laguna_moe_plan(
-        config,
-        backend="hip_gfx1100",
-        use_iq2_wave64=True,
-    )
-    assert retained.selected_gate_up_keys["gguf_iq2_xs"].variant == (
-        "selected_dual_silu_gemv_decode_bf16_bf16_out"
-    )
-    assert retained.selected_gate_up_routes["gguf_iq2_xs"].library_key == (
-        "selected_gate_up_iq"
-    )
-    assert candidate.selected_gate_up_keys["gguf_iq2_xs"].variant == (
-        "selected_dual_silu_gemv_decode_bf16_bf16_out"
-    )
-    assert candidate.selected_gate_up_routes["gguf_iq2_xs"].library_key == (
-        "selected_gate_up_iq"
-    )
-    assert candidate.c1_selected_gate_up_keys["gguf_iq2_xs"].variant == (
-        "selected_dual_silu_gemv_decode_tile2_wave64_exact_bf16_bf16_out"
-    )
-    assert candidate.c1_selected_gate_up_routes["gguf_iq2_xs"].library_key == (
-        "selected_gate_up_iq_wave64"
-    )
-
-
 def test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")

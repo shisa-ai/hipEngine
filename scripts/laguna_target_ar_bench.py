@@ -93,11 +93,6 @@ def _parse_args() -> argparse.Namespace:
         help="use separate exact head RMSNorm/RoPE and BF16 KV append launches",
     )
     parser.add_argument(
-        "--enable-iq2-wave64",
-        action="store_true",
-        help="use the exact gfx1100 wave64 IQ2 selected gate/up code object",
-    )
-    parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
         default=(16, 32),
@@ -207,7 +202,6 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
             False if args.disable_swa_split_wave_local else None
         ),
         use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
-        use_iq2_wave64=args.enable_iq2_wave64,
     )
 
 
@@ -585,7 +579,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 False if args.disable_swa_split_wave_local else None
             ),
             use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
-            use_iq2_wave64=args.enable_iq2_wave64,
         )
         load_seconds = time.perf_counter() - load_started
         oracle_gate = _oracle_gate(owner, args)
@@ -694,7 +687,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_split_gate_fusion": owner.use_split_gate_fusion,
             "use_swa_split_wave_local": owner.use_swa_split_wave_local,
             "use_head_kv_fusion": owner.use_head_kv_fusion,
-            "use_iq2_wave64": owner.use_iq2_wave64,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {
