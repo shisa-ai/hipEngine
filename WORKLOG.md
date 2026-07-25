@@ -179835,3 +179835,39 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next bounded screen: paired K64 nibble consumption in the direct
   wave-column Q4 selected gate/up consumer, preserving resident T16 bytes,
   tile geometry, LDS staging, FP32 accumulation order, and BF16 output.
+
+## 2026-07-26 — Retain stable parallel Laguna MoE compaction candidate
+
+- Re-auditing the post-Q6 production trace found
+  `qwen35_moe_group_compact_active_kernel` consuming **16.752239 ms** across
+  47 pp512 calls. The one-workgroup body serially scanned all 5,120 routed
+  lanes twice for every layer. This is a stronger exact target than the
+  proposed K64 nibble-reuse screen; resident T16 stores adjacent K32 payloads
+  in separate subblocks, so the raw-layout nibble-reuse premise does not
+  apply.
+- RED parameterized both stable compact CPU-oracle fixtures over serial and
+  parallel modes. GREEN adds registered three-stage count/prefix/scatter
+  siblings: one workgroup per expert counts lanes, one thread produces exact
+  starts/active IDs, and wave32 ballots scatter each expert's lanes in stable
+  ascending order without caller-visible scratch.
+- Focused validation reports **51 passed, 2 skipped** across group metadata,
+  complete production-shape MoE, runtime/session/backend policy, and runner
+  contracts. Both metadata fixtures are exact, and the complete MoE BF16
+  output is byte-identical between serial and parallel compaction.
+- A deterministic M512/top10/E256 leaf screen improves
+  **0.348880 -> 0.058969 ms (-83.10%)** with all six metadata arrays exact.
+  Cached-only gfx1151 tracing names count/prefix/scatter at
+  **2.124/1.723/1.844 us** on the tiny fixture, local256/1/256,
+  VGPR16/8/32, LDS2048/0/512 B, and zero scratch. Trace SHA-256:
+  `36906945b967b7b7c9a36b0e97958322c387964c89ba5b2e32e45c426b0f82c1`.
+- Seven counterbalanced one-owner dirty-tree pp512 repetitions improve serial
+  rollback **491.325649 -> 497.777359 tok/s (+1.313123%)**, win all seven
+  pairs, reduce median wall **13.506 ms**, and select token 2930 in all 14
+  runs. Raw JSON SHA-256:
+  `af23811e811188f50adf75e1a425136a6a3312d4e617e382eb57cd977e7e9297`.
+  gfx1151 selects parallel by backend capability; gfx1100 and explicit serial
+  remain unchanged. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-candidate.json`.
+- Next: commit the exact candidate, run a clean same-command A/B and cached
+  all-family trace, publish if retained, then remove the remaining ~4.6 ms to
+  the 500 tok/s milestone.

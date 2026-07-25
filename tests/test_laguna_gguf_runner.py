@@ -764,6 +764,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     )
     assert session.dense_q4_prefill_mode == "wmma_pack8"
     assert session.f16_prefill_mode == "hipblaslt_scaled"
+    assert session.group_compact_mode == "parallel"
     assert session.verifier_scratch is None
     session.close()
     session.close()

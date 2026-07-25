@@ -140,6 +140,136 @@ __global__ void qwen35_moe_group_compact_active_kernel(
   }
 }
 
+// Stable expert-major compaction without the serial 256 x total_lanes scan.
+// Stage 1 gives every expert its own workgroup and stores exact counts in the
+// caller-owned expert_start array. Stage 2 converts those counts in place to
+// starts. Stage 3 gives every active expert a workgroup and uses wave ballots
+// to preserve ascending lane order inside each expert.
+__launch_bounds__(256, 1)
+__global__ void qwen35_moe_group_count_active_parallel_kernel(
+    const int64_t* __restrict__ selected_experts,
+    int64_t* __restrict__ expert_start,
+    int64_t total_lanes,
+    int64_t num_experts) {
+  const int64_t expert = static_cast<int64_t>(blockIdx.x);
+  const int tid = static_cast<int>(threadIdx.x);
+  if (expert >= num_experts) {
+    return;
+  }
+
+  int64_t count = 0;
+  for (int64_t lane = tid; lane < total_lanes; lane += blockDim.x) {
+    count += selected_experts[lane] == expert;
+  }
+
+  __shared__ int64_t partial[256];
+  partial[tid] = count;
+  __syncthreads();
+  for (int offset = 128; offset > 0; offset >>= 1) {
+    if (tid < offset) {
+      partial[tid] += partial[tid + offset];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    expert_start[expert] = partial[0];
+  }
+}
+
+__launch_bounds__(1, 1)
+__global__ void qwen35_moe_group_prefix_active_parallel_kernel(
+    int64_t* __restrict__ expert_start,
+    int64_t* __restrict__ active_experts,
+    int64_t* __restrict__ active_count,
+    int64_t num_experts) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+  int64_t offset = 0;
+  int64_t active = 0;
+  for (int64_t expert = 0; expert < num_experts; ++expert) {
+    const int64_t count = expert_start[expert];
+    expert_start[expert] = offset;
+    if (count > 0) {
+      active_experts[active++] = expert;
+      offset += count;
+    }
+  }
+  expert_start[num_experts] = offset;
+  active_count[0] = active;
+}
+
+__launch_bounds__(256, 1)
+__global__ void qwen35_moe_group_scatter_active_parallel_kernel(
+    const int64_t* __restrict__ selected_experts,
+    const float* __restrict__ routing_weights,
+    const int64_t* __restrict__ expert_start,
+    int64_t* __restrict__ sorted_lanes,
+    int64_t* __restrict__ sorted_experts,
+    int64_t* __restrict__ compact_to_source,
+    float* __restrict__ sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    int64_t top_k) {
+  const int64_t expert = static_cast<int64_t>(blockIdx.x);
+  const int tid = static_cast<int>(threadIdx.x);
+  if (expert >= num_experts ||
+      expert_start[expert] == expert_start[expert + 1]) {
+    return;
+  }
+
+  const int wave = tid >> 5;
+  const int lane32 = tid & 31;
+  __shared__ int wave_counts[8];
+  __shared__ int wave_starts[8];
+  __shared__ int64_t running;
+  __shared__ int64_t chunk_base;
+  if (tid == 0) {
+    running = expert_start[expert];
+  }
+  __syncthreads();
+
+  for (int64_t chunk = 0; chunk < total_lanes; chunk += blockDim.x) {
+    const int64_t lane = chunk + tid;
+    const bool match =
+        lane < total_lanes && selected_experts[lane] == expert;
+    const unsigned long long mask = __ballot(match);
+    if (lane32 == 0) {
+      wave_counts[wave] = __popcll(mask);
+    }
+    __syncthreads();
+
+    if (tid == 0) {
+      int prefix = 0;
+#pragma unroll
+      for (int wave_idx = 0; wave_idx < 8; ++wave_idx) {
+        wave_starts[wave_idx] = prefix;
+        prefix += wave_counts[wave_idx];
+      }
+      chunk_base = running;
+      running += prefix;
+    }
+    __syncthreads();
+
+    if (match) {
+      const unsigned long long lower_mask =
+          lane32 == 0 ? 0ull : ((1ull << lane32) - 1ull);
+      const int wave_rank = __popcll(mask & lower_mask);
+      const int64_t out_idx =
+          chunk_base + wave_starts[wave] + wave_rank;
+      sorted_lanes[out_idx] = lane;
+      if (sorted_experts) {
+        sorted_experts[out_idx] = expert;
+      }
+      if (compact_to_source) {
+        compact_to_source[out_idx] = lane / top_k;
+      }
+      sorted_weights[out_idx] = routing_weights[lane];
+    }
+    __syncthreads();
+  }
+}
+
 __global__ void qwen35_moe_wmma_tile_map_kernel(
     const int64_t* __restrict__ expert_start_compact,
     int64_t* __restrict__ wmma_expert_start,
@@ -463,6 +593,132 @@ extern "C" int hipengine_qwen35_moe_group_compact_active_source_rows(
       num_experts,
       top_k);
   return static_cast<int>(hipGetLastError());
+}
+
+int launch_qwen35_moe_group_compact_active_parallel(
+    const int64_t* selected_experts,
+    const float* routing_weights,
+    int64_t* expert_start,
+    int64_t* active_experts,
+    int64_t* active_count,
+    int64_t* sorted_lanes,
+    int64_t* sorted_experts,
+    int64_t* compact_to_source,
+    float* sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    int64_t top_k,
+    hipStream_t stream) {
+  if (!selected_experts || !routing_weights || !expert_start ||
+      !active_experts || !active_count || !sorted_lanes ||
+      (!sorted_experts && !compact_to_source) || !sorted_weights ||
+      total_lanes <= 0 || num_experts <= 0 || num_experts > 256 ||
+      top_k <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_moe_group_count_active_parallel_kernel,
+      dim3(static_cast<unsigned int>(num_experts)),
+      dim3(256),
+      0,
+      stream,
+      selected_experts,
+      expert_start,
+      total_lanes,
+      num_experts);
+  hipError_t error = hipGetLastError();
+  if (error != hipSuccess) {
+    return static_cast<int>(error);
+  }
+  hipLaunchKernelGGL(
+      qwen35_moe_group_prefix_active_parallel_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      expert_start,
+      active_experts,
+      active_count,
+      num_experts);
+  error = hipGetLastError();
+  if (error != hipSuccess) {
+    return static_cast<int>(error);
+  }
+  hipLaunchKernelGGL(
+      qwen35_moe_group_scatter_active_parallel_kernel,
+      dim3(static_cast<unsigned int>(num_experts)),
+      dim3(256),
+      0,
+      stream,
+      selected_experts,
+      routing_weights,
+      expert_start,
+      sorted_lanes,
+      sorted_experts,
+      compact_to_source,
+      sorted_weights,
+      total_lanes,
+      num_experts,
+      top_k);
+  error = hipGetLastError();
+  return static_cast<int>(error);
+}
+
+extern "C" int hipengine_qwen35_moe_group_compact_active_parallel(
+    const int64_t* selected_experts,
+    const float* routing_weights,
+    int64_t* expert_start,
+    int64_t* active_experts,
+    int64_t* active_count,
+    int64_t* sorted_lanes,
+    int64_t* sorted_experts,
+    float* sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_qwen35_moe_group_compact_active_parallel(
+      selected_experts,
+      routing_weights,
+      expert_start,
+      active_experts,
+      active_count,
+      sorted_lanes,
+      sorted_experts,
+      nullptr,
+      sorted_weights,
+      total_lanes,
+      num_experts,
+      1,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_moe_group_compact_active_source_rows_parallel(
+    const int64_t* selected_experts,
+    const float* routing_weights,
+    int64_t* expert_start,
+    int64_t* active_experts,
+    int64_t* active_count,
+    int64_t* sorted_lanes,
+    int64_t* compact_to_source,
+    float* sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    int64_t top_k,
+    hipStream_t stream) {
+  return launch_qwen35_moe_group_compact_active_parallel(
+      selected_experts,
+      routing_weights,
+      expert_start,
+      active_experts,
+      active_count,
+      sorted_lanes,
+      nullptr,
+      compact_to_source,
+      sorted_weights,
+      total_lanes,
+      num_experts,
+      top_k,
+      stream);
 }
 
 extern "C" int hipengine_qwen35_moe_wmma_tile_map(

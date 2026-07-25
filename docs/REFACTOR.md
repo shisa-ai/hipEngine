@@ -1087,3 +1087,17 @@ should be boring.
   selected-expert checkpoint. Keep the underlying 32-row template if it
   remains the fallback for non-gfx1151 backends or shapes below the 64-row
   admission threshold.
+
+## Laguna serial stable MoE compaction rollback
+
+- Added 2026-07-26 when gfx1151 changed from one-workgroup serial
+  expert-major compaction to the byte-identical per-expert parallel
+  count/prefix/ballot-scatter path.
+- The session-level `serial` selector and registered one-pass kernels remain
+  for rollback and unmeasured backends. The production-shape leaf improves
+  **0.348880 -> 0.058969 ms (-83.10%)**, and the dirty committed-candidate
+  screen improves **491.326 -> 497.777 tok/s (+1.313%)** with all seven paired
+  wins.
+- Remove the explicit gfx1151 serial session selector after the next retained
+  exact MoE metadata checkpoint. Keep the serial registry primitive if another
+  backend still requires it as an unfused/reference fallback.

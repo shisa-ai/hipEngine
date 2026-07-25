@@ -17,7 +17,9 @@ from hipengine.kernels.hip_gfx1100.moe import (
     plan_qwen35_moe_group_scatter_build,
     qwen35_moe_gather_packed_hidden_lowp,
     qwen35_moe_group_compact_active,
+    qwen35_moe_group_compact_active_parallel,
     qwen35_moe_group_compact_active_source_rows,
+    qwen35_moe_group_compact_active_source_rows_parallel,
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
     qwen35_moe_group_prefix_active,
@@ -77,6 +79,24 @@ def test_qwen35_moe_group_scatter_registers_prefill_metadata_variants() -> None:
             variant="active_experts_source_rows",
         )
         is qwen35_moe_group_compact_active_source_rows
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_compact",
+            quant="generic",
+            variant="active_experts_parallel",
+        )
+        is qwen35_moe_group_compact_active_parallel
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_compact",
+            quant="generic",
+            variant="active_experts_source_rows_parallel",
+        )
+        is qwen35_moe_group_compact_active_source_rows_parallel
     )
     assert (
         resolve(
@@ -223,7 +243,8 @@ def _hip_available() -> bool:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_group_compact_active_matches_stable_cpu_oracle() -> None:
+@pytest.mark.parametrize("parallel", [False, True])
+def test_group_compact_active_matches_stable_cpu_oracle(parallel: bool) -> None:
     selected = np.asarray([2, 1, 4, 1, 2, 4, 4, 1], dtype=np.int64)
     weights = np.asarray([0.2, 0.1, 0.4, 0.3, 0.5, 0.6, 0.7, 0.8], dtype=np.float32)
     expected_starts = np.asarray([0, 0, 3, 5, 5, 8], dtype=np.int64)
@@ -264,6 +285,7 @@ def test_group_compact_active_matches_stable_cpu_oracle() -> None:
             sorted_weights_buffer.ptr,
             selected.size,
             5,
+            **({"parallel": True} if parallel else {}),
         )
         starts = np.empty_like(expected_starts)
         active = np.empty(5, dtype=np.int64)
@@ -292,7 +314,10 @@ def test_group_compact_active_matches_stable_cpu_oracle() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None:
+@pytest.mark.parametrize("parallel", [False, True])
+def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle(
+    parallel: bool,
+) -> None:
     selected = np.asarray([2, 1, 4, 1, 2, 4, 4, 1], dtype=np.int64)
     weights = np.asarray([0.2, 0.1, 0.4, 0.3, 0.5, 0.6, 0.7, 0.8], dtype=np.float32)
     expected_starts = np.asarray([0, 0, 3, 5, 5, 8], dtype=np.int64)
@@ -348,6 +373,7 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
             selected.size,
             5,
             2,
+            **({"parallel": True} if parallel else {}),
         )
         qwen35_moe_mmq32_tile_map(
             starts_buffer.ptr,

@@ -76,6 +76,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_F16_PREFILL_MODE,
     LAGUNA_F16_PREFILL_STRATEGY,
     LAGUNA_GLOBAL_PREFILL_VARIANT,
+    LAGUNA_MOE_GROUP_COMPACT_MODE,
     LAGUNA_PREFILL_MATRIX_ROWS,
     LAGUNA_SELECTED_DOWN_MODE,
     LAGUNA_SELECTED_GATE_UP_MODE,
@@ -224,6 +225,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
     assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_scaled"
     assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
+    assert LAGUNA_MOE_GROUP_COMPACT_MODE == "parallel"
     assert (
         LAGUNA_SELECTED_GATE_UP_MODE
         == "mmq128x32_d8_f32_wavecols_direct"
