@@ -179611,3 +179611,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
   Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`.
+
+## 2026-07-26 — Reject direct local256 Laguna gate/up
+
+- RED extended the Q4 selected-prefill fixture and failed on the missing
+  local256 direct-decode wrapper ABI. GREEN exported the exact
+  256x32/local256 specialization and passed the targeted candidate kernel and
+  wrapper tests before removal. Production and candidate output are BF16-byte
+  identical with checksum **1114.1769413301445**.
+- Nine counter-rotated burst-three samples on actual layer-1 T16 gate/up
+  weights plus natural M512 routing regress production direct
+  128x32/local128 **6.868392 -> 7.181496 ms (+4.559%)**. Every candidate
+  sample loses. Raw JSON SHA-256:
+  `97e25366d54a30dc552ac8638e5164121f0810b35b9ae4b11523db501edcef6a`.
+- Rejected before runtime integration and removed every temporary HIP, Python,
+  leaf-harness, and test surface. Tracked code returned byte-for-byte to
+  `d334e0b88`; production remains 128x32/local128 direct decode. The next
+  bounded task reopens dense/shared because the refreshed production trace
+  exposes Q6 at **29.248 ms**, VGPR256, and **236 B/thread scratch**, while Q4
+  is scratch-free. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`.

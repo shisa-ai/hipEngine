@@ -652,7 +652,7 @@ and achievable-bandwidth evidence.
 | Selected D4 Q4/Q6 down | **206.110 ms** | **19.70%** | Direct Q4 decode is retained and cuts its consumer **90.280 -> 71.378 ms**. Q6 row-vector now consumes **129.581 ms** and its tested quartet/direct row-half mappings remain closed. |
 | Global + SWA attention | **218.164 ms** | **20.85%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **135.443 ms** | **12.94%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
-| Q4/Q6 WMMA dense/shared | **72.866 ms** | **6.96%** | Freeze. It cannot move the next milestone materially. |
+| Q4/Q6 WMMA dense/shared | **72.866 ms** | **6.96%** | Reopened by the refreshed trace: Q6 alone is **29.248 ms** at VGPR256 with **236 B/thread scratch**, while Q4 is scratch-free. Screen an exact lower-resource Q6 tile/fragment schedule; retain only measured family and pp512 wins. |
 | All remaining named/other kernels | **94.938 ms** | **9.07%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
@@ -686,11 +686,12 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Screen direct per-column **256x32/local256 gate/up**: eight waves each own
-   one output column and all 32 routed rows, halving workgroups and repeated
-   activation staging without the 64-accumulator pressure of the rejected
-   256x32/local128 body. Admit only with actual-weight leaf improvement and
-   positive one-owner pp512 separation.
+1. Remove the newly exposed **Q6 dense/shared WMMA spill**. The refreshed
+   production trace assigns **29.248 ms across 24 calls** to
+   `gguf_q6_k_prefill_wmma_kernel<...,64,16>` at VGPR256 and **236 B/thread
+   scratch**, versus scratch-free Q4. Screen exact smaller fragments/tiles at
+   the real M512/K3072/N1024 shape, then require a positive dense-family and
+   one-owner pp512 result before admission.
 2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1228,6 +1229,17 @@ production ranges overlap, and the candidate owns the lowest sample at
 128x32/local128. The required lineage command also remains blocked by the
 absent read-only Atlas checkout, with no external source copied. Evidence:
 [`2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json).
+
+Twenty-seventh post-350 screen: **direct 256x32/local256 gate/up rejected and
+removed**. Eight waves each own one output column and all 32 routed rows, so
+the exact body halves workgroups and repeated activation staging without the
+64-accumulator pressure of the earlier two-columns-per-lane mapping. Actual
+layer-1 natural-M512 pack-inclusive time nevertheless regresses
+**6.868 -> 7.181 ms (+4.559%)**, and all nine counter-rotated samples lose.
+The checksum remains exactly **1114.1769413301445**. The screen stopped before
+runtime integration and every candidate surface was removed; production
+remains 128x32/local128. Evidence:
+[`2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json).
 
 Production evidence:
 
@@ -1857,6 +1869,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-candidate.json`

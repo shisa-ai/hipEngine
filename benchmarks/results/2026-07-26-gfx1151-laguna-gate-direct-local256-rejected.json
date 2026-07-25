@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T03:43:48+09:00",
+  "kind": "hipengine_laguna_gate_direct_local256_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "d334e0b882c67cd87d844c5cc46a908c49be46f3",
+    "candidate_tracked_dirty": true,
+    "candidate_surfaces_removed": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "production": "128 output columns x 32 routed rows, local128, direct per-column T16 decode",
+    "screen": "256 output columns x 32 routed rows, local256, direct per-column T16 decode",
+    "premise": "Eight waves each own one output column and all 32 routed rows, halving workgroups and repeated activation staging without assigning two columns to each lane.",
+    "arithmetic": "BF16-byte identical; D8 packing, split16 packed dots, K order, and stores unchanged"
+  },
+  "correctness": {
+    "red": "The extended Q4 selected-prefill fixture failed on the missing local256 direct-decode wrapper ABI.",
+    "green": "The targeted candidate kernel and wrapper tests passed before removal; candidate and production had identical BF16 output.",
+    "actual_layer_checksum_f64": {
+      "production": 1114.1769413301445,
+      "candidate": 1114.1769413301445
+    }
+  },
+  "actual_layer1_natural_m512": {
+    "scope": "actual layer-1 K3072/N1024 gate/up T16 weights, natural routing, pack-inclusive, nine counter-rotated burst-three samples",
+    "production_samples_ms": [
+      6.827190399169922,
+      6.861550649007161,
+      6.8703263600667315,
+      6.836727142333984,
+      6.9176279703776045,
+      6.981335322062175,
+      6.887879689534505,
+      6.868391672770183,
+      6.867790857950847
+    ],
+    "production_median_ms": 6.868391672770183,
+    "candidate_samples_ms": [
+      7.154117584228516,
+      7.141127904256185,
+      7.240257263183594,
+      7.180278778076172,
+      7.181495666503906,
+      7.186078389485677,
+      7.170597076416016,
+      7.218475341796875,
+      7.238901138305664
+    ],
+    "candidate_median_ms": 7.181495666503906,
+    "candidate_change_percent": 4.558621707248123,
+    "raw_json_sha256": "97e25366d54a30dc552ac8638e5164121f0810b35b9ae4b11523db501edcef6a",
+    "raw_json_committed": false
+  },
+  "decision": {
+    "pass": false,
+    "failed_checks": [
+      "candidate regressed the actual-weight leaf by 4.559%",
+      "candidate was slower in all nine counter-rotated samples"
+    ],
+    "action": "Reject before runtime integration and remove the local256 HIP export, Python wrapper, leaf-harness mode, and tests. Keep 128x32/local128 direct decode in production."
+  }
+}
