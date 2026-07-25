@@ -163,6 +163,37 @@ __global__ void qwen35_router_logits_token_tile_kernel(
   }
 }
 
+template <typename scalar_t, typename weight_t, int TOKENS_PER_BLOCK>
+hipError_t launch_qwen35_router_logits_token_tile(
+    const scalar_t* hidden,
+    const weight_t* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  hipLaunchKernelGGL(
+      (qwen35_router_logits_token_tile_kernel<
+          scalar_t,
+          weight_t,
+          TOKENS_PER_BLOCK>),
+      dim3(
+          static_cast<unsigned int>(num_rows),
+          static_cast<unsigned int>(
+              (tokens + TOKENS_PER_BLOCK - 1) / TOKENS_PER_BLOCK)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * TOKENS_PER_BLOCK * sizeof(float),
+      stream,
+      hidden,
+      weight,
+      logits,
+      tokens,
+      hidden_size,
+      num_rows);
+  return hipGetLastError();
+}
+
 template <typename scalar_t, typename weight_t>
 hipError_t launch_qwen35_router_logits(
     const scalar_t* hidden,
@@ -174,21 +205,18 @@ hipError_t launch_qwen35_router_logits(
     int64_t threads,
     hipStream_t stream) {
   if (tokens >= 4) {
-    constexpr int kTokensPerBlock = 4;
-    hipLaunchKernelGGL(
-        (qwen35_router_logits_token_tile_kernel<scalar_t, weight_t, kTokensPerBlock>),
-        dim3(
-            static_cast<unsigned int>(num_rows),
-            static_cast<unsigned int>((tokens + kTokensPerBlock - 1) / kTokensPerBlock)),
-        dim3(static_cast<unsigned int>(threads)),
-        static_cast<size_t>(threads) * kTokensPerBlock * sizeof(float),
-        stream,
+    return launch_qwen35_router_logits_token_tile<
+        scalar_t,
+        weight_t,
+        4>(
         hidden,
         weight,
         logits,
         tokens,
         hidden_size,
-        num_rows);
+        num_rows,
+        threads,
+        stream);
   } else {
     hipLaunchKernelGGL(
         (qwen35_router_logits_kernel<scalar_t, weight_t>),
@@ -633,6 +661,56 @@ extern "C" int hipengine_qwen35_router_logits_bf16_f32w(
       num_rows,
       threads,
       stream));
+}
+
+extern "C" int hipengine_qwen35_router_logits_bf16_f32w_token_tile_8(
+    const uint16_t* hidden,
+    const float* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || num_rows <= 0 ||
+      !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return static_cast<int>(
+      launch_qwen35_router_logits_token_tile<uint16_t, float, 8>(
+          hidden,
+          weight,
+          logits,
+          tokens,
+          hidden_size,
+          num_rows,
+          threads,
+          stream));
+}
+
+extern "C" int hipengine_qwen35_router_logits_bf16_f32w_token_tile_16(
+    const uint16_t* hidden,
+    const float* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || num_rows <= 0 ||
+      !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return static_cast<int>(
+      launch_qwen35_router_logits_token_tile<uint16_t, float, 16>(
+          hidden,
+          weight,
+          logits,
+          tokens,
+          hidden_size,
+          num_rows,
+          threads,
+          stream));
 }
 
 extern "C" int hipengine_qwen35_router_logits_fp16_f32w(

@@ -179956,3 +179956,36 @@ Vulkan local sizes verbatim will close the measured gap.
   sixteen. The production trace assigns **30.658 ms** to this family, and each
   wider tile can preserve the current per-token K traversal, 256-thread
   reduction association, F32 logits, and downstream routing bits.
+
+## 2026-07-26 — Retain exact eight-token router-logit candidate
+
+- RED imported separately registered 8- and 16-token F32-weight/BF16-hidden
+  router contracts and failed collection. GREEN factors the existing token
+  tile launch without changing its body. Every token/expert retains the same K
+  traversal, per-thread products, 256-thread reduction tree, and F32 store.
+- Tile 8 and tile 16 are F32-bit exact to tile 4 at K3072/N256, including a
+  ragged 17-token tail. The five-file focused bundle passes with two expected
+  local-model skips. Complete production-shape MoE BF16 output, selected IDs,
+  and scaled routing weights are byte-exact for tile 8.
+- Eleven-sample, burst-five leaf medians for tile4/tile8/tile16 are
+  **0.168803/0.125441/0.127597 ms** at M128,
+  **0.294527/0.225854/0.233516 ms** at M256, and
+  **0.583252/0.434974/0.445979 ms** at M512. Tile 8 wins every shape by
+  **1.304-1.346x**. Raw SHA-256:
+  `ba79e345962327924ec4981fae70faaa75a8c0bd31191a28b219a90e573fc386`.
+- Seven dirty-tree counterbalanced one-owner pp512 repetitions improve
+  explicit tile4 rollback **498.361068 -> 502.995076 tok/s (+0.929850%)**,
+  win all seven pairs, reduce median wall **9.465 ms**, and place every
+  candidate sample above 500 (**minimum 500.945675 tok/s**). All fourteen runs
+  select token 2930. Raw SHA-256:
+  `cf6a19a1f4190a97a2b782cae0c62b985d79a5be6d447c66359353b4d3a2ee1a`.
+- Cached-only tracing names
+  `qwen35_router_logits_token_tile_kernel<unsigned short,float,8>` at
+  local256/VGPR32/SGPR128/dynamic-LDS8192B/scratch0/wave32. Trace SHA-256:
+  `72286d906545431b199c6d04b39d3e8a07c06a489e7b453e40342b14f4ffc08d`.
+  Promote tile 8 by gfx1151 package capability; tile 4 remains explicit
+  rollback and the unmeasured-backend default. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-candidate.json`.
+- Next: commit, run the same seven-repeat A/B from the clean revision, and
+  publish the all-family trace. The 500 production milestone closes only if
+  the clean candidate median and every clean candidate sample remain >=500.

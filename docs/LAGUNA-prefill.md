@@ -653,7 +653,7 @@ and achievable-bandwidth evidence.
 | Global + SWA attention | **218.767 ms** | **21.73%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.631 ms** | **13.27%** | The contractions are at the measured library ceiling, but the refreshed trace exposes **9.53 ms** of scale/cast/restore kernels; permit exact producer/consumer fusion screens. |
 | Q4/Q6 WMMA dense/shared | **52.917 ms** | **5.26%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
-| Router, norms, reductions, metadata, KV/tails | **79.615 ms** | **7.91%** | Stable parallel compaction cuts **16.752 -> 2.564 ms** in the published trace; the retained one-block prefix follow-up projects another **1.407 ms** saving. Router logits are **30.658 ms** and are now the immediate exact target. |
+| Router, norms, reductions, metadata, KV/tails | **79.615 ms** | **7.91%** | Stable parallel compaction cuts **16.752 -> 2.564 ms** in the published trace; the retained one-block prefix follow-up projects another **1.407 ms** saving. Exact eight-token router reuse improves the M512 leaf **0.5833 -> 0.4350 ms (1.341x)** and dirty pp512 **498.361 -> 502.995 tok/s**; clean publication is in progress. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
@@ -686,12 +686,12 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Widen exact **router-logit token reuse** from the current four-token tile.
-   Preserve each token/expert's K traversal and 256-thread reduction
-   association, F32 logits, selected IDs, and routing weights. Screen 8- and
-   16-token tiles first; only add expert tiling if the simple reuse sweep does
-   not recover the required wall.
-2. Promote the fastest exact router tile and run the clean pp512 gate. The
+1. Commit the exact **eight-token router-logit tile**, then run the clean
+   seven-repeat pp512 gate. The dirty candidate wins all seven pairs at
+   **502.995 tok/s** median and **500.946 tok/s** minimum; clean evidence must
+   reproduce both median and minimum at or above 500.
+2. Publish the post-router all-family trace and close the 500 milestone if the
+   clean gate passes. The
    gate-only MMQ then up-MMQ+SiLU boundary is closed: it was BF16-byte exact
    but changed **498.012 -> 497.210 tok/s (-0.161%)**, winning only one of
    seven paired repetitions. Do not retry without a single cooperative

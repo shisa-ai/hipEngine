@@ -60,6 +60,9 @@ LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # registers. Packed-dot arithmetic and K order remain bit-for-bit unchanged.
 # Other backends retain exact.
 LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols_direct"
+# Exact eight-token router tiling preserves every token/expert's K traversal
+# and reduction tree while reusing each F32 weight row twice as long.
+LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"
 # The post-350 down screen maps Q4 output columns across two wave32s and lets
 # the Q6 row-vector consumer reuse one decoded tile across 64 routed rows.
 # Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
@@ -301,6 +304,7 @@ __all__ = [
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_PREFILL_MATRIX_ROWS",
+    "LAGUNA_ROUTER_LOGITS_MODE",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",
     "LAGUNA_SWA_PREFILL_VARIANT",
