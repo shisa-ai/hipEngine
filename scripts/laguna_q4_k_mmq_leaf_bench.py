@@ -71,6 +71,7 @@ MODES = (
     "t16-mmq32-d4x3",
     "t16-mmq128x32-d8-f32",
     "t16-mmq128x32-d8-f32-wavecols",
+    "t16-mmq128x32-d8-f32-wavecols-direct",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -668,7 +669,11 @@ def main() -> None:
                         runtime=runtime,
                     )
 
-                def t16_mmq128_d8_f32(*, wave_cols: bool) -> None:
+                def t16_mmq128_d8_f32(
+                    *,
+                    wave_cols: bool,
+                    direct_wave_decode: bool = False,
+                ) -> None:
                     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
                         source_x_dev.ptr,
                         q8_dev.ptr,
@@ -699,6 +704,7 @@ def main() -> None:
                         split16=True,
                         rowvec=True,
                         wave_cols=wave_cols,
+                        direct_wave_decode=direct_wave_decode,
                         library=mmq_library,
                         runtime=runtime,
                     )
@@ -716,6 +722,12 @@ def main() -> None:
                     ),
                     "t16-mmq128x32-d8-f32-wavecols": (
                         lambda: t16_mmq128_d8_f32(wave_cols=True)
+                    ),
+                    "t16-mmq128x32-d8-f32-wavecols-direct": (
+                        lambda: t16_mmq128_d8_f32(
+                            wave_cols=True,
+                            direct_wave_decode=True,
+                        )
                     ),
                 }
                 for threshold, hybrid in mixed_metadata.items():

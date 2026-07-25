@@ -1743,16 +1743,18 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         "rowvec",
         "wave_cols",
         "single_wave_cols",
+        "direct_wave_decode",
     ),
     [
-        (1, False, False, False, False),
-        (2, False, False, False, False),
-        (3, False, False, False, False),
-        (1, False, True, False, False),
-        (1, False, True, False, True),
-        (1, True, False, False, False),
-        (1, True, True, False, False),
-        (1, True, True, True, False),
+        (1, False, False, False, False, False),
+        (2, False, False, False, False, False),
+        (3, False, False, False, False, False),
+        (1, False, True, False, False, False),
+        (1, False, True, False, True, False),
+        (1, True, False, False, False, False),
+        (1, True, True, False, False, False),
+        (1, True, True, True, False, False),
+        (1, True, True, True, False, True),
     ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1761,6 +1763,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     rowvec: bool,
     wave_cols: bool,
     single_wave_cols: bool,
+    direct_wave_decode: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1872,6 +1875,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             split16=split16,
             rowvec=rowvec,
             wave_cols=wave_cols,
+            direct_wave_decode=direct_wave_decode,
             library=library,
             runtime=runtime,
         )

@@ -668,6 +668,22 @@ VGPR80, while the 64-accumulator wide body rises to VGPR128; all use 1,536 B
 LDS and zero scratch. All candidate surfaces were removed
 (`benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`).
 
+Direct per-column Q4 decode is the next retained gfx1151 gate/up candidate.
+Within the production 128x32/local128 wave-column geometry, each lane decodes
+its own resident-T16 column instead of even lanes decoding pairs and shuffling
+the second column. Resident bytes, D8 activation staging, packed-dot
+arithmetic, K order, and BF16 output are unchanged. The nine-case
+CPU-reference gate passes and output is BF16-byte identical. Actual layer-1
+pack-inclusive time improves **8.107 -> 6.916 ms (-14.69%)**; a seven-repeat
+integrated pp512 screen improves **447.582 -> 472.533 tok/s (+5.575%)** with
+complete sample separation and token 2930. Cached tracing names
+`<1,false,true,128,true,true,128,true>` at local128/VGPR88/LDS1536B/scratch0;
+its text is **13,416 bytes**, 752 bytes smaller than the pair-decode body in
+the same object. gfx1151 selects the direct mode as a candidate default while
+the prior pair-decode mode remains explicit rollback through clean production
+publication
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-candidate.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

@@ -1023,6 +1023,20 @@ should be boring.
   for production Q6 unless a different direct-consume mapping wins its own
   quant-isolated gate.
 
+## Laguna Q4 gate/up pair-decode wave-column rollback
+
+- Added 2026-07-26 when direct per-column T16 decode became the next gfx1151
+  candidate default. The older `mmq128x32_d8_f32_wavecols` mode remains an
+  explicit session-level rollback beside
+  `mmq128x32_d8_f32_wavecols_direct`. The candidate preserves resident bytes
+  and arithmetic, is BF16-byte identical, improves the actual layer-1 leaf
+  **8.107 -> 6.916 ms**, and improves the implementation-worktree pp512 screen
+  **447.582 -> 472.533 tok/s**.
+- Remove the explicit pair-decode session route after the direct mode passes
+  clean selector-unset timing, direct all-exact quality, lifecycle, and
+  all-family tracing. Keep no duplicate positive selector solely for
+  historical benchmarking.
+
 ## Laguna rejected Q6 down wave-column template branch
 
 - Added 2026-07-26 during the Q4/Q6 direct-consume split. Q6 quartet

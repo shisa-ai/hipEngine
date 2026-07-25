@@ -179457,3 +179457,34 @@ Vulkan local sizes verbatim will close the measured gap.
   The 500 gate remains open at **448.203 tok/s**; next screen Q4 direct-column
   decode inside the retained wave-column geometry, which does not duplicate
   row ownership.
+
+## 2026-07-26 — Retain direct Q4 gate/up wave decode candidate
+
+- RED extended the Q4 selected-prefill fixture and failed on the missing
+  `direct_wave_decode` wrapper ABI. GREEN adds a separate
+  `mmq128x32_d8_f32_wavecols_direct` export: each wave-column lane decodes its
+  own resident-T16 column instead of even lanes decoding adjacent pairs and
+  shuffling the second column. The 128x32/local128 geometry, D8 activation
+  stage, resident bytes, packed dots, K order, and BF16 stores are unchanged.
+- All nine Q4 fixture configurations pass the CPU-reference gate and the
+  direct body is BF16-byte identical to pair-decode production. The complete
+  changed kernel/runtime/backend/category/publication bundle passes with two
+  expected skips.
+- Nine counter-rotated burst-three actual layer-1/natural-M512 samples improve
+  the pack-inclusive leaf **8.106677 -> 6.915580 ms (-14.693%)**, with exact
+  checksum **1114.1769413301445**. Raw output SHA-256:
+  `6a3ae87c4d7204b5b1314731d2c79dc3dacb1d2984aebd539237100946b9ea72`.
+- One-owner matrix512/attention128 pp512 over seven paired repetitions
+  improves pair decode **447.581861 -> 472.533190 tok/s (+5.575%)** with
+  complete sample separation and token 2930 throughout. Cached `rocprofv3`
+  names template `<1,false,true,128,true,true,128,true>` at local128,
+  VGPR88, SGPR128, LDS1536B, and zero scratch. Direct text is **13,416 bytes**
+  versus **14,168 bytes** for pair decode in the same object. Raw trace
+  SHA-256:
+  `e1cd7bd09b92a1acd45a39fa472d8ab1d46c10d353e3c499ad662efd6e3d9f8f`.
+- gfx1151 now selects the direct body as a candidate default while pair decode
+  remains explicit rollback. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-candidate.json`.
+  This is not yet a production claim: commit first, then require clean
+  selector-unset timing, direct all-exact quality/lifecycle, and a refreshed
+  all-family trace. The 500 and 700 gates remain open.
