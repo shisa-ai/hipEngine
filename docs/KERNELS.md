@@ -688,6 +688,19 @@ top-1 with neutral decode and exact lifecycle. Cached tracing measures
 cleanup
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-production.json`).
 
+The same direct-decode premise is retained as the next Q4-down candidate.
+Within the 64x32/local64 wave-column body, every lane decodes its own
+resident-T16 Q4 column; D4 activation staging, packed-dot arithmetic, K order,
+BF16 output, and Q6 row-vector production are unchanged. The ten-case
+primitive gate and production-shape Q4/Q6 runtime oracle are BF16-byte exact.
+With direct Q4 gate/up fixed, seven integrated repetitions improve Q4-down
+pair decode **473.774 -> 483.409 tok/s (+2.033%)** with complete sample
+separation and token 2930. Cached tracing names
+`<1,true,false,64,true,true,64,true>` at local64/VGPR88/LDS1536B/scratch0.
+gfx1151 selects the direct mode as candidate default while clean publication
+runs
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-candidate.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

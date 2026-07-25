@@ -1038,6 +1038,18 @@ should be boring.
   explicit pair-decode session route during immediate cleanup; keep no
   duplicate positive selector solely for historical benchmarking.
 
+## Laguna Q4-down pair-decode wave-column rollback
+
+- Added 2026-07-26 when direct per-column Q4-down decode became the next
+  gfx1151 candidate default. The older
+  `mmq64x32_d4_f32_wavecols_q4` mode remains explicit rollback beside
+  `mmq64x32_d4_f32_wavecols_direct_q4`. The candidate is BF16-byte identical
+  and improves the implementation-worktree pp512 screen
+  **473.774 -> 483.409 tok/s** while Q6 stays on row-vector production.
+- Remove the explicit Q4 pair-decode selector after the direct mode passes
+  clean selector-unset timing and refreshed all-family tracing. Do not couple
+  this cleanup to the independently retained Q6 row-vector kernel.
+
 ## Laguna rejected Q6 down wave-column template branch
 
 - Added 2026-07-26 during the Q4/Q6 direct-consume split. Q6 quartet

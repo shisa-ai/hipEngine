@@ -646,7 +646,7 @@ and achievable-bandwidth evidence.
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **317.722 ms** | **29.91%** | Direct per-column decode is retained. It removed **72.170 ms / 18.51%** from the prior trace; next expert work should be counter-directed rather than another pair/shuffle variant. |
-| Selected D4 Q4/Q6 down | **224.241 ms** | **21.11%** | Primary next lever. Q4 pair-decode consumes **90.280 ms** and is the bounded direct-decode transfer; Q6 row-vector consumes **128.896 ms** and its tested wave mappings remain closed. |
+| Selected D4 Q4/Q6 down | **224.241 ms** | **21.11%** | Direct Q4 decode is the retained candidate: integrated pp512 improves **473.774 -> 483.409 tok/s (+2.033%)**. Clean publication is next. Q6 row-vector consumes **128.896 ms** and its tested wave mappings remain closed. |
 | Global + SWA attention | **217.696 ms** | **20.49%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.942 ms** | **12.61%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **72.661 ms** | **6.84%** | Freeze. It cannot move the next milestone materially. |
@@ -683,11 +683,10 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Transfer direct per-column decode to **Q4 down only**, preserving Q6
-   row-vector production. Gate Q4 independently against the retained
-   pair-decode/shuffle body before integration; do not duplicate Q6 decode or
-   reopen its rejected quartet/row-half mappings. The refreshed trace bounds
-   this leaf at **90.280 ms** of pp512 wall.
+1. Publish direct per-column **Q4 down** decode from a clean committed
+   revision. The primitive/runtime byte gates pass and the implementation-tree
+   pp512 screen improves **473.774 -> 483.409 tok/s (+2.033%)**. Preserve Q6
+   row-vector production and do not reopen its rejected mappings.
 2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1182,6 +1181,26 @@ lifecycle/allocation recovery. Cached tracing measures
 **389.893 -> 317.722 ms (-18.51%)**, and leaves only **53.3 ms** of traced
 pp512 wall to the 500 milestone. Evidence:
 [`2026-07-26-gfx1151-laguna-q4-direct-wavecols-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-production.json).
+
+Twenty-fifth post-350 screen: **direct per-column Q4-down decode retained as
+the next default candidate**. The 64x32/local64 Q4 down body now gives each
+lane ownership of its resident-T16 column instead of having even lanes decode
+adjacent pairs and shuffle the second column. The D4 activation stage,
+resident layout, packed-dot arithmetic, K order, BF16 stores, and Q6
+row-vector path are unchanged.
+
+All ten Q4 primitive configurations pass the CPU-reference gate, the direct
+single-Q4 body is BF16-byte identical to pair-decode wave columns, and the
+production-shape Q4/Q6 runtime oracle remains byte-exact. With the retained
+direct Q4 gate/up default fixed, seven counterbalanced one-owner
+matrix512/attention128 repetitions improve Q4-down pair decode
+**473.774 -> 483.409 tok/s (+2.033%)**. Every direct sample
+**478.856–486.240** exceeds every pair-decode sample, and every run selects
+token 2930. Cached tracing names
+`<1,true,false,64,true,true,64,true>` at local64, VGPR88, LDS1536B, and zero
+scratch. This remains a candidate pending committed clean selector-unset
+timing and refreshed all-family tracing. Evidence:
+[`2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-candidate.json).
 
 Production evidence:
 

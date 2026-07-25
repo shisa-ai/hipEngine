@@ -61,7 +61,7 @@ CAPABILITY_DEFAULTS = {
     ),
     "selected_down_mode": (
         "LAGUNA_SELECTED_DOWN_MODE",
-        "mmq64x32_d4_f32_wavecols_q4",
+        "mmq64x32_d4_f32_wavecols_direct_q4",
     ),
     "dense_q4_prefill_mode": (
         "LAGUNA_DENSE_Q4_PREFILL_MODE",
@@ -120,7 +120,10 @@ def _expected_candidate_modes(defaults: Mapping[str, Any]) -> dict[str, Any]:
         "selected_down_mode": (
             "mmq64x32_d4_f32"
             if defaults["selected_down_mode"]
-            == "mmq64x32_d4_f32_wavecols_q4"
+            in (
+                "mmq64x32_d4_f32_wavecols_q4",
+                "mmq64x32_d4_f32_wavecols_direct_q4",
+            )
             else defaults["selected_down_mode"]
         ),
         # The current wave-column consumer is BF16 byte-identical to the D8
