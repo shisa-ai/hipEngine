@@ -180374,3 +180374,48 @@ Vulkan local sizes verbatim will close the measured gap.
   already selects retained `hipblaslt_range_direct`. Updated that stale
   expectation; the repaired node passes. The original focused run's other
   eight tests passed and were not repeated.
+
+## 2026-07-26 — Publish activation-double-buffer gate/up production
+
+- Ran the selector-unset cached production command at revision `647ac846c`:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_long_context_profile.py
+  --lengths 512,1024,4096 --chunk-size 512 --repetitions 3
+  --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build
+  --output /tmp/laguna-gate-doublebuf-production-clean.json`.
+- pp512 samples are **508.979/504.984/505.084 tok/s**, median
+  **505.084 tok/s** and minimum **504.984 tok/s**. 1K/4K medians are
+  **453.261/357.524 tok/s**. The preceding unmatched production packet was
+  **505.185 tok/s**, so the clean checkpoint is flat at **-0.020%** inside run
+  variance. Matched seven-pair complete-state A/B remains the isolation
+  evidence at **505.970 -> 507.405 tok/s (+0.284%, 2.862 ms saved)** with
+  **5/7** pair wins.
+- Every length is deterministic at tokens **2930/95/7772**, final positions
+  are exact, tracked allocations return to baseline, and lifecycle passes.
+  Because the new consumer is BF16 byte-exact to the admitted D8 arithmetic,
+  the absolute gate transfers unchanged: maximum KL **0.049542582**,
+  **316/320** top-1, minimum category top-1 **96.875%**, Poolside exact top-1,
+  and neutral decode. Raw SHA-256:
+  `2948afc77f28dd0eae794f8342c06e1bb546d6a7b898e54789147a1c9cec7681`.
+- A clean cached `rocprofv3 --kernel-trace` run reaches
+  **509.777/457.875/360.270 tok/s** at 512/1K/4K. pp512 has 1,886 dispatches,
+  **1,000.389 ms** kernel span, and **989.508 ms** kernel sum. The intended
+  `<1,false,true,128,true,true,128,true,true>` body appears 564 times across
+  warmup/512/1K/4K at local128/VGPR88/LDS3072B/scratch0.
+- Refreshed pp512 families are gate/up **314.378 ms**, down **203.721 ms**,
+  global+SWA attention **219.709 ms**, source-F16 **125.139 ms**,
+  dense/shared **53.154 ms**, and router **23.334 ms**. Gate/up falls from the
+  preceding trace's **318.559 ms** by **4.181 ms / 1.313%**, agreeing with the
+  retained inclusive leaf. Trace/summary SHA-256:
+  `1c2837ef19586a74446f407a72ed1b636bcfe453a091957f51a36fe3b1f63fa0` /
+  `d2f70928dd1631424428be62fc1f44f6fe1c6fbfacf87e65b178e50351052379`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json`
+  and refreshed the benchmark rollup, kernel catalog, refactor trigger, and
+  700-target table. Production remains quality-gated above 500; the next
+  material targets are the **314.378 ms** gate/up, **203.721 ms** down, and
+  **219.709 ms** attention families.

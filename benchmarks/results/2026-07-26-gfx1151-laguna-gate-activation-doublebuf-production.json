@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_production",
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "revision": "647ac846c4a13714a8ec4c611539759f7e6d825f",
+    "tracked_clean": true
+  },
+  "production_default": {
+    "selected_gate_up_mode": "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+    "kernel_template": "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,false,true,128,true,true,128,true,true>",
+    "barriers_per_k32": 1,
+    "lds_bytes": 3072,
+    "workgroup_size": 128,
+    "vgpr_count": 88,
+    "scratch_bytes": 0
+  },
+  "matched_ab": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-default.json",
+    "direct_rollback_median_tok_s": 505.96970628271254,
+    "double_buffer_median_tok_s": 507.4047412161372,
+    "throughput_change_percent": 0.28362072187437803,
+    "candidate_pair_wins": 5,
+    "pair_count": 7,
+    "complete_state_exact": true
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-doublebuf-production-clean.json",
+    "pp512_samples_tok_s": [
+      508.9786902729212,
+      504.98359933309985,
+      505.08432732184866
+    ],
+    "pp512_median_tok_s": 505.08432732184866,
+    "pp512_min_tok_s": 504.98359933309985,
+    "pp1024_median_tok_s": 453.2611890189373,
+    "pp4096_median_tok_s": 357.52378581724827,
+    "previous_production_pp512_tok_s": 505.1854817985307,
+    "headline_change_percent": -0.020023235094146496,
+    "interpretation": "The unmatched production checkpoint is flat inside run variance; the matched A/B isolates the retained exact gain.",
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "2948afc77f28dd0eae794f8342c06e1bb546d6a7b898e54789147a1c9cec7681"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-gate-doublebuf-production-rocprof.SHa0Ic -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-doublebuf-production-rocprof.json",
+    "pp512_tok_s": 509.7767413049297,
+    "pp512_dispatches": 1886,
+    "pp512_kernel_span_ms": 1000.389345,
+    "pp512_kernel_sum_ms": 989.508333,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 314.378011,
+      "selected_q4_q6_down": 203.720523,
+      "global_attention": 44.328317,
+      "swa_attention": 175.380926,
+      "source_f16_projection": 125.13851,
+      "dense_shared_quant_projection": 53.153564,
+      "router": 23.334112,
+      "activation_reduce_residual": 17.816162,
+      "norm_rope_gate": 24.944899,
+      "other": 5.252404,
+      "prefill_kv_write": 0.851354,
+      "lm_head_argmax": 1.172322,
+      "embedding": 0.037229
+    },
+    "selected_gate_up_calls_all_profiled_lengths_plus_warmup": 564,
+    "child_sha256": "496debc802b3e71603615d776d20785988bf9587a27ac0d5a579971c90e55945",
+    "trace_sha256": "1c2837ef19586a74446f407a72ed1b636bcfe453a091957f51a36fe3b1f63fa0",
+    "summary_sha256": "d2f70928dd1631424428be62fc1f44f6fe1c6fbfacf87e65b178e50351052379"
+  },
+  "quality": {
+    "transfer_basis": "The promoted consumer is BF16 byte-exact to the admitted direct D8 gate/up arithmetic and complete state is exact in the matched A/B.",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "rollback": "mmq128x32_d8_f32_wavecols_direct",
+    "production_pp512_tok_s": 505.08432732184866,
+    "next_target_tok_s": 700.0
+  }
+}

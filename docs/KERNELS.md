@@ -720,6 +720,14 @@ for the profiled leaf. Clean seven-pair pp512 then improves direct rollback
 logits, final/post-layer hidden, KV, cursor, next-token logit, and next token
 exactly in all fourteen runs
 (`benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-default.json`).
+Clean selector-unset publication is **505.084 tok/s** median and
+**504.984 tok/s** minimum, statistically flat (**-0.020%**) versus the prior
+unmatched production packet. Cached tracing independently reaches
+**509.777 tok/s**, observes the intended template 564 times across the profiled
+warmup/512/1K/4K sequence at local128/VGPR88/LDS3072B/scratch0, and cuts the
+pp512 gate/up family **318.559 -> 314.378 ms (-1.313%)**. The matched A/B plus
+named-family trace is the retention basis
+(`benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json`).
 
 The same direct-decode premise is retained in Q4-down production.
 Within the 64x32/local64 wave-column body, every lane decodes its own
