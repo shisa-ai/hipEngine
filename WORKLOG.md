@@ -179057,3 +179057,22 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-production.json`
   and refreshed the benchmark rollup, changelog, kernel catalog, and post-350
   plan. The 500 production gate and 700 stretch remain open.
+
+## 2026-07-25 — Reject scalar qrow4 SWA key splitting
+
+- Built an explicit source-qualified qrow4 diagnostic with contiguous logical
+  key ranges across two/four waves. K/V traffic remains one load per token per
+  workgroup; each wave accumulates local online max/denominator/PV state, then
+  the workgroup merges the 128-dimensional partial states through LDS.
+- The full-eight/odd-seven 512-slot wrap/eviction oracle passes at
+  `rtol=2e-5, atol=2e-6`. A cached trace records the four-way body at local128,
+  VGPR88, SGPR128, LDS8704B, and scratch0; raw CSV SHA-256 is
+  `9e6f323c0292529126d16e46d4e513d84401524087755106dc5c2f2ad0ae66a6`.
+- One-load three-pair actual pp512 screens reject both widths. Four-way moves
+  **385.998 -> 379.597 tok/s (-1.658%)**; two-way moves
+  **386.075 -> 377.219 (-2.294%)**. Every run selects token 2930.
+- Removed all C/Python/registry/runtime/test surfaces. Scalar qrow4 state
+  splitting is closed: waves, barriers, LDS partial PV, and state merge cost
+  more than key parallelism saves. This does not close an M16xK64 tiled QK/PV
+  body. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`.
