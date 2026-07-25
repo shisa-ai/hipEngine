@@ -179586,3 +179586,28 @@ Vulkan local sizes verbatim will close the measured gap.
   **34.5 ms** of pp512 kernel span separates it from 500; the next bounded
   task screens direct per-column 64x32/local64 gate/up ownership, whose prior
   pair-decode version was only **0.486%** behind 128x32/local128.
+
+## 2026-07-26 — Reject direct local64 Laguna gate/up
+
+- RED extended the Q4 selected-prefill fixture and failed on the missing
+  local64 direct-decode wrapper ABI. GREEN exported the exact
+  64x32/local64 specialization, wired an explicit runtime mode and leaf mode,
+  and passed all eleven CPU-reference configurations with BF16-byte identity.
+- Nine counter-rotated burst-three samples on actual layer-1 T16 gate/up
+  weights plus natural M512 routing improve production direct 128x32
+  **6.919516 -> 6.838536 ms (-1.17%)**, with identical checksum
+  **1114.1769413301445**. Raw JSON SHA-256:
+  `3639c0723c387b7f0b63b9d96ea184f6114c16e1f3052354f4e219c837e8684a`.
+- The decisive one-owner matrix512/attention128 full-model screen measures
+  production **481.323352 tok/s** versus candidate **481.618609 tok/s
+  (+0.061%)** across seven counterbalanced repetitions. Samples overlap
+  heavily; the candidate owns the lowest result at **475.973656 tok/s**.
+  Every run selects token 2930. Raw log SHA-256:
+  `16582501e6a04a7a3cfd7d4aafd34f12bb48f119428550a7debe5928cd3928ef`.
+- Rejected the candidate as run variance and removed every HIP, Python,
+  runtime, leaf-harness, and test surface. Tracked source returned byte-for-byte
+  to `ed48b1016`; 128x32/local128 direct decode remains production. The
+  required lineage command remains blocked by absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`.
