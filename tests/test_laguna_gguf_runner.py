@@ -635,6 +635,29 @@ def test_laguna_mixed_attention_projection_quad_is_registry_owned_and_fail_close
         "runtime": "runtime",
     }
 
+    assert launch_laguna_mixed_attention_projections(
+        *q5_qg,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+        backend="hip_gfx1100",
+        stream=7,
+        libraries=libraries,
+        runtime="runtime",
+        variant="mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+    )
+    assert resolved_keys[-1].variant == (
+        "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+    )
+
     q6_q8 = (
         weight("q", "gguf_q6_k", 201),
         weight("k", "gguf_q8_0", 202),
