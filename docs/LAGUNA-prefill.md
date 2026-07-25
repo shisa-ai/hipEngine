@@ -652,7 +652,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **314.378 ms** | **31.77%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. It removes one of two barriers per K32, improves the actual natural-M512 inclusive leaf **6.995 -> 6.907 ms (-1.258%)**, improves clean complete-state pp512 **505.970 -> 507.405 tok/s (+0.284%)**, and cuts traced gate/up **318.559 -> 314.378 ms (-1.313%)** with exact output. T128 fails decode and aligned LDS weight staging regresses **1.05%**. |
-| Selected D4 Q4/Q6 down | **203.721 ms** | **20.59%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. |
+| Selected D4 Q4/Q6 down | **203.721 ms** | **20.59%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. A Q4-only activation double buffer is exact but regresses matched pp512 **508.788 -> 508.023 tok/s (-0.150%)** and is removed. |
 | Global + SWA attention | **219.709 ms** | **22.20%** | Source-qualified qrow4 is retained. Scalar key splitting, tiled M16/M8 WMMA, and single-wave two-head GQA reuse all lose; the next attention screen must use a materially different async/library premise. |
 | Static-range direct hipBLASLt source-F16 | **125.139 ms** | **12.65%** | All five contractions and direct boundary casts are included. Both scaled-row kernels are absent; source-F16 boundary work is closed. |
 | Q4/Q6 WMMA dense/shared | **53.154 ms** | **5.37%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
@@ -724,6 +724,9 @@ Immediate execution queue:
    gate. Merely planarizing the existing 40-byte LDS records and hoisting
    invariant T16 `d`/`dmin` metadata are both neutral; a local32 small-expert
    split is slower because it serializes weight-cache population.
+   Q4-down activation double buffering is also closed: despite removing the
+   trailing K32 barrier exactly, it regresses matched pp512 **0.150%** and
+   wins only **2/7** pairs.
 5. Raise the currently hard-capped matrix capacity and screen **1024/2048**
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle

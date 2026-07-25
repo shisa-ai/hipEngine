@@ -746,6 +746,14 @@ measures **481.997/435.961/346.675 tok/s** at 512/1K/4K and cuts the Q4-down
 consumer **90.280 -> 71.378 ms (-20.94%)**. The pair-decode mode remains
 explicit rollback through cleanup
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json`).
+An exact two-slot activation-cache sibling was screened and removed. Q4 down
+can safely omit the trailing K32 barrier because its direct-decoded weights
+live in wave registers; Q6 stayed on the existing shared-weight body.
+All 12 primitive configurations and the production-shape Q4/Q6 runtime
+oracles pass, but matched seven-pair pp512 regresses
+**508.788 -> 508.023 tok/s (-0.150%, +1.515 ms)** with only **2/7** candidate
+wins. No export, wrapper option, selector, or harness mode remains
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json`).
 
 Direct-decode 64x32/local64 gate/up completed the same exact gate and improved
 the actual layer-1 natural-M512 leaf **6.920 -> 6.839 ms (-1.17%)**, but the
