@@ -179327,3 +179327,30 @@ Vulkan local sizes verbatim will close the measured gap.
   updated the benchmark scoreboard/changelog, kernel catalog, refactor ledger,
   and post-350 plan. The 500 gate remains open; Q4/Q6 down still stage decoded
   weights in 4,096 B LDS and are the next wave-column transfer target.
+
+## 2026-07-26 — Split Laguna down wave columns by quant
+
+- Added exact 64-column selected-down consumers using two wave32s, each owning
+  32 output columns x all 32 routed rows. Q4 decodes adjacent T16 column pairs;
+  Q6 tested quartet decode plus shuffles. Both retain D4 row-vector activation
+  staging and the original packed-dot/K32 accumulation order.
+- RED wrapper/runtime fixtures failed on the missing `wave_cols` ABI and
+  explicit selector. GREEN Q4/Q6 fixtures are BF16 byte-identical to
+  row-vector controls and pass independent CPU-reference KL/top-1 gates. The
+  complete affected kernel/runtime/backend/category/publication/profile bundle
+  reports **103 passed**.
+- The quant-isolated same-owner matrix512/attention128 pp512 screen measured:
+  row-vector **433.791 tok/s**; Q4-wave/Q6-row **448.945 (+3.493%)**;
+  Q4-row/Q6-wave **428.184 (-1.293%)**; both-wave **442.941 (+2.109%)**.
+  Each mode has seven counterbalanced repetitions and all 28 runs return token
+  2930.
+- Cached primitive tracing records Q4 wave columns at local64, VGPR80,
+  SGPR128, LDS1536B, scratch0 versus Q4 row-vector local128, VGPR56, LDS4096B.
+  Q6 wave columns rise to VGPR88 and are rejected. Raw CSV SHA-256:
+  `59dc992a9af888e0cec2915ff92ee4e08ddaf3f993de85757d7058b12863b097`.
+- gfx1151 now selects Q4-only `mmq64x32_d4_f32_wavecols_q4`; Q6 remains
+  row-vector. Q6 and combined runtime selectors plus the Q6 wrapper/test are
+  removed. Candidate evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-candidate.json`.
+  Clean selector-unset production, absolute quality, and all-family tracing
+  remain required.

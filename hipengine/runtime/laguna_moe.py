@@ -63,6 +63,7 @@ _SELECTED_DOWN_MODES = frozenset(
         "adaptive_grouped_smallm_fused",
         "mmq64x32_d4_f32",
         "mmq64x32_d4_f32_rowvec",
+        "mmq64x32_d4_f32_wavecols_q4",
         "mmq64x32_d4x2_f32",
         "mmq64x32_d4x3_f32",
     }
@@ -1327,6 +1328,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
     libraries: Mapping[str, object] | None,
     residual_passes: int,
     rowvec: bool = False,
+    wave_cols_q4: bool = False,
 ) -> bool:
     """Quantize compact post-SiLU rows and run range-safe Q6T16 MMQ down."""
 
@@ -1341,6 +1343,10 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
         selected_down_prefill = plan.selected_down_prefill_q4
     else:
         return False
+    wave_cols = (
+        wave_cols_q4
+        and weight.spec.quant_key == "gguf_q4_k_t16_v1"
+    )
     active_runtime = runtime or get_hip_runtime()
     plan.down_activation_quant(
         scratch.expert_intermediate.ptr,
@@ -1373,6 +1379,11 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
             else {}
         ),
         rowvec=rowvec,
+        **(
+            {"wave_cols": wave_cols}
+            if weight.spec.quant_key == "gguf_q4_k_t16_v1"
+            else {}
+        ),
         **_stage_kwargs(
             "selected_gate_up_prefill",
             libraries,
@@ -1743,15 +1754,17 @@ def run_laguna_moe_rows(
             libraries=libraries,
         )
     mmq_down_config = {
-        "mmq64x32_d4_f32": (1, False),
-        "mmq64x32_d4_f32_rowvec": (1, True),
-        "mmq64x32_d4x2_f32": (2, False),
-        "mmq64x32_d4x3_f32": (3, False),
+        "mmq64x32_d4_f32": (1, False, False),
+        "mmq64x32_d4_f32_rowvec": (1, True, False),
+        "mmq64x32_d4_f32_wavecols_q4": (1, True, True),
+        "mmq64x32_d4x2_f32": (2, False, False),
+        "mmq64x32_d4x3_f32": (3, False, False),
     }.get(selected_down_mode)
     (
         mmq_down_passes,
         mmq_down_rowvec,
-    ) = mmq_down_config or (None, False)
+        mmq_down_wave_cols_q4,
+    ) = mmq_down_config or (None, False, False)
     use_mmq_down = (
         compact_gate_up
         and mmq_down_passes is not None
@@ -1764,6 +1777,7 @@ def run_laguna_moe_rows(
             libraries=libraries,
             residual_passes=mmq_down_passes,
             rowvec=mmq_down_rowvec,
+            wave_cols_q4=mmq_down_wave_cols_q4,
         )
     )
     use_grouped_fused_combine = selected_down_mode == "grouped_smallm_fused" or (

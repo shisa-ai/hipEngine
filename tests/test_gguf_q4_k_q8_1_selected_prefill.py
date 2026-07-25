@@ -1737,15 +1737,22 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("residual_passes", "split16", "rowvec", "wave_cols"),
+    (
+        "residual_passes",
+        "split16",
+        "rowvec",
+        "wave_cols",
+        "single_wave_cols",
+    ),
     [
-        (1, False, False, False),
-        (2, False, False, False),
-        (3, False, False, False),
-        (1, False, True, False),
-        (1, True, False, False),
-        (1, True, True, False),
-        (1, True, True, True),
+        (1, False, False, False, False),
+        (2, False, False, False, False),
+        (3, False, False, False, False),
+        (1, False, True, False, False),
+        (1, False, True, False, True),
+        (1, True, False, False, False),
+        (1, True, True, False, False),
+        (1, True, True, True, False),
     ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1753,6 +1760,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     split16: bool,
     rowvec: bool,
     wave_cols: bool,
+    single_wave_cols: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1915,6 +1923,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
                 fixture.num_experts,
                 mmq_total_rows,
                 rowvec=True,
+                wave_cols=single_wave_cols,
                 library=library,
                 runtime=runtime,
             )

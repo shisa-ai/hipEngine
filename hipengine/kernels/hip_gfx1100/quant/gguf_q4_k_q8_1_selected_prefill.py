@@ -81,6 +81,10 @@ _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
     "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_WAVECOLS_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
+    "mmq64x32_wavecols_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_"
     "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
@@ -498,6 +502,7 @@ def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out
     mmq_total_rows: int,
     *,
     rowvec: bool = False,
+    wave_cols: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -515,12 +520,16 @@ def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out
         raise ValueError("out_features must be a multiple of 64")
     if mmq_total_rows % 32 != 0:
         raise ValueError("mmq_total_rows must be a multiple of 32")
+    if wave_cols and not rowvec:
+        raise ValueError("wave_cols requires rowvec")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
         (
-            _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_ROWVEC_BF16
+            _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_WAVECOLS_BF16
+            if wave_cols
+            else _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_ROWVEC_BF16
             if rowvec
             else _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_BF16
         ),
