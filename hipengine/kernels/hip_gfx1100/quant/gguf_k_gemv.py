@@ -34,6 +34,9 @@ _OUTPUT_NAME = "gguf_k_gemv.so"
 _ALLOWED_THREADS = {64, 128, 256}
 _QTYPE_BLOCK_SIZE = {"gguf_q8_0": 32, "gguf_q5_k": 256, "gguf_q6_k": 256}
 _MIXED_ATTENTION_VARIANT = "mixed_pack8_gemv_decode_bf16_f32_out"
+_MIXED_ATTENTION_Q6_FIXED_META_VARIANT = (
+    "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+)
 _MIXED_ATTENTION_Q5_QG_QUANT = (
     "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k"
 )
@@ -268,9 +271,21 @@ _MIXED_ATTENTION_SYMBOL = (
 gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out = (
     _make_mixed_attention_wrapper(_MIXED_ATTENTION_SYMBOL, (0, 3))
 )
+gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_mixed_attention_wrapper(
+        "hipengine_gguf_q5_q6_mixed_q6_fixed_meta_attention_pack8_gemv_decode_bf16_f32_out",
+        (0, 3),
+    )
+)
 gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out = (
     _make_mixed_attention_wrapper(
         "hipengine_gguf_q6_q8_mixed_attention_pack8_gemv_decode_bf16_f32_out",
+        (0, 3),
+    )
+)
+gguf_q6_q8_attention_q6_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_mixed_attention_wrapper(
+        "hipengine_gguf_q6_q8_mixed_q6_fixed_meta_attention_pack8_gemv_decode_bf16_f32_out",
         (0, 3),
     )
 )
@@ -370,10 +385,30 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
         KernelKey(
             "hip_gfx1100",
             "attention_projection_quad",
+            _MIXED_ATTENTION_Q5_QG_QUANT,
+            _MIXED_ATTENTION_Q6_FIXED_META_VARIANT,
+        ),
+        gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_projection_quad",
             _MIXED_ATTENTION_Q6_QG_Q8_KV_QUANT,
             _MIXED_ATTENTION_VARIANT,
         ),
         gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_projection_quad",
+            _MIXED_ATTENTION_Q6_QG_Q8_KV_QUANT,
+            _MIXED_ATTENTION_Q6_FIXED_META_VARIANT,
+        ),
+        gguf_q6_q8_attention_q6_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out,
         replace=replace,
     )
 
@@ -862,7 +897,9 @@ __all__ = [
     "build_gguf_k_gemv",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out",
+    "gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out",
+    "gguf_q6_q8_attention_q6_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_k_gemv_f32_fp16_out",
     "gguf_q5_k_gemv_fp16_f32_out",
     "gguf_q5_k_gemv_fp16_fp16_out",

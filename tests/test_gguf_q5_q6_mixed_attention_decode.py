@@ -18,8 +18,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out,
+    gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out,
     gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out,
+    gguf_q6_q8_attention_q6_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q8_0_pack8_gemv_bf16_f32_out,
     register_gguf_k_gemv_kernels,
 )
@@ -31,6 +33,7 @@ from tests._gguf_synthetic_weights import (
 )
 
 _VARIANT = "mixed_pack8_gemv_decode_bf16_f32_out"
+_Q6_FIXED_META_VARIANT = "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
 _Q5_QG_QUANT = "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k"
 _Q6_Q8_QUANT = "gguf_q6_k+gguf_q8_0+gguf_q8_0+gguf_q6_k"
 
@@ -170,6 +173,18 @@ def test_mixed_q5_q6_attention_registry_is_role_specific_and_gfx1100_only() -> N
         quant=_Q6_Q8_QUANT,
         variant=_VARIANT,
     ) is gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="attention_projection_quad",
+        quant=_Q5_QG_QUANT,
+        variant=_Q6_FIXED_META_VARIANT,
+    ) is gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="attention_projection_quad",
+        quant=_Q6_Q8_QUANT,
+        variant=_Q6_FIXED_META_VARIANT,
+    ) is gguf_q6_q8_attention_q6_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out
     assert not is_registered(
         KernelKey("hip_gfx1151", "attention_projection_quad", _Q5_QG_QUANT, _VARIANT)
     )
@@ -273,3 +288,65 @@ def test_mixed_q5_q6_attention_is_bit_exact_at_laguna_role_shapes(
         strict=True,
     ):
         np.testing.assert_array_equal(observed.view(np.uint32), expected.view(np.uint32))
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_mixed_q5_q6_fixed_meta_q6_blocks_match_retained_mixed_bits() -> None:
+    rows, in_features = 1, 3072
+    dimensions = (9216, 1024, 1024, 72)
+    rng = np.random.default_rng(20260727)
+    x = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(rows, in_features)))
+    weights = (
+        make_q5_k_weight(dimensions[0], in_features),
+        make_q6_k_weight(dimensions[1], in_features),
+        make_q6_k_weight(dimensions[2], in_features),
+        make_q5_k_weight(dimensions[3], in_features),
+    )
+    library = build_gguf_k_gemv(load=True)
+    expected = _run_mixed(
+        gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out,
+        x,
+        weights,
+        library=library,
+    )
+    actual = _run_mixed(
+        gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out,
+        x,
+        weights,
+        library=library,
+    )
+    for observed, retained in zip(actual, expected, strict=True):
+        np.testing.assert_array_equal(
+            observed.view(np.uint32), retained.view(np.uint32)
+        )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_mixed_q6_q8_fixed_meta_q6_blocks_match_retained_mixed_bits() -> None:
+    rows, in_features = 1, 3072
+    dimensions = (9216, 1024, 1024, 72)
+    rng = np.random.default_rng(20260728)
+    x = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(rows, in_features)))
+    weights = (
+        make_q6_k_weight(dimensions[0], in_features),
+        make_q8_0_weight(dimensions[1], in_features),
+        make_q8_0_weight(dimensions[2], in_features),
+        make_q6_k_weight(dimensions[3], in_features),
+    )
+    library = build_gguf_k_gemv(load=True)
+    expected = _run_mixed(
+        gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out,
+        x,
+        weights,
+        library=library,
+    )
+    actual = _run_mixed(
+        gguf_q6_q8_attention_q6_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out,
+        x,
+        weights,
+        library=library,
+    )
+    for observed, retained in zip(actual, expected, strict=True):
+        np.testing.assert_array_equal(
+            observed.view(np.uint32), retained.view(np.uint32)
+        )

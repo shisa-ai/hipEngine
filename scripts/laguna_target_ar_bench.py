@@ -84,6 +84,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="restore the exact Q5/Q6 pair and Q8 singleton projection chain",
     )
+    parser.add_argument(
+        "--use-mixed-q6-fixed-meta-attention",
+        action="store_true",
+        help="use the default-off exact Q6 metadata schedule in mixed projections",
+    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -221,6 +226,9 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         ),
         use_mixed_q5_q6_attention=(
             False if args.disable_mixed_q5_q6_attention else None
+        ),
+        use_mixed_q6_fixed_meta_attention=(
+            args.use_mixed_q6_fixed_meta_attention
         ),
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
@@ -609,6 +617,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_mixed_q5_q6_attention=(
                 False if args.disable_mixed_q5_q6_attention else None
             ),
+            use_mixed_q6_fixed_meta_attention=(
+                args.use_mixed_q6_fixed_meta_attention
+            ),
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -731,6 +742,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
             "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,
             "use_mixed_q5_q6_attention": owner.use_mixed_q5_q6_attention,
+            "use_mixed_q6_fixed_meta_attention": (
+                owner.use_mixed_q6_fixed_meta_attention
+            ),
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {

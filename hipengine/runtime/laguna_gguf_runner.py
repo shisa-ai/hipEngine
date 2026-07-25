@@ -94,6 +94,10 @@ _F32_NBYTES = DType.FP32.itemsize
 _I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
 _U8_NBYTES = DType.BOOL.itemsize
+_MIXED_ATTENTION_VARIANT = "mixed_pack8_gemv_decode_bf16_f32_out"
+_MIXED_ATTENTION_Q6_FIXED_META_VARIANT = (
+    "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+)
 _Q5_WAVE32X2_OUTPUT_VARIANT = "wave32x2_gemv_decode_bf16_bf16_out"
 _Q5_WAVE32X2_QUERY_GATE_VARIANT = "wave32x2_gemv_decode_bf16_f32_out"
 _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT = (
@@ -934,6 +938,7 @@ def launch_laguna_mixed_attention_projections(
     stream: int,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
+    variant: str = _MIXED_ATTENTION_VARIANT,
 ) -> bool:
     """Launch a registered c=1 mixed-quant projection quad or fail closed."""
 
@@ -945,7 +950,7 @@ def launch_laguna_mixed_attention_projections(
         backend,
         "attention_projection_quad",
         quant,
-        "mixed_pack8_gemv_decode_bf16_f32_out",
+        variant,
     )
     if not is_registered(key):
         return False
@@ -998,6 +1003,7 @@ def launch_laguna_attention_projections(
     runtime: HipRuntime | None,
     query_gate_decode_variant: str | None = None,
     use_mixed_q5_q6_attention: bool = False,
+    use_mixed_q6_fixed_meta_attention: bool = False,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
@@ -1027,6 +1033,11 @@ def launch_laguna_attention_projections(
         stream=stream,
         libraries=libraries,
         runtime=runtime,
+        variant=(
+            _MIXED_ATTENTION_Q6_FIXED_META_VARIANT
+            if use_mixed_q6_fixed_meta_attention
+            else _MIXED_ATTENTION_VARIANT
+        ),
     ):
         return True
 
@@ -1710,6 +1721,7 @@ class LagunaGGUFResidentSession:
         use_q5_fixed_meta_output: bool | None = None,
         use_q5_fixed_meta_query_gate: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
+        use_mixed_q6_fixed_meta_attention: bool = False,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1760,6 +1772,9 @@ class LagunaGGUFResidentSession:
         self.use_mixed_q5_q6_attention = resolve_laguna_mixed_attention_projections(
             self.backend,
             use_mixed_q5_q6_attention,
+        )
+        self.use_mixed_q6_fixed_meta_attention = bool(
+            use_mixed_q6_fixed_meta_attention
         )
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
@@ -2578,6 +2593,9 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             query_gate_decode_variant=self._q5_query_gate_variant,
             use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
+            use_mixed_q6_fixed_meta_attention=(
+                self.use_mixed_q6_fixed_meta_attention
+            ),
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -2966,6 +2984,9 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             query_gate_decode_variant=self._q5_query_gate_variant,
             use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
+            use_mixed_q6_fixed_meta_attention=(
+                self.use_mixed_q6_fixed_meta_attention
+            ),
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         head_kv = (
