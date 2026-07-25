@@ -54,7 +54,9 @@ def test_laguna_f16_hipblaslt_caches_shape_descriptors(monkeypatch) -> None:
     route = LagunaF16HipblasLt(preferred_algorithm_index=4)
     route.launch(10, 20, 30, 512, 3072, 9216, stream=7)
     route.launch(11, 21, 31, 512, 3072, 9216, stream=8)
-    assert route.cached_shape_count == 1
+    route.launch(12, 22, 32, 128, 3072, 72, stream=9)
+    route.launch(13, 23, 33, 128, 3072, 72, stream=10)
+    assert route.cached_shape_count == 2
     route.close()
     route.close()
 
@@ -64,5 +66,9 @@ def test_laguna_f16_hipblaslt_caches_shape_descriptors(monkeypatch) -> None:
         ("algorithm", 4),
         ("launch", 0, 10, 20, 30, 7),
         ("launch", 0, 11, 21, 31, 8),
+        ("problem", 128, 3072, 72),
+        ("algorithm", 2),
+        ("launch", 0, 12, 22, 32, 9),
+        ("launch", 0, 13, 23, 33, 10),
         ("close",),
     ]
