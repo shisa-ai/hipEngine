@@ -179295,3 +179295,35 @@ Vulkan local sizes verbatim will close the measured gap.
   rollback pending clean selector-unset production, all-family trace, and
   canonical absolute-quality publication. Candidate evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-candidate.json`.
+
+## 2026-07-26 — Publish Laguna wave-column production at 432.355 tok/s
+
+- Clean committed revision `b44c8a560` completed seven counterbalanced
+  same-owner matrix512/attention128 pp512 repetitions. Explicit row-vector
+  rollback measured **386.095/384.450/385.101/386.204/386.988/385.602/383.983
+  tok/s** (median **385.602**); selector-unset wave-column production measured
+  **432.355/431.597/431.700/431.106/433.943/433.262/433.084 tok/s** (median
+  **432.355**), a **12.125%** paired improvement with complete sample
+  separation and token 2930 in all 14 runs. This is **11.849%** above the
+  superseded 386.552 publication.
+- The full canonical `production_absolute` run passes unchanged against
+  all-exact: maximum KL **0.04954258196634279**, **316/320 (98.75%)** top-1,
+  per-category top-1 at least **96.875%**, finite logits, Poolside exact top-1,
+  deterministic repeats, h16/h32 decode **0.999659x/0.999782x**, and exact
+  lifecycle/allocation recovery (**109,859,542,160 bytes** allocated and
+  freed). Natural-prompt prefill is **53.422 -> 197.902 tok/s (3.70451x)**;
+  h16/h32 E2E is **1.87933x/1.50778x**. Raw JSON SHA-256:
+  `568d68f1e4a600ce1f9d0bff694c81d61f543897047f5fa6d62fb91fb517c7c8`.
+- Cached-only `rocprofv3` all-family tracing measures
+  **434.994/397.128/323.536 tok/s** at 512/1K/4K. At pp512, synchronized wall,
+  kernel span, and kernel sum are **1177.028/1172.334/1160.663 ms**. Selected
+  gate/up is now **388.719 ms / 33.49%**, selected down **257.747 ms / 22.21%**,
+  attention **217.297 ms / 18.72%**, source-F16 **133.580 ms / 11.51%**, and
+  dense/shared quant **70.628 ms / 6.09%**. The wave-column body is local128,
+  VGPR80, SGPR128, LDS1536B, scratch0. Raw trace/child/summary SHA-256:
+  `cd766ea...a75f` / `94ed581...86b` / `b723e65...876`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-production.json` and
+  updated the benchmark scoreboard/changelog, kernel catalog, refactor ledger,
+  and post-350 plan. The 500 gate remains open; Q4/Q6 down still stage decoded
+  weights in 4,096 B LDS and are the next wave-column transfer target.

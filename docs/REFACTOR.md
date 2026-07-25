@@ -999,11 +999,11 @@ should be boring.
 ## Laguna D8 row-vector selected gate/up rollback
 
 - Added 2026-07-26 after the exact wave-column MMQ128x32 consumer became the
-  gfx1151 candidate default. The older `mmq128x32_d8_f32_rowvec` mode remains
-  an explicit session-level rollback while the new
-  `mmq128x32_d8_f32_wavecols` route completes clean production and
-  absolute-quality publication.
-- Remove when: the wave-column route passes the clean selector-unset pp512,
-  cached trace, and canonical absolute-quality gates and survives the next
-  retained production checkpoint. Keep the underlying scalar-staged D8 body
-  only if it still serves a tested unmeasured-backend fallback.
+  gfx1151 production default. The older `mmq128x32_d8_f32_rowvec` mode remains
+  an explicit session-level rollback. Clean selector-unset pp512 improves
+  **385.602 -> 432.355 tok/s**, cached tracing measures **434.994 tok/s**, and
+  the canonical absolute-quality gate passes unchanged at maximum KL
+  **0.049542582** and **316/320** top-1.
+- Remove when: the wave-column route survives the next retained production
+  checkpoint. Keep the underlying scalar-staged D8 body only if it still
+  serves a tested unmeasured-backend fallback.

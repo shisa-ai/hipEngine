@@ -1,0 +1,167 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T01:40:27+09:00",
+  "kind": "hipengine_laguna_wave_column_selected_gate_up_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Laguna S 2.1 Q4_K_M matrix512/attention128 pp512 on gfx1151 plus direct all-exact ten-prompt quality, decode, determinism, Poolside, lifecycle, and cached all-family trace",
+  "repo": {
+    "revision": "b44c8a5604be29664781201cf6d14ea9c17b7f64",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "family": "selected D8 Q4 gate/up",
+    "mode": "mmq128x32_d8_f32_wavecols",
+    "geometry": "128 output columns x 32 routed rows",
+    "mapping": "four wave32 groups each own 32 output columns and all 32 rows",
+    "accumulators_per_lane": 32,
+    "weight_path": "each even lane decodes one adjacent T16 column pair; wave shuffle distributes the high-nibble column; decoded weights remain in registers",
+    "activation_path": "unchanged D8 row-vector stage",
+    "arithmetic": "unchanged split16 packed dots and K32 accumulation order",
+    "resident_layout": "unchanged T16; no sidecar or transpose",
+    "rollback_mode": "mmq128x32_d8_f32_rowvec"
+  },
+  "pp512": {
+    "scope": "one resident owner; one 128-row warmup per mode; seven counterbalanced synchronized repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_gate_wavecols_screen.py",
+    "row_vector_rollback_samples_tok_s": [
+      386.0954052965001,
+      384.4502841105894,
+      385.1010641289199,
+      386.20440774682834,
+      386.9883836347212,
+      385.60189924662063,
+      383.983377181622
+    ],
+    "row_vector_rollback_median_tok_s": 385.60189924662063,
+    "selector_unset_samples_tok_s": [
+      432.354871093044,
+      431.59705375528364,
+      431.7004802825343,
+      431.10643750600127,
+      433.9430115286476,
+      433.2617279821059,
+      433.08353586036503
+    ],
+    "selector_unset_median_tok_s": 432.354871093044,
+    "paired_speedup": 1.121246736434048,
+    "paired_improvement_percent": 12.124673643404794,
+    "previous_publication_median_tok_s": 386.5520621343619,
+    "improvement_vs_previous_publication_percent": 11.849065997935737,
+    "complete_sample_separation": true,
+    "next_token_ids": {
+      "row_vector_rollback": [2930, 2930, 2930, 2930, 2930, 2930, 2930],
+      "selector_unset": [2930, 2930, 2930, 2930, 2930, 2930, 2930]
+    },
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  },
+  "absolute_quality": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison production_absolute --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-26-gfx1151-laguna-wavecols-production-absolute.raw.json",
+    "baseline": "all_exact",
+    "candidate": "selector-unset production defaults",
+    "teacher_forced_steps": 320,
+    "finite": true,
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_matches": 316,
+    "top1_total": 320,
+    "top1_agreement": 0.9875,
+    "minimum_category_top1_agreement": 0.96875,
+    "poolside_oracle_pass": true,
+    "poolside_kl_divergence": 0.000017512451201671218,
+    "same_mode_repeat_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_allocated_bytes": 109859542160,
+    "tracked_freed_bytes": 109859542160,
+    "all_exact_natural_prompt_prefill_tok_s": 53.42178695551571,
+    "production_natural_prompt_prefill_tok_s": 197.90172873486128,
+    "natural_prompt_prefill_speedup": 3.704513458144969,
+    "h16_decode_speedup": 0.9996587738371596,
+    "h32_decode_speedup": 0.9997821754923001,
+    "h16_e2e_speedup": 1.8793263885948308,
+    "h32_e2e_speedup": 1.5077756432699763,
+    "raw_json_sha256": "568d68f1e4a600ce1f9d0bff694c81d61f543897047f5fa6d62fb91fb517c7c8",
+    "raw_json_committed": false
+  },
+  "cached_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wavecols-production-profile --output-file laguna-wavecols-production --log-level error -- .venv/bin/python3 scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-wavecols-production-profile/child.json",
+    "timings": {
+      "512": {
+        "prefill_tok_s": 434.9937269334807,
+        "prefill_seconds": 1.1770284679951146,
+        "kernel_span_ms": 1172.334429,
+        "kernel_sum_ms": 1160.663057
+      },
+      "1024": {
+        "prefill_tok_s": 397.1283824930587,
+        "prefill_seconds": 2.578511245083064,
+        "kernel_span_ms": 2573.625383,
+        "kernel_sum_ms": 2547.866178
+      },
+      "4096": {
+        "prefill_tok_s": 323.5356535085087,
+        "prefill_seconds": 12.660119388950989,
+        "kernel_span_ms": 12650.497472,
+        "kernel_sum_ms": 12523.095991
+      }
+    },
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 388.718896,
+      "selected_q4_q6_down": 257.747248,
+      "global_attention": 43.590895,
+      "swa_attention": 173.705827,
+      "source_f16_projection": 133.579732,
+      "dense_shared_quant_projection": 70.628127,
+      "router": 31.988159,
+      "norm_rope_gate": 24.577852,
+      "activation_reduce_residual": 17.221684,
+      "other": 16.824451,
+      "lm_head_argmax": 1.194602,
+      "prefill_kv_write": 0.849035,
+      "embedding": 0.036549
+    },
+    "gate_up_resources": {
+      "kernel_template": "<1, false, true, 128, true, true>",
+      "workgroup_size": 128,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "raw_csv_sha256": "cd766ea65c2c26a46ecf53b4ebf11c37a54b28ca2431306c82695430caaea75f",
+    "child_json_sha256": "94ed5814ca60d81d0b57541fb6a157f62e076b0f8929746894b842978749386b",
+    "summary_json_sha256": "b723e6571d694552b3da3580ba9996c10ebab03152b40eba844d4cac1be62876",
+    "raw_files_committed": false,
+    "correctness_pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "validation": {
+    "focused_tests": 81,
+    "primitive": "BF16 byte-identical to the row-vector body on uneven and empty experts; independent CPU-reference gate passes",
+    "production_quality": "direct all-exact KL <=0.05 and top-1 >=90% suite-wide and per category",
+    "next_token": 2930,
+    "all_timing_runs_same_next_token": true
+  },
+  "decision": {
+    "pass": true,
+    "failed_checks": [],
+    "action": "Retain the wave-column mode as the gfx1151 production default. Keep the row-vector mode as explicit rollback through the next retained production checkpoint.",
+    "reason": "The selector-unset clean pp512 gate improves 12.125% with complete sample separation; absolute quality, decode, determinism, Poolside, lifecycle, cached trace, resident layout, and arithmetic contracts all pass unchanged."
+  },
+  "supersedes": "benchmarks/results/2026-07-26-gfx1151-laguna-production-absolute-quality.json"
+}

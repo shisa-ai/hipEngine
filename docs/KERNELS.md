@@ -620,20 +620,27 @@ fixture passed, but the actual layer-1 hybrid—128x32 for experts at or below
 were removed. Local256 scheduling/launch cost, not only the prior accumulator
 growth, prevents the 64-row crossover
 (`benchmarks/results/2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json`).
-The next wave-transpose/direct-consume mapping is retained as the gfx1151
-candidate. Four wave32 groups each own 32 output columns and all 32 routed
-rows, so each lane still holds **32 accumulators**, each even lane decodes one
-T16 column pair, and a wave shuffle distributes the high-nibble column.
+The wave-transpose/direct-consume mapping is retained as the gfx1151
+production default. Four wave32 groups each own 32 output columns and all 32
+routed rows, so each lane still holds **32 accumulators**, each even lane
+decodes one T16 column pair, and a wave shuffle distributes the high-nibble
+column.
 Weights stay in registers instead of a 5,120-byte shared cache; D8 staging,
 packed-dot arithmetic, K order, and resident bytes are unchanged. The
 uneven/empty-expert fixture is BF16 byte-identical to row-vector production.
 Actual layer-1 pack-inclusive time improves **11.467 -> 8.086 ms (1.418x)**,
-and the dirty counterbalanced pp512 screen improves **385.941 -> 433.380
-tok/s (+12.29%)**. Cached tracing names template
+and the implementation-worktree pp512 screen improves **385.941 -> 433.380
+tok/s (+12.29%)**. Clean selector-unset publication then improves the
+row-vector rollback **385.602 -> 432.355 tok/s (+12.125%)** with complete
+seven-sample separation. Direct all-exact quality remains inside the gate at
+maximum KL **0.049542582** and **316/320** top-1; decode, deterministic
+repeats, Poolside, allocation recovery, and lifecycle pass. Cached all-family
+tracing measures **434.994 tok/s**, cuts selected gate/up to **388.719 ms**,
+and names template
 `<1,false,true,128,true,true>` at local128/VGPR80/LDS1536B/scratch0 versus
-production LDS6656B. gfx1151 selects it; clean production and absolute-quality
-publication remain the next gate
-(`benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-candidate.json`).
+row-vector LDS6656B. The row-vector mode remains explicit rollback through the
+next retained checkpoint
+(`benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-production.json`).
 
 ## DFlash / MTP lineage map
 
