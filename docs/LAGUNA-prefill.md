@@ -325,11 +325,10 @@ This correction changed the MMQ target. hipEngine's first local128 body is
 accumulators per lane. Per K32 interval it performs about 64 packed dots per
 lane between the same two workgroup barriers; the running Vulkan medium shader
 performs about 256. The first body remains a valid and fast LAP-1 leaf, but it
-is not source-faithful geometry. Direct 128x64, 64x64, and 256x32 screens are
-now rejected below. The next screen keeps the production 128x32/local128
-schedule and instead coalesces the resident-T16 quant payload into a smaller
-raw-nibble LDS stage before per-lane unpack. Register, LDS, and occupancy
-evidence remains mandatory.
+is not source-faithful geometry. Direct 128x64, 64x64, 256x32, and coalesced
+raw-nibble screens are now rejected below. Simple rectangular and staging
+changes to this body are closed; revisit expert scheduling only with hybrid
+large-expert or counter evidence that isolates a new limiter.
 
 hipEngine also retains two structural advantages the comparator lacks:
 device-resident expert compaction launches only populated tiles, and the dual
@@ -637,9 +636,9 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. Multi-K staging and rectangular tile changes are rejected below. Next replace strided scalar T16 quant loads with a coalesced raw-nibble LDS stage while preserving the 128x32/local128 schedule and admitted arithmetic/order. |
+| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Multi-K, 64-row, local256, and coalesced-raw screens are rejected below. Park simple body tuning; retain only a bounded hybrid-large-expert screen after new trace/counter evidence. |
 | Selected D4 Q4/Q6 down | **276.169 ms** | **19.35%** | Carry the winning expert schedule into Q4 and Q6 down, then reprofile the combined 60.11% expert window. |
-| Global + SWA attention | **274.724 ms** | **19.25%** | Build the `KVLiveSpans`-aware M16-query x K64-key tiled path after the next expert trace; it is already above LAP-7's 10% start threshold. |
+| Global + SWA attention | **274.724 ms** | **19.25%** | Primary target now. Build the `KVLiveSpans`-aware M16-query x K64-key tiled path; attention is already above LAP-7's 10% start threshold. |
 | Scaled hipBLASLt source-F16 | **130.373 ms** | **9.13%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **70.098 ms** | **4.91%** | Freeze. It is only about 7.2 ms behind the homologous Vulkan family and cannot move the next milestone materially. |
 | All remaining named/other kernels | **94.058 ms** | **6.59%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
@@ -672,23 +671,21 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Screen a coalesced T16 quant-payload stage against the current strided
-   per-column loader in the unchanged 128x32/local128 gate/up body. It must
-   preserve packed-dot operands and K accumulation order while reducing LDS
-   from expanded byte-per-nibble weights to raw resident nibbles. Report
-   producer-pack-inclusive family and production wall, local/VGPR/LDS/scratch,
-   and all natural shapes.
-3. Apply only the winning schedule to Q4/Q6 down, then run clean selector-unset
+2. Implement and screen LAP-7 cooperative tiled attention. Its primary
+   residual gates are pp512, 1K, and 4K family wall plus full
+   `KVLiveSpans`/causal/ring correctness and the complete quality lane.
+3. Use the next trace/counters to decide one bounded hybrid expert screen:
+   retain 128x32 for <=32-row experts and route only >32-row experts through a
+   64-row consumer. Do not build it without per-route evidence that the large
+   groups individually win.
+4. Apply any winning expert schedule to Q4/Q6 down, then run clean selector-unset
    pp512 and the complete category/decode/determinism/lifecycle gate. Retain
    every exact same-suite non-regressive improvement; 500 tok/s closes the next
    production milestone.
-4. Raise the currently hard-capped matrix capacity and screen **1024/2048**
+5. Raise the currently hard-capped matrix capacity and screen **1024/2048**
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle
    evidence. This receives no pp512 credit.
-5. Implement and screen LAP-7 cooperative tiled attention. Its primary
-   residual gates are pp512, 1K, and 4K family wall plus full
-   `KVLiveSpans`/causal/ring correctness and the complete quality lane.
 6. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
    2.778% Q4 metadata saving is a permanent but roughly **1.1% pp512**
    gate/up-byte upper bound at the current family share.
@@ -746,6 +743,18 @@ median (**-0.73%**), with token 2930 in every sample. Its CPU-reference
 KL/top-1 fixture passed before the full-model screen. The specialization,
 selector, and widened-only test fixture were removed. The production
 128x32/local128 occupancy remains the stronger schedule.
+
+Fourth post-350 screen: **rejected and removed**. The unchanged
+128x32/local128 body coalesced each resident-T16 K32 quant payload into a
+3,072-byte raw-nibble-plus-FP32-metadata stage instead of the 5,120-byte
+expanded weight cache. Per-lane unpack then reconstructed the identical eight
+packed operands before dot work. The CPU-reference gate passed, but the
+same-load three-repeat pp512 diagnostic measured **314.082 tok/s** versus
+**344.866 tok/s** production median (**-8.93%**), always token 2930. The
+scalar nibble reconstruction cost dominates the cleaner global access and
+smaller LDS allocation. The candidate was removed. Do not revisit raw LDS
+staging without a wave-transpose/unpack primitive that avoids per-lane scalar
+reconstruction.
 
 Production evidence:
 
@@ -986,9 +995,9 @@ Deliverables:
   existing lane order;
 - test separate versus paired gate/up only after the shared-tile body works;
 - preserve the separate exact SiLU chain and current selected/grouped fallback;
-- treat direct 128x64/64x64/256x32 routing and resident-T16 K64/K128 staging
-  as rejected; preserve 128x32/local128 while screening coalesced raw-nibble
-  LDS staging in place of the strided expanded-weight loader;
+- treat direct 128x64/64x64/256x32 routing, resident-T16 K64/K128 staging, and
+  scalar coalesced-raw LDS staging as rejected; reopen only for a counter-backed
+  hybrid large-expert path or a wave-transpose load/unpack primitive;
 - do not retry K64 nibble reuse unless the resident layout changes: T16 stores
   the two K32 subblocks separately, so the raw-Q4 one-fetch premise does not
   apply;

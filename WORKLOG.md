@@ -178725,3 +178725,22 @@ Vulkan local sizes verbatim will close the measured gap.
   Halving activation reloads does not repay the local256/LDS occupancy cost.
   The next screen keeps production 128x32/local128 and attacks its strided
   scalar resident-T16 quant loads with a coalesced raw-nibble LDS stage.
+
+## 2026-07-25 — Reject scalar coalesced-raw T16 staging
+
+- Kept the production 128x32/local128 D8 schedule but replaced its strided
+  scalar global quant loads and 5,120-byte expanded weight cache with
+  coalesced resident-T16 K32 payload loads into 2,048 raw nibble bytes plus
+  1,024 bytes of FP32 metadata. Each lane reconstructed the same eight packed
+  Q4 operands once per output column/K32 before unchanged dot accumulation.
+- The uneven/empty-expert CPU-reference gate passed. The pinned one-load,
+  matrix512/attention128, one-queue, three-repeat pp512 diagnostic measured
+  candidate **314.082 tok/s** (**314.322/313.971/314.082**) versus production
+  **344.866** (**345.090/344.866/344.495**), always token 2930: **-8.93%**.
+  The lower absolute control than earlier screens is shared-load clock state;
+  the paired ratio is the rejection evidence.
+- Removed the specialization, selector, wrapper surface, and tests. Scalar
+  per-lane nibble reconstruction overwhelms global coalescing and lower LDS.
+  The next primary implementation target is the measured 274.724 ms
+  global+SWA attention window. Expert-body tuning is parked pending a bounded
+  hybrid-large-expert or wave-transpose premise supported by new evidence.
