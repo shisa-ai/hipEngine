@@ -180419,3 +180419,33 @@ Vulkan local sizes verbatim will close the measured gap.
   700-target table. Production remains quality-gated above 500; the next
   material targets are the **314.378 ms** gate/up, **203.721 ms** down, and
   **219.709 ms** attention families.
+
+## 2026-07-26 — Reject Q4-down activation double buffering
+
+- Screened the exact gate/up synchronization premise on Q4 selected-down only.
+  The direct 64x32/local64 body keeps decoded weights in wave registers, so a
+  second 1,536-byte activation slot can safely remove the trailing K32
+  barrier. Q6 was deliberately unchanged because its retained 64-row body
+  still consumes a shared weight tile and needs the trailing barrier.
+- RED first failed because the single-Q4 wrapper did not accept
+  `double_buffer_activation`. GREEN exported the explicit candidate and passed
+  all **12** Q4 kernel configurations plus the selected-down resolver and both
+  production-shape Q4/Q6 runtime oracles. Q4 output is BF16-byte exact.
+- Ran one-owner matched pp512 with
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --target down
+  --repetitions 7 --require-cached-build
+  --output /tmp/laguna-down-doublebuf-ab.json`.
+  Direct rollback measures **508.788 tok/s** median; the candidate measures
+  **508.023 tok/s**, a **-0.150%** throughput regression and **+1.515 ms**
+  median wall. The candidate wins only **2/7** pairs.
+- All fourteen runs have the same token 2930, next-token logit, F32 logits,
+  final/post-layer BF16 hidden state, KV digest, and final position. Raw
+  SHA-256:
+  `dd7db2c44318f610d7833fadce04d6beff23ab03860e10977419680ea0fa4fe1`.
+- Removed the HIP export, Python symbol/wrapper option, runtime selector,
+  candidate tests, and temporary down target in the A/B harness. Production
+  remains **505.084 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json`.

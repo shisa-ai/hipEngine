@@ -76,6 +76,12 @@ the intended local128/VGPR88/LDS3072B/scratch0 body 564 times across the
 profile.
 [`production artifact`](results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json).
 
+The analogous Q4 selected-down synchronization screen is closed and removed.
+It is BF16 byte-exact and leaves Q6 unchanged, but matched seven-pair pp512
+regresses **508.788 -> 508.023 tok/s (-0.150%, +1.515 ms)** and wins only
+**2/7** pairs. Production remains **505.084 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json).
+
 Latest retained hipEngine revisions in this scoreboard:
 `647ac846c` for exact activation-double-buffer gate/up production,
 `7ecd940b9` for exact static-range direct F16 boundaries in Laguna production,

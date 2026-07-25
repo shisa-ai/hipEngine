@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna Q4-down activation double buffer] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the BF16-byte-exact one-barrier Q4-down candidate leaves Q6 unchanged but regresses matched seven-pair pp512 **508.788 -> 508.023 tok/s (-0.150%, +1.515 ms)** with only **2/7** pair wins; all candidate surfaces are removed and production remains **505.084 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json`.
+
 - [retained exact gfx1151 Laguna gate/up activation-double-buffer production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset pp512 is **505.084 tok/s** median and **504.984 tok/s** minimum, flat **-0.020%** versus the prior unmatched **505.185 tok/s** packet; matched seven-pair A/B isolates **505.970 -> 507.405 tok/s (+0.284%)**, while cached tracing reaches **509.777 tok/s** and cuts gate/up **318.559 -> 314.378 ms (-1.313%)** with local128/VGPR88/LDS3072B/scratch0 and transferred exact quality/lifecycle gates; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json`.
 
 - [retained exact gfx1151 Laguna gate/up activation-double-buffer default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean seven-pair pp512 improves direct rollback **505.970 -> 507.405 tok/s (+0.284%, 2.862 ms saved)** with **5/7** pair wins and exact logits/hidden/KV/cursor/token state in all fourteen runs; the one-barrier-per-K32 body is now the gfx1151 package default pending clean selector-unset publication; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-default.json`.

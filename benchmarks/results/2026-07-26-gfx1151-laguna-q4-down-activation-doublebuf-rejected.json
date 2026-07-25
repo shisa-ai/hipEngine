@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "rejected",
+  "performance_claim": false,
+  "scope": "Exact activation double buffer for resident-T16 Q4 selected-down only",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "base_revision": "0eb5fadef",
+    "tracked_clean_during_candidate_screen": false,
+    "candidate_surfaces_removed": true
+  },
+  "candidate": {
+    "baseline_mode": "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+    "candidate_mode": "mmq64x64_d4_f32_q6_wavecols_direct_doublebuf_q4",
+    "scope": "Q4 selected-down uses two 1536-byte activation slots and removes the trailing K32 barrier; Q6 selected-down is unchanged because it still consumes a shared weight tile.",
+    "resident_weight_bytes_changed": false,
+    "arithmetic_order_changed": false,
+    "barriers_per_q4_k32": {
+      "baseline": 2,
+      "candidate": 1
+    }
+  },
+  "correctness": {
+    "red": "The new single-Q4 test failed because the wrapper did not accept double_buffer_activation.",
+    "green": "All 12 Q4 kernel configurations and three selected-down resolver/production-shape runtime cases passed.",
+    "q4_output_bf16_byte_exact": true,
+    "complete_state_exact": true,
+    "state_fields": [
+      "next_token",
+      "next_token_logit",
+      "f32_logits",
+      "final_hidden_bf16",
+      "post_layer_hidden_bf16",
+      "kv",
+      "final_position"
+    ]
+  },
+  "matched_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --target down --repetitions 7 --require-cached-build --output /tmp/laguna-down-doublebuf-ab.json",
+    "baseline_samples_tok_s": [
+      508.5968664833787,
+      508.7876339338235,
+      509.51011932721747,
+      508.2684409595451,
+      506.73214383066534,
+      512.8944422941317,
+      510.15833807286936
+    ],
+    "candidate_samples_tok_s": [
+      509.73678904558085,
+      508.022785124318,
+      507.26533093719735,
+      507.95761390737556,
+      507.48681924198996,
+      508.09092925495725,
+      508.8370515563606
+    ],
+    "baseline_median_tok_s": 508.7876339338235,
+    "candidate_median_tok_s": 508.022785124318,
+    "throughput_change_percent": -0.15032771209313456,
+    "wall_change_ms": 1.5150459948927164,
+    "candidate_pair_wins": 2,
+    "pair_count": 7,
+    "next_token": 2930,
+    "raw_sha256": "dd7db2c44318f610d7833fadce04d6beff23ab03860e10977419680ea0fa4fe1"
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The exact candidate regresses complete pp512 and wins only two of seven matched pairs.",
+    "production_unchanged": true,
+    "production_pp512_tok_s": 505.08432732184866,
+    "removed": [
+      "HIP export",
+      "Python wrapper option and symbol",
+      "runtime candidate selector",
+      "candidate test parameterization",
+      "A/B harness target mode"
+    ]
+  }
+}
