@@ -13,8 +13,8 @@ A fresh exact SWA split-reducer max-scan synchronization contraction passed
 correctness and actual-layer screens but failed the clean short dispatch-span
 guard; it is rejected and removed before category measurement. A distinct
 wave-local reducer that removes all remaining block barriers and reducer LDS is
-correctness-admitted/default-off after exact model-state, trace, and strong
-actual-layer gates; clean context and complete-category promotion are pending.
+retained as the gfx1100 default after exact model-state, trace, clean-context,
+and complete-category gates.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -42,11 +42,11 @@ hipEngine D12 h32:      48.987 tok/s
 protocol, so `94.513 / 48.987 = 1.929x` is diagnostic rather than a formal
 product-throughput ratio. Since that frozen diagnosis, retained P0 IQ3, P2.1
 exact split attention, P4.1 split-reducer+gate fusion, and current-P4 head+KV
-fusion move the current counterbalanced h32 row to **52.391 tok/s / 19.087
-ms/token**; the non-equivalent `llama-bench` row still represents an **80.40%**
-diagnostic gap. However, the
-gap is not explained by prompt depth, sampling, Python, or one missing launch
-flag:
+fusion plus exact wave-local SWA split reduction move the current
+counterbalanced h32 row to **52.514 tok/s / 19.042 ms/token**; the
+non-equivalent `llama-bench` row still represents a **79.98%** diagnostic gap.
+However, the gap is not explained by prompt depth, sampling, Python, or one
+missing launch flag:
 
 1. A llama.cpp control with the same mean timed context depth as hipEngine still
    reaches **94.152 +/- 0.331 tok/s**.
@@ -965,10 +965,17 @@ and lifecycle through 16 decode transitions (`KL=0`, top-1 100%). First/last
 actual SWA layers at live 70/128/257/512 improve inclusive events
 **4.87-18.91%** and synchronized wall **4.84-18.96%** in every row. Cached
 tracing records 72 candidate calls and zero retained reducer calls at local128,
-VGPR24, SGPR128, **LDS0**, and scratch0. This is correctness admission only;
-clean short/512/1K/near-4K plus both complete 18-prompt process orders still
-decide promotion. Evidence:
-[`...p4-swa-wave-local-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-correctness.json).
+VGPR24, SGPR128, **LDS0**, and scratch0. Two clean process orders improve the
+reducer **4.63-5.22%**, complete SWA **4.24-4.55%**, kernel sum
+**0.94-1.98%**, and span **0.61-1.69%** at every context. The complete
+18-prompt two-order gate moves h32 **52.211 -> 52.514 tok/s (+0.580%)**;
+every train/heldout category decode improves **0.239-0.706%**, while every
+E2E/prefill/TTFT guard passes. gfx1100 now defaults the wave-local siblings;
+explicit `use_swa_split_wave_local=False` and unsupported backends retain the
+shared-statistics reducers. Against pinned Vulkan **64.418 tok/s**, another
+**22.67%** is required. Evidence:
+[`correctness`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-correctness.json)
+and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-retained.json).
 
 ## 9. Do not chase without new evidence
 
@@ -1009,7 +1016,7 @@ decide promotion. Evidence:
 | What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
 | What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
 | Did a bit-lossless Q5 repack help? | [`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json): exact generic/wave32x2 T16 both regress actual global/SWA layers and are not retained. |
-| Does retained hipEngine beat Vulkan under matched natural completion? | No. The device-pinned [`...vulkan-matched-completion-reaudit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json) measures hipEngine **52.855/52.391 tok/s** versus Vulkan **64.245/64.418 tok/s** at h16/h32; hipEngine still needs **21.55%/22.96%** more. |
+| Does retained hipEngine beat Vulkan under matched natural completion? | No. The device-pinned [`...vulkan-matched-completion-reaudit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json) measures current-P4 hipEngine **52.855/52.391 tok/s** versus Vulkan **64.245/64.418 tok/s** at h16/h32; the subsequently retained wave-local reducer reaches **52.514 tok/s h32** and still needs **22.67%** more. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
 ## Bottom line
@@ -1020,7 +1027,7 @@ Python, sampling, graph replay, a missing compiler flag, or one unfused router.
 The clean GPU trace proves otherwise.
 
 hipEngine has already transferred the broad Qwen playbook and improved Laguna
-from **19.596 to 52.391 tok/s**. The expanded review removes two tempting but
+from **19.596 to 52.514 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
@@ -1035,7 +1042,7 @@ at live `>=257`; P1-P3 are closed. P4.1's exact gated split reducers and the
 current-P4 exact head+KV body are retained after independent-body, full-state,
 trace, clean-context, and complete-category gates. The device-pinned matched
 reaudit replaces the non-equivalent 94.513-tok/s headline with a formal
-**64.418 tok/s** h32 target; current hipEngine reaches **52.391 tok/s** and still
-needs **22.96%** more. Direct AQL, unchanged graph capture, host packets, and
+**64.418 tok/s** h32 target; current hipEngine reaches **52.514 tok/s** and still
+needs **22.67%** more. Direct AQL, unchanged graph capture, host packets, and
 launch cleanup alone are mechanically closed. Continue only with a new exact
 independently winning device-work/dispatch contraction.

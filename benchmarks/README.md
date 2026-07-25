@@ -1225,13 +1225,13 @@ blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-24
+### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-25
 
 **Status: exact dense decode, P0 IQ3 wave4 route/output ownership, P2 exact
 split attention plus SWA tile16 scores, P4.1 split-reducer+gate, current-P4 head
-RMSNorm+RoPE+BF16-KV, token4 SWA, raw-Q5 wave32x2, raw-Q6 attention pairing,
-and aggregate MoE-tail plus next-RMS are the retained W7900 target-only AR
-default.**
+RMSNorm+RoPE+BF16-KV, wave-local exact SWA split reduction, token4 SWA,
+raw-Q5 wave32x2, raw-Q6 attention pairing, and aggregate MoE-tail plus next-RMS
+are the retained W7900 target-only AR default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1301,6 +1301,9 @@ slot-order reducer.
 | Current-P4 matched P4.1 control | 42.961 | 1.935 s | 51.872 | 6.925 | 12.207 |
 | Current-P4 exact head RMSNorm+RoPE+KV | **42.949** | **1.935 s** | **52.391** | **6.932** | **12.232** |
 | Current-P4 change vs matched P4.1 | **-0.029%** | **-0.008%** | **+1.001%** | **+0.106%** | **+0.204%** |
+| Wave-local matched shared-reducer control | 42.962 | 1.937 s | 52.211 | 6.931 | 12.225 |
+| Exact wave-local SWA split reducer | **42.907** | **1.936 s** | **52.514** | **6.928** | **12.229** |
+| Wave-local change vs matched shared reducer | **-0.126%** | **-0.027%** | **+0.580%** | **-0.047%** | **+0.033%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -1754,7 +1757,10 @@ protocol. The unavoidable KV difference is disclosed (hipEngine BF16
 `KVLiveSpans`, Vulkan F16 because this device reports no BF16 support). All 72
 pinned Vulkan native prompt/predicted timing rows are valid; SSE `return_tokens`
 omits one or more token entries for 18 rows, so returned-array completeness is
-not used as the timing gate. [Initial audit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) and [device-pinned current-P4 reaudit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json).
+not used as the timing gate. The subsequently retained exact wave-local SWA
+reducer moves the same hipEngine category boundary to **52.514 tok/s h32**;
+against the unchanged pinned target it still needs **22.67%** more throughput.
+[Initial audit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-audit.json) and [device-pinned current-P4 reaudit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json).
 
 ##### Laguna Q2 XL P4.1 exact split-reducer+gate (retained gfx1100 default)
 
@@ -1806,6 +1812,31 @@ Relative to the prior retained 51.825 row, h32 improves **1.092%** to **19.087
 ms/token**. The device-pinned matched Vulkan reaudit measures **64.418 tok/s**,
 so hipEngine still requires **22.96%** more and completion remains open.
 [Correctness artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-correctness.json), [retained artifact](results/2026-07-24-gfx1100-laguna-q2-xl-p4-head-kv-retained.json), and [matched reaudit](results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json).
+
+##### Laguna Q2 XL exact wave-local SWA split reducer (retained gfx1100 default)
+
+The wave-local reducer is a distinct follow-up to the rejected max-scan-only
+edit. Four logical wave leaders independently replay the retained scalar
+maximum and denominator order, broadcast four weights at a time with width-32
+shuffles, and preserve each dimension's slot-order FMA chain. This duplicates
+scalar score/`expf` work but removes every block barrier and all reducer LDS;
+score producers, `KVLiveSpans`, workspace, and 772 dispatches/token are
+unchanged. Full logits, all 48 hidden and 47 routed boundaries, active K/V plus
+every span byte, reset, and lifecycle are exact. Cached tracing records
+local128/VGPR24/SGPR128/LDS0/scratch0.
+
+Two clean process orders improve the reducer **4.63-5.22%**, complete SWA
+**4.24-4.55%**, total kernel sum **0.94-1.98%**, and span **0.61-1.69%** at
+short/512/1K/near-4K; child throughput stays within guard or improves. The
+complete two-order 18-prompt gate moves h16/h32 decode
+**52.675/52.211 -> 52.949/52.514 tok/s (+0.519%/+0.580%)**. Every
+train/heldout category decode improves **0.239-0.706%**; aggregate h32 E2E is
+**+0.033%**, prefill **-0.126%**, and TTFT **-0.027%**, with every scoped guard
+passing. Relative to the prior retained h32 row this is **+0.235%**, or
+**19.042 ms/token**. The pinned Vulkan target remains **64.418 tok/s**, so
+another **22.67%** is required and completion stays open. Explicit
+`use_swa_split_wave_local=False` / `--disable-swa-split-wave-local` retains the
+shared-statistics reducer. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-correctness.json) and [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
