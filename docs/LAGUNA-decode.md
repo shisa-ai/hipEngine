@@ -45,16 +45,17 @@ modeled BF16 value payload **66.67%**, but collapsing 72 independent query-head
 workgroups to 24 regresses all layer-1/46/47 live-70/128/257/512 rows by
 **61.33-89.58%** event and **61.16-89.95%** wall. It is removed before runtime;
 GQA value reuse does not offset the lost parallelism/cache-visible reuse. The
-subsequent exact all-local32 Q5/Q6 mixed projection is now correctness-admitted
-but remains default-off. It keeps the same **131,840/181,376** global/SWA grid
-threads and wave count, gives each retained Q5 pair its own workgroup, and
-replays each Q6 output pair's four original local128 partitions in one wave.
-All production outputs and full model state are bit-exact; first/last actual
-layers improve **11.39-14.77%** in HIP events and **11.24-15.72%** in synchronized
-wall. Cached tracing confirms 47 candidate calls/token at local32/VGPR80/LDS0/
-scratch0, one unchanged layer-47 mixed call, and the retained **723 dispatches/
-token**. Both clean context orders and both complete category orders still gate
-promotion, so canonical h32 remains **60.942 tok/s**.
+subsequent exact all-local32 Q5/Q6 mixed projection is now retained as the
+gfx1100 default. It keeps the same **131,840/181,376** global/SWA grid threads
+and wave count, gives each retained Q5 pair its own workgroup, and replays each
+Q6 output pair's four original local128 partitions in one wave. Production
+outputs and full model state are bit-exact; first/last actual layers improve
+**11.39-14.77%** in HIP events and **11.24-15.72%** in synchronized wall. Both
+clean orders improve projection/kernel/span/child work, and both complete
+18-prompt orders move h32 decode **60.900 -> 61.732 tok/s (+1.367%)** with every
+train/heldout category positive. Cached tracing confirms 47 local32 calls plus
+one retained layer-47 call at unchanged **723 dispatches/token**. Canonical h32
+is now **61.732 tok/s**; Vulkan still requires another **4.35%**.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1128,8 +1129,8 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Does that one-wave Q5 body make a mixed IQ2/shared launch viable? | [`...mixed-iq2-q5-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-iq2-q5-local64-rejected.json): no. All three BF16 outputs are exact and the candidate keeps the retained IQ2 VGPR/LDS ceiling, but both first/last actual layers regress event/wall **0.12-0.68%**; the candidate is removed before runtime integration. |
 | Can two exact fixed-metadata Q5 output waves share one local64 workgroup? | [`...q5-output-wave32x4-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-output-wave32x4-rejected.json): no. K6144/K9216 N3072 outputs are byte-exact and LDS/spill-free, but logical VGPR rises **73 -> 81** and all first/last global/SWA event/wall rows regress **6.51-10.15%**; the candidate is removed before runtime integration. |
 | Does exact GQA3 value reuse accelerate the SWA reducer? | [`...swa-gqa3-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json): no. All F32 context and BF16 gated outputs are byte-exact, but reducing **72 -> 24** workgroups regresses every layer-1/46/47 live-70/128/257/512 row by **61.16-89.95%**; the candidate is removed before runtime integration. |
-| What is the next exact screen? | [`...mixed-local32-projection-design.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-design.json): move the **2.128 ms/token** Q5/Q6 mixed family from local128/VGPR88/LDS1024 to independent local32 Q5 pairs plus exact four-partition Q6 pairs. Total grid threads/waves stay unchanged; all first/last global/SWA event and wall rows must improve before runtime integration. |
-| Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-shared-Q5 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-shared-q5.json) measures retained hipEngine **61.554/60.942 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **4.37%/5.70%** is required. |
+| Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
+| Does retained hipEngine beat Vulkan under matched natural completion? | No. The current retained two-order row measures hipEngine **62.354/61.732 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **3.03%/4.35%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
 ## Bottom line
@@ -1140,7 +1141,7 @@ Python, sampling, graph replay, a missing compiler flag, or one unfused router.
 The clean GPU trace proves otherwise.
 
 hipEngine has already transferred the broad Qwen playbook and improved Laguna
-from **19.596 to 60.942 tok/s**. The expanded review removes two tempting but
+from **19.596 to 61.732 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
@@ -1155,8 +1156,8 @@ at live `>=257`; P1-P3 are closed. P4.1's exact gated split reducers and the
 current-P4 exact head+KV body are retained after independent-body, full-state,
 trace, clean-context, and complete-category gates. The device-pinned matched
 reaudit replaces the non-equivalent 94.513-tok/s headline with a formal
-**64.418 tok/s** h32 target; current retained hipEngine reaches **60.942 tok/s**
-and still needs **5.70%** more. Direct AQL, unchanged graph capture, host
+**64.418 tok/s** h32 target; current retained hipEngine reaches **61.732 tok/s**
+and still needs **4.35%** more. Direct AQL, unchanged graph capture, host
 packets, and launch cleanup alone are mechanically closed. Exact Q5
 fixed-metadata loads, the subsequent heterogeneous attention-projection quad,
 its fixed-Q6-metadata sibling, and the shared-Q5 fixed-metadata pair are
@@ -1167,8 +1168,9 @@ layer/live boundary when **72 -> 24** workgroups remove query-head parallelism.
 The retained one-head wave-local reducer remains canonical. The subsequent
 all-local32 Q5/Q6 mixed projection preserves the same total threads/waves while
 removing the local128 union's LDS/barriers and resource footprint from
-independent Q5 waves. It is now default-off correctness-admitted: production
-outputs and full state are exact, all four actual-layer event/wall rows improve,
-and cached tracing records local32/VGPR80/LDS0/scratch0 at unchanged 723
-model kernels/token. The objective remains open until this candidate passes
-both frozen clean-context orders and both complete-category orders.
+independent Q5 waves. It is retained after exact production/full-state/default-versus-rollback
+gates, all-positive clean projection/kernel/span/child rows, and both
+complete 18-prompt orders. Cached tracing records local32/VGPR80/LDS0/scratch0
+at unchanged 723 model kernels/token. The objective remains open at **61.732
+versus 64.418 tok/s**; continue from the post-local32 trace rather than revisiting
+packing or grouped-query mechanisms already rejected.
