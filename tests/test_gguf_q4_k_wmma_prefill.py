@@ -39,6 +39,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     _ALLOWED_TILES,
+    _default_q6_tiles,
     _default_tiles,
     build_gguf_q4_k_prefill,
     gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out,
@@ -53,6 +54,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_fp16_f32_out,
     gguf_q4_k_wmma_prefill_fp16_fp16_out,
     gguf_q6_k_wmma_prefill_bf16_bf16_out,
+    gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
     plan_gguf_q4_k_prefill_build,
 )
 from hipengine.kernels.registry import resolve
@@ -150,6 +152,21 @@ def test_gguf_q4_k_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
     for tm, tn in _ALLOWED_TILES:
         assert tm in {16, 32, 64}
         assert tn in {16, 32}
+
+
+def test_gguf_q6_k_wmma_prefill_default_and_rollback_tiles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", raising=False)
+    assert _default_q6_tiles() == (64, 16)
+    assert _default_q6_tiles((16, 32)) == (16, 32)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", "64x16")
+    assert _default_q6_tiles() == (64, 16)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", "48x16")
+    with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE"):
+        _default_q6_tiles()
 
 
 def test_gguf_q4_k_wmma_prefill_wrapper_validates_contract() -> None:
@@ -544,6 +561,7 @@ def test_gguf_q6_k_wmma_prefill_matches_cpu_reference(
     host_in = _prepare_input(activation, "bf16")
     qweight = make_q6_k_weight(out_features, in_features)
     host_out = np.empty((rows, out_features), dtype=np.uint16)
+    rollback_out = np.empty_like(host_out)
     reference = gguf_quant_gemv(
         _decode_input_for_cpu_reference(host_in, "bf16"),
         qweight,
@@ -566,7 +584,7 @@ def test_gguf_q6_k_wmma_prefill_matches_cpu_reference(
             buffers.append(buffer)
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         buffers.append(out_dev)
-        gguf_q6_k_wmma_prefill_bf16_bf16_out(
+        gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out(
             buffers[0].ptr,
             buffers[1].ptr,
             out_dev.ptr,
@@ -578,10 +596,29 @@ def test_gguf_q6_k_wmma_prefill_matches_cpu_reference(
         )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+        gguf_q6_k_wmma_prefill_bf16_bf16_out(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            out_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            tile_m=64,
+            tile_n=16,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(rollback_out),
+            out_dev,
+            runtime=runtime,
+        )
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
+    np.testing.assert_array_equal(host_out, rollback_out)
     np.testing.assert_allclose(
         _bf16_bits_to_float32(host_out),
         reference,

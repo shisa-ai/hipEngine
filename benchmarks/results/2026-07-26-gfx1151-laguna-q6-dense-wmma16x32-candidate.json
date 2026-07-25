@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T03:50:00+09:00",
+  "kind": "hipengine_laguna_q6_dense_wmma16x32_candidate",
+  "status": "retained_candidate_pending_clean_production_gate",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M raw-Q6 dense/shared WMMA prefill tile on gfx1151",
+  "repo": {
+    "base_revision": "90786e36c652328989ac7b12f18d004d2293c230",
+    "tracked_clean": false,
+    "qualification": "Candidate measurements were made in the implementation worktree; clean selector-unset production publication remains required."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "production_tile": "64x16",
+    "candidate_tile": "16x32",
+    "default": "gfx1151 registry override 16x32; gfx1100 remains 64x16",
+    "rollback": "HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16",
+    "resident_layout": "unchanged raw GGUF Q6_K; no sidecar or transpose",
+    "arithmetic": "unchanged Q6 decode, FP16 WMMA operands, FP32 K accumulation order, and BF16 stores"
+  },
+  "actual_weight_leaf": {
+    "scope": "nine counter-rotated burst-three HIP-event samples for all six supported tiles on actual model weights",
+    "shared_down": {
+      "call_count_per_pp512": 23,
+      "shape_mkn": [
+        512,
+        1024,
+        3072
+      ],
+      "production_64x16_median_ms": 0.9422446886698405,
+      "candidate_16x32_median_ms": 0.3062533338864644,
+      "candidate_change_percent": -67.49747304823762
+    },
+    "layer0_down": {
+      "call_count_per_pp512": 1,
+      "shape_mkn": [
+        512,
+        12288,
+        3072
+      ],
+      "production_64x16_median_ms": 10.629212697347006,
+      "candidate_16x32_median_ms": 3.616077423095703,
+      "candidate_change_percent": -65.97981876871974
+    },
+    "call_weighted_median_ms": {
+      "production_64x16": 32.300840536753334,
+      "candidate_16x32": 10.659904102484385,
+      "change_percent": -66.99805972431253
+    },
+    "all_six_tiles_bf16_byte_identical": true
+  },
+  "validation": {
+    "red": "The focused default-policy test failed collection because _default_q6_tiles did not exist.",
+    "green": "The default/rollback policy test passes; both aligned/boundary Q6 CPU-reference fixtures are BF16-byte identical between 16x32 and 64x16.",
+    "affected_bundle": "tests/test_gguf_q4_k_wmma_prefill.py, tests/test_gfx1151_backend.py, tests/test_gguf_linear_dispatch.py, tests/test_laguna_gguf_runner.py, and tests/test_laguna_moe_gpu.py all pass with two expected skips.",
+    "all_full_model_runs_same_next_token": true,
+    "next_token": 2930
+  },
+  "full_model": {
+    "scope": "one resident owner; matrix512/attention128; one 128-row warmup per mode; seven counterbalanced synchronized pp512 repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_gate_wavecols_screen.py",
+    "rollback_64x16_samples_tok_s": [
+      480.46380809268186,
+      480.7268475886226,
+      480.87879851509456,
+      480.37212715970077,
+      480.33953673095914,
+      482.90927714348277,
+      483.31805458412134
+    ],
+    "rollback_64x16_median_tok_s": 480.7268475886226,
+    "selector_unset_16x32_samples_tok_s": [
+      488.5129723739431,
+      487.9002375263937,
+      487.91622018522395,
+      486.87240511711,
+      493.8372086940302,
+      489.8255610945534,
+      490.71129006468607
+    ],
+    "selector_unset_16x32_median_tok_s": 488.5129723739431,
+    "speedup": 1.0161965673945121,
+    "improvement_percent": 1.619656739451214,
+    "complete_sample_separation": true,
+    "raw_log_sha256": "fabe690862a64ef2ba05a256fc97990912a8513adcb34080525476445482b143",
+    "raw_log_committed": false
+  },
+  "trace": {
+    "scope": "cached aligned and boundary CPU-reference fixtures under rocprofv3",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q6-dense-wmma16x32-trace --output-file q6-dense --log-level error -- .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_wmma_prefill.py::test_gguf_q6_k_wmma_prefill_matches_cpu_reference",
+    "kernel_template": "<unsigned short, unsigned short, 16, 32>",
+    "workgroup_size": 32,
+    "vgpr": 136,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "rollback_resources": {
+      "tile": "64x16",
+      "vgpr": 256,
+      "scratch_bytes": 236
+    },
+    "raw_csv_sha256": "e17d8336800825f9f21e1cfa82b58ff71b6d81f0fe1f79d775eaea3ed7ac0426",
+    "raw_files_committed": false
+  },
+  "decision": {
+    "action": "Promote 16x32 as the raw-Q6 dense/shared WMMA candidate default and retain the 64x16 environment override through clean selector-unset publication.",
+    "production_publication_pending": true,
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  }
+}

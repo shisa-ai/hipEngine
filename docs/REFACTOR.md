@@ -50,13 +50,19 @@ should be removed or collapsed.
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
 - Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16
-  use 64x16 wave32 WMMA consumers over existing rank-2 Q4 pack8 bytes/effective
-  FP32 scale/min planes and raw Q6_K bytes. They add no sidecar, leave decode
-  unchanged, and retain exact pack8/raw FMA paths as fallbacks.
+  use wave32 WMMA consumers over existing rank-2 Q4 pack8 bytes/effective FP32
+  scale/min planes and raw Q6_K bytes. Q4 remains 64x16; Q6 now defaults to
+  the exact scratch-free 16x32 tile after the 64x16 body exposed
+  VGPR256/236 B-thread spilling. They add no sidecar, leave decode unchanged,
+  and retain exact pack8/raw FMA paths as fallbacks.
 - Promoted as the gfx1151 package capability by the clean compounded category
   gate. Clean selector-unset pp512/milestone publication and the final Q4/Q6
   WMMA trace now pass. Keep the exact fallback for one release; remove the
   session selector after that rollback window.
+- `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` is the temporary Q6 tile
+  rollback added 2026-07-26. Remove the environment branch after the clean
+  16x32 publication and one release window remain non-regressive; explicit
+  `tile_m`/`tile_n` arguments stay for tests and microbenchmarks.
 
 ## Priority Cleanup (do first)
 

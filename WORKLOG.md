@@ -179631,3 +179631,37 @@ Vulkan local sizes verbatim will close the measured gap.
   exposes Q6 at **29.248 ms**, VGPR256, and **236 B/thread scratch**, while Q4
   is scratch-free. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`.
+
+## 2026-07-26 — Retain Q6 dense/shared WMMA 16x32 candidate
+
+- The refreshed production trace identified all **24** Q6 dense/shared calls
+  as `gguf_q6_k_prefill_wmma_kernel<...,64,16>` at VGPR256 and **236 B/thread
+  scratch**. The exact model mix is 23 shared-down calls at
+  M512/K1024/N3072 plus one layer-0 down call at M512/K12288/N3072.
+- Swept every supported tile on the two actual Q6 weights over nine
+  counter-rotated burst-three HIP-event samples. All six outputs are BF16-byte
+  identical. The winning 16x32 tile cuts shared down
+  **0.942245 -> 0.306253 ms/call (-67.50%)** and layer-0 down
+  **10.629213 -> 3.616077 ms (-65.98%)**; the 23+1 weighted window is
+  **32.300841 -> 10.659904 ms (-67.00%)**.
+- RED imported the missing `_default_q6_tiles` policy. GREEN defaults to
+  16x32 through a gfx1151 four-axis registry override, leaves unmeasured
+  gfx1100 at 64x16, and keeps
+  `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` as explicit rollback. The
+  aligned/boundary CPU-reference cases require BF16-byte identity between
+  candidate and rollback. The complete affected kernel, backend, dispatch,
+  runner, and MoE bundle passes with two expected skips.
+- Cached `rocprofv3` names
+  `gguf_q6_k_prefill_wmma_kernel<unsigned short,unsigned short,16,32>` at
+  local32/VGPR136/SGPR128/LDS0/scratch0. Raw CSV SHA-256:
+  `e17d8336800825f9f21e1cfa82b58ff71b6d81f0fe1f79d775eaea3ed7ac0426`.
+- Seven counterbalanced one-owner matrix512/attention128 pp512 repetitions
+  improve explicit 64x16 rollback **480.726848 -> 488.512972 tok/s
+  (+1.620%)**. Candidate samples **486.872405–493.837209** completely exceed
+  rollback **480.339537–483.318055**, and every run selects token 2930. Raw
+  log SHA-256:
+  `fabe690862a64ef2ba05a256fc97990912a8513adcb34080525476445482b143`.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-candidate.json`.
+  Commit the exact candidate, then require clean selector-unset publication
+  and a refreshed all-family trace. The 500 and 700 gates remain open.

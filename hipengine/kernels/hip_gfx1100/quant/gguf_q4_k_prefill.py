@@ -17,6 +17,7 @@ activation pointer and matching output feature count for both sides.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -26,6 +27,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q4_k_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_prefill.so"
 _Q4_K_BLOCK = 256
+_Q6_K_DENSE_WMMA_TILE_ENV = "HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE"
 
 # Allowed (tile_m, tile_n) for the WMMA prefill kernels. Mirrors the PARO
 # fusedw4 prefill tile set and the Q8_0 WMMA prefill wrapper.
@@ -91,6 +93,30 @@ def _default_tiles(rows: int, out_features: int) -> tuple[int, int]:
     tile_n = 32 if rows >= 32 else 16
     tile_m = 32 if out_features >= 32 else 16
     return tile_m, tile_n
+
+
+def _default_q6_tiles(
+    default: tuple[int, int] = (64, 16),
+) -> tuple[int, int]:
+    """Return the backend-selected Q6 dense tile or an explicit override."""
+
+    value = os.environ.get(_Q6_K_DENSE_WMMA_TILE_ENV, "").strip().lower()
+    if not value:
+        return default
+    try:
+        tile_m_raw, tile_n_raw = value.split("x", 1)
+        tile = int(tile_m_raw), int(tile_n_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{_Q6_K_DENSE_WMMA_TILE_ENV} must name a supported tile as MxN"
+        ) from exc
+    if tile not in _ALLOWED_TILES:
+        allowed = ", ".join(f"{m}x{n}" for m, n in sorted(_ALLOWED_TILES))
+        raise ValueError(
+            f"{_Q6_K_DENSE_WMMA_TILE_ENV}={value!r} is unsupported; "
+            f"expected one of: {allowed}"
+        )
+    return tile
 
 
 def _resolve_tiles(rows: int, out_features: int, tile_m: int | None, tile_n: int | None) -> tuple[int, int]:
@@ -324,12 +350,17 @@ def _make_pack8_wrapper(variant: str):
     return wrapper
 
 
-def _make_q6_wrapper(variant: str):
+def _make_q6_wrapper(
+    variant: str,
+    *,
+    default_tile: tuple[int, int] = (64, 16),
+):
     sym = _q6_symbol(variant)
 
     def wrapper(*args, **kwargs) -> None:
-        kwargs.setdefault("tile_m", 64)
-        kwargs.setdefault("tile_n", 16)
+        tile_m, tile_n = _default_q6_tiles(default_tile)
+        kwargs.setdefault("tile_m", tile_m)
+        kwargs.setdefault("tile_n", tile_n)
         _launch(sym, *args, **kwargs)
 
     wrapper.__name__ = f"gguf_q6_k_{variant}"
@@ -356,6 +387,10 @@ gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out = _make_pack8_wrapper(
 )
 gguf_q6_k_wmma_prefill_bf16_bf16_out = _make_q6_wrapper(
     "wmma_prefill_bf16_bf16_out"
+)
+gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out = _make_q6_wrapper(
+    "wmma_prefill_bf16_bf16_out",
+    default_tile=(16, 32),
 )
 
 # GGUF runtime pair fast path uses BF16 hidden activations and BF16 outputs.
@@ -416,6 +451,7 @@ register_gguf_q4_k_prefill_kernels()
 
 __all__ = [
     "_ALLOWED_TILES",
+    "_default_q6_tiles",
     "_default_tiles",
     "build_gguf_q4_k_prefill",
     "plan_gguf_q4_k_prefill_build",
@@ -432,4 +468,5 @@ __all__ = [
     "gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_wmma_prefill_dual_bf16_bf16_out",
     "gguf_q6_k_wmma_prefill_bf16_bf16_out",
+    "gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out",
 ]
