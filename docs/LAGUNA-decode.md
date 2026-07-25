@@ -14,7 +14,8 @@ correctness and actual-layer screens but failed the clean short dispatch-span
 guard; it is rejected and removed before category measurement. A distinct
 wave-local reducer that removes all remaining block barriers and reducer LDS is
 retained as the gfx1100 default after exact model-state, trace, clean-context,
-and complete-category gates.
+and complete-category gates. A subsequent exact local32 IQ2 tile2 reconstruction
+is bit exact but slower on both first/last actual layers and is removed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -976,6 +977,16 @@ shared-statistics reducers. Against pinned Vulkan **64.418 tok/s**, another
 **22.67%** is required. Evidence:
 [`correctness`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-correctness.json)
 and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-retained.json).
+
+The next exact IQ2 screen removes the retained local64 tile2 body's cross-wave
+LDS publication and barrier without changing its arithmetic. One local32 wave
+replays the original two K partitions sequentially and adds their wave totals in
+the retained order. The body is BF16-bit exact on first/last actual layers 1/45,
+but event time regresses **5.08-5.15%** and synchronized wall regresses
+**4.50-5.27%**. It fails the independent actual-weight precondition, so its
+source, wrapper, registry key, and test are removed before runtime, trace, or
+category work. The retained local64 tile2 body remains canonical. Evidence:
+[`...iq2-tile2-wave32-rejected.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-tile2-wave32-rejected.json).
 
 ## 9. Do not chase without new evidence
 
