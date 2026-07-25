@@ -7,6 +7,7 @@ import pytest
 import hipengine.runtime.laguna_f16_hipblaslt as route_module
 from hipengine.runtime.laguna_f16_hipblaslt import (
     LagunaF16HipblasLt,
+    laguna_attention_gated_fp16_bound,
     laguna_attention_norm_fp16_bound,
     resolve_laguna_f16_prefill_mode,
 )
@@ -14,7 +15,7 @@ from hipengine.runtime.laguna_f16_hipblaslt import (
 
 def test_laguna_f16_hipblaslt_mode_is_explicit_and_validated() -> None:
     assert resolve_laguna_f16_prefill_mode("hip_gfx1100") == "retained"
-    assert resolve_laguna_f16_prefill_mode("hip_gfx1151") == "hipblaslt_norm_direct"
+    assert resolve_laguna_f16_prefill_mode("hip_gfx1151") == "hipblaslt_range_direct"
     assert (
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "retained")
         == "retained"
@@ -26,6 +27,10 @@ def test_laguna_f16_hipblaslt_mode_is_explicit_and_validated() -> None:
     assert (
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_norm_direct")
         == "hipblaslt_norm_direct"
+    )
+    assert (
+        resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_range_direct")
+        == "hipblaslt_range_direct"
     )
     with pytest.raises(ValueError, match="unsupported"):
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "unknown")
@@ -39,6 +44,22 @@ def test_laguna_attention_norm_fp16_bound_requires_complete_finite_metadata() ->
         laguna_attention_norm_fp16_bound(3_072, (0.25, None))
     with pytest.raises(ValueError, match="finite"):
         laguna_attention_norm_fp16_bound(3_072, (0.25, float("inf")))
+
+
+def test_laguna_attention_gated_fp16_bound_uses_aligned_layer_metadata() -> None:
+    bound = laguna_attention_gated_fp16_bound(
+        3_072,
+        ((0.26171875, 2.2755058433777586, 8.178021150369057),),
+    )
+    assert bound == pytest.approx(7_957.538643636415)
+    assert bound * 2.0 < 65_504.0
+    with pytest.raises(ValueError, match="missing"):
+        laguna_attention_gated_fp16_bound(3_072, ((0.25, None, 8.0),))
+    with pytest.raises(ValueError, match="finite"):
+        laguna_attention_gated_fp16_bound(
+            3_072,
+            ((0.25, 2.0, float("inf")),),
+        )
 
 
 def test_laguna_f16_hipblaslt_caches_shape_descriptors(monkeypatch) -> None:

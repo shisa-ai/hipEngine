@@ -78,7 +78,7 @@ LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
 # norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
 # restores. Attention output retains power-of-two row scaling; decode is
 # unchanged.
-LAGUNA_F16_PREFILL_MODE = "hipblaslt_norm_direct"
+LAGUNA_F16_PREFILL_MODE = "hipblaslt_range_direct"
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128

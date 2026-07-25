@@ -180244,3 +180244,29 @@ Vulkan local sizes verbatim will close the measured gap.
   category top-1 **96.875%**, Poolside pass, neutral decode, deterministic
   repeats, and exact lifecycle. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-production.json`.
+
+## 2026-07-26 — Retain static-range direct attention-output cast candidate
+
+- Replaced sampled activation reasoning with a static model proof. For every
+  layer, the loader records maximum row L2 norms for the actual F16 value and
+  attention-gate weights. Cauchy-Schwarz over the RMSNorm L2 bound, with FP32
+  dot accumulation, BF16 rounding, and a 2x online-attention numerical factor,
+  puts the worst gated BF16 output at **7,957.539** on layer 46. The runtime's
+  separate 2x admission reserve still leaves **4.116x** margin to FP16 max.
+- Added explicit `hipblaslt_range_direct`. It uses direct BF16-to-FP16 and
+  F32-to-BF16 conversion at the attention-output projection, while
+  `hipblaslt_norm_direct`, `hipblaslt_scaled`, and exact custom projection
+  remain rollback routes. The resident byte plan is unchanged.
+- Eleven counterbalanced HIP-event samples improve the complete 48-layer
+  attention-output cast pair **3.403932 -> 2.680005 ms (-21.267%)**, saving
+  **0.724 ms**. Seven-pair same-owner pp512 is complete-state exact and moves
+  **505.804595 -> 506.284292 tok/s (+0.0948%)**; the aggregate change is inside
+  run variance, so the exact positive sub-window is the retention evidence.
+  Raw A/B SHA-256:
+  `e5624cd226cc125747d8eebdd97beb79ede4952c9a7bd1536d287aaf2b74576f`.
+- gfx1151 now selects the candidate by default. Focused range, materialization,
+  runner-admission, and cast validation passes **19 tests**; the earlier combined run's only
+  failure was the pre-existing order-sensitive synthetic constructor fixture,
+  while its changed nodes pass in isolation. Clean selector-unset publication
+  and cached attribution are next. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-output-range-direct-candidate.json`.

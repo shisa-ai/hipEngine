@@ -13,8 +13,18 @@ from hipengine.core.hipblaslt import (
 )
 from hipengine.kernels.backends import backend_package_capability
 
-_MODES = frozenset({"retained", "hipblaslt_scaled", "hipblaslt_norm_direct"})
+_MODES = frozenset(
+    {
+        "retained",
+        "hipblaslt_scaled",
+        "hipblaslt_norm_direct",
+        "hipblaslt_range_direct",
+    }
+)
 _BASELINE_MODE = "retained"
+_BF16_RNE_MAX_FACTOR = 257.0 / 256.0
+_FP32_UNIT_ROUNDOFF = 2.0**-24
+_ATTENTION_NUMERIC_SAFETY_FACTOR = 2.0
 _QUALITY_ALGORITHM_BY_KN = {
     # The default heuristic-4 schedule misses the cumulative all-exact quality
     # gate at 0.05350 KL.  Restricting heuristic 2 to the tiny sliding-attention
@@ -66,6 +76,70 @@ def laguna_attention_norm_fp16_bound(
     if not parsed:
         raise ValueError("Laguna attention norm source abs-max metadata is missing")
     return math.sqrt(hidden) * max(parsed)
+
+
+def laguna_attention_gated_fp16_bound(
+    hidden_size: int,
+    layer_metadata: Iterable[
+        tuple[float | None, float | None, float | None]
+    ],
+) -> float:
+    """Bound the BF16 gated-attention producer consumed by output projection.
+
+    Each tuple is ``(attention_norm_abs_max, value_row_l2_max,
+    gate_row_l2_max)`` for one layer. The bound applies Cauchy-Schwarz to the
+    normed F16 projections, includes FP32 dot accumulation and BF16 rounding,
+    and reserves 2x for the online-softmax reduction and gate multiply.
+    """
+
+    hidden = int(hidden_size)
+    if hidden <= 0:
+        raise ValueError("Laguna attention hidden_size must be positive")
+    dot_denominator = 1.0 - hidden * _FP32_UNIT_ROUNDOFF
+    if dot_denominator <= 0.0:
+        raise ValueError("Laguna attention hidden_size exceeds FP32 dot bound")
+    dot_factor = 1.0 / dot_denominator
+    bounds: list[float] = []
+    for metadata in layer_metadata:
+        if len(metadata) != 3:
+            raise ValueError("Laguna attention range metadata must have three fields")
+        parsed: list[float] = []
+        for value in metadata:
+            if value is None:
+                raise ValueError("Laguna attention source range metadata is missing")
+            item = float(value)
+            if not math.isfinite(item):
+                raise ValueError("Laguna attention source range metadata must be finite")
+            if item < 0.0:
+                raise ValueError(
+                    "Laguna attention source range metadata must be nonnegative"
+                )
+            parsed.append(item)
+        norm_abs_max, value_row_l2_max, gate_row_l2_max = parsed
+        norm_l2_bound = (
+            math.sqrt(hidden) * norm_abs_max * _BF16_RNE_MAX_FACTOR
+        )
+        value_bound = (
+            norm_l2_bound
+            * value_row_l2_max
+            * dot_factor
+            * _BF16_RNE_MAX_FACTOR
+        )
+        gate_bound = norm_l2_bound * gate_row_l2_max * dot_factor
+        softplus_bound = (
+            gate_bound
+            if gate_bound > 20.0
+            else math.log1p(math.exp(gate_bound))
+        )
+        bounds.append(
+            value_bound
+            * softplus_bound
+            * _ATTENTION_NUMERIC_SAFETY_FACTOR
+            * _BF16_RNE_MAX_FACTOR
+        )
+    if not bounds:
+        raise ValueError("Laguna attention source range metadata is missing")
+    return max(bounds)
 
 
 @dataclass(frozen=True)

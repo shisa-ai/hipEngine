@@ -39,6 +39,17 @@ retains it in production at **503.869 tok/s** median and **501.790 tok/s**
 minimum while cached source-F16 attribution falls **134.442 -> 128.274 ms**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-f16-norm-direct-production.json).
 
+A second source-F16 boundary candidate is retained. Per-layer Cauchy-Schwarz
+over the actual norm/value/gate weights bounds the worst gated attention BF16
+producer at **7,957.539**, leaving **4.116x** FP16 margin after the runtime's
+separate 2x reserve. Removing the final row reduction/scale improves the exact
+48-layer cast sequence **3.404 -> 2.680 ms (-21.27%)**. Seven-pair pp512 is
+complete-state exact and moves **505.805 -> 506.284 tok/s (+0.095%)**; the
+aggregate change is inside run variance, so the measured sub-window is the
+retention evidence. gfx1151 selects the candidate; published production remains
+**503.869 tok/s** pending the clean selector-unset refresh.
+[`artifact`](results/2026-07-26-gfx1151-laguna-f16-output-range-direct-candidate.json).
+
 Latest retained hipEngine revisions in this scoreboard:
 `1bac6ead5` for the exact direct attention-norm cast in Laguna production,
 `238eb28cd1c748c1755ac8871db4c0e140c3fee4` for exact eight-token
