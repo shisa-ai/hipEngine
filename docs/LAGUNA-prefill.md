@@ -1011,6 +1011,24 @@ compute waves cannot repay that loader/register cost. All candidate surfaces
 were removed. Evidence:
 [`2026-07-25-gfx1151-laguna-small8-hybrid-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-small8-hybrid-rejected.json).
 
+Eighteenth post-350 screen: **rejected and removed before integration**. The
+earlier 128x64 body doubled each lane's accumulator footprint; this distinct
+follow-up used local256 so eight wave32 row groups covered 64 rows while each
+lane retained the production **32 accumulators** and the weight LDS tile stayed
+at 128 columns. The 0/7/18/33-row CPU-reference quality fixture passed, as did
+all six existing 32-row configurations after templating.
+
+All-expert 64-row padding regressed the actual layer-1 pp512 leaf
+**11.440 -> 12.840 ms (+12.23%)**. The decisive hybrid kept production
+128x32 for experts at or below 32 rows and used local256 128x64 only above
+32; one D8 pack and both launches measured **11.437 -> 11.819 ms (+3.34%)**
+across nine counter-rotated burst-three samples. Production and candidate
+outputs were finite with identical BF16 checksum. All diagnostic HIP, wrapper,
+harness, and test surfaces were removed. The 64-row route is now closed for
+both accumulator mappings; reopen it only with a premise that also avoids the
+local256/second-launch cost. Evidence:
+[`2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-production-absolute-quality.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-production-absolute-quality.json)

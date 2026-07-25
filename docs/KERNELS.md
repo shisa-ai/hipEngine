@@ -611,6 +611,15 @@ Output is BF16 byte-identical on mixed empty/small/large fixtures. The wider
 accumulator body and second filtered launch are removed; do not retry 64-row
 expert accumulation without a different mapping
 (`benchmarks/results/2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json`).
+The follow-up different mapping is also closed: a local256 128x64 body used
+eight wave32 row groups so each lane retained the production **32**
+accumulators while the 128-column weight tile fed 64 rows. Its CPU-reference
+fixture passed, but the actual layer-1 hybrid—128x32 for experts at or below
+32 rows and local256 128x64 above 32—regressed **11.437 -> 11.819 ms
+(+3.34%)**, including one D8 pack and both launches. All diagnostic surfaces
+were removed. Local256 scheduling/launch cost, not only the prior accumulator
+growth, prevents the 64-row crossover
+(`benchmarks/results/2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json`).
 
 ## DFlash / MTP lineage map
 
