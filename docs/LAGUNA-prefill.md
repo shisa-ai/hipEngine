@@ -652,7 +652,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Selected D8 Q4 gate/up | **319.358 ms** | **31.99%** | Direct per-column T16 decode remains production. T128 proved column-contiguous Q4 payloads can improve the actual natural-M512 leaf **7.015 -> 6.157 ms (-12.23%)**, but its best exact sole-resident decode consumer regresses c1/c2/c4/c8 **6.79/6.10/6.36/6.86%** and is removed. Gate-only/up+SiLU and integer-WMMA shapes also remain closed; another layout must pass decode before prefill integration. |
 | Selected D4 Q4/Q6 down | **202.643 ms** | **20.30%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. |
 | Global + SWA attention | **218.516 ms** | **21.89%** | Source-qualified qrow4 is retained. Scalar key splitting, tiled M16/M8 WMMA, and single-wave two-head GQA reuse all lose; the next attention screen must use a materially different async/library premise. |
-| Scaled hipBLASLt source-F16 | **134.442 ms** | **13.47%** | The contractions are at the measured library ceiling; exact producer/consumer fusion and scale/cast/restore removal remain admissible. |
+| Scaled hipBLASLt source-F16 | **134.442 ms** | **13.47%** | Measured decomposition is **124.927 ms** hipBLASLt plus **9.516 ms** cast/scale/restore. Fusing four independent restores regresses their exact 48-layer sequence **3.474 -> 6.114 ms (+76.0%)** and is removed. Only producer/consumer elimination—not launch packaging—remains admissible. |
 | Q4/Q6 WMMA dense/shared | **52.952 ms** | **5.30%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
 | Router | **23.315 ms** | **2.34%** | Eight-token reuse is production and cuts the prior **30.658 ms** family. Tile 4 remains rollback; tile 16 is slower at every stable leaf shape. |
 | Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **46.972 ms** | **4.71%** | The one-block prefix and parallel compaction are retained. Touch a residual family only with a named exact fusion/data-movement premise. |
@@ -689,9 +689,12 @@ Immediate execution queue:
 
 1. Remove scale/cast/restore traffic around the **134.442 ms source-F16**
    family without changing the admitted hipBLASLt contraction schedule.
-   Measure the cast, library, and restore subwindows separately first; admit
-   only an exact producer/consumer fusion or a same-range representation that
-   preserves the current all-exact quality result.
+   The subwindows are now measured: **124.927 ms** contraction and **9.516
+   ms** glue (**4.508 ms** four-output restores, **3.685 ms** input casts,
+   **1.323 ms** output casts). A fused-four restore reduced launches
+   **192 -> 48** but regressed the exact sequence **76.0%** and was removed.
+   Admit only producer/consumer elimination or a same-range representation
+   that preserves the current all-exact quality result.
 2. Reopen the **218.516 ms attention** family only with a different premise
    from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles, and
    single-wave two-head fusion. The head-pair body was exact but regressed
@@ -1989,6 +1992,8 @@ Do not repeat:
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - single-wave qrow4 two-head GQA fusion; exact K/V reuse regresses all measured
   512/1K/4K diagnostic lengths;
+- fused-four source-F16 F32 row-scale restore; reducing **192 -> 48** launches
+  regresses the exact 48-layer sequence **3.474 -> 6.114 ms (+76.0%)**;
 - AOTriton Laguna head-dim-128 adaptation without a newly supported geometry;
 - graph replay or launch-count work while span-minus-sum is sub-percent.
 
@@ -2054,6 +2059,7 @@ hipEngine's stricter correctness contract.
 Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-prefix-scan.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-production.json`
