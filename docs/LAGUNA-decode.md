@@ -59,11 +59,11 @@ is now **61.732 tok/s**; Vulkan still requires another **4.35%**. Post-local32
 re-ranking selected one new exact SWA reducer screen: keep all 72 query-head
 workgroups, use local64 with two adjacent dimensions per thread, and halve the
 retained wave-local reducer's replicated scalar softmax state and packed-load
-instruction work. The primitive is implemented and byte-exact; all 12
-first/last/live-count rows improve **0.275-0.685% event** and **0.295-2.294%
-wall**. A default-off gfx1100 selector now passes 16-transition full-state
-identity and cached tracing at **36 calls/token**, local64/grid4608/VGPR24 and
-unchanged **723 model kernels/token**. Clean-context and category gates remain.
+instruction work. The primitive is byte-exact and all 12 isolated rows improve
+**0.275-0.685% event** / **0.295-2.294% wall**; its default-off selector also
+passes full state and tracing. The frozen clean gate nevertheless rejects it:
+at context 512 the reducer regresses **0.073%** and complete SWA regresses
+**0.247%**. Runtime selection is removed; the primitive remains diagnostic.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1138,7 +1138,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Can two exact fixed-metadata Q5 output waves share one local64 workgroup? | [`...q5-output-wave32x4-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-output-wave32x4-rejected.json): no. K6144/K9216 N3072 outputs are byte-exact and LDS/spill-free, but logical VGPR rises **73 -> 81** and all first/last global/SWA event/wall rows regress **6.51-10.15%**; the candidate is removed before runtime integration. |
 | Does exact GQA3 value reuse accelerate the SWA reducer? | [`...swa-gqa3-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json): no. All F32 context and BF16 gated outputs are byte-exact, but reducing **72 -> 24** workgroups regresses every layer-1/46/47 live-70/128/257/512 row by **61.16-89.95%**; the candidate is removed before runtime integration. |
 | Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
-| Does exact local64 dim2 ownership clear the SWA reducer precondition? | [`...reducer-correctness.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-correctness.json) and [`...runtime-correctness.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-runtime-correctness.json): yes through default-off runtime admission. One block still owns each of **72** query heads, primitive F32/BF16 bytes and full model state are exact, all 12 actual rows improve **0.275-0.685% event / 0.295-2.294% wall**, and cached tracing records 36 local64/grid4608/VGPR24/LDS0/scratch0 calls/token at unchanged 723 model kernels/token. Clean-context/category gates still block promotion. |
+| Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-local32 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) measures hipEngine **62.354/61.732 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **3.03%/4.35%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1182,7 +1182,7 @@ gates, all-positive clean projection/kernel/span/child rows, and both
 complete 18-prompt orders. Cached tracing records local32/VGPR80/LDS0/scratch0
 at unchanged 723 model kernels/token. The objective remains open at **61.732
 versus 64.418 tok/s**. The exact local64 packed-dim2 SWA path preserves all 72
-query-head workgroups—unlike rejected GQA3—and has passed primitive, codegen,
-all 12 actual-weight rows, 16-transition full state, and cached model tracing.
-Its gfx1100 capability remains false/default-off until both clean-context orders
-and both complete-category orders pass; there is no retention claim yet.
+query-head workgroups and passes primitive, codegen, actual-weight, full-state,
+and cached-trace gates, but its complete clean context-512 reducer/SWA regresses
+**0.073%/0.247%**. The frozen gate rejects runtime promotion; the selector and
+capability are removed, categories are skipped, and local128 remains canonical.

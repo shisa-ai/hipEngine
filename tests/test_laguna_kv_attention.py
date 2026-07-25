@@ -498,7 +498,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert cache.swa_split_tile16_min_live == 257
         assert cache.split_gate_fusion
         assert cache.swa_split_wave_local
-        assert not cache.swa_split_wave_local_dim2
         assert cache.allocation_count == 245
         assert cache.resident_nbytes == sum(runtime.allocations.values())
         assert sorted(runtime.allocations.values()).count(split_elements * 4) == 2
@@ -521,42 +520,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
     finally:
         shared_reducer.free()
     assert shared_reducer_runtime.allocations == {}
-
-    dim2_runtime = _FakeRuntime()
-    dim2 = allocate_laguna_kv_cache(
-        _production_config(),
-        context_length=4096,
-        backend="hip_gfx1100",
-        runtime=dim2_runtime,
-        use_swa_split_wave_local_dim2=True,
-    )
-    try:
-        assert dim2.swa_split_wave_local
-        assert dim2.swa_split_wave_local_dim2
-        selected_variants: list[tuple[str, str]] = []
-
-        def resolve_spy(layer: str, variant: str):
-            selected_variants.append((layer, variant))
-            return lambda *args, **kwargs: None
-
-        dim2._resolve = resolve_spy
-        dim2.position = 64
-        assert dim2.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
-        dim2.position = 256
-        assert dim2.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
-        assert selected_variants == [
-            (
-                "laguna_attention_decode",
-                "swa_context_split_exact_gated_wave_local_dim2_spans",
-            ),
-            (
-                "laguna_attention_decode",
-                "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
-            ),
-        ]
-    finally:
-        dim2.free()
-    assert dim2_runtime.allocations == {}
 
     tile16_runtime = _FakeRuntime()
     tile16 = allocate_laguna_kv_cache(
@@ -607,7 +570,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert rollback.swa_split_tile16_min_live is None
         assert not rollback.split_gate_fusion
         assert not rollback.swa_split_wave_local
-        assert not rollback.swa_split_wave_local_dim2
         assert rollback.allocation_count == 243
         assert sorted(rollback_runtime.allocations.values()).count(split_elements * 4) == 0
     finally:
@@ -648,33 +610,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             runtime=_FakeRuntime(),
             use_split_gate_fusion=False,
             use_swa_split_wave_local=True,
-        )
-    with pytest.raises(ValueError, match="cannot be combined"):
-        allocate_laguna_kv_cache(
-            _production_config(),
-            context_length=4096,
-            backend="hip_gfx1100",
-            runtime=_FakeRuntime(),
-            use_split_attention=False,
-            use_swa_split_wave_local_dim2=True,
-        )
-    with pytest.raises(ValueError, match="requires the wave-local reducer"):
-        allocate_laguna_kv_cache(
-            _production_config(),
-            context_length=4096,
-            backend="hip_gfx1100",
-            runtime=_FakeRuntime(),
-            use_swa_split_wave_local=False,
-            use_swa_split_wave_local_dim2=True,
-        )
-    with pytest.raises(ValueError, match="requires exact split attention"):
-        allocate_laguna_kv_cache(
-            _production_config(),
-            context_length=4096,
-            backend="hip_gfx1100",
-            runtime=_FakeRuntime(),
-            use_split_gate_fusion=False,
-            use_swa_split_wave_local_dim2=True,
         )
     with pytest.raises(ValueError, match="unavailable.*hip_gfx1151"):
         allocate_laguna_kv_cache(
