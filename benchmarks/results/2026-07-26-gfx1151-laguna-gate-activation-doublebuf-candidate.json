@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_candidate",
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "rows": 512,
+    "active_experts": 228,
+    "compact_rows": 5120,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "premise": "Ping-pong the 1536-byte selected-expert activation tile so the next K32 stage uses the other slot and the trailing synchronization after each K32 can be removed.",
+    "resident_byte_change": 0,
+    "additional_lds_bytes": 1536,
+    "barriers_per_k32": {
+      "baseline": 2,
+      "candidate": 1
+    },
+    "arithmetic_change": false,
+    "correctness": "BF16 byte exact to the direct wave-column consumer; all 11 CPU-reference/GPU quality parameterizations passed."
+  },
+  "protocol": {
+    "warmups": 3,
+    "samples": 11,
+    "burst": 5,
+    "order": "counter-rotated HIP events",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 3 --samples 11 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-doublebuf-leaf.json"
+  },
+  "results": {
+    "direct_wave_decode_median_ms": 6.994896697998047,
+    "double_buffer_median_ms": 6.906878662109375,
+    "latency_change_percent": -1.2583178807181294,
+    "throughput_change_percent": 1.2743532961065673,
+    "estimated_47_layer_gate_up_savings_ms": 4.136847686767561,
+    "checksums_equal": true,
+    "raw_sha256": "e0b9136b8d4efd538bbb2ee86d45490ee9791723fcf7f44d831bdb39bc57cfdc"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-gate-doublebuf-rocprof.1CwbAc -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 1 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-doublebuf-rocprof-leaf.json",
+    "kernel_template": "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,false,true,128,true,true,128,true,true>",
+    "observed_launches": 3,
+    "observed_duration_ns": [
+      7456012,
+      7252791,
+      7335026
+    ],
+    "trace_sha256": "921c0e5505771da417417234415547acbf11503d761808cb231fda04bb665810"
+  },
+  "decision": {
+    "retained": true,
+    "production_default_changed": false,
+    "next_gate": "Clean complete-state A/B before package-default promotion."
+  }
+}

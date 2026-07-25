@@ -1118,3 +1118,18 @@ should be boring.
 - Remove the explicit gfx1151 serial session selector after the next retained
   exact MoE metadata checkpoint. Keep the serial registry primitive if another
   backend still requires it as an unfused/reference fallback.
+
+## Laguna Q4 gate/up activation-double-buffer candidate selector
+
+- Added 2026-07-26 for the exact
+  `mmq128x32_d8_f32_wavecols_direct_doublebuf` session candidate. It
+  ping-pongs the 1.5 KB activation tile, removes one of two barriers per K32,
+  preserves resident bytes and arithmetic order, and is BF16 byte-exact.
+  The actual natural-M512 inclusive leaf improves **6.995 -> 6.907 ms
+  (-1.258%)**.
+- If clean complete-state A/B is positive, make the double-buffer body the
+  gfx1151 package default and remove the redundant positive selector after its
+  clean publication; retain the current direct body only as the explicit
+  synchronization rollback through one later expert-family checkpoint. If the
+  complete-state A/B is negative, remove the double-buffer export, selector,
+  harness mode, and template branch immediately.

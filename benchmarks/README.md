@@ -58,6 +58,14 @@ but regresses the actual layer-1 natural-M512 leaf **6.918 -> 6.990 ms
 **505.185 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-gate-wave-lds-stage-rejected.json).
 
+The synchronization follow-up is retained. Ping-ponging the 1.5 KB activation
+tile removes one of two barriers per K32, keeps resident bytes and arithmetic
+unchanged, and is BF16 byte-exact. The actual layer-1 natural-M512 inclusive
+leaf improves **6.995 -> 6.907 ms (-1.258%, +1.274% throughput)**. The route is
+available explicitly pending clean complete-state promotion; production remains
+**505.185 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-candidate.json).
+
 Latest retained hipEngine revisions in this scoreboard:
 `7ecd940b9` for exact static-range direct F16 boundaries in Laguna production,
 `1bac6ead5` for the exact direct attention-norm cast in Laguna production,

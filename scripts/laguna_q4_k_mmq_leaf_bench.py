@@ -72,6 +72,7 @@ MODES = (
     "t16-mmq128x32-d8-f32",
     "t16-mmq128x32-d8-f32-wavecols",
     "t16-mmq128x32-d8-f32-wavecols-direct",
+    "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -673,6 +674,7 @@ def main() -> None:
                     *,
                     wave_cols: bool,
                     direct_wave_decode: bool = False,
+                    double_buffer_activation: bool = False,
                 ) -> None:
                     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
                         source_x_dev.ptr,
@@ -705,6 +707,7 @@ def main() -> None:
                         rowvec=True,
                         wave_cols=wave_cols,
                         direct_wave_decode=direct_wave_decode,
+                        double_buffer_activation=double_buffer_activation,
                         library=mmq_library,
                         runtime=runtime,
                     )
@@ -727,6 +730,13 @@ def main() -> None:
                         lambda: t16_mmq128_d8_f32(
                             wave_cols=True,
                             direct_wave_decode=True,
+                        )
+                    ),
+                    "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf": (
+                        lambda: t16_mmq128_d8_f32(
+                            wave_cols=True,
+                            direct_wave_decode=True,
+                            double_buffer_activation=True,
                         )
                     ),
                 }
