@@ -1046,8 +1046,10 @@ should be boring.
   `mmq64x32_d4_f32_wavecols_direct_q4`. The candidate is BF16-byte identical
   and improves the implementation-worktree pp512 screen
   **473.774 -> 483.409 tok/s** while Q6 stays on row-vector production.
-- Remove the explicit Q4 pair-decode selector after the direct mode passes
-  clean selector-unset timing and refreshed all-family tracing. Do not couple
+- Removal trigger is satisfied: clean selector-unset pp512 improves
+  **473.963 -> 480.629 tok/s**, direct all-exact quality/lifecycle pass, and
+  cached tracing cuts the Q4 consumer **90.280 -> 71.378 ms**. Remove the
+  explicit Q4 pair-decode selector during immediate cleanup. Do not couple
   this cleanup to the independently retained Q6 row-vector kernel.
 
 ## Laguna rejected Q6 down wave-column template branch

@@ -179551,3 +179551,38 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-candidate.json`.
   Commit, then require clean selector-unset pp512 and a refreshed all-family
   trace before calling production. The 500 and 700 gates remain open.
+
+## 2026-07-26 — Publish direct Q4-down decode at 480.629 tok/s
+
+- Committed the exact candidate as `d39cbb5ba`, restoring a tracked-clean
+  tree. Clean one-owner matrix512/attention128 pp512 over seven
+  counterbalanced repetitions improves explicit pair-decode rollback
+  **473.963466 -> 480.629259 tok/s (+1.406%)**. All selector-unset samples are
+  **477.297679–485.018701**, completely separated from rollback
+  **471.890290–474.679123**, and every run selects token 2930. Raw log
+  SHA-256:
+  `4d8411697f5718445fa19b2c0b64f1de29174c6a21b90946224cc2b2a1b1901b`.
+- The fresh production-versus-all-exact ten-prompt lane passes maximum KL
+  **0.04954258196634279**, **316/320 (98.75%)** top-1, and minimum category
+  agreement **96.875%**. Poolside top-1 is exact, same-mode repeats are
+  deterministic, tracked allocation/free is exactly
+  **109,859,542,160 bytes**, and h16/h32 decode ratios are
+  **0.999908/0.999981**. Natural-prompt prefill is
+  **53.415 -> 235.524 tok/s (4.409x)**. Raw JSON SHA-256:
+  `4e164d73751aeab10431b62f28d026e4e0dc8c3883548a176eb5dfa17edda594`.
+- Cached all-family tracing measures **481.997/435.961/346.675 tok/s** at
+  512/1K/4K, with pp512 wall/span/kernel sum
+  **1,062.248/1,058.485/1,046.442 ms**. Selected down falls
+  **224.241 -> 206.110 ms (-8.09%)**, split into Q4 consumer
+  **71.378 ms**, Q6 consumer **129.581 ms**, and activation pack
+  **5.151 ms**; Q4 itself falls **90.280 -> 71.378 ms (-20.94%)**. Gate/up
+  is **318.921 ms**, attention **218.164 ms**, source-F16 **135.443 ms**,
+  and dense/shared **72.866 ms**. Raw trace/child/summary SHA-256:
+  `f57effe...b22` / `13fb28f...8df` / `862a9b0...3e8`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, refactor
+  ledger, and post-350 plan. Production is now **480.629 tok/s**. Only
+  **34.5 ms** of pp512 kernel span separates it from 500; the next bounded
+  task screens direct per-column 64x32/local64 gate/up ownership, whose prior
+  pair-decode version was only **0.486%** behind 128x32/local128.
