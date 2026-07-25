@@ -37,8 +37,12 @@ is the gfx1151 package default; tile 4 remains explicit rollback and the
 unmeasured-backend default. Cached gfx1151 tracing names the tile-8 kernel at
 local256, VGPR32, SGPR128, 8 KiB dynamic LDS, wave32, and zero scratch.
 Production-shaped F32 logits, selected IDs, scaled routing weights, and
-complete MoE BF16 output are byte-exact. Candidate evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-candidate.json`.
+complete MoE BF16 output are byte-exact. Clean seven-pair production improves
+tile-4 rollback **497.625 -> 503.349 tok/s (+1.150%)**, wins every pair, and
+keeps all tile-8 samples above 500 (**minimum 501.698 tok/s**). Cached
+all-family tracing measures **504.631 tok/s** and cuts router
+**30.658 -> 23.315 ms**. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`.
 
 ### CPU-reference primitive oracles (**CPU reference landed**)
 
