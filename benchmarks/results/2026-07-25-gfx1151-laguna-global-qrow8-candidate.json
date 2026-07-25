@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T21:09:33+09:00",
+  "kind": "hipengine_laguna_global_attention_qrow8_candidate",
+  "status": "retained_candidate_pending_clean_confirmation",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M pp512 global-attention qrow4/qrow8 A/B on gfx1151",
+  "repo": {
+    "baseline_commit": "e2c47a18601fad079b659a542cc2c5deb6e0381b",
+    "tracked_clean": false,
+    "qualification": "Candidate code and its default selector were present in the worktree. A committed clean selector-unset confirmation is required before changing the production topline."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "pp512",
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "warmup_rows_per_mode": 128,
+    "timing": "host perf_counter around prefill plus device_synchronize",
+    "command": "PYTHONPATH=. python3 /tmp/laguna_qrow4_attention_screen.py"
+  },
+  "four_mode_screen": {
+    "repetitions": 3,
+    "production_qrow4_median_tok_s": 365.391784,
+    "qrow8_global_and_swa_median_tok_s": 349.894796,
+    "qrow8_global_only_median_tok_s": 365.922885,
+    "qrow8_swa_only_median_tok_s": 349.177158,
+    "next_token_id_all_runs": 2930,
+    "decision": "Remove SWA qrow8; retain only the global qrow8 candidate."
+  },
+  "global_confirmation": {
+    "repetitions": 5,
+    "production_qrow4_samples_tok_s": [
+      366.361755,
+      364.408961,
+      365.105352,
+      367.885170,
+      365.471227
+    ],
+    "production_qrow4_median_tok_s": 365.471227,
+    "global_qrow8_samples_tok_s": [
+      366.378969,
+      366.544712,
+      365.815336,
+      366.100541,
+      366.125927
+    ],
+    "global_qrow8_median_tok_s": 366.125927,
+    "speedup": 1.001791,
+    "next_token_id_all_runs": 2930
+  },
+  "correctness": {
+    "command": "uv run pytest -q tests/test_laguna_kv_attention.py tests/test_gfx1151_backend.py",
+    "result": "33 passed",
+    "ring_fixture": "seed 508, query rows 508..515, explicit eviction, wrapped physical offsets, full eight-row and seven-row partial groups",
+    "global_qrow8_vs_qrow2": "byte-identical F32 output",
+    "selector": "qrow8 only for rows==128; qrow2 for residual tiles"
+  },
+  "kernel_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file qrow8-final --log-level error -- uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
+    "raw_csv_sha256": "7d66a41c2219cdd570f708a4d210a2b056d80324b5d0e50c53beace6e3af494d",
+    "raw_csv_committed": false,
+    "kernel_template": "laguna_global_attention_prefill_qrows_online_bf16_kernel<8>",
+    "workgroup_size": 32,
+    "vgpr_count": 112,
+    "sgpr_count": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0
+  },
+  "conclusion": "Global qrow8 has a small repeated paired gain and remains bounded to complete M128 tiles. SWA qrow8 is a clear regression and has been removed. Commit the global-only candidate and require a clean paired confirmation before production promotion."
+}

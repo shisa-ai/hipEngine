@@ -782,6 +782,20 @@ sum falls **45.676 ms**. Evidence:
 Production:
 [`2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json).
 
+Sixth post-350 screen: **global-only retained candidate; clean production
+confirmation pending**. Reusing each global K/V row across eight queries is
+F32 byte-identical to qrow2 on the wrapped/evicted full-eight and seven-row
+partial fixture. The final cached trace names global qrow8 at local32,
+VGPR112, SGPR128, and zero LDS/scratch. A five-repeat matched pp512 screen
+measured **366.126 tok/s** median versus qrow4 production **365.471**
+(**+0.179%**), always token 2930. Qrow8 remains restricted to complete M128
+tiles; qrow2 handles residuals. The analogous SWA qrow8 route measured
+**349.177** versus **365.392 tok/s** and was removed; SWA stays qrow4.
+Because the positive margin is small and the screen contained candidate code,
+the topline remains **364.839 tok/s** until a clean committed paired run
+confirms it. Evidence:
+[`2026-07-25-gfx1151-laguna-global-qrow8-candidate.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-global-qrow8-candidate.json).
+
 Production evidence:
 
 - [`2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json)
