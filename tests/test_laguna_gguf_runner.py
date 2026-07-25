@@ -9,6 +9,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.registry import KernelKey
 from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16, LAYOUT_RAW_GGUF
 from hipengine.runtime import laguna_gguf_runner as runner_module
@@ -20,6 +21,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_hidden_rows,
     capture_laguna_hidden_tap,
     capture_laguna_routing_rows,
+    launch_laguna_mixed_attention_projections,
     resolve_laguna_eager_kernel_plan,
     resolve_laguna_head_kv_fusion,
     resolve_laguna_iq2_grid64,
@@ -538,6 +540,136 @@ def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
             5,
             libraries=libraries,
         )
+
+
+def test_laguna_mixed_attention_projection_quad_is_registry_owned_and_fail_closed(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[tuple, dict]] = []
+    resolved_keys: list[KernelKey] = []
+    libraries = SimpleNamespace(
+        linear={"gguf_q5_k": "q5-library", "gguf_q6_k": "q6-library"}
+    )
+
+    def weight(name: str, quant: str, ptr: int):
+        allocation = SimpleNamespace(tensor=SimpleNamespace(ptr=ptr))
+        return SimpleNamespace(
+            spec=SimpleNamespace(name=name, layout=LAYOUT_RAW_GGUF, quant_key=quant),
+            allocation=lambda kind: allocation,
+        )
+
+    def registered(key: KernelKey) -> bool:
+        resolved_keys.append(key)
+        return key.backend == "hip_gfx1100" and "gguf_q4_k" not in key.quant
+
+    def candidate(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(runner_module, "is_registered", registered)
+    monkeypatch.setattr(runner_module, "resolve", lambda **kwargs: candidate)
+
+    q5_qg = (
+        weight("q", "gguf_q5_k", 101),
+        weight("k", "gguf_q6_k", 102),
+        weight("v", "gguf_q6_k", 103),
+        weight("gate", "gguf_q5_k", 104),
+    )
+    assert launch_laguna_mixed_attention_projections(
+        *q5_qg,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+        backend="hip_gfx1100",
+        stream=7,
+        libraries=libraries,
+        runtime="runtime",
+    )
+    assert resolved_keys[-1] == KernelKey(
+        "hip_gfx1100",
+        "attention_projection_quad",
+        "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+        "mixed_pack8_gemv_decode_bf16_f32_out",
+    )
+    assert calls[-1][0] == (
+        10,
+        101,
+        102,
+        103,
+        104,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+    )
+    assert calls[-1][1] == {
+        "stream": 7,
+        "library": "q5-library",
+        "runtime": "runtime",
+    }
+
+    q6_q8 = (
+        weight("q", "gguf_q6_k", 201),
+        weight("k", "gguf_q8_0", 202),
+        weight("v", "gguf_q8_0", 203),
+        weight("gate", "gguf_q6_k", 204),
+    )
+    assert launch_laguna_mixed_attention_projections(
+        *q6_q8,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+        backend="hip_gfx1100",
+        stream=0,
+        libraries=libraries,
+        runtime=None,
+    )
+    assert resolved_keys[-1].quant == (
+        "gguf_q6_k+gguf_q8_0+gguf_q8_0+gguf_q6_k"
+    )
+    assert calls[-1][1]["library"] == "q6-library"
+
+    before = len(calls)
+    assert not launch_laguna_mixed_attention_projections(
+        *q5_qg,
+        10,
+        20,
+        30,
+        40,
+        50,
+        2,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+        backend="hip_gfx1100",
+        stream=0,
+        libraries=libraries,
+        runtime=None,
+    )
+    assert len(calls) == before
 
 
 def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(

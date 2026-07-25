@@ -1061,7 +1061,7 @@ __device__ __forceinline__ void gguf_q5_k_wave32x2_fixed_meta_decode_out_block(
     int out_pair,
     int in_features,
     int out_features) {
-  const int lane = threadIdx.x;
+  const int lane = threadIdx.x & 31;
   const int out_col = out_pair << 1;
   const int blocks_per_row = in_features / QK_K;
   const int row_bytes = blocks_per_row * Q5_K_BLOCK_BYTES;
@@ -1248,6 +1248,198 @@ __global__ void gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out_kernel(
       out_pair,
       in_features,
       projection_b ? out_features_b : out_features_a);
+}
+
+// One c=1 dispatch covers Laguna's mixed raw-Q5/raw-Q6 attention projections.
+// Q5 blocks contain four independent wave32 output-pair owners and preserve the
+// retained fixed-metadata arithmetic. Q6 blocks retain the generic local128
+// pack8 traversal/reduction. The flattened grid is role-agnostic: host-side
+// four-axis wrappers provide the production Q5 query/gate ordering.
+template <typename scalar_t, typename out_t>
+__launch_bounds__(128, 2)
+__global__ void gguf_q5_q6_mixed_attention_decode_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ q5_weight_a,
+    const uint8_t* __restrict__ q5_weight_b,
+    const uint8_t* __restrict__ q6_weight_a,
+    const uint8_t* __restrict__ q6_weight_b,
+    out_t* __restrict__ q5_out_a,
+    out_t* __restrict__ q5_out_b,
+    out_t* __restrict__ q6_out_a,
+    out_t* __restrict__ q6_out_b,
+    int in_features,
+    int q5_features_a,
+    int q5_features_b,
+    int q6_features_a,
+    int q6_features_b) {
+  const int q5_blocks = (q5_features_a + q5_features_b) >> 3;
+  const int flat_block = blockIdx.x;
+  if (flat_block < q5_blocks) {
+    const int wave = threadIdx.x >> 5;
+    const int flat_pair = (flat_block << 2) + wave;
+    const int pairs_a = q5_features_a >> 1;
+    const bool projection_b = flat_pair >= pairs_a;
+    const int out_pair = projection_b ? flat_pair - pairs_a : flat_pair;
+    gguf_q5_k_wave32x2_fixed_meta_decode_out_block(
+        x,
+        projection_b ? q5_weight_b : q5_weight_a,
+        projection_b ? q5_out_b : q5_out_a,
+        0,
+        out_pair,
+        in_features,
+        projection_b ? q5_features_b : q5_features_a);
+    return;
+  }
+
+  const int flat_pack = flat_block - q5_blocks;
+  const int packs_a = q6_features_a >> 3;
+  const bool projection_b = flat_pack >= packs_a;
+  const int out_pack = projection_b ? flat_pack - packs_a : flat_pack;
+  const int out_features = projection_b ? q6_features_b : q6_features_a;
+  const uint8_t* __restrict__ qweight =
+      projection_b ? q6_weight_b : q6_weight_a;
+  out_t* __restrict__ out = projection_b ? q6_out_b : q6_out_a;
+  const int tid = threadIdx.x;
+  const int out_col = out_pack << 3;
+  const int row_bytes = gguf_k_row_bytes(6, in_features);
+  const uint8_t* __restrict__ w0 =
+      qweight + static_cast<int64_t>(out_col + 0) * row_bytes;
+  const uint8_t* __restrict__ w1 =
+      qweight + static_cast<int64_t>(out_col + 1) * row_bytes;
+  const uint8_t* __restrict__ w2 =
+      qweight + static_cast<int64_t>(out_col + 2) * row_bytes;
+  const uint8_t* __restrict__ w3 =
+      qweight + static_cast<int64_t>(out_col + 3) * row_bytes;
+  const uint8_t* __restrict__ w4 =
+      qweight + static_cast<int64_t>(out_col + 4) * row_bytes;
+  const uint8_t* __restrict__ w5 =
+      qweight + static_cast<int64_t>(out_col + 5) * row_bytes;
+  const uint8_t* __restrict__ w6 =
+      qweight + static_cast<int64_t>(out_col + 6) * row_bytes;
+  const uint8_t* __restrict__ w7 =
+      qweight + static_cast<int64_t>(out_col + 7) * row_bytes;
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    const float xv = scalar_to_float<scalar_t>(x[k]);
+    acc0 += xv * q6_k_weight(w0, k);
+    acc1 += xv * q6_k_weight(w1, k);
+    acc2 += xv * q6_k_weight(w2, k);
+    acc3 += xv * q6_k_weight(w3, k);
+    acc4 += xv * q6_k_weight(w4, k);
+    acc5 += xv * q6_k_weight(w5, k);
+    acc6 += xv * q6_k_weight(w6, k);
+    acc7 += xv * q6_k_weight(w7, k);
+  }
+
+  GGUF_K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                      r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    store_output<out_t>(out, out_col + 0, r0);
+    store_output<out_t>(out, out_col + 1, r1);
+    store_output<out_t>(out, out_col + 2, r2);
+    store_output<out_t>(out, out_col + 3, r3);
+    store_output<out_t>(out, out_col + 4, r4);
+    store_output<out_t>(out, out_col + 5, r5);
+    store_output<out_t>(out, out_col + 6, r6);
+    store_output<out_t>(out, out_col + 7, r7);
+  }
+}
+
+// Laguna layer 47 reverses the raw-Q6 role onto query/gate while K/V are Q8_0.
+// One local128 flattened range preserves the retained generic Q6 pair and Q8
+// singleton arithmetic while contracting their three launches into one.
+template <typename scalar_t, typename out_t>
+__launch_bounds__(128, 2)
+__global__ void gguf_q6_q8_mixed_attention_decode_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ q6_weight_a,
+    const uint8_t* __restrict__ q6_weight_b,
+    const uint8_t* __restrict__ q8_weight_a,
+    const uint8_t* __restrict__ q8_weight_b,
+    out_t* __restrict__ q6_out_a,
+    out_t* __restrict__ q6_out_b,
+    out_t* __restrict__ q8_out_a,
+    out_t* __restrict__ q8_out_b,
+    int in_features,
+    int q6_features_a,
+    int q6_features_b,
+    int q8_features_a,
+    int q8_features_b) {
+  const int q6_packs = (q6_features_a + q6_features_b) >> 3;
+  const int flat_pack = blockIdx.x;
+  const bool q8_projection = flat_pack >= q6_packs;
+  const int family_pack = q8_projection ? flat_pack - q6_packs : flat_pack;
+  const int packs_a = (q8_projection ? q8_features_a : q6_features_a) >> 3;
+  const bool projection_b = family_pack >= packs_a;
+  const int out_pack = projection_b ? family_pack - packs_a : family_pack;
+  const int out_features = q8_projection
+      ? (projection_b ? q8_features_b : q8_features_a)
+      : (projection_b ? q6_features_b : q6_features_a);
+  const uint8_t* __restrict__ qweight = q8_projection
+      ? (projection_b ? q8_weight_b : q8_weight_a)
+      : (projection_b ? q6_weight_b : q6_weight_a);
+  out_t* __restrict__ out = q8_projection
+      ? (projection_b ? q8_out_b : q8_out_a)
+      : (projection_b ? q6_out_b : q6_out_a);
+  const int tid = threadIdx.x;
+  const int out_col = out_pack << 3;
+  const int row_bytes = gguf_k_row_bytes(q8_projection ? 8 : 6, in_features);
+  const uint8_t* __restrict__ w0 =
+      qweight + static_cast<int64_t>(out_col + 0) * row_bytes;
+  const uint8_t* __restrict__ w1 =
+      qweight + static_cast<int64_t>(out_col + 1) * row_bytes;
+  const uint8_t* __restrict__ w2 =
+      qweight + static_cast<int64_t>(out_col + 2) * row_bytes;
+  const uint8_t* __restrict__ w3 =
+      qweight + static_cast<int64_t>(out_col + 3) * row_bytes;
+  const uint8_t* __restrict__ w4 =
+      qweight + static_cast<int64_t>(out_col + 4) * row_bytes;
+  const uint8_t* __restrict__ w5 =
+      qweight + static_cast<int64_t>(out_col + 5) * row_bytes;
+  const uint8_t* __restrict__ w6 =
+      qweight + static_cast<int64_t>(out_col + 6) * row_bytes;
+  const uint8_t* __restrict__ w7 =
+      qweight + static_cast<int64_t>(out_col + 7) * row_bytes;
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    const float xv = scalar_to_float<scalar_t>(x[k]);
+    if (q8_projection) {
+      acc0 += xv * q8_0_weight(w0, k);
+      acc1 += xv * q8_0_weight(w1, k);
+      acc2 += xv * q8_0_weight(w2, k);
+      acc3 += xv * q8_0_weight(w3, k);
+      acc4 += xv * q8_0_weight(w4, k);
+      acc5 += xv * q8_0_weight(w5, k);
+      acc6 += xv * q8_0_weight(w6, k);
+      acc7 += xv * q8_0_weight(w7, k);
+    } else {
+      acc0 += xv * q6_k_weight(w0, k);
+      acc1 += xv * q6_k_weight(w1, k);
+      acc2 += xv * q6_k_weight(w2, k);
+      acc3 += xv * q6_k_weight(w3, k);
+      acc4 += xv * q6_k_weight(w4, k);
+      acc5 += xv * q6_k_weight(w5, k);
+      acc6 += xv * q6_k_weight(w6, k);
+      acc7 += xv * q6_k_weight(w7, k);
+    }
+  }
+
+  GGUF_K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                      r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    store_output<out_t>(out, out_col + 0, r0);
+    store_output<out_t>(out, out_col + 1, r1);
+    store_output<out_t>(out, out_col + 2, r2);
+    store_output<out_t>(out, out_col + 3, r3);
+    store_output<out_t>(out, out_col + 4, r4);
+    store_output<out_t>(out, out_col + 5, r5);
+    store_output<out_t>(out, out_col + 6, r6);
+    store_output<out_t>(out, out_col + 7, r7);
+  }
 }
 
 // Decode-only projection pair. blockIdx.y selects gate/up, so each workgroup
@@ -1871,6 +2063,104 @@ int launch_gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename out_t>
+int launch_gguf_q5_q6_mixed_attention_decode_out(
+    const uint16_t* x,
+    const uint8_t* q5_weight_a,
+    const uint8_t* q5_weight_b,
+    const uint8_t* q6_weight_a,
+    const uint8_t* q6_weight_b,
+    out_t* q5_out_a,
+    out_t* q5_out_b,
+    out_t* q6_out_a,
+    out_t* q6_out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q5_features_a,
+    int64_t q5_features_b,
+    int64_t q6_features_a,
+    int64_t q6_features_b,
+    hipStream_t stream) {
+  if (x == nullptr || q5_weight_a == nullptr || q5_weight_b == nullptr ||
+      q6_weight_a == nullptr || q6_weight_b == nullptr || q5_out_a == nullptr ||
+      q5_out_b == nullptr || q6_out_a == nullptr || q6_out_b == nullptr ||
+      rows != 1 || in_features <= 0 || (in_features % QK_K) != 0 ||
+      q5_features_a <= 0 || q5_features_b <= 0 || q6_features_a <= 0 ||
+      q6_features_b <= 0 || (q5_features_a % 8) != 0 ||
+      (q5_features_b % 8) != 0 || (q6_features_a % 8) != 0 ||
+      (q6_features_b % 8) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t q5_blocks = (q5_features_a + q5_features_b) / 8;
+  const int64_t q6_blocks = (q6_features_a + q6_features_b) / 8;
+  gguf_q5_q6_mixed_attention_decode_out_kernel<uint16_t, out_t>
+      <<<dim3(static_cast<unsigned int>(q5_blocks + q6_blocks)), dim3(128), 0, stream>>>(
+          x,
+          q5_weight_a,
+          q5_weight_b,
+          q6_weight_a,
+          q6_weight_b,
+          q5_out_a,
+          q5_out_b,
+          q6_out_a,
+          q6_out_b,
+          static_cast<int>(in_features),
+          static_cast<int>(q5_features_a),
+          static_cast<int>(q5_features_b),
+          static_cast<int>(q6_features_a),
+          static_cast<int>(q6_features_b));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t>
+int launch_gguf_q6_q8_mixed_attention_decode_out(
+    const uint16_t* x,
+    const uint8_t* q6_weight_a,
+    const uint8_t* q6_weight_b,
+    const uint8_t* q8_weight_a,
+    const uint8_t* q8_weight_b,
+    out_t* q6_out_a,
+    out_t* q6_out_b,
+    out_t* q8_out_a,
+    out_t* q8_out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q6_features_a,
+    int64_t q6_features_b,
+    int64_t q8_features_a,
+    int64_t q8_features_b,
+    hipStream_t stream) {
+  if (x == nullptr || q6_weight_a == nullptr || q6_weight_b == nullptr ||
+      q8_weight_a == nullptr || q8_weight_b == nullptr || q6_out_a == nullptr ||
+      q6_out_b == nullptr || q8_out_a == nullptr || q8_out_b == nullptr ||
+      rows != 1 || in_features <= 0 || (in_features % QK_K) != 0 ||
+      q6_features_a <= 0 || q6_features_b <= 0 || q8_features_a <= 0 ||
+      q8_features_b <= 0 || (q6_features_a % 8) != 0 ||
+      (q6_features_b % 8) != 0 || (q8_features_a % 8) != 0 ||
+      (q8_features_b % 8) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t q6_blocks = (q6_features_a + q6_features_b) / 8;
+  const int64_t q8_blocks = (q8_features_a + q8_features_b) / 8;
+  gguf_q6_q8_mixed_attention_decode_out_kernel<uint16_t, out_t>
+      <<<dim3(static_cast<unsigned int>(q6_blocks + q8_blocks)), dim3(128), 0, stream>>>(
+          x,
+          q6_weight_a,
+          q6_weight_b,
+          q8_weight_a,
+          q8_weight_b,
+          q6_out_a,
+          q6_out_b,
+          q8_out_a,
+          q8_out_b,
+          static_cast<int>(in_features),
+          static_cast<int>(q6_features_a),
+          static_cast<int>(q6_features_b),
+          static_cast<int>(q8_features_a),
+          static_cast<int>(q8_features_b));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t, int COL_TILE, int ROW_TILE>
 int launch_gguf_q8_0_exact_prefill_tiled_out(
     const scalar_t* x,
@@ -2249,6 +2539,52 @@ extern "C" int hipengine_gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out(
   return launch_gguf_q6_k_pair_pack8_decode_out<float>(
       x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features_a,
       out_features_b, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q5_q6_mixed_attention_pack8_gemv_decode_bf16_f32_out(
+    const uint16_t* x,
+    const uint8_t* q5_weight_a,
+    const uint8_t* q5_weight_b,
+    const uint8_t* q6_weight_a,
+    const uint8_t* q6_weight_b,
+    float* q5_out_a,
+    float* q5_out_b,
+    float* q6_out_a,
+    float* q6_out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q5_features_a,
+    int64_t q5_features_b,
+    int64_t q6_features_a,
+    int64_t q6_features_b,
+    hipStream_t stream) {
+  return launch_gguf_q5_q6_mixed_attention_decode_out<float>(
+      x, q5_weight_a, q5_weight_b, q6_weight_a, q6_weight_b, q5_out_a,
+      q5_out_b, q6_out_a, q6_out_b, rows, in_features, q5_features_a,
+      q5_features_b, q6_features_a, q6_features_b, stream);
+}
+
+extern "C" int hipengine_gguf_q6_q8_mixed_attention_pack8_gemv_decode_bf16_f32_out(
+    const uint16_t* x,
+    const uint8_t* q6_weight_a,
+    const uint8_t* q6_weight_b,
+    const uint8_t* q8_weight_a,
+    const uint8_t* q8_weight_b,
+    float* q6_out_a,
+    float* q6_out_b,
+    float* q8_out_a,
+    float* q8_out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q6_features_a,
+    int64_t q6_features_b,
+    int64_t q8_features_a,
+    int64_t q8_features_b,
+    hipStream_t stream) {
+  return launch_gguf_q6_q8_mixed_attention_decode_out<float>(
+      x, q6_weight_a, q6_weight_b, q8_weight_a, q8_weight_b, q6_out_a,
+      q6_out_b, q8_out_a, q8_out_b, rows, in_features, q6_features_a,
+      q6_features_b, q8_features_a, q8_features_b, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_pack8_gemv_decode_bf16_bf16_out(

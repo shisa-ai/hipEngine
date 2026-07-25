@@ -79,6 +79,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="roll back exact fixed-metadata Q5 c=1 query/gate",
     )
+    parser.add_argument(
+        "--use-mixed-q5-q6-attention",
+        action="store_true",
+        help="screen one exact mixed-quant c=1 attention-projection dispatch per layer",
+    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -214,6 +219,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_q5_fixed_meta_query_gate=(
             False if args.disable_q5_fixed_meta_query_gate else None
         ),
+        use_mixed_q5_q6_attention=args.use_mixed_q5_q6_attention,
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
         swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -598,6 +604,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_q5_fixed_meta_query_gate=(
                 False if args.disable_q5_fixed_meta_query_gate else None
             ),
+            use_mixed_q5_q6_attention=args.use_mixed_q5_q6_attention,
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -719,6 +726,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_iq2_grid64": owner.use_iq2_grid64,
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
             "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,
+            "use_mixed_q5_q6_attention": owner.use_mixed_q5_q6_attention,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {
