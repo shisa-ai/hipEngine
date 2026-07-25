@@ -152,7 +152,32 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
     [
         ("laguna_f16w_tiled_exact_kernel<unsigned short, 16>", "source_f16_projection"),
         ("laguna_f16w_wmma_kernel<unsigned short, 4, true>", "source_f16_projection"),
+        (
+            "Cijk_Alik_Bljk_HSS_BH_Bias_HA_S_SAV_UserArgs_MT96x96x32",
+            "source_f16_projection",
+        ),
+        (
+            "bf16_to_fp16_scaled_rows_kernel(unsigned short const*, _Float16*)",
+            "source_f16_projection",
+        ),
         ("q4_k_t16_selected_dual_direct_gemv_kernel<unsigned short>", "selected_q4_gate_up"),
+        ("gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel", "selected_q4_gate_up"),
+        (
+            "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_"
+            "prefill_compact32_kernel<1, false, true, 128>",
+            "selected_q4_gate_up",
+        ),
+        ("gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel<1, false>", "selected_q4_q6_down"),
+        (
+            "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_"
+            "prefill_compact32_kernel<1, true, false, 64>",
+            "selected_q4_q6_down",
+        ),
+        (
+            "gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_"
+            "prefill_compact32_kernel<1>",
+            "selected_q4_q6_down",
+        ),
         ("qk_t16_selected_direct_gemv_kernel<unsigned short, 6>", "selected_q4_q6_down"),
         ("qk_t16_selected_grouped_smallm_kernel<unsigned short, 6>", "selected_q4_q6_down"),
         ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
@@ -160,6 +185,10 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
         ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
         (
             "gguf_k_prefill_out_kernel<unsigned short, unsigned short, 6>",
+            "dense_shared_quant_projection",
+        ),
+        (
+            "gguf_q6_k_prefill_wmma_kernel<unsigned short, unsigned short, 64, 16>",
             "dense_shared_quant_projection",
         ),
         ("silu_mul_separate_out_kernel<unsigned short>", "activation_reduce_residual"),
