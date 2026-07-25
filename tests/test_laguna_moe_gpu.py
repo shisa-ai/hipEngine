@@ -138,6 +138,9 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.mmq_tile_map_key == KernelKey(
         "hip_gfx1151", "moe_mmq_tile_map", "generic", "tile32"
     )
+    assert plan.mmq64_tile_map_key == KernelKey(
+        "hip_gfx1151", "moe_mmq_tile_map", "generic", "tile64"
+    )
     assert plan.selected_dual_silu_key == KernelKey(
         "hip_gfx1151", "silu_mul_dual", "bf16", "out"
     )
@@ -198,7 +201,7 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151")
-        == "mmq64x32_d4_f32_wavecols_direct_q4"
+        == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
     )
     assert resolve_laguna_selected_down_mode("hip_gfx1151", "direct") == "direct"
     assert (
@@ -581,6 +584,22 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         np.testing.assert_array_equal(
             _f32_to_bf16_u16(down_wavecols_direct_actual),
             _f32_to_bf16_u16(down_wavecols_actual),
+        )
+        down_q6_rows64_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            down_rowvec_scratch,
+            rows=3,
+            selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+            selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
+        )
+        down_q6_rows64_actual = _read_bf16(
+            down_q6_rows64_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(down_q6_rows64_actual),
+            _f32_to_bf16_u16(down_wavecols_direct_actual),
         )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):

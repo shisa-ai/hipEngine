@@ -1589,17 +1589,19 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("residual_passes", "rowvec"),
+    ("residual_passes", "rowvec", "tile_rows"),
     [
-        (1, False),
-        (1, True),
-        (2, False),
-        (3, False),
+        (1, False, 32),
+        (1, True, 32),
+        (1, True, 64),
+        (2, False, 32),
+        (3, False, 32),
     ],
 )
 def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     residual_passes: int,
     rowvec: bool,
+    tile_rows: int,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from tests.test_gguf_k_t16_selected_wmma_prefill import (
@@ -1615,7 +1617,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         seed=23,
     )
     counts = np.diff(fixture.expert_start_compact)
-    padded = ((counts + 31) // 32) * 32
+    padded = ((counts + tile_rows - 1) // tile_rows) * tile_rows
     expert_start_mmq32 = np.zeros(
         fixture.num_experts + 1, dtype=np.int64
     )
@@ -1625,7 +1627,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         [
             expert
             for expert, padded_rows in enumerate(padded)
-            for _ in range(int(padded_rows) // 32)
+            for _ in range(int(padded_rows) // tile_rows)
         ],
         dtype=np.int64,
     )
@@ -1641,7 +1643,11 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     host_out = np.zeros(
         (fixture.compact_rows, fixture.out_features), dtype=np.uint16
     )
-    host_baseline = np.zeros_like(host_out) if rowvec else None
+    host_baseline = (
+        np.zeros_like(host_out)
+        if rowvec and tile_rows == 32
+        else None
+    )
     bufs = []
     try:
         arrays = (
@@ -1686,12 +1692,13 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             mmq_total_rows,
             residual_passes=residual_passes,
             rowvec=rowvec,
+            tile_rows=tile_rows,
             library=library,
             runtime=runtime,
         )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
-        if rowvec:
+        if host_baseline is not None:
             baseline_dev = malloc(host_out.nbytes, runtime=runtime)
             bufs.append(baseline_dev)
             gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(

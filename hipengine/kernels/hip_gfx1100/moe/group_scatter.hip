@@ -525,6 +525,37 @@ extern "C" int hipengine_qwen35_moe_mmq32_tile_map(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_moe_mmq64_tile_map(
+    const int64_t* expert_start_compact,
+    int64_t* mmq_expert_start,
+    int64_t* tile_expert,
+    int64_t* mmq_total_out,
+    int64_t num_experts,
+    int64_t tile_capacity,
+    hipStream_t stream) {
+  if (!expert_start_compact || !mmq_expert_start || !tile_expert ||
+      !mmq_total_out || num_experts <= 0 || num_experts > 1024 ||
+      tile_capacity < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t threads64 = next_power_of_two_i64(num_experts);
+  const int threads = static_cast<int>(threads64 < 32 ? 32 : threads64);
+  hipLaunchKernelGGL(
+      qwen35_moe_wmma_tile_map_kernel,
+      dim3(1),
+      dim3(threads),
+      static_cast<size_t>(threads) * sizeof(int64_t),
+      stream,
+      expert_start_compact,
+      mmq_expert_start,
+      tile_expert,
+      mmq_total_out,
+      num_experts,
+      tile_capacity,
+      64);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_moe_group_scatter(
     const int64_t* selected_experts,
     const float* routing_weights,

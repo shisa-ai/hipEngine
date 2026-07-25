@@ -1316,6 +1316,27 @@ costs more than the smaller workgroup saves. Every candidate surface was
 removed before runtime integration; Q6 local128 remains production. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json).
 
+Thirty-first post-350 screen: **Q6 64-row selected down retained as a
+candidate default**. Unlike the rejected local64 schedule, this body keeps
+local128 and one shared 64-column weight decode, but gives each of four
+wave32s 16 routed rows. A registry-backed tile64 device map rebuilds metadata
+only for Q6 down after Q4 gate/up has consumed its 32-row map; Q4 down remains
+on the retained 64x32 direct wave-column body.
+
+On actual layer-1 Q6 weights and natural M512 routing, the runtime upper-bound
+grid falls **408 -> 332 workgroups per output tile (-18.63%)**. Nine
+counter-rotated burst-three samples improve **5.260 -> 5.161 ms (-1.879%)**
+with zero BF16 mismatches. Seven dirty-tree one-owner pp512 repetitions improve
+the explicit 32-row rollback **490.105 -> 491.335 tok/s (+0.251%)**, all
+token 2930. Cached tracing names the intended `<1,true,false,128,64>` body at
+local128/VGPR88/LDS5632B/scratch0; across the 23 full-M512 Q6 calls it cuts
+**127.888 -> 126.040 ms** despite the added tile64 map. The exact candidate is
+default in the implementation tree, with the prior
+`mmq64x32_d4_f32_wavecols_direct_q4` mode retained as rollback. Clean
+publication is still required before changing the production headline.
+Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json)
@@ -1951,6 +1972,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`

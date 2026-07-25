@@ -1071,3 +1071,17 @@ should be boring.
 - Removal trigger is satisfied by the Q4-only production checkpoint. Delete
   the dead compile-time branch during immediate cleanup. Do not re-export it
   without a new mapping and an independently positive Q6 gate.
+
+## Laguna Q6 selected-down 32-row rollback
+
+- Added 2026-07-26 when the exact 64-row/local128 Q6 selected-down body became
+  the gfx1151 candidate default. The older
+  `mmq64x32_d4_f32_wavecols_direct_q4` session mode retains Q4 direct
+  wave-column decode and Q6 32-row row-vector consumption as an explicit
+  rollback. The actual runtime-bound Q6 leaf improves **5.260 -> 5.161 ms**,
+  dirty pp512 improves **490.105 -> 491.335 tok/s**, and outputs are BF16-bit
+  exact.
+- Remove the explicit 32-row Q6 session selector after clean publication and
+  one subsequent retained selected-expert checkpoint. Keep the underlying
+  32-row template if it remains the fallback for non-gfx1151 backends or
+  shapes below the 64-row admission threshold.
