@@ -179247,3 +179247,25 @@ Vulkan local sizes verbatim will close the measured gap.
   quality contract; the 500/700 campaign resumes from **386.552 tok/s** with
   only **0.000457418** KL headroom, so further approximate arithmetic stays
   closed until quality budget is bought back.
+
+## 2026-07-26 — Reject local256 128x64 Laguna expert tiles
+
+- Avoided repeating the already-rejected T16 K64/K128 LDS-staging experiment.
+  The new exact premise combined the useful halves of two prior negative
+  geometry screens: 128 output columns x 64 routed rows with 256 threads, so
+  eight wave32 row groups kept the production 32 FP32 accumulators per lane
+  while one unchanged 128-column T16 weight tile served up to 64 rows.
+- RED added a 64-row D8 fixture and failed on the missing wrapper ABI. GREEN
+  added a diagnostic-only symbol; the new CPU-reference quality case passed,
+  and the six existing 32-row variants also passed after templating.
+- The all-expert actual layer-1 natural-pp512 leaf regressed
+  **11.440 -> 12.840 ms (+12.23%)** because 64-row padding expanded
+  **9,504 -> 15,808** scheduled rows. The decisive hybrid kept 128x32 for
+  experts with at most 32 rows and used local256 128x64 only above 32. One D8
+  pack plus both launches measured **11.437 -> 11.819 ms (+3.34%)** over nine
+  counter-rotated burst-three samples. Outputs were finite with identical
+  BF16 checksum **1114.1769413301445**.
+- Rejected before runtime integration and removed all diagnostic HIP, Python,
+  harness, and test surfaces. Production remains the 128x32/local128 body at
+  **386.552 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json`.

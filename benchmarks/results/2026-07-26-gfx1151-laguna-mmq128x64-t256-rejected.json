@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T01:15:39+09:00",
+  "kind": "hipengine_laguna_mmq128x64_t256_selected_gate_up_rejected",
+  "status": "rejected_actual_route_leaf_regression",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M actual layer-1 T16 D8 selected gate/up leaf with natural pp512 routing on gfx1151",
+  "repo": {
+    "revision": "0afc1afe614a8f39e759824eb8c8a153322e3634",
+    "tracked_clean": false,
+    "qualification": "The diagnostic kernel, wrapper, harness mode, and RED test were removed after the bounded leaf rejection."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "projection": "selected dual gate/up",
+    "in_features": 3072,
+    "out_features_each": 1024
+  },
+  "routing": {
+    "source": "/tmp/laguna-lap0-routing-8d26a9562.json",
+    "rows": 512,
+    "top_k": 10,
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "mmq32_padded_rows": 9504,
+    "mmq64_padded_rows": 15808,
+    "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9"
+  },
+  "candidate": {
+    "geometry": "128 output columns x 64 routed rows",
+    "threads": 256,
+    "waves": 8,
+    "accumulators_per_lane": 32,
+    "weight_tile": "unchanged 128-column T16 decoded LDS tile",
+    "activation_tile": "64 row-vector-staged D8 rows",
+    "arithmetic": "unchanged split16 packed-dot arithmetic and K32 accumulation order",
+    "hybrid": "production 128x32 for experts with 1-32 rows; candidate 128x64/local256 for experts above 32 rows; one D8 pack plus both launches included"
+  },
+  "protocol": {
+    "all_expert_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32,t16-mmq128x64-t256-d8-f32 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-mmq128x64-t256-layer1-leaf.json",
+    "hybrid_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32,t16-mmq128x32-d8-f32-hybrid64-t256 --warmups 2 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-mmq128x64-t256-hybrid-layer1-leaf.json",
+    "timing": "counter-rotated HIP events; BF16-to-D8 pack included",
+    "raw_outputs": [
+      "/tmp/laguna-mmq128x64-t256-layer1-leaf.json",
+      "/tmp/laguna-mmq128x64-t256-hybrid-layer1-leaf.json"
+    ],
+    "raw_outputs_committed": false
+  },
+  "results": {
+    "production_mmq128x32_samples_ms": [
+      11.466604868570963,
+      11.423835754394531,
+      11.416542053222656,
+      11.463703155517578,
+      11.43716049194336,
+      11.493881225585938,
+      11.450266520182291,
+      11.422682444254557,
+      11.43051020304362
+    ],
+    "production_mmq128x32_median_ms": 11.43716049194336,
+    "all_expert_mmq128x64_t256_median_ms": 12.839530944824219,
+    "all_expert_slowdown": 1.122348,
+    "hybrid64_t256_samples_ms": [
+      11.890697479248047,
+      11.915743509928385,
+      11.74716567993164,
+      11.784782409667969,
+      11.716243743896484,
+      11.8666623433431,
+      11.914925893147787,
+      11.80490493774414,
+      11.819440205891928
+    ],
+    "hybrid64_t256_median_ms": 11.819440205891928,
+    "hybrid64_t256_slowdown": 1.033424,
+    "finite": true,
+    "production_checksum_f64": 1114.1769413301445,
+    "all_expert_checksum_f64": 1114.1769413301445,
+    "hybrid_checksum_f64": 1114.1769413301445
+  },
+  "validation": {
+    "red": "The new 64-row fixture failed because the wrapper did not accept a tile_rows ABI.",
+    "green": "The candidate fixture passed the independent CPU-reference KL/top-1 gate, and all six existing 32-row configurations passed after templating.",
+    "correctness_gate": "Candidate and production outputs are finite with identical BF16 checksum on the actual-weight natural-route leaf."
+  },
+  "conclusion": "Reject before runtime integration. Combining 256 threads with 128x64 keeps 32 accumulators per lane, but local256 scheduling and the second filtered launch still outweigh reduced repeated weight streams for experts above 32 rows. Production remains 128x32/local128."
+}
