@@ -23,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out,
@@ -292,6 +293,16 @@ def test_iq2_xs_tile2_is_exact_for_odd_output_tail(iq_library) -> None:
         wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
     )
     np.testing.assert_array_equal(actual_dual, expected_dual)
+    grid64_dual = _run_dual(
+        iq_library,
+        x,
+        selected,
+        gate,
+        up,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out,
+    )
+    np.testing.assert_array_equal(grid64_dual, expected_dual)
 
 
 def test_iq2_xs_grid_supports_exact_branchless_magnitude_decoder() -> None:
@@ -316,6 +327,40 @@ def test_iq2_xs_grid_supports_exact_branchless_magnitude_decoder() -> None:
     nested = "code == 0U ? 8.0f"
     assert nested not in direct_source
     assert nested not in prefill_source
+
+
+def test_iq2_xs_grid64_table_exactly_expands_packed_selectors() -> None:
+    source = _HIP_SOURCE.read_text()
+    packed_match = re.search(
+        r"IQ2_XS_GRID_PACKED\[512\] = \{(?P<body>.*?)\n\};",
+        source,
+        re.DOTALL,
+    )
+    grid64_match = re.search(
+        r"IQ2_XS_GRID_MAGNITUDES\[512\] = \{(?P<body>.*?)\n\};",
+        source,
+        re.DOTALL,
+    )
+    assert packed_match is not None
+    assert grid64_match is not None
+    packed = [
+        int(value, 16)
+        for value in re.findall(r"0x([0-9a-f]+)u", packed_match["body"])
+    ]
+    expanded = [
+        int(value, 16)
+        for value in re.findall(r"0x([0-9a-f]+)ULL", grid64_match["body"])
+    ]
+    assert len(packed) == len(expanded) == 512
+    expected = []
+    for selector in packed:
+        value = 0
+        for index in range(8):
+            code = (selector >> (2 * index)) & 3
+            magnitude = 8 + 17 * code + (code >> 1)
+            value |= magnitude << (8 * index)
+        expected.append(value)
+    assert expanded == expected
 
 
 def test_iq2_xs_registry_build_and_raw_pointer_contract() -> None:
@@ -349,6 +394,12 @@ def test_iq2_xs_registry_build_and_raw_pointer_contract() -> None:
         quant="gguf_iq2_xs",
         variant="selected_dual_silu_gemv_decode_bf16_bf16_out",
     ) is gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq2_xs",
+        variant="selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out",
+    ) is gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="moe_linear",

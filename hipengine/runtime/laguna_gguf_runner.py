@@ -1124,6 +1124,17 @@ class LagunaDFlashVerifyResult:
         return len(self.committed_input_ids)
 
 
+def resolve_laguna_iq2_grid64(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the architecture-qualified exact IQ2 grid64 candidate."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
+
+
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -1563,6 +1574,7 @@ class LagunaGGUFResidentSession:
         use_q5_wave32x2_query_gate: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
+        use_iq2_grid64: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1603,6 +1615,10 @@ class LagunaGGUFResidentSession:
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
             self.backend,
             iq3_c1_down_schedule,
+        )
+        self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
+            self.backend,
+            use_iq2_grid64,
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -1687,6 +1703,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
+                use_iq2_grid64=self.use_iq2_grid64,
             )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
@@ -3470,5 +3487,6 @@ __all__ = [
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",
     "resolve_laguna_head_kv_fusion",
+    "resolve_laguna_iq2_grid64",
     "resolve_laguna_q5_wave32x2_variants",
 ]
