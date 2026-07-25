@@ -13,6 +13,14 @@ the independent cached trace is **504.631 tok/s**, and absolute maximum KL
 remains **0.049542582**. The declared 500 tok/s production gate is closed; the
 active stretch target is 700 tok/s.
 
+The first retained post-500 candidate is a byte-neutral Q4_K T128 replacement
+layout for selected gate/up. On actual layer-1 natural-M512 routing it improves
+the exact producer-pack-inclusive leaf **7.015 -> 6.157 ms (-12.23%,
+1.139x)** with zero BF16 mismatches and no resident-byte growth. It is not a
+production path yet: promotion requires an exact sole-resident c1/c2/c4/c8
+decode consumer and then the normal full-runtime gates.
+[`artifact`](results/2026-07-26-gfx1151-laguna-gate-t128-leaf-candidate.json).
+
 Latest retained hipEngine revisions in this scoreboard:
 `238eb28cd1c748c1755ac8871db4c0e140c3fee4` for exact eight-token
 Laguna router-logit reuse,

@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T06:30:06+09:00",
+  "kind": "hipengine_laguna_gate_t128_leaf_candidate",
+  "status": "retained_candidate_not_production",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "shape": {
+      "rows": 512,
+      "in_features": 3072,
+      "gate_features": 1024,
+      "up_features": 1024,
+      "experts": 256,
+      "top_k": 10,
+      "compact_rows": 5120,
+      "active_experts": 228,
+      "max_expert_rows": 232
+    },
+    "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9"
+  },
+  "candidate": {
+    "layout": "gguf_q4_k_t128_v1",
+    "description": "Byte-neutral groups of 128 output columns; FP16 d/dmin and expanded scale/min metadata retain T16 arithmetic while each column's K32 Q4 payload is sixteen consecutive nibble-pair bytes.",
+    "resident_bytes_gate_plus_up": 931135488,
+    "baseline_t16_resident_bytes_gate_plus_up": 931135488,
+    "extra_resident_weight_bytes": 0,
+    "leaf_only_side_by_side_bytes": 931135488,
+    "production_sidecar_allowed": false,
+    "runtime_promoted": false,
+    "next_gate": "Implement and benchmark an exact sole-resident T128 decode consumer at natural c1/c2/c4/c8; do not promote or retain a duplicate T128 sidecar."
+  },
+  "protocol": {
+    "timing": "counter-rotated HIP-event elapsed time",
+    "warmups": 2,
+    "samples": 9,
+    "burst": 3,
+    "inclusive_scope": "one BF16 producer-row DS8/F32 Q8_1 pack plus one dual gate/up selected MMQ launch",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct,t128-mmq128x32-d8-f32-wavecols-direct --warmups 2 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-t128-leaf.json",
+    "raw_output_sha256": "52f24c467ddf6a8e3acfd0eb59c25b78466c7e8f581bc14f9d640c906e8b5f96"
+  },
+  "results": {
+    "t16_direct": {
+      "samples_ms": [
+        6.889451344807942,
+        7.297615687052409,
+        7.363526026407878,
+        6.928002675374349,
+        6.929792404174805,
+        6.946493148803711,
+        7.014874776204427,
+        7.068550745646159,
+        7.066038767496745
+      ],
+      "median_ms": 7.014874776204427
+    },
+    "t128_direct": {
+      "samples_ms": [
+        6.110761006673177,
+        6.475939432779948,
+        6.32602055867513,
+        6.0907135009765625,
+        6.136786142985026,
+        6.156663258870442,
+        6.342226664225261,
+        6.131551742553711,
+        6.2051442464192705
+      ],
+      "median_ms": 6.156663258870442
+    },
+    "latency_change_percent": -12.234167315075583,
+    "throughput_speedup": 1.139395560375832,
+    "candidate_wins": 9,
+    "samples_per_mode": 9
+  },
+  "correctness": {
+    "fixture": "uneven and empty experts with counts [0, 7, 18, 33], K512, gate/up N128",
+    "oracle": "established exact resident-T16 direct-wave consumer",
+    "bf16_bit_mismatches": 0,
+    "actual_weight_t16_checksum_f64": 1114.1769413301445,
+    "actual_weight_t128_checksum_f64": 1114.1769413301445,
+    "actual_weight_max_abs": 6.6875,
+    "finite": true,
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate' -q",
+    "focused_result": "11 passed"
+  },
+  "trace": {
+    "kernel": "(anonymous namespace)::gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1, false, true, 128, true, true, 128, true, true>",
+    "local_size": 128,
+    "grid": "2048x297",
+    "vgpr": 80,
+    "sgpr": 128,
+    "lds_bytes": 1536,
+    "scratch_bytes": 0,
+    "launch_durations_ms": [
+      7.024374,
+      6.215777
+    ],
+    "child_sha256": "23a653c7a1c69e50389cf06b998cc9695bc8ead57fb3a7d3a1d6b6c0a70756d3",
+    "kernel_trace_sha256": "97908a816d873e0625602cbcfe56a70d97cba881dad20a2f5b3d1f3825457705",
+    "agent_info_sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+  },
+  "production": {
+    "unchanged_tok_s": 503.3489941514725,
+    "quality_transfer": "No production path changed.",
+    "disposition": "Retain the layout, exact primitive, repacker, fixture, and leaf harness as the next sole-resident-layout candidate. Promotion is forbidden until the decode and full runtime gates pass."
+  }
+}
