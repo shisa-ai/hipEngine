@@ -214,6 +214,11 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "selected_gemv_decode_tile4_bf16_bf16_out",
         ),
         (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+        ),
+        (
             "speculative_cycle",
             "w4_gguf",
             "native_v1_b2_target_graph",

@@ -33,6 +33,9 @@ _SYMBOL_IQ3_SELECTED = "hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out"
 _SYMBOL_IQ3_SELECTED_K1024_WAVE4 = (
     "hipengine_gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out"
 )
+_SYMBOL_IQ3_SELECTED_K1024_WAVE4_SIGNBIT = (
+    "hipengine_gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out"
+)
 _SYMBOL_IQ3_SELECTED_TILE4 = (
     "hipengine_gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out"
 )
@@ -256,6 +259,43 @@ def gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out(
         raise ValueError("IQ3 wave4 producer requires in_features=1024")
     _launch_selected(
         _SYMBOL_IQ3_SELECTED_K1024_WAVE4,
+        x_ptr,
+        selected_ptr,
+        qweight_ptr,
+        out_ptr,
+        x_rows=x_rows,
+        rows=rows,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        allowed_threads=_IQ3_WAVE4_THREADS,
+    )
+
+
+def gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    threads: int = 32,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if in_features != 1024:
+        raise ValueError("IQ3 wave4 sign-bit producer requires in_features=1024")
+    _launch_selected(
+        _SYMBOL_IQ3_SELECTED_K1024_WAVE4_SIGNBIT,
         x_ptr,
         selected_ptr,
         qweight_ptr,
@@ -913,6 +953,11 @@ def register_gguf_iq_gemv_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq3_xxs",
+            "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+            gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq3_xxs",
             "selected_gemv_decode_tile4_bf16_bf16_out",
             gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
         ),
@@ -954,6 +999,7 @@ __all__ = [
     "gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out",
+    "gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out",
     "gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out",
     "gguf_iq4_xs_selected_gemv_bf16_bf16_out",
