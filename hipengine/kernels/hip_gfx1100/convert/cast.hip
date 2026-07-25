@@ -62,6 +62,13 @@ __global__ void fp16_to_bf16_kernel(const half_t* __restrict__ x, uint16_t* __re
   }
 }
 
+__global__ void bf16_to_fp16_kernel(const uint16_t* __restrict__ x, half_t* __restrict__ out, int64_t count) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < count) {
+    out[idx] = static_cast<half_t>(bf16_bits_to_float(x[idx]));
+  }
+}
+
 __global__ void bf16_to_fp16_scaled_rows_kernel(
     const uint16_t* __restrict__ x,
     half_t* __restrict__ out,
@@ -200,6 +207,16 @@ extern "C" int hipengine_fp16_to_bf16(const half_t* x, uint16_t* out, int64_t co
   const int threads = 256;
   const int blocks = static_cast<int>((count + threads - 1) / threads);
   hipLaunchKernelGGL(fp16_to_bf16_kernel, dim3(blocks), dim3(threads), 0, stream, x, out, count);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_bf16_to_fp16(const uint16_t* x, half_t* out, int64_t count, hipStream_t stream) {
+  if (!valid_count(count)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((count + threads - 1) / threads);
+  hipLaunchKernelGGL(bf16_to_fp16_kernel, dim3(blocks), dim3(threads), 0, stream, x, out, count);
   return static_cast<int>(hipGetLastError());
 }
 

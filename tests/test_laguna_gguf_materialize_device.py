@@ -96,6 +96,9 @@ def test_laguna_materialize_spec_copies_dense_and_raw_source_bytes() -> None:
         )
         assert weight.allocation(allocation_name).tensor.dtype is dtype
         assert _device_bytes(weight, runtime, allocation_name) == raw.tobytes()
+        assert weight.source_abs_max == (
+            float(np.max(np.abs(raw))) if slot_path.endswith(".attn_norm") else None
+        )
         weight.free(runtime=runtime)
         assert runtime.buffers == {}
 

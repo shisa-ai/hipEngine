@@ -269,6 +269,7 @@ class LagunaGGUFDeviceWeight:
     spec: LagunaGGUFWeightSpec
     allocations: Mapping[str, DeviceTensorAllocation]
     backend: str
+    source_abs_max: float | None = None
 
     def allocation(self, name: str | None = None) -> DeviceTensorAllocation:
         key = next(iter(self.allocations)) if name is None else name
@@ -839,6 +840,14 @@ def _materialize_spec(
             payloads = _resident_payloads(spec, raw)
 
     allocations: dict[str, DeviceTensorAllocation] = {}
+    source_abs_max: float | None = None
+    if spec.slot_path.endswith(".attn_norm"):
+        source_values = np.asarray(payloads["raw"].array, dtype=np.float32)
+        source_abs_max = (
+            float(np.max(np.abs(source_values)))
+            if bool(np.isfinite(source_values).all())
+            else float("inf")
+        )
     try:
         for name, payload in payloads.items():
             allocations[name] = load_host_array_to_device_as_dtype(
@@ -872,6 +881,7 @@ def _materialize_spec(
         spec=spec,
         allocations=MappingProxyType(allocations),
         backend=backend,
+        source_abs_max=source_abs_max,
     )
     if profile is not None:
         assert isinstance(timed_runtime, _TimedUploadRuntime)

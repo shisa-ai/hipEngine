@@ -29,6 +29,14 @@ restores reduced launches **192 -> 48** but regressed their exact pp512
 sequence **3.474 -> 6.114 ms (+76.0%)**; the candidate was removed.
 [`artifact`](results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json).
 
+A producer-qualified source-F16 candidate is retained. Every attention
+RMSNorm output is bounded by **16.34623** from the actual 48 norm weights, so
+the input row scale is provably one. A direct BF16-to-FP16 primitive plus
+removal of four identity output restores improves the exact pp512 glue mix
+**4.434 -> 0.767 ms (-82.70%, 5.780x)** with byte parity. This is a candidate;
+production remains **503.349 tok/s** pending full-model A/B.
+[`artifact`](results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json).
+
 Latest retained hipEngine revisions in this scoreboard:
 `238eb28cd1c748c1755ac8871db4c0e140c3fee4` for exact eight-token
 Laguna router-logit reuse,

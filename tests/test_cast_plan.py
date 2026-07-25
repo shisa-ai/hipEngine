@@ -13,6 +13,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.hip_gfx1100.convert import (
+    bf16_to_fp16,
     bf16_to_fp16_scaled_rows,
     bf16_to_f32,
     f32_to_bf16,
@@ -40,6 +41,11 @@ def test_cast_registers_bf16_and_fp16_variants() -> None:
     assert resolve(backend="hip_gfx1100", layer="cast_f32_to_fp16", quant="fp16") is f32_to_fp16
     assert resolve(backend="hip_gfx1100", layer="cast_fp16_to_f32", quant="fp32") is fp16_to_f32
     assert resolve(backend="hip_gfx1100", layer="cast_fp16_to_bf16", quant="bf16") is fp16_to_bf16
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="cast_bf16_to_fp16",
+        quant="fp16",
+    ) is bf16_to_fp16
     assert resolve(backend="hip_gfx1100", layer="cast_fp16_to_bf16_strided_rows", quant="bf16") is fp16_to_bf16_strided_rows
     assert resolve(
         backend="hip_gfx1100",
@@ -78,6 +84,8 @@ def test_cast_wrappers_validate_before_gpu_load() -> None:
         fp16_to_f32(0, 0, 0)
     with pytest.raises(ValueError, match="count"):
         fp16_to_bf16(0, 0, 0)
+    with pytest.raises(ValueError, match="count"):
+        bf16_to_fp16(0, 0, 0)
     with pytest.raises(ValueError, match="rows"):
         fp16_to_bf16_strided_rows(0, 0, 0, 4, 8, 0)
     with pytest.raises(ValueError, match="dst_col_offset"):
@@ -152,6 +160,45 @@ def test_scaled_row_cast_preserves_finite_bf16_range_and_restores_scale() -> Non
         np.testing.assert_array_equal(scaled_f32_host, expected)
         restored_values = (restored_host.astype(np.uint32) << 16).view(np.float32)
         np.testing.assert_array_equal(restored_values, expected)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_direct_bf16_to_fp16_matches_scaled_rows_when_scale_is_one() -> None:
+    values = np.asarray(
+        [
+            [1.0, -2.0, 3.5, 0.0, 16.0],
+            [8.0, -4.0, 0.125, -0.5, 2.0],
+        ],
+        dtype=np.float32,
+    )
+    bits = (values.view(np.uint32) >> 16).astype(np.uint16)
+    buffers = []
+    try:
+        source = malloc(bits.nbytes)
+        direct = malloc(bits.nbytes)
+        scaled = malloc(bits.nbytes)
+        scales = malloc(values.shape[0] * np.dtype(np.float32).itemsize)
+        buffers.extend((source, direct, scaled, scales))
+        copy_host_to_device(source, host_array_ptr(bits), bits.nbytes)
+        bf16_to_fp16(source.ptr, direct.ptr, bits.size)
+        bf16_to_fp16_scaled_rows(
+            source.ptr,
+            scaled.ptr,
+            scales.ptr,
+            values.shape[0],
+            values.shape[1],
+        )
+        direct_host = np.empty_like(bits)
+        scaled_host = np.empty_like(bits)
+        scale_host = np.empty(values.shape[0], dtype=np.float32)
+        copy_device_to_host(host_array_ptr(direct_host), direct, direct_host.nbytes)
+        copy_device_to_host(host_array_ptr(scaled_host), scaled, scaled_host.nbytes)
+        copy_device_to_host(host_array_ptr(scale_host), scales, scale_host.nbytes)
+        np.testing.assert_array_equal(scale_host, np.ones(values.shape[0], dtype=np.float32))
+        np.testing.assert_array_equal(direct_host, scaled_host)
     finally:
         for buffer in reversed(buffers):
             free(buffer)

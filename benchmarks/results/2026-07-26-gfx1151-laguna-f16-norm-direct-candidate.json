@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_candidate",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "hidden_size": 3072,
+    "attention_norm_weight_type": "F32"
+  },
+  "range_proof": {
+    "attention_norm_layers": 48,
+    "maximum_weight_abs": 0.294921875,
+    "maximum_weight_abs_layer": 45,
+    "rmsnorm_output_abs_bound": 16.346229496431278,
+    "fp16_max_finite": 65504.0,
+    "bound_formula": "sqrt(hidden_size) * max_abs(attention_norm_weight)",
+    "safety_margin_ratio": 4007.284983628848,
+    "consequence": "Every finite Laguna attention-RMSNorm output is within FP16 range, so the current power-of-two row scale is exactly 1."
+  },
+  "protocol": {
+    "rows": 512,
+    "layers": 48,
+    "full_attention_shapes": 12,
+    "sliding_attention_shapes": 36,
+    "full_widths": [6144, 1024, 1024, 48],
+    "sliding_widths": [9216, 1024, 1024, 72],
+    "warmups": 1,
+    "repetitions": 9,
+    "order": "counterbalanced",
+    "timing": "HIP events around the complete 48-layer Q/K/V/gate cast-and-restore glue sequence",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 <inline exact scaled-row-plus-four-restores versus direct-cast event screen>"
+  },
+  "correctness": {
+    "direct_cast_vs_scale_one_fixture": "FP16 byte exact",
+    "materialized_norm_abs_max_fixture": "pass",
+    "focused_tests": "13 passed",
+    "production_integration": "pending"
+  },
+  "results": {
+    "scaled_cast_and_four_restores": {
+      "samples_ms": [
+        4.530325889587402,
+        4.485576152801514,
+        4.41989278793335,
+        4.447641849517822,
+        4.434336185455322,
+        4.430890083312988,
+        4.433893203735352,
+        4.428402900695801,
+        4.437660217285156
+      ],
+      "median_ms": 4.434336185455322
+    },
+    "direct_norm_cast": {
+      "samples_ms": [
+        0.7821850180625916,
+        0.7813829779624939,
+        0.7697179913520813,
+        0.76631098985672,
+        0.776993989944458,
+        0.7641900181770325,
+        0.7671539783477783,
+        0.7642300128936768,
+        0.7631869912147522
+      ],
+      "median_ms": 0.7671539783477783
+    },
+    "latency_change_percent": -82.69968838032504,
+    "speedup": 5.78024270304322,
+    "median_saved_ms": 3.667182207107544
+  },
+  "trace": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-norm-direct-trace.Q4vRat --output-file cast -- .venv/bin/python -m pytest -q tests/test_cast_plan.py::test_direct_bf16_to_fp16_matches_scaled_rows_when_scale_is_one",
+    "kernel": "bf16_to_fp16_kernel",
+    "duration_ns": 1643,
+    "workgroup_size": 256,
+    "vgpr": 8,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "sha256": "9ba4b82faa89b43c5715c12ce4c80413be7948c4c450c41ee67471ebbb546983"
+  },
+  "decision": {
+    "retained": true,
+    "scope": "primitive and materialized range metadata only",
+    "production_change": "none",
+    "next": "Integrate an explicit exact hipBLASLt norm-direct session mode and run counterbalanced full pp512 A/B before promotion."
+  }
+}
