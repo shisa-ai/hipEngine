@@ -39,10 +39,12 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     _ALLOWED_TILES,
+    _default_q4_pack8_tiles,
     _default_q6_tiles,
     _default_tiles,
     build_gguf_q4_k_prefill,
     gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out,
+    gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_bf16_f32_out,
     gguf_q4_k_wmma_prefill_bf16_fp16_out,
@@ -167,6 +169,23 @@ def test_gguf_q6_k_wmma_prefill_default_and_rollback_tiles(
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", "48x16")
     with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE"):
         _default_q6_tiles()
+
+
+def test_gguf_q4_k_pack8_gfx1151_shape_tiles_and_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE", raising=False)
+    assert _default_q4_pack8_tiles(512, 3072, 1024) == (64, 16)
+    assert _default_q4_pack8_tiles(512, 1024, 3072) == (64, 32)
+    assert _default_q4_pack8_tiles(512, 3072, 12288) == (32, 32)
+    assert _default_q4_pack8_tiles(256, 1024, 3072) == (64, 16)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE", "64x16")
+    assert _default_q4_pack8_tiles(512, 1024, 3072) == (64, 16)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE", "48x16")
+    with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE"):
+        _default_q4_pack8_tiles(512, 1024, 3072)
 
 
 def test_gguf_q4_k_wmma_prefill_wrapper_validates_contract() -> None:
@@ -545,6 +564,73 @@ def test_gguf_q4_k_pack8_wmma_is_bf16_exact_to_raw_wmma() -> None:
         reference,
         **_TOLERANCES[("bf16", "bf16")],
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("tile", [(64, 32), (32, 32)])
+def test_gguf_q4_k_pack8_gfx1151_tiles_are_bf16_exact_to_rollback(
+    tile: tuple[int, int],
+) -> None:
+    rows, in_features, out_features = 37, 512, 80
+    activation = _make_activation(rows, in_features, seed=31)
+    host_in = _prepare_input(activation, "bf16")
+    raw = make_q4_k_weight(out_features, in_features)
+    packed = repack_gguf_q4_k_pack8(raw)
+    candidate = np.empty((rows, out_features), dtype=np.uint16)
+    rollback = np.empty_like(candidate)
+
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_prefill(load=True)
+    buffers = []
+
+    def upload(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        copy_host_to_device(
+            buffer,
+            host_array_ptr(np.ascontiguousarray(array)),
+            runtime=runtime,
+        )
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = upload(host_in)
+        qweight_dev = upload(packed.qweight)
+        scales_dev = upload(packed.scales)
+        mins_dev = upload(packed.mins)
+        out_dev = malloc(candidate.nbytes, runtime=runtime)
+        buffers.append(out_dev)
+        for output, selected_tile in (
+            (candidate, tile),
+            (rollback, (64, 16)),
+        ):
+            gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out(
+                x_dev.ptr,
+                qweight_dev.ptr,
+                scales_dev.ptr,
+                mins_dev.ptr,
+                out_dev.ptr,
+                rows,
+                in_features,
+                out_features,
+                tile_m=selected_tile[0],
+                tile_n=selected_tile[1],
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(
+                host_array_ptr(output),
+                out_dev,
+                runtime=runtime,
+            )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(candidate, rollback)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

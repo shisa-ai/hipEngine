@@ -642,6 +642,15 @@ state families, and all 10 live full-attention K/V families match independent
 c1. Ragged prefill uses the explicitly labelled `per_segment_ragged_exact`
 fallback; this is a correctness artifact with `performance_claim=false`.
 
+The retained Laguna Q4 pack8 shape-policy candidate is recorded in
+[`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`](results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json).
+Exact 94+24+2 call-weighted leaf timing improves **34.782 -> 33.031 ms
+(-5.03%)** with 64x16/64x32/32x32 shape-specific tiles. All 120 actual Q4
+projections have zero BF16 mismatches versus 64x16, while dirty one-owner
+matrix512/attention128 pp512 improves **489.036 -> 491.014 tok/s (+0.404%)**
+with six of seven paired wins and token 2930. Clean publication remains
+pending.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |

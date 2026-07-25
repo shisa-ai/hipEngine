@@ -652,7 +652,7 @@ and achievable-bandwidth evidence.
 | Selected D4 Q4/Q6 down | **205.132 ms** | **19.99%** | Direct Q4 decode is retained. Q6 row-vector remains the largest down component and its tested quartet/direct row-half mappings remain closed. |
 | Global + SWA attention | **219.393 ms** | **21.38%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.176 ms** | **12.98%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
-| Q4/Q6 WMMA dense/shared | **54.834 ms** | **5.34%** | Q6 16x32 is production and cuts Q6 **29.248 -> 11.131 ms (-61.94%)**. Q4 remains **43.702 ms** across a real 94+24+2 three-shape mix; screen exact per-shape tiles before freezing the family again. |
+| Q4/Q6 WMMA dense/shared | **54.834 ms** | **5.34%** | Q6 16x32 is production. The exact Q4 64x16/64x32/32x32 shape policy is a retained candidate after cutting its call-weighted leaf window **34.782 -> 33.031 ms (-5.03%)**; clean publication/trace is pending. |
 | All remaining named/other kernels | **94.520 ms** | **9.21%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
@@ -684,11 +684,10 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Sweep all six exact Q4 pack8 WMMA tiles over the real dense/shared shape mix:
-   94 calls at M512/K3072/N1024, 24 at M512/K1024/N3072, and two at
-   M512/K3072/N12288. The current global 64x16 default came from only the first
-   representative shape. Admit a per-shape policy only with BF16-byte identity,
-   positive call-weighted leaf timing, and clean one-owner pp512 separation.
+1. Publish the exact Q4 pack8 shape-policy candidate from a clean revision and
+   refresh the all-family trace. The 94+24+2 policy cuts the call-weighted leaf
+   window **34.782 -> 33.031 ms (-5.03%)**, has zero mismatches across all 120
+   actual projections, and improves dirty pp512 **489.036 -> 491.014 tok/s**.
 2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1270,6 +1269,25 @@ local32/VGPR136/LDS0/scratch0; rollback was VGPR256 with 236 B/thread scratch.
 Only **13.6 ms** of traced kernel span and about **20.7 ms** of clean median
 wall remain to 500. Production evidence:
 [`2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json).
+
+Twenty-ninth post-350 screen: **Q4 pack8 per-shape WMMA tiles retained as a
+candidate default**. The real mix is 94 M512/K3072/N1024 shared gate/up calls,
+24 M512/K1024/N3072 shared-down calls, and two M512/K3072/N12288 layer-0
+gate/up calls. Nine counter-rotated burst-three samples across all six exact
+tiles keep the first shape at 64x16, select 64x32 for shared down, and select
+32x32 for layer 0. The call-weighted leaf window falls **34.782 -> 33.031 ms
+(-5.03%)**.
+
+All six tiles are BF16-byte identical on each screened actual weight, and a
+direct candidate-versus-64x16 pass across all 120 resident Q4 projections
+reports zero mismatches. Dirty-tree one-owner pp512 improves **489.036 ->
+491.014 tok/s (+0.404%)**; the candidate wins six of seven paired repetitions
+and every run selects token 2930, but samples overlap. The exact micro-win is
+therefore retained under the gfx1151 four-axis registry with gfx1100 unchanged
+and `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` as rollback. Clean
+selector-unset publication and a refreshed family trace remain required.
+Evidence:
+[`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json).
 
 Production evidence:
 
@@ -1903,6 +1921,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`

@@ -25,6 +25,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+    gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
 )
 from hipengine.kernels.registry import (
@@ -206,6 +207,11 @@ _GFX1151_OVERRIDES = {
         "gguf_q8_0_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
+    (
+        "linear",
+        "gguf_q4_k",
+        "pack8_wmma_prefill_bf16_bf16_out",
+    ): gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     (
         "linear",
         "gguf_q6_k",

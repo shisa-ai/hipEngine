@@ -179695,3 +179695,30 @@ Vulkan local sizes verbatim will close the measured gap.
   500 is about **20.7 ms** of clean median wall or **13.6 ms** of traced kernel
   span. The next bounded exact task sweeps per-shape Q4 dense/shared tiles over
   the real **94+24+2** call mix.
+
+## 2026-07-26 — Retain exact Q4 pack8 per-shape tile candidate
+
+- The resident manifest confirms the exact Q4 dense/shared pp512 mix: 94
+  M512/K3072/N1024 shared gate/up calls, 24 M512/K1024/N3072 shared-down
+  calls, and two M512/K3072/N12288 layer-0 gate/up calls.
+- Swept all six legal WMMA tiles on one actual resident weight per shape using
+  nine counter-rotated burst-three HIP-event samples. The winning policy is
+  64x16 / 64x32 / 32x32 respectively and cuts the call-weighted leaf window
+  **34.782489 -> 33.031386 ms (-5.034%)**. All six outputs are BF16-byte
+  identical on each shape.
+- RED failed collection on the missing shape policy/wrapper. GREEN adds a
+  gfx1151 four-axis registry override, leaves gfx1100 at 64x16, and retains
+  `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` as rollback. The complete
+  primitive/backend/dispatch/runner/MoE bundle passes with two expected skips.
+- Direct candidate-versus-64x16 execution over all **120** actual resident Q4
+  projections reports zero BF16 mismatches; the policy split is exactly
+  94/24/2 and the checksum XOR is `0xe348e99d`.
+- Seven dirty-tree counterbalanced one-owner matrix512/attention128 pp512
+  repetitions improve **489.035538 -> 491.013673 tok/s (+0.404%)**. The
+  candidate wins six of seven paired repetitions, all runs select token 2930,
+  and the median wall falls **4.218 ms**, but samples overlap. Raw JSON
+  SHA-256:
+  `c8ce2a9b94280707c3b723ca321b74f12e28329088b238f337fd9c53fa3e0454`.
+  Retain as an exact candidate micro-win; require clean publication and a
+  refreshed family trace before changing the production headline. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`.
