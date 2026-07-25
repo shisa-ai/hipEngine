@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "rejected_removed",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "rows": 512,
+    "active_experts": 228,
+    "compact_rows": 5120,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "premise": "Keep resident T16 and exact dot order, but replace 32 scattered per-lane global byte-load instructions per K32 with two aligned 64-bit loads per lane into LDS, direct-consuming staged nibble bytes after the existing barrier.",
+    "resident_byte_change": 0,
+    "additional_lds_bytes": 2048,
+    "additional_barriers": 0,
+    "correctness": "BF16 byte exact to direct wave decode; 11 CPU-reference/GPU quality parameterizations passed."
+  },
+  "protocol": {
+    "warmups": 3,
+    "samples": 11,
+    "burst": 5,
+    "order": "counter-rotated HIP events",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct,t16-mmq128x32-d8-f32-wavecols-staged --warmups 3 --samples 11 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-staged-wave-leaf.json"
+  },
+  "results": {
+    "direct_wave_decode_median_ms": 6.917591857910156,
+    "staged_wave_decode_median_ms": 6.990232849121094,
+    "latency_change_percent": 1.0500907353745426,
+    "throughput_change_percent": -1.0391784190718512,
+    "checksums_equal": true,
+    "raw_sha256": "5f3c5ee4d5fc74b7602daae2b1c4d30465ef182e6053177939a3aa290095a6d4"
+  },
+  "decision": {
+    "retained": false,
+    "production_change": false,
+    "removed": "HIP template parameter, staged body, export, Python selector, harness mode, and fixture parameterization",
+    "interpretation": "Wave coalescing already makes the apparent scattered T16 loads efficient enough that the added LDS stores/reads are net overhead."
+  }
+}
