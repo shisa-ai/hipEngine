@@ -325,10 +325,11 @@ This correction changed the MMQ target. hipEngine's first local128 body is
 accumulators per lane. Per K32 interval it performs about 64 packed dots per
 lane between the same two workgroup barriers; the running Vulkan medium shader
 performs about 256. The first body remains a valid and fast LAP-1 leaf, but it
-is not source-faithful geometry. Direct 128x64 and 64x64 screens are now
-rejected below; the next equivalent work-per-barrier screen is 256x32 over 256
-threads, which preserves 32 accumulators per lane while halving activation
-tile reloads. Register, LDS, and occupancy evidence remains mandatory.
+is not source-faithful geometry. Direct 128x64, 64x64, and 256x32 screens are
+now rejected below. The next screen keeps the production 128x32/local128
+schedule and instead coalesces the resident-T16 quant payload into a smaller
+raw-nibble LDS stage before per-lane unpack. Register, LDS, and occupancy
+evidence remains mandatory.
 
 hipEngine also retains two structural advantages the comparator lacks:
 device-resident expert compaction launches only populated tiles, and the dual
@@ -636,7 +637,7 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. Multi-K staging and 64-row routing tiles are rejected below. Next halve activation-tile reloads with a 256-column x 32-row / 256-thread schedule while preserving 32 accumulators per lane and the admitted arithmetic/order. |
+| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. Multi-K staging and rectangular tile changes are rejected below. Next replace strided scalar T16 quant loads with a coalesced raw-nibble LDS stage while preserving the 128x32/local128 schedule and admitted arithmetic/order. |
 | Selected D4 Q4/Q6 down | **276.169 ms** | **19.35%** | Carry the winning expert schedule into Q4 and Q6 down, then reprofile the combined 60.11% expert window. |
 | Global + SWA attention | **274.724 ms** | **19.25%** | Build the `KVLiveSpans`-aware M16-query x K64-key tiled path after the next expert trace; it is already above LAP-7's 10% start threshold. |
 | Scaled hipBLASLt source-F16 | **130.373 ms** | **9.13%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
@@ -671,9 +672,10 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Screen a 256-column x 32-row / 256-thread selected gate/up tile against the
-   current 128x32/local128 production body. It must keep 32 accumulators per
-   lane while halving workgroups and activation-tile reloads. Report
+2. Screen a coalesced T16 quant-payload stage against the current strided
+   per-column loader in the unchanged 128x32/local128 gate/up body. It must
+   preserve packed-dot operands and K accumulation order while reducing LDS
+   from expanded byte-per-nibble weights to raw resident nibbles. Report
    producer-pack-inclusive family and production wall, local/VGPR/LDS/scratch,
    and all natural shapes.
 3. Apply only the winning schedule to Q4/Q6 down, then run clean selector-unset
@@ -734,6 +736,16 @@ every run. Both kernels passed the uneven/empty-expert CPU-reference
 KL/top-1 fixture before the full-model rejection. Production code and metadata
 remain unchanged. Do not retry a 64-row tile without a mechanism that avoids
 both extra per-lane accumulators and repeated activation reads.
+
+Third post-350 screen: **rejected and removed**. A 256x32/local256 D8 gate/up
+body kept 32 accumulators per lane and halved workgroups plus activation-tile
+reloads, but increased the weight LDS tile from 5,120 to 10,240 bytes and
+doubled workgroup residency granularity. The same-load three-repeat pp512
+diagnostic measured **350.813 tok/s** versus **353.380 tok/s** production
+median (**-0.73%**), with token 2930 in every sample. Its CPU-reference
+KL/top-1 fixture passed before the full-model screen. The specialization,
+selector, and widened-only test fixture were removed. The production
+128x32/local128 occupancy remains the stronger schedule.
 
 Production evidence:
 
@@ -974,9 +986,9 @@ Deliverables:
   existing lane order;
 - test separate versus paired gate/up only after the shared-tile body works;
 - preserve the separate exact SiLU chain and current selected/grouped fallback;
-- treat direct 128x64/64x64 routing and resident-T16 K64/K128 staging as
-  rejected; screen a 256x32/local256 equivalent schedule that preserves 32
-  accumulators per lane and halves activation-tile reloads;
+- treat direct 128x64/64x64/256x32 routing and resident-T16 K64/K128 staging
+  as rejected; preserve 128x32/local128 while screening coalesced raw-nibble
+  LDS staging in place of the strided expanded-weight loader;
 - do not retry K64 nibble reuse unless the resident layout changes: T16 stores
   the two K32 subblocks separately, so the raw-Q4 one-fetch premise does not
   apply;

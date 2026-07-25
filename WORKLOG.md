@@ -178708,3 +178708,20 @@ Vulkan local sizes verbatim will close the measured gap.
   orthogonal screen is 256x32/local256: preserve the production 32-row routing
   and 32 accumulators per lane while halving activation-tile reloads and
   workgroups.
+
+## 2026-07-25 — Reject 256x32/local256 Laguna gate/up
+
+- Added an explicit 256x32/local256 D8 gate/up specialization. Eight wave32s
+  cover four routed rows each and eight output-column iterations, retaining
+  exactly 32 FP32 accumulators per lane. This halves workgroups and repeated
+  activation-tile loads relative to production 128x32/local128, while weight
+  LDS grows from 5,120 to 10,240 bytes.
+- The CPU-reference uneven/empty-expert Q4T16 gate passed. The same pinned
+  one-load, matrix512/attention128, one-queue, M128-warm, three-repeat pp512
+  diagnostic measured candidate **350.813 tok/s**
+  (**351.027/350.609/350.813**) versus production **353.380**
+  (**353.664/352.716/353.380**), always token 2930: **-0.73%**.
+- Removed the specialization, selector, and widened-only fixture support.
+  Halving activation reloads does not repay the local256/LDS occupancy cost.
+  The next screen keeps production 128x32/local128 and attacks its strided
+  scalar resident-T16 quant loads with a coalesced raw-nibble LDS stage.
