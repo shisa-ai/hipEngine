@@ -28,6 +28,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+    gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
+    gguf_q6_k_wmma_prefill_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS as GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_GDN_INDEXED_SINGLETON_DECODE as GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE,
@@ -363,6 +367,24 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
         is gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear",
+            quant="gguf_q6_k",
+            variant="wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q6_k",
+            variant="wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q6_k_wmma_prefill_bf16_bf16_out
     )
     assert (
         resolve(

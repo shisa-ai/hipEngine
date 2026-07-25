@@ -723,6 +723,21 @@ layer-1 natural-M512 pack-inclusive time regresses **6.868 -> 7.181 ms
 stopped before runtime integration; 128x32/local128 remains production
 (`benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`).
 
+Raw-Q6 dense/shared WMMA now selects 16x32 as the gfx1151 candidate default.
+The prior 64x16 body allocates VGPR256 plus 236 B/thread scratch; 16x32 traces
+at local32/VGPR136/LDS0/scratch0 without changing resident bytes or arithmetic.
+The four-axis gfx1151 registry owns the override; unmeasured gfx1100 remains
+64x16.
+All six supported tiles are BF16-byte identical on actual model weights, and
+the aligned/boundary CPU-reference fixtures are byte-identical between 16x32
+and 64x16. Actual-weight M512 timing cuts the 23-call K1024/N3072 shared-down
+shape **0.942 -> 0.306 ms/call (-67.50%)** and the one K12288/N3072 layer-0
+down call **10.629 -> 3.616 ms (-65.98%)**. Seven one-owner pp512 repetitions
+improve **480.727 -> 488.513 tok/s (+1.620%)** with complete separation and
+token 2930. `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` is explicit rollback
+through clean publication
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-candidate.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

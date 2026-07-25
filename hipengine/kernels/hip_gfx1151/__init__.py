@@ -24,6 +24,9 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+    gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
+)
 from hipengine.kernels.registry import (
     KernelKey,
     is_registered,
@@ -203,6 +206,11 @@ _GFX1151_OVERRIDES = {
         "gguf_q8_0_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
+    (
+        "linear",
+        "gguf_q6_k",
+        "wmma_prefill_bf16_bf16_out",
+    ): gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
 }
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
