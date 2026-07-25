@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T21:40:29+09:00",
+  "kind": "hipengine_laguna_swa_qrow4_sourcequal_candidate",
+  "status": "retained_candidate_pending_clean_gate",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M selector-explicit pp512 SWA attention on gfx1151",
+  "repo": {
+    "revision": "2b812f9c1d902d622408a2040906c824bbf01bfe",
+    "tracked_clean": false,
+    "qualification": "Candidate and tests were present during the same-owner screen; require a clean committed selector-unset gate before a production claim."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "rows": 512,
+    "matrix_chunk": 512,
+    "attention_chunk": 128
+  },
+  "candidate": {
+    "query_rows_per_wave": 4,
+    "workgroup": 32,
+    "change": "after row visibility is known, load current K/V only when a visible row uses current and cached K/V only when a visible row uses cache",
+    "arithmetic": "unchanged qrow4 dot, online softmax, PV order, and output",
+    "production_scope": "complete M128 SWA tiles; qrow2 remains the residual path"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python /tmp/laguna_qrow4_attention_screen.py",
+    "timing": "one resident owner; warm each mode; five counterbalanced synchronized pp512 repetitions",
+    "global_variant": "global_context_rows_qrow4_m128_online_spans",
+    "baseline_swa_variant": "swa_context_rows_qrow4_m128_online_spans",
+    "candidate_swa_variant": "swa_context_rows_qrow4_sourcequal_online_spans"
+  },
+  "results": {
+    "baseline_samples_tok_s": [
+      365.5842155325323,
+      365.242963651735,
+      364.91151737554594,
+      366.50280289675214,
+      365.6701876944953
+    ],
+    "baseline_median_tok_s": 365.5842155325323,
+    "candidate_samples_tok_s": [
+      368.7078779013707,
+      368.1137735672105,
+      367.0098780410892,
+      368.7504032209269,
+      368.5309864513831
+    ],
+    "candidate_median_tok_s": 368.5309864513831,
+    "candidate_delta_percent": 0.806,
+    "candidate_min_exceeds_baseline_max": true,
+    "next_tokens": {
+      "baseline": 2930,
+      "candidate": 2930,
+      "all_repetitions_equal": true
+    }
+  },
+  "validation": {
+    "red": "Registry import failed before the source-qualified wrapper existed.",
+    "focused": "33 tests passed across tests/test_laguna_kv_attention.py and tests/test_gfx1151_backend.py.",
+    "correctness_gate": "Full-eight and odd-seven wrapped/evicted outputs are F32 byte-identical to production qrow4.",
+    "trace_kernel": "laguna_swa_attention_prefill_qrows_online_bf16_kernel<4, true>",
+    "trace_resources": {
+      "workgroup_size": 32,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "trace_csv_sha256": "503ae1c7a4049463247c04f7927b2cad16f94236e828bba938929adbf1963490"
+  },
+  "conclusion": "Retain as the M128 SWA candidate and commit. It removes unused source traffic without changing arithmetic and improves the dirty same-owner median 0.806%; require a clean selector-unset confirmation."
+}

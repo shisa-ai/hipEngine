@@ -48,6 +48,7 @@ _SWA_PREFILL_VARIANTS = frozenset(
         "swa_context_rows_qrow2_m128_c128_exact_spans",
         "swa_context_rows_qrow2_online_spans",
         "swa_context_rows_qrow4_online_spans",
+        "swa_context_rows_qrow4_sourcequal_online_spans",
         "swa_context_rows_qrow4_m128_online_spans",
     }
 )
