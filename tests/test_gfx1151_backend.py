@@ -191,6 +191,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "gguf_iq3_xxs",
             "selected_gemv_decode_tile4_bf16_bf16_out",
         ),
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+        ),
     )
     registered: list[KernelKey] = []
     monkeypatch.setattr(backend, "import_module", lambda _name: None)

@@ -1,0 +1,258 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q2_xl_iq3_signbit_correctness",
+  "status": "primitive_admitted_pending_runtime_gates",
+  "performance_claim": false,
+  "baseline": {
+    "design_revision": "d10f230bc4c7a4598acf62ada3a8ebc3033933d9",
+    "design_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-design.json",
+    "design_artifact_sha256": "3f7fb58986eb3c4f2bbd5896403830812e6cf89f520bf03093c21071efaee2b1",
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "dispatches_per_token": 723
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "selected_down_quant": "IQ3_XXS",
+    "shape": [
+      256,
+      3072,
+      1024
+    ],
+    "top_k": 10,
+    "iq3_calls_per_token": 45
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+  },
+  "candidate": {
+    "variant": "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+    "kernel": "gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel",
+    "workgroup": 32,
+    "grid": [
+      98304,
+      10,
+      1
+    ],
+    "arithmetic": "Insert each unchanged positive IQ3 magnitude sign into IEEE-754 FP32 bit 31, then preserve all retained FMA and reduction boundaries.",
+    "retained_fallback": "selected_gemv_decode_k1024_wave4_bf16_bf16_out",
+    "gfx1151_alias_excluded": true,
+    "runtime_selector_added": false,
+    "default_selected": false,
+    "persistent_weight_copy_delta_bytes": 0,
+    "workspace_delta_bytes": 0,
+    "dispatches_per_token_delta": 0
+  },
+  "primitive_correctness": {
+    "passed": true,
+    "seven_bit_selectors_exhausted": 128,
+    "parity_bits_checked": true,
+    "pinned_grid_entries_embedded": 256,
+    "pinned_grid_magnitude_positions_checked": 1024,
+    "production_k1024_gpu_corpus": true,
+    "activation_cases": [
+      "deterministic patterned BF16",
+      "positive and negative zero",
+      "positive and negative subnormal",
+      "positive and negative moderate/extreme finite BF16"
+    ],
+    "candidate_vs_retained_route_mismatches": 0,
+    "candidate_vs_local128_route_mismatches": 0,
+    "derived_max_kl": 0.0,
+    "derived_top1_agreement": 1.0,
+    "focused_tests_passed": 25,
+    "red_result": "collection failed only because the candidate wrapper/key was absent",
+    "red_log_sha256": "bca4b9d9ad84397ad12181940ae686ca7125222fe8d92c9abf0eb4dac5833eb8",
+    "green_log_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "broad_test_note": "The broader gfx1151 module reproduced the pre-existing stale _resolve_gguf_linear_pair_kind call missing three unrelated keyword arguments; this is excluded from candidate evidence.",
+    "broad_test_log_sha256": "2f3b493d4e864c3d84879fe3274e83f345abca2b11e4810fd6d8be69ad1965dc"
+  },
+  "repository_codegen": {
+    "passed": true,
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "retained": {
+      "static_instructions": 527,
+      "text_bytes": 2852,
+      "logical_vgpr": 83,
+      "logical_sgpr": 28,
+      "v_cmp_eq_u32": 32,
+      "v_cndmask_b32": 36,
+      "v_and_or_b32": 0,
+      "s_delay_alu": 37,
+      "private_bytes": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0,
+      "disassembly_sha256": "d1b707acdaf3eb78bf461fc78a28993e654a527414f3210d85b9946db273388d"
+    },
+    "candidate": {
+      "static_instructions": 499,
+      "text_bytes": 2736,
+      "logical_vgpr": 86,
+      "logical_sgpr": 18,
+      "allocated_vgpr": 88,
+      "allocated_sgpr": 128,
+      "v_cmp_eq_u32": 0,
+      "v_cndmask_b32": 4,
+      "v_and_or_b32": 24,
+      "s_delay_alu": 45,
+      "lds_bytes": 0,
+      "private_bytes": 0,
+      "scratch_bytes": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0,
+      "wavefront_size": 32,
+      "disassembly_sha256": "04845eb0604b7d000a4ad30fb48dc71bcd25a78978866aed3e8d4914b4b25efb"
+    },
+    "delta": {
+      "static_instructions": -28,
+      "static_instructions_pct": -5.313092979127132,
+      "text_bytes": -116,
+      "logical_vgpr": 3,
+      "logical_sgpr": -10,
+      "sign_compares": -32,
+      "sign_cndmasks": -32
+    },
+    "hsaco_sha256": "cbe1624344a9fdb725d5b66a8c24134bf6887cf8356b27d04e3fa47704891289",
+    "readobj_sha256": "b684fec47cdfdd1b1349e76ee5e6b419d1f61962511849d33f3627c730ec16b8",
+    "symbols_sha256": "e6a3119e187ca817db0755b6d87bdb58c5b60d9cf94ac1461a3a78ce114791f5"
+  },
+  "cached_resource_trace": {
+    "passed": true,
+    "kernel": "gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel",
+    "workgroup": 32,
+    "grid_x": 98304,
+    "grid_y": 10,
+    "allocated_vgpr": 88,
+    "allocated_sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "duration_ns": 37280,
+    "finite_output": true,
+    "compiler_executed_under_profiler": false,
+    "trace_sha256": "e7ccf39dd11826737bbb784a6e1c0f69101290d3d1fa466adc53ecc164487ec8",
+    "stdout_sha256": "e148e32378a18702510b05659eb0a395021758ac86fa301f15b0b85408284172",
+    "stderr_sha256": "4d6124bf54798ec07faa41759f2f9c955f80943b94b6816e00b43567347d8d77",
+    "probe_sha256": "be41a037578a3adf64db4c3db28c5d660ba6e4ae504ef9a4351a1f2a07c0e44a"
+  },
+  "actual_weight_gate": {
+    "passed": true,
+    "source_dirty": true,
+    "source_revision": "d10f230bc4c7a4598acf62ada3a8ebc3033933d9",
+    "selected_experts": [
+      193,
+      7,
+      89,
+      221,
+      3,
+      127,
+      44,
+      255,
+      18,
+      166
+    ],
+    "all_selected_distinct": true,
+    "warmups_per_mode": 50,
+    "counterbalanced_repetitions": 15,
+    "launches_per_sample": 300,
+    "timers": [
+      "HIP event",
+      "synchronized wall"
+    ],
+    "acceptance": "At both layers, candidate producer and candidate producer plus unchanged weighted reducer must improve in both timers, with exact route rows and reduced outputs.",
+    "rows": [
+      {
+        "layer_id": 1,
+        "weight_name": "blk.1.ffn_down_exps.weight",
+        "weight_nbytes": 308281344,
+        "route_mismatches": 0,
+        "reduced_mismatches": 0,
+        "producer": {
+          "retained_event_us": 28.667112986246746,
+          "candidate_event_us": 26.33923053741455,
+          "event_delta_pct": -8.120393741598653,
+          "retained_wall_us": 29.41418361539642,
+          "candidate_wall_us": 26.723646248380344,
+          "wall_delta_pct": -9.14707476568466
+        },
+        "inclusive_producer_plus_reducer": {
+          "retained_event_us": 35.56156476338705,
+          "candidate_event_us": 32.51967112223307,
+          "event_delta_pct": -8.55388018326405,
+          "retained_wall_us": 34.84898712486029,
+          "candidate_wall_us": 32.13031683117151,
+          "wall_delta_pct": -7.801289271186162
+        }
+      },
+      {
+        "layer_id": 45,
+        "weight_name": "blk.45.ffn_down_exps.weight",
+        "weight_nbytes": 308281344,
+        "route_mismatches": 0,
+        "reduced_mismatches": 0,
+        "producer": {
+          "retained_event_us": 29.2031192779541,
+          "candidate_event_us": 26.81817054748535,
+          "event_delta_pct": -8.166760227799319,
+          "retained_wall_us": 29.862486602117617,
+          "candidate_wall_us": 27.674192873140175,
+          "wall_delta_pct": -7.327901919668889
+        },
+        "inclusive_producer_plus_reducer": {
+          "retained_event_us": 34.81234868367513,
+          "candidate_event_us": 32.577269872029625,
+          "event_delta_pct": -6.420362015659187,
+          "retained_wall_us": 34.23657656336824,
+          "candidate_wall_us": 32.11391701673468,
+          "wall_delta_pct": -6.199976048144706
+        }
+      }
+    ],
+    "all_route_outputs_exact": true,
+    "all_reduced_outputs_exact": true,
+    "producer_event_improves_every_layer": true,
+    "producer_wall_improves_every_layer": true,
+    "inclusive_event_improves_every_layer": true,
+    "inclusive_wall_improves_every_layer": true,
+    "harness_sha256": "31a7d6ac08aef467b4050eee9e37b9d2270a6404c81c03dad4ab5d12f2f8dfd4",
+    "raw_sha256": "b7f8a668efb257a9474ad433c3d1050487c99a9252e791c309d03f92bf904166",
+    "stdout_sha256": "b89ad57f14294b8cfb28b8b95432b9d000d2a78c5c02307966ec5b183adefff6",
+    "vram_before_sha256": "6520c3506953637417448bbd74856421e4e20c8c3a3c36b3b3db93a063f13665",
+    "vram_after_sha256": "6520c3506953637417448bbd74856421e4e20c8c3a3c36b3b3db93a063f13665",
+    "tracked_vram_returned_to_baseline": true
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "2a0393f776bc0d73b8c66b451de22a87351d9111594baa36b4d496b7169a1c6e",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.py": "75fb33f670813fb9ad0a60c5bdc935e25e9502d0430a88751cb76b15fccb15aa",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "ea51421fbe53d40e2fb099d2340b5cddddb6bb53b6a9802bcef03c85847f0512",
+    "tests/test_gguf_iq_gemv.py": "dd247a1badd6aec4b26e0737aa6b19fa396218d84b982d95ab6979beef5a2d32",
+    "tests/test_gfx1151_backend.py": "60b43d9747eff807516752715e5425919cff69baaadc6231ab8b370ae0b102e3"
+  },
+  "validation": {
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "lineage_note": "Only already-catalogued unrelated Qwen/PARO/smoke parent drift is reported.",
+    "json_and_arithmetic": true,
+    "gfx1151_exclusion": true,
+    "retained_runtime_schedule_unchanged": true
+  },
+  "commands": {
+    "focused_tests": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_iq_gemv.py tests/test_gfx1151_backend.py -k 'iq_gemv or iq3_signbit or does_not_alias_unvalidated_native_spec_provider'",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq3-signbit-repo-resource-d10f230bc -- uv run python /tmp/probe_laguna_iq3_signbit_repo_resource.py",
+    "actual_weight": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq3_signbit_actual.py"
+  },
+  "decision": {
+    "action": "admit the exact primitive and proceed to default-off runtime/full-state integration in a separate committed unit",
+    "reason": "The separately registered candidate is byte-exact, clears all frozen codegen/resource gates, and improves producer plus inclusive producer/reducer event and wall medians at both actual boundary layers.",
+    "completion_claim": false,
+    "canonical_h32_tok_s_unchanged": 61.73234556191569,
+    "retained_default_unchanged": true
+  },
+  "next_gate": "Add an explicit default-off gfx1100 schedule in a separate unit, then prove shared-weight 16-transition logits/IDs, all hidden/routed boundaries, active K/V and KVLiveSpans, reset/re-prefill, ownership/lifecycle identity, and a cached 45-candidate/47-reducer/723-dispatch trace before any clean-context run."
+}
