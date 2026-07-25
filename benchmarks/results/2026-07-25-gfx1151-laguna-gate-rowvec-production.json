@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T22:12:00+09:00",
+  "kind": "hipengine_laguna_gate_rowvec_production",
+  "status": "retained_quality_gated_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Laguna S 2.1 Q4_K_M selector-unset c=1 prefill on gfx1151",
+  "repo": {
+    "runtime_revision": "bd76e452dfe7d9713c413f5a2dc523af828d6dfc",
+    "trace_classifier_revision": "dad8c5a8c",
+    "tracked_clean_during_measurement": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "resident_nbytes": 77461325460
+  },
+  "protocol": {
+    "matrix_chunk": 512,
+    "attention_chunk": 128,
+    "timing": "one resident owner; warm each mode; five counterbalanced synchronized pp512 repetitions",
+    "baseline_gate_up_mode": "mmq128x32_d8_f32",
+    "candidate": "selector unset; gfx1151 package defaults",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python /tmp/laguna_gate_rowvec_screen.py"
+  },
+  "pp512": {
+    "old_d8_samples_tok_s": [
+      368.02765816256215,
+      368.2034327052122,
+      367.8823797627786,
+      369.13225473711907,
+      368.2521490442101
+    ],
+    "old_d8_median_tok_s": 368.2034327052122,
+    "selector_unset_samples_tok_s": [
+      379.77733802276094,
+      380.5992924114884,
+      378.4492407919158,
+      379.81148516621596,
+      380.47003015994346
+    ],
+    "selector_unset_median_tok_s": 379.81148516621596,
+    "selector_unset_median_wall_ms": 1348.0371710611507,
+    "paired_delta_percent": 3.1526192941002007,
+    "prior_published_production_tok_s": 366.93263649703607,
+    "publication_delta_percent": 3.509867313011261,
+    "next_token_id": 2930,
+    "all_next_tokens_equal": true,
+    "candidate_min_exceeds_baseline_max": true
+  },
+  "correctness_quality": {
+    "arithmetic": "row-vector staging changes only activation source-map/load assembly; D8 bytes, FP32 metadata, weight decode, packed dots, accumulation order, and BF16 output are unchanged",
+    "primitive": "uneven/empty-expert row-vector output is BF16 byte-identical to the prior D8 consumer",
+    "focused_tests": "five CPU-reference D4/D8 configurations plus focused runtime/backend/default checks pass",
+    "quality_revision": "319dfdf3a",
+    "max_kl": 0.040724836,
+    "top1": "317/320",
+    "decode": "unchanged",
+    "next_tokens_512_1024_4096": [2930, 95, 7772],
+    "final_positions_exact": true,
+    "tracked_returned_to_zero": true
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file production-rowvec --log-level error -- python3 scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/child.json",
+    "raw_csv_sha256": "7251bef8efd4341072b3459245da8573667f6187c2768b6faf98f2b0cb9328d0",
+    "child_json_sha256": "095cedc28e75383131c949b82e77bddf5919e3dd372f4c92b7676deaa6b3011e",
+    "fixed_summary_sha256": "028b29f359cfef088e0f01df848f63889f0454a3183d571e56798d46dae91248",
+    "raw_csv_committed": false,
+    "timings_tok_s": {
+      "512": 381.4476168783921,
+      "1024": 351.66334153535263,
+      "4096": 292.4172285272327
+    },
+    "pp512_wall_ms": 1342.255076,
+    "pp512_kernel_span_ms": 1337.820954,
+    "pp512_kernel_sum_ms": 1326.263008,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 537.922887,
+      "selected_q4_q6_down": 276.555607,
+      "global_attention": 43.572719,
+      "swa_attention": 173.430403,
+      "source_f16_projection": 131.680229,
+      "dense_shared_quant_projection": 70.553283,
+      "remaining": 92.54788
+    },
+    "rowvec_kernel": {
+      "template": "<1, false, true, 128, true>",
+      "workgroup_size": 128,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 6656,
+      "scratch_bytes": 0
+    },
+    "versus_sourcequal_trace": {
+      "gate_up_ms_old": 581.061437,
+      "gate_up_ms_new": 537.922887,
+      "gate_up_delta_percent": -7.424094468000297,
+      "kernel_sum_ms_old": 1369.726972,
+      "kernel_sum_ms_new": 1326.263008,
+      "kernel_sum_delta_percent": -3.1731845023491356
+    },
+    "attribution_repair": "the added template boolean changed the unchanged Q4-down demangled suffix; dad8c5a8c makes the classifier suffix-tolerant and changes attribution only"
+  },
+  "conclusion": "Promote and publish. Bit-identical vector staging improves clean paired pp512 3.153%, raises selector-unset production to 379.811 tok/s, and cuts traced selected gate/up 7.42%."
+}

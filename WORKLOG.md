@@ -178971,3 +178971,28 @@ Vulkan local sizes verbatim will close the measured gap.
   gate/up is **537.923 ms**, down is **276.556 ms**, and total kernel sum/span
   remain exactly **1,326.263/1,337.821 ms**. The fixed derived summary SHA-256
   is `028b29f359cfef088e0f01df848f63889f0454a3183d571e56798d46dae91248`.
+
+## 2026-07-25 — Publish row-vector D8 Laguna production
+
+- At clean committed runtime revision `bd76e452d`, the one-load five-pair gate
+  measures explicit old D8 **368.203 tok/s** median
+  (**368.028/368.203/367.882/369.132/368.252**) versus selector-unset
+  row-vector **379.811** (**379.777/380.599/378.449/379.811/380.470**):
+  **+3.153%**, complete sample separation, and token 2930 throughout. This is
+  **+3.510%** over the prior published 366.933 production row.
+- The cached-only all-family trace measures
+  **381.448/351.663/292.417 tok/s** at 512/1K/4K with exact tokens
+  **2930/95/7772**, positions, determinism, and all **77,461,325,460** tracked
+  bytes returned after close. Raw CSV/child/fixed-summary SHA-256 values are
+  `7251bef8...8d0` / `095cedc2...11e` / `028b29f3...248`.
+- At pp512, selected gate/up falls
+  **581.061 -> 537.923 ms (-7.42%)** and kernel sum falls
+  **1,369.727 -> 1,326.263 ms (-3.17%)**. Down remains flat at 276.556 ms;
+  combined experts are now **814.478 ms / 61.41%**, so the next bounded exact
+  task is transferring row-vector activation staging independently to Q4 and
+  Q6 down.
+- Published
+  `benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, fail-closed
+  publication helper, and post-350 plan. The 500 production gate and 700
+  stretch remain open. Focused publication/profile tests report **33 passed**.

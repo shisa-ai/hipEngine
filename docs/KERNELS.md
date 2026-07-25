@@ -564,10 +564,13 @@ fixture is BF16 byte-identical to the prior consumer and passes the independent
 CPU-reference gate. Cached tracing records local128/VGPR80/SGPR128,
 6,656 B LDS, zero scratch, and **264.416 -> 226.144 us** on the comparison
 fixture. A one-load five-pair pp512 screen improves **368.450 -> 379.661 tok/s
-(+3.043%)**, always token 2930. gfx1151 selects the row-vector body; the old
-D8 consumer remains explicit rollback pending the clean selector-unset
-production gate
-(`benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-candidate.json`).
+(+3.043%)**, always token 2930. The clean committed selector-unset gate
+confirms **368.203 -> 379.811 tok/s (+3.153%)** with complete sample
+separation. Cached all-family tracing cuts selected gate/up
+**581.061 -> 537.923 ms (-7.42%)** and measures
+**381.448/351.663/292.417 tok/s** at 512/1K/4K. gfx1151 selects the
+row-vector body; the old D8 consumer remains explicit rollback. Evidence:
+`benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-{candidate,production}.json`.
 
 The routing-qualified hybrid keeps MMQ128x32 for experts at or below 32 rows
 and tests MMQ128x64 only above 32. Frozen natural pp512 routing predicts

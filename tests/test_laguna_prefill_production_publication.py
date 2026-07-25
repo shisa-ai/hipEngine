@@ -7,6 +7,7 @@ import pytest
 from scripts.laguna_prefill_production_publication import (
     CAPABILITY_DEFAULTS,
     EXPECTED_LENGTHS,
+    _expected_candidate_modes,
     summarize_publication,
 )
 
@@ -17,6 +18,7 @@ def _defaults() -> dict:
 
 def _quality() -> dict:
     defaults = _defaults()
+    quality_modes = _expected_candidate_modes(defaults)
     categories = {
         name: {
             "finite": True,
@@ -37,13 +39,7 @@ def _quality() -> dict:
         "protocol": {
             "prefill_lane_configurations": {
                 "prefill_350_candidate": {
-                    "dense_q4_prefill_mode": defaults["dense_q4_prefill_mode"],
-                    "f16_prefill_mode": defaults["f16_prefill_strategy"],
-                    "f16_projection_mode": defaults["f16_projection_mode"],
-                    "global_prefill_variant": defaults["global_prefill_variant"],
-                    "selected_down_mode": defaults["selected_down_mode"],
-                    "selected_gate_up_mode": defaults["selected_gate_up_mode"],
-                    "swa_prefill_variant": defaults["swa_prefill_variant"],
+                    **quality_modes,
                 }
             }
         },
