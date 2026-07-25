@@ -178461,3 +178461,20 @@ Vulkan local sizes verbatim will close the measured gap.
   tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_linear_dispatch.py
   tests/test_laguna_gguf_runner.py tests/test_laguna_moe_gpu.py` passes with two
   expected skips; `git diff --check` is clean.
+
+## 2026-07-25 — Add the complete prefill-350 category admission lane
+
+- Extended `scripts/laguna_grouped_down_category_bench.py` with a
+  `prefill_350` comparison that explicitly counterbalances the shipping control
+  against the complete candidate configuration: selected gate/up and down
+  `mmq64x32_d4_f32`, row-scaled hipBLASLt source-F16 projections, resident
+  Q4/Q6 `wmma_pack8` dense/shared projections, and the already-shipping online
+  global/SWA attention routes.
+- Both lanes now freeze selected gate/up, selected down, source-F16 projection,
+  and dense/shared modes instead of inheriting backend defaults. The Poolside
+  oracle accepts a session configurator and applies the exact candidate lane,
+  preventing the admission check from silently exercising shipping arithmetic.
+- RED first failed collection because `PREFILL_350_COMPARISON` did not exist.
+  After implementation,
+  `python3 -m pytest -q tests/test_laguna_grouped_down_category_bench.py
+  tests/test_laguna_target_ar_bench.py` passes all 23 tests.

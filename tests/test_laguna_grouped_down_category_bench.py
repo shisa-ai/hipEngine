@@ -13,6 +13,7 @@ from scripts.laguna_grouped_down_category_bench import (
     GLOBAL_QROW2_ONLINE_COMPARISON,
     GROUPED_COMBINE_COMPARISON,
     MODES,
+    PREFILL_350_COMPARISON,
     SWA_QROW2_COMPARISON,
     SWA_QROW2_ONLINE_COMPARISON,
     _aggregate,
@@ -321,8 +322,17 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
         def __init__(self, row: dict[str, object]) -> None:
             self.row = row
 
+        def set_selected_gate_up_mode(self, mode: str) -> None:
+            self.row["selected_gate_up_mode"] = mode
+
         def set_selected_down_mode(self, mode: str) -> None:
             self.row["selected_down_mode"] = mode
+
+        def set_f16_prefill_mode(self, mode: str) -> None:
+            self.row["f16_projection_mode"] = mode
+
+        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+            self.row["dense_q4_prefill_mode"] = mode
 
         def prefill(self, _token_ids, *, use_bulk: bool):
             self.row["f16_prefill_mode"] = benchmark.os.environ.get(
@@ -365,14 +375,20 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
         {
             "global_prefill_variant": "global_context_rows_spans",
             "swa_prefill_variant": "swa_context_rows_qrow2_m128_c128_exact_spans",
+            "selected_gate_up_mode": "direct",
             "selected_down_mode": "adaptive_grouped_smallm_fused",
+            "f16_projection_mode": "retained",
+            "dense_q4_prefill_mode": "retained",
             "f16_prefill_mode": "tiled",
             "use_bulk": True,
         },
         {
             "global_prefill_variant": "global_context_rows_qrow2_online_spans",
             "swa_prefill_variant": "swa_context_rows_qrow2_online_spans",
+            "selected_gate_up_mode": "direct",
             "selected_down_mode": "adaptive_grouped_smallm_fused",
+            "f16_projection_mode": "retained",
+            "dense_q4_prefill_mode": "retained",
             "f16_prefill_mode": "wmma_comp_swa",
             "use_bulk": True,
         },
@@ -426,8 +442,24 @@ def test_cumulative_control_reports_performance_without_gating_it() -> None:
 
 def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
+    configured: list[tuple[str, str]] = []
+
+    class FakeSession:
+        def set_selected_gate_up_mode(self, mode: str) -> None:
+            configured.append(("selected_gate_up", mode))
+
+        def set_selected_down_mode(self, mode: str) -> None:
+            configured.append(("selected_down", mode))
+
+        def set_f16_prefill_mode(self, mode: str) -> None:
+            configured.append(("f16_projection", mode))
+
+        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+            configured.append(("dense_q4", mode))
 
     def fake_oracle(_owner, _args, **kwargs):
+        configurator = kwargs.pop("session_configurator")
+        configurator(FakeSession())
         calls.append(
             {
                 **kwargs,
@@ -451,6 +483,149 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
             "global_prefill_variant": "global_context_rows_qrow2_online_spans",
             "swa_prefill_variant": "swa_context_rows_qrow2_online_spans",
             "f16_prefill_mode": "wmma_comp_swa",
+        }
+    ]
+    assert configured == [
+        ("selected_gate_up", "direct"),
+        ("selected_down", "adaptive_grouped_smallm_fused"),
+        ("f16_projection", "retained"),
+        ("dense_q4", "retained"),
+    ]
+    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
+
+
+def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeSession:
+        def __init__(self, row: dict[str, object]) -> None:
+            self.row = row
+
+        def set_selected_gate_up_mode(self, mode: str) -> None:
+            self.row["selected_gate_up_mode"] = mode
+
+        def set_selected_down_mode(self, mode: str) -> None:
+            self.row["selected_down_mode"] = mode
+
+        def set_f16_prefill_mode(self, mode: str) -> None:
+            self.row["f16_projection_mode"] = mode
+
+        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+            self.row["dense_q4_prefill_mode"] = mode
+
+        def prefill(self, _token_ids, *, use_bulk: bool):
+            self.row["retained_f16_strategy"] = benchmark.os.environ.get(
+                "HIPENGINE_LAGUNA_F16_PREFILL"
+            )
+            self.row["use_bulk"] = use_bulk
+            return object()
+
+    def fake_session(
+        _owner,
+        _args,
+        *,
+        global_prefill_variant=None,
+        swa_prefill_variant=None,
+    ):
+        row = {
+            "global_prefill_variant": global_prefill_variant,
+            "swa_prefill_variant": swa_prefill_variant,
+        }
+        calls.append(row)
+        return FakeSession(row)
+
+    monkeypatch.setattr(benchmark, "_session", fake_session)
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "sentinel")
+    for mode in PREFILL_350_COMPARISON.modes:
+        session = benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=PREFILL_350_COMPARISON,
+        )
+        benchmark._prefill_for_mode(
+            session,
+            (1, 2),
+            mode,
+            PREFILL_350_COMPARISON,
+        )
+
+    common = {
+        "global_prefill_variant": "global_context_rows_qrow2_online_spans",
+        "swa_prefill_variant": "swa_context_rows_qrow2_online_spans",
+        "retained_f16_strategy": "wmma_comp_swa",
+        "use_bulk": True,
+    }
+    assert calls == [
+        {
+            **common,
+            "selected_gate_up_mode": "direct",
+            "selected_down_mode": "adaptive_grouped_smallm_fused",
+            "f16_projection_mode": "retained",
+            "dense_q4_prefill_mode": "retained",
+        },
+        {
+            **common,
+            "selected_gate_up_mode": "mmq64x32_d4_f32",
+            "selected_down_mode": "mmq64x32_d4_f32",
+            "f16_projection_mode": "hipblaslt_scaled",
+            "dense_q4_prefill_mode": "wmma_pack8",
+        },
+    ]
+    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
+
+
+def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> None:
+    configured: list[tuple[str, str]] = []
+    oracle_kwargs: list[dict[str, object]] = []
+
+    class FakeSession:
+        def set_selected_gate_up_mode(self, mode: str) -> None:
+            configured.append(("selected_gate_up", mode))
+
+        def set_selected_down_mode(self, mode: str) -> None:
+            configured.append(("selected_down", mode))
+
+        def set_f16_prefill_mode(self, mode: str) -> None:
+            configured.append(("f16_projection", mode))
+
+        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+            configured.append(("dense_q4", mode))
+
+    def fake_oracle(_owner, _args, **kwargs):
+        configurator = kwargs.pop("session_configurator")
+        configurator(FakeSession())
+        oracle_kwargs.append(
+            {
+                **kwargs,
+                "retained_f16_strategy": benchmark.os.environ.get(
+                    "HIPENGINE_LAGUNA_F16_PREFILL"
+                ),
+            }
+        )
+        return {"pass": True}
+
+    monkeypatch.setattr(benchmark, "_oracle_gate", fake_oracle)
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "sentinel")
+
+    assert _oracle_for_candidate(
+        object(),
+        SimpleNamespace(),
+        comparison=PREFILL_350_COMPARISON,
+    ) == {"pass": True}
+    assert configured == [
+        ("selected_gate_up", "mmq64x32_d4_f32"),
+        ("selected_down", "mmq64x32_d4_f32"),
+        ("f16_projection", "hipblaslt_scaled"),
+        ("dense_q4", "wmma_pack8"),
+    ]
+    assert oracle_kwargs == [
+        {
+            "global_prefill_variant": "global_context_rows_qrow2_online_spans",
+            "swa_prefill_variant": "swa_context_rows_qrow2_online_spans",
+            "retained_f16_strategy": "wmma_comp_swa",
         }
     ]
     assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
