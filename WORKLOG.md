@@ -179905,3 +179905,32 @@ Vulkan local sizes verbatim will close the measured gap.
   and median >=500. Conservative production is **497.408 tok/s**, only
   **5.336 ms** of clean median wall short. Next exact screens are a one-block
   parallel prefix and gate-only MMQ followed by up-MMQ+SiLU.
+
+## 2026-07-26 — Retain one-block Laguna compact prefix scan
+
+- Replaced the stable parallel compactor's remaining one-thread loop over 256
+  expert counts with a fixed one-block Blelloch exclusive scan. Wave32 ballots
+  and an eight-wave prefix emit active expert IDs in the same ascending order;
+  no caller-visible scratch is added.
+- `HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/pytest -q
+  tests/test_qwen35_moe_group_scatter_plan.py
+  tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle`
+  reports **10 passed**. Starts, active IDs/count, sorted lanes/source rows and
+  weights remain exact; complete production-shape MoE BF16 output is
+  byte-identical.
+- Cached-only tracing records the prefix scan at **2.404 us**, local256,
+  VGPR24/LDS2560B/scratch0. The preceding production trace measured the
+  one-thread prefix at **1.520 ms / 47 = 32.34 us/layer**, so the exact
+  sub-window projects a **1.407 ms** pp512 saving. Trace SHA-256:
+  `63cec2ba0a523ddd15843b4f5a6f55a6cf49a711956231fe5600c6fbb966d94f`.
+- A dirty seven-repeat full-model sanity remains exact and reaches
+  **497.885 tok/s** median for the parallel default, with two samples above
+  500 and all seven paired wins versus the full serial compactor. This is not
+  promoted as a clean aggregate delta; retain the verified sub-window and
+  compound it into the next production gate. Raw SHA-256:
+  `6991ec98c07167f1477ce83a37e7ef454b06ce52bdda1b63a79fe12c58f185df`.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-prefix-scan.json`.
+- Next: gate-only MMQ followed by up-MMQ+SiLU, preserving the established
+  gate/up BF16 projection boundaries and exact `expf` expression while
+  removing the separate 5.302-ms pp512 SiLU memory pass.
