@@ -179871,3 +179871,37 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next: commit the exact candidate, run a clean same-command A/B and cached
   all-family trace, publish if retained, then remove the remaining ~4.6 ms to
   the 500 tok/s milestone.
+
+## 2026-07-26 — Publish stable parallel Laguna MoE compaction
+
+- Committed the exact candidate at `f91eccb5d`. A clean seven-repeat
+  counterbalanced one-owner pp512 A/B improves serial rollback
+  **490.823839 -> 497.408031 tok/s (+1.341457%)**, wins all seven paired
+  repetitions, reduces median wall **13.808 ms**, and selects token 2930 in
+  all 14 runs. Raw JSON SHA-256:
+  `34fadfd1327406ca0db186c2bee15cc79577a13d575d30986276acabac7bb134`.
+- Cached-build-only all-family tracing independently measures
+  **500.325/449.468/355.606 tok/s** at 512/1K/4K. At pp512,
+  wall/span/kernel sum are **1,023.336/1,018.444/1,006.892 ms**. Selected
+  gate/up, down, attention, source-F16, and dense/shared are
+  **319.438/202.525/218.767/133.631/52.917 ms**. Parallel
+  count/prefix/scatter total **0.277/1.520/0.767 ms**, versus the prior
+  **16.752 ms** serial compact body.
+- Trace child/kernel/summary/agent SHA-256:
+  `b727ac7bcc4846f3a45e7d92ec996d30134d05abac7646a684671df3d2cf99c0` /
+  `926f2052a480d060944e9665de07e51b6974a8f2dc822f8b9968a9ff3df2b631` /
+  `33d171304d95cdb409bfa3aff24639a403c3e43781476258e07ef38c1604a3a1` /
+  `451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078`.
+  Tracked allocation returns to zero from a **77,461,325,460-byte** peak.
+- Because metadata and complete MoE output are BF16-byte exact, direct
+  all-exact maximum KL **0.049542582**, **316/320** top-1, minimum category
+  **96.875%**, Poolside, decode, determinism, and lifecycle gates transfer
+  unchanged. Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-production.json`
+  and refreshed the rollup, changelog, kernel catalog, refactor trigger, and
+  post-350 plan.
+- The 500 production gate remains open despite one cached **500.325 tok/s**
+  pass: its contract requires at least three clean samples with both minimum
+  and median >=500. Conservative production is **497.408 tok/s**, only
+  **5.336 ms** of clean median wall short. Next exact screens are a one-block
+  parallel prefix and gate-only MMQ followed by up-MMQ+SiLU.
