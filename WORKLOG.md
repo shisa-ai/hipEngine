@@ -179391,3 +179391,27 @@ Vulkan local sizes verbatim will close the measured gap.
   bytes, so raw-GGUF low/high-nibble reuse does not apply. The next exact
   screen widens the dominant gate/up wave-column tile; the rejected Q6
   quartet-shuffle mapping remains closed.
+
+## 2026-07-26 — Reject alternate Laguna gate/up wave-column widths
+
+- RED added a two-columns-per-lane 256x32 D8 gate/up fixture and failed on the
+  missing wrapper surface. GREEN generalized the wave-column template and
+  added exact 64x32/local64 and 256x32/local128 diagnostic exports. Both are
+  BF16-byte identical to production on the uneven/empty expert oracle and
+  share the actual-layer checksum **1114.1769413301445**.
+- Nine counter-rotated burst-three samples on actual layer-1 T16 gate/up
+  weights plus natural M512 routing measure production 128x32
+  **8.047952 ms**, local64 64x32 **8.087072 ms (+0.486%)**, and
+  two-columns-per-lane 256x32 **9.701780 ms (+20.550%)**. The wide body raises
+  accumulators per lane from 32 to 64 and loses more to resource pressure than
+  it saves in activation-LDS/barrier reuse.
+- Cached `rocprofv3` names all three exact templates. Production and local64
+  both allocate VGPR80; the 256x32 body allocates VGPR128. All use SGPR128,
+  LDS1536B, and zero scratch. Raw CSV SHA-256:
+  `a196c8f4876f2ebf0a372e95e580dbf26f656da201dba5ddf108ebd3b9b61961`.
+- Removed every candidate HIP, wrapper, leaf-harness, and test surface.
+  Production remains 128x32/local128. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`.
+  The next bounded gate/up screen is non-temporal T16 weight loading, admitted
+  to timing only if extracted ISA proves the compiler emitted a distinct cache
+  policy.

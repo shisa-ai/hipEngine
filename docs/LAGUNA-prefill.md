@@ -641,7 +641,7 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. T16 already stores K32 subblocks independently, so raw-GGUF K64 nibble reuse does not apply. Screen a wider column tile that performs more dot work per activation-LDS/barrier interval, then non-temporal weight loads if compiler inspection proves the cache policy changed. |
+| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. T16 K64 nibble reuse is inapplicable, and measured 64/256-column alternatives lose. Screen non-temporal weight loads only if compiler inspection proves the cache policy changed; otherwise move to a new scheduling/layout premise. |
 | Selected D4 Q4/Q6 down | **216.616 ms** | **19.30%** | Q4 wave columns are retained; Q6 quartet-shuffle wave columns regress. Reopen Q6 only with a mapping that avoids the VGPR88/shuffle penalty, such as two-row-half wave pairs at local128 or direct per-column decode. |
 | Global + SWA attention | **217.589 ms** | **19.39%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.626 ms** | **11.91%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
@@ -679,13 +679,11 @@ and preserve K accumulation order.
 Immediate execution queue:
 
 1. Keep the retained Q4-down result and do not retry its rejected Q6
-   quartet-shuffle analogue. The suggested raw-GGUF K64 nibble reuse is
-   inapplicable to resident T16 because its K32 subblocks occupy distinct
-   bytes. Instead screen a **two-columns-per-lane 256x32 gate/up tile** that
-   halves activation-LDS and barrier work per output while preserving weight
-   bytes, K order, and BF16 outputs. Gate the actual layer-1 leaf before
-   runtime.
-2. If the wider gate/up tile is not positive, screen a Q6 local128
+   quartet-shuffle analogue. Raw-GGUF K64 nibble reuse is inapplicable to T16;
+   64x32/local64 and two-columns-per-lane 256x32 both lost the actual layer-1
+   gate. Screen non-temporal T16 weight loads next, but proceed to timing only
+   if extracted ISA proves a distinct cache policy.
+2. If non-temporal loads are unavailable or not positive, screen a Q6 local128
    wave-column mapping with two row-half wave pairs or direct per-column
    decode; reject it unless Q6 alone improves and production BF16 bytes remain
    exact.
@@ -1099,6 +1097,21 @@ local128/VGPR72/LDS4096B/scratch0. Evidence:
 [`2026-07-26-gfx1151-laguna-down-wavecols-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json)
 and the implementation-worktree
 [`candidate packet`](../benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-candidate.json).
+
+Twenty-first post-350 screen: **alternate gate/up wave-column geometries
+rejected and removed**. The exact local64 variant assigned two waves 64 output
+columns total; the exact 256x32 variant kept local128 but assigned two columns
+and 64 accumulators to every lane. Both preserved T16 bytes, D8 activation
+staging, packed-dot/K order, and BF16 outputs.
+
+On actual layer-1 weights and natural M512 routing, nine counter-rotated
+burst-three samples measure production 128x32 **8.048 ms**, local64 64x32
+**8.087 ms (+0.486%)**, and two-columns-per-lane 256x32
+**9.702 ms (+20.550%)**. Cached tracing shows local64 provides no register
+relief at VGPR80, while the wide tile rises to VGPR128; all three use 1,536 B
+LDS and zero scratch. The production 128x32/local128 geometry is retained and
+all candidate HIP/wrapper/harness/test surfaces are removed. Evidence:
+[`2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json).
 
 Production evidence:
 
@@ -1723,6 +1736,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-production.json`

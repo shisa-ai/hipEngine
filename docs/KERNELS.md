@@ -659,6 +659,15 @@ family to **216.616 ms**. Q4 traces at local64/VGPR80/LDS1536B/scratch0; Q6
 stays local128/VGPR72/LDS4096B/scratch0
 (`benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json`).
 
+Alternate D8 gate/up wave-column widths are closed. On actual layer-1 T16
+weights plus natural M512 routing, production 128x32/local128 measures
+**8.048 ms**, 64x32/local64 measures **8.087 ms (+0.486%)**, and a 256x32
+two-columns-per-lane body measures **9.702 ms (+20.550%)**. Outputs are
+BF16-byte identical. Cached tracing shows production/local64 both allocate
+VGPR80, while the 64-accumulator wide body rises to VGPR128; all use 1,536 B
+LDS and zero scratch. All candidate surfaces were removed
+(`benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
