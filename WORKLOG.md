@@ -179098,3 +179098,22 @@ Vulkan local sizes verbatim will close the measured gap.
   supported-library, or fused-softmax premise. Production remains
   **385.997 tok/s**. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`.
+
+## 2026-07-25 — Reject persistent K256 expert slabs
+
+- Built a local128 persistent D8 gate/up body that assigned one workgroup to
+  each active expert/output128 tile, staged eight decoded K32 weight tiles per
+  K256 slab, processed the expert's 32-row tiles sequentially, and carried
+  exact F32 partials between slabs. The 0/7/18/65-row K512/N128 primitive was
+  BF16 byte-identical to the production row-vector body.
+- The candidate traced at VGPR248, SGPR128, LDS42,496B, scratch0 and required
+  41,943,040 bytes (40 MiB) of F32 partial workspace for the actual pp512 leaf.
+- On the captured layer-1 actual-weight/routing leaf, all-expert persistent
+  execution measured 37.547 ms versus 11.463 ms production. Restricting the
+  candidate to experts above 32 rows still measured 13.278 ms, already
+  16.14% slower than the complete 11.433 ms production leaf before adding the
+  required small-expert launch.
+- Removed every candidate HIP/Python/script/test surface without a full-model
+  screen. Production remains 385.997 tok/s. Persistent K256 slabs are closed
+  while they require global partial spills. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`.
