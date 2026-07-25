@@ -649,7 +649,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **319.358 ms** | **31.99%** | Direct per-column decode is retained. T16 K64 nibble reuse is inapplicable because adjacent K32 payloads are stored separately. Gate-only MMQ followed by up-MMQ+SiLU was exact but regressed full-model median **498.012 -> 497.210 tok/s** because splitting the dual weight consumer cost more than removing the SiLU pass; that shape is closed. |
+| Selected D8 Q4 gate/up | **319.358 ms** | **31.99%** | Direct per-column decode is retained. T16 K64 nibble reuse is inapplicable because adjacent K32 payloads are stored separately. Gate-only MMQ followed by up-MMQ+SiLU was exact but regressed full-model median **498.012 -> 497.210 tok/s**. A bit-identical D8 integer-WMMA 128x32 consumer also regressed the actual-weight leaf **6.902 -> 8.179 ms**; both shapes are closed. |
 | Selected D4 Q4/Q6 down | **202.643 ms** | **20.30%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. |
 | Global + SWA attention | **218.516 ms** | **21.89%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; the next attention screen must use a materially different reuse/fusion premise. |
 | Scaled hipBLASLt source-F16 | **134.442 ms** | **13.47%** | The contractions are at the measured library ceiling; exact producer/consumer fusion and scale/cast/restore removal remain admissible. |
@@ -687,11 +687,11 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Attack the **319.358 ms selected gate/up** family with a materially wider
-   exact consumer: preserve the direct per-column decode and arithmetic order,
-   but screen more routed-row reuse per loaded weight without repeating the
-   rejected 64-row F32-partial-spill design. Gate on actual-weight leaf timing,
-   BF16-byte identity, and full-model wall.
+1. Attack the **319.358 ms selected gate/up** family through weight-traffic
+   reduction, not another independent-WMMA shape. The exact D8
+   integer-WMMA 128x32 screen regressed the actual-weight leaf **18.51%**.
+   The next gate must reduce physical T16 reads or synchronize less often while
+   keeping the proven 32-row output tile, direct decode, and arithmetic order.
 2. Reopen the **218.516 ms attention** family only with a different premise
    from the rejected qrow8, scalar key split, and synchronous-LDS WMMA tiles.
    Candidate premises are an async-copy pipeline, a supported library-class
@@ -1973,6 +1973,8 @@ Do not repeat:
 - one-scale-per-32 one-plane direct Q8_1 gate/up promotion;
 - scalar grouped gate/up C4/C8/C16;
 - independent WMMA wave widening;
+- the D8 integer-WMMA 128x32 selected consumer; it is BF16-byte exact but
+  regresses the actual-weight leaf **6.902 -> 8.179 ms**;
 - per-block LDS unpack/staging without complete tile reuse;
 - X8 exact decode via local256, direct raw addressing, raw LDS staging, output
   widening alone, or dynamic X8-to-T16 reconstruction;

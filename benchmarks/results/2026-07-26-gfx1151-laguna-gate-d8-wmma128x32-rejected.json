@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26",
+  "kind": "hipengine_laguna_gate_d8_wmma128x32_rejected",
+  "status": "rejected",
+  "hardware": {
+    "gpu": "AMD Radeon Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "scope": {
+    "workload": "actual layer-1 gate/up weights with recorded natural M512 routing",
+    "rows": 512,
+    "compact_rows": 5120,
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "baseline": "T16 D8 F32 MMQ128x32 wave-column direct decode",
+    "candidate": "T16 D8 F32 integer-WMMA 128x32"
+  },
+  "correctness": {
+    "red": "The new integer_wmma selector was rejected by the Python launch ABI.",
+    "green": "The ragged compact CPU-reference fixture passed and produced BF16-byte-identical output to the established row-vector kernel.",
+    "leaf_checksum_f64": 1114.1769413301445,
+    "leaf_max_abs": 6.6875,
+    "candidate_removed": true
+  },
+  "measurement": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct,t16-wmma128x32-d8-f32 --warmups 2 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-gate-wmma128x32-leaf.json",
+    "raw_sha256": "f0e964a5feeb3a78dca22a3f821306fd60d2e76bca0ddeb900aa6f6278b84de5",
+    "baseline_samples_ms": [
+      7.144371668497722,
+      6.825509389241536,
+      6.952681223551433,
+      6.857839584350586,
+      6.889003753662109,
+      6.876904169718425,
+      6.990583419799805,
+      6.901978810628255,
+      6.98638916015625
+    ],
+    "candidate_samples_ms": [
+      8.06024424235026,
+      8.047534942626953,
+      8.175110499064127,
+      8.131535847981771,
+      8.179438908894857,
+      8.200398127237955,
+      8.253753026326498,
+      8.179722468058268,
+      8.224019368489584
+    ],
+    "baseline_median_ms": 6.901978810628255,
+    "candidate_median_ms": 8.179438908894857,
+    "candidate_latency_delta_percent": 18.508606492669323,
+    "candidate_throughput_ratio": 0.8438205710079443
+  },
+  "decision": {
+    "outcome": "reject_and_remove",
+    "reason": "Integer WMMA loses 18.51% at the actual-weight leaf despite exact output. Its duplicated 16-column operands and 32 F32 accumulators do not repay replacing scalar dp4a.",
+    "production_unchanged": true
+  }
+}
