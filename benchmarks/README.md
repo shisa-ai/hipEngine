@@ -1961,7 +1961,7 @@ retained 58.425 row, h32 improves **1.346%** to **16.889 ms/token**. Pinned
 Vulkan remains **64.418 tok/s**, so another **8.79%** is required and completion
 stays open. `use_mixed_q6_fixed_meta_attention=False` /
 `--disable-mixed-q6-fixed-meta-attention` restores the registered generic-Q6
-mixed quad. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-correctness.json) and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-retained.json).
+mixed quad. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-correctness.json), [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-retained.json), and [post-fixed-Q6 matched Vulkan audit](results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-fixed-q6.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
