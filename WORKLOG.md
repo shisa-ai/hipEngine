@@ -180449,3 +180449,22 @@ Vulkan local sizes verbatim will close the measured gap.
   candidate tests, and temporary down target in the A/B harness. Production
   remains **505.084 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json`.
+
+## 2026-07-26 — Add byte-neutral Q4_K T16-lite host layout
+
+- Audited the proposed K64 “both nibble planes from one byte” optimization
+  before implementation. It is not valid for resident T16: the layout stores
+  the two K32 subblocks separately, and the already-rejected K64/K128 staging
+  screen increased LDS without removing a resident-weight read. No kernel was
+  changed.
+- Started the still-open T16-lite replacement-layout screen. The host repacker
+  preserves T16's 16-column Q4 payload interleave and FP16 `d/dmin`, but keeps
+  each column's exact 12-byte GGUF scale/min field packed. The resulting tile
+  is **2,304 bytes**, exactly byte-neutral with sixteen raw Q4_K blocks and
+  **64 bytes / 2.703%** smaller than current 2,368-byte T16.
+- Followed RED/GREEN: the focused repack suite first failed on the missing
+  T16-lite symbols, then passed **7/7**. Multi-expert/multi-block roundtrip is
+  byte-exact, the byte-neutral invariant is explicit, and invalid output width
+  remains fail-closed. `py_compile` also passes. This is a diagnostic layout
+  only; no quant registry, materializer, runtime dispatch, or production
+  residency changed.
