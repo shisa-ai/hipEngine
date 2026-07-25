@@ -706,6 +706,14 @@ consumer **90.280 -> 71.378 ms (-20.94%)**. The pair-decode mode remains
 explicit rollback through cleanup
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json`).
 
+Direct-decode 64x32/local64 gate/up completed the same exact gate and improved
+the actual layer-1 natural-M512 leaf **6.920 -> 6.839 ms (-1.17%)**, but the
+one-owner full-model screen was noise at **481.323 -> 481.619 tok/s
+(+0.061%)** with overlapping ranges and a worse candidate minimum. Every
+candidate surface was removed; 128x32/local128 direct decode remains
+production
+(`benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

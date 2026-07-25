@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T03:35:00+09:00",
+  "kind": "hipengine_laguna_gate_direct_local64_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "ed48b1016c1448accb2bd80c559542fad5ce022c",
+    "candidate_tracked_dirty": true,
+    "candidate_surfaces_removed": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "production": "128 output columns x 32 routed rows, local128, direct per-column T16 decode",
+    "screen": "64 output columns x 32 routed rows, local64, direct per-column T16 decode",
+    "arithmetic": "BF16-byte identical; D8 packing, split16 packed dots, K order, and stores unchanged"
+  },
+  "correctness": {
+    "red": "The extended Q4 selected-prefill fixture failed on the missing local64 direct-decode wrapper ABI.",
+    "green": "All eleven Q4 configurations passed the CPU-reference gate; direct local64 and production had identical BF16 output.",
+    "actual_layer_checksum_f64": {
+      "production": 1114.1769413301445,
+      "candidate": 1114.1769413301445
+    },
+    "next_token_ids_all": 2930
+  },
+  "actual_layer1_natural_m512": {
+    "scope": "actual layer-1 K3072/N1024 gate/up T16 weights, natural routing, pack-inclusive, nine counter-rotated burst-three samples",
+    "production_median_ms": 6.919515609741211,
+    "candidate_median_ms": 6.8385359446207685,
+    "candidate_change_percent": -1.170307659077,
+    "raw_json_sha256": "3639c0723c387b7f0b63b9d96ea184f6114c16e1f3052354f4e219c837e8684a",
+    "raw_json_committed": false
+  },
+  "pp512": {
+    "scope": "one resident owner, matrix512/attention128, one 128-row warmup per mode, seven counterbalanced synchronized repetitions",
+    "production_samples_tok_s": [
+      482.6583594758853,
+      481.3233519589255,
+      479.150880414068,
+      480.13814460043557,
+      481.14877789249044,
+      484.0407762154856,
+      483.31139401064024
+    ],
+    "production_median_tok_s": 481.3233519589255,
+    "candidate_samples_tok_s": [
+      475.9736558484395,
+      481.61860907615585,
+      480.51530294422275,
+      480.2747190634021,
+      485.02444903969285,
+      483.32861731583665,
+      483.0414833399425
+    ],
+    "candidate_median_tok_s": 481.61860907615585,
+    "candidate_change_percent": 0.061347018598,
+    "complete_sample_separation": false,
+    "raw_log_sha256": "16582501e6a04a7a3cfd7d4aafd34f12bb48f119428550a7debe5928cd3928ef",
+    "raw_log_committed": false
+  },
+  "lineage_audit": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "pass": false,
+    "blocker": "Declared read-only parent /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external source was copied."
+  },
+  "decision": {
+    "pass": false,
+    "failed_checks": [
+      "no positive full-model sample separation",
+      "candidate produced the lowest sample",
+      "0.061% median movement is below run variance"
+    ],
+    "action": "Remove the local64 HIP export, Python selector, runtime mode, leaf-harness mode, and tests. Keep 128x32/local128 direct decode in production."
+  }
+}

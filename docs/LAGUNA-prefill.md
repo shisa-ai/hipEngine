@@ -686,11 +686,11 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Screen a materially different exact **gate/up ownership** schedule against
-   the refreshed **318.921 ms** family. The bounded first check is direct
-   64x32/local64 after per-column decode; the previous local64 rejection used
-   pair decode and was only **0.486%** slower. Admit only with actual-weight
-   leaf improvement and positive one-owner pp512 separation.
+1. Screen direct per-column **256x32/local256 gate/up**: eight waves each own
+   one output column and all 32 routed rows, halving workgroups and repeated
+   activation staging without the 64-accumulator pressure of the rejected
+   256x32/local128 body. Admit only with actual-weight leaf improvement and
+   positive one-owner pp512 separation.
 2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1217,6 +1217,17 @@ cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**, and leaves
 [`2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json).
 Candidate evidence:
 [`2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-candidate.json).
+
+Twenty-sixth post-350 screen: **direct 64x32/local64 gate/up rejected and
+removed**. The exact body improves the actual layer-1 natural-M512 leaf
+**6.920 -> 6.839 ms (-1.17%)**, but seven counterbalanced one-owner pp512
+repetitions move only **481.323 -> 481.619 tok/s (+0.061%)**. Candidate and
+production ranges overlap, and the candidate owns the lowest sample at
+**475.974 tok/s**. All outputs are BF16-byte exact and every run selects token
+2930, but there is no system-level separation; production remains
+128x32/local128. The required lineage command also remains blocked by the
+absent read-only Atlas checkout, with no external source copied. Evidence:
+[`2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json).
 
 Production evidence:
 
