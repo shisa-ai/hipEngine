@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q2_xl_mixed_local32_projection_retained",
+  "status": "retained_default",
+  "performance_claim": true,
+  "performance_claim_scope": "Poolside Laguna S 2.1 UD-Q2_K_XL target-only c=1 greedy AR on Radeon Pro W7900/gfx1100, all 18 train+heldout prompts, h16/h32, two repetitions in both process orders; model load excluded",
+  "acceptance": {
+    "correctness": true,
+    "mechanical": true,
+    "category": true,
+    "promote_gfx1100_default": true,
+    "matched_vulkan_beaten": false
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "candidate": {
+    "description": "Use one exact local32 wave per Q5 or Q6 output pair for layers 0-46 while preserving every retained Q5 helper operation, four original Q6 partitions, total grid threads/waves, raw weights, F32 stores, and layer-47 Q6/Q8 mixed projection",
+    "implementation_revision": "8f8e64ea88cc886bffe600430d091d71b1774e6f",
+    "measurement_revision": "8f8e64ea88cc886bffe600430d091d71b1774e6f",
+    "default": "LAGUNA_MIXED_LOCAL32_FIXED_METADATA=True on hip_gfx1100",
+    "rollback": "LagunaGGUFResidentSession(..., use_mixed_local32_fixed_meta_attention=False) or scripts/laguna_target_ar_bench.py --disable-mixed-local32-fixed-meta-attention",
+    "fallback": "The retained registered local128 fixed-Q6 mixed quad; layer 47 Q6/Q8, rows greater than one, registry misses, and unsupported backends retain existing routes",
+    "registry_key": "attention_projection_quad/gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k/mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+    "dispatches_per_token": {
+      "control": 723,
+      "candidate": 723,
+      "removed": 0
+    },
+    "persistent_weight_copy_delta_bytes": 0,
+    "workspace_delta_bytes": 0
+  },
+  "correctness": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-correctness.json",
+    "artifact_sha256": "a3a28542287d4cede2ba1689088e099c4ef143ebd4da2aa6edeb8adbae3f81d1",
+    "actual_weight_outputs_f32_bit_exact": true,
+    "actual_projection_event_improvement_range_pct": [
+      11.394970301563422,
+      14.76758724963908
+    ],
+    "actual_projection_wall_improvement_range_pct": [
+      11.238510248796352,
+      15.71687909131626
+    ],
+    "full_logits_and_argmax_exact": true,
+    "hidden_boundaries_exact": 48,
+    "routed_boundaries_exact": 47,
+    "active_bf16_kv_and_all_span_fields_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_returned_to_baseline": true,
+    "cached_trace": {
+      "candidate_calls_over_two_transitions": 94,
+      "candidate_calls_per_token": 47,
+      "retained_layer47_calls_per_token": 1,
+      "dispatches_per_token": 723,
+      "workgroup": 32,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "grid_threads": [
+        131840,
+        181376
+      ]
+    },
+    "default_vs_rollback": {
+      "passed": true,
+      "decode_steps": 16,
+      "hidden_boundaries_exact": 48,
+      "routed_boundaries_exact": 47,
+      "raw_sha256": "0f5f7fb2d074d0bb2a3f366606a00c2d767fce0020631e6153d530f80793e183",
+      "stdout_sha256": "1247bc258007e6a0db6e1735b3a9b8e233c75539065ff0eea027cdf61d3d51ca",
+      "harness_sha256": "f47ab29065fd594282b43fb98d60122627af114db7a4d2bd9be3e40681f800ca"
+    }
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_mixed_local32_clean_profiles.sh",
+    "revision": "8f8e64ea88cc886bffe600430d091d71b1774e6f",
+    "contract_sha256": "0f7c997b4ed51f2f6685be37899470e24bc5b52a4dc487432ce58b2997095fe4",
+    "summary_sha256": "51386c718c9cd28bb18b6d6d179f4cea779b5893f72e81bcefc67ecee577377b",
+    "report_sha256": "46438fa0be16c556cfa176e169deafb5bf3a4033e8ae6cf56c5dce85d96b8dea",
+    "harness_sha256": {
+      "runner": "ee600d0d37b8ac8eea82c4f8ac31fcd8fc4929d995daed5287a7c1b7e0de0cf8",
+      "child": "5402c15aedbde9baef9f8a14a288ace130f440c4ee0c96493d4117c36f734a32",
+      "analyzer": "a5d4f918239224e6d1a88f264a3fcda67456d79537b0e2d1b84d5d955e678315"
+    },
+    "contexts": [
+      {
+        "label": "short",
+        "projection_delta_pct": -8.115367256415185,
+        "kernel_sum_delta_pct": -2.1214332661119495,
+        "span_delta_pct": -2.7705977932887316,
+        "profiled_child_tok_s_delta_pct": 1.2922611910649806
+      },
+      {
+        "label": "512",
+        "projection_delta_pct": -6.9966691866354065,
+        "kernel_sum_delta_pct": -0.6685234813707974,
+        "span_delta_pct": -0.5807631246702583,
+        "profiled_child_tok_s_delta_pct": 0.20092340488069294
+      },
+      {
+        "label": "1024",
+        "projection_delta_pct": -7.055745780881217,
+        "kernel_sum_delta_pct": -0.5477994168740619,
+        "span_delta_pct": -0.4599723393178601,
+        "profiled_child_tok_s_delta_pct": 0.5298931806868579
+      },
+      {
+        "label": "3968",
+        "projection_delta_pct": -8.036992902800655,
+        "kernel_sum_delta_pct": -0.4929355619031739,
+        "span_delta_pct": -0.4518683329348905,
+        "profiled_child_tok_s_delta_pct": 0.6791168110991563
+      }
+    ],
+    "ids_finite_lifecycle_exact": true,
+    "resource_gate": true,
+    "mechanical_gate_pass": true
+  },
+  "category_gate": {
+    "commands": [
+      "bash /tmp/run_laguna_mixed_local32_category_forward.sh",
+      "bash /tmp/run_laguna_mixed_local32_category_reverse.sh"
+    ],
+    "protocol": "all 18 train+heldout prompts; serial and bulk; h16/h32; two repetitions; retained local128 control then exact all-local32 candidate followed by reverse process order; pooled synchronized seconds",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "aggregate": {
+      "control": {
+        "h16_decode_tok_s": 61.50310561087311,
+        "h32_decode_tok_s": 60.899948244323824,
+        "h16_e2e_output_tok_s": 7.0563526726747146,
+        "h32_e2e_output_tok_s": 12.635227175346426,
+        "prefill_tok_s": 42.96586433539886,
+        "ttft_median_seconds": 1.9378002459416166
+      },
+      "candidate": {
+        "h16_decode_tok_s": 62.35358698325803,
+        "h32_decode_tok_s": 61.73234556191569,
+        "h16_e2e_output_tok_s": 7.054595753049313,
+        "h32_e2e_output_tok_s": 12.650074443367613,
+        "prefill_tok_s": 42.883400539864574,
+        "ttft_median_seconds": 1.937807405134663
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 1.3828267108426662,
+        "h32_decode_tok_s": 1.3668276272623237,
+        "h16_e2e_output_tok_s": -0.024898410083806777,
+        "h32_e2e_output_tok_s": 0.1175069337111534,
+        "prefill_tok_s": -0.19192863174021246,
+        "ttft_median_seconds": 0.0003694494858930142
+      }
+    },
+    "train_and_heldout_category_h16_h32_decode_delta_range_pct": [
+      0.9805606186511495,
+      1.649785705283069
+    ],
+    "train_and_heldout_category_h16_h32_e2e_delta_range_pct": [
+      -0.15544610540478843,
+      0.27438838434685753
+    ],
+    "all_ids_oracles_and_lifecycle_exact": true,
+    "all_train_and_heldout_category_decode_improve": true,
+    "all_e2e_prefill_ttft_guards_pass": true,
+    "comparison_sha256": "9eab9d0162dd9b77b5e2117e77d6e583aa6f2d7cd3c31d49532a61da4b3aa657",
+    "report_sha256": "d788757bfa59e19acd3d632cb890f2e89e3181831c99f181a2818bfd55a5f8bb",
+    "raw_sha256": {
+      "control_forward": "3035a30ec74ca6b6d4526e0eecc7fb6b57ebe2c29eb56ec0943906938f6bc476",
+      "candidate_forward": "4d510df1d56db27703011680500dc7e86ad666b4f000d9da0543fc4279e590e5",
+      "candidate_reverse": "63458c8ce811c55226a16607e3bd84dfcd2d2ab9b6f2656a81b80bb758e46a50",
+      "control_reverse": "70e1e214422e802a58e5159040f633624d9e8d02ac50aa3e5bf6a1df4573f90e"
+    },
+    "harness_sha256": {
+      "forward": "68d0e4442b510b71fd59e14601e00b2d0fc6d807983f3affc6ecd70737cb2c87",
+      "reverse": "5ccee9e8cfa761464e4a807d524822762df67dd3797bd8778b90bc2ae8e2aa87",
+      "benchmark": "64cb021bfe23dcdd130e350e1e3ee86714260878616f287aaa9e56a94d081450",
+      "comparison": "3e621745be6382e86545db9822c47506ac2669e12219e7a0f2999f313d084860"
+    },
+    "preflight_correction": {
+      "note": "The first forward launcher stopped before model load and before writing a raw benchmark because the relocated exact benchmark copy derived ROOT from /tmp. The final immutable copy differs from the tracked benchmark only in expected prompt cardinality 10 to 18 and absolute repository ROOT; _repo_state confirmed the clean measurement revision before every run.",
+      "root_failure_sha256": "6fd54eaeaa3bff3c57df52eb1f358ce665b5c705d3e47c517bc8cf4c2bf54bbc"
+    },
+    "pass": true
+  },
+  "promotion_red": {
+    "result": "failed on absent gfx1100 LAGUNA_MIXED_LOCAL32_FIXED_METADATA capability and default-on rollback CLI",
+    "log_sha256": "b43fe3c198266974d002ad9a0751d398973b0f0ab159181e5a3bb2d39dff4aa5",
+    "green_sha256": "8876c9830608f9c64826246c16b2934e04138061819f176caaad11a1cf8ba140"
+  },
+  "regression_tests": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_gguf_q5_q6_mixed_attention_decode.py tests/test_gguf_q6_k_pair_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_laguna_gguf_runner.py tests/test_laguna_target_ar_bench.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py",
+    "passed": 167,
+    "log_sha256": "bc3ec003d58750511134d763691fb8673606e5664f3dea849b06b057ed2ad164"
+  },
+  "topline": {
+    "previous_retained_h16_decode_tok_s": 61.55420990315515,
+    "previous_retained_h32_decode_tok_s": 60.9422647734879,
+    "paired_control_h16_decode_tok_s": 61.50310561087311,
+    "paired_control_h32_decode_tok_s": 60.899948244323824,
+    "new_h16_decode_tok_s": 62.35358698325803,
+    "new_h32_decode_tok_s": 61.73234556191569,
+    "paired_h16_improvement_pct": 1.3828267108426662,
+    "paired_h32_improvement_pct": 1.3668276272623237,
+    "h16_improvement_vs_previous_retained_pct": 1.2986554150570262,
+    "h32_improvement_vs_previous_retained_pct": 1.2964414620368903,
+    "new_ms_per_token": 16.198963297077867,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "slower_than_matched_vulkan_pct": 4.1694614726292105,
+    "additional_speedup_required_pct": 4.350869291461137,
+    "objective_met": false
+  }
+}

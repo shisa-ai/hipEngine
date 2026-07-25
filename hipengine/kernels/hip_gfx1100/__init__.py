@@ -25,6 +25,10 @@ LAGUNA_MIXED_ATTENTION_PROJECTIONS = True
 # improves all clean contexts, and passes both complete category process orders.
 # Explicit disable restores the generic-Q6 mixed projection variant.
 LAGUNA_MIXED_Q6_FIXED_METADATA = True
+# Exact all-local32 Q5/Q6 ownership passes production bits, full state, both
+# clean context orders, and both complete category orders. Explicit disable
+# restores the retained local128 fixed-Q6 mixed projection; layer 47 stays there.
+LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
 # Clean P0 leaf/full-state/context/category evidence admits one exact local32
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
@@ -119,6 +123,7 @@ __all__ = [
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
+    "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",
     "LAGUNA_Q5_SHARED_FIXED_METADATA",

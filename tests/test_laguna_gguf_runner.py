@@ -125,11 +125,14 @@ def test_laguna_mixed_attention_projection_default_is_gfx1100_only_and_rollbacka
     assert not resolve_laguna_mixed_attention_projections("hip_gfx1151")
 
 
-def test_laguna_mixed_local32_fixed_metadata_is_default_off_and_rollbackable() -> None:
+def test_laguna_mixed_local32_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_MIXED_LOCAL32_FIXED_METADATA", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_MIXED_LOCAL32_FIXED_METADATA", False
     ) is False
-    assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100")
+    assert resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100")
     assert resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100", True)
     assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100", False)
     assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1151")
