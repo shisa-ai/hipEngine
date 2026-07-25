@@ -521,11 +521,11 @@ and M128-qualified gfx1151 selectors. The wrapped/evicted eight-row fixture,
 including a seven-row tail, is byte-identical to the retained qrow2 output.
 Cached gfx1151 tracing names the qrow4 templates at local32, VGPR 72/80,
 SGPR128, and zero LDS/scratch. A one-load counterbalanced pp512 screen improves
-qrow2 **353.836 -> 365.249 tok/s (+3.23%)**; dirty selector-unset confirmation
-is **365.048 tok/s** median with **363.735** minimum. Qrow2 remains the
-short/residual-tile route; the production claim requires clean confirmation.
-Evidence:
-`benchmarks/results/2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json`.
+qrow2 **353.836 -> 365.249 tok/s (+3.23%)**. Clean selector-unset production
+is **364.839 tok/s** median with **363.944** minimum; cached tracing cuts the
+attention family **274.724 -> 229.181 ms (-16.58%)**. Qrow2 remains the
+short/residual-tile route. Evidence:
+`benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`.
 
 ## DFlash / MTP lineage map
 
