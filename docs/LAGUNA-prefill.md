@@ -7,10 +7,14 @@ Status: active successor to the completed LPF/AR-O campaign in
 new arithmetic and data-layout campaign. It does not reactivate the rejected
 expert-major F16 runtime routes. LAP-1 is complete with a direct resident-T16
 MMQ32 consumer. The first LAP-2 three-plane/guarded/exact-repair primitives are
-implemented and traced; real projection-input calibration and runtime
-admission remain open. The execution order below was re-audited on 2026-07-25
-after correcting the Vulkan comparator geometry and adding an absolute
-bandwidth target.
+implemented and traced. The original one-scale-per-32 one-plane integrated
+candidate crossed 350 tok/s but failed the complete category quality gate.
+The repaired gate/up route uses one FP32 scale per 16 activations in the same
+160-byte block, widens the Q4 consumer to 128 columns x 32 rows, passes the
+320-step diagnostic quality lane, and repeats at 353.95–356.47 tok/s. Clean
+category and default admission remain open. The execution order below was
+re-audited on 2026-07-25 after correcting the Vulkan comparator geometry and
+adding an absolute bandwidth target.
 
 ## Outcome
 
@@ -66,9 +70,10 @@ complete T16 sidecar to X8, and do not integrate X8 into the runtime. The
 direct T16 consumer now passes the frozen leaf gate at
 **2.502x/3.959x/5.502x** retained on M128/M256/M512 and within
 **4.66%/4.05%/3.02%** of X8. Its guarded repair primitives are also
-implemented. The immediate attack is now the absolute-bandwidth/KL audit,
-source-F16 library promotion, and dense/shared MMQ before selected-family
-runtime promotion.
+implemented. The immediate attack is now complete admission of the repaired
+compounded candidate, followed by gfx1151 default promotion and clean
+production publication. The absolute-bandwidth/KL audit remains post-350
+roofline work.
 
 This document uses stable `LAP-*` labels (“Laguna arithmetic prefill”). Numeric
 task-tracker IDs may be assigned separately; the labels deliberately do not
@@ -388,12 +393,10 @@ The target gate/up flow is:
 
 ```text
 BF16 hidden [M, 3072]
-  -> residual Q8_1 pack once per token row
+  -> same-byte Q8 pack once per token row, one FP32 scale per 16 values
   -> existing device route count/prefix/compact metadata
-  -> expert-major packed-dot Q4_K MMQ
-     (current 32x32 leaf; next screen 64x64-class work per barrier)
-  -> BF16 candidate gate/up + device risk queue
-  -> exact sparse Q4 correction for uncertain outputs
+  -> resident-T16 packed-dot Q4_K MMQ, 128 columns x 32 routed rows
+  -> BF16 candidate gate/up
   -> existing exact SiLU/product boundary
 ```
 
@@ -401,10 +404,9 @@ The down flow starts after the exact SiLU/product boundary:
 
 ```text
 compact BF16 expert intermediates [M * top_k, 1024]
-  -> residual Q8_1 pack once per compact route row
-  -> expert-major packed-dot Q4_K/Q6_K MMQ to 3072 outputs
-  -> BF16 candidate down + device risk queue
-  -> exact sparse Q4/Q6 correction
+  -> range-safe D4 Q8 pack once per compact route row
+  -> resident-T16 packed-dot Q4_K/Q6_K MMQ to 3072 outputs
+  -> BF16 candidate down
   -> existing ordered route-weighted combine/shared/residual chain
 ```
 
@@ -423,8 +425,8 @@ Important ownership rules:
 
 ### Activation metadata range is a correctness gate
 
-The current DS4 block stores both activation scale and raw 32-value sum in
-FP16. That is not automatically safe for every Laguna projection role:
+The original DS4 block stored both activation scale and raw 32-value sum in
+FP16. That was not safe to assume for every Laguna projection role:
 
 - a block sum can overflow FP16 once a 32-element block's magnitude is roughly
   above 2,048;
@@ -435,19 +437,24 @@ FP16. That is not automatically safe for every Laguna projection role:
 - late-layer massive-activation rows also contain quiet blocks whose DS values
   can become FP16 subnormals with little effective mantissa.
 
-Before down work, capture the actual gate, up, and post-SiLU down inputs across
-the calibration split and record per-block scale/sum exponents, FP16
-overflow/subnormal counts, and output error. Screen FP32 DS storage
-(144→160 bytes per 128 activations) and real-weight FP32 `d*scale/dmin*min`
-cache values independently. The latter showed no benefit on the current finite
-gate/up fixture and was removed from `d9bb6ad88`; it is not promoted by
-speculation.
+The integrated path stores metadata as FP32 in the existing 160-byte
+activation block, eliminating FP16 overflow/subnormal exposure. The first
+one-plane D4 candidate nevertheless failed the complete 320-step quality gate:
+maximum KL was **0.0767056** with **318/320** top-1, and both failing prompts
+were in `mixed_ja_en`. This separates quantization granularity from metadata
+range; FP32 storage alone was not enough.
 
-A preliminary finite gate/up fixture also shows that metadata precision alone
-does not remove Q8 quantization error: three residual planes reduce projection
-relative L2 **0.002922 -> 0.001826**, while plain one-plane remains outside the
-desired exact boundary. Therefore LAP-2 is not deleted yet. Real projection
-captures can still simplify its plane count or repair threshold.
+The repaired gate/up pack uses eight FP32 scales plus 128 int8 values per
+128-element block—still **160 bytes**—so each 16-value half-block has its own
+scale. The Q4 consumer reconstructs the two signed quant sums used by the
+min-term and applies the corresponding scale without a side buffer. The down
+projection remains the faster D4 route. Across the complete 320-step
+teacher-forced diagnostic, D8-gate/D4-down reaches maximum KL
+**0.040724836**, **317/320 (99.0625%)** top-1, and at least **96.875%**
+category top-1. The canonical clean category gate, not this diagnostic, is the
+promotion authority. The three-plane repair primitive remains a retained
+fallback/research control, but it is no longer on the immediate production
+path.
 
 ## Resident weight-layout decision
 
@@ -598,19 +605,20 @@ Current progress:
 | LAP-BW0 / LAP-Q0 | Deferred by integrated result | The absolute bandwidth/quality-debt ledger remains useful for further roofline work, but it no longer blocks testing the now-above-target compounded candidate. |
 | LAP-6 | Integrated candidate | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on real pp512 input with no added scratch. It remains explicit until the complete quality gate. |
 | LAP-5 | Integrated candidate | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
-| LAP-2 calibration / LAP-3 / LAP-4 | Integrated candidate | One range-safe FP32-DS Q8_1 plane now feeds direct resident-T16 64x32 MMQ for Q4 gate/up plus Q4/Q6 down. Paired Q4 and quartet Q6 decode each packed source byte once. Compounded with LAP-5/LAP-6, repeated pp512 is **355.273/355.721 tok/s**, token 2930. Full category/clean/default admission is next. |
+| LAP-2 calibration / LAP-3 / LAP-4 | Repaired integrated candidate | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the 320-step diagnostic at max KL **0.040724836**, and its 128x32 Q4 tile repeats pp512 at **353.951/356.082/356.473 tok/s**, token 2930. Clean category/default admission is next. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
 Immediate execution queue:
 
 1. Run the complete all-exact/shipping/candidate category, teacher-forced,
-   h16/h32, Poolside, decode, memory, and lifecycle gate for the 355 tok/s
-   compounded stack.
+   h16/h32, Poolside, decode, memory, and lifecycle gate for the repaired
+   D8-gate/D4-down compounded stack.
 2. If admitted, promote the four measured gfx1151 capabilities together and
    collect a clean default pp512 plus 128/1K/4K publication. Preserve exact
    fallbacks and session setters only for rollback/bisection.
-3. If rejected, ablate the candidate components over the same complete suite;
-   do not tune prompt- or layer-specific policies.
+3. If rejected, ablate candidate components over the same complete suite; do
+   not tune prompt- or layer-specific policies. The original D4-gate artifact
+   is a closed rejection, not a route to retune.
 4. Rebuild the bridge from the post-admission all-layer trace. Reconcile the
    **78.27 ms/layer vs 52.80 ms layer-1** discrepancy before using a leaf ratio
    as a family forecast.
@@ -873,17 +881,23 @@ seconds**, or **76.414 -> 127.607 tok/s (1.670x)**, with next token **2930** in
 both modes. This proves the production graph uses the intended MMQ body; it is
 not a retained performance or quality claim until the clean canonical gate.
 
-Second integration result: range-safe FP32 `d/s` metadata made a one-plane
-Q8_1 route viable for real gate/up and post-SiLU inputs. A 64-column x 32-row
-T16-native MMQ consumes Q4 gate/up plus Q4/Q6 down without a raw/X8 transpose or
-weight sidecar. The T16 consumer now decodes adjacent Q4 columns from one packed
-byte and each Q6 column quartet from two low-nibble bytes plus one shared
-high-bit byte, eliminating duplicated source traffic while leaving every dot
-and BF16 boundary unchanged. With LAP-5/LAP-6 compounded, pp512 improves from
-the earlier **163.881 tok/s** checkpoint to **355.273/355.721 tok/s** in two
-post-warmup runs, always selecting token **2930**. A single natural pp512 logit
-screen is finite at KL **0.001146** with equal top-1 versus shipping, but only
-the complete category gate can promote it.
+Second integration result: range-safe FP32 metadata and a 64-column x 32-row
+T16-native one-plane MMQ consumed Q4 gate/up plus Q4/Q6 down without a raw/X8
+transpose or weight sidecar. With LAP-5/LAP-6 compounded it reached
+**355.273/355.721 tok/s**, but the complete category lane rejected it at
+maximum KL **0.0767056** despite **318/320** top-1. The one-prompt KL
+**0.001146** screen was therefore not representative and must not be used for
+admission.
+
+Third integration result: gate/up now quantizes in 16-value groups while
+preserving the 160-byte block footprint; down remains one-scale-per-32 D4. The
+Q4 dual consumer widens to 128 columns x 32 rows, with 32 FP32 accumulators per
+lane, while reconstructing each half-block quant sum for the Q4 min term.
+Complete teacher-forced diagnostics pass at maximum KL **0.040724836** and
+**317/320** top-1. Exact reconstructed-sum pp512 repeats at
+**353.951/356.082/356.473 tok/s**, always token **2930**. The tempting raw-sum
+variant was faster but failed quality and was removed. Clean complete-category
+admission remains mandatory before changing the backend capability.
 
 Non-temporal weight loads are not a default lever here. Existing gfx1151
 cold-DRAM decode evidence found a **+14%** isolated rows=1 bandwidth gain but a
@@ -1048,6 +1062,7 @@ a valid smaller win:
 | Historical linear checkpoint | 275-290 tok/s | Linear projection architecture is comparator-class; not an exit target. |
 | Gap substantially closed | >=310 tok/s | Within 10% of the 344.56 Vulkan control. |
 | Compatibility floor | >=344.56 tok/s | Match/beat the qualified external row; no longer definition-of-done by itself. |
+| Production target | >=350 tok/s | Clean selector-unset gfx1151 default under the complete quality/lifecycle protocol. |
 | Streaming-family floor | >=70% of measured read roof | About 155 GB/s if the same-host anchor is 221 GB/s; report each mapped family. |
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
@@ -1110,7 +1125,7 @@ Do not repeat:
 
 - expert-major compensated F16 component or layer-family bisection;
 - arbitrary layer subsets selected from prompt outcomes;
-- one-plane direct Q8_1 gate/up promotion;
+- one-scale-per-32 one-plane direct Q8_1 gate/up promotion;
 - scalar grouped gate/up C4/C8/C16;
 - independent WMMA wave widening;
 - per-block LDS unpack/staging without complete tile reuse;
@@ -1195,6 +1210,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json`
+- `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-category.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-swa-retained.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json`

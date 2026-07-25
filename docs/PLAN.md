@@ -1339,14 +1339,19 @@ with the same next token and no added scratch. It remains explicit pending the
 complete quality/clean gate. The low-risk dense/shared Q4 candidate is also
 integrated without a sidecar: its resident-pack8 64x16 WMMA leaf is 5.275x the
 old M512/K3072/N1024 kernel and the compounded real pp512 stack now reaches
-**163.881 tok/s** with next token 2930. Selected Q4 gate/up and Q4/Q6 down now
-use a range-safe one-plane Q8_1 pack plus direct resident-T16 64x32 integer-dot
-MMQ; the consumer reuses each packed Q4 byte across its column pair and each
-Q6 low/high group across its column quartet. Raw-Q6 dense/shared projections
-also use a 64x16 WMMA consumer. Compounded with LAP-5/LAP-6, repeated pp512 is
-now **355.273/355.721 tok/s** with next token 2930. The implementation remains
-explicit only until the complete multi-prompt quality/performance/lifecycle
-gate and clean default publication finish.
+**163.881 tok/s** with next token 2930. Selected Q4 gate/up and Q4/Q6 down
+first used a range-safe one-plane Q8_1 pack plus direct resident-T16 64x32
+integer-dot MMQ. That stack reached **355.273/355.721 tok/s**, but the complete
+category gate rejected it at maximum KL **0.0767056**. The repaired gate/up
+pack uses one FP32 scale per 16 values in the same 160-byte activation block,
+while down remains D4; its Q4 consumer widens to 128 columns x 32 rows and
+reconstructs the signed half-block sums required by the min term. The complete
+320-step diagnostic now passes at maximum KL **0.040724836**, **317/320**
+top-1. Compounded with LAP-5/LAP-6 and the raw-Q6 64x16 dense/shared consumer,
+exact reconstructed-sum pp512 repeats at **353.951/356.082/356.473 tok/s**
+with next token 2930. The implementation remains explicit only until the clean
+complete multi-prompt quality/performance/lifecycle gate and selector-unset
+default publication finish.
 Streaming families target at
 least 70% of the measured achievable-read ceiling unless profiling proves
 another limiter. The detailed gates, sequence, and T16-lite/X16

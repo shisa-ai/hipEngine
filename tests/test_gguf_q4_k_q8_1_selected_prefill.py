@@ -535,6 +535,94 @@ def test_q8_1_mmq_ds4_residual_x3_preserves_primary_and_reconstructs_bf16() -> N
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_1_mmq_ds8_f32_halves_quant_groups_without_more_bytes() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    rows, hidden = 2, 512
+    source_f32 = np.empty((rows, hidden), dtype=np.float32)
+    source_halves = source_f32.reshape(rows, hidden // 16, 16)
+    for half in range(source_halves.shape[1]):
+        amplitude = 0.25 if half % 2 == 0 else 4.0
+        source_halves[:, half] = np.linspace(
+            -amplitude,
+            amplitude,
+            16,
+            dtype=np.float32,
+        )
+    source_bits = source_f32.view(np.uint32)
+    host_x = (
+        source_bits + np.uint32(0x7FFF) + ((source_bits >> 16) & 1)
+    ).astype(np.uint32)
+    host_x = np.ascontiguousarray((host_x >> 16).astype(np.uint16))
+    packed = np.zeros((rows, hidden // 128, 160), dtype=np.uint8)
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+
+    bufs = []
+    try:
+        x_dev = malloc(host_x.nbytes, runtime=runtime)
+        out_dev = malloc(packed.nbytes, runtime=runtime)
+        bufs.extend((x_dev, out_dev))
+        copy_host_to_device(
+            x_dev,
+            host_array_ptr(host_x),
+            runtime=runtime,
+        )
+        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+            x_dev.ptr,
+            out_dev.ptr,
+            rows,
+            hidden,
+            residual_passes=1,
+            split16=True,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(packed),
+            out_dev,
+            runtime=runtime,
+        )
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    scales = packed[..., :32].view(np.float32)
+    quants = packed[..., 32:].view(np.int8).reshape(
+        rows,
+        hidden // 128,
+        8,
+        16,
+    )
+    reconstructed = (
+        quants.astype(np.float32) * scales[..., None]
+    ).reshape(rows, hidden)
+    source = _bf16_bits_to_float32(host_x)
+    relative_l2 = float(
+        np.linalg.norm(reconstructed - source)
+        / max(np.linalg.norm(source), 1e-12)
+    )
+    source_d4 = source.reshape(rows, hidden // 128, 4, 32)
+    d4_scales = np.max(np.abs(source_d4), axis=-1) / 127.0
+    safe_d4_scales = np.where(d4_scales > 0.0, d4_scales, 1.0)
+    d4_quants = np.rint(source_d4 / safe_d4_scales[..., None]).clip(
+        -127,
+        127,
+    )
+    d4_reconstructed = (d4_quants * d4_scales[..., None]).reshape(
+        rows,
+        hidden,
+    )
+    d4_relative_l2 = float(
+        np.linalg.norm(d4_reconstructed - source)
+        / max(np.linalg.norm(source), 1e-12)
+    )
+    assert packed.nbytes == rows * (hidden // 128) * 160
+    assert relative_l2 < d4_relative_l2
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("capacity_divisor", [1, 2])
 def test_q4_k_t16_ds4x3_all_queued_repair_matches_production_exact_bits(
     capacity_divisor: int,
@@ -1609,17 +1697,21 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("residual_passes", [1, 2, 3])
+@pytest.mark.parametrize(
+    ("residual_passes", "split16"),
+    [(1, False), (2, False), (3, False), (1, True)],
+)
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     residual_passes: int,
+    split16: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
     fixture = _build_compact_fixture(
         counts=[0, 7, 18, 33],
         in_features=512,
-        out_features_a=64,
-        out_features_b=64,
+        out_features_a=128 if split16 else 64,
+        out_features_b=128 if split16 else 64,
         dtype="bf16",
         seed=29,
     )
@@ -1690,6 +1782,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             fixture.compact_rows,
             fixture.in_features,
             residual_passes=residual_passes,
+            split16=split16,
             library=library,
             runtime=runtime,
         )
@@ -1710,6 +1803,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             fixture.num_experts,
             mmq_total_rows,
             residual_passes=residual_passes,
+            split16=split16,
             library=library,
             runtime=runtime,
         )

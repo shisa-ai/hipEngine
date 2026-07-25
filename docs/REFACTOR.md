@@ -14,19 +14,23 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## Laguna selected one-plane FP32-DS MMQ modes
+## Laguna selected one-plane FP32-scale MMQ modes
 
 - Added 2026-07-25 as explicit session-local LAP-3/LAP-4 candidates. The
-  fastest `mmq64x32_d4_f32` route uses one range-safe FP32-DS activation plane
-  from 32 rows for selected Q4 gate/up and Q4/Q6 down. It retains direct/exact
-  selected and grouped-down paths as required fallbacks; D4x2/D4x3 remain
-  diagnostics.
+  original `mmq64x32_d4_f32` route used one FP32 scale per 32 activations for
+  selected Q4 gate/up and Q4/Q6 down. It crossed 350 tok/s but failed the
+  complete quality gate at max KL 0.0767056. The repaired
+  `mmq128x32_d8_f32` gate/up route stores one FP32 scale per 16 activations in
+  the same 160-byte block and pairs with `mmq64x32_d4_f32` down. It retains
+  direct/exact selected and grouped-down paths as required fallbacks;
+  D4x2/D4x3 remain diagnostics.
 - Remove the experimental selector after the canonical full-model quality,
   clean pp512/category, memory, lifecycle, and decode-neutral gates decide the
   route. If accepted, make MMQ the gfx1151 package capability and retain only
   the exact rollback path; if rejected, remove the runner setter and candidate
   scratch ownership while keeping the registered leaf/repair diagnostics.
-  The pre-admission compounded pp512 result is 355.721 tok/s.
+  The repaired pre-admission compounded pp512 samples are
+  353.951/356.082/356.473 tok/s.
 
 ## Laguna `f16_prefill_mode=hipblaslt_scaled`
 

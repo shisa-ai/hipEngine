@@ -568,7 +568,7 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
         },
         {
             **common,
-            "selected_gate_up_mode": "mmq64x32_d4_f32",
+            "selected_gate_up_mode": "mmq128x32_d8_f32",
             "selected_down_mode": "mmq64x32_d4_f32",
             "f16_projection_mode": "hipblaslt_scaled",
             "dense_q4_prefill_mode": "wmma_pack8",
@@ -616,7 +616,7 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
         comparison=PREFILL_350_COMPARISON,
     ) == {"pass": True}
     assert configured == [
-        ("selected_gate_up", "mmq64x32_d4_f32"),
+        ("selected_gate_up", "mmq128x32_d8_f32"),
         ("selected_down", "mmq64x32_d4_f32"),
         ("f16_projection", "hipblaslt_scaled"),
         ("dense_q4", "wmma_pack8"),
