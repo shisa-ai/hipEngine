@@ -1004,22 +1004,24 @@ should be boring.
   **385.602 -> 432.355 tok/s**, cached tracing measures **434.994 tok/s**, and
   the canonical absolute-quality gate passes unchanged at maximum KL
   **0.049542582** and **316/320** top-1.
-- Remove when: the wave-column route survives the next retained production
-  checkpoint. Keep the underlying scalar-staged D8 body only if it still
-  serves a tested unmeasured-backend fallback.
+- Removal trigger is now satisfied by the retained Q4-down checkpoint at
+  **448.203 tok/s**. Remove the explicit gfx1151 session rollback during the
+  immediate post-publication cleanup; keep the underlying scalar-staged D8
+  body only if it still serves a tested unmeasured-backend fallback.
 
 ## Laguna Q4 down row-vector rollback
 
 - Added 2026-07-26 after the exact Q4-only wave-column MMQ64x32 consumer
-  became the gfx1151 candidate default. The older
+  became the gfx1151 production default. The older
   `mmq64x32_d4_f32_rowvec` mode remains an explicit session-level rollback.
   The implementation-worktree four-mode screen improves Q4-wave/Q6-row
   **433.791 -> 448.945 tok/s (+3.493%)**; Q6 wave columns regress and remain
-  rejected.
-- Remove when: Q4-only wave columns pass clean selector-unset pp512, cached
-  trace, canonical absolute-quality gates, and the next retained production
-  checkpoint. Keep Q6 row-vector as production unless a different
-  direct-consume mapping wins its own quant-isolated gate.
+  rejected. Clean publication confirms **433.081 -> 448.203 tok/s
+  (+3.492%)**, max KL **0.049542582**, and the complete trace/lifecycle gate.
+- Removal trigger is satisfied. Remove the explicit all-row-vector selector
+  during immediate cleanup while retaining the row-vector kernel internally
+  for production Q6 unless a different direct-consume mapping wins its own
+  quant-isolated gate.
 
 ## Laguna rejected Q6 down wave-column template branch
 
@@ -1027,6 +1029,6 @@ should be boring.
   decode/shuffle is no longer exported or runtime-selectable after regressing
   actual pp512 **433.791 -> 428.184 tok/s (-1.293%)**, but its compile-time
   template branch remains beside the retained Q4 implementation for now.
-- Remove when: the Q4-only production checkpoint is published and no immediate
-  Q6 quartet-shuffle follow-up is scheduled. Do not re-export it without a
-  new mapping and an independently positive Q6 gate.
+- Removal trigger is satisfied by the Q4-only production checkpoint. Delete
+  the dead compile-time branch during immediate cleanup. Do not re-export it
+  without a new mapping and an independently positive Q6 gate.
