@@ -12,7 +12,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_q8_1_wmma_i8_probe_16x16,
     gguf_q8_1_mmq_ds4_pack_bf16,
     gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
+    gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3,
+    gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
@@ -128,6 +131,27 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="bf16",
         )
         is gguf_q8_1_mmq_ds4_pack_bf16_d4x3
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="activation_quant",
+            quant="q8_1_ds4x3_f32",
+            variant="bf16",
+        )
+        is gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q6_k_t16_v1",
+            variant=(
+                "selected_q8_1_ds4x3_f32_mmq64x32_"
+                "prefill_compact32_bf16_bf16_out"
+            ),
+        )
+        is gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out
     )
     assert (
         resolve(
@@ -1472,3 +1496,232 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
     actual = _run_q8_1_ds4_wmma32_lds_selected_dual_gpu(fixture)
     expected = _q8_1_ds4_selected_reference(fixture)
     np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("residual_passes", [1, 2, 3])
+def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
+    residual_passes: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from tests.test_gguf_k_t16_selected_wmma_prefill import (
+        _build_compact_t16_fixture,
+    )
+
+    fixture = _build_compact_t16_fixture(
+        quant="gguf_q6_k_t16_v1",
+        counts=[0, 7, 18, 33],
+        in_features=512,
+        out_features=64,
+        dtype="bf16",
+        seed=23,
+    )
+    counts = np.diff(fixture.expert_start_compact)
+    padded = ((counts + 31) // 32) * 32
+    expert_start_mmq32 = np.zeros(
+        fixture.num_experts + 1, dtype=np.int64
+    )
+    expert_start_mmq32[1:] = np.cumsum(padded, dtype=np.int64)
+    mmq_total_rows = int(expert_start_mmq32[-1])
+    tile_expert = np.asarray(
+        [
+            expert
+            for expert, padded_rows in enumerate(padded)
+            for _ in range(int(padded_rows) // 32)
+        ],
+        dtype=np.int64,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    q8_bytes = (
+        fixture.compact_rows
+        * (fixture.in_features // 128)
+        * 160
+        * 3
+    )
+    host_out = np.zeros(
+        (fixture.compact_rows, fixture.out_features), dtype=np.uint16
+    )
+    bufs = []
+    try:
+        arrays = (
+            fixture.x_host,
+            expert_start_mmq32,
+            fixture.expert_start_compact,
+            tile_expert,
+            fixture.tiles,
+        )
+        for arr in arrays:
+            dev = malloc(arr.nbytes, runtime=runtime)
+            copy_host_to_device(
+                dev,
+                host_array_ptr(np.ascontiguousarray(arr)),
+                runtime=runtime,
+            )
+            bufs.append(dev)
+        q8_dev = malloc(q8_bytes, runtime=runtime)
+        out_dev = malloc(host_out.nbytes, runtime=runtime)
+        bufs.extend((q8_dev, out_dev))
+
+        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+            bufs[0].ptr,
+            q8_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
+            residual_passes=residual_passes,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+            q8_dev.ptr,
+            bufs[2].ptr,
+            bufs[1].ptr,
+            bufs[3].ptr,
+            bufs[4].ptr,
+            out_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
+            fixture.out_features,
+            fixture.num_experts,
+            mmq_total_rows,
+            residual_passes=residual_passes,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    actual = _bf16_bits_to_float32(host_out)
+    assert np.isfinite(actual).all()
+    assert _max_softmax_kl(fixture.reference, actual) <= 0.05
+    assert np.mean(
+        fixture.reference.argmax(axis=-1) == actual.argmax(axis=-1)
+    ) >= 0.9
+    relative_l2 = float(
+        np.linalg.norm(actual - fixture.reference)
+        / np.linalg.norm(fixture.reference)
+    )
+    assert relative_l2 <= 5.0e-3
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("residual_passes", [1, 2, 3])
+def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
+    residual_passes: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _build_compact_fixture(
+        counts=[0, 7, 18, 33],
+        in_features=512,
+        out_features_a=64,
+        out_features_b=64,
+        dtype="bf16",
+        seed=29,
+    )
+    counts = np.diff(fixture.expert_start_compact)
+    padded = ((counts + 31) // 32) * 32
+    expert_start_mmq32 = np.zeros(
+        fixture.num_experts + 1, dtype=np.int64
+    )
+    expert_start_mmq32[1:] = np.cumsum(padded, dtype=np.int64)
+    mmq_total_rows = int(expert_start_mmq32[-1])
+    tile_expert = np.asarray(
+        [
+            expert
+            for expert, padded_rows in enumerate(padded)
+            for _ in range(int(padded_rows) // 32)
+        ],
+        dtype=np.int64,
+    )
+    compact_to_source = np.arange(fixture.compact_rows, dtype=np.int64)
+    tiles_a = np.ascontiguousarray(
+        repack_gguf_q4_k_tile16(fixture.qweight_a).tiles
+    )
+    tiles_b = np.ascontiguousarray(
+        repack_gguf_q4_k_tile16(fixture.qweight_b).tiles
+    )
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    q8_bytes = (
+        fixture.compact_rows
+        * (fixture.in_features // 128)
+        * 160
+        * 3
+    )
+    host_out = np.zeros(
+        (
+            fixture.compact_rows,
+            fixture.out_features_a + fixture.out_features_b,
+        ),
+        dtype=np.uint16,
+    )
+    bufs = []
+    try:
+        arrays = (
+            fixture.x_host,
+            compact_to_source,
+            fixture.expert_start_compact,
+            expert_start_mmq32,
+            tile_expert,
+            tiles_a,
+            tiles_b,
+        )
+        for arr in arrays:
+            dev = malloc(arr.nbytes, runtime=runtime)
+            copy_host_to_device(
+                dev,
+                host_array_ptr(np.ascontiguousarray(arr)),
+                runtime=runtime,
+            )
+            bufs.append(dev)
+        q8_dev = malloc(q8_bytes, runtime=runtime)
+        out_dev = malloc(host_out.nbytes, runtime=runtime)
+        bufs.extend((q8_dev, out_dev))
+
+        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+            bufs[0].ptr,
+            q8_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
+            residual_passes=residual_passes,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+            q8_dev.ptr,
+            bufs[1].ptr,
+            bufs[2].ptr,
+            bufs[3].ptr,
+            bufs[4].ptr,
+            bufs[5].ptr,
+            bufs[6].ptr,
+            out_dev.ptr,
+            fixture.compact_rows,
+            fixture.compact_rows,
+            fixture.in_features,
+            fixture.out_features_a,
+            fixture.out_features_b,
+            fixture.num_experts,
+            mmq_total_rows,
+            residual_passes=residual_passes,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    actual = _bf16_bits_to_float32(host_out)
+    assert np.isfinite(actual).all()
+    assert _max_softmax_kl(fixture.reference, actual) <= 0.05
+    assert np.mean(
+        fixture.reference.argmax(axis=-1) == actual.argmax(axis=-1)
+    ) >= 0.9

@@ -768,6 +768,7 @@ class LagunaEagerLibraries:
             "gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
             "gguf_q5_k": self.q6_linear,
             "gguf_q6_k": self.q6_linear,
+            "gguf_q6_k:wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": self.q6_decode_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_f32_out": self.q6_decode_linear,
             "gguf_q8_0": self.q6_linear,

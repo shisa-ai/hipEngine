@@ -1339,8 +1339,14 @@ with the same next token and no added scratch. It remains explicit pending the
 complete quality/clean gate. The low-risk dense/shared Q4 candidate is also
 integrated without a sidecar: its resident-pack8 64x16 WMMA leaf is 5.275x the
 old M512/K3072/N1024 kernel and the compounded real pp512 stack now reaches
-**163.881 tok/s** with next token 2930. It remains explicit pending the same
-complete gate. The next implementation target is selected Q4/Q6 down.
+**163.881 tok/s** with next token 2930. Selected Q4 gate/up and Q4/Q6 down now
+use a range-safe one-plane Q8_1 pack plus direct resident-T16 64x32 integer-dot
+MMQ; the consumer reuses each packed Q4 byte across its column pair and each
+Q6 low/high group across its column quartet. Raw-Q6 dense/shared projections
+also use a 64x16 WMMA consumer. Compounded with LAP-5/LAP-6, repeated pp512 is
+now **355.273/355.721 tok/s** with next token 2930. The implementation remains
+explicit only until the complete multi-prompt quality/performance/lifecycle
+gate and clean default publication finish.
 Streaming families target at
 least 70% of the measured achievable-read ceiling unless profiling proves
 another limiter. The detailed gates, sequence, and T16-lite/X16

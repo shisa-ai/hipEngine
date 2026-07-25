@@ -178415,3 +178415,49 @@ Vulkan local sizes verbatim will close the measured gap.
 - Laguna exposes explicit `dense_q4_prefill_mode=wmma_pack8` from 16 rows for layer-0 Q4 gate/up and every sparse-layer shared Q4 gate/up/down projection. Rows below 16, decode, missing registry keys, and non-Q4 layouts retain their existing routes. The eager owner loads the WMMA library once and closes with unchanged scratch/resident weight bytes.
 - With D4x3 selected gate/up and row-scaled hipBLASLt held on, a same-session retained-dense versus 64x32 screen measures **3.323144 s / 154.071 tok/s** versus **3.155161 s / 162.274 tok/s**, all next token 2930. The selected 64x16 default then measures **3.124218 s / 163.881 tok/s** over two runs, again token 2930. These dirty-tree diagnostics exclude model load and are not clean retained claims; complete cumulative quality/category admission remains open.
 - Focused kernel/dispatch/runner validation reports all pass with two expected skips. Cached trace `/tmp/laguna-pack8-wmma16-trace.NCVqbm/pack8-wmma16_kernel_trace.csv` names `gguf_q4_k_pack8_prefill_wmma_kernel<unsigned short,unsigned short,64,16>` at **23.244 us**, local32, VGPR88, SGPR128, LDS0, scratch0; SHA-256 `f4709e352ca4639f8830600d861521f5b79a497b4736230181bccbaac224fae5`. The required lineage audit still stops at the absent read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
+
+## 2026-07-25 — Cross 350 tok/s with range-safe selected MMQ and dense Q6
+
+- Added FP32 `d/s` Q8_1 activation metadata and direct resident-T16
+  64-column x 32-row integer-dot consumers for selected Q4 gate/up plus Q4/Q6
+  down. One-, two-, and three-plane variants are independently registered; the
+  one-plane route is fastest. Post-SiLU down packing reuses dead gate/up scratch,
+  so the only planned-scratch growth is the metadata-width change:
+  **438,235,168 -> 438,824,992 bytes (+589,824)**. Resident weights and c=1
+  decode are unchanged.
+- The consumer now loads each T16 Q4 packed byte once for its two adjacent
+  output columns and each Q6 group once for its four output columns. This is
+  exact packed-byte reuse: integer dots, FP32 accumulation order, and BF16
+  boundaries are unchanged. All one/two/three-plane uneven/empty-expert Q4/Q6
+  CPU quality gates pass.
+- Added a raw-Q6 64x16 wave32 WMMA dense/shared consumer to the existing
+  `gguf_q4_k_prefill` library. It uses the sole resident GGUF byte stream and
+  passes aligned and boundary CPU-reference fixtures. Laguna's explicit
+  `wmma_pack8` mode now selects both resident Q4 pack8 and raw-Q6 wide consumers.
+- Before packed-byte reuse, cached rocprof trace
+  `/tmp/laguna-trace320.qXqCTc/trace2_kernel_trace.csv` records a
+  **1.604889-second** kernel sum. Selected Q4 gate/up/Q4 down/Q6 down are
+  **683.628/160.164/180.163 ms**; SWA/global attention are
+  **229.085/46.748 ms**; hipBLASLt main contractions are **121.751 ms**; dense
+  Q4/Q6 are **41.969/28.866 ms**. The selected MMQ symbols are local128,
+  VGPR56/64, 4 KiB LDS, and zero scratch. Trace SHA-256:
+  `3c28e441a97ea90f633676e4b61a4c38a48cd5caabf0b3918568aff19a25fb88`.
+- Same-session actual pp512 commands use one
+  `LagunaGGUFResidentSession(..., context_length=512,
+  prefill_chunk_size=512)`, then
+  `set_selected_gate_up_mode("mmq64x32_d4_f32")`,
+  `set_selected_down_mode("mmq64x32_d4_f32")`,
+  `set_f16_prefill_mode("hipblaslt_scaled")`, and
+  `set_dense_q4_prefill_mode("wmma_pack8")`; each measured call resets state,
+  runs `prefill(tokens, use_bulk=True)`, and synchronizes after one warmup.
+  Dense Q6 first moves **252.051 -> 319.605/320.203 tok/s**. Packed-byte reuse
+  then reaches **1.441143/1.439330 seconds**, or
+  **355.273/355.721 tok/s**, with token **2930** in both runs. Model load is
+  excluded. This is an integrated candidate, not yet a clean/default claim.
+- A single natural pp512 full-logit screen versus shipping is finite at maximum
+  KL **0.001146**, equal top-1, and token 2930. The complete ten-prompt/four-
+  category 320-step gate remains mandatory before default promotion.
+- `python3 -m pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py
+  tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_linear_dispatch.py
+  tests/test_laguna_gguf_runner.py tests/test_laguna_moe_gpu.py` passes with two
+  expected skips; `git diff --check` is clean.

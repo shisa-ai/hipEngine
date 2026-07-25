@@ -27,6 +27,7 @@ constexpr int Q4_K_SCALE_BYTES = 12;
 constexpr int Q4_K_QS_OFFSET = 2 + 2 + Q4_K_SCALE_BYTES;
 constexpr int Q4_K_SUBBLOCK = 32;
 constexpr int Q4_K_SUBBLOCKS = QK_K / Q4_K_SUBBLOCK;  // == 8
+constexpr int Q6_K_BLOCK_BYTES = 210;
 constexpr int K_TILE = 16;                            // WMMA inner-K size
 constexpr int K_TILES_PER_SUBBLOCK = Q4_K_SUBBLOCK / K_TILE;  // == 2
 
@@ -123,6 +124,26 @@ __device__ inline uint8_t gguf_q4_k_quant(
   const int pair = subblock >> 1;
   const uint8_t packed = qs[pair * 32 + lane32];
   return (subblock & 1) ? (packed >> 4) : (packed & 0x0Fu);
+}
+
+__device__ inline int gguf_q6_k_quant(
+    const uint8_t* block,
+    int within) {
+  const int group32 = within >> 5;
+  const int lane = within & 31;
+  const uint8_t* ql = block;
+  const uint8_t* qh = block + 128;
+  const int base64 = group32 >= 4 ? 64 : 0;
+  const bool low_nibble = (group32 & 2) == 0;
+  const int ql_group = group32 & 1;
+  const uint8_t ql_byte =
+      ql[base64 + ql_group * 32 + lane];
+  const uint8_t low =
+      low_nibble ? (ql_byte & 0x0Fu) : (ql_byte >> 4);
+  const int qh_base = group32 >= 4 ? 32 : 0;
+  const uint8_t high =
+      (qh[qh_base + lane] >> (2 * (group32 & 3))) & 0x03u;
+  return static_cast<int>(low | (high << 4)) - 32;
 }
 
 __device__ inline int pack8_shift_for_lane(int lane) {
@@ -261,6 +282,119 @@ __global__ void gguf_q4_k_prefill_wmma_kernel(
           const int64_t idx =
               static_cast<int64_t>(out_row) * out_features + col;
           store_output<out_t>(out, idx, static_cast<float>(acc[tm][tn][j]));
+        }
+      }
+    }
+  }
+}
+
+// Raw-Q6_K dense sibling. Q6_K has one signed scale per K16, so each WMMA K
+// step reads that scale once per output column and expands the 6-bit values
+// directly into the operand fragment. A 64x16 output tile amortizes every
+// decoded weight fragment across sixteen activation rows while retaining the
+// source GGUF byte stream as the sole resident representation.
+template <typename scalar_t, typename out_t, int TILE_M, int TILE_N>
+__launch_bounds__(32, 4)
+__global__ void gguf_q6_k_prefill_wmma_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  constexpr int TM = TILE_M / 16;
+  constexpr int TN = TILE_N / 16;
+  const int tid = threadIdx.x;
+  const int lane16 = tid & 15;
+  const int out_start = static_cast<int>(blockIdx.x) * TILE_M;
+  const int row_start = static_cast<int>(blockIdx.y) * TILE_N;
+  if (out_start >= out_features || row_start >= rows) return;
+
+  const int blocks_per_row = in_features / QK_K;
+  const int64_t row_bytes =
+      static_cast<int64_t>(blocks_per_row) * Q6_K_BLOCK_BYTES;
+
+  int safe_out[TM];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+    const int col = out_start + tm * 16 + lane16;
+    safe_out[tm] = col < out_features ? col : out_features - 1;
+  }
+
+  int safe_token[TN];
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int row = row_start + tn * 16 + lane16;
+    safe_token[tn] = row < rows ? row : rows - 1;
+  }
+
+  float8_t acc[TM][TN];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < TN; ++tn) {
+      acc[tm][tn] = float8_t{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    }
+  }
+
+  for (int blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* block_ptr[TM];
+    float d_f[TM];
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+      block_ptr[tm] =
+          qweight + static_cast<int64_t>(safe_out[tm]) * row_bytes +
+          static_cast<int64_t>(blk) * Q6_K_BLOCK_BYTES;
+      d_f[tm] = fp16_bytes_to_float(block_ptr[tm] + 208);
+    }
+
+    const int g_k_base = blk * QK_K;
+#pragma unroll
+    for (int kt = 0; kt < QK_K / K_TILE; ++kt) {
+      const int k_off = kt * K_TILE;
+      half16_t b_reg[TN];
+#pragma unroll
+      for (int tn = 0; tn < TN; ++tn) {
+        const scalar_t* x_row =
+            x + static_cast<int64_t>(safe_token[tn]) * in_features;
+        b_reg[tn] = load_act_half16<scalar_t>(x_row + g_k_base + k_off);
+      }
+
+      half16_t a_reg;
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm) {
+        const int8_t scale =
+            reinterpret_cast<const int8_t*>(block_ptr[tm] + 192)[kt];
+        const float dscale = d_f[tm] * static_cast<float>(scale);
+#pragma unroll
+        for (int kk = 0; kk < K_TILE; ++kk) {
+          a_reg[kk] = static_cast<half_t>(
+              dscale * static_cast<float>(
+                           gguf_q6_k_quant(block_ptr[tm], k_off + kk)));
+        }
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn) {
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a_reg, b_reg[tn], acc[tm][tn]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int out_row = row_start + tn * 16 + lane16;
+    if (out_row >= rows) continue;
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int col = out_start + tm * 16 + 2 * j + (tid >> 4);
+        if (col < out_features) {
+          store_output<out_t>(
+              out,
+              static_cast<int64_t>(out_row) * out_features + col,
+              static_cast<float>(acc[tm][tn][j]));
         }
       }
     }
@@ -604,6 +738,53 @@ int launch_gguf_q4_k_pack8_prefill_wmma(
 }
 
 template <typename scalar_t, typename out_t>
+int launch_gguf_q6_k_prefill_wmma(
+    const scalar_t* x,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 ||
+      (tile_m != 16 && tile_m != 32 && tile_m != 64) ||
+      (tile_n != 16 && tile_n != 32)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + tile_m - 1) / tile_m),
+      static_cast<unsigned int>((rows + tile_n - 1) / tile_n));
+
+#define HIPENGINE_LAUNCH_Q6_K_WMMA(TM, TN) \
+  hipLaunchKernelGGL( \
+      (gguf_q6_k_prefill_wmma_kernel<scalar_t, out_t, TM, TN>), \
+      grid, \
+      block, \
+      0, \
+      stream, \
+      x, \
+      qweight, \
+      out, \
+      static_cast<int>(rows), \
+      static_cast<int>(in_features), \
+      static_cast<int>(out_features)); \
+  return static_cast<int>(hipGetLastError())
+
+  if (tile_m == 16 && tile_n == 16) { HIPENGINE_LAUNCH_Q6_K_WMMA(16, 16); }
+  if (tile_m == 32 && tile_n == 16) { HIPENGINE_LAUNCH_Q6_K_WMMA(32, 16); }
+  if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_Q6_K_WMMA(16, 32); }
+  if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_Q6_K_WMMA(32, 32); }
+  if (tile_m == 64 && tile_n == 16) { HIPENGINE_LAUNCH_Q6_K_WMMA(64, 16); }
+  HIPENGINE_LAUNCH_Q6_K_WMMA(64, 32);
+#undef HIPENGINE_LAUNCH_Q6_K_WMMA
+}
+
+template <typename scalar_t, typename out_t>
 int launch_gguf_q4_k_prefill_dual_wmma(
     const scalar_t* x,
     const uint8_t* qweight_a,
@@ -704,6 +885,20 @@ extern "C" int hipengine_gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out(
       tile_m,
       tile_n,
       stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_wmma_prefill_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_gguf_q6_k_prefill_wmma<uint16_t, uint16_t>(
+      x, qweight, out, rows, in_features, out_features, tile_m, tile_n, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_wmma_prefill_bf16_fp16_out(

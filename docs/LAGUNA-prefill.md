@@ -595,34 +595,30 @@ Current progress:
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
 | LAP-1 | Complete | Direct resident-T16 MMQ32 is BF16-bit identical to X8, positive at all seven natural shapes, **2.502x/3.959x/5.502x** retained at M128/M256/M512, and within **4.66%/4.05%/3.02%** of X8 with no transpose or sidecar. |
 | LAP-2 primitive | Complete | Three-plane pack, direct/guarded T16 MMQ, bounded queue, and overflow-safe exact correction landed in `d9bb6ad88`; 35 focused tests and cached trace pass. |
-| LAP-BW0 / LAP-Q0 | Next | Measure same-host cold-read bandwidth and active bytes/GB/s; ablate the 0.0459275 shipping KL debt by admitted approximation. |
-| LAP-6 | Integrated candidate | Torch-free, row-scaled hipBLASLt now runs all five source-F16 projections on real pp512 input. Compounded with selected MMQ it improves **127.831 -> 154.321 tok/s** with the same next token and no added scratch; complete quality/clean admission remains open. |
-| LAP-5 | Integrated candidate | A resident-pack8 64x16 wave32 WMMA consumer is BF16-bit identical to the raw-Q4 WMMA oracle. The M512/K3072/N1024 leaf improves **1.2695 -> 0.2407 ms (5.275x)**; compounded real pp512 reaches **163.881 tok/s** with next token 2930. The first exact rowtile8 attempt regressed and was removed. Complete quality/clean admission remains open. |
-| LAP-2 calibration / LAP-3 / LAP-4 | In progress | Explicit D4x3 selected gate/up now runs all 47 sparse layers, reuses compact metadata for exact grouped down, and improves a same-session dirty-tree pp512 diagnostic **76.414 -> 127.607 tok/s** with the same next token. Full quality/repair calibration and a clean A/B are still required before default promotion. |
+| LAP-BW0 / LAP-Q0 | Deferred by integrated result | The absolute bandwidth/quality-debt ledger remains useful for further roofline work, but it no longer blocks testing the now-above-target compounded candidate. |
+| LAP-6 | Integrated candidate | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on real pp512 input with no added scratch. It remains explicit until the complete quality gate. |
+| LAP-5 | Integrated candidate | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
+| LAP-2 calibration / LAP-3 / LAP-4 | Integrated candidate | One range-safe FP32-DS Q8_1 plane now feeds direct resident-T16 64x32 MMQ for Q4 gate/up plus Q4/Q6 down. Paired Q4 and quartet Q6 decode each packed source byte once. Compounded with LAP-5/LAP-6, repeated pp512 is **355.273/355.721 tok/s**, token 2930. Full category/clean/default admission is next. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
 Immediate execution queue:
 
-1. LAP-Q0: run one-factor exact-vs-shipping ablations for compensated F16,
-   global online attention, and SWA online attention; publish each component's
-   maximum KL/top-1 contribution.
-2. LAP-BW0: run a >64 MiB cold-stream read on this exact host, pin/record the
-   supported clock policy, compute manifest+routing active bytes for every
-   family, and add GB/s/%-of-achievable columns to the bridge.
-3. LAP-4: move selected Q4/Q6 down onto the direct-T16 packed-dot path and
-   consume the existing compact post-SiLU rows. Keep exact grouped down as
-   fallback and calibrate DS/repair on real post-SiLU inputs.
-4. Run the complete quality and clean A/B gate with the LAP-5/LAP-6 routes
-   compounded into the best linear stack; keep exact tiled as rollback until
-   that gate passes.
-5. Capture exact gate/up and post-SiLU down inputs. Compare FP16/FP32 DS,
-   residual plane count, and repair occupancy; then integrate selected gate/up.
-6. Rebuild the bridge from all-layer traces. Reconcile the
+1. Run the complete all-exact/shipping/candidate category, teacher-forced,
+   h16/h32, Poolside, decode, memory, and lifecycle gate for the 355 tok/s
+   compounded stack.
+2. If admitted, promote the four measured gfx1151 capabilities together and
+   collect a clean default pp512 plus 128/1K/4K publication. Preserve exact
+   fallbacks and session setters only for rollback/bisection.
+3. If rejected, ablate the candidate components over the same complete suite;
+   do not tune prompt- or layer-specific policies.
+4. Rebuild the bridge from the post-admission all-layer trace. Reconcile the
    **78.27 ms/layer vs 52.80 ms layer-1** discrepancy before using a leaf ratio
    as a family forecast.
-7. After pp512 work, screen matrix chunks 1024/2048 for 1K/4K prompts with
+5. After pp512 admission, screen matrix chunks 1024/2048 for 1K/4K prompts with
    measured scratch/context admission. This is a separate long-prompt win and
    receives no pp512 credit.
+6. Retain LAP-Q0/LAP-BW0 and tiled attention as post-350 roofline work rather
+   than blockers for the current production promotion.
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
 
@@ -877,6 +873,18 @@ seconds**, or **76.414 -> 127.607 tok/s (1.670x)**, with next token **2930** in
 both modes. This proves the production graph uses the intended MMQ body; it is
 not a retained performance or quality claim until the clean canonical gate.
 
+Second integration result: range-safe FP32 `d/s` metadata made a one-plane
+Q8_1 route viable for real gate/up and post-SiLU inputs. A 64-column x 32-row
+T16-native MMQ consumes Q4 gate/up plus Q4/Q6 down without a raw/X8 transpose or
+weight sidecar. The T16 consumer now decodes adjacent Q4 columns from one packed
+byte and each Q6 column quartet from two low-nibble bytes plus one shared
+high-bit byte, eliminating duplicated source traffic while leaving every dot
+and BF16 boundary unchanged. With LAP-5/LAP-6 compounded, pp512 improves from
+the earlier **163.881 tok/s** checkpoint to **355.273/355.721 tok/s** in two
+post-warmup runs, always selecting token **2930**. A single natural pp512 logit
+screen is finite at KL **0.001146** with equal top-1 versus shipping, but only
+the complete category gate can promote it.
+
 Non-temporal weight loads are not a default lever here. Existing gfx1151
 cold-DRAM decode evidence found a **+14%** isolated rows=1 bandwidth gain but a
 **0.68x** rows>1 regression and flat/slower end-to-end decode. Permit one
@@ -925,10 +933,12 @@ Integrated candidate:
   at **23.244 us** on the boundary fixture, local32, VGPR88, SGPR128, zero
   LDS, and zero scratch.
 
-Remaining deliverables:
+Integrated Q6 extension:
 
-- cover the raw-Q6 layer-0 dense down if a post-LAP-4 profile still justifies
-  it; the Q4 layer-0 gate/up and all Q4 shared projections are wired now;
+- raw-Q6 dense/shared projections now use a 64x16 source-GGUF WMMA consumer;
+  two aligned/boundary CPU-reference fixtures pass;
+- the exact pre-change 320 tok/s trace attributes only **28.866 ms** to this
+  Q6 family, down from the prior **0.365 s** retained path;
 - use dense row tiles directly—no route-count or padded expert machinery;
 - target a 64x64/128x128-class dense tile with four K32 stages per barrier
   (`BK_STEP=4` control), rather than inheriting routed 32x32 geometry;
@@ -938,10 +948,9 @@ Remaining deliverables:
   budget is explicitly better than the replacement-layout design;
 - reprofile before selected down or attention work.
 
-Planning checkpoint remains to reduce the full 0.640-second family toward
-**0.12 seconds or less** and cross **200 tok/s** pp512. The current graph
-transfer saves about 0.20 seconds rather than the full leaf-ratio forecast, so
-reprofile before spending more work on Q6 dense down.
+The dense/shared checkpoint is closed: the compounded stack is above 350 tok/s.
+Reprofile only after the complete quality/default admission, not to justify
+more dense-kernel work.
 
 ### LAP-6 — close the source-F16 projection gap
 
