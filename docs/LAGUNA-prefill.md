@@ -677,7 +677,8 @@ Immediate execution queue:
    around a wave-transpose/direct-consume primitive instead. Persistent K256
    weight slabs with F32 partial spills also completed a negative actual-weight
    gate. Merely planarizing the existing 40-byte LDS records and hoisting
-   invariant T16 `d`/`dmin` metadata are both neutral.
+   invariant T16 `d`/`dmin` metadata are both neutral; a local32 small-expert
+   split is slower because it serializes weight-cache population.
 3. Apply any further winning expert schedule to Q4/Q6 down, then run clean
    selector-unset pp512 and the complete
    category/decode/determinism/lifecycle gate. Retain every exact same-suite
@@ -984,6 +985,24 @@ The candidate again traces at local128, VGPR80, SGPR128, LDS6656B, scratch0.
 The invariant bases are evidently cache-resident and not limiting. All
 candidate surfaces were removed. Evidence:
 [`2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json).
+
+Seventeenth post-350 screen: **rejected and removed before integration**.
+Experts with one through eight rows are numerous—**3,906/10,237 (38.16%)**
+active pp512 expert groups and **27.83%** of MMQ32 tiles across 47 layers—but
+contain only 6.42% of routed rows. An exact local32 output128 x rows8
+specialization kept the production T16 LDS decode and packed-dot order while
+assigning all live rows to its single wave. The hybrid packed activations once,
+ran production rows32 for experts at or above nine rows, and ran local32 for
+the small experts; the extra launch was included.
+
+After repairing the candidate's initially incomplete column-metadata load, the
+0/3/7/8-row K512/N128 CPU quality fixture passed. The actual layer-1 hybrid
+still regressed **11.463 -> 13.195 ms (+15.106%)**. Tracing explains why:
+local32 serializes output128 weight-cache population and compiles at VGPR224,
+SGPR128, LDS5632B, scratch0, versus production VGPR80. Removing three idle
+compute waves cannot repay that loader/register cost. All candidate surfaces
+were removed. Evidence:
+[`2026-07-25-gfx1151-laguna-small8-hybrid-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-small8-hybrid-rejected.json).
 
 Production evidence:
 
@@ -1599,6 +1618,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-25-gfx1151-laguna-small8-hybrid-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-weight-soa-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`

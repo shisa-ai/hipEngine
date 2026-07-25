@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T00:13:13+09:00",
+  "kind": "hipengine_laguna_small8_hybrid_rejected",
+  "status": "actual_weight_leaf_rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M D8 Q4 gate/up local32 small-expert hybrid diagnostic on gfx1151",
+  "repo": {
+    "base_revision": "c92f255e6",
+    "tracked_dirty_diagnostic": true,
+    "all_candidate_surfaces_removed": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "gate_up_t16_bytes": 931135488
+  },
+  "routing_opportunity": {
+    "all_layers": 47,
+    "active_expert_groups": 10237,
+    "groups_with_1_to_8_rows": 3906,
+    "small_group_fraction": 0.3815570968057048,
+    "mmq32_tiles": 14034,
+    "small_group_tile_fraction": 0.278324070115434,
+    "small_group_rows": 15460,
+    "small_row_fraction": 0.06424534574468085,
+    "layer1_small_groups": 77,
+    "layer1_active_groups": 228
+  },
+  "design": {
+    "production": "local128, output128 x rows32, four waves, eight rows per wave",
+    "candidate": "local32, output128 x rows8, one wave, eight rows per wave",
+    "hybrid": "one shared D8 activation pack; production rows32 kernel for experts with at least nine rows; local32 rows8 kernel for experts with one to eight rows",
+    "weight_cache": "unchanged decoded T16 LDS cache and packed-dot arithmetic",
+    "additional_launches": 1,
+    "arithmetic_or_accumulation_order_changed": false
+  },
+  "correctness": {
+    "red": "first focused run exposed uninitialized metadata for columns 32..127 after block shrink",
+    "repair": "metadata initialization became thread-strided across all output columns",
+    "green": "counts 0/3/7/8, K512, dual N128 passes the CPU-reference KL/top-1 quality gate",
+    "actual_leaf_sanity": "hybrid is finite and matches production checksum and max_abs",
+    "full_quality_gate_run": false,
+    "full_quality_gate_reason": "actual-weight leaf performance rejected the premise"
+  },
+  "leaf": {
+    "protocol": "actual layer-1 weights and natural pp512 routing; producer-row pack inclusive; two warmups; seven counter-rotated samples; burst=3; hybrid includes both consumer launches",
+    "production_samples_ms": [
+      11.399850209554037,
+      11.42026392618815,
+      11.437510172526041,
+      11.6282107035319,
+      11.514193216959635,
+      11.520416259765625,
+      11.463122049967447
+    ],
+    "candidate_samples_ms": [
+      13.25320307413737,
+      13.150530497233072,
+      13.194742838541666,
+      13.260119120279947,
+      13.168441772460938,
+      13.177258809407553,
+      13.20233408610026
+    ],
+    "production_median_ms": 11.463122049967447,
+    "candidate_median_ms": 13.194742838541666,
+    "candidate_delta_percent": 15.106013710977951,
+    "raw_result_sha256": "6b6dd7837fbd066621c4bb80982e7de47826ccca875b2ecd1dc6aedf696c9aa0"
+  },
+  "trace": {
+    "raw_csv_sha256": "05864e62d96aca235ff1893f03ed9cca581277c68e9811981d2f56ca6527bafd",
+    "raw_csv_committed": false,
+    "kernel_specialization": "<1,false,true,128,true,8,32>",
+    "workgroup_size": 32,
+    "lds_bytes": 5632,
+    "vgpr": 224,
+    "sgpr": 128,
+    "scratch_bytes": 0
+  },
+  "decision": "Reject and remove. Serializing output128 weight-cache population onto one wave raises VGPR use to 224 and makes the complete hybrid 15.106% slower despite eliminating three idle compute waves for small experts."
+}
