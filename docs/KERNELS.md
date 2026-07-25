@@ -572,6 +572,24 @@ separation. Cached all-family tracing cuts selected gate/up
 row-vector body; the old D8 consumer remains explicit rollback. Evidence:
 `benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-{candidate,production}.json`.
 
+The exact staging transfer now covers selected Q4/Q6 down. Both 64x32
+consumers assign one thread to each compact D4 activation row and replace
+distributed byte assembly with two aligned 16-byte loads; D4 metadata,
+resident T16 decode, packed dots, accumulation order, and BF16 stores are
+unchanged. Q4 dual/single and Q6 uneven/empty-expert fixtures are BF16
+byte-identical to scalar staging, as is the production-shape synthetic MoE.
+The one-load five-pair actual-model screen measures old **381.211**, Q4-only
+**384.594 (+0.888%)**, Q6-only **382.981 (+0.464%)**, and combined
+**386.612 tok/s (+1.417%)**, with complete combined/baseline sample separation
+and token 2930 throughout. Cached pp512 tracing cuts Q4
+**139.554 -> 126.972 ms (-9.02%)** and Q6
+**132.467 -> 122.312 ms (-7.67%)**. Both are local128/LDS4096B/scratch0;
+Q4/Q6 use VGPR56/72. gfx1151 selects the combined row-vector mode, retains the
+scalar-staged MMQ as explicit rollback, and removes the temporary quant-scoped
+runtime selectors. Clean selector-unset publication remains required.
+Evidence:
+`benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`.
+
 The routing-qualified hybrid keeps MMQ128x32 for experts at or below 32 rows
 and tests MMQ128x64 only above 32. Frozen natural pp512 routing predicts
 **5,728 -> 3,102 (-45.8%)** large-expert tiles, but the actual layer-1

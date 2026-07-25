@@ -198,7 +198,7 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151")
-        == "mmq64x32_d4_f32"
+        == "mmq64x32_d4_f32_rowvec"
     )
     assert resolve_laguna_selected_down_mode("hip_gfx1151", "direct") == "direct"
     assert (
@@ -210,6 +210,13 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
             "hip_gfx1151", "adaptive_grouped_smallm_fused"
         )
         == "adaptive_grouped_smallm_fused"
+    )
+    assert (
+        resolve_laguna_selected_down_mode(
+            "hip_gfx1151",
+            "mmq64x32_d4_f32_rowvec",
+        )
+        == "mmq64x32_d4_f32_rowvec"
     )
     for rejected in ("wmma16_down", "adaptive_wmma16_down", "invalid"):
         with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
@@ -310,6 +317,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     grouped_scratch = None
     fused_scratch = None
     mmq_scratch = None
+    down_rowvec_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -490,6 +498,38 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
                 == np.argmax(mmq_actual, axis=-1)
             )
         ) >= 0.9
+        down_rowvec_scratch = allocate_laguna_moe_scratch(
+            plan,
+            max_rows=3,
+        )
+        down_baseline_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            down_rowvec_scratch,
+            rows=3,
+            selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+            selected_down_mode="mmq64x32_d4_f32",
+        )
+        down_baseline_actual = _read_bf16(
+            down_baseline_output,
+            (3, h),
+        )
+        down_rowvec_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            down_rowvec_scratch,
+            rows=3,
+            selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+            selected_down_mode="mmq64x32_d4_f32_rowvec",
+        )
+        down_rowvec_actual = _read_bf16(
+            down_rowvec_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(down_rowvec_actual),
+            _f32_to_bf16_u16(down_baseline_actual),
+        )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -508,6 +548,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if down_rowvec_scratch is not None:
+            down_rowvec_scratch.free()
         if mmq_scratch is not None:
             mmq_scratch.free()
         if fused_scratch is not None:

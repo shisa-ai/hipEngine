@@ -61,7 +61,7 @@ CAPABILITY_DEFAULTS = {
     ),
     "selected_down_mode": (
         "LAGUNA_SELECTED_DOWN_MODE",
-        "mmq64x32_d4_f32",
+        "mmq64x32_d4_f32_rowvec",
     ),
     "dense_q4_prefill_mode": (
         "LAGUNA_DENSE_Q4_PREFILL_MODE",
@@ -115,7 +115,14 @@ def _expected_candidate_modes(defaults: Mapping[str, Any]) -> dict[str, Any]:
             == "global_context_rows_qrow4_m128_online_spans"
             else defaults["global_prefill_variant"]
         ),
-        "selected_down_mode": defaults["selected_down_mode"],
+        # Row-vector down staging is BF16 byte-identical to the D4 arithmetic
+        # admitted by this historical 320-step quality artifact.
+        "selected_down_mode": (
+            "mmq64x32_d4_f32"
+            if defaults["selected_down_mode"]
+            == "mmq64x32_d4_f32_rowvec"
+            else defaults["selected_down_mode"]
+        ),
         # The current row-vector consumer is BF16 byte-identical to the D8
         # arithmetic admitted by this historical 320-step quality artifact.
         "selected_gate_up_mode": (

@@ -874,6 +874,24 @@ that repair changes attribution only. Evidence:
 Production:
 [`2026-07-25-gfx1151-laguna-gate-rowvec-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-production.json).
 
+Eleventh post-350 screen: **retained exact candidate, clean production
+pending**. The same row-vector activation stage now covers compact D4 Q4 and
+Q6 down independently. Both consumers preserve D4 metadata, resident T16
+weight decode, packed-dot and accumulation order, and BF16 output. Q4
+dual/single and Q6 uneven/empty-expert fixtures are BF16 byte-identical to
+scalar staging; the production-shape synthetic MoE is also byte-identical.
+
+The one-load five-pair actual-model screen measures old **381.211**, Q4-only
+**384.594 (+0.888%)**, Q6-only **382.981 (+0.464%)**, and combined
+**386.612 tok/s (+1.417%)**, with every combined sample above every baseline
+sample and token 2930 throughout. Cached pp512 tracing names Q4
+`<1, true, false, 64, true>` and Q6 `<1, true>`, cuts them
+**139.554 -> 126.972 ms (-9.02%)** and
+**132.467 -> 122.312 ms (-7.67%)**, and records local128/LDS4096B/scratch0
+with VGPR56/72. gfx1151 now selects only the combined mode; the temporary
+quant-scoped runtime selectors are removed. Evidence:
+[`2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json).
+
 Production evidence:
 
 - [`2026-07-25-gfx1151-laguna-gate-rowvec-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-production.json)

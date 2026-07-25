@@ -61,6 +61,10 @@ _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16 = {
     )
     for passes in (1, 2, 3)
 }
+_SYMBOL_Q6_T16_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
+    "hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_"
+    "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
         "hipengine_gguf_q4_k_t16_selected_dual_q8_1_"
@@ -72,6 +76,14 @@ _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
 _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
     "mmq64x32_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
+    "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_Q4_T16_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_"
+    "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
 )
 _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
@@ -300,6 +312,7 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     mmq_total_rows: int,
     *,
     residual_passes: int = 3,
+    rowvec: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -319,11 +332,17 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
         raise ValueError("mmq_total_rows must be a multiple of 32")
     if residual_passes not in _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16:
         raise ValueError("residual_passes must be 1, 2, or 3")
+    if rowvec and residual_passes != 1:
+        raise ValueError("rowvec requires residual_passes=1")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
-        _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16[residual_passes],
+        (
+            _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_ROWVEC_BF16
+            if rowvec
+            else _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16[residual_passes]
+        ),
     )
     fn.argtypes = [
         ctypes.c_void_p,
@@ -399,12 +418,16 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         raise ValueError("residual_passes must be 1, 2, or 3")
     if split16 and residual_passes != 1:
         raise ValueError("split16 requires residual_passes=1")
-    if rowvec and not split16:
-        raise ValueError("rowvec requires split16=True")
+    if rowvec and residual_passes != 1:
+        raise ValueError("rowvec requires residual_passes=1")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_ROWVEC_BF16
+        (
+            _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_ROWVEC_BF16
+            if split16
+            else _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_ROWVEC_BF16
+        )
         if rowvec
         else _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_BF16
         if split16
@@ -465,6 +488,7 @@ def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out
     num_experts: int,
     mmq_total_rows: int,
     *,
+    rowvec: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -484,7 +508,14 @@ def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out
         raise ValueError("mmq_total_rows must be a multiple of 32")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_BF16)
+    fn = getattr(
+        library,
+        (
+            _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_ROWVEC_BF16
+            if rowvec
+            else _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_BF16
+        ),
+    )
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
