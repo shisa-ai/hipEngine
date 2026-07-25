@@ -22,6 +22,13 @@ implementation surfaces were removed; production remains T16 at
 **503.349 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-gate-t128-resident-rejected.json).
 
+The next exact source-F16 screen is also closed. Cached attribution shows that
+hipBLASLt itself is **124.927 ms** of the **134.442 ms** family, leaving only
+**9.516 ms** of cast/scale/restore glue. Fusing the four independent output
+restores reduced launches **192 -> 48** but regressed their exact pp512
+sequence **3.474 -> 6.114 ms (+76.0%)**; the candidate was removed.
+[`artifact`](results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json).
+
 Latest retained hipEngine revisions in this scoreboard:
 `238eb28cd1c748c1755ac8871db4c0e140c3fee4` for exact eight-token
 Laguna router-logit reuse,

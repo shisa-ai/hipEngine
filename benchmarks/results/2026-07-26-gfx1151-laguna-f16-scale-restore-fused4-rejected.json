@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "rejected_removed",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "source_f16": "row-scaled FP16 hipBLASLt with FP32 outputs"
+  },
+  "protocol": {
+    "rows": 512,
+    "layers": 48,
+    "full_attention_shapes": 12,
+    "sliding_attention_shapes": 36,
+    "full_widths": [6144, 1024, 1024, 48],
+    "sliding_widths": [9216, 1024, 1024, 72],
+    "warmups": 1,
+    "repetitions": 9,
+    "order": "counterbalanced",
+    "timing": "HIP events around the complete 48-layer restore sequence",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 <inline exact 48-layer f32_scale_rows versus f32_scale_four_rows event screen>"
+  },
+  "correctness": {
+    "tiny_unequal_width_gpu_fixture": "exact",
+    "oracle": "four independent FP32 row-scale multiplies",
+    "candidate": "one launch per layer with the same FP32 multiply and row scale",
+    "focused_test": "tests/test_cast_plan.py passed before candidate removal"
+  },
+  "results": {
+    "separate": {
+      "launches": 192,
+      "samples_ms": [
+        3.544360876083374,
+        3.4799559116363525,
+        3.470334053039551,
+        3.4695348739624023,
+        3.4736220836639404,
+        3.4744679927825928,
+        3.471782922744751,
+        3.465049982070923,
+        3.475069046020508
+      ],
+      "median_ms": 3.4736220836639404
+    },
+    "fused_four": {
+      "launches": 48,
+      "samples_ms": [
+        6.086164951324463,
+        6.1062331199646,
+        6.113601207733154,
+        6.102540016174316,
+        6.108554840087891,
+        6.1168107986450195,
+        6.132327079772949,
+        6.114091873168945,
+        6.124197959899902
+      ],
+      "median_ms": 6.113601207733154
+    },
+    "latency_change_percent": 76.00075830024065,
+    "median_change_ms": 2.639979124069214
+  },
+  "profile_context": {
+    "production_source_f16_family_ms": 134.442353,
+    "hipblaslt_contractions_ms": 124.926769,
+    "all_cast_scale_restore_ms": 9.515584,
+    "four_output_restore_ms": 4.507542
+  },
+  "decision": {
+    "retained": false,
+    "reason": "Reducing launch count does not compensate for the fused kernel's branch and address-generation cost; the complete exact restore sequence regresses 76.0%.",
+    "removed_surfaces": [
+      "HIP fused-four kernel",
+      "Python wrapper and registry entry",
+      "GPU fixture"
+    ],
+    "production_change": "none",
+    "next": "Eliminate scale restores at producer or consumer boundaries instead of fusing independent restore launches."
+  }
+}

@@ -180145,3 +180145,26 @@ Vulkan local sizes verbatim will close the measured gap.
   ported. Next: measure and remove exact scale/cast/restore traffic around the
   **134.442 ms** source-F16 family; do not revisit a replacement Q4 layout
   without passing decode first.
+
+## 2026-07-26 — Reject fused-four source-F16 scale restore
+
+- Decomposed the cached pp512 source-F16 window exactly: **124.927 ms** is
+  hipBLASLt contraction and **9.516 ms** is cast/scale/restore. The latter is
+  **4.508 ms** across 192 Q/K/V/gate F32 restore launches, **3.685 ms** across
+  96 BF16-to-scaled-FP16 input casts, and **1.323 ms** across 48
+  F32-scale-to-BF16 output casts. Perfect removal of all glue is therefore
+  only a 9.5 ms wall ceiling; the library body itself is already the family.
+- RED imported a missing fused-four restore and failed. GREEN added one exact
+  launch per layer, preserved the same elementwise FP32 multiply, and matched
+  four independent restores exactly on a GPU fixture with unequal widths.
+- On the exact 12 full-attention plus 36 SWA pp512 width mix, nine
+  counterbalanced HIP-event samples regress the complete restore sequence
+  **3.473622 -> 6.113601 ms (+76.0008%)** despite reducing launches
+  **192 -> 48**. A row-concatenated mapping first regressed **23.04%**; a
+  block-qualified mapping avoided per-element output selection but regressed
+  further due to nonuniform address generation and occupancy.
+- Rejected and removed the HIP body, wrapper, registry entry, and fixture.
+  Production remains **503.348994 tok/s**. Future source-F16 work must
+  eliminate the multiply at a producer/consumer boundary; do not package the
+  four independent bandwidth passes into one branchy kernel. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json`.
