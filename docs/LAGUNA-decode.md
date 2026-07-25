@@ -44,7 +44,13 @@ subsequent exact SWA GQA3 reducer preserves every head's bytes and reduces
 modeled BF16 value payload **66.67%**, but collapsing 72 independent query-head
 workgroups to 24 regresses all layer-1/46/47 live-70/128/257/512 rows by
 **61.33-89.58%** event and **61.16-89.95%** wall. It is removed before runtime;
-GQA value reuse does not offset the lost parallelism/cache-visible reuse.
+GQA value reuse does not offset the lost parallelism/cache-visible reuse. The
+next selected screen returns to the largest short family: an exact all-local32
+Q5/Q6 mixed projection keeps the same **131,840/181,376** global/SWA grid
+threads and wave count, gives each retained Q5 pair its own workgroup, and
+replays each Q6 output pair's four original local128 partitions in one wave.
+It targets the current **2.128 ms/token** local128/VGPR88/LDS1024 family without
+removing parallel work or changing arithmetic.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1118,6 +1124,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Does that one-wave Q5 body make a mixed IQ2/shared launch viable? | [`...mixed-iq2-q5-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-iq2-q5-local64-rejected.json): no. All three BF16 outputs are exact and the candidate keeps the retained IQ2 VGPR/LDS ceiling, but both first/last actual layers regress event/wall **0.12-0.68%**; the candidate is removed before runtime integration. |
 | Can two exact fixed-metadata Q5 output waves share one local64 workgroup? | [`...q5-output-wave32x4-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-output-wave32x4-rejected.json): no. K6144/K9216 N3072 outputs are byte-exact and LDS/spill-free, but logical VGPR rises **73 -> 81** and all first/last global/SWA event/wall rows regress **6.51-10.15%**; the candidate is removed before runtime integration. |
 | Does exact GQA3 value reuse accelerate the SWA reducer? | [`...swa-gqa3-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json): no. All F32 context and BF16 gated outputs are byte-exact, but reducing **72 -> 24** workgroups regresses every layer-1/46/47 live-70/128/257/512 row by **61.16-89.95%**; the candidate is removed before runtime integration. |
+| What is the next exact screen? | [`...mixed-local32-projection-design.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-design.json): move the **2.128 ms/token** Q5/Q6 mixed family from local128/VGPR88/LDS1024 to independent local32 Q5 pairs plus exact four-partition Q6 pairs. Total grid threads/waves stay unchanged; all first/last global/SWA event and wall rows must improve before runtime integration. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-shared-Q5 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-shared-q5.json) measures retained hipEngine **61.554/60.942 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **4.37%/5.70%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1153,6 +1160,9 @@ retained after both clean context orders and both complete 18-prompt orders
 pass. Exact three-query-head SWA value reuse is now also rejected: it passes the
 primitive arithmetic and resource gates but loses **61-90%** on every actual
 layer/live boundary when **72 -> 24** workgroups remove query-head parallelism.
-The retained one-head wave-local reducer remains canonical, and the objective
-remains open while the retained 723-dispatch trace is re-ranked for a genuinely
-new exact mechanism.
+The retained one-head wave-local reducer remains canonical. The next exact
+screen targets the largest short family instead: an all-local32 Q5/Q6 mixed
+projection preserves the same total threads/waves while removing the local128
+union's LDS/barriers and resource footprint from independent Q5 waves. The
+objective remains open until that candidate passes its frozen actual-weight,
+state, trace, context, and complete-category gates.
