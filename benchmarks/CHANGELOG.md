@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-25
 
+- [rejected and removed gfx1100 Laguna Q2 XL exact IQ2 wave64 code object] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained wave32 -> unchanged exact tile2 source compiled wave64 passes actual-layer/state/trace admission and lowers VGPR **136 -> 96**, but clean pooled 1K IQ2 regresses **0.404%** and 512 profiled-child throughput regresses **0.562%**; near-4K/categories stop, all candidate routing/build/test code is removed, and canonical h32 remains **52.514 tok/s**; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-rejected.json`.
+
 - [rejected and removed gfx1100 Laguna Q2 XL exact IQ2 tile2 local32] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained local64 tile2 -> exact local32 sequential two-partition reconstruction remains BF16-bit equal but regresses first/last actual-layer events **5.08-5.15%** and synchronized wall **4.50-5.27%**; no runtime, trace, or category route is retained and canonical h32 remains **52.514 tok/s**; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-tile2-wave32-rejected.json`.
 
 - [retained gfx1100 Laguna Q2 XL exact wave-local SWA reducer] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / shared-statistics split reducer -> exact barrier/LDS-free wave-local reducer moves two-order 18-prompt h32 decode **52.211 -> 52.514 tok/s (+0.580%)**, or prior retained **52.391 -> 52.514 (+0.235%)**; every train/heldout category decode improves, clean short/512/1K/near-4K kernel sum improves **0.94-1.98%**, and full logits/hidden/routed/KV/spans/reset/lifecycle remain exact; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-retained.json`.

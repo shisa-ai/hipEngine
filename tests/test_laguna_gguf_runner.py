@@ -21,7 +21,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_routing_rows,
     resolve_laguna_eager_kernel_plan,
     resolve_laguna_head_kv_fusion,
-    resolve_laguna_iq2_wave64,
     resolve_laguna_q5_wave32x2_variants,
 )
 from tests._laguna_synthetic import make_laguna_info
@@ -62,13 +61,6 @@ class _FakeRuntime:
 
 def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
-
-
-def test_laguna_iq2_wave64_is_explicit_and_default_off() -> None:
-    assert not resolve_laguna_iq2_wave64("hip_gfx1100")
-    assert not resolve_laguna_iq2_wave64("hip_gfx1151")
-    assert resolve_laguna_iq2_wave64("hip_gfx1100", True)
-    assert not resolve_laguna_iq2_wave64("hip_gfx1100", False)
 
 
 def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:

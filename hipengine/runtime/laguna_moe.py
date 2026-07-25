@@ -136,8 +136,6 @@ class LagunaMoEKernelPlan:
     selected_gate_up_key: KernelKey
     selected_gate_up_keys: Mapping[str, KernelKey]
     selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
-    c1_selected_gate_up_keys: Mapping[str, KernelKey]
-    c1_selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -183,7 +181,6 @@ class LagunaMoEKernelPlan:
             self.router_logits_key,
             self.router_select_key,
             *tuple(self.selected_gate_up_keys.values()),
-            *tuple(self.c1_selected_gate_up_keys.values()),
             self.selected_silu_key,
             *tuple(self.selected_down_keys.values()),
             *tuple(self.c1_selected_down_keys.values()),
@@ -280,7 +277,6 @@ def resolve_laguna_moe_plan(
     backend: str,
     iq3_selected_down_tile: int = 1,
     iq3_c1_down_schedule: str | None = None,
-    use_iq2_wave64: bool = False,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -422,30 +418,6 @@ def resolve_laguna_moe_plan(
             for quant, (abi, allocation_name, library_key) in selected_gate_up_route_specs.items()
         }
     )
-    c1_selected_gate_up_keys = MappingProxyType(
-        {
-            "gguf_iq2_xs": KernelKey(
-                backend,
-                "moe_linear",
-                "gguf_iq2_xs",
-                "selected_dual_silu_gemv_decode_tile2_wave64_exact_bf16_bf16_out",
-            )
-        }
-        if use_iq2_wave64
-        else {}
-    )
-    c1_selected_gate_up_routes = MappingProxyType(
-        {
-            quant: LagunaMoESelectedRoute(
-                key=key,
-                function=_resolve_exact(key),
-                abi="raw_iq_dual_silu",
-                allocation_name="raw",
-                library_key="selected_gate_up_iq_wave64",
-            )
-            for quant, key in c1_selected_gate_up_keys.items()
-        }
-    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -541,8 +513,6 @@ def resolve_laguna_moe_plan(
         selected_gate_up_key=keys["selected_gate_up"],
         selected_gate_up_keys=selected_gate_up_keys,
         selected_gate_up_routes=selected_gate_up_routes,
-        c1_selected_gate_up_keys=c1_selected_gate_up_keys,
-        c1_selected_gate_up_routes=c1_selected_gate_up_routes,
         selected_silu_key=keys["selected_silu"],
         selected_down_key=keys["selected_down"],
         selected_down_keys=selected_down_keys,
@@ -896,12 +866,7 @@ def _launch_selected_gate_up(
     gate = layer.weight("ffn_gate_exps")
     up = layer.weight("ffn_up_exps")
     try:
-        retained_route = plan.selected_gate_up_routes[gate.spec.quant_key]
-        route = (
-            plan.c1_selected_gate_up_routes.get(gate.spec.quant_key, retained_route)
-            if x_rows == 1
-            else retained_route
-        )
+        route = plan.selected_gate_up_routes[gate.spec.quant_key]
         launch = _SELECTED_GATE_UP_ABIS[route.abi]
     except KeyError as exc:
         raise ValueError(

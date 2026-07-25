@@ -1,0 +1,141 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 52.514,
+    "canonical_ms_per_token": 19.042,
+    "name": "retained current-P4 exact wave32 IQ2 tile2 plus wave-local SWA reducer"
+  },
+  "candidate": {
+    "admission_artifact": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-correctness.json",
+    "description": "separate gfx1100 -mwavefrontsize64 build of the unchanged exact local64 IQ2 selected gate/up+SiLU tile2 source, scoped to c=1",
+    "removed": true
+  },
+  "checks": {
+    "all_child_inside_0_5pct": false,
+    "all_iq2_improve": false,
+    "all_kernel_sum_inside_0_5pct": true,
+    "all_resources_pass": true,
+    "all_span_inside_0_5pct": true,
+    "category_gate_skipped_after_mechanical_failure": true,
+    "mechanical_gate_pass": false,
+    "source_wrapper_runtime_selector_tests_removed": true
+  },
+  "date": "2026-07-25",
+  "decision": {
+    "action": "reject and remove before complete category measurement",
+    "next": "retain the wave32 IQ2 tile2 code object and select a different exact current-profile device-work or dispatch contraction",
+    "reason": "The actual-layer win does not generalize to the clean complete IQ2 family: pooled 1K IQ2 time regresses 0.404%, and 512 profiled-child throughput regresses 0.562%, failing two frozen gates."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0; GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq2_wave64_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "profiles": [
+    {
+      "candidate": {
+        "iq2_ms": 2.385186714285714,
+        "kernel_sum_ms": 15.382395500000008,
+        "profiled_child_tok_s": 49.477936877561305,
+        "span_median_ms": 18.423946
+      },
+      "control": {
+        "iq2_ms": 2.386075392857143,
+        "kernel_sum_ms": 15.411943142857144,
+        "profiled_child_tok_s": 49.29449502586028,
+        "span_median_ms": 18.4716735
+      },
+      "delta_pct": {
+        "iq2": -0.03724436260854613,
+        "kernel_sum": -0.19171912706432703,
+        "profiled_child_tok_s": 0.3721345590512515,
+        "span": -0.25838211139884715
+      },
+      "label": "short",
+      "stable_samples_per_pair": 28
+    },
+    {
+      "candidate": {
+        "iq2_ms": 2.3241501666666666,
+        "kernel_sum_ms": 24.86890491666666,
+        "profiled_child_tok_s": 32.999810565348994,
+        "span_median_ms": 28.134022
+      },
+      "control": {
+        "iq2_ms": 2.3272604166666664,
+        "kernel_sum_ms": 24.859630416666672,
+        "profiled_child_tok_s": 33.18627260734831,
+        "span_median_ms": 28.1618065
+      },
+      "delta_pct": {
+        "iq2": -0.13364426162735255,
+        "kernel_sum": 0.03730747337968854,
+        "profiled_child_tok_s": -0.561864974127968,
+        "span": -0.09866021911626444
+      },
+      "label": "512",
+      "stable_samples_per_pair": 12
+    },
+    {
+      "candidate": {
+        "iq2_ms": 2.3337915,
+        "kernel_sum_ms": 27.228876166666662,
+        "profiled_child_tok_s": 30.688561374643967,
+        "span_median_ms": 30.504119
+      },
+      "control": {
+        "iq2_ms": 2.3243956666666667,
+        "kernel_sum_ms": 27.14180483333333,
+        "profiled_child_tok_s": 30.835253426199344,
+        "span_median_ms": 30.412081999999998
+      },
+      "delta_pct": {
+        "iq2": 0.4042269338252247,
+        "kernel_sum": 0.32080156005835914,
+        "profiled_child_tok_s": -0.4757283798768386,
+        "span": 0.3026330127611887
+      },
+      "label": "1024",
+      "stable_samples_per_pair": 12
+    }
+  ],
+  "protocol": {
+    "completed_contexts": ["short", "512", "1024"],
+    "dispatches_per_stable_token": 772,
+    "near_4k_stopped_after_frozen_gate_failure": true,
+    "process_orders_per_context": 2,
+    "stable_warmup_steps_excluded_per_process": 2
+  },
+  "provenance": {
+    "admission_revision": "19340792ba320e876987013235db688b0f67cf40",
+    "analyzer_sha256": "47bf23f48322565101a704da908a3cca8bc62c6840a3543a7a5b687afe06fea4",
+    "child_harness_sha256": "a54f378c66ff8c5dca0b19d9244d7f58a2f810612ba3010b647468bce364d1b2",
+    "command": "bash /tmp/run_laguna_iq2_wave64_clean_profiles.sh",
+    "profile_summary_sha256": "35543f5394c0669fa538ad14f8f399e606e8ff7b216f11bc8b45a9b6cce1946b",
+    "promotion_contract_sha256": "600c43c510d2b0cfe48dda9ab0e344fb5cc7f1bbdcf3943ac762756b341987d9",
+    "removal_patch_sha256": "057aff5211b9108eaacfe5204b502b1ca077889a316d50e535b6489a6131f1e3",
+    "runner_sha256": "7fc516b42fcff250326a6942989abdcefffeced09f028e14551271eb7ecc77c2"
+  },
+  "resources": {
+    "candidate_wave64": {
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 96,
+      "workgroup_size": 64
+    },
+    "retained_wave32": {
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 136,
+      "workgroup_size": 64
+    }
+  }
+}
