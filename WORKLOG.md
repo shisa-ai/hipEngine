@@ -180112,4 +180112,36 @@ Vulkan local sizes verbatim will close the measured gap.
   The mandatory next gate is an exact sole-resident T128 c1/c2/c4/c8 decode
   consumer; only then may materialization/runtime integration and pp512
   promotion begin. Evidence:
-  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-t128-leaf-candidate.json`.
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-t128-resident-rejected.json`.
+
+## 2026-07-26 — Reject T128 as the sole selected gate/up layout
+
+- Added an exact direct T128 dual gate/up GEMV and screened actual layer-1
+  natural c1/c2/c4/c8. It preserved every thread's K ownership, four-wave
+  reduction order, and BF16 output bits, but regressed T16
+  **34.06/22.72/22.99/21.71%**. This confirmed that the prefill-friendly
+  column-major payload sacrifices decode coalescing.
+- Exhausted bounded exact consumers: cooperative T16 LDS reconstruction
+  regressed **3.26–3.86x**; adjacent-K pair shuffle reuse regressed
+  **3.23–3.39x**; local128 tile1/2/4/8 all missed c1; and virtual-thread
+  tile4 local32 regressed **20.14–22.72%**. Resource tracing records
+  T16/direct-T128 at VGPR200, pair reuse at VGPR224, staging at VGPR208 plus
+  LDS5632 B, and local128 tile4/tile8 at VGPR64/104.
+- The best exact decoder was tile4/local64. Each physical lane emulated two
+  original threads, preserving all four original wave partials and their sum
+  order. Eleven-sample medians still regress c1/c2/c4/c8
+  **6.79/6.10/6.36/6.86%**:
+  **0.160300/0.350881/0.688298/1.351510 ms** T16 versus
+  **0.171192/0.372297/0.732100/1.444243 ms** T128. All gate/up outputs have
+  zero BF16 mismatches; tracked peak is **1,862,648,448 bytes** and returns
+  to zero. Raw SHA-256:
+  `7506da75482e0d28e6907f706230a02f135da3a7bab84693410f59f8c6c99f9f`.
+- The <=2% gate fails at every shape. Removed the T128 materializer, prefill
+  and decode symbols, wrapper options, leaf/harness modes, and fixtures.
+  Production remains sole-resident T16 at **503.348994 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-t128-resident-rejected.json`.
+- The external lineage check remains unavailable because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external code was
+  ported. Next: measure and remove exact scale/cast/restore traffic around the
+  **134.442 ms** source-F16 family; do not revisit a replacement Q4 layout
+  without passing decode first.

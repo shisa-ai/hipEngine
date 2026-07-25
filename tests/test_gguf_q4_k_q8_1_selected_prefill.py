@@ -42,7 +42,6 @@ from hipengine.quant.gguf_q4_k import (
     pack_gguf_q4_k_mmq_tile16_preview,
     pack_q8_1_mmq_ds4_from_bf16,
     repack_gguf_q4_k_tile16,
-    repack_gguf_q4_k_t128_from_tile16,
 )
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
 from tests.test_gguf_q4_k_selected_wmma_prefill import (
@@ -1753,20 +1752,18 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         "single_wave_cols",
         "direct_wave_decode",
         "single_direct_wave_decode",
-        "t128_layout",
     ),
     [
-        (1, False, False, False, False, False, False, False),
-        (2, False, False, False, False, False, False, False),
-        (3, False, False, False, False, False, False, False),
-        (1, False, True, False, False, False, False, False),
-        (1, False, True, False, True, False, False, False),
-        (1, False, True, False, True, False, True, False),
-        (1, True, False, False, False, False, False, False),
-        (1, True, True, False, False, False, False, False),
-        (1, True, True, True, False, False, False, False),
-        (1, True, True, True, False, True, False, False),
-        (1, True, True, True, False, True, False, True),
+        (1, False, False, False, False, False, False),
+        (2, False, False, False, False, False, False),
+        (3, False, False, False, False, False, False),
+        (1, False, True, False, False, False, False),
+        (1, False, True, False, True, False, False),
+        (1, False, True, False, True, False, True),
+        (1, True, False, False, False, False, False),
+        (1, True, True, False, False, False, False),
+        (1, True, True, True, False, False, False),
+        (1, True, True, True, False, True, False),
     ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1777,7 +1774,6 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     single_wave_cols: bool,
     direct_wave_decode: bool,
     single_direct_wave_decode: bool,
-    t128_layout: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1805,21 +1801,11 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
         dtype=np.int64,
     )
     compact_to_source = np.arange(fixture.compact_rows, dtype=np.int64)
-    tiles_a_t16 = np.ascontiguousarray(
+    tiles_a = np.ascontiguousarray(
         repack_gguf_q4_k_tile16(fixture.qweight_a).tiles
     )
-    tiles_b_t16 = np.ascontiguousarray(
+    tiles_b = np.ascontiguousarray(
         repack_gguf_q4_k_tile16(fixture.qweight_b).tiles
-    )
-    tiles_a = (
-        repack_gguf_q4_k_t128_from_tile16(tiles_a_t16)
-        if t128_layout
-        else tiles_a_t16
-    )
-    tiles_b = (
-        repack_gguf_q4_k_t128_from_tile16(tiles_b_t16)
-        if t128_layout
-        else tiles_b_t16
     )
 
     runtime = get_hip_runtime()
@@ -1865,24 +1851,6 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
                 runtime=runtime,
             )
             bufs.append(dev)
-        baseline_qweight_a_ptr = bufs[5].ptr
-        baseline_qweight_b_ptr = bufs[6].ptr
-        if t128_layout:
-            baseline_tiles_a_dev = malloc(tiles_a_t16.nbytes, runtime=runtime)
-            baseline_tiles_b_dev = malloc(tiles_b_t16.nbytes, runtime=runtime)
-            copy_host_to_device(
-                baseline_tiles_a_dev,
-                host_array_ptr(tiles_a_t16),
-                runtime=runtime,
-            )
-            copy_host_to_device(
-                baseline_tiles_b_dev,
-                host_array_ptr(tiles_b_t16),
-                runtime=runtime,
-            )
-            bufs.extend((baseline_tiles_a_dev, baseline_tiles_b_dev))
-            baseline_qweight_a_ptr = baseline_tiles_a_dev.ptr
-            baseline_qweight_b_ptr = baseline_tiles_b_dev.ptr
         q8_dev = malloc(q8_bytes, runtime=runtime)
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         bufs.extend((q8_dev, out_dev))
@@ -1918,7 +1886,6 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             rowvec=rowvec,
             wave_cols=wave_cols,
             direct_wave_decode=direct_wave_decode,
-            t128_layout=t128_layout,
             library=library,
             runtime=runtime,
         )
@@ -1933,8 +1900,8 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
                 bufs[2].ptr,
                 bufs[3].ptr,
                 bufs[4].ptr,
-                baseline_qweight_a_ptr,
-                baseline_qweight_b_ptr,
+                bufs[5].ptr,
+                bufs[6].ptr,
                 baseline_dev.ptr,
                 fixture.compact_rows,
                 fixture.compact_rows,

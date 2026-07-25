@@ -649,7 +649,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **319.358 ms** | **31.99%** | Direct per-column T16 decode is current production. The exact byte-neutral T128 candidate makes each lane's K32 Q4 payload one aligned 16-byte load and improves the actual layer-1 natural-M512 leaf **7.015 -> 6.157 ms (-12.23%)**. Its sole-resident c1/c2/c4/c8 decode gate is now the blocking admission step. Gate-only/up+SiLU and integer-WMMA shapes remain closed. |
+| Selected D8 Q4 gate/up | **319.358 ms** | **31.99%** | Direct per-column T16 decode remains production. T128 proved column-contiguous Q4 payloads can improve the actual natural-M512 leaf **7.015 -> 6.157 ms (-12.23%)**, but its best exact sole-resident decode consumer regresses c1/c2/c4/c8 **6.79/6.10/6.36/6.86%** and is removed. Gate-only/up+SiLU and integer-WMMA shapes also remain closed; another layout must pass decode before prefill integration. |
 | Selected D4 Q4/Q6 down | **202.643 ms** | **20.30%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. |
 | Global + SWA attention | **218.516 ms** | **21.89%** | Source-qualified qrow4 is retained. Scalar key splitting, tiled M16/M8 WMMA, and single-wave two-head GQA reuse all lose; the next attention screen must use a materially different async/library premise. |
 | Scaled hipBLASLt source-F16 | **134.442 ms** | **13.47%** | The contractions are at the measured library ceiling; exact producer/consumer fusion and scale/cast/restore removal remain admissible. |
@@ -687,14 +687,11 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Complete the byte-neutral **T128 selected gate/up** admission. The exact
-   layer-1 natural-M512 leaf improves **7.015 -> 6.157 ms (-12.23%,
-   1.139x)** by replacing sixteen strided T16 Q4-byte gathers per lane with
-   one aligned 16-byte per-column K32 load. T128 uses the same **931,135,488
-   bytes** as T16 for layer-1 gate+up and preserves BF16 output exactly.
-   Implement and screen a sole-resident exact consumer at natural
-   c1/c2/c4/c8; do not add a second production weight sidecar. Only after that
-   gate passes may the materializer/runtime switch and pp512 promotion begin.
+1. Remove scale/cast/restore traffic around the **134.442 ms source-F16**
+   family without changing the admitted hipBLASLt contraction schedule.
+   Measure the cast, library, and restore subwindows separately first; admit
+   only an exact producer/consumer fusion or a same-range representation that
+   preserves the current all-exact quality result.
 2. Reopen the **218.516 ms attention** family only with a different premise
    from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles, and
    single-wave two-head fusion. The head-pair body was exact but regressed
@@ -716,11 +713,11 @@ Immediate execution queue:
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle
    evidence. This receives no pp512 credit.
-6. Keep T16-lite/X16 as fallback layout ideas only if the active T128
-   sole-resident decode gate fails after a direct consumer is tuned. T128 is
-   already byte-neutral versus raw/X8 at the complete weight-set level while
-   retaining expanded metadata; its measured prefill win is from Q4 payload
-   locality rather than the smaller 2.778% metadata opportunity.
+6. Any future T16-lite/X16 or microtiled replacement must run the exact
+   c1/c2/c4/c8 screen before an integrated prefill route. T128 is closed:
+   column-major payload locality bought **12.23%** at the M512 leaf but the
+   best exact virtual-thread decoder still lost **6.10–6.86%**. Do not retain
+   a second resident view or pay a prefill-to-decode transpose.
 
 Post-350 exclusions:
 
