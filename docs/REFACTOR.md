@@ -1102,3 +1102,16 @@ should be boring.
 - Remove the explicit gfx1151 serial session selector after the next retained
   exact MoE metadata checkpoint. Keep the serial registry primitive if another
   backend still requires it as an unfused/reference fallback.
+
+## Laguna byte-neutral T128 selected gate/up candidate
+
+- Added 2026-07-26 as a leaf-only replacement-layout screen. The diagnostic
+  materializer converts resident T16 arrays to 128-column groups, and the
+  selected-prefill wrapper exposes `t128_layout=True`. Actual layer-1
+  natural-M512 timing improves **7.015 -> 6.157 ms (-12.23%)**, output is
+  BF16-bit exact, and total gate+up bytes remain **931,135,488**.
+- No production runtime may retain both T16 and T128. Promote T128 only after
+  an exact sole-resident c1/c2/c4/c8 consumer is non-regressive and the normal
+  full-model gates pass. If that admission fails after a tuned direct decode
+  attempt, remove the T128 symbol, wrapper option, materializer, leaf mode,
+  and fixture together; retain only the benchmark artifact.

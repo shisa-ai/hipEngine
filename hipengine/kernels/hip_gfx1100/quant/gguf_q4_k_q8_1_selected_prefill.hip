@@ -36,6 +36,19 @@ constexpr int Q4_K_T16_Q_OFFSET =
 constexpr int Q4_K_T16_BLOCK_BYTES =
     Q4_K_T16_Q_OFFSET +
     Q4_K_SUBBLOCKS * Q4_K_SUBBLOCK * (Q4_K_TILE16_COLS / 2);
+constexpr int Q4_K_T128_COLS = 128;
+constexpr int Q4_K_T128_D_OFFSET = 0;
+constexpr int Q4_K_T128_DMIN_OFFSET =
+    Q4_K_T128_D_OFFSET + Q4_K_T128_COLS * 2;
+constexpr int Q4_K_T128_SCALE_OFFSET =
+    Q4_K_T128_DMIN_OFFSET + Q4_K_T128_COLS * 2;
+constexpr int Q4_K_T128_MIN_OFFSET =
+    Q4_K_T128_SCALE_OFFSET + Q4_K_SUBBLOCKS * Q4_K_T128_COLS;
+constexpr int Q4_K_T128_Q_OFFSET =
+    Q4_K_T128_MIN_OFFSET + Q4_K_SUBBLOCKS * Q4_K_T128_COLS;
+constexpr int Q4_K_T128_BLOCK_BYTES =
+    Q4_K_T128_Q_OFFSET +
+    Q4_K_SUBBLOCKS * Q4_K_T128_COLS * (Q4_K_SUBBLOCK / 2);
 constexpr int Q6_K_T16_D_OFFSET = 0;
 constexpr int Q6_K_T16_SCALE_OFFSET =
     Q6_K_T16_D_OFFSET + Q4_K_TILE16_COLS * 2;
@@ -247,6 +260,14 @@ __device__ inline int pack_q4_k_t16_u8x4(
         << (8 * i);
   }
   return static_cast<int>(out);
+}
+
+__device__ inline uint32_t expand_q4_k_nibble_pair_u8x4(
+    uint32_t packed_pair) {
+  return (packed_pair & 0x0000000fu) |
+         ((packed_pair & 0x000000f0u) << 4) |
+         ((packed_pair & 0x00000f00u) << 8) |
+         ((packed_pair & 0x0000f000u) << 12);
 }
 
 __device__ inline void pack_q4_k_t16_u8x4_pair(
@@ -2824,7 +2845,8 @@ template <
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
-    bool DIRECT_WAVE_DECODE = false>
+    bool DIRECT_WAVE_DECODE = false,
+    bool T128_LAYOUT = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -2853,6 +2875,10 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   static_assert(
       !DIRECT_WAVE_DECODE || WAVE_COLUMNS,
       "direct Q4 decode requires wave-column mapping");
+  static_assert(
+      !T128_LAYOUT ||
+          (DIRECT_WAVE_DECODE && WAVE_COLUMNS && MMQ_M == Q4_K_T128_COLS),
+      "T128 requires direct 128-column wave decode");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -2887,7 +2913,8 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   const int64_t blocks_per_weight_row = in_features / QK_K;
   const int64_t q8_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
   const int64_t out_tiles =
-      local_out_features / Q4_K_TILE16_COLS;
+      local_out_features /
+      (T128_LAYOUT ? Q4_K_T128_COLS : Q4_K_TILE16_COLS);
   const int64_t plane_blocks = source_rows * q8_blocks_per_row;
   const int wave = tid >> 5;
   const int lane = tid & 31;
@@ -2916,51 +2943,95 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
       const int col_offset = wave * 32 + lane;
       const int64_t local_col = local_col_base + col_offset;
       if (local_col < local_out_features) {
-        const int64_t out_tile = local_col / Q4_K_TILE16_COLS;
-        const int col = static_cast<int>(
-            local_col % Q4_K_TILE16_COLS);
-        const int64_t tile_index =
-            (expert_id * out_tiles + out_tile) *
-                blocks_per_weight_row +
-            weight_block;
-        const uint8_t* __restrict__ tile =
-            qweight + tile_index * Q4_K_T16_BLOCK_BYTES;
+        if constexpr (T128_LAYOUT) {
+          const int64_t out_tile = local_col / Q4_K_T128_COLS;
+          const int col = static_cast<int>(
+              local_col % Q4_K_T128_COLS);
+          const int64_t tile_index =
+              (expert_id * out_tiles + out_tile) *
+                  blocks_per_weight_row +
+              weight_block;
+          const uint8_t* __restrict__ tile =
+              qweight + tile_index * Q4_K_T128_BLOCK_BYTES;
+          const uint4 packed_q =
+              *reinterpret_cast<const uint4*>(
+                  tile + Q4_K_T128_Q_OFFSET +
+                  (subblock * Q4_K_T128_COLS + col) *
+                      (Q4_K_SUBBLOCK / 2));
+          const uint32_t packed_words[4] = {
+              packed_q.x,
+              packed_q.y,
+              packed_q.z,
+              packed_q.w,
+          };
 #pragma unroll
-        for (int pack = 0; pack < 8; ++pack) {
-          if constexpr (DIRECT_WAVE_DECODE) {
-            wave_weight.qs[pack] =
-                pack_q4_k_t16_u8x4(
-                    tile, subblock, pack * 4, col);
-          } else {
-            uint32_t packed0 = 0;
-            uint32_t packed1 = 0;
-            if ((lane & 1) == 0) {
-              pack_q4_k_t16_u8x4_pair(
-                  tile,
-                  subblock,
-                  pack * 4,
-                  col >> 1,
-                  packed0,
-                  packed1);
-            }
-            const uint32_t high_col = __shfl(
-                packed1, lane & ~1, 32);
-            wave_weight.qs[pack] =
-                (lane & 1) ? high_col : packed0;
+          for (int word = 0; word < 4; ++word) {
+            wave_weight.qs[word * 2] =
+                expand_q4_k_nibble_pair_u8x4(
+                    packed_words[word]);
+            wave_weight.qs[word * 2 + 1] =
+                expand_q4_k_nibble_pair_u8x4(
+                    packed_words[word] >> 16);
           }
+          wave_weight.dm[0] =
+              fp16_bytes_to_float(
+                  tile + Q4_K_T128_D_OFFSET + col * 2) *
+              static_cast<float>(
+                  tile[Q4_K_T128_SCALE_OFFSET +
+                       subblock * Q4_K_T128_COLS + col]);
+          wave_weight.dm[1] =
+              fp16_bytes_to_float(
+                  tile + Q4_K_T128_DMIN_OFFSET + col * 2) *
+              static_cast<float>(
+                  tile[Q4_K_T128_MIN_OFFSET +
+                       subblock * Q4_K_T128_COLS + col]);
+        } else {
+          const int64_t out_tile = local_col / Q4_K_TILE16_COLS;
+          const int col = static_cast<int>(
+              local_col % Q4_K_TILE16_COLS);
+          const int64_t tile_index =
+              (expert_id * out_tiles + out_tile) *
+                  blocks_per_weight_row +
+              weight_block;
+          const uint8_t* __restrict__ tile =
+              qweight + tile_index * Q4_K_T16_BLOCK_BYTES;
+#pragma unroll
+          for (int pack = 0; pack < 8; ++pack) {
+            if constexpr (DIRECT_WAVE_DECODE) {
+              wave_weight.qs[pack] =
+                  pack_q4_k_t16_u8x4(
+                      tile, subblock, pack * 4, col);
+            } else {
+              uint32_t packed0 = 0;
+              uint32_t packed1 = 0;
+              if ((lane & 1) == 0) {
+                pack_q4_k_t16_u8x4_pair(
+                    tile,
+                    subblock,
+                    pack * 4,
+                    col >> 1,
+                    packed0,
+                    packed1);
+              }
+              const uint32_t high_col = __shfl(
+                  packed1, lane & ~1, 32);
+              wave_weight.qs[pack] =
+                  (lane & 1) ? high_col : packed0;
+            }
+          }
+          wave_weight.dm[0] =
+              fp16_bytes_to_float(
+                  tile + Q4_K_T16_D_OFFSET + col * 2) *
+              static_cast<float>(
+                  tile[Q4_K_T16_SCALE_OFFSET +
+                       subblock * Q4_K_TILE16_COLS + col]);
+          wave_weight.dm[1] =
+              fp16_bytes_to_float(
+                  tile + Q4_K_T16_DMIN_OFFSET + col * 2) *
+              static_cast<float>(
+                  tile[Q4_K_T16_MIN_OFFSET +
+                       subblock * Q4_K_TILE16_COLS + col]);
         }
-        wave_weight.dm[0] =
-            fp16_bytes_to_float(
-                tile + Q4_K_T16_D_OFFSET + col * 2) *
-            static_cast<float>(
-                tile[Q4_K_T16_SCALE_OFFSET +
-                     subblock * Q4_K_TILE16_COLS + col]);
-        wave_weight.dm[1] =
-            fp16_bytes_to_float(
-                tile + Q4_K_T16_DMIN_OFFSET + col * 2) *
-            static_cast<float>(
-                tile[Q4_K_T16_MIN_OFFSET +
-                     subblock * Q4_K_TILE16_COLS + col]);
       }
     } else {
       for (int item = tid; item < (MMQ_M / 2) * 8; item += THREADS) {
@@ -3268,7 +3339,8 @@ template <
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
-    bool DIRECT_WAVE_DECODE = false>
+    bool DIRECT_WAVE_DECODE = false,
+    bool T128_LAYOUT = false>
 int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* compact_to_source,
@@ -3313,7 +3385,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
           ROWVEC_ACTIVATION_STAGE,
           WAVE_COLUMNS,
           THREADS,
-          DIRECT_WAVE_DECODE>),
+          DIRECT_WAVE_DECODE,
+          T128_LAYOUT>),
       grid,
       block,
       0,
@@ -4572,6 +4645,52 @@ hipengine_gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_
       compact_rows,
       in_features,
       out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t128_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      true,
+      128,
+      true,
+      true,
+      128,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
       num_experts,
       mmq_total_rows,
       stream);

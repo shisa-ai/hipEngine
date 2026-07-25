@@ -180081,3 +180081,35 @@ Vulkan local sizes verbatim will close the measured gap.
 - Attention is now closed to scalar state widening, cross-wave synchronous
   sharing, and independent-WMMA tiles. Reopen only for a supported
   library-class body or an async pipeline with a different resource model.
+
+## 2026-07-26 — Retain byte-neutral T128 selected gate/up leaf
+
+- RED extended the uneven/empty-expert selected-prefill fixture with a
+  128-column replacement layout and initially lacked its materializer/launch
+  path. GREEN added `repack_gguf_q4_k_t128_from_tile16` plus an exact direct
+  consumer. The layout groups eight T16 output tiles without changing their
+  total bytes, preserves FP16 `d/dmin` and expanded scale/min metadata, and
+  stores each output column's K32 Q4 payload as sixteen consecutive
+  nibble-pair bytes.
+- The candidate replaces sixteen strided T16 Q4-byte gathers per lane with
+  one aligned `uint4` load and register-only nibble expansion. The focused
+  eleven-case GPU fixture passes, including the T128 `[0,7,18,33]`,
+  K512/N128 case with zero BF16 mismatches against production T16. Python
+  compile checks and `git diff --check` also pass.
+- Actual Poolside Laguna S 2.1 Q4_K_M layer-1 K3072/N1024 natural-M512
+  routing, inclusive of one producer-row DS8/F32 activation pack, improves
+  nine-sample median **7.014875 -> 6.156663 ms (-12.234%, 1.1394x)**.
+  T16/T128 checksums are both **1114.1769413301445** with max abs **6.6875**.
+  Raw SHA-256:
+  `52f24c467ddf6a8e3acfd0eb59c25b78466c7e8f581bc14f9d640c906e8b5f96`.
+- Gate+up residency is unchanged at **931,135,488 bytes**. Both layouts are
+  present only inside the leaf harness; a duplicate production sidecar is
+  forbidden. Cached rocprof names the T128 template at local128, VGPR80,
+  SGPR128, LDS1536 B, and scratch0 with plausible **7.024/6.216 ms**
+  launches. Trace SHA-256:
+  `97908a816d873e0625602cbcfe56a70d97cba881dad20a2f5b3d1f3825457705`.
+- Retained candidate, not production. Production remains **503.348994 tok/s**.
+  The mandatory next gate is an exact sole-resident T128 c1/c2/c4/c8 decode
+  consumer; only then may materialization/runtime integration and pp512
+  promotion begin. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-t128-leaf-candidate.json`.

@@ -27,6 +27,18 @@ GGUF_Q4_K_TILE16_SCALE_OFFSET = GGUF_Q4_K_TILE16_DMIN_OFFSET + GGUF_Q4_K_TILE16_
 GGUF_Q4_K_TILE16_MIN_OFFSET = GGUF_Q4_K_TILE16_SCALE_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS
 GGUF_Q4_K_TILE16_Q_OFFSET = GGUF_Q4_K_TILE16_MIN_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS
 GGUF_Q4_K_TILE16_BLOCK_BYTES = GGUF_Q4_K_TILE16_Q_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_SUBBLOCK * (GGUF_Q4_K_TILE16_COLS // 2)
+GGUF_Q4_K_T128_COLS = 128
+GGUF_Q4_K_T128_D_OFFSET = 0
+GGUF_Q4_K_T128_DMIN_OFFSET = GGUF_Q4_K_T128_D_OFFSET + GGUF_Q4_K_T128_COLS * 2
+GGUF_Q4_K_T128_SCALE_OFFSET = GGUF_Q4_K_T128_DMIN_OFFSET + GGUF_Q4_K_T128_COLS * 2
+GGUF_Q4_K_T128_MIN_OFFSET = GGUF_Q4_K_T128_SCALE_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_T128_COLS
+GGUF_Q4_K_T128_Q_OFFSET = GGUF_Q4_K_T128_MIN_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_T128_COLS
+GGUF_Q4_K_T128_BLOCK_BYTES = (
+    GGUF_Q4_K_T128_Q_OFFSET
+    + GGUF_Q4_K_SUBBLOCKS
+    * GGUF_Q4_K_T128_COLS
+    * (GGUF_Q4_K_SUBBLOCK // 2)
+)
 
 
 @dataclass(frozen=True)
@@ -235,6 +247,117 @@ def repack_gguf_q4_k_tile16(raw_qweight: Any) -> GGUFQ4KTile16:
         out_features=out_features,
         in_features=blocks_per_row * QK_K,
     )
+
+
+def repack_gguf_q4_k_t128_from_tile16(tile16: Any) -> np.ndarray:
+    """Reorder lossless T16 blocks for vectorized per-column K32 loads.
+
+    The diagnostic byte-neutral layout groups 128 output columns and stores
+    each column's 32 Q4 values as 16 consecutive K-pair bytes.
+    """
+
+    source = np.ascontiguousarray(tile16, dtype=np.uint8)
+    if (
+        source.ndim != 4
+        or source.shape[-1] != GGUF_Q4_K_TILE16_BLOCK_BYTES
+        or source.shape[1] % (GGUF_Q4_K_T128_COLS // GGUF_Q4_K_TILE16_COLS)
+    ):
+        raise ValueError(
+            "tile16 must have shape [experts, out_tiles16, blocks, 2368] "
+            "with an output width divisible by 128"
+        )
+    experts, out_tiles16, blocks_per_row, _ = map(int, source.shape)
+    tile16_per_t128 = GGUF_Q4_K_T128_COLS // GGUF_Q4_K_TILE16_COLS
+    output = np.empty(
+        (
+            experts,
+            out_tiles16 // tile16_per_t128,
+            blocks_per_row,
+            GGUF_Q4_K_T128_BLOCK_BYTES,
+        ),
+        dtype=np.uint8,
+    )
+    for out_tile in range(output.shape[1]):
+        slab = source[
+            :,
+            out_tile * tile16_per_t128 : (out_tile + 1) * tile16_per_t128,
+        ]
+        dst = output[:, out_tile]
+        dst[..., GGUF_Q4_K_T128_D_OFFSET:GGUF_Q4_K_T128_DMIN_OFFSET] = (
+            slab[..., GGUF_Q4_K_TILE16_D_OFFSET:GGUF_Q4_K_TILE16_DMIN_OFFSET]
+            .transpose(0, 2, 1, 3)
+            .reshape(experts, blocks_per_row, GGUF_Q4_K_T128_COLS * 2)
+        )
+        dst[
+            ..., GGUF_Q4_K_T128_DMIN_OFFSET:GGUF_Q4_K_T128_SCALE_OFFSET
+        ] = (
+            slab[
+                ...,
+                GGUF_Q4_K_TILE16_DMIN_OFFSET:GGUF_Q4_K_TILE16_SCALE_OFFSET,
+            ]
+            .transpose(0, 2, 1, 3)
+            .reshape(experts, blocks_per_row, GGUF_Q4_K_T128_COLS * 2)
+        )
+        for source_offset, destination_offset in (
+            (GGUF_Q4_K_TILE16_SCALE_OFFSET, GGUF_Q4_K_T128_SCALE_OFFSET),
+            (GGUF_Q4_K_TILE16_MIN_OFFSET, GGUF_Q4_K_T128_MIN_OFFSET),
+        ):
+            metadata = slab[
+                ..., source_offset : source_offset + GGUF_Q4_K_SUBBLOCKS * 16
+            ].reshape(
+                experts,
+                tile16_per_t128,
+                blocks_per_row,
+                GGUF_Q4_K_SUBBLOCKS,
+                GGUF_Q4_K_TILE16_COLS,
+            )
+            dst[
+                ...,
+                destination_offset : destination_offset
+                + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_T128_COLS,
+            ] = metadata.transpose(0, 2, 3, 1, 4).reshape(
+                experts,
+                blocks_per_row,
+                GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_T128_COLS,
+            )
+
+        destination_q = dst[..., GGUF_Q4_K_T128_Q_OFFSET:].reshape(
+            experts,
+            blocks_per_row,
+            GGUF_Q4_K_SUBBLOCKS,
+            GGUF_Q4_K_T128_COLS,
+            GGUF_Q4_K_SUBBLOCK // 2,
+        )
+        for tile_index in range(tile16_per_t128):
+            packed_columns = slab[
+                :, tile_index, :, GGUF_Q4_K_TILE16_Q_OFFSET:
+            ].reshape(
+                experts,
+                blocks_per_row,
+                GGUF_Q4_K_SUBBLOCKS,
+                GGUF_Q4_K_SUBBLOCK,
+                GGUF_Q4_K_TILE16_COLS // 2,
+            )
+            quant = np.empty(
+                (
+                    experts,
+                    blocks_per_row,
+                    GGUF_Q4_K_SUBBLOCKS,
+                    GGUF_Q4_K_SUBBLOCK,
+                    GGUF_Q4_K_TILE16_COLS,
+                ),
+                dtype=np.uint8,
+            )
+            quant[..., 0::2] = packed_columns & np.uint8(0x0F)
+            quant[..., 1::2] = packed_columns >> np.uint8(4)
+            packed_k = (quant[..., 0::2, :] & np.uint8(0x0F)) | (
+                (quant[..., 1::2, :] & np.uint8(0x0F)) << np.uint8(4)
+            )
+            col_start = tile_index * GGUF_Q4_K_TILE16_COLS
+            destination_q[
+                ..., col_start : col_start + GGUF_Q4_K_TILE16_COLS, :
+            ] = packed_k.transpose(0, 1, 2, 4, 3)
+    return output
 
 
 def unpack_gguf_q4_k_tile16(packed: GGUFQ4KTile16 | np.ndarray, *, out_features: int | None = None) -> np.ndarray:
@@ -500,5 +623,6 @@ __all__ = [
     "pack_q8_1_mmq_ds4_from_bf16",
     "repack_gguf_q4_k_pack8",
     "repack_gguf_q4_k_tile16",
+    "repack_gguf_q4_k_t128_from_tile16",
     "unpack_gguf_q4_k_tile16",
 ]

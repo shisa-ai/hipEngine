@@ -52,6 +52,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.loading.gguf import GGUFReader
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_t128_from_tile16
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +73,7 @@ MODES = (
     "t16-mmq128x32-d8-f32",
     "t16-mmq128x32-d8-f32-wavecols",
     "t16-mmq128x32-d8-f32-wavecols-direct",
+    "t128-mmq128x32-d8-f32-wavecols-direct",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -370,6 +372,17 @@ def main() -> None:
     tiles_up, up_entry = _cache_tiles(
         args.repacked_cache, layer=args.layer, slot="ffn_up_exps"
     )
+    needs_t128 = "t128-mmq128x32-d8-f32-wavecols-direct" in args.modes
+    t128_gate = (
+        repack_gguf_q4_k_t128_from_tile16(tiles_gate)
+        if needs_t128
+        else None
+    )
+    t128_up = (
+        repack_gguf_q4_k_t128_from_tile16(tiles_up)
+        if needs_t128
+        else None
+    )
 
     runtime = get_hip_runtime()
     reset_memory_stats()
@@ -397,6 +410,14 @@ def main() -> None:
         x8_up_dev = _upload(runtime, x8_up) if x8_up is not None else None
         if x8_gate_dev is not None and x8_up_dev is not None:
             resident_buffers.extend((x8_gate_dev, x8_up_dev))
+        t128_gate_dev = (
+            _upload(runtime, t128_gate) if t128_gate is not None else None
+        )
+        t128_up_dev = (
+            _upload(runtime, t128_up) if t128_up is not None else None
+        )
+        if t128_gate_dev is not None and t128_up_dev is not None:
+            resident_buffers.extend((t128_gate_dev, t128_up_dev))
 
         for rows in args.rows:
             counts = _load_counts(routing, rows=rows, layer=args.layer)
@@ -673,6 +694,7 @@ def main() -> None:
                     *,
                     wave_cols: bool,
                     direct_wave_decode: bool = False,
+                    t128_layout: bool = False,
                 ) -> None:
                     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
                         source_x_dev.ptr,
@@ -690,8 +712,16 @@ def main() -> None:
                         starts_dev.ptr,
                         starts32_dev.ptr,
                         tile_expert32_dev.ptr,
-                        tiles_gate_dev.ptr,
-                        tiles_up_dev.ptr,
+                        (
+                            t128_gate_dev.ptr
+                            if t128_layout and t128_gate_dev is not None
+                            else tiles_gate_dev.ptr
+                        ),
+                        (
+                            t128_up_dev.ptr
+                            if t128_layout and t128_up_dev is not None
+                            else tiles_up_dev.ptr
+                        ),
                         out_dual_dev.ptr,
                         compact_rows,
                         rows,
@@ -705,6 +735,7 @@ def main() -> None:
                         rowvec=True,
                         wave_cols=wave_cols,
                         direct_wave_decode=direct_wave_decode,
+                        t128_layout=t128_layout,
                         library=mmq_library,
                         runtime=runtime,
                     )
@@ -727,6 +758,13 @@ def main() -> None:
                         lambda: t16_mmq128_d8_f32(
                             wave_cols=True,
                             direct_wave_decode=True,
+                        )
+                    ),
+                    "t128-mmq128x32-d8-f32-wavecols-direct": (
+                        lambda: t16_mmq128_d8_f32(
+                            wave_cols=True,
+                            direct_wave_decode=True,
+                            t128_layout=True,
                         )
                     ),
                 }
