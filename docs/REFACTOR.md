@@ -1138,3 +1138,9 @@ should be boring.
   the package default is promoted. Remove the redundant positive selector and
   A/B harness after clean selector-unset publication; keep the prior direct
   body as rollback through one subsequent expert-family checkpoint.
+- The publication trigger is now satisfied: selector-unset production is
+  **505.084 tok/s** median / **504.984 tok/s** minimum, matched A/B remains
+  **+0.284%**, and cached tracing cuts gate/up **318.559 -> 314.378 ms**.
+  Remove the redundant positive selector and one-purpose A/B harness in the
+  next cleanup unit; keep the direct synchronization rollback until the next
+  retained expert-family checkpoint.
