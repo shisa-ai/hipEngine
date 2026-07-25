@@ -178874,3 +178874,21 @@ Vulkan local sizes verbatim will close the measured gap.
 - Removed the C/Python/registry/harness/test surface. The second filtered launch
   and doubled row accumulators outweigh tile savings. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json`.
+
+## 2026-07-25 — Reject cross-wave qhead3 SWA K/V reuse
+
+- Added an explicit qrow4 SWA diagnostic that grouped three wave32 query heads
+  from the same qgroup9 KV head into one local96 workgroup. The K8/float-LDS
+  body reduced workgroups **72 -> 24**, shared each K/V tile once, compiled on
+  gfx1151, and was byte-identical to production qrow4 on full-eight and
+  odd-seven wrapped/evicted fixtures.
+- The one-load, five-repeat counterbalanced pp512 screen measured production
+  **364.738 tok/s** median versus qhead3 **298.652 (-18.1%)**, always token
+  2930. A K32/BF16-LDS follow-up reduced barrier frequency 4x but measured
+  **256.697** versus **364.943 tok/s (-29.7%)**; its maximum fixture
+  difference was only `6.519258e-09`, so performance rejected it before any
+  quality admission.
+- Removed all candidate C/Python/registry/runtime/test surfaces. Synchronous
+  cross-wave GQA row sharing is closed because barrier/LDS occupancy dominates;
+  this does not close a genuinely key-parallel online-softmax tile. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json`.

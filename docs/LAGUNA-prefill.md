@@ -638,7 +638,7 @@ and achievable-bandwidth evidence.
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **581.806 ms** | **42.11%** | Primary 500 lever. Multi-K, universal/hybrid 64-row, local256, and coalesced-raw screens are rejected below; the next body must reduce weight/LDS work without expanding row accumulators. |
 | Selected D4 Q4/Q6 down | **276.861 ms** | **20.04%** | Apply a winning expert schedule to Q4 and Q6 down, then reprofile the combined **62.15%** expert window. |
-| Global + SWA attention | **229.181 ms** | **16.59%** | Qrow4 saves **45.544 ms / 16.58%**. Qrow8 is rejected; the remaining path is the `KVLiveSpans`-aware M16-query x K64-key cooperative tile. |
+| Global + SWA attention | **229.181 ms** | **16.59%** | Qrow4 saves **45.544 ms / 16.58%**. Qrow8 and cross-wave qhead3 LDS reuse are rejected; the remaining path must parallelize key work without a barrier per small key tile. |
 | Scaled hipBLASLt source-F16 | **130.965 ms** | **9.48%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **70.391 ms** | **5.10%** | Freeze. It cannot move the next milestone materially. |
 | All remaining named/other kernels | **92.341 ms** | **6.68%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
@@ -671,8 +671,10 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Build the cooperative M16-query x K64-key `KVLiveSpans` attention tile;
-   qrow8 has completed its clean rejection gate.
+2. Build the cooperative M16-query x K64-key `KVLiveSpans` attention tile.
+   Qrow8 and the simpler three-query-head LDS-sharing schedule have completed
+   their rejection gates; do not mistake GQA load sharing for key-parallel
+   Flash Attention.
 3. Do not retry 64-row expert accumulation. The routing-qualified hybrid
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
    around less weight/LDS traffic or a wave-transpose primitive instead.
@@ -805,6 +807,21 @@ weights and natural M512 routing, however, pack-inclusive production measured
 accumulator footprint plus a second filtered launch outweigh the saved tiles.
 All candidate surfaces were removed. Evidence:
 [`2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json).
+
+Eighth post-350 screen: **rejected and removed**. A qrow4 SWA workgroup placed
+three wave32 query heads from the same qgroup9 KV head together, cutting
+workgroups per row tile **72 -> 24** and sharing K/V through LDS. The exact
+K8/float-LDS form passed the full-eight and odd-seven wrap/eviction fixture
+byte-for-byte, but measured **298.652 tok/s** versus **364.738 tok/s**
+production (**-18.1%**) across five counterbalanced pp512 repetitions. A
+K32/BF16-LDS follow-up cut barrier frequency 4x and LDS bytes per value in
+half, yet fell further to **256.697** versus **364.943 tok/s (-29.7%)**.
+Every run selected token 2930. Cross-wave barriers and LDS occupancy outweigh
+the 3x K/V load reduction; all candidate C/Python/registry/runtime/test
+surfaces were removed. This does not reject a true key-parallel online tile,
+but it closes cross-wave GQA row sharing with synchronous LDS staging.
+Evidence:
+[`2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json).
 
 Production evidence:
 
