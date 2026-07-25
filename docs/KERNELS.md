@@ -545,9 +545,12 @@ barrier-free: after visibility is known it skips the unused current or cached
 K/V source. Full-eight and odd-seven wrap/eviction outputs are byte-identical
 to qrow4; the cached gfx1151 trace is local32/VGPR80/SGPR128/LDS0/scratch0.
 The five-pair dirty same-owner screen improves **365.584 -> 368.531 tok/s
-(+0.806%)**, with candidate minimum above baseline maximum. The M128-qualified
-selector uses it pending a clean selector-unset gate; qrow2 remains residual
-(`benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-candidate.json`).
+(+0.806%)**, with candidate minimum above baseline maximum. Clean committed
+selector-unset production retains **364.753 -> 366.933 tok/s (+0.598%)**;
+cached tracing cuts SWA **185.603 -> 173.749 ms (-6.39%)** and measures
+**369.532/342.620/285.563 tok/s** at 512/1K/4K. The M128-qualified selector
+uses it; qrow2 remains residual
+(`benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-production.json`).
 
 ### Laguna post-350 selected-expert screens
 

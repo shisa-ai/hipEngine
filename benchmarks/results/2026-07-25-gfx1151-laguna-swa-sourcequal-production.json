@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T21:45:01+09:00",
+  "kind": "hipengine_laguna_swa_qrow4_sourcequal_production",
+  "status": "retained_quality_gated_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Laguna S 2.1 Q4_K_M selector-unset c=1 prefill on gfx1151",
+  "repo": {
+    "revision": "36b318ac930a400987cb5f8c4b2c8f8a0144e2ae",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "resident_nbytes": 77461325460
+  },
+  "protocol": {
+    "matrix_chunk": 512,
+    "attention_chunk": 128,
+    "timing": "one resident owner; warm each mode; five counterbalanced synchronized pp512 repetitions",
+    "baseline_global_variant": "global_context_rows_qrow4_m128_online_spans",
+    "baseline_swa_variant": "swa_context_rows_qrow4_online_spans",
+    "candidate_variants": "selector unset; gfx1151 package defaults",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python /tmp/laguna_qrow4_attention_screen.py"
+  },
+  "pp512": {
+    "old_qrow4_samples_tok_s": [
+      365.8040205876551,
+      364.7528204647941,
+      359.107415687496,
+      364.22490243882436,
+      364.7838794124942
+    ],
+    "old_qrow4_median_tok_s": 364.7528204647941,
+    "selector_unset_samples_tok_s": [
+      368.6317763435076,
+      368.3953708891541,
+      358.24752698160813,
+      363.78813176698793,
+      366.93263649703607
+    ],
+    "selector_unset_median_tok_s": 366.93263649703607,
+    "paired_delta_percent": 0.598,
+    "prior_published_production_tok_s": 364.838628,
+    "publication_delta_percent": 0.574,
+    "next_token_id": 2930,
+    "all_next_tokens_equal": true
+  },
+  "correctness_quality": {
+    "arithmetic": "source qualification changes only whether an unused K/V source is fetched; qrow4 accumulation order is unchanged",
+    "wrap_evict_fixture": "full-eight and odd-seven outputs are F32 byte-identical to old qrow4",
+    "focused_tests": "33 passed across tests/test_laguna_kv_attention.py and tests/test_gfx1151_backend.py",
+    "quality_revision": "319dfdf3a",
+    "max_kl": 0.040724836,
+    "top1": "317/320",
+    "decode": "unchanged",
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "tracked_returned_to_zero": true
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file production-sourcequal --log-level error -- python3 scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/profile.json",
+    "raw_csv_sha256": "6b19b3e7ad469045d54b0f8389656771d09a5f47867f87792d65ee30812d18b0",
+    "raw_csv_committed": false,
+    "timings_tok_s": {
+      "512": 369.5320704053179,
+      "1024": 342.62040492786696,
+      "4096": 285.56307245787747
+    },
+    "pp512_wall_ms": 1385.536036,
+    "pp512_kernel_span_ms": 1381.30225,
+    "pp512_kernel_sum_ms": 1369.726972,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 581.061437,
+      "selected_q4_q6_down": 276.40881,
+      "global_attention": 43.500422,
+      "swa_attention": 173.748688,
+      "source_f16_projection": 131.876319,
+      "dense_shared_quant_projection": 70.630269,
+      "remaining": 92.501027
+    },
+    "sourcequal_kernel": {
+      "name": "laguna_swa_attention_prefill_qrows_online_bf16_kernel<4, true>",
+      "workgroup_size": 32,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "versus_qrow4_trace": {
+      "swa_ms_old": 185.603444,
+      "swa_ms_new": 173.748688,
+      "swa_delta_percent": -6.387,
+      "attention_ms_old": 229.180718,
+      "attention_ms_new": 217.24911,
+      "attention_delta_percent": -5.206,
+      "kernel_sum_ms_old": 1381.544522,
+      "kernel_sum_ms_new": 1369.726972,
+      "kernel_sum_delta_percent": -0.855
+    }
+  },
+  "conclusion": "Promote and publish. Byte-identical source qualification removes unused K/V reads, improves clean paired pp512 0.598%, raises selector-unset production to 366.933 tok/s, and cuts traced SWA time 6.39%."
+}
