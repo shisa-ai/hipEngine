@@ -320,14 +320,15 @@ wave32 kernels, BF16 KV, `KVLiveSpans`, and stricter quality gates. The plan
 therefore transfers the tiling/dataflow, not literal shader constants or
 unchecked numerical policy.
 
-This correction changes the next MMQ target. hipEngine's first local128 body is
+This correction changed the MMQ target. hipEngine's first local128 body is
 **32 columns x 32 rows over four wave32s**, with `TM=1`, `WNITER=8`, and eight
 accumulators per lane. Per K32 interval it performs about 64 packed dots per
 lane between the same two workgroup barriers; the running Vulkan medium shader
 performs about 256. The first body remains a valid and fast LAP-1 leaf, but it
-is not source-faithful geometry. The next expert kernel screen is a 64x64-class
-tile or equivalent work-per-barrier schedule, with enough register/occupancy
-evidence to justify any deviation.
+is not source-faithful geometry. Direct 128x64 and 64x64 screens are now
+rejected below; the next equivalent work-per-barrier screen is 256x32 over 256
+threads, which preserves 32 accumulators per lane while halving activation
+tile reloads. Register, LDS, and occupancy evidence remains mandatory.
 
 hipEngine also retains two structural advantages the comparator lacks:
 device-resident expert compaction launches only populated tiles, and the dual
@@ -635,7 +636,7 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. The first multi-K staging screen is rejected below; next reduce repeated expert-weight reads with a 128-column x 64-row natural-route tile while preserving the admitted arithmetic and accumulation order. |
+| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. Multi-K staging and 64-row routing tiles are rejected below. Next halve activation-tile reloads with a 256-column x 32-row / 256-thread schedule while preserving 32 accumulators per lane and the admitted arithmetic/order. |
 | Selected D4 Q4/Q6 down | **276.169 ms** | **19.35%** | Carry the winning expert schedule into Q4 and Q6 down, then reprofile the combined 60.11% expert window. |
 | Global + SWA attention | **274.724 ms** | **19.25%** | Build the `KVLiveSpans`-aware M16-query x K64-key tiled path after the next expert trace; it is already above LAP-7's 10% start threshold. |
 | Scaled hipBLASLt source-F16 | **130.373 ms** | **9.13%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
@@ -670,11 +671,11 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Screen a 128-column x 64-row selected gate/up tile against the current
-   128x32 production body. Invalid rows must bypass dot work, while experts
-   above 32 natural rows avoid a second complete weight stream. Report
+2. Screen a 256-column x 32-row / 256-thread selected gate/up tile against the
+   current 128x32/local128 production body. It must keep 32 accumulators per
+   lane while halving workgroups and activation-tile reloads. Report
    producer-pack-inclusive family and production wall, local/VGPR/LDS/scratch,
-   active-expert/tile counts, and all natural shapes.
+   and all natural shapes.
 3. Apply only the winning schedule to Q4/Q6 down, then run clean selector-unset
    pp512 and the complete category/decode/determinism/lifecycle gate. Retain
    every exact same-suite non-regressive improvement; 500 tok/s closes the next
@@ -713,6 +714,26 @@ measured K32/K64/K128 medians **353.516/318.850/269.071 tok/s**, always token
 one byte” lever does not transfer to T16: its resident payload stores K32
 subblocks separately. Do not retry multi-K LDS staging unless a different
 resident layout or asynchronous copy mechanism changes that premise.
+
+Second post-350 screen: **rejected and removed**. At pp512, 64-row routing
+would reduce the measured 47-layer tile count from **14,034 to 11,408
+(-18.71%)**, but neither tested geometry converts that reduction into wall
+time:
+
+- 128x64 doubled accumulators from 32 to 64 per lane and measured
+  **345.141 tok/s** versus **353.787 tok/s** production median
+  (**-2.44%**);
+- Vulkan-calibrated 64x64 restored 32 accumulators per lane but doubled
+  output-column workgroups and increased repeated activation loading; it
+  measured **344.606 tok/s** versus **354.693 tok/s** production median
+  (**-2.84%**).
+
+Each result is a three-repeat, counterbalanced, same-resident-load pp512
+diagnostic on gfx1151 with matrix512/attention128, one queue, and token 2930 in
+every run. Both kernels passed the uneven/empty-expert CPU-reference
+KL/top-1 fixture before the full-model rejection. Production code and metadata
+remain unchanged. Do not retry a 64-row tile without a mechanism that avoids
+both extra per-lane accumulators and repeated activation reads.
 
 Production evidence:
 
@@ -953,10 +974,12 @@ Deliverables:
   existing lane order;
 - test separate versus paired gate/up only after the shared-tile body works;
 - preserve the separate exact SiLU chain and current selected/grouped fallback;
-- screen a 64x64-class tile or equivalent 32x32 multi-output schedule so each
-  barrier feeds about four times the current packed-dot work;
-- screen 4–8 K32 stages per barrier/double buffering within the available LDS,
-  and a K64 step that consumes both Q4 nibble planes from one source fetch;
+- treat direct 128x64/64x64 routing and resident-T16 K64/K128 staging as
+  rejected; screen a 256x32/local256 equivalent schedule that preserves 32
+  accumulators per lane and halves activation-tile reloads;
+- do not retry K64 nibble reuse unless the resident layout changes: T16 stores
+  the two K32 subblocks separately, so the raw-Q4 one-fetch premise does not
+  apply;
 - choose row/occupancy crossovers from M32/55/64/68/96/122/128/256/512
   measurements, not a blanket M32 policy;
 - run the full canonical category, Poolside, h16/h32, lifecycle, and cached

@@ -178675,3 +178675,36 @@ Vulkan local sizes verbatim will close the measured gap.
   **139.600/131.987 ms**. The next bounded screen is a 128-column x 64-row
   natural-route tile that can reduce repeated complete weight streams for
   experts above 32 rows.
+
+## 2026-07-25 — Reject 64-row Laguna expert tiles
+
+- The M512 routing capture predicts a real scheduling opportunity: across 47
+  layers, moving from 32-row to 64-row expert tiles reduces populated tiles
+  from **14,034 to 11,408 (-18.7117%)**. A 128x64 candidate and a
+  Vulkan-calibrated 64x64 candidate were implemented behind explicit
+  diagnostic selectors without changing production defaults.
+- Both variants passed the uneven/empty-expert CPU-reference Q4T16 quality
+  fixture; the 64-row metadata map also matched its CPU oracle. The focused
+  command was `PYTHONPATH=. pytest -q
+  tests/test_laguna_moe_gpu.py::test_laguna_selected_gate_up_default_is_backend_qualified
+  tests/test_qwen35_moe_group_scatter_plan.py::test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle
+  tests/test_qwen35_moe_group_scatter_plan.py::test_mmq64_tile_map_matches_cpu_oracle
+  tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate`;
+  all eight selected cases passed for each candidate revision.
+- A one-load, three-repeat, counterbalanced dirty-tree full-model diagnostic
+  used the pinned Poolside Laguna S 2.1 Q4_K_M model/cache, gfx1151,
+  matrix512/attention128, one HIP queue, one M128 warmup per mode, and pp512.
+  The 128x64 result was **345.141 tok/s** median
+  (**345.141/345.620/339.984**) versus production **353.787**
+  (**354.263/353.787/353.410**), always token 2930: **-2.44%**. Its 64
+  accumulators per lane erase the saved weight streams.
+- The 64x64 result was **344.606 tok/s** median
+  (**344.980/344.606/344.036**) versus production **354.693**
+  (**354.856/354.693/354.216**), always token 2930: **-2.84%**. It restores
+  32 accumulators per lane, but doubles output-column workgroups and repeats
+  the 64-row activation tile for each narrower column tile.
+- Both candidates and the generic 64-row metadata route were fully removed;
+  tracked production and tests are back to the clean retained state. The next
+  orthogonal screen is 256x32/local256: preserve the production 32-row routing
+  and 32 accumulators per lane while halving activation-tile reloads and
+  workgroups.
