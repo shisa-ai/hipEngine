@@ -86,6 +86,10 @@ _SELECTED_GATE_UP_MODES = frozenset(
     }
 )
 _BASELINE_SELECTED_GATE_UP_MODE = "direct"
+_ROUTER_LOGITS_MODES = frozenset(
+    {"token_tile_4", "token_tile_8", "token_tile_16"}
+)
+_BASELINE_ROUTER_LOGITS_MODE = "token_tile_4"
 _SELECTED_MMQ32_MIN_ROWS = 32
 _DENSE_Q4_PREFILL_MODES = frozenset({"retained", "wmma_pack8"})
 _BASELINE_DENSE_Q4_PREFILL_MODE = "retained"
@@ -116,6 +120,27 @@ def resolve_laguna_selected_gate_up_mode(
     parsed = str(selected)
     if parsed not in _SELECTED_GATE_UP_MODES:
         raise ValueError("unsupported Laguna selected gate/up mode")
+    return parsed
+
+
+def resolve_laguna_router_logits_mode(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve the exact router-logit token-reuse schedule."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_ROUTER_LOGITS_MODE",
+            _BASELINE_ROUTER_LOGITS_MODE,
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _ROUTER_LOGITS_MODES:
+        raise ValueError("unsupported Laguna router-logits mode")
     return parsed
 
 
@@ -205,6 +230,7 @@ class LagunaMoEKernelPlan:
     shared_ffn_size: int
     routed_scaling_factor: float
     router_logits_key: KernelKey
+    router_logits_keys: Mapping[str, KernelKey]
     router_select_key: KernelKey
     selected_gate_up_key: KernelKey
     selected_gate_up_prefill_key: KernelKey
@@ -240,6 +266,7 @@ class LagunaMoEKernelPlan:
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
+    router_logits_functions: Mapping[str, Callable]
     router_select: Callable
     selected_gate_up: Callable
     selected_silu: Callable
@@ -276,6 +303,7 @@ class LagunaMoEKernelPlan:
     def kernel_keys(self) -> tuple[KernelKey, ...]:
         return (
             self.router_logits_key,
+            *tuple(self.router_logits_keys.values()),
             self.router_select_key,
             *tuple(self.selected_gate_up_keys.values()),
             self.selected_gate_up_prefill_key,
@@ -581,6 +609,29 @@ def resolve_laguna_moe_plan(
         }
     )
     functions = {name: _resolve_exact(key) for name, key in keys.items()}
+    router_logits_keys = MappingProxyType(
+        {
+            "token_tile_4": keys["router_logits"],
+            "token_tile_8": KernelKey(
+                backend,
+                "router_logits",
+                "f32",
+                "bf16_hidden_token_tile_8",
+            ),
+            "token_tile_16": KernelKey(
+                backend,
+                "router_logits",
+                "f32",
+                "bf16_hidden_token_tile_16",
+            ),
+        }
+    )
+    router_logits_functions = MappingProxyType(
+        {
+            mode: _resolve_exact(key)
+            for mode, key in router_logits_keys.items()
+        }
+    )
     selected_gate_up_route_specs = {
         "gguf_q4_k_t16_v1": ("t16_dual", "tiles", "selected_gate_up"),
         "gguf_iq2_xs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
@@ -664,6 +715,7 @@ def resolve_laguna_moe_plan(
         shared_ffn_size=config.expert_shared_feed_forward_length,
         routed_scaling_factor=config.expert_weights_scale,
         router_logits_key=keys["router_logits"],
+        router_logits_keys=router_logits_keys,
         router_select_key=keys["router_select"],
         selected_gate_up_key=keys["selected_gate_up"],
         selected_gate_up_prefill_key=keys["selected_gate_up_prefill"],
@@ -689,6 +741,7 @@ def resolve_laguna_moe_plan(
         shared_silu_key=keys["shared_silu"],
         add_key=keys["add"],
         router_logits=functions["router_logits"],
+        router_logits_functions=router_logits_functions,
         router_select=functions["router_select"],
         selected_gate_up=functions["selected_gate_up"],
         selected_gate_up_prefill=functions["selected_gate_up_prefill"],
@@ -1785,6 +1838,7 @@ def run_laguna_moe_rows(
     rows: int,
     selected_down_mode: str = "direct",
     selected_gate_up_mode: str = "direct",
+    router_logits_mode: str = _BASELINE_ROUTER_LOGITS_MODE,
     dense_q4_prefill_mode: str = "retained",
     group_compact_mode: str = "serial",
     stream: int = 0,
@@ -1805,6 +1859,11 @@ def run_laguna_moe_rows(
             "selected_gate_up_mode must be one of "
             f"{tuple(sorted(_SELECTED_GATE_UP_MODES))}"
         )
+    if router_logits_mode not in _ROUTER_LOGITS_MODES:
+        raise ValueError(
+            "unsupported Laguna router-logits mode; expected one of "
+            f"{tuple(sorted(_ROUTER_LOGITS_MODES))}"
+        )
     if dense_q4_prefill_mode not in _DENSE_Q4_PREFILL_MODES:
         raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
     if group_compact_mode not in _GROUP_COMPACT_MODES:
@@ -1823,7 +1882,7 @@ def run_laguna_moe_rows(
     router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
 
-    plan.router_logits(
+    plan.router_logits_functions[router_logits_mode](
         hidden_bf16_ptr,
         router,
         scratch.router_logits.ptr,
@@ -2126,6 +2185,7 @@ __all__ = [
     "laguna_moe_scratch_nbytes",
     "resolve_laguna_moe_plan",
     "resolve_laguna_group_compact_mode",
+    "resolve_laguna_router_logits_mode",
     "resolve_laguna_selected_down_mode",
     "resolve_laguna_dense_q4_prefill_mode",
     "resolve_laguna_selected_gate_up_mode",

@@ -13,6 +13,8 @@ from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_router_logits_bf16,
     qwen35_router_logits_bf16_f32w,
     qwen35_router_logits_bf16_f32w_auto_256,
+    qwen35_router_logits_bf16_f32w_token_tile_8,
+    qwen35_router_logits_bf16_f32w_token_tile_16,
     qwen35_router_logits_f32_f32w,
     qwen35_router_logits_fp16,
     qwen35_router_logits_fp16_f32w,
@@ -66,6 +68,24 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="bf16_hidden")
         is qwen35_router_logits_bf16_f32w_auto_256
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="router_logits",
+            quant="f32",
+            variant="bf16_hidden_token_tile_8",
+        )
+        is qwen35_router_logits_bf16_f32w_token_tile_8
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="router_logits",
+            quant="f32",
+            variant="bf16_hidden_token_tile_16",
+        )
+        is qwen35_router_logits_bf16_f32w_token_tile_16
     )
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="fp16_hidden")
@@ -238,6 +258,63 @@ def test_qwen35_router_wrappers_validate_shape_before_gpu_load() -> None:
         qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent(
             0, 0, 0, 0, 0, 0, 0, 1, 2048, 256, 8, threads=512
         )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_router_f32_weight_wider_token_tiles_are_exact(router_library) -> None:
+    rng = np.random.default_rng(20260726)
+    tokens, hidden_size, experts = 17, 3_072, 256
+    hidden = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.04, size=(tokens, hidden_size)).astype(np.float32)
+    )
+    weight = rng.normal(
+        0.0,
+        0.03,
+        size=(experts, hidden_size),
+    ).astype(np.float32)
+    outputs = [
+        np.zeros((tokens, experts), dtype=np.float32)
+        for _ in range(3)
+    ]
+    arrays = (hidden, weight, *outputs)
+    buffers = [malloc(array.nbytes) for array in arrays]
+    try:
+        for array, buffer in zip(arrays, buffers, strict=True):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        for launch, output_buffer in zip(
+            (
+                qwen35_router_logits_bf16_f32w_auto_256,
+                qwen35_router_logits_bf16_f32w_token_tile_8,
+                qwen35_router_logits_bf16_f32w_token_tile_16,
+            ),
+            buffers[2:],
+            strict=True,
+        ):
+            launch(
+                buffers[0].ptr,
+                buffers[1].ptr,
+                output_buffer.ptr,
+                tokens,
+                hidden_size,
+                experts,
+                library=router_library,
+            )
+        for output, output_buffer in zip(
+            outputs,
+            buffers[2:],
+            strict=True,
+        ):
+            copy_device_to_host(
+                host_array_ptr(output),
+                output_buffer,
+                output.nbytes,
+            )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+    assert np.array_equal(outputs[1], outputs[0])
+    assert np.array_equal(outputs[2], outputs[0])
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

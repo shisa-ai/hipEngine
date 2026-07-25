@@ -37,6 +37,7 @@ from hipengine.runtime.laguna_moe import (
     resolve_laguna_dense_q4_prefill_mode,
     resolve_laguna_group_compact_mode,
     resolve_laguna_moe_plan,
+    resolve_laguna_router_logits_mode,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
     run_laguna_moe_c1,
@@ -119,6 +120,17 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert (plan.expert_ffn_size, plan.shared_ffn_size) == (1_024, 1_024)
     assert plan.routed_scaling_factor == pytest.approx(2.5)
     assert plan.router_select_key.layer == "laguna_sigmoid_router_topk"
+    assert set(plan.router_logits_keys) == {
+        "token_tile_4",
+        "token_tile_8",
+        "token_tile_16",
+    }
+    assert plan.router_logits_keys["token_tile_8"] == KernelKey(
+        "hip_gfx1151",
+        "router_logits",
+        "f32",
+        "bf16_hidden_token_tile_8",
+    )
     assert (plan.routed_sum_rows_key.layer, plan.routed_sum_rows_key.variant) == (
         "weighted_sum",
         "laguna_rows",
@@ -287,6 +299,21 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unsafe")
 
 
+def test_laguna_router_logits_mode_is_exact_and_explicit() -> None:
+    assert (
+        resolve_laguna_router_logits_mode("hip_gfx1100")
+        == "token_tile_4"
+    )
+    assert (
+        resolve_laguna_router_logits_mode("hip_gfx1151")
+        == "token_tile_8"
+    )
+    for mode in ("token_tile_4", "token_tile_8", "token_tile_16"):
+        assert resolve_laguna_router_logits_mode("hip_gfx1151", mode) == mode
+    with pytest.raises(ValueError, match="router-logits"):
+        resolve_laguna_router_logits_mode("hip_gfx1151", "unsafe")
+
+
 def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     with pytest.raises(ValueError, match="sigmoid"):
@@ -354,6 +381,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     resident = {}
     scratch = None
     bulk_scratch = None
+    router_tile8_scratch = None
     grouped_scratch = None
     fused_scratch = None
     mmq_scratch = None
@@ -494,6 +522,45 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             rows=3,
         )
         bulk_actual = _read_bf16(bulk_output, (3, h))
+        router_tile8_scratch = allocate_laguna_moe_scratch(
+            plan,
+            max_rows=3,
+        )
+        router_tile8_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            router_tile8_scratch,
+            rows=3,
+            router_logits_mode="token_tile_8",
+        )
+        np.testing.assert_array_equal(
+            _read_bf16(router_tile8_output, (3, h)),
+            bulk_actual,
+        )
+        np.testing.assert_array_equal(
+            _read_array(
+                router_tile8_scratch.selected_experts,
+                np.int64,
+                (3, k),
+            ),
+            _read_array(
+                bulk_scratch.selected_experts,
+                np.int64,
+                (3, k),
+            ),
+        )
+        np.testing.assert_array_equal(
+            _read_array(
+                router_tile8_scratch.scaled_routing_weights,
+                np.float32,
+                (3, k),
+            ),
+            _read_array(
+                bulk_scratch.scaled_routing_weights,
+                np.float32,
+                (3, k),
+            ),
+        )
         grouped_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
         grouped_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
@@ -658,6 +725,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if router_tile8_scratch is not None:
+            router_tile8_scratch.free()
         if mmq_parallel_scratch is not None:
             mmq_parallel_scratch.free()
         if down_rowvec_scratch is not None:

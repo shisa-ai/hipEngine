@@ -26,6 +26,20 @@ See also:
 
 This is the authoritative list of kernels/oracles that exist in this repo today. Empty backend family packages under `hipengine/kernels/hip_gfx1100/*/` are placeholders, not implemented kernels.
 
+### Laguna gfx1151 exact router token reuse
+
+The shared `moe/router.hip` family now registers
+`router_logits/f32/bf16_hidden_token_tile_{8,16}` alongside the existing
+four-token route. Each wider tile preserves every token/expert's K traversal,
+per-thread products, 256-thread reduction tree, and F32 output. At
+M128/M256/M512, tile 8 improves the exact leaf by **1.346/1.304/1.341x** and
+is the gfx1151 package default; tile 4 remains explicit rollback and the
+unmeasured-backend default. Cached gfx1151 tracing names the tile-8 kernel at
+local256, VGPR32, SGPR128, 8 KiB dynamic LDS, wave32, and zero scratch.
+Production-shaped F32 logits, selected IDs, scaled routing weights, and
+complete MoE BF16 output are byte-exact. Candidate evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-candidate.json`.
+
 ### CPU-reference primitive oracles (**CPU reference landed**)
 
 Registered by `hipengine.kernels.cpu_reference.register_cpu_reference_kernels()` under `KernelKey("cpu_reference", <layer>, "fp16")`:

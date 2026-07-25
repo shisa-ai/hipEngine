@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T05:47:00+09:00",
+  "kind": "hipengine_laguna_router_token_tile8_candidate",
+  "status": "retained_candidate",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "rollback": "four tokens per router-logit workgroup",
+    "candidate": "eight tokens per router-logit workgroup",
+    "shape": "M128/M256/M512 x K3072 x N256, BF16 hidden, F32 weights and logits",
+    "exactness": "Each token/expert retains the same K traversal, per-thread products, 256-thread reduction tree, and F32 store."
+  },
+  "validation": {
+    "red": "The focused router test failed collection because the token-tile-8 and token-tile-16 contracts did not exist.",
+    "green": "Tile 8 and tile 16 produce F32 logits bit-identical to tile 4 at production K3072/N256 with a ragged 17-token tail.",
+    "focused_bundle": "Five files passed with two expected local-model skips.",
+    "complete_moe_bf16_output_exact": true,
+    "selected_ids_exact": true,
+    "scaled_routing_weights_exact": true,
+    "full_model_next_token_equal": true,
+    "next_token_id": 2930
+  },
+  "leaf_screen": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_router_token_tile_bench.py --rows 128,256,512 --warmups 3 --samples 11 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-router-token-tile-screen.json",
+    "median_ms": {
+      "128": {
+        "token_tile_4": 0.1688025951385498,
+        "token_tile_8": 0.12544139623641967,
+        "token_tile_16": 0.1275972008705139
+      },
+      "256": {
+        "token_tile_4": 0.2945271968841553,
+        "token_tile_8": 0.2258536100387573,
+        "token_tile_16": 0.23351640701293946
+      },
+      "512": {
+        "token_tile_4": 0.5832523822784423,
+        "token_tile_8": 0.43497438430786134,
+        "token_tile_16": 0.44597878456115725
+      }
+    },
+    "tile8_speedup": {
+      "128": 1.345668975338948,
+      "256": 1.3040623828576985,
+      "512": 1.3408890346647044
+    },
+    "raw_sha256": "ba79e345962327924ec4981fae70faaa75a8c0bd31191a28b219a90e573fc386"
+  },
+  "dirty_full_model_screen": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_router_token_tile_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-router-token-tile-dirty-ab.json",
+    "token_tile_4_rollback": {
+      "samples_tok_s": [
+        498.3610676242704,
+        498.6777622548662,
+        498.08519560182475,
+        496.14591718310663,
+        496.6002706537249,
+        500.2554942725865,
+        499.460259016781
+      ],
+      "median_tok_s": 498.3610676242704,
+      "median_wall_ms": 1027.3675719508901
+    },
+    "token_tile_8_candidate": {
+      "samples_tok_s": [
+        502.9950757903278,
+        502.5206751054611,
+        502.02531571604453,
+        500.94567538212385,
+        508.0582780847478,
+        504.0972363814729,
+        503.50044969590385
+      ],
+      "median_tok_s": 502.9950757903278,
+      "minimum_tok_s": 500.94567538212385,
+      "median_wall_ms": 1017.9026090772822
+    },
+    "relative_change_percent": 0.9298495542896523,
+    "median_wall_change_ms": -9.464962873607874,
+    "paired_wins": 7,
+    "paired_samples": 7,
+    "raw_sha256": "cf6a19a1f4190a97a2b782cae0c62b985d79a5be6d447c66359353b4d3a2ee1a"
+  },
+  "cached_trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-router-tile8-trace.XuDm6V --output-file router -- .venv/bin/python3 -u scripts/laguna_router_token_tile_bench.py --rows 512 --warmups 1 --samples 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-router-tile8-trace.XuDm6V/child.json",
+    "kernel": "qwen35_router_logits_token_tile_kernel<unsigned short, float, 8>",
+    "workgroup_size": 256,
+    "allocated_vgpr": 32,
+    "allocated_sgpr": 128,
+    "dynamic_lds_bytes": 8192,
+    "scratch_bytes": 0,
+    "wave_size": 32,
+    "sha256": {
+      "kernel_trace": "72286d906545431b199c6d04b39d3e8a07c06a489e7b453e40342b14f4ffc08d",
+      "child": "38275d97787a08e0c7334225f09d5e4ddbb930ee20c5870c0622ed70ede66209"
+    }
+  },
+  "decision": {
+    "action": "Promote token tile 8 as the gfx1151 backend default with token tile 4 as explicit rollback.",
+    "reason": "Tile 8 wins every stable leaf shape and all seven full-model pairs while preserving every checked bit.",
+    "production_gate": "Pending a clean committed seven-repeat A/B; the dirty candidate already satisfies the declared minimum and median >=500 condition."
+  }
+}

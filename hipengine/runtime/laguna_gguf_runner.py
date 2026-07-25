@@ -84,6 +84,7 @@ from hipengine.runtime.laguna_moe import (
     resolve_laguna_dense_q4_prefill_mode,
     resolve_laguna_group_compact_mode,
     resolve_laguna_moe_plan,
+    resolve_laguna_router_logits_mode,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
     run_laguna_moe_c1,
@@ -1545,6 +1546,7 @@ class LagunaGGUFResidentSession:
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
+        self.router_logits_mode = resolve_laguna_router_logits_mode(self.backend)
         self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(self.backend)
         self.group_compact_mode = resolve_laguna_group_compact_mode(self.backend)
         self.f16_prefill_mode = resolve_laguna_f16_prefill_mode(self.backend)
@@ -1694,6 +1696,14 @@ class LagunaGGUFResidentSession:
         """Select the explicit compact selected gate/up prefill candidate."""
 
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(
+            self.backend,
+            mode,
+        )
+
+    def set_router_logits_mode(self, mode: str) -> None:
+        """Select the exact rows>1 router-logit token-reuse schedule."""
+
+        self.router_logits_mode = resolve_laguna_router_logits_mode(
             self.backend,
             mode,
         )
@@ -2711,6 +2721,7 @@ class LagunaGGUFResidentSession:
             rows=rows,
             selected_down_mode=self.selected_down_mode,
             selected_gate_up_mode=self.selected_gate_up_mode,
+            router_logits_mode=self.router_logits_mode,
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             group_compact_mode=self.group_compact_mode,
             stream=stream,
