@@ -694,6 +694,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_split_gate_fusion": owner.use_split_gate_fusion,
             "use_swa_split_wave_local": owner.use_swa_split_wave_local,
             "use_head_kv_fusion": owner.use_head_kv_fusion,
+            "use_iq2_wave64": owner.use_iq2_wave64,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {
