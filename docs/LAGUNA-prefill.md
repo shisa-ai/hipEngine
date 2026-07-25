@@ -13,9 +13,14 @@ The repaired gate/up route uses one FP32 scale per 16 activations in the same
 160-byte block and widens the Q4 consumer to 128 columns x 32 rows. The clean
 complete category gate admits it at maximum KL 0.0407248, 317/320 top-1, and
 2.615x aggregate natural-prompt prefill. The four compounded routes are now
-gfx1151 package defaults; clean selector-unset pp512 publication remains open.
-The execution order below was re-audited on 2026-07-25 after correcting the
-Vulkan comparator geometry and adding an absolute bandwidth target.
+gfx1151 package defaults. Clean selector-unset production publication passes at
+**354.820 tok/s** median (**353.421/355.584/354.820**), with every pp512
+sample above the 350 tok/s target. A cached-only production trace independently
+reproduces **354.763 tok/s** and names every intended kernel family. The 350
+milestone is complete; the campaign remains active for post-milestone roofline
+and long-prompt work. The execution order below was re-audited on 2026-07-25
+after correcting the Vulkan comparator geometry and adding an absolute
+bandwidth target.
 
 ## Outcome
 
@@ -23,8 +28,10 @@ Close the resident c=1 Laguna S 2.1 Q4_K_M prefill gap on Radeon 8060S/gfx1151
 without weakening hipEngine's quality, fallback, memory, or plugin contracts.
 The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
-**344.56 +/- 3.16 tok/s** at pp512. hipEngine's retained matrix512/attention128
-default measures **76.226 tok/s** at 512 rows, a **4.520x** gap.
+**344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
+matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
+The quality-admitted production default now measures **354.820 tok/s**
+selector-unset, **4.655x** the old row and **2.978%** above the Vulkan control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
 Strix Halo has a **256 GB/s** theoretical LPDDR5X roof and the existing
@@ -71,9 +78,8 @@ complete T16 sidecar to X8, and do not integrate X8 into the runtime. The
 direct T16 consumer now passes the frozen leaf gate at
 **2.502x/3.959x/5.502x** retained on M128/M256/M512 and within
 **4.66%/4.05%/3.02%** of X8. Its guarded repair primitives are also
-implemented. The immediate attack is now complete admission of the repaired
-compounded candidate, followed by gfx1151 default promotion and clean
-production publication. The absolute-bandwidth/KL audit remains post-350
+implemented. Admission, gfx1151 default promotion, and clean production
+publication are now complete. The absolute-bandwidth/KL audit remains post-350
 roofline work.
 
 This document uses stable `LAP-*` labels (“Laguna arithmetic prefill”). Numeric
@@ -607,25 +613,34 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
+| Production publication | Complete | Clean selector-unset M512/attention128 pp512 samples are **353.421/355.584/354.820 tok/s** (median **354.820**), all token 2930. The fail-closed publication binds those timings to the retained 320-step quality artifact and exact package capabilities. Cached-only tracing independently measures **354.763 tok/s** and executes D8-pack/128-column gate-up MMQ, D4 Q4/Q6 down MMQ, Q4/Q6 WMMA dense/shared, scaled hipBLASLt, and online global/SWA attention with zero tracked allocations after close. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
 Immediate execution queue:
 
-1. Collect a clean selector-unset pp512 result with at least three measured
-   repetitions and prove the production default remains at or above 350 tok/s.
-2. Publish 128/1K/4K default behavior, the final trace, memory/lifecycle, and
-   benchmark rollup. Preserve exact fallbacks and session setters only for
-   rollback/bisection.
-3. If selector-unset performance differs from the admitted explicit lane,
-   audit resolved capabilities and the traced kernel names before any tuning.
-4. Rebuild the bridge from the post-admission all-layer trace. Reconcile the
+1. Rebuild the bridge from the post-admission all-layer trace. Reconcile the
    **78.27 ms/layer vs 52.80 ms layer-1** discrepancy before using a leaf ratio
    as a family forecast.
-5. After pp512 admission, screen matrix chunks 1024/2048 for 1K/4K prompts with
+2. Screen matrix chunks 1024/2048 for 1K/4K prompts with
    measured scratch/context admission. This is a separate long-prompt win and
    receives no pp512 credit.
-6. Retain LAP-Q0/LAP-BW0 and tiled attention as post-350 roofline work rather
+3. Run LAP-BW0 with locked/recorded clocks and physical/encoded byte accounting
+   before claiming proximity to the hardware ceiling.
+4. Retain LAP-Q0 and tiled attention as post-350 roofline work rather
    than blockers for the current production promotion.
+
+Production evidence:
+
+- [`2026-07-25-gfx1151-laguna-prefill-350-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production.json)
+  is the retained publication artifact.
+- [`2026-07-25-gfx1151-laguna-prefill-350-production-default.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-default.json)
+  is the raw selector-unset 27-row timing/state screen. Its historical
+  cross-matrix byte-equality policy correctly rejects the already-admitted
+  approximate arithmetic; publication accepts only those two declared legacy
+  failures and independently requires same-mode determinism and lifecycle.
+- [`2026-07-25-gfx1151-laguna-prefill-350-production-trace.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-trace.json)
+  attaches the cached-only all-family trace; the 1.5 MiB raw CSV remains
+  uncommitted and is bound by SHA-256.
 
 ### LAP-0 — freeze the current control and cumulative quality ledger (complete)
 
@@ -900,8 +915,9 @@ The clean complete category gate passes at maximum KL **0.040724836** and
 zero. Exact reconstructed-sum pp512 repeats at
 **353.951/356.082/356.473 tok/s**, always token **2930**. The tempting raw-sum
 variant was faster but failed quality and was removed. gfx1151 now defaults to
-this D8 gate/up route and the admitted D4 down route; clean selector-unset
-publication remains the final production check.
+this D8 gate/up route and the admitted D4 down route. The clean selector-unset
+publication closes the production check at **354.820 tok/s** median, with all
+three samples above 350 tok/s.
 
 Non-temporal weight loads are not a default lever here. Existing gfx1151
 cold-DRAM decode evidence found a **+14%** isolated rows=1 bandwidth gain but a
@@ -1070,6 +1086,10 @@ a valid smaller win:
 | Streaming-family floor | >=70% of measured read roof | About 155 GB/s if the same-host anchor is 221 GB/s; report each mapped family. |
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
+The production target is achieved. The stronger streaming/roofline rows remain
+post-350 optimization targets, not qualifications on the retained 354.820
+tok/s production claim.
+
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.
 
@@ -1203,6 +1223,9 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production.json`
+- `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-default.json`
+- `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-trace.json`
 - `benchmarks/results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json`
 - `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json`
