@@ -20,13 +20,16 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
+    build_gguf_iq_gemv_wave64,
     gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_gemv_tile2_wave64_exact_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out,
     plan_gguf_iq_gemv_build,
+    plan_gguf_iq_gemv_wave64_build,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
@@ -63,6 +66,20 @@ def iq_library():
     compiler_version = Path(version_file).read_text() if version_file else None
     require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
     return build_gguf_iq_gemv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached,
+    )
+
+
+@pytest.fixture(scope="module")
+def iq_wave64_library():
+    if not HIP_AVAILABLE:
+        pytest.skip("HIP runtime is not available")
+    version_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = Path(version_file).read_text() if version_file else None
+    require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
+    return build_gguf_iq_gemv_wave64(
         load=True,
         compiler_version=compiler_version,
         require_cached=require_cached,
@@ -294,6 +311,36 @@ def test_iq2_xs_tile2_is_exact_for_odd_output_tail(iq_library) -> None:
     np.testing.assert_array_equal(actual_dual, expected_dual)
 
 
+def test_iq2_xs_dual_silu_tile2_wave64_matches_retained(
+    iq_library, iq_wave64_library
+) -> None:
+    in_features = 3072
+    out_features = 23
+    x = _f32_to_bf16_u16(_make_x(2, in_features))
+    selected = np.asarray([1, 0, 0, 1], dtype=np.int64)
+    gate = _make_iq2_xs_weight(2, out_features, in_features, seed=0x1A7D)
+    up = _make_iq2_xs_weight(2, out_features, in_features, seed=0x1A7E)
+    retained = _run_dual(
+        iq_library,
+        x,
+        selected,
+        gate,
+        up,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
+    )
+    candidate = _run_dual(
+        iq_wave64_library,
+        x,
+        selected,
+        gate,
+        up,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile2_wave64_exact_bf16_bf16_out,
+    )
+    np.testing.assert_array_equal(candidate, retained)
+
+
 def test_iq2_xs_grid_supports_exact_branchless_magnitude_decoder() -> None:
     direct_source = _HIP_SOURCE.read_text()
     prefill_source = _PREFILL_SOURCE.read_text()
@@ -361,8 +408,17 @@ def test_iq2_xs_registry_build_and_raw_pointer_contract() -> None:
         quant="gguf_iq2_xs",
         variant="selected_dual_silu_gemv_decode_tile1_bf16_bf16_out",
     ) is gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq2_xs",
+        variant="selected_dual_silu_gemv_decode_tile2_wave64_exact_bf16_bf16_out",
+    ) is gguf_iq2_xs_selected_dual_silu_gemv_tile2_wave64_exact_bf16_bf16_out
     artifact = plan_gguf_iq_gemv_build(compiler_version="test-compiler")
+    wave64_artifact = plan_gguf_iq_gemv_wave64_build(compiler_version="test-compiler")
     assert _HIP_SOURCE in artifact.sources
+    assert _HIP_SOURCE in wave64_artifact.sources
+    assert "-mwavefrontsize64" in wave64_artifact.flags
     source = _HIP_SOURCE.read_text()
     assert "torch::Tensor" not in source
     assert "IQ2_XS_BLOCK_BYTES = 74" in source

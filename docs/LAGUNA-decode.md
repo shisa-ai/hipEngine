@@ -15,7 +15,9 @@ guard; it is rejected and removed before category measurement. A distinct
 wave-local reducer that removes all remaining block barriers and reducer LDS is
 retained as the gfx1100 default after exact model-state, trace, clean-context,
 and complete-category gates. A subsequent exact local32 IQ2 tile2 reconstruction
-is bit exact but slower on both first/last actual layers and is removed.
+is bit exact but slower on both first/last actual layers and is removed. A
+separate, c=1-only wave64 code-object build of the unchanged tile2 source is
+correctness-admitted and remains default-off pending clean promotion gates.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -987,6 +989,20 @@ but event time regresses **5.08-5.15%** and synchronized wall regresses
 source, wrapper, registry key, and test are removed before runtime, trace, or
 category work. The retained local64 tile2 body remains canonical. Evidence:
 [`...iq2-tile2-wave32-rejected.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-tile2-wave32-rejected.json).
+
+A narrower wave64 control then compiles the unchanged retained local64 source in
+a separate `-mwavefrontsize64` code object, so both original 32-lane K
+partitions remain parallel. This is not a blanket backend wave64 switch. It is
+selected only through a new c=1 route; rows>1 and the default path keep the
+registered wave32 library. First/last actual layers remain BF16-bit exact and
+improve events **0.73%/3.49%** plus wall **1.33%/4.06%**. The shared-weight gate
+matches full logits, all 48 hidden/47 routed boundaries, active K/V and spans,
+reset, and lifecycle through 16 decode transitions. Cached runtime tracing
+shows 92 c=1 candidate calls at local64/VGPR96/LDS512/scratch0 while all 46 bulk
+prefill calls remain wave32/VGPR136. The candidate is separately registered and
+default-off; clean short/512/1K/near-4K and both complete category orders still
+decide promotion. Evidence:
+[`...iq2-wave64-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-correctness.json).
 
 ## 9. Do not chase without new evidence
 
