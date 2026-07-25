@@ -34,7 +34,7 @@ should be removed or collapsed.
   rejected D4 gate default candidate at that boundary. Pre-admission pp512
   samples were 353.951/356.082/356.473 tok/s.
 
-## Laguna `f16_prefill_mode=hipblaslt_scaled`
+## Laguna `f16_prefill_mode=hipblaslt_norm_direct`
 
 - Added 2026-07-25 as an explicit session-local LAP-6 candidate. Rows greater
   than one cast each BF16 producer row once into existing FP16-sized scratch,
@@ -46,6 +46,14 @@ should be removed or collapsed.
   gate. Clean selector-unset pp512/milestone publication and the final
   hipBLASLt trace now pass. Retain exact tiled as rollback for one release;
   remove the session selector after that rollback window.
+- The 2026-07-26 exact range-qualified follow-up makes
+  `hipblaslt_norm_direct` the gfx1151 default. Actual norm metadata proves a
+  **16.34623** FP16 input bound; full logits, final/pre-final hidden, KV,
+  cursor, token, and token-logit hashes match `hipblaslt_scaled`. Seven
+  explicit pairs improve **502.348 -> 505.887 tok/s (+0.704%)**. Keep
+  `hipblaslt_scaled` only as a one-release rollback for the range-qualified
+  producer boundary, then collapse it while retaining the general scaled cast
+  for the unnormalized attention-output projection.
 
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 

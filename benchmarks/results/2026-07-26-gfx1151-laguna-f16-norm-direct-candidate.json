@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "date": "2026-07-26",
-  "status": "retained_candidate",
+  "status": "retained_default_candidate",
   "system": {
     "hardware": "AMD Radeon 8060S Graphics",
     "architecture": "gfx1151",
@@ -41,7 +41,16 @@
     "direct_cast_vs_scale_one_fixture": "FP16 byte exact",
     "materialized_norm_abs_max_fixture": "pass",
     "focused_tests": "13 passed",
-    "production_integration": "pending"
+    "production_integration": {
+      "next_token": "exact",
+      "next_token_logit": "exact",
+      "full_logits_sha256": "0014c1cbbf2aa19f24e4a354f0ef1593f818840677c000eb0423584a233446cb",
+      "final_hidden_sha256": "7f45e9925b176db56e5efad6fc49d5a399924f62f17c8678f59dfb485d9c2b7c",
+      "post_layer_hidden_sha256": "f7d73ad00f630ca6a55d1b004809e84088515ff2772f51b33180450d09fff2f8",
+      "kv_sha256": "aaa785452719e996b27e6929c83c0089f89d45f466a077da2336edc2c133748a",
+      "cursor": 511,
+      "all_equal_to_scaled_rollback": true
+    }
   },
   "results": {
     "scaled_cast_and_four_restores": {
@@ -87,10 +96,49 @@
     "scratch_bytes": 0,
     "sha256": "9ba4b82faa89b43c5715c12ce4c80413be7948c4c450c41ee67471ebbb546983"
   },
+  "full_model_ab": {
+    "protocol": {
+      "tokens": 512,
+      "matrix_chunk_rows": 512,
+      "attention_chunk_rows": 128,
+      "repetitions": 7,
+      "order": "counterbalanced",
+      "resident_owner": "shared",
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_norm_direct_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-f16-norm-direct-ab.json"
+    },
+    "scaled_rollback_samples_tok_s": [
+      503.30313376190617,
+      501.87212316297683,
+      501.6523551891169,
+      502.34810998487063,
+      498.6423988166625,
+      503.67685975176727,
+      503.74392027537885
+    ],
+    "norm_direct_samples_tok_s": [
+      505.4312791150154,
+      505.88685468551375,
+      504.1114934244502,
+      503.7324994130837,
+      511.64606777560437,
+      506.8826019201981,
+      506.5637362566241
+    ],
+    "scaled_rollback_median_tok_s": 502.34810998487063,
+    "norm_direct_median_tok_s": 505.88685468551375,
+    "relative_change_percent": 0.7044407314978685,
+    "median_wall_change_ms": -7.129532052204013,
+    "paired_wins": 7,
+    "paired_samples": 7,
+    "next_token_id": 2930,
+    "raw_sha256": "a3c7d96ac2a8361424dd042dc95c29c884121e81ca73aa9d9e33f10c6354636c",
+    "exactness_raw_sha256": "0c494dc72b5f8d25de657f27cba0df3a6f3b8e55536d73a12fa02fb97e9b5860"
+  },
   "decision": {
     "retained": true,
-    "scope": "primitive and materialized range metadata only",
-    "production_change": "none",
-    "next": "Integrate an explicit exact hipBLASLt norm-direct session mode and run counterbalanced full pp512 A/B before promotion."
+    "scope": "gfx1151 package default candidate",
+    "production_change": "LAGUNA_F16_PREFILL_MODE selects hipblaslt_norm_direct",
+    "quality_transfer": "Full logits, final/pre-final hidden, KV, cursor, token, and token-logit are byte/value exact to admitted hipblaslt_scaled.",
+    "next": "Run clean selector-unset pp512 publication and refresh cached family attribution."
   }
 }

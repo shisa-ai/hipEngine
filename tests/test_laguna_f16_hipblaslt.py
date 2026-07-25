@@ -7,13 +7,14 @@ import pytest
 import hipengine.runtime.laguna_f16_hipblaslt as route_module
 from hipengine.runtime.laguna_f16_hipblaslt import (
     LagunaF16HipblasLt,
+    laguna_attention_norm_fp16_bound,
     resolve_laguna_f16_prefill_mode,
 )
 
 
 def test_laguna_f16_hipblaslt_mode_is_explicit_and_validated() -> None:
     assert resolve_laguna_f16_prefill_mode("hip_gfx1100") == "retained"
-    assert resolve_laguna_f16_prefill_mode("hip_gfx1151") == "hipblaslt_scaled"
+    assert resolve_laguna_f16_prefill_mode("hip_gfx1151") == "hipblaslt_norm_direct"
     assert (
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "retained")
         == "retained"
@@ -22,8 +23,22 @@ def test_laguna_f16_hipblaslt_mode_is_explicit_and_validated() -> None:
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_scaled")
         == "hipblaslt_scaled"
     )
+    assert (
+        resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_norm_direct")
+        == "hipblaslt_norm_direct"
+    )
     with pytest.raises(ValueError, match="unsupported"):
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "unknown")
+
+
+def test_laguna_attention_norm_fp16_bound_requires_complete_finite_metadata() -> None:
+    assert laguna_attention_norm_fp16_bound(3_072, (0.25, 0.294921875)) == pytest.approx(
+        16.346229496431278
+    )
+    with pytest.raises(ValueError, match="missing"):
+        laguna_attention_norm_fp16_bound(3_072, (0.25, None))
+    with pytest.raises(ValueError, match="finite"):
+        laguna_attention_norm_fp16_bound(3_072, (0.25, float("inf")))
 
 
 def test_laguna_f16_hipblaslt_caches_shape_descriptors(monkeypatch) -> None:

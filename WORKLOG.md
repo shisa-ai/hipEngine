@@ -180194,3 +180194,28 @@ Vulkan local sizes verbatim will close the measured gap.
   explicit same-owner pp512 A/B and full-model byte/quality transfer before
   default promotion. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`.
+
+## 2026-07-26 — Promote direct attention-norm cast as gfx1151 candidate default
+
+- Added `hipblaslt_norm_direct` as an explicit source-F16 session route. It
+  uses the direct cast only for the proven attention-RMSNorm producer, omits
+  the four identity Q/K/V/gate F32 restores, and leaves the unnormalized
+  attention-output projection on the existing power-of-two scaled path.
+  Session admission requires complete finite resident norm abs-max metadata
+  and a conservative 2x FP16 range margin.
+- Same-owner matrix512/attention128 pp512 A/B improves seven-pair median
+  **502.348110 -> 505.886855 tok/s (+0.70444%)**, saves **7.130 ms** median
+  wall, and wins all seven pairs. Every run selects token 2930. Raw SHA-256:
+  `a3c7d96ac2a8361424dd042dc95c29c884121e81ca73aa9d9e33f10c6354636c`.
+- A separate complete-state pair matches token-logit hex, all 100,352 F32
+  logits, final BF16 hidden, pre-final BF16 hidden, all live BF16 KV plus span
+  metadata, and cursor exactly. Exactness raw SHA-256:
+  `0c494dc72b5f8d25de657f27cba0df3a6f3b8e55536d73a12fa02fb97e9b5860`.
+  The admitted max KL **0.049542582**, **316/320** top-1, Poolside,
+  determinism, decode, and lifecycle therefore transfer unchanged.
+- The gfx1151 package now selects `hipblaslt_norm_direct`; `hipblaslt_scaled`
+  remains an explicit one-release rollback and the exact custom route remains
+  the unfused fallback. Focused mode/package/runner/cast validation passes
+  **39 tests**. Production publication remains pending a clean selector-unset
+  run from this committed revision. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`.

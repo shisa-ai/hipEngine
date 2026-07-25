@@ -33,8 +33,11 @@ A producer-qualified source-F16 candidate is retained. Every attention
 RMSNorm output is bounded by **16.34623** from the actual 48 norm weights, so
 the input row scale is provably one. A direct BF16-to-FP16 primitive plus
 removal of four identity output restores improves the exact pp512 glue mix
-**4.434 -> 0.767 ms (-82.70%, 5.780x)** with byte parity. This is a candidate;
-production remains **503.349 tok/s** pending full-model A/B.
+**4.434 -> 0.767 ms (-82.70%, 5.780x)** with byte parity. Seven-pair full
+pp512 improves **502.348 -> 505.887 tok/s (+0.704%)** with exact
+logits/hidden/KV/cursor and all paired wins. gfx1151 now selects the route as
+its candidate default; published production remains **503.349 tok/s** pending
+the clean selector-unset refresh.
 [`artifact`](results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json).
 
 Latest retained hipEngine revisions in this scoreboard:
