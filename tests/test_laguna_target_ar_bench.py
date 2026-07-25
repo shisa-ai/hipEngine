@@ -128,6 +128,24 @@ def test_paired_correctness_requires_serial_bulk_and_repeat_determinism() -> Non
     assert failed["same_mode_repeat_deterministic"] is False
 
 
+def test_iq3_signbit_schedule_cli_is_explicit_default_off(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert benchmark._parse_args().iq3_c1_down_schedule is None
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        [
+            "laguna_target_ar_bench.py",
+            "--iq3-c1-down-schedule",
+            "wave4_signbit_reduce",
+        ],
+    )
+    assert (
+        benchmark._parse_args().iq3_c1_down_schedule == "wave4_signbit_reduce"
+    )
+
+
 def test_iq2_grid64_cli_is_defaults_on_with_explicit_disable(monkeypatch) -> None:
     monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
     assert not benchmark._parse_args().disable_iq2_grid64
