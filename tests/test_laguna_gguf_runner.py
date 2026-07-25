@@ -26,6 +26,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_head_kv_fusion,
     resolve_laguna_iq2_grid64,
     resolve_laguna_mixed_attention_projections,
+    resolve_laguna_mixed_local32_fixed_meta_attention,
     resolve_laguna_mixed_q6_fixed_meta_attention,
     resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
@@ -122,6 +123,16 @@ def test_laguna_mixed_attention_projection_default_is_gfx1100_only_and_rollbacka
     assert resolve_laguna_mixed_attention_projections("hip_gfx1100", True)
     assert not resolve_laguna_mixed_attention_projections("hip_gfx1100", False)
     assert not resolve_laguna_mixed_attention_projections("hip_gfx1151")
+
+
+def test_laguna_mixed_local32_fixed_metadata_is_default_off_and_rollbackable() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_MIXED_LOCAL32_FIXED_METADATA", False
+    ) is False
+    assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100")
+    assert resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100", True)
+    assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100", False)
+    assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1151")
 
 
 def test_laguna_mixed_q6_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
@@ -735,6 +746,61 @@ def test_laguna_mixed_attention_projection_quad_is_registry_owned_and_fail_close
         runtime=None,
     )
     assert len(calls) == before
+
+
+def test_laguna_attention_projection_prefers_explicit_local32_variant(
+    monkeypatch,
+) -> None:
+    variants: list[str] = []
+    accept_local32 = [True]
+
+    def mixed(*args, **kwargs):
+        del args
+        variant = kwargs["variant"]
+        variants.append(variant)
+        return accept_local32[0] or variant != (
+            "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+        )
+
+    monkeypatch.setattr(runner_module, "launch_laguna_mixed_attention_projections", mixed)
+    weight = SimpleNamespace(spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF))
+
+    def launch() -> bool:
+        return runner_module.launch_laguna_attention_projections(
+            weight,
+            weight,
+            weight,
+            weight,
+            10,
+            20,
+            30,
+            40,
+            50,
+            1,
+            3072,
+            6144,
+            1024,
+            1024,
+            48,
+            backend="hip_gfx1100",
+            stream=0,
+            libraries=SimpleNamespace(),
+            runtime=None,
+            use_mixed_q5_q6_attention=True,
+            use_mixed_q6_fixed_meta_attention=True,
+            use_mixed_local32_fixed_meta_attention=True,
+        )
+
+    assert launch()
+    assert variants == ["mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"]
+
+    variants.clear()
+    accept_local32[0] = False
+    assert launch()
+    assert variants == [
+        "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+        "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+    ]
 
 
 def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(

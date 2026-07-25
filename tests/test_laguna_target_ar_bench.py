@@ -190,6 +190,18 @@ def test_mixed_attention_projection_cli_defaults_on_with_explicit_disable(
     assert benchmark._parse_args().disable_mixed_q5_q6_attention
 
 
+def test_mixed_local32_fixed_metadata_cli_is_explicit_opt_in(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().mixed_local32_fixed_meta_attention
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--mixed-local32-fixed-meta-attention"],
+    )
+    assert benchmark._parse_args().mixed_local32_fixed_meta_attention
+
+
 def test_mixed_q6_fixed_metadata_cli_defaults_on_with_explicit_disable(
     monkeypatch,
 ) -> None:

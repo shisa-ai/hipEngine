@@ -98,6 +98,9 @@ _MIXED_ATTENTION_VARIANT = "mixed_pack8_gemv_decode_bf16_f32_out"
 _MIXED_ATTENTION_Q6_FIXED_META_VARIANT = (
     "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
 )
+_MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT = (
+    "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+)
 _Q5_WAVE32X2_OUTPUT_VARIANT = "wave32x2_gemv_decode_bf16_bf16_out"
 _Q5_WAVE32X2_QUERY_GATE_VARIANT = "wave32x2_gemv_decode_bf16_f32_out"
 _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT = (
@@ -1005,6 +1008,7 @@ def launch_laguna_attention_projections(
     query_gate_decode_variant: str | None = None,
     use_mixed_q5_q6_attention: bool = False,
     use_mixed_q6_fixed_meta_attention: bool = False,
+    use_mixed_local32_fixed_meta_attention: bool = False,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
@@ -1014,33 +1018,41 @@ def launch_laguna_attention_projections(
     retain the established fused-QKV or singleton fallbacks.
     """
 
-    if use_mixed_q5_q6_attention and launch_laguna_mixed_attention_projections(
-        q_weight,
-        k_weight,
-        v_weight,
-        gate_weight,
-        x_ptr,
-        q_ptr,
-        k_ptr,
-        v_ptr,
-        gate_ptr,
-        rows,
-        in_features,
-        q_features,
-        k_features,
-        v_features,
-        gate_features,
-        backend=backend,
-        stream=stream,
-        libraries=libraries,
-        runtime=runtime,
-        variant=(
-            _MIXED_ATTENTION_Q6_FIXED_META_VARIANT
-            if use_mixed_q6_fixed_meta_attention
-            else _MIXED_ATTENTION_VARIANT
-        ),
-    ):
-        return True
+    retained_mixed_variant = (
+        _MIXED_ATTENTION_Q6_FIXED_META_VARIANT
+        if use_mixed_q6_fixed_meta_attention
+        else _MIXED_ATTENTION_VARIANT
+    )
+    mixed_variants = (
+        (_MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT, retained_mixed_variant)
+        if use_mixed_local32_fixed_meta_attention
+        else (retained_mixed_variant,)
+    )
+    if use_mixed_q5_q6_attention:
+        for variant in mixed_variants:
+            if launch_laguna_mixed_attention_projections(
+                q_weight,
+                k_weight,
+                v_weight,
+                gate_weight,
+                x_ptr,
+                q_ptr,
+                k_ptr,
+                v_ptr,
+                gate_ptr,
+                rows,
+                in_features,
+                q_features,
+                k_features,
+                v_features,
+                gate_features,
+                backend=backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                variant=variant,
+            ):
+                return True
 
     q_gate_fused = False
     if (
@@ -1263,6 +1275,23 @@ def resolve_laguna_mixed_attention_projections(
         backend_package_capability(
             backend,
             "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
+            False,
+        )
+    )
+
+
+def resolve_laguna_mixed_local32_fixed_meta_attention(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the exact all-local32 mixed projection as a default-off screen."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
             False,
         )
     )
@@ -1758,6 +1787,7 @@ class LagunaGGUFResidentSession:
         use_q5_shared_fixed_meta: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
+        use_mixed_local32_fixed_meta_attention: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1820,6 +1850,12 @@ class LagunaGGUFResidentSession:
             resolve_laguna_mixed_q6_fixed_meta_attention(
                 self.backend,
                 use_mixed_q6_fixed_meta_attention,
+            )
+        )
+        self.use_mixed_local32_fixed_meta_attention = (
+            resolve_laguna_mixed_local32_fixed_meta_attention(
+                self.backend,
+                use_mixed_local32_fixed_meta_attention,
             )
         )
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
@@ -2642,6 +2678,9 @@ class LagunaGGUFResidentSession:
             use_mixed_q6_fixed_meta_attention=(
                 self.use_mixed_q6_fixed_meta_attention
             ),
+            use_mixed_local32_fixed_meta_attention=(
+                self.use_mixed_local32_fixed_meta_attention
+            ),
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -3032,6 +3071,9 @@ class LagunaGGUFResidentSession:
             use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
             use_mixed_q6_fixed_meta_attention=(
                 self.use_mixed_q6_fixed_meta_attention
+            ),
+            use_mixed_local32_fixed_meta_attention=(
+                self.use_mixed_local32_fixed_meta_attention
             ),
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
@@ -3710,6 +3752,7 @@ __all__ = [
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",
     "resolve_laguna_mixed_attention_projections",
+    "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",
