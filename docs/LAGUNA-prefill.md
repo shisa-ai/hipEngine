@@ -616,18 +616,93 @@ Current progress:
 | Production publication | Complete | Clean selector-unset M512/attention128 pp512 samples are **353.421/355.584/354.820 tok/s** (median **354.820**), all token 2930. The fail-closed publication binds those timings to the retained 320-step quality artifact and exact package capabilities. Cached-only tracing independently measures **354.763 tok/s** and executes D8-pack/128-column gate-up MMQ, D4 Q4/Q6 down MMQ, Q4/Q6 WMMA dense/shared, scaled hipBLASLt, and online global/SWA attention with zero tracked allocations after close. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
+## Post-350 campaign — 500 production gate, 700 stretch
+
+The 350 tok/s milestone proves the compounded production package, but it is
+not a roofline result. The clean cached production trace measures **1.443218
+seconds** synchronized pp512 wall, **1.440122 seconds** kernel span, and
+**1.427220 seconds** kernel sum. Only **15.997 ms / 1.11%** of wall lies
+outside the summed kernels, so graphs, Python removal, and submission tuning
+are explicitly closed until a later trace changes that conclusion.
+
+The next primary gate is **at least 500 tok/s selector-unset production
+pp512**: at least three clean repetitions, median and every sample at or above
+500 tok/s, with the same model/quant/KV/queue policy and all existing
+correctness, quality, decode, determinism, memory, and lifecycle gates. The
+stretch gate is **700 tok/s** under the same contract. The 700 row is a target,
+not a performance claim, until LAP-BW0 supplies locked-clock physical traffic
+and achievable-bandwidth evidence.
+
+| Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
+| --- | ---: | ---: | --- |
+| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. Screen K64 nibble reuse and 4–8 K32 stages/double buffering while preserving the admitted arithmetic and accumulation order. |
+| Selected D4 Q4/Q6 down | **276.169 ms** | **19.35%** | Carry the winning expert schedule into Q4 and Q6 down, then reprofile the combined 60.11% expert window. |
+| Global + SWA attention | **274.724 ms** | **19.25%** | Build the `KVLiveSpans`-aware M16-query x K64-key tiled path after the next expert trace; it is already above LAP-7's 10% start threshold. |
+| Scaled hipBLASLt source-F16 | **130.373 ms** | **9.13%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
+| Q4/Q6 WMMA dense/shared | **70.098 ms** | **4.91%** | Freeze. It is only about 7.2 ms behind the homologous Vulkan family and cannot move the next milestone materially. |
+| All remaining named/other kernels | **94.058 ms** | **6.59%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
+
+The current trace gives concrete Amdahl checkpoints, not performance claims:
+
+- **1.25x/1.5x/2x** combined selected-expert throughput models to about
+  **403/442/505 tok/s** with every other family unchanged.
+- Reducing global+SWA attention from **274.7 ms** toward **80 ms** models to
+  about **410 tok/s** with every other family unchanged.
+- Combining **2x** selected experts with an **80 ms** attention window models
+  to about **625 tok/s**. Reaching 700 requires a stronger measured expert
+  bandwidth result, additional attention reduction, or both.
+- The frozen routing byte lower bound makes the current gate/up window about
+  **62.3 GB/s encoded-weight-equivalent**, only **28.2%** of the existing
+  221 GB/s same-host read anchor. This is evidence of likely headroom, not a
+  controller-bandwidth claim; LAP-BW0 must replace it with encoded and physical
+  traffic plus in-load clocks.
+
+The quality contract remains binding. The production route sits at maximum KL
+**0.040724836**, leaving only **0.009275164** below the 0.05 ceiling. The
+rejected D4 gate candidate already showed that another approximate shortcut can
+hold 355+ tok/s while failing quality at KL **0.0767056**. Prefer exact
+data-movement/scheduling wins and preserve K accumulation order; run LAP-Q0
+before admitting any new approximation.
+
 Immediate execution queue:
 
-1. Rebuild the bridge from the post-admission all-layer trace. Reconcile the
-   **78.27 ms/layer vs 52.80 ms layer-1** discrepancy before using a leaf ratio
-   as a family forecast.
-2. Screen matrix chunks 1024/2048 for 1K/4K prompts with
-   measured scratch/context admission. This is a separate long-prompt win and
-   receives no pp512 credit.
-3. Run LAP-BW0 with locked/recorded clocks and physical/encoded byte accounting
-   before claiming proximity to the hardware ceiling.
-4. Retain LAP-Q0 and tiled attention as post-350 roofline work rather
-   than blockers for the current production promotion.
+1. Publish the post-admission LAP-BW0 ledger from the final all-layer trace:
+   locked/recorded clocks, per-family encoded and physical bytes, and
+   counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
+   52.80 ms layer-1** bridge instead of scaling it into new forecasts.
+2. Screen the selected gate/up K loop in bounded exact variants: current K32,
+   K64 consuming both Q4 nibble planes per source fetch, 4–8 K32 stages per
+   synchronization interval, and double buffering where resource evidence
+   supports it. Report producer-pack-inclusive family and production wall,
+   local/VGPR/LDS/scratch, and all natural shapes.
+3. Apply only the winning schedule to Q4/Q6 down, then run clean selector-unset
+   pp512 and the complete category/decode/determinism/lifecycle gate. Retain
+   every exact same-suite non-regressive improvement; 500 tok/s closes the next
+   production milestone.
+4. Raise the currently hard-capped matrix capacity and screen **1024/2048**
+   chunks for 1K/4K prompts while retaining independent 128-row attention
+   slices. Publish scratch/context admission and exact cursor/KV/lifecycle
+   evidence. This receives no pp512 credit.
+5. Implement and screen LAP-7 cooperative tiled attention. Its primary
+   residual gates are pp512, 1K, and 4K family wall plus full
+   `KVLiveSpans`/causal/ring correctness and the complete quality lane.
+6. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
+   2.778% Q4 metadata saving is a permanent but roughly **1.1% pp512**
+   gate/up-byte upper bound at the current family share.
+
+Post-350 exclusions:
+
+- do not spend a campaign round on source-F16, dense/shared, graphs,
+  submission, router, norm/RoPE, or tails without a new trace reopening them;
+- do not retry the rejected raw-sum D8 or D4-gate quality shortcuts;
+- do not add a duplicate resident expert-weight sidecar or weaken c=1 exact
+  decode to buy prefill;
+- do not claim 500 or 700 from a leaf, explicit session selector, dirty tree,
+  single sample, or incomplete quality lane.
+
+The current campaign authority is the retained production packet and trace
+below. Every new modeled table is rebuilt from the most recently promoted
+trace rather than the pre-campaign 76 tok/s bridge.
 
 Production evidence:
 
