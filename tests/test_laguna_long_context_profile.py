@@ -167,10 +167,20 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
             "prefill_compact32_kernel<1, false, true, 128>",
             "selected_q4_gate_up",
         ),
+        (
+            "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_"
+            "prefill_compact32_kernel<1, false, true, 128, true>",
+            "selected_q4_gate_up",
+        ),
         ("gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel<1, false>", "selected_q4_q6_down"),
         (
             "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_"
             "prefill_compact32_kernel<1, true, false, 64>",
+            "selected_q4_q6_down",
+        ),
+        (
+            "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_"
+            "prefill_compact32_kernel<1, true, false, 64, false>",
             "selected_q4_q6_down",
         ),
         (

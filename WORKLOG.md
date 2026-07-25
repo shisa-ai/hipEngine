@@ -178956,3 +178956,18 @@ Vulkan local sizes verbatim will close the measured gap.
   production confirmation and all-family reprofile before updating the
   production claim. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-candidate.json`.
+
+## 2026-07-25 — Repair Laguna trace attribution after template extension
+
+- The first post-row-vector trace summary incorrectly reported selected gate/up
+  at 677.477 ms and selected down at 137.002 ms. The kernel trace itself was
+  correct: adding the row-vector template boolean changed the unchanged Q4-down
+  demangled suffix from `<1, true, false, 64>` to
+  `<1, true, false, 64, false>`, so the exact-string classifier moved its
+  139.554 ms into gate/up.
+- Added RED cases for both extended gate/up and down template names and made
+  the down marker suffix-tolerant. The focused classifier reports **23 passed**.
+  Regenerating from the unchanged raw CSV changes attribution only: pp512
+  gate/up is **537.923 ms**, down is **276.556 ms**, and total kernel sum/span
+  remain exactly **1,326.263/1,337.821 ms**. The fixed derived summary SHA-256
+  is `028b29f359cfef088e0f01df848f63889f0454a3183d571e56798d46dae91248`.
