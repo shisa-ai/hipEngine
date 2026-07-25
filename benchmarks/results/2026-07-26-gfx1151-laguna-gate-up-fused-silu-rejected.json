@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T05:33:00+09:00",
+  "kind": "hipengine_laguna_gate_up_fused_silu_full_model_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "scope": "production matrix512/attention128 pp512",
+    "rollback": "one dual gate/up MMQ launch followed by the separate BF16 SiLU/product launch",
+    "candidate": "one gate-only MMQ launch followed by one up-only MMQ launch that reads the BF16 gate and emits the BF16 SiLU/product",
+    "exact_boundaries": "gate and up are independently BF16-rounded before the unchanged FP32 expf expression and final BF16 rounding"
+  },
+  "validation": {
+    "red": "The focused primitive and runtime tests initially failed on the absent fused registry contract.",
+    "green": "The primitive fused output and complete production-shape MoE output are BF16-byte identical to the unfused chain.",
+    "focused_result": "11 primitive tests passed; 2 repaired production-shape Q4/Q6 nodes passed after a test-local name typo.",
+    "full_model_next_token_equal": true,
+    "next_token_id": 2930
+  },
+  "protocol": {
+    "tokens": 512,
+    "matrix_chunk_rows": 512,
+    "attention_chunk_rows": 128,
+    "repetitions": 7,
+    "order": "counterbalanced",
+    "resident_owner": "shared",
+    "build": "cached HIP build",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_up_silu_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-gate-up-silu-dirty-ab.json",
+    "raw_sha256": "b218b1e7324de171c68f3403580004ff1b8c47ee9c02fd6bf9ba4ff9ecac8c77"
+  },
+  "results": {
+    "separate_silu_rollback": {
+      "samples_tok_s": [
+        498.01209377217083,
+        498.18542771635,
+        496.52029456210386,
+        495.47209437214633,
+        494.372468439026,
+        498.8734769493842,
+        499.2418164191958
+      ],
+      "median_tok_s": 498.01209377217083,
+      "median_wall_ms": 1028.0874830204993
+    },
+    "fused_up_silu_candidate": {
+      "samples_tok_s": [
+        497.59419378912594,
+        496.06775905506265,
+        495.92112722690456,
+        495.4454440649259,
+        502.1377253855069,
+        497.21046816690176,
+        497.4711751889362
+      ],
+      "median_tok_s": 497.21046816690176,
+      "median_wall_ms": 1029.745012987405
+    },
+    "relative_change_percent": -0.1609650880558311,
+    "median_wall_change_ms": 1.6575299669057375,
+    "paired_wins": 1,
+    "paired_samples": 7
+  },
+  "decision": {
+    "action": "Reject and remove the fused primitive, runtime mode, harness, and test surface.",
+    "reason": "Eliminating the 5.3 ms SiLU memory pass does not repay splitting the dual gate/up MMQ into two separately scheduled weight-streaming launches.",
+    "retain": "dual gate/up MMQ plus separate exact SiLU/product",
+    "next": "widen exact router-logit token reuse; the current four-token tile contributes about 30.658 ms at pp512"
+  }
+}

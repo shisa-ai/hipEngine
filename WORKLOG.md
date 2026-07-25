@@ -179934,3 +179934,25 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next: gate-only MMQ followed by up-MMQ+SiLU, preserving the established
   gate/up BF16 projection boundaries and exact `expf` expression while
   removing the separate 5.302-ms pp512 SiLU memory pass.
+
+## 2026-07-26 — Reject split-MMQ gate/up SiLU fusion
+
+- RED required a registered gate-only MMQ then up-MMQ+SiLU contract. The
+  temporary candidate independently BF16-rounded gate and up before applying
+  the unchanged FP32 `expf` expression and final BF16 boundary. Focused
+  primitive validation and complete production-shape Q4/Q6 MoE output were
+  BF16-byte exact to the existing dual-MMQ plus separate-SiLU chain.
+- Seven counterbalanced one-owner matrix512/attention128 pp512 repetitions
+  changed **498.012094 -> 497.210468 tok/s (-0.160965%)**, added **1.658 ms**
+  median wall, won only **1/7** pairs, and selected exact token **2930** in all
+  fourteen runs. Raw JSON SHA-256:
+  `b218b1e7324de171c68f3403580004ff1b8c47ee9c02fd6bf9ba4ff9ecac8c77`.
+- Reject and remove the primitive, registry/runtime route, harness, and tests.
+  Eliminating the traced 5.302-ms separate SiLU pass does not repay splitting
+  the dual gate/up MMQ into two separately scheduled weight-streaming
+  dispatches. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-up-fused-silu-rejected.json`.
+- The next exact screen widens router-logit token reuse from four to eight and
+  sixteen. The production trace assigns **30.658 ms** to this family, and each
+  wider tile can preserve the current per-token K traversal, 256-thread
+  reduction association, F32 logits, and downstream routing bits.
