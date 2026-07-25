@@ -54,6 +54,9 @@ LAGUNA_SPLIT_GATE_FUSION = True
 # in each logical wave. This removes all block barriers/LDS and improves every
 # clean context plus the complete two-order category suite.
 LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
+# The local64 packed-dim2 sibling is primitive-admitted but remains default-off
+# until full-state, clean-context, and complete-category promotion gates pass.
+LAGUNA_SWA_SPLIT_WAVE_LOCAL_DIM2 = False
 # Current-P4 first/last-layer, clean context, full-state, and complete two-order
 # category evidence admits exact c=1 head RMSNorm+RoPE+BF16 KV append fusion.
 # Rows/prefill and other backends retain the registered two-launch fallback.
@@ -134,6 +137,7 @@ __all__ = [
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
+    "LAGUNA_SWA_SPLIT_WAVE_LOCAL_DIM2",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",

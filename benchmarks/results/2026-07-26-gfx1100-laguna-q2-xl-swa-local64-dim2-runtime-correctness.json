@@ -1,0 +1,159 @@
+{
+  "based_on_revision": "e4d06d08dc3f398515b48a4de4ad3d0c584e4172",
+  "correctness_gate": {
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true,
+    "required_kl_max": 0.05,
+    "required_top1_min": 0.9
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "completion_claim": false,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "next_gate": "Run both frozen process orders at short/512/1K/near-4K. Target reducer must improve everywhere; total kernel/span regressions must stay below 0.5%; equal-process child throughput must remain above -0.5%. Run complete categories only after that all-pass mechanical result.",
+    "retained_default_unchanged": true,
+    "runtime_admitted_default_off": true
+  },
+  "full_state_gate": {
+    "active_kv_and_all_live_span_fields_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/laguna_swa_dim2_runtime_correctness.py",
+    "decode_steps": 16,
+    "full_logits_and_ids_bit_exact": true,
+    "harness_sha256": "49c6873a6fead1230371bc9595fbe98eb162791ec5a008c059a056d43f53c2d3",
+    "kl_divergence": 0.0,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "ee16a33361ad21aed4b93fcc73be0393375e7625552666b847ff50e519760eb4",
+    "reset_and_reprefill_exact": true,
+    "top1_agreement": 1.0,
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_returned_to_baseline": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_swa_local64_dim2_runtime_correctness",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "primitive_admission": {
+    "all_12_actual_weight_rows_improved": true,
+    "artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-correctness.json",
+    "artifact_sha256": "50876562df77de229b6298bba75054c6121babf0bcce2f5e3b98aa4234ced104",
+    "event_improvement_pct_range": [
+      0.27487686970039116,
+      0.6845443449300048
+    ],
+    "wall_improvement_pct_range": [
+      0.295042748961738,
+      2.2942393115663595
+    ]
+  },
+  "red_green": {
+    "backend_scope_regression": "The first full bundle caught candidate aliases leaking into gfx1151; both dim2 keys were added to gfx1151's explicit alias exclusions before the all-green rerun.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_split_reduce_wave_local.py tests/test_laguna_gguf_runner.py",
+    "green_output_sha256": "cb27fd7f42b6d224dfa05db3fc71777af0a383bcb32d6cfe1be44ebfcab22739",
+    "green_result": "33 passed",
+    "red_command": "uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "red_output_sha256": "4deb6395f66a69ec69b1cd99b66d1053e7b16e62b89dcd600fe54bf5a9aff5c1",
+    "red_result": "failed on absent LagunaKVCache.swa_split_wave_local_dim2 selector state"
+  },
+  "rocprof_trace": {
+    "bench_sha256": "62c57f466d24bf55758ad84764174cda418b5a93bec56c6f0637b9ce56efa2d0",
+    "candidate_calls": 72,
+    "candidate_calls_per_token": 36,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-dim2-runtime-trace-e4d06d08 --output-file trace -- uv run python -u /tmp/laguna_swa_dim2_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --enable-head-kv --enable-swa-wave-local-dim2 --output /tmp/laguna-swa-dim2-runtime-trace-e4d06d08/bench.json",
+    "compiler_spawned_under_profiler": false,
+    "csv_sha256": "6f32c32274e9d7daf16dff7778fa9492116397a5e8cf378707c924091a431cb5",
+    "dispatch_id_stride_between_token_first_calls": 728,
+    "duration_ns_max": 41240,
+    "duration_ns_median": 36580.0,
+    "duration_ns_min": 35800,
+    "finite_logits": true,
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "grid_x": 4608,
+    "harness_sha256": "38a16ac93a1e04ac9123602d4cd7fa9116d552df9a9b8c6a24c15eef6046f90d",
+    "kernel": "laguna_swa_attention_split_exact_gated_wave_local_dim2_reduce_kernel",
+    "lds_bytes": 0,
+    "model_kernels_per_token": 723,
+    "require_cached_build": true,
+    "retained_local128_calls": 0,
+    "runtime_copy_calls_in_stride": 5,
+    "scratch_bytes": 0,
+    "sgpr": 128,
+    "shared_statistics_calls": 0,
+    "tracked_returned_to_baseline": true,
+    "vgpr": 24,
+    "workgroup": 64,
+    "workgroups_per_call": 72
+  },
+  "runtime_selector": {
+    "benchmark_cli": "scripts/laguna_target_ar_bench.py --enable-swa-split-wave-local-dim2",
+    "constructor": "LagunaGGUFResidentSession(..., use_swa_split_wave_local_dim2=True)",
+    "default_enabled": false,
+    "dispatch_delta": 0,
+    "fallback": "retained local128 exact wave-local reducers remain the default and registry fallback",
+    "gfx1100_capability": "LAGUNA_SWA_SPLIT_WAVE_LOCAL_DIM2=False",
+    "gfx1151_keys_excluded": true,
+    "kv_owner": "allocate_laguna_kv_cache(..., use_swa_split_wave_local_dim2=True)",
+    "normal_variant": "swa_context_split_exact_gated_wave_local_dim2_spans",
+    "requires_exact_split_gate_fusion": true,
+    "requires_retained_wave_local": true,
+    "score_producers_unchanged": true,
+    "tile16_variant": "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
+    "workspace_delta_bytes": 0
+  },
+  "schema": 1,
+  "source_provenance": {
+    "files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "a7d3737bdcbb3a870f670ff18a53a35abe1b1f8897eacdcfee5bf383fe36676d"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1151/__init__.py",
+        "sha256": "e60503ccccdc1b03c24c377283686c0457da4829dbdb531665d594894332cf67"
+      },
+      {
+        "path": "hipengine/runtime/laguna_kv.py",
+        "sha256": "1652540091d8dbc84e3c2d0f025a583dabba961b7a5067597212d04e1ef2506c"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "fcc7af411aec9176e29b6861c2640a0d1fa35059bc26904033823ada84baafae"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "007c66d5f466bf6ea5098833c7b981762ff10e0a729712f00791634fd8fc7ddd"
+      },
+      {
+        "path": "tests/test_laguna_kv_attention.py",
+        "sha256": "28f2496d04cf65c1d042399d2008de27ade8e2b0eea593557d97a8c110a7980e"
+      },
+      {
+        "path": "tests/test_laguna_gguf_runner.py",
+        "sha256": "634f9504c163c2d8174fdabd45557b954742aa5cecc19ad53783bd92f1c2a81e"
+      }
+    ],
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already catalogued unrelated drift"
+  },
+  "status": "runtime_admitted_default_off_pending_clean_context"
+}
