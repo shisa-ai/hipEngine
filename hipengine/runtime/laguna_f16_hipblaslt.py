@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
+from typing import Iterable
 
 from hipengine.core.hipblaslt import (
     HipblasLt,
@@ -11,7 +13,7 @@ from hipengine.core.hipblaslt import (
 )
 from hipengine.kernels.backends import backend_package_capability
 
-_MODES = frozenset({"retained", "hipblaslt_scaled"})
+_MODES = frozenset({"retained", "hipblaslt_scaled", "hipblaslt_norm_direct"})
 _BASELINE_MODE = "retained"
 _QUALITY_ALGORITHM_BY_KN = {
     # The default heuristic-4 schedule misses the cumulative all-exact quality
@@ -40,6 +42,30 @@ def resolve_laguna_f16_prefill_mode(
     if parsed not in _MODES:
         raise ValueError("unsupported Laguna F16 prefill mode")
     return parsed
+
+
+def laguna_attention_norm_fp16_bound(
+    hidden_size: int,
+    source_abs_maxima: Iterable[float | None],
+) -> float:
+    """Return the finite RMSNorm output bound from resident norm metadata."""
+
+    hidden = int(hidden_size)
+    if hidden <= 0:
+        raise ValueError("Laguna attention norm hidden_size must be positive")
+    parsed: list[float] = []
+    for value in source_abs_maxima:
+        if value is None:
+            raise ValueError("Laguna attention norm source abs-max metadata is missing")
+        item = float(value)
+        if not math.isfinite(item):
+            raise ValueError("Laguna attention norm source abs-max metadata must be finite")
+        if item < 0.0:
+            raise ValueError("Laguna attention norm source abs-max metadata must be nonnegative")
+        parsed.append(item)
+    if not parsed:
+        raise ValueError("Laguna attention norm source abs-max metadata is missing")
+    return math.sqrt(hidden) * max(parsed)
 
 
 @dataclass(frozen=True)
@@ -110,5 +136,6 @@ class LagunaF16HipblasLt:
 
 __all__ = [
     "LagunaF16HipblasLt",
+    "laguna_attention_norm_fp16_bound",
     "resolve_laguna_f16_prefill_mode",
 ]

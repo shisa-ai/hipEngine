@@ -74,9 +74,11 @@ LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
-# Clean LAP-6 admission selects power-of-two row-scaled hipBLASLt for source-F16
-# rows>1 projections. Decode remains on the existing exact GEMV route.
-LAGUNA_F16_PREFILL_MODE = "hipblaslt_scaled"
+# The attention-RMSNorm source range is statically bounded from resident F32
+# norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
+# restores. Attention output retains power-of-two row scaling; decode is
+# unchanged.
+LAGUNA_F16_PREFILL_MODE = "hipblaslt_norm_direct"
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128

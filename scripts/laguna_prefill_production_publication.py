@@ -69,7 +69,7 @@ CAPABILITY_DEFAULTS = {
     ),
     "f16_projection_mode": (
         "LAGUNA_F16_PREFILL_MODE",
-        "hipblaslt_scaled",
+        "hipblaslt_norm_direct",
     ),
 }
 
@@ -106,7 +106,11 @@ def _expected_candidate_modes(defaults: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "dense_q4_prefill_mode": defaults["dense_q4_prefill_mode"],
         "f16_prefill_mode": defaults["f16_prefill_strategy"],
-        "f16_projection_mode": defaults["f16_projection_mode"],
+        "f16_projection_mode": (
+            "hipblaslt_scaled"
+            if defaults["f16_projection_mode"] == "hipblaslt_norm_direct"
+            else defaults["f16_projection_mode"]
+        ),
         # Qrow4 is F32 byte-identical to the admitted online-qrow2 arithmetic
         # on complete tiles and preserves qrow2 for residual tiles.
         "global_prefill_variant": (

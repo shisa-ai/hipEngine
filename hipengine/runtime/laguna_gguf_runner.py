@@ -26,6 +26,7 @@ from hipengine.kernels.backends import (
     resolve_backend,
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import (
+    bf16_to_fp16,
     bf16_to_fp16_scaled_rows,
     f32_scale_rows,
     f32_scale_rows_to_bf16,
@@ -67,6 +68,7 @@ from hipengine.runtime.f16_weight_linear import (
 )
 from hipengine.runtime.laguna_f16_hipblaslt import (
     LagunaF16HipblasLt,
+    laguna_attention_norm_fp16_bound,
     resolve_laguna_f16_prefill_mode,
 )
 from hipengine.runtime.laguna_kv import (
@@ -1631,6 +1633,8 @@ class LagunaGGUFResidentSession:
             else:
                 self.weights = resident_weights
             self._validate_resident_weights()
+            if self.f16_prefill_mode == "hipblaslt_norm_direct":
+                self.set_f16_prefill_mode(self.f16_prefill_mode)
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,
                 config.full_rope,
@@ -1712,7 +1716,7 @@ class LagunaGGUFResidentSession:
         """Select the explicit rows>1 source-F16 projection route."""
 
         selected = resolve_laguna_f16_prefill_mode(self.backend, mode)
-        if selected == "hipblaslt_scaled":
+        if selected != "retained":
             assert self.weights is not None
             unsupported = [
                 (layer.layer_id, slot, layer.weight(slot).spec.layout)
@@ -1724,6 +1728,20 @@ class LagunaGGUFResidentSession:
                 raise ValueError(
                     "Laguna hipBLASLt prefill requires dense F16 attention weights; "
                     f"first unsupported={unsupported[0]}"
+                )
+        if selected == "hipblaslt_norm_direct":
+            assert self.weights is not None
+            bound = laguna_attention_norm_fp16_bound(
+                self.weights.config.hidden_size,
+                (
+                    getattr(layer.weight("attn_norm"), "source_abs_max", None)
+                    for layer in self.weights.layers
+                ),
+            )
+            if bound * 2.0 > 65_504.0:
+                raise ValueError(
+                    "Laguna direct norm cast requires a 2x-safe finite FP16 bound; "
+                    f"bound={bound}"
                 )
         self.f16_prefill_mode = selected
 
@@ -2373,17 +2391,28 @@ class LagunaGGUFResidentSession:
             return
 
         route = self._ensure_f16_hipblaslt()
+        direct_norm = self.f16_prefill_mode == "hipblaslt_norm_direct"
         row_scales_ptr = scratch.token_ids.ptr
-        bf16_to_fp16_scaled_rows(
-            scratch.norm.ptr,
-            scratch.gated_context.ptr,
-            row_scales_ptr,
-            rows,
-            config.hidden_size,
-            stream=stream,
-            library=self.libraries.cast,
-            runtime=self.runtime,
-        )
+        if direct_norm:
+            bf16_to_fp16(
+                scratch.norm.ptr,
+                scratch.gated_context.ptr,
+                rows * config.hidden_size,
+                stream=stream,
+                library=self.libraries.cast,
+                runtime=self.runtime,
+            )
+        else:
+            bf16_to_fp16_scaled_rows(
+                scratch.norm.ptr,
+                scratch.gated_context.ptr,
+                row_scales_ptr,
+                rows,
+                config.hidden_size,
+                stream=stream,
+                library=self.libraries.cast,
+                runtime=self.runtime,
+            )
         for slot, out_ptr, out_features in (
             ("attn_q", scratch.query.ptr, q_width),
             ("attn_k", scratch.key.ptr, kv_width),
@@ -2399,15 +2428,16 @@ class LagunaGGUFResidentSession:
                 out_features,
                 stream=stream,
             )
-            f32_scale_rows(
-                out_ptr,
-                row_scales_ptr,
-                rows,
-                out_features,
-                stream=stream,
-                library=self.libraries.cast,
-                runtime=self.runtime,
-            )
+            if not direct_norm:
+                f32_scale_rows(
+                    out_ptr,
+                    row_scales_ptr,
+                    rows,
+                    out_features,
+                    stream=stream,
+                    library=self.libraries.cast,
+                    runtime=self.runtime,
+                )
 
     def _launch_attention_output_rows(
         self,

@@ -696,8 +696,11 @@ Immediate execution queue:
    The first producer-qualified candidate is retained: actual max attention
    norm weight **0.294921875** proves an RMSNorm output bound **16.34623**, so
    direct BF16-to-FP16 is exact and the four identity restores disappear.
-   Its exact glue micro improves **4.434 -> 0.767 ms (-82.70%)**; full pp512
-   integration and default promotion remain pending.
+   Its exact glue micro improves **4.434 -> 0.767 ms (-82.70%)**. Seven-pair
+   full pp512 A/B improves **502.348 -> 505.887 tok/s (+0.704%)**, with exact
+   logits, final/pre-final hidden, KV, cursor, token, and token-logit. It is
+   now the gfx1151 candidate default; clean selector-unset publication and
+   refreshed attribution are next.
 2. Reopen the **218.516 ms attention** family only with a different premise
    from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles, and
    single-wave two-head fusion. The head-pair body was exact but regressed
