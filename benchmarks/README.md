@@ -1932,7 +1932,7 @@ Pinned Vulkan remains **64.418 tok/s**, so another **10.26%** is required and
 completion stays open. `use_mixed_q5_q6_attention=False` /
 `--disable-mixed-q5-q6-attention` retains the exact registered pair/singleton
 fallback; rows>1, shape/registry misses, and unsupported backend defaults also
-retain it. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-correctness.json) and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-retained.json).
+retain it. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-correctness.json), [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-retained.json), and [post-mixed matched Vulkan audit](results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-mixed.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
