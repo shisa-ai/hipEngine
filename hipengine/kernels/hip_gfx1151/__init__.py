@@ -60,7 +60,7 @@ LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols_direct"
 # preserving the range-safe D4 resident-T16 integer-dot arithmetic. Q6 keeps
 # the faster row-vector mapping; the scalar-staged and exact routes remain
 # rollbacks.
-LAGUNA_SELECTED_DOWN_MODE = "mmq64x32_d4_f32_wavecols_q4"
+LAGUNA_SELECTED_DOWN_MODE = "mmq64x32_d4_f32_wavecols_direct_q4"
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"

@@ -1744,17 +1744,19 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         "wave_cols",
         "single_wave_cols",
         "direct_wave_decode",
+        "single_direct_wave_decode",
     ),
     [
-        (1, False, False, False, False, False),
-        (2, False, False, False, False, False),
-        (3, False, False, False, False, False),
-        (1, False, True, False, False, False),
-        (1, False, True, False, True, False),
-        (1, True, False, False, False, False),
-        (1, True, True, False, False, False),
-        (1, True, True, True, False, False),
-        (1, True, True, True, False, True),
+        (1, False, False, False, False, False, False),
+        (2, False, False, False, False, False, False),
+        (3, False, False, False, False, False, False),
+        (1, False, True, False, False, False, False),
+        (1, False, True, False, True, False, False),
+        (1, False, True, False, True, False, True),
+        (1, True, False, False, False, False, False),
+        (1, True, True, False, False, False, False),
+        (1, True, True, True, False, False, False),
+        (1, True, True, True, False, True, False),
     ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1764,6 +1766,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     wave_cols: bool,
     single_wave_cols: bool,
     direct_wave_decode: bool,
+    single_direct_wave_decode: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1928,6 +1931,11 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
                 mmq_total_rows,
                 rowvec=True,
                 wave_cols=single_wave_cols,
+                **(
+                    {"direct_wave_decode": True}
+                    if single_direct_wave_decode
+                    else {}
+                ),
                 library=library,
                 runtime=runtime,
             )

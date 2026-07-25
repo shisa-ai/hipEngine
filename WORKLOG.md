@@ -179522,3 +179522,32 @@ Vulkan local sizes verbatim will close the measured gap.
   traced pp512 wall separates it from 500; next bounded task is direct
   per-column decode for the **90.280 ms Q4-down** consumer while Q6 remains
   row-vector.
+
+## 2026-07-26 — Retain direct Q4-down wave decode candidate
+
+- RED added a single-Q4 direct-decode fixture and failed on the missing
+  `direct_wave_decode` wrapper ABI. GREEN exports template
+  `<1,true,false,64,true,true,64,true>`: each local64 wave-column lane decodes
+  its own resident-T16 Q4 column instead of pair decode plus shuffle. D4
+  staging, resident bytes, packed dots, K order, BF16 stores, and Q6
+  row-vector production are unchanged.
+- All ten Q4 configurations pass the CPU-reference gate, the direct single-Q4
+  result is BF16-byte identical to pair-decode wave columns, and the
+  production-shape Q4/Q6 runtime oracle is byte-exact. The complete affected
+  kernel/runtime/backend/category/publication bundle passes with two expected
+  skips.
+- With retained direct Q4 gate/up fixed, one-owner matrix512/attention128
+  pp512 over seven counterbalanced repetitions improves Q4-down pair decode
+  **473.774426 -> 483.408500 tok/s (+2.033%)**. Direct samples span
+  **478.855701–486.239960**, completely above rollback
+  **471.247629–476.903954**, and every run selects token 2930. Raw log
+  SHA-256:
+  `4ef0f7f50d2fd3a679263b3a2a1ebb7e98fd5911560296f4801870cecafb43bf`.
+- Cached focused tracing names the intended local64/VGPR88/SGPR128/LDS1536B/
+  scratch0 body at **33.262 us**. Raw CSV SHA-256:
+  `5dc702ab32be2cbccdbee77962239c3771ee3c089098f2578feeaa71f8c63e59`.
+  gfx1151 now selects the direct body as a candidate default while pair decode
+  remains explicit rollback and Q6 stays row-vector. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-candidate.json`.
+  Commit, then require clean selector-unset pp512 and a refreshed all-family
+  trace before calling production. The 500 and 700 gates remain open.

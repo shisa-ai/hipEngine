@@ -222,7 +222,10 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         LAGUNA_SELECTED_GATE_UP_MODE
         == "mmq128x32_d8_f32_wavecols_direct"
     )
-    assert LAGUNA_SELECTED_DOWN_MODE == "mmq64x32_d4_f32_wavecols_q4"
+    assert (
+        LAGUNA_SELECTED_DOWN_MODE
+        == "mmq64x32_d4_f32_wavecols_direct_q4"
+    )
     assert LAGUNA_PREFILL_MATRIX_ROWS == 512
     assert (
         LAGUNA_GLOBAL_PREFILL_VARIANT
