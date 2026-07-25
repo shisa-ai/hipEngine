@@ -1,0 +1,226 @@
+{
+  "acceptance": {
+    "category": true,
+    "correctness": true,
+    "matched_vulkan_beaten": false,
+    "mechanical": true,
+    "promote_gfx1100_default": true
+  },
+  "candidate": {
+    "default": "LAGUNA_MIXED_ATTENTION_PROJECTIONS=True on hip_gfx1100",
+    "description": "One registered c=1 mixed-quant attention-projection dispatch per layer: exact Q5 fixed-metadata wave32 plus generic Q6 local128 work for layers 0-46 and exact generic Q6/Q8 work for layer 47",
+    "dispatches_per_token": {
+      "candidate": 723,
+      "control": 772,
+      "removed": 49
+    },
+    "fallback": "Registered exact Q5/Q6 projection pairs plus layer-47 Q6 pair and two Q8 singletons; also used for rows>1, explicit disable, registry/layout/shape misses, and unsupported backend defaults",
+    "implementation_revision": "dd3b9c646",
+    "measurement_revision": "dd3b9c646",
+    "persistent_weight_copy_delta_bytes": 0,
+    "registry_keys": [
+      "attention_projection_quad/gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k/mixed_pack8_gemv_decode_bf16_f32_out",
+      "attention_projection_quad/gguf_q6_k+gguf_q8_0+gguf_q8_0+gguf_q6_k/mixed_pack8_gemv_decode_bf16_f32_out"
+    ],
+    "rollback": "LagunaGGUFResidentSession(..., use_mixed_q5_q6_attention=False) or scripts/laguna_target_ar_bench.py --disable-mixed-q5-q6-attention",
+    "workspace_delta_bytes": 0
+  },
+  "category_gate": {
+    "aggregate": {
+      "candidate": {
+        "h16_decode_tok_s": 58.99228891143393,
+        "h16_e2e_output_tok_s": 7.012698465042782,
+        "h32_decode_tok_s": 58.42484306154226,
+        "h32_e2e_output_tok_s": 12.510257233428481,
+        "prefill_tok_s": 42.886714862967416,
+        "ttft_median_seconds": 1.9376871578861028
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 1.0720768304725237,
+        "h16_e2e_output_tok_s": -0.02090529161227206,
+        "h32_decode_tok_s": 1.0241710082142363,
+        "h32_e2e_output_tok_s": 0.0872303950832487,
+        "prefill_tok_s": -0.15799031602827807,
+        "ttft_median_seconds": 0.035003704510394584
+      },
+      "control": {
+        "h16_decode_tok_s": 58.3665546027923,
+        "h16_e2e_output_tok_s": 7.0141647966476866,
+        "h32_decode_tok_s": 57.83253896415716,
+        "h32_e2e_output_tok_s": 12.49935399755356,
+        "prefill_tok_s": 42.954578937980145,
+        "ttft_median_seconds": 1.9370091329328716
+      }
+    },
+    "all_e2e_prefill_ttft_guards_pass": true,
+    "all_ids_oracles_and_lifecycle_exact": true,
+    "all_train_and_heldout_category_decode_improve": true,
+    "category_h16_h32_decode_delta_range_pct": [
+      0.7441920310525374,
+      1.4711537489190185
+    ],
+    "category_h16_h32_e2e_delta_range_pct": [
+      -0.11128165542082513,
+      0.19333278519604313
+    ],
+    "category_prefill_delta_range_pct": [
+      -0.2589141552474361,
+      -0.07341668242406563
+    ],
+    "commands": [
+      "bash /tmp/run_laguna_mixed_attention_category.sh",
+      "bash /tmp/run_laguna_mixed_attention_category_reverse.sh"
+    ],
+    "comparison_sha256": "1aa7f7fdd50a12a19b0326d2be4fb1d5ffb04a1b8dc39e99b0d3edaf5a56f27f",
+    "harness_sha256": {
+      "benchmark": "4008f1b55bae69aa42f40d57981b4eb1a7ee9fb2dfdcdd3e0ab3ae4e26bfc504",
+      "comparison": "8291605fef904e4c2582f9860997244e2209264a4deea07b043107f6a9518ac0",
+      "forward": "187a7a9a7d675003ed4c2738117241b06203f4c367ece048f4b3776463723420",
+      "reverse": "8b412b9fa47058686951d3f46fe6c9a89195bfadfbeb45680f41abff23becd71"
+    },
+    "pass": true,
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "protocol": "all 18 train+heldout prompts; serial and bulk; h16/h32; two repetitions; pair/singleton then mixed projection followed by reverse process order; pooled synchronized seconds",
+    "raw_sha256": {
+      "candidate_forward": "b41508f1ee8e6e7c200ee4dfda672774707bd80a0e3e156b596a0d6ac3481417",
+      "candidate_reverse": "114cded07140204be53f4309c67b8c825d5079d728a2946aa7619cb4679209a0",
+      "control_forward": "b741661eb6f16ce835f42f9cad2e4a2c144ef13cdf0a35e55d612ce9c2ed5aa1",
+      "control_reverse": "a9925787491ccaf7663d4053236d0b0c64f2ca63db64f998aa646f7a988d8207"
+    },
+    "report_sha256": "7a48dffba7d11e914b10788b7d57f52afff115c942cd222fdcc558b6222beb30"
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_mixed_attention_clean_profiles.sh",
+    "contexts": [
+      {
+        "kernel_sum_delta_pct": -0.08966396111130814,
+        "label": "short",
+        "profiled_child_tok_s_delta_pct": 2.920979375606425,
+        "projection_delta_pct": -3.072241602658099,
+        "span_delta_pct": -1.5601348163914674
+      },
+      {
+        "kernel_sum_delta_pct": -0.34570730946542616,
+        "label": "512",
+        "profiled_child_tok_s_delta_pct": 1.2060352362952775,
+        "projection_delta_pct": -2.016096943783041,
+        "span_delta_pct": -1.1179701567013756
+      },
+      {
+        "kernel_sum_delta_pct": -0.17414832341177133,
+        "label": "1024",
+        "profiled_child_tok_s_delta_pct": 1.062645121961192,
+        "projection_delta_pct": -3.347495045657878,
+        "span_delta_pct": -0.9702157367823427
+      },
+      {
+        "kernel_sum_delta_pct": -0.14727699488132906,
+        "label": "3968",
+        "profiled_child_tok_s_delta_pct": 1.2797467922852857,
+        "projection_delta_pct": -2.95725401517396,
+        "span_delta_pct": -0.686064437390943
+      }
+    ],
+    "contract_sha256": "cd567482088d25d48497f4f1d03d7d552a380fe0df616351134aa817df7f78ec",
+    "dispatches_per_token": {
+      "candidate": 723,
+      "control": 772
+    },
+    "finite": true,
+    "harness_sha256": {
+      "analyzer": "d4a0f5a639c81845eabad9cbd18684283ad4b232ad2a29fc888efc39fb75d737",
+      "child": "c5a6de68c799792f03334204a68d5125482c52045492f134898e63c9ffeb70f0",
+      "runner": "98d3be9b06edbf4cc1558cd0a05983452f5e0164d26fe9a391f1b06d8284c0d3"
+    },
+    "ids_exact": true,
+    "lifecycle": true,
+    "mechanical_gate_pass": true,
+    "report_sha256": "868f196a0e814107804bdda2fb6b576c3e31960055674b08f97abf6845088cc6",
+    "resource_gate": {
+      "passed": true,
+      "q5_q6": {
+        "lds_bytes": 512,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 88,
+        "workgroup": 128
+      },
+      "q6_q8": {
+        "lds_bytes": 512,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 56,
+        "workgroup": 128
+      }
+    },
+    "revision": "dd3b9c646",
+    "summary_sha256": "4e428a27fcac38dc75dbf2af81c7291beb59a6e034ba9e8a4f6cd1c16c18c10d"
+  },
+  "correctness": {
+    "active_bf16_kv_and_all_span_fields_exact": true,
+    "actual_inclusive_event_delta_range_pct": [
+      -16.571998028719158,
+      -4.51779322676501
+    ],
+    "actual_inclusive_wall_delta_range_pct": [
+      -14.226437050754448,
+      -3.646755723280126
+    ],
+    "actual_weight_rows_bit_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "correctness_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-correctness.json",
+    "correctness_artifact_sha256": "30bb522bd4ca9fe7858eba9cc2546ead3c2b3d46c14fd22e92382478be5b317f",
+    "default_vs_rollback": {
+      "decode_steps": 16,
+      "harness_sha256": "911e27f250b56af6d1f4742a1a9d56ee69fce760d41a3db4b1e7509c4612d4df",
+      "passed": true,
+      "raw_sha256": "8094b789f564dfbc424728f0d16bc8560f1ab60312486b1b5c305822e6945a76",
+      "stdout_sha256": "cdca9abc684ffe4e39a4c171701dc0889be1eec3b85be68e52b97964d6e3aa27"
+    },
+    "full_logits_and_argmax_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-26",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_mixed_attention_projection_retained",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": true,
+  "performance_claim_scope": "Poolside Laguna S 2.1 UD-Q2_K_XL target-only c=1 greedy AR on Radeon Pro W7900/gfx1100, all 18 train+heldout prompts, h16/h32, two repetitions in both process orders; model load excluded",
+  "promotion_red": {
+    "green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "log_sha256": "bbbe1021921f93ce5d081c6c0436828de55c49e1ae496945fc4fa51437a9e0dc",
+    "result": "failed on absent gfx1100 LAGUNA_MIXED_ATTENTION_PROJECTIONS capability and absent default-on rollback CLI"
+  },
+  "regression_tests": {
+    "log_sha256": "efae828f9fe42c92ab085cae28263cb3006d4c8244a625576965383d7c62b9fd",
+    "passed": 205
+  },
+  "schema": 1,
+  "status": "retained_default",
+  "topline": {
+    "additional_speedup_required_pct": 10.25830083961425,
+    "improvement_vs_previous_retained_pct": 1.2370796122706196,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "new_h32_decode_tok_s": 58.42484306154226,
+    "new_ms_per_token": 17.11600660949388,
+    "objective_met": false,
+    "paired_control_h32_decode_tok_s": 57.83253896415716,
+    "paired_improvement_pct": 1.0241710082142363,
+    "previous_retained_h32_decode_tok_s": 57.7109131212639
+  }
+}

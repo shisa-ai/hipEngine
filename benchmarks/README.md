@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-25**
+Last reviewed: **2026-07-26**
 
 Latest retained hipEngine revisions in this scoreboard:
 `b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2` for the clean gfx1151 Laguna
@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`dd3b9c646` for the exact W7900 Laguna S 2.1 UD-Q2_K_XL mixed
+attention-projection quads,
 `b271f1fdc` for the exact W7900 Laguna S 2.1 UD-Q2_K_XL raw-Q5
 fixed-metadata siblings,
 `853516ecdd3a464b38013064a1d8ccacc20556c5` for the exact W7900 Laguna S 2.1
@@ -1229,14 +1231,14 @@ blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-25
+### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-26
 
 **Status: exact dense decode, P0 IQ3 wave4 route/output ownership, P2 exact
 split attention plus SWA tile16 scores, P4.1 split-reducer+gate, current-P4 head
 RMSNorm+RoPE+BF16-KV, wave-local exact SWA split reduction, expanded-magnitude
-IQ2 gate/up, raw-Q5 wave32x2 fixed-metadata loads, token4 SWA, raw-Q6 attention
-pairing, and aggregate MoE-tail plus next-RMS are the retained W7900 target-only
-AR default.**
+IQ2 gate/up, raw-Q5 wave32x2 fixed-metadata loads, mixed Q5/Q6 plus corrected
+Q6/Q8 attention-projection quads, token4 SWA, raw-Q6 attention pairing, and
+aggregate MoE-tail plus next-RMS are the retained W7900 target-only AR default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1315,6 +1317,9 @@ slot-order reducer.
 | Q5 coefficient-publication matched control | 42.967 | 1.937 s | 54.476 | 6.967 | 12.343 |
 | Exact Q5 fixed metadata | **42.923** | **1.937 s** | **57.711** | **7.008** | **12.487** |
 | Fixed-metadata change vs matched control | **-0.103%** | **+0.022%** | **+5.938%** | **+0.582%** | **+1.163%** |
+| Projection pair/singleton matched control | 42.955 | 1.937 s | 57.833 | 7.014 | 12.499 |
+| Exact mixed attention projections | **42.887** | **1.938 s** | **58.425** | **7.013** | **12.510** |
+| Mixed-projection change vs matched control | **-0.158%** | **+0.035%** | **+1.024%** | **-0.021%** | **+0.087%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -1901,6 +1906,33 @@ required and completion stays open. Role-scoped `use_q5_fixed_meta_*=False` /
 `--disable-q5-fixed-meta-*` retains the registered coefficient-publication
 wave32x2 fallback; rows>1 and unsupported backends retain the existing exact
 routes. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-correctness.json), [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json), and [post-Q5 matched Vulkan audit](results/2026-07-25-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-q5.json).
+
+##### Laguna Q2 XL exact mixed attention projections (retained gfx1100 default)
+
+The c=1 four-axis `attention_projection_quad` route flattens each layer's four
+independent raw-GGUF projections into one dispatch without changing a weight
+byte or accumulator order. Layers 0-46 run four fixed-metadata Q5 wave32 owners
+plus generic Q6 local128 packs; corrected layer 47 runs generic Q6 query/gate
+plus Q8 K/V packs. Actual layers 0/1/46/47 are F32-bit exact and improve the
+inclusive HIP-event window **4.52-16.57%** plus synchronized wall
+**3.65-14.23%**. Full logits, all 48 hidden and 47 routed boundaries, active
+K/V and every `KVLiveSpans` field, reset, and lifecycle remain exact.
+
+Cached tracing records 47 Q5/Q6 calls plus one Q6/Q8 call and contracts **772 ->
+723 dispatches/token**. Q5/Q6 is local128/VGPR88/LDS512/scratch0; Q6/Q8 is
+local128/VGPR56/LDS512/scratch0. Both clean process orders improve projection
+work **2.02-3.35%**, kernel sum **0.09-0.35%**, span **0.69-1.56%**, and
+profiled-child throughput **1.06-2.92%** at short/512/1K/near-4K. Both complete
+18-prompt orders move h16/h32 decode **58.367/57.833 -> 58.992/58.425 tok/s
+(+1.072%/+1.024%)**. Every train/heldout category decode improves
+**0.744-1.471%**; h16/h32 E2E changes **-0.021%/+0.087%**, prefill is
+**-0.158%**, and TTFT **+0.035%**, all inside the frozen guards. Relative to the
+prior retained 57.711 row, h32 improves **1.237%** to **17.116 ms/token**.
+Pinned Vulkan remains **64.418 tok/s**, so another **10.26%** is required and
+completion stays open. `use_mixed_q5_q6_attention=False` /
+`--disable-mixed-q5-q6-attention` retains the exact registered pair/singleton
+fallback; rows>1, shape/registry misses, and unsupported backend defaults also
+retain it. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-correctness.json) and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
