@@ -180340,3 +180340,12 @@ Vulkan local sizes verbatim will close the measured gap.
   waits only for clean complete-state A/B; production remains
   **505.185 tok/s** in this commit. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-candidate.json`.
+
+## 2026-07-26 — Add complete-state gate/up double-buffer A/B harness
+
+- Added `scripts/laguna_gate_doublebuf_ab.py`, a seven-pair alternating-order
+  pp512 harness that borrows one resident model owner, warms both exact gate/up
+  paths, and records logits, final/post-layer hidden state, KV state, cursor,
+  next-token logit, and next token for every child session. This is the clean
+  complete-state promotion gate for the retained activation-double-buffer
+  candidate.
