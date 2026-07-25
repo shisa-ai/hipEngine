@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T03:26:00+09:00",
+  "kind": "hipengine_laguna_q4_down_direct_wave_column_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Laguna S 2.1 Q4_K_M matrix512/attention128 pp512 on gfx1151 plus direct all-exact ten-prompt quality, decode, determinism, Poolside, lifecycle, and cached all-family trace",
+  "repo": {
+    "revision": "d39cbb5baacc7b44dac4e852c0580ee8b59a1c47",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "family": "selected D4 Q4 down",
+    "mode": "mmq64x32_d4_f32_wavecols_direct_q4",
+    "geometry": "64 output columns x 32 routed rows",
+    "mapping": "two wave32 groups each own one output column per lane and all 32 routed rows",
+    "weight_path": "each lane directly decodes its resident-T16 Q4 column; pair decode and wave shuffle are removed",
+    "activation_path": "unchanged D4 row-vector stage",
+    "arithmetic": "unchanged packed dots, K32 accumulation order, and BF16 stores",
+    "q6_path": "unchanged retained row-vector consumer",
+    "resident_layout": "unchanged T16; no sidecar or transpose",
+    "rollback_mode": "mmq64x32_d4_f32_wavecols_q4"
+  },
+  "pp512": {
+    "scope": "one resident owner; one 128-row warmup per mode; seven counterbalanced synchronized repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_gate_wavecols_screen.py",
+    "pair_decode_rollback_samples_tok_s": [
+      473.42183512076116,
+      473.96346588617484,
+      473.2326882563484,
+      471.8902899270726,
+      474.1889669896681,
+      474.61802106970714,
+      474.67912291870067
+    ],
+    "pair_decode_rollback_median_tok_s": 473.96346588617484,
+    "selector_unset_samples_tok_s": [
+      481.8749753504191,
+      477.29767893825147,
+      479.2836790621305,
+      477.48259554517125,
+      485.0187011941101,
+      480.6292586188669,
+      482.6286940767045
+    ],
+    "selector_unset_median_tok_s": 480.6292586188669,
+    "paired_speedup": 1.01406393786118,
+    "paired_improvement_percent": 1.406393786118,
+    "previous_publication_median_tok_s": 474.3629760868705,
+    "improvement_vs_previous_publication_percent": 1.320988957378,
+    "complete_sample_separation": true,
+    "next_token_ids": {
+      "pair_decode_rollback": [
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930
+      ],
+      "selector_unset": [
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930
+      ]
+    },
+    "raw_log_sha256": "4d8411697f5718445fa19b2c0b64f1de29174c6a21b90946224cc2b2a1b1901b",
+    "raw_log_committed": false,
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  },
+  "absolute_quality": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison production_absolute --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production-absolute.raw.json",
+    "baseline": "all_exact",
+    "candidate": "selector-unset production defaults",
+    "teacher_forced_steps": 320,
+    "finite": true,
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_matches": 316,
+    "top1_total": 320,
+    "top1_agreement": 0.9875,
+    "minimum_category_top1_agreement": 0.96875,
+    "poolside_oracle_pass": true,
+    "poolside_kl_divergence": 0.000017512451201671218,
+    "same_mode_repeat_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_allocated_bytes": 109859542160,
+    "tracked_freed_bytes": 109859542160,
+    "all_exact_natural_prompt_prefill_tok_s": 53.415051295669464,
+    "production_natural_prompt_prefill_tok_s": 235.52437955805544,
+    "natural_prompt_prefill_speedup": 4.40932609526765,
+    "h16_decode_speedup": 0.9999082706882394,
+    "h32_decode_speedup": 0.9999810222409232,
+    "h16_e2e_speedup": 1.9834713465478828,
+    "h32_e2e_speedup": 1.5551591199310346,
+    "raw_json_sha256": "4e164d73751aeab10431b62f28d026e4e0dc8c3883548a176eb5dfa17edda594",
+    "raw_json_committed": false
+  },
+  "cached_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-down-direct-wavecols-production-profile-d39cbb5ba --output-file laguna-q4-down-direct-wavecols-production --log-level error -- .venv/bin/python3 scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-down-direct-wavecols-production-profile-d39cbb5ba/child.json",
+    "timings": {
+      "512": {
+        "prefill_tok_s": 481.99684138097274,
+        "prefill_seconds": 1.0622476249700412,
+        "kernel_span_ms": 1058.484882,
+        "kernel_sum_ms": 1046.442089
+      },
+      "1024": {
+        "prefill_tok_s": 435.9605265739904,
+        "prefill_seconds": 2.348836506018415,
+        "kernel_span_ms": 2345.516799,
+        "kernel_sum_ms": 2321.587937
+      },
+      "4096": {
+        "prefill_tok_s": 346.67519786634574,
+        "prefill_seconds": 11.815093855024315,
+        "kernel_span_ms": 11806.277817,
+        "kernel_sum_ms": 11680.614567
+      }
+    },
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 318.920993,
+      "selected_q4_q6_down": 206.109791,
+      "global_attention": 43.913729,
+      "swa_attention": 174.250626,
+      "source_f16_projection": 135.442833,
+      "dense_shared_quant_projection": 72.865687,
+      "router": 32.168231,
+      "norm_rope_gate": 24.880589,
+      "activation_reduce_residual": 18.90957,
+      "other": 16.9057,
+      "lm_head_argmax": 1.194923,
+      "prefill_kv_write": 0.842908,
+      "embedding": 0.036509
+    },
+    "selected_down_breakdown_ms": {
+      "q4_consumer": 71.377966,
+      "q6_consumer": 129.581076,
+      "activation_pack": 5.150749
+    },
+    "q4_down_resources": {
+      "kernel_template": "<1, true, false, 64, true, true, 64, true>",
+      "workgroup_size": 64,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "raw_csv_sha256": "f57effef72a21725c8f96d1a716198f9d8bfe79dcc5f0183eaa155217a631b22",
+    "child_json_sha256": "13fb28f311e320bcb6fe2c75a924b0f0451648b4e042725b25a8c8ece7be88df",
+    "summary_json_sha256": "862a9b03017e6253f5d941827cea36633784a8ee89c9822285651e2936bb73e8",
+    "raw_files_committed": false,
+    "correctness_pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "validation": {
+    "primitive": "Direct and pair-decode Q4-down bodies are BF16-byte identical and independently pass the CPU-reference gate.",
+    "runtime": "Production-shape Q4 direct down remains BF16-byte identical to pair decode while Q6 is unchanged.",
+    "affected_bundle": "Complete changed kernel/runtime/backend/category/publication bundle passed with two expected skips.",
+    "next_token": 2930,
+    "all_timing_runs_same_next_token": true
+  },
+  "decision": {
+    "pass": true,
+    "failed_checks": [],
+    "action": "Retain direct per-column Q4-down decode as the gfx1151 production default. Keep pair decode as bounded rollback through cleanup.",
+    "reason": "The clean selector-unset pp512 gate improves 1.406% with complete sample separation; direct absolute quality, decode, determinism, Poolside, lifecycle, cached trace, resident layout, and arithmetic contracts all pass."
+  },
+  "supersedes": "benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-production.json"
+}
