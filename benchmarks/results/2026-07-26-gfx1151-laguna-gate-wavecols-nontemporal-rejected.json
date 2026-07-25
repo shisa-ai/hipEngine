@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26",
+  "status": "rejected_and_removed",
+  "kind": "hipengine_laguna_gate_wavecols_nontemporal_leaf",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1
+  },
+  "scope": {
+    "rows": 512,
+    "routing": "natural recorded per-expert counts",
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "kernel": "resident-T16 D8 Q4 gate/up 128x32 wave columns",
+    "activation_pack_included": true
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols,t16-mmq128x32-d8-f32-wavecols-nt --warmups 2 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-wavecols-nt-leaf.json",
+    "timing": "counter-rotated HIP events; median of nine burst-three samples",
+    "correctness": "focused CPU-reference quality gate plus equal actual-layer BF16 checksum"
+  },
+  "isa": {
+    "tool": "llvm-objdump",
+    "production_template": "<1,false,true,128,true,true,128,false>",
+    "candidate_template": "<1,false,true,128,true,true,128,true>",
+    "production_text_bytes": 13704,
+    "candidate_text_bytes": 13704,
+    "changed_weight_loads": {
+      "global_load_u8": 32,
+      "global_load_d16_b16": 2,
+      "production_policy": "default",
+      "candidate_policy": "slc dlc"
+    },
+    "activation_and_routing_load_policy": "unchanged",
+    "device_object_sha256": "4f068007f0dec8c5b8a36b3189d00302ad309fdbeb43654803f2afc047206f20"
+  },
+  "results": {
+    "production_cached_ms": [
+      7.751461029052734,
+      7.744351704915364,
+      7.810509363810222,
+      7.929441452026367,
+      7.80971082051595,
+      7.819983164469401,
+      7.87763786315918,
+      7.804262797037761,
+      7.833826065063477
+    ],
+    "nontemporal_slc_dlc_ms": [
+      10.321087519327799,
+      10.425495783487955,
+      10.354918797810873,
+      10.388755798339844,
+      10.335326512654623,
+      10.354762395222982,
+      10.369646708170572,
+      10.35868008931478,
+      10.355449040730795
+    ],
+    "production_median_ms": 7.810509363810222,
+    "nontemporal_median_ms": 10.355449040730795,
+    "candidate_regression_percent": 32.58353019474607,
+    "production_checksum_f64": 1114.1769413301445,
+    "candidate_checksum_f64": 1114.1769413301445
+  },
+  "correctness": {
+    "focused_cases_passed": 13,
+    "actual_layer_bf16_checksum_equal": true,
+    "finite": true
+  },
+  "decision": {
+    "retain": "default-cache production loads",
+    "remove": "all non-temporal HIP, wrapper, harness, and test surfaces",
+    "reason": "The compiler emitted the intended gfx1151 cache-policy bits, but bypassing the normal cache hierarchy regressed the actual natural-M512 leaf by 32.58%."
+  },
+  "raw_output_sha256": "2dfcb4084c6e762ff34fb708eb6c82036963c38f4a1c537c679e7c806ad0000a",
+  "performance_claim": false
+}
