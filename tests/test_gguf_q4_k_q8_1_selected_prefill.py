@@ -1698,12 +1698,19 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("residual_passes", "split16"),
-    [(1, False), (2, False), (3, False), (1, True)],
+    ("residual_passes", "split16", "rowvec"),
+    [
+        (1, False, False),
+        (2, False, False),
+        (3, False, False),
+        (1, True, False),
+        (1, True, True),
+    ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     residual_passes: int,
     split16: bool,
+    rowvec: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1753,6 +1760,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
         ),
         dtype=np.uint16,
     )
+    host_baseline = np.zeros_like(host_out) if rowvec else None
     bufs = []
     try:
         arrays = (
@@ -1804,16 +1812,49 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             mmq_total_rows,
             residual_passes=residual_passes,
             split16=split16,
+            rowvec=rowvec,
             library=library,
             runtime=runtime,
         )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+        if rowvec:
+            baseline_dev = malloc(host_out.nbytes, runtime=runtime)
+            bufs.append(baseline_dev)
+            gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+                q8_dev.ptr,
+                bufs[1].ptr,
+                bufs[2].ptr,
+                bufs[3].ptr,
+                bufs[4].ptr,
+                bufs[5].ptr,
+                bufs[6].ptr,
+                baseline_dev.ptr,
+                fixture.compact_rows,
+                fixture.compact_rows,
+                fixture.in_features,
+                fixture.out_features_a,
+                fixture.out_features_b,
+                fixture.num_experts,
+                mmq_total_rows,
+                residual_passes=residual_passes,
+                split16=split16,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(
+                host_array_ptr(host_baseline),
+                baseline_dev,
+                runtime=runtime,
+            )
     finally:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
 
     actual = _bf16_bits_to_float32(host_out)
+    if host_baseline is not None:
+        assert np.array_equal(host_out, host_baseline)
     assert np.isfinite(actual).all()
     assert _max_softmax_kl(fixture.reference, actual) <= 0.05
     assert np.mean(

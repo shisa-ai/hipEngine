@@ -51,8 +51,10 @@ LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_m128_online_spans"
 LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
-# Other backends retain their exact selected gate/up route.
-LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32"
+# The post-350 row-vector screen loads each routed Q8 row through two aligned
+# 16-byte vectors, preserving the D8 arithmetic bit-for-bit while removing
+# repeated source-map reads and byte assembly. Other backends retain exact.
+LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_rowvec"
 # The same admission keeps post-SiLU selected down on the range-safe D4
 # resident-T16 64x32 integer-dot route. Exact grouped/direct remain rollbacks.
 LAGUNA_SELECTED_DOWN_MODE = "mmq64x32_d4_f32"

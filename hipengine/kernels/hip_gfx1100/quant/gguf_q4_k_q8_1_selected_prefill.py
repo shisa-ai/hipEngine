@@ -77,6 +77,10 @@ _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
     "mmq128x32_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q4_T16_DS8_F32_MMQ128X32_ROWVEC_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
+    "mmq128x32_rowvec_prefill_compact32_bf16_bf16_out"
+)
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -373,6 +377,7 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
     *,
     residual_passes: int = 3,
     split16: bool = False,
+    rowvec: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -394,10 +399,14 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         raise ValueError("residual_passes must be 1, 2, or 3")
     if split16 and residual_passes != 1:
         raise ValueError("split16 requires residual_passes=1")
+    if rowvec and not split16:
+        raise ValueError("rowvec requires split16=True")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_BF16
+        _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_ROWVEC_BF16
+        if rowvec
+        else _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_BF16
         if split16
         else _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16[residual_passes]
     )

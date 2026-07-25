@@ -74,6 +74,7 @@ _SELECTED_GATE_UP_MODES = frozenset(
         "mmq32_d4x3",
         "mmq64x32_d4_f32",
         "mmq128x32_d8_f32",
+        "mmq128x32_d8_f32_rowvec",
         "mmq64x32_d4x2_f32",
         "mmq64x32_d4x3_f32",
     }
@@ -1054,6 +1055,7 @@ def _launch_selected_gate_up_mmq32_d4x3(
     residual_passes: int = 3,
     f32_wide: bool = False,
     split16: bool = False,
+    rowvec: bool = False,
 ) -> bool:
     """Run Q4T16 selected gate/up in compact order and retain its down metadata."""
 
@@ -1142,6 +1144,7 @@ def _launch_selected_gate_up_mmq32_d4x3(
         mmq_total_rows,
         **({"residual_passes": residual_passes} if f32_wide else {}),
         **({"split16": True} if split16 else {}),
+        **({"rowvec": True} if rowvec else {}),
         **_stage_kwargs(
             "selected_gate_up_prefill",
             libraries,
@@ -1693,16 +1696,18 @@ def run_laguna_moe_rows(
     )
     compact_gate_up = False
     gate_up_f32_config = {
-        "mmq64x32_d4_f32": (1, False),
-        "mmq128x32_d8_f32": (1, True),
-        "mmq64x32_d4x2_f32": (2, False),
-        "mmq64x32_d4x3_f32": (3, False),
+        "mmq64x32_d4_f32": (1, False, False),
+        "mmq128x32_d8_f32": (1, True, False),
+        "mmq128x32_d8_f32_rowvec": (1, True, True),
+        "mmq64x32_d4x2_f32": (2, False, False),
+        "mmq64x32_d4x3_f32": (3, False, False),
     }.get(selected_gate_up_mode)
     if selected_gate_up_mode == "mmq32_d4x3" or gate_up_f32_config is not None:
         (
             gate_up_f32_passes,
             gate_up_split16,
-        ) = gate_up_f32_config or (3, False)
+            gate_up_rowvec,
+        ) = gate_up_f32_config or (3, False, False)
         compact_gate_up = _launch_selected_gate_up_mmq32_d4x3(
             hidden_bf16_ptr,
             layer,
@@ -1715,6 +1720,7 @@ def run_laguna_moe_rows(
             residual_passes=gate_up_f32_passes,
             f32_wide=gate_up_f32_config is not None,
             split16=gate_up_split16,
+            rowvec=gate_up_rowvec,
         )
     if not compact_gate_up:
         _launch_selected_gate_up(

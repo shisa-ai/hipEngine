@@ -178931,3 +178931,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-production.json`
   and refreshed the benchmark rollup, changelog, kernel catalog, and post-350
   plan. The 500 production gate remains open.
+
+## 2026-07-25 — Retain row-vectorized D8 gate/up candidate
+
+- Added an explicit D8 MMQ128x32 specialization in which one thread owns each
+  routed activation row, reads `compact_to_source` once per K32 interval, and
+  stages its eight packed int32 values through two aligned 16-byte loads. The
+  resident T16 weights, D8 activation bytes/FP32 metadata, weight decode,
+  packed-dot sequence, accumulation order, and BF16 output are unchanged.
+- The uneven/empty-expert CPU-reference fixture passes all five D4/D8 modes;
+  the row-vector output is BF16 byte-identical to the prior D8 consumer. The
+  focused kernel/backend/default checks pass after repairing one unrelated
+  stale runner assertion for the already-published qrow4 SWA default.
+- Cached gfx1151 tracing names candidate template
+  `<1, false, true, 128, true>` at local128, VGPR80, SGPR128, 6,656 B LDS, and
+  zero scratch. On the same fixture it measures **226.144 us** versus
+  **264.416 us** for the prior D8 consumer. Raw CSV SHA-256:
+  `4efbcafdf912f0e161a6c1c7a55d4227f3d0372bb10cdf79b498c61fab11b101`.
+- The one-load, five-pair counterbalanced pp512 screen measures prior D8
+  **368.450 tok/s** median versus row-vector **379.661 (+3.043%)**, with every
+  candidate sample above every baseline sample and token 2930 throughout.
+  gfx1151 now selects the candidate; the old D8 consumer stays explicit
+  rollback. Commit this logical unit, then require a clean selector-unset
+  production confirmation and all-family reprofile before updating the
+  production claim. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-candidate.json`.
