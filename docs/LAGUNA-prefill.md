@@ -636,9 +636,9 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **581.806 ms** | **42.11%** | Primary 500 lever. Multi-K, 64-row, local256, and coalesced-raw screens are rejected below; use routing/counter evidence for one hybrid-large-expert schedule. |
+| Selected D8 Q4 gate/up | **581.806 ms** | **42.11%** | Primary 500 lever. Multi-K, universal/hybrid 64-row, local256, and coalesced-raw screens are rejected below; the next body must reduce weight/LDS work without expanding row accumulators. |
 | Selected D4 Q4/Q6 down | **276.861 ms** | **20.04%** | Apply a winning expert schedule to Q4 and Q6 down, then reprofile the combined **62.15%** expert window. |
-| Global + SWA attention | **229.181 ms** | **16.59%** | Qrow4 saves **45.544 ms / 16.58%**. Run one bounded qrow8/M128 screen; if VGPR pressure rejects it, move to the `KVLiveSpans`-aware M16-query x K64-key cooperative tile. |
+| Global + SWA attention | **229.181 ms** | **16.59%** | Qrow4 saves **45.544 ms / 16.58%**. Qrow8 is rejected; the remaining path is the `KVLiveSpans`-aware M16-query x K64-key cooperative tile. |
 | Scaled hipBLASLt source-F16 | **130.965 ms** | **9.48%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **70.391 ms** | **5.10%** | Freeze. It cannot move the next milestone materially. |
 | All remaining named/other kernels | **92.341 ms** | **6.68%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
@@ -671,13 +671,11 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Run one bounded qrow8/M128 attention screen. Retain only if pp512 and the
-   512/1K/4K attention family improve; otherwise remove it and reserve further
-   attention work for the cooperative M16-query x K64-key design.
-3. Use the current trace/counters to decide one bounded hybrid expert screen:
-   retain 128x32 for <=32-row experts and route only >32-row experts through a
-   64-row consumer. Do not build it without per-route evidence that the large
-   groups individually win.
+2. Build the cooperative M16-query x K64-key `KVLiveSpans` attention tile;
+   qrow8 has completed its clean rejection gate.
+3. Do not retry 64-row expert accumulation. The routing-qualified hybrid
+   completed its actual-weight leaf gate and regressed. Rework the 32-row body
+   around less weight/LDS traffic or a wave-transpose primitive instead.
 4. Apply any winning expert schedule to Q4/Q6 down, then run clean selector-unset
    pp512 and the complete category/decode/determinism/lifecycle gate. Retain
    every exact same-suite non-regressive improvement; 500 tok/s closes the next
@@ -795,6 +793,18 @@ tok/s (-0.666%)**. The analogous SWA qrow8 route measured
 Global qrow8 is now removed as well; qrow4 remains production and the topline
 stays **364.839 tok/s**. Evidence:
 [`2026-07-25-gfx1151-laguna-global-qrow8-candidate.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-global-qrow8-candidate.json).
+
+Seventh post-350 screen: **rejected and removed before integration**. Across
+the frozen natural pp512 routing, 1,931 experts above 32 rows carry 147,237
+lanes; routing only those experts through 64-row tiles would reduce their tile
+count **5,728 -> 3,102 (-45.8%)**, while 8,306 small experts remain on
+MMQ128x32. The explicit hybrid was BF16 byte-identical on mixed
+0/7/18/33/65-row expert fixtures. On actual layer-1 K3072/N1024 gate/up
+weights and natural M512 routing, however, pack-inclusive production measured
+**12.332 ms** median and the hybrid **13.179 ms (+6.87%)**. The larger
+accumulator footprint plus a second filtered launch outweigh the saved tiles.
+All candidate surfaces were removed. Evidence:
+[`2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json).
 
 Production evidence:
 

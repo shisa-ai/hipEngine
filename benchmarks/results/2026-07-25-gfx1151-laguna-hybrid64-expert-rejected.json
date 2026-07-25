@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T21:20:40+09:00",
+  "kind": "hipengine_laguna_hybrid64_selected_gate_up_rejected",
+  "status": "rejected_actual_route_leaf_regression",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M actual layer-1 T16 D8 gate/up leaf with natural pp512 routing on gfx1151",
+  "repo": {
+    "revision": "b4a8a4f014c9914ea2ffd9cb90346f9cd61bfbaa",
+    "tracked_clean": false,
+    "qualification": "Candidate existed only for the bounded leaf screen and was removed after rejection."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "projection": "selected dual gate/up",
+    "in_features": 3072,
+    "out_features_each": 1024
+  },
+  "routing": {
+    "source": "/tmp/laguna-lap0-routing-8d26a9562.json",
+    "rows": 512,
+    "top_k": 10,
+    "layer_active_experts": 228,
+    "layer_max_expert_rows": 232,
+    "all_sparse_layers_small_groups_le32": 8306,
+    "all_sparse_layers_small_lanes": 93403,
+    "all_sparse_layers_large_groups_gt32": 1931,
+    "all_sparse_layers_large_lanes": 147237,
+    "all_sparse_layers_large_tiles32": 5728,
+    "all_sparse_layers_large_tiles64": 3102
+  },
+  "candidate": {
+    "small_experts": "unchanged MMQ128x32 D8 body for row counts <=32",
+    "large_experts": "MMQ128x64 D8 body for row counts >32",
+    "metadata": "reuse tile32 map; even local tile launches cover up to 64 rows",
+    "output": "BF16 byte-identical to production MMQ128x32 on the uneven 0/7/18/33/65 CPU-quality fixture"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32,t16-mmq128x32-d8-f32-hybrid64 --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-hybrid64-layer1-leaf.json",
+    "timing": "counter-rotated HIP events; BF16-to-D8 pack included",
+    "raw_output": "/tmp/laguna-hybrid64-layer1-leaf.json",
+    "raw_output_committed": false
+  },
+  "results": {
+    "production_mmq128x32_samples_ms": [
+      12.303040822347006,
+      12.312068939208984,
+      12.34243392944336,
+      12.301347096761068,
+      12.331670125325521,
+      12.38192621866862,
+      12.336040496826172
+    ],
+    "production_mmq128x32_median_ms": 12.331670125325521,
+    "hybrid64_samples_ms": [
+      13.289724985758463,
+      13.144986470540365,
+      13.16238784790039,
+      13.119400024414062,
+      13.327406565348307,
+      13.18099848429362,
+      13.17919667561849
+    ],
+    "hybrid64_median_ms": 13.17919667561849,
+    "hybrid64_slowdown": 1.068727,
+    "finite": true,
+    "production_checksum_f64": 1114.1769413301445,
+    "hybrid64_checksum_f64": 1114.1769413301445
+  },
+  "validation": {
+    "red": "Registry import failed before the new symbol existed.",
+    "green": "8 focused harness/registry/GPU tests passed.",
+    "correctness_gate": "Hybrid output is BF16 byte-identical to production on mixed empty/small/large expert counts."
+  },
+  "conclusion": "Reject before runtime integration. Cutting large-group tile count by 45.8% does not repay the 64-row accumulator footprint and second filtered launch; actual-route inclusive leaf time regresses 6.87%."
+}
