@@ -178616,3 +178616,29 @@ Vulkan local sizes verbatim will close the measured gap.
   **76.226 -> 354.820 tok/s (+365.484%; 4.655x)**, while complete quality
   remains max KL **0.040724836**, **317/320** top-1, neutral decode, and exact
   lifecycle recovery.
+
+## 2026-07-25 — Open the post-350 Laguna 500/700 campaign
+
+- Promoted 350 tok/s from a terminal target to a retained production milestone.
+  The next selector-unset production pp512 gate is **500 tok/s**, requiring at
+  least three clean samples with both median and minimum >=500 under the same
+  complete quality, decode, determinism, memory, lifecycle, model, quant, KV,
+  and one-queue contract. **700 tok/s** is the stretch target and remains a
+  hypothesis until locked-clock LAP-BW0 physical-traffic evidence supports it.
+- Rebuilt the opportunity table from the final production trace rather than
+  the pre-campaign bridge. Selected D8 gate/up is **581.799 ms / 40.76%**,
+  selected D4 Q4/Q6 down **276.169 ms / 19.35%**, global+SWA attention
+  **274.724 ms / 19.25%**, source-F16 **130.373 ms / 9.13%**, dense/shared
+  **70.098 ms / 4.91%**, and the remainder **94.058 ms / 6.59%**. Kernel
+  sum/span are **1.427220/1.440122 seconds** inside **1.443218 seconds** wall,
+  closing graphs/Python/submission work at only **1.11%** nonsummed wall.
+- Frozen Amdahl checkpoints are **403/442/505 tok/s** for
+  **1.25x/1.5x/2x** combined selected-expert throughput, **410 tok/s** for an
+  80 ms attention window alone, and **625 tok/s** for 2x experts plus 80 ms
+  attention. These are planning figures, not performance claims.
+- The immediate implementation path is exact selected-expert K64 nibble reuse
+  and multi-K staging/double buffering, followed by Q4/Q6 down transfer,
+  1024/2048 long-prompt matrix capacity, and cooperative tiled attention.
+  Source-F16, dense/shared, graphs, router/norm/tails, rejected raw-sum/D4-gate
+  approximations, and duplicate resident sidecars stay closed absent new
+  evidence.
