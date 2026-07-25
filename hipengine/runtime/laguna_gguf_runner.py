@@ -1267,6 +1267,23 @@ def resolve_laguna_mixed_attention_projections(
     )
 
 
+def resolve_laguna_mixed_q6_fixed_meta_attention(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the exact mixed-projection Q6 metadata schedule with rollback."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_MIXED_Q6_FIXED_METADATA",
+            False,
+        )
+    )
+
+
 def resolve_laguna_q5_wave32x2_variants(
     backend: str,
     *,
@@ -1721,7 +1738,7 @@ class LagunaGGUFResidentSession:
         use_q5_fixed_meta_output: bool | None = None,
         use_q5_fixed_meta_query_gate: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
-        use_mixed_q6_fixed_meta_attention: bool = False,
+        use_mixed_q6_fixed_meta_attention: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1773,8 +1790,11 @@ class LagunaGGUFResidentSession:
             self.backend,
             use_mixed_q5_q6_attention,
         )
-        self.use_mixed_q6_fixed_meta_attention = bool(
-            use_mixed_q6_fixed_meta_attention
+        self.use_mixed_q6_fixed_meta_attention = (
+            resolve_laguna_mixed_q6_fixed_meta_attention(
+                self.backend,
+                use_mixed_q6_fixed_meta_attention,
+            )
         )
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
@@ -3663,5 +3683,6 @@ __all__ = [
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",
     "resolve_laguna_mixed_attention_projections",
+    "resolve_laguna_mixed_q6_fixed_meta_attention",
     "resolve_laguna_q5_wave32x2_variants",
 ]

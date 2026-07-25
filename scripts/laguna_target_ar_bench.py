@@ -85,9 +85,9 @@ def _parse_args() -> argparse.Namespace:
         help="restore the exact Q5/Q6 pair and Q8 singleton projection chain",
     )
     parser.add_argument(
-        "--use-mixed-q6-fixed-meta-attention",
+        "--disable-mixed-q6-fixed-meta-attention",
         action="store_true",
-        help="use the default-off exact Q6 metadata schedule in mixed projections",
+        help="restore generic Q6 blocks inside the exact mixed projection quad",
     )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
@@ -228,7 +228,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
             False if args.disable_mixed_q5_q6_attention else None
         ),
         use_mixed_q6_fixed_meta_attention=(
-            args.use_mixed_q6_fixed_meta_attention
+            False if args.disable_mixed_q6_fixed_meta_attention else None
         ),
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
@@ -618,7 +618,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 False if args.disable_mixed_q5_q6_attention else None
             ),
             use_mixed_q6_fixed_meta_attention=(
-                args.use_mixed_q6_fixed_meta_attention
+                False if args.disable_mixed_q6_fixed_meta_attention else None
             ),
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
