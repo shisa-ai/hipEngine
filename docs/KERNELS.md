@@ -514,6 +514,19 @@ reopen storage/reduction or C=8 WY variants. See
 `docs/GGUF-PREFILL-OPTIMIZATION.md` and
 `benchmarks/results/2026-07-15-gfx1100-gguf-gdn-chunkwise-wy8-rejected.json`.
 
+### Laguna online-qrow4 attention extension
+
+Post-350 LAP-7 adds separately registered global/SWA online-qrow4 consumers
+and M128-qualified gfx1151 selectors. The wrapped/evicted eight-row fixture,
+including a seven-row tail, is byte-identical to the retained qrow2 output.
+Cached gfx1151 tracing names the qrow4 templates at local32, VGPR 72/80,
+SGPR128, and zero LDS/scratch. A one-load counterbalanced pp512 screen improves
+qrow2 **353.836 -> 365.249 tok/s (+3.23%)**; dirty selector-unset confirmation
+is **365.048 tok/s** median with **363.735** minimum. Qrow2 remains the
+short/residual-tile route; the production claim requires clean confirmation.
+Evidence:
+`benchmarks/results/2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json`.
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port

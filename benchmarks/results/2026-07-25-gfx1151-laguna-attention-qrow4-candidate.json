@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T17:42:08+09:00",
+  "kind": "hipengine_laguna_attention_qrow4_candidate",
+  "status": "retained_candidate_pending_clean_confirmation",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M selector-unset pp512 diagnostic and qrow2/qrow4 attention A/B on gfx1151",
+  "repo": {
+    "baseline_commit": "1525d60ad9d36565abab5f7a8ba3d6e92186043b",
+    "tracked_clean": false,
+    "qualification": "Kernel candidate and default promotion were present in the worktree. A clean selector-unset production confirmation is required before publishing a retained production number."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "pp512",
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "warmup_rows_per_mode": 128,
+    "repetitions": 3,
+    "order": "counterbalanced",
+    "timing": "host perf_counter around prefill plus device_synchronize",
+    "command": "PYTHONPATH=. python3 /tmp/laguna_qrow4_attention_screen.py"
+  },
+  "first_screen": {
+    "production_qrow2": {
+      "global_variant": "global_context_rows_qrow2_online_spans",
+      "swa_variant": "swa_context_rows_qrow2_online_spans",
+      "samples_tok_s": [
+        353.8355359635514,
+        353.4365229556078,
+        353.9260150378947
+      ],
+      "median_tok_s": 353.8355359635514,
+      "next_token_ids": [
+        2930,
+        2930,
+        2930
+      ]
+    },
+    "qrow4_both": {
+      "global_variant": "global_context_rows_qrow4_online_spans",
+      "swa_variant": "swa_context_rows_qrow4_online_spans",
+      "samples_tok_s": [
+        365.24851480153103,
+        366.55643287831856,
+        364.6836514157223
+      ],
+      "median_tok_s": 365.24851480153103,
+      "next_token_ids": [
+        2930,
+        2930,
+        2930
+      ],
+      "speedup_vs_qrow2": 1.0322635247809586
+    },
+    "qrow4_global_only": {
+      "samples_tok_s": [
+        353.72203665959086,
+        353.40203594175654,
+        354.3711673819164
+      ],
+      "median_tok_s": 353.72203665959086,
+      "next_token_ids": [
+        2930,
+        2930,
+        2930
+      ]
+    },
+    "qrow4_swa_only": {
+      "samples_tok_s": [
+        363.2144057423111,
+        363.52700243909277,
+        363.16132282828914
+      ],
+      "median_tok_s": 363.2144057423111,
+      "next_token_ids": [
+        2930,
+        2930,
+        2930
+      ]
+    }
+  },
+  "selector_unset_confirmation": {
+    "default_global_variant": "global_context_rows_qrow4_m128_online_spans",
+    "default_swa_variant": "swa_context_rows_qrow4_m128_online_spans",
+    "production_qrow2": {
+      "samples_tok_s": [
+        353.7652153911227,
+        352.73130312489684,
+        352.92011526883965
+      ],
+      "median_tok_s": 352.92011526883965,
+      "next_token_ids": [
+        2930,
+        2930,
+        2930
+      ]
+    },
+    "selector_unset_qrow4_m128": {
+      "samples_tok_s": [
+        365.06464767463746,
+        365.0479714670487,
+        363.73459341943857
+      ],
+      "median_tok_s": 365.0479714670487,
+      "minimum_tok_s": 363.73459341943857,
+      "next_token_ids": [
+        2930,
+        2930,
+        2930
+      ],
+      "speedup_vs_paired_qrow2": 1.034363773059154
+    }
+  },
+  "correctness": {
+    "command": "uv run pytest -q tests/test_laguna_kv_attention.py tests/test_gfx1151_backend.py",
+    "result": "33 passed",
+    "ring_fixture": "seed 508, query rows 508..515, global and SWA, explicit eviction, wrapped physical offsets, full and seven-row partial groups",
+    "qrow4_vs_qrow2": "byte-identical F32 outputs",
+    "full_model_next_token": 2930
+  },
+  "kernel_trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file qrow4 --log-level error -- env HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
+    "raw_csv_sha256": "981653a84fcbf5b28256f1dfda60be0b95269a6b92667f88ce63d14fbbd45c20",
+    "raw_csv_committed": false,
+    "global_qrow4": {
+      "kernel_template": "laguna_global_attention_prefill_qrows_online_bf16_kernel<4>",
+      "workgroup_size": 32,
+      "vgpr_count": 72,
+      "sgpr_count": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "swa_qrow4": {
+      "kernel_template": "laguna_swa_attention_prefill_qrows_online_bf16_kernel<4>",
+      "workgroup_size": 32,
+      "vgpr_count": 80,
+      "sgpr_count": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "selection": "qrow4 is restricted to complete 128-row attention tiles; qrow2 remains the residual-tile path because the traced eight-row fixture favors its lower 48/56 VGPR footprint"
+  },
+  "conclusion": "Reuse each streamed BF16 K/V row across four M128 query rows. The selector-unset diagnostic improves paired pp512 by 3.44%, and the complete qrow4 arithmetic is byte-identical to qrow2. Commit the qualified default, then require a clean selector-unset production confirmation before publishing the new topline."
+}

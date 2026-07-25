@@ -638,7 +638,7 @@ and achievable-bandwidth evidence.
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Multi-K, 64-row, local256, and coalesced-raw screens are rejected below. Park simple body tuning; retain only a bounded hybrid-large-expert screen after new trace/counter evidence. |
 | Selected D4 Q4/Q6 down | **276.169 ms** | **19.35%** | Carry the winning expert schedule into Q4 and Q6 down, then reprofile the combined 60.11% expert window. |
-| Global + SWA attention | **274.724 ms** | **19.25%** | Primary target now. Build the `KVLiveSpans`-aware M16-query x K64-key tiled path; attention is already above LAP-7's 10% start threshold. |
+| Global + SWA attention | **274.724 ms** | **19.25%** | The first LAP-7 step retains four-query K/V reuse on complete M128 tiles at **365.048 tok/s** dirty selector-unset median. Clean confirmation/reprofile it, then continue toward the `KVLiveSpans`-aware M16-query x K64-key tiled path. |
 | Scaled hipBLASLt source-F16 | **130.373 ms** | **9.13%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **70.098 ms** | **4.91%** | Freeze. It is only about 7.2 ms behind the homologous Vulkan family and cannot move the next milestone materially. |
 | All remaining named/other kernels | **94.058 ms** | **6.59%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
@@ -671,9 +671,10 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Implement and screen LAP-7 cooperative tiled attention. Its primary
-   residual gates are pp512, 1K, and 4K family wall plus full
-   `KVLiveSpans`/causal/ring correctness and the complete quality lane.
+2. Clean-confirm and reprofile the retained LAP-7 qrow4/M128 step, then
+   continue cooperative tiled attention. Its primary residual gates are
+   pp512, 1K, and 4K family wall plus full `KVLiveSpans`/causal/ring
+   correctness and the complete quality lane.
 3. Use the next trace/counters to decide one bounded hybrid expert screen:
    retain 128x32 for <=32-row experts and route only >32-row experts through a
    64-row consumer. Do not build it without per-route evidence that the large
@@ -755,6 +756,27 @@ scalar nibble reconstruction cost dominates the cleaner global access and
 smaller LDS allocation. The candidate was removed. Do not revisit raw LDS
 staging without a wave-transpose/unpack primitive that avoids per-lane scalar
 reconstruction.
+
+Fifth post-350 screen: **retained candidate pending clean confirmation**.
+The online global and SWA kernels now share each streamed BF16 K/V row across
+four adjacent queries on complete 128-row attention tiles; short and residual
+tiles retain qrow2. The wrapped/evicted 508..515 fixture, including a
+seven-row partial group, is F32 byte-identical between qrow4 and qrow2. Cached
+gfx1151 tracing names the expected qrow4 global/SWA templates at local32,
+VGPR **72/80**, SGPR128, and zero LDS/scratch; qrow2 remains the residual path
+because its VGPR **48/56** footprint wins the eight-row fixture.
+
+The one-load, three-repeat, counterbalanced explicit screen measured qrow4
+global+SWA at **365.249 tok/s** median
+(**365.249/366.556/364.684**) versus qrow2 production at **353.836**
+(**353.836/353.437/353.926**), always token 2930: **+3.23%**. SWA-only
+qrow4 reached **363.214**, while global-only was neutral at **353.722**.
+After installing the M128-qualified gfx1151 defaults, the dirty
+selector-unset confirmation measured **365.048 tok/s** median with a
+**363.735** minimum versus the paired qrow2 **352.920**, again always token
+2930. This is not yet the new production claim: commit the candidate and run
+the clean selector-unset production gate first. Evidence:
+[`2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json).
 
 Production evidence:
 

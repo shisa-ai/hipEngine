@@ -43,16 +43,12 @@ LAGUNA_F16_PREFILL_MIN_ROWS = 16
 # projection/MoE transactions while attention remains independently tiled at 128.
 # Other backends retain the 128-row runtime fallback until measured independently.
 LAGUNA_PREFILL_MATRIX_ROWS = 512
-# Clean AR-O5 repeated 512/1K/4K and complete ten-prompt category quality gates
-# admit online-softmax K/V reuse across adjacent query rows on all full-attention
-# prefill shapes. Exact global prefill remains the explicit rollback and every
-# unmeasured backend retains its prior default.
-LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow2_online_spans"
-# Clean AR-O5 repeated 512/1K/4K and complete ten-prompt category quality gates
-# admit online-softmax K/V reuse across adjacent query rows on all SWA prefill
-# shapes. Exact context-qualified qrow2 and wave32 remain explicit rollback and
-# every unmeasured backend retains its independently measured default.
-LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow2_online_spans"
+# The post-350 LAP-7 screen reuses each streamed BF16 K/V row across four
+# adjacent queries. It is byte-identical to the admitted online-qrow2 arithmetic
+# on the wrap/eviction oracle and improves matched pp512 production by 3.23%.
+# Qrow2/exact variants remain explicit rollback; unmeasured backends are unchanged.
+LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_m128_online_spans"
+LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # Other backends retain their exact selected gate/up route.
