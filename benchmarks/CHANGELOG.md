@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed gfx1151 Laguna direct local256 gate/up] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural-M512 leaf regresses **6.868 -> 7.181 ms (+4.559%)** with a 256x32/local256 direct per-column body; output is BF16-byte exact, but every one of nine counter-rotated samples loses, so the candidate is removed before runtime integration and 128x32/local128 remains production; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`.
+
 - [rejected and removed gfx1151 Laguna direct local64 gate/up] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural-M512 leaf improves **6.920 -> 6.839 ms (-1.17%)**, but one-owner matrix512/attention128 pp512 is noise at **481.323 -> 481.619 tok/s (+0.061%)** with overlapping samples and a worse minimum; outputs are BF16-byte exact and all runs select token 2930, so every candidate surface is removed and 128x32/local128 remains production; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`.
 
 - [retained exact gfx1151 Laguna direct Q4-down wave-decode production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / selector-unset matrix512/attention128 pp512 improves pair-decode rollback **473.963 -> 480.629 tok/s (+1.406%)** with complete seven-sample separation and token 2930 by decoding one resident-T16 Q4-down column per lane; direct all-exact quality remains max KL **0.049542582**, **316/320** top-1 with neutral decode and exact lifecycle, while cached tracing measures **481.997 tok/s** and cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json`.

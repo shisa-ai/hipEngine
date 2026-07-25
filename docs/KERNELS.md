@@ -714,6 +714,15 @@ candidate surface was removed; 128x32/local128 direct decode remains
 production
 (`benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`).
 
+Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
+wave32s own one output column each and all 32 routed rows, so the candidate
+halves workgroups and activation staging without the rejected two-columns-per-
+lane body's 64 accumulators. It remains BF16-byte identical, but actual
+layer-1 natural-M512 pack-inclusive time regresses **6.868 -> 7.181 ms
+(+4.559%)**, and every one of nine counter-rotated samples loses. The screen
+stopped before runtime integration; 128x32/local128 remains production
+(`benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
