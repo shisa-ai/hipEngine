@@ -223,7 +223,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_PREFILL_MATRIX_ROWS == 512
     assert (
         LAGUNA_GLOBAL_PREFILL_VARIANT
-        == "global_context_rows_qrow8_m128_online_spans"
+        == "global_context_rows_qrow4_m128_online_spans"
     )
     assert LAGUNA_SWA_PREFILL_VARIANT == "swa_context_rows_qrow4_m128_online_spans"
     assert (
@@ -254,7 +254,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_GLOBAL_PREFILL_VARIANT", None
         )
-        == "global_context_rows_qrow8_m128_online_spans"
+        == "global_context_rows_qrow4_m128_online_spans"
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_GLOBAL_PREFILL_VARIANT", None
