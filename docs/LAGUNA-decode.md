@@ -20,9 +20,9 @@ separate, c=1-only wave64 code-object build of the unchanged tile2 source also
 fails its clean promotion gate and is removed. A new exact c=1 sibling using a
 canonical 64-bit IQ2 magnitude table passes clean context and complete-category
 gates and is retained as the gfx1100 default. A subsequent exact raw-Q5
-fixed-metadata sibling has passed ISA, first/last actual-weight, full-state, and
-cached-trace admission and remains default-off pending clean context/category
-gates.
+fixed-metadata sibling passes ISA, first/last actual-weight, full-state, cached
+trace, both clean context orders, and both complete-category orders and is now
+the gfx1100 default with an explicit role-scoped rollback.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1077,7 +1077,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Question | Evidence |
 | --- | --- |
 | Is 93.67 tok/s reproducible? | [`...llamacpp-vulkan-review.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json) |
-| What is the retained hipEngine row? | [`...p4-split-gate-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-retained.json) |
+| What is the retained hipEngine row? | [`...q5-fixed-metadata-retained.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json) |
 | What dominates D12? | D12 clean profile plus [`...d9-residual-profile.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-residual-profile.json) with D12 leaf replacements |
 | What did D0–D17 retain/reject? | [`LAGUNA.md`](LAGUNA.md), “Laguna Q2 XL Decode Optimization Campaign” |
 | Is IQ2 already tuned? | [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) |
@@ -1089,8 +1089,8 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
 | What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
 | Did a bit-lossless Q5 repack help? | [`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json): exact generic/wave32x2 T16 both regress actual global/SWA layers and are not retained. |
-| Does fixed-address Q5 metadata help without a repack? | [`...q5-fixed-metadata-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-correctness.json): yes mechanically. Two uniform 128-bit metadata loads remove 32 coefficient exchanges, reduce logical VGPR **89 -> 72**, and improve all first/last actual output/query-gate rows **17.59-25.19%** at exact full state; clean promotion gates remain pending. |
-| Does retained hipEngine beat Vulkan under matched natural completion? | No. The device-pinned [`...vulkan-matched-completion-reaudit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json) pins Vulkan at **64.245/64.418 tok/s** h16/h32; the subsequently retained IQ2 expanded grid reaches **54.540 tok/s h32** and still needs **18.11%** more. |
+| Does fixed-address Q5 metadata help without a repack? | [`...q5-fixed-metadata-retained.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json): yes. Two uniform 128-bit metadata loads remove 32 coefficient exchanges, reduce logical VGPR **89 -> 72**, improve clean Q5 **22.68-23.12%**, and move complete-suite h32 decode **54.476 -> 57.711 tok/s (+5.938%)** at exact full state. |
+| Does retained hipEngine beat Vulkan under matched natural completion? | No. The device-pinned [`...vulkan-matched-completion-reaudit.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json) pins Vulkan at **64.245/64.418 tok/s** h16/h32; retained fixed-metadata Q5 reaches **57.711 tok/s h32** and still needs **11.62%** more. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
 ## Bottom line
@@ -1101,7 +1101,7 @@ Python, sampling, graph replay, a missing compiler flag, or one unfused router.
 The clean GPU trace proves otherwise.
 
 hipEngine has already transferred the broad Qwen playbook and improved Laguna
-from **19.596 to 52.514 tok/s**. The expanded review removes two tempting but
+from **19.596 to 57.711 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
@@ -1116,9 +1116,9 @@ at live `>=257`; P1-P3 are closed. P4.1's exact gated split reducers and the
 current-P4 exact head+KV body are retained after independent-body, full-state,
 trace, clean-context, and complete-category gates. The device-pinned matched
 reaudit replaces the non-equivalent 94.513-tok/s headline with a formal
-**64.418 tok/s** h32 target; current retained hipEngine reaches **54.540 tok/s**
-and still needs **18.11%** more. Direct AQL, unchanged graph capture, host
-packets, and launch cleanup alone are mechanically closed. The exact Q5
-fixed-metadata candidate is the next independently winning device-work
-contraction, but it is not retained until both clean context orders and both
-complete 18-prompt orders pass.
+**64.418 tok/s** h32 target; current retained hipEngine reaches **57.711 tok/s**
+and still needs **11.62%** more. Direct AQL, unchanged graph capture, host
+packets, and launch cleanup alone are mechanically closed. Exact Q5
+fixed-metadata loads are now retained after both clean context orders and both
+complete 18-prompt orders pass; the objective remains open for a genuinely new
+exact device-work or dispatch contraction.

@@ -1157,10 +1157,10 @@ def resolve_laguna_q5_wave32x2_variants(
     *,
     output: bool | None = None,
     query_gate: bool | None = None,
-    fixed_meta_output: bool = False,
-    fixed_meta_query_gate: bool = False,
+    fixed_meta_output: bool | None = None,
+    fixed_meta_query_gate: bool | None = None,
 ) -> tuple[str | None, str | None]:
-    """Resolve D12 role variants and explicit exact fixed-metadata candidates."""
+    """Resolve architecture-qualified D12 role variants with exact rollback."""
 
     output_enabled = (
         bool(backend_package_capability(backend, "LAGUNA_Q5_WAVE32X2_OUTPUT", False))
@@ -1172,14 +1172,27 @@ def resolve_laguna_q5_wave32x2_variants(
         if query_gate is None
         else bool(query_gate)
     )
+    fixed_meta_default = bool(
+        backend_package_capability(backend, "LAGUNA_Q5_FIXED_METADATA", False)
+    )
+    fixed_meta_output_enabled = (
+        fixed_meta_default
+        if fixed_meta_output is None
+        else bool(fixed_meta_output)
+    )
+    fixed_meta_query_gate_enabled = (
+        fixed_meta_default
+        if fixed_meta_query_gate is None
+        else bool(fixed_meta_query_gate)
+    )
     output_variant = (
         _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT
-        if fixed_meta_output
+        if fixed_meta_output_enabled
         else _Q5_WAVE32X2_OUTPUT_VARIANT
     )
     query_gate_variant = (
         _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
-        if fixed_meta_query_gate
+        if fixed_meta_query_gate_enabled
         else _Q5_WAVE32X2_QUERY_GATE_VARIANT
     )
     return (
@@ -1590,8 +1603,8 @@ class LagunaGGUFResidentSession:
         use_head_kv_fusion: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
-        use_q5_fixed_meta_output: bool = False,
-        use_q5_fixed_meta_query_gate: bool = False,
+        use_q5_fixed_meta_output: bool | None = None,
+        use_q5_fixed_meta_query_gate: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,

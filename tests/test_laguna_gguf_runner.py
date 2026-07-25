@@ -8,6 +8,7 @@ import pytest
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16, LAYOUT_RAW_GGUF
 from hipengine.runtime import laguna_gguf_runner as runner_module
@@ -106,33 +107,33 @@ def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
 
 
 def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() -> None:
-    expected = (
+    retained = (
         "wave32x2_gemv_decode_bf16_bf16_out",
         "wave32x2_gemv_decode_bf16_f32_out",
     )
-    assert resolve_laguna_q5_wave32x2_variants("hip_gfx1100") == expected
+    fixed_meta = (
+        "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+        "wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_Q5_FIXED_METADATA", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_Q5_FIXED_METADATA", False
+    ) is False
+    assert resolve_laguna_q5_wave32x2_variants("hip_gfx1100") == fixed_meta
     assert resolve_laguna_q5_wave32x2_variants("hip_gfx1151") == (None, None)
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100",
+        fixed_meta_output=False,
+        fixed_meta_query_gate=False,
+    ) == retained
     assert resolve_laguna_q5_wave32x2_variants(
         "hip_gfx1100", output=False, query_gate=False
     ) == (None, None)
     assert resolve_laguna_q5_wave32x2_variants(
         "hip_gfx1151", output=True, query_gate=True
-    ) == expected
-    assert resolve_laguna_q5_wave32x2_variants(
-        "hip_gfx1100",
-        fixed_meta_output=True,
-        fixed_meta_query_gate=True,
-    ) == (
-        "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
-        "wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
-    )
-    assert resolve_laguna_q5_wave32x2_variants(
-        "hip_gfx1100",
-        output=False,
-        query_gate=False,
-        fixed_meta_output=True,
-        fixed_meta_query_gate=True,
-    ) == (None, None)
+    ) == retained
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:

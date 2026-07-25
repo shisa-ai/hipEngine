@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-25
 
+- [retained gfx1100 Laguna Q2 XL exact Q5 fixed metadata] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / coefficient-published raw-Q5 wave32x2 -> two wave-uniform 128-bit metadata loads per superblock moves two-order 18-prompt h32 decode **54.476 -> 57.711 tok/s (+5.938%)**, or prior retained **54.540 -> 57.711 (+5.813%)**; every train/heldout category decode and E2E row improves, clean short/512/1K/near-4K kernel sum improves **2.35-6.34%**, and full logits/hidden/routed/KV/spans/reset/lifecycle remain exact; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json`.
+
 - [retained gfx1100 Laguna Q2 XL exact IQ2 expanded-magnitude grid] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / compact selector reconstruction -> canonical uint64 magnitude table moves two-order 18-prompt h32 decode **52.650 -> 54.540 tok/s (+3.590%)**, or prior retained **52.514 -> 54.540 (+3.858%)**; every train/heldout category decode and E2E row improves, clean short/512/1K/near-4K kernel sum improves **1.30-3.70%**, and full logits/hidden/routed/KV/spans/reset/lifecycle remain exact; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-retained.json`.
 
 - [rejected gfx1100 Laguna Q2 XL IQ2 launch-bounds retune] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained `__launch_bounds__(256,2)` -> only `(64,8)` changes ISA across eight occupancy candidates and remains BF16-bit exact, but first/last actual-layer synchronized wall is mixed at **+0.616%/-0.206%** despite event changes **-0.668%/-0.296%**; no source/runtime route is added and canonical h32 remains **52.514 tok/s**; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-launch-bounds-rejected.json`.

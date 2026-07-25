@@ -9,6 +9,10 @@ LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
 # Other backends retain the separately registered pack8 fallbacks.
 LAGUNA_Q5_WAVE32X2_OUTPUT = True
 LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
+# Exact wave-uniform Q5 metadata loads pass first/last actual layers, full state,
+# both clean context orders, and both complete 18-prompt category orders.
+# Explicit role-scoped disables retain the registered coefficient-publication path.
+LAGUNA_Q5_FIXED_METADATA = True
 # Clean P0 leaf/full-state/context/category evidence admits one exact local32
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
@@ -102,6 +106,7 @@ __all__ = [
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
+    "LAGUNA_Q5_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SPLIT_GATE_FUSION",

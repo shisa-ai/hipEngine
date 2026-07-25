@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`b271f1fdc` for the exact W7900 Laguna S 2.1 UD-Q2_K_XL raw-Q5
+fixed-metadata siblings,
 `853516ecdd3a464b38013064a1d8ccacc20556c5` for the exact W7900 Laguna S 2.1
 UD-Q2_K_XL IQ2 expanded-magnitude grid,
 `367c1f622167653c733896e3a2a1f5972f9961c4` for exact W7900 Laguna S 2.1
@@ -1232,8 +1234,9 @@ recoverable from the linked compact artifacts, changelog, and
 **Status: exact dense decode, P0 IQ3 wave4 route/output ownership, P2 exact
 split attention plus SWA tile16 scores, P4.1 split-reducer+gate, current-P4 head
 RMSNorm+RoPE+BF16-KV, wave-local exact SWA split reduction, expanded-magnitude
-IQ2 gate/up, token4 SWA, raw-Q5 wave32x2, raw-Q6 attention pairing, and
-aggregate MoE-tail plus next-RMS are the retained W7900 target-only AR default.**
+IQ2 gate/up, raw-Q5 wave32x2 fixed-metadata loads, token4 SWA, raw-Q6 attention
+pairing, and aggregate MoE-tail plus next-RMS are the retained W7900 target-only
+AR default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1309,6 +1312,9 @@ slot-order reducer.
 | IQ2 compact-grid matched control | 42.909 | 1.937 s | 52.650 | 6.930 | 12.237 |
 | Exact IQ2 expanded-magnitude grid | **42.878** | **1.938 s** | **54.540** | **6.956** | **12.326** |
 | Expanded-grid change vs matched compact grid | **-0.072%** | **+0.042%** | **+3.590%** | **+0.373%** | **+0.730%** |
+| Q5 coefficient-publication matched control | 42.967 | 1.937 s | 54.476 | 6.967 | 12.343 |
+| Exact Q5 fixed metadata | **42.923** | **1.937 s** | **57.711** | **7.008** | **12.487** |
+| Fixed-metadata change vs matched control | **-0.103%** | **+0.022%** | **+5.938%** | **+0.582%** | **+1.163%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -1868,6 +1874,33 @@ prefill is **-0.072%** and TTFT **+0.042%**. Relative to the prior retained
 **64.418 tok/s**, so another **18.11%** is required and completion stays open.
 `use_iq2_grid64=False` / `--disable-iq2-grid64` retains the registered
 compact-grid fallback; rows>1 and unsupported backends always use it. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-correctness.json) and [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-retained.json).
+
+##### Laguna Q2 XL exact Q5 fixed metadata (retained gfx1100 default)
+
+The c=1 D12 siblings replace 32 lane-published Q5 scale/min coefficient
+exchanges with two wave-uniform 128-bit metadata loads per superblock. Raw
+176-byte Q5_K weights, eight accumulator chains, four reduction trees, group
+addition order, and BF16/F32 stores are unchanged. Coefficient plus reduction
+`ds_bpermute` contracts **72 -> 40** and logical VGPR **89 -> 72**, with no LDS,
+scratch, sidecar, workspace, or dispatch-count change. First/last actual global
+and Q5-SWA output/query-gate rows are bit exact and improve HIP events
+**19.80-25.19%** plus synchronized wall **17.59-24.07%**. Full logits, all 48
+hidden and 47 routed boundaries, active K/V plus every span byte, reset, and
+lifecycle are exact.
+
+Both clean process orders improve pooled Q5 **22.68-23.12%**, kernel sum
+**2.35-6.34%**, dispatch span **2.17-5.58%**, and profiled-child throughput
+**2.26-4.41%** at short/512/1K/near-4K, with exactly 772 dispatches/token and
+local32/VGPR72/LDS0/scratch0 resources. Both complete 18-prompt orders move
+h16/h32 decode **54.964/54.476 -> 58.243/57.711 tok/s (+5.964%/+5.938%)**.
+Every train/heldout category decode improves **5.52-6.48%**, h16/h32 E2E
+improves **0.582%/1.163%**, prefill is **-0.103%**, and TTFT **+0.022%**.
+Relative to the prior retained 54.540 row, h32 improves **5.813%** to **17.328
+ms/token**. Pinned Vulkan remains **64.418 tok/s**, so another **11.62%** is
+required and completion stays open. Role-scoped `use_q5_fixed_meta_*=False` /
+`--disable-q5-fixed-meta-*` retains the registered coefficient-publication
+wave32x2 fallback; rows>1 and unsupported backends retain the existing exact
+routes. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-correctness.json) and [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**

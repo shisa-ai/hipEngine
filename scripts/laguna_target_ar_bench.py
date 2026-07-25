@@ -70,14 +70,14 @@ def _parse_args() -> argparse.Namespace:
         help="roll back the exact expanded-magnitude IQ2 c=1 default",
     )
     parser.add_argument(
-        "--q5-fixed-meta-output",
+        "--disable-q5-fixed-meta-output",
         action="store_true",
-        help="select the exact fixed-metadata Q5 c=1 attention-output candidate",
+        help="roll back exact fixed-metadata Q5 c=1 attention output",
     )
     parser.add_argument(
-        "--q5-fixed-meta-query-gate",
+        "--disable-q5-fixed-meta-query-gate",
         action="store_true",
-        help="select the exact fixed-metadata Q5 c=1 query/gate candidate",
+        help="roll back exact fixed-metadata Q5 c=1 query/gate",
     )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
@@ -208,8 +208,12 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         prefill_chunk_size=args.chunk_size,
         iq3_c1_down_schedule=args.iq3_c1_down_schedule,
         use_iq2_grid64=False if args.disable_iq2_grid64 else None,
-        use_q5_fixed_meta_output=args.q5_fixed_meta_output,
-        use_q5_fixed_meta_query_gate=args.q5_fixed_meta_query_gate,
+        use_q5_fixed_meta_output=(
+            False if args.disable_q5_fixed_meta_output else None
+        ),
+        use_q5_fixed_meta_query_gate=(
+            False if args.disable_q5_fixed_meta_query_gate else None
+        ),
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
         swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -588,8 +592,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.chunk_size,
             iq3_c1_down_schedule=args.iq3_c1_down_schedule,
             use_iq2_grid64=False if args.disable_iq2_grid64 else None,
-            use_q5_fixed_meta_output=args.q5_fixed_meta_output,
-            use_q5_fixed_meta_query_gate=args.q5_fixed_meta_query_gate,
+            use_q5_fixed_meta_output=(
+                False if args.disable_q5_fixed_meta_output else None
+            ),
+            use_q5_fixed_meta_query_gate=(
+                False if args.disable_q5_fixed_meta_query_gate else None
+            ),
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
