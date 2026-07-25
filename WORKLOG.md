@@ -179354,3 +179354,38 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-candidate.json`.
   Clean selector-unset production, absolute quality, and all-family tracing
   remain required.
+
+## 2026-07-26 — Publish Q4-down wave-column production at 448.203 tok/s
+
+- Clean committed revision `7086f8cdd` completed seven counterbalanced
+  same-owner matrix512/attention128 pp512 repetitions. Explicit all-row-vector
+  rollback measured **432.981/432.155/433.081/432.668/436.244/433.695/433.484
+  tok/s** (median **433.081**); selector-unset Q4-wave/Q6-row production
+  measured **448.762/448.422/447.477/447.201/446.152/448.672/448.203 tok/s**
+  (median **448.203**), a **3.492%** paired improvement with complete sample
+  separation and token 2930 in all 14 runs. This is **3.666%** above the
+  superseded 432.355 publication.
+- The complete canonical `production_absolute` gate again passes directly
+  against all-exact: maximum KL **0.04954258196634279**, **316/320 (98.75%)**
+  top-1, minimum category top-1 **96.875%**, finite logits, Poolside exact
+  top-1, deterministic repeats, h16/h32 decode **0.999709x/0.999785x**, and
+  exact lifecycle/allocation recovery (**109,859,542,160 bytes** allocated and
+  freed). Natural-prompt prefill is **53.437 -> 198.527 tok/s (3.71517x)**;
+  h16/h32 E2E is **1.88144x/1.50877x**. Raw JSON SHA-256:
+  `be8f062b32454aa76ee4e936fddf16218cd813c43c5c9966fca3d3a3122f9d39`.
+- Cached-only all-family tracing measures **449.522/409.990/332.286 tok/s**
+  at 512/1K/4K. At pp512, synchronized wall/kernel span/kernel sum are
+  **1138.989/1134.002/1122.195 ms**. Gate/up is **389.893 ms / 34.74%**,
+  selected down **216.616 ms / 19.30%**, attention
+  **217.589 ms / 19.39%**, source-F16 **133.626 ms / 11.91%**, and
+  dense/shared **71.169 ms / 6.34%**. Q4 down is
+  local64/VGPR80/SGPR128/LDS1536B/scratch0; retained Q6 row-vector is
+  local128/VGPR72/LDS4096B/scratch0. Raw trace/child/summary SHA-256:
+  `f8ccba6...6f7` / `cbadeab...34b` / `330ca64...bb`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, refactor
+  ledger, and post-350 plan. The 500 gate remains open; only about 115 ms of
+  current pp512 wall must be removed. The next exact screen is register-K64
+  Q4 nibble reuse in the dominant gate/up family; the rejected Q6
+  quartet-shuffle mapping remains closed.

@@ -3,13 +3,18 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-production-absolute-quality.json`](results/2026-07-26-gfx1151-laguna-production-absolute-quality.json).
+[`2026-07-26-gfx1151-laguna-down-wavecols-production.json`](results/2026-07-26-gfx1151-laguna-down-wavecols-production.json).
 It binds clean selector-unset timing and a direct all-exact 320-step quality
-gate at revision `9ae1e4ea6`. The quality-qualified hipBLASLt schedule keeps
-heuristic 4 except for the K3072xN72 SWA gate shape on heuristic 2. Median
-pp512 is **386.552 tok/s** and absolute maximum KL is **0.049542582**.
+gate at revision `7086f8cdd`. Exact wave-column consumption is active for D8
+Q4 gate/up and D4 Q4 down; Q6 down retains its faster row-vector mapping.
+Median pp512 is **448.203 tok/s** and absolute maximum KL is
+**0.049542582**.
 
 Latest retained hipEngine revisions in this scoreboard:
+`7086f8cdd113fd2912acac0d129040b3bf84ef5f` for Q4-only selected-down
+wave-column production,
+`b44c8a5604be29664781201cf6d14ea9c17b7f64` for wave-column D8 Q4 gate/up
+production,
 `9ae1e4ea609520f476132d50794a74be58b5de5a` for the absolute-quality
 hipBLASLt schedule and production-versus-all-exact gate,
 `69cc0d369511b993c882df44083a81c680483dda` for bit-identical row-vector

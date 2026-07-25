@@ -641,8 +641,8 @@ and names template
 row-vector LDS6656B. The row-vector mode remains explicit rollback through the
 next retained checkpoint
 (`benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-production.json`).
-The 64-column selected-down transfer is retained for **Q4 only** pending clean
-publication. Two wave32s each own 32 output columns and all 32 routed rows;
+The 64-column selected-down transfer is retained in production for **Q4
+only**. Two wave32s each own 32 output columns and all 32 routed rows;
 pair decode/shuffle keeps Q4 weights in registers and reduces Q4 down from
 local128/VGPR56/LDS4096B to local64/VGPR80/LDS1536B, with zero scratch and
 BF16-byte-identical output. A four-mode actual-model gate separates the quant
@@ -650,9 +650,14 @@ families: row-vector production is **433.791 tok/s**, Q4-wave/Q6-row is
 **448.945 (+3.493%)**, Q4-row/Q6-wave is **428.184 (-1.293%)**, and both-wave
 is **442.941 (+2.109%)**. All seven repetitions per mode return token 2930.
 Q6 quartet-shuffle wave consumption is therefore rejected; Q6 remains on its
-row-vector body. gfx1151 selects the Q4-only candidate while clean production
-publication runs
-(`benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-candidate.json`).
+row-vector body. Clean committed production confirms all-row-vector
+**433.081 -> 448.203 tok/s (+3.492%)** with complete seven-sample separation.
+The direct all-exact gate remains max KL **0.049542582** and **316/320**
+top-1 with neutral decode and exact lifecycle. Cached tracing measures
+**449.522/409.990/332.286 tok/s** at 512/1K/4K and cuts the selected-down
+family to **216.616 ms**. Q4 traces at local64/VGPR80/LDS1536B/scratch0; Q6
+stays local128/VGPR72/LDS4096B/scratch0
+(`benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json`).
 
 ## DFlash / MTP lineage map
 
