@@ -16,6 +16,7 @@ _SYMBOL_BF16_TO_F32 = "hipengine_bf16_to_f32"
 _SYMBOL_F32_TO_FP16 = "hipengine_f32_to_fp16"
 _SYMBOL_FP16_TO_F32 = "hipengine_fp16_to_f32"
 _SYMBOL_FP16_TO_BF16 = "hipengine_fp16_to_bf16"
+_SYMBOL_BF16_TO_FP16 = "hipengine_bf16_to_fp16"
 _SYMBOL_BF16_TO_FP16_SCALED_ROWS = "hipengine_bf16_to_fp16_scaled_rows"
 _SYMBOL_F32_SCALE_ROWS_TO_BF16 = "hipengine_f32_scale_rows_to_bf16"
 _SYMBOL_F32_SCALE_ROWS = "hipengine_f32_scale_rows"
@@ -130,6 +131,20 @@ def fp16_to_bf16(
     _launch_cast(_SYMBOL_FP16_TO_BF16, x_ptr, out_ptr, count, stream=stream, library=library, runtime=runtime)
 
 
+def bf16_to_fp16(
+    x_ptr: int,
+    out_ptr: int,
+    count: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Convert a contiguous finite-range BF16 buffer to FP16."""
+
+    _launch_cast(_SYMBOL_BF16_TO_FP16, x_ptr, out_ptr, count, stream=stream, library=library, runtime=runtime)
+
+
 def bf16_to_fp16_scaled_rows(
     x_ptr: int,
     out_ptr: int,
@@ -241,6 +256,7 @@ def register_cast_kernels(*, replace: bool = True) -> None:
     register(KernelKey("hip_gfx1100", "cast_f32_to_fp16", "fp16"), f32_to_fp16, replace=replace)
     register(KernelKey("hip_gfx1100", "cast_fp16_to_f32", "fp32"), fp16_to_f32, replace=replace)
     register(KernelKey("hip_gfx1100", "cast_fp16_to_bf16", "bf16"), fp16_to_bf16, replace=replace)
+    register(KernelKey("hip_gfx1100", "cast_bf16_to_fp16", "fp16"), bf16_to_fp16, replace=replace)
     register(
         KernelKey("hip_gfx1100", "cast_bf16_to_fp16", "scaled_rows"),
         bf16_to_fp16_scaled_rows,

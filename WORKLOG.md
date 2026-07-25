@@ -180168,3 +180168,29 @@ Vulkan local sizes verbatim will close the measured gap.
   eliminate the multiply at a producer/consumer boundary; do not package the
   four independent bandwidth passes into one branchy kernel. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json`.
+
+## 2026-07-26 — Retain direct attention-norm BF16-to-FP16 candidate
+
+- Proved the Q/K/V/gate input range from the actual model rather than sampled
+  activations. Across all 48 F32 `attn_norm` weights, max absolute weight is
+  **0.294921875** at layer 45. RMSNorm bounds each finite normalized component
+  by `sqrt(3072)`, so the model-specific output bound is **16.34623**, over
+  **4007x** below FP16 max finite 65,504. The current power-of-two row scale is
+  therefore exactly 1 at this boundary.
+- RED imported the missing direct BF16-to-FP16 cast and failed. GREEN added
+  the raw-pointer primitive, four-axis registry entry, and loader-owned
+  `source_abs_max` metadata for attention norms. The direct cast is FP16-byte
+  identical to the scaled-row cast whenever the proven scale is one.
+- On the exact 12-full/36-SWA pp512 shape mix, nine counterbalanced HIP-event
+  samples improve the complete Q/K/V/gate cast-plus-four-restore glue
+  **4.434336 -> 0.767154 ms (-82.6997%, 5.780x)**. This removes the four
+  identity F32 output restores and replaces the row-reduction cast with one
+  contiguous direct cast.
+- Focused cast plus materialization validation passes **13 tests**. Cached
+  rocprof identifies `bf16_to_fp16_kernel` at **1.643 us** on the tiny exact
+  fixture, local256, VGPR8, SGPR128, zero LDS/scratch; trace SHA-256
+  `9ba4b82faa89b43c5715c12ce4c80413be7948c4c450c41ee67471ebbb546983`.
+- Retained candidate only; production remains **503.348994 tok/s**. Next is
+  explicit same-owner pp512 A/B and full-model byte/quality transfer before
+  default promotion. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`.

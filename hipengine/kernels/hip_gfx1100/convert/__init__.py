@@ -1,6 +1,7 @@
 """gfx1100 runtime conversion kernel wrappers."""
 
 from hipengine.kernels.hip_gfx1100.convert.cast import (
+    bf16_to_fp16,
     bf16_to_fp16_scaled_rows,
     bf16_to_f32,
     build_cast,
@@ -22,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.convert.gather import (
 )
 
 __all__ = [
+    "bf16_to_fp16",
     "bf16_to_fp16_scaled_rows",
     "bf16_to_f32",
     "build_cast",

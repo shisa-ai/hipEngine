@@ -693,8 +693,11 @@ Immediate execution queue:
    ms** glue (**4.508 ms** four-output restores, **3.685 ms** input casts,
    **1.323 ms** output casts). A fused-four restore reduced launches
    **192 -> 48** but regressed the exact sequence **76.0%** and was removed.
-   Admit only producer/consumer elimination or a same-range representation
-   that preserves the current all-exact quality result.
+   The first producer-qualified candidate is retained: actual max attention
+   norm weight **0.294921875** proves an RMSNorm output bound **16.34623**, so
+   direct BF16-to-FP16 is exact and the four identity restores disappear.
+   Its exact glue micro improves **4.434 -> 0.767 ms (-82.70%)**; full pp512
+   integration and default promotion remain pending.
 2. Reopen the **218.516 ms attention** family only with a different premise
    from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles, and
    single-wave two-head fusion. The head-pair body was exact but regressed
@@ -2059,6 +2062,7 @@ hipEngine's stricter correctness contract.
 Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-parallel-prefix-scan.json`
