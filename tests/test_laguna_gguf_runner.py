@@ -24,7 +24,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_head_kv_fusion,
     resolve_laguna_iq2_grid64,
     resolve_laguna_q5_wave32x2_variants,
-    resolve_laguna_q6_pair_variant,
 )
 from tests._laguna_synthetic import make_laguna_info
 
@@ -105,14 +104,6 @@ def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
     )
     assert unsupported.global_head_kv is None
     assert unsupported.swa_head_kv is None
-
-
-def test_laguna_q6_fixed_metadata_pair_is_default_off_and_backend_qualified() -> None:
-    candidate = "pack8_fixed_meta_gemv_decode_bf16_f32_out"
-    assert resolve_laguna_q6_pair_variant("hip_gfx1100") is None
-    assert resolve_laguna_q6_pair_variant("hip_gfx1100", True) == candidate
-    assert resolve_laguna_q6_pair_variant("hip_gfx1100", False) is None
-    assert resolve_laguna_q6_pair_variant("hip_gfx1151", True) is None
 
 
 def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() -> None:
@@ -555,14 +546,8 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     calls: list[tuple[str, object]] = []
     libraries = SimpleNamespace(linear={"gguf_q5_k": object(), "gguf_q6_k": object()})
 
-    def weight(
-        name: str,
-        layout: str = LAYOUT_RAW_GGUF,
-        quant_key: str = "gguf_q5_k",
-    ):
-        return SimpleNamespace(
-            spec=SimpleNamespace(name=name, layout=layout, quant_key=quant_key)
-        )
+    def weight(name: str, layout: str = LAYOUT_RAW_GGUF):
+        return SimpleNamespace(spec=SimpleNamespace(name=name, layout=layout))
 
     def pair_launch(*args, **kwargs):
         calls.append(("pair", (args, kwargs)))
@@ -578,8 +563,8 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     monkeypatch.setattr(runner_module, "launch_laguna_qkv", qkv_launch)
     monkeypatch.setattr(runner_module, "launch_laguna_weight_linear", singleton_launch)
     q_weight = weight("q")
-    k_weight = weight("k", quant_key="gguf_q6_k")
-    v_weight = weight("v", quant_key="gguf_q6_k")
+    k_weight = weight("k")
+    v_weight = weight("v")
     gate_weight = weight("gate")
 
     assert runner_module.launch_laguna_attention_projections(
@@ -603,7 +588,6 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
         libraries=libraries,
         runtime="runtime-sentinel",
         query_gate_decode_variant="wave32x2_gemv_decode_bf16_f32_out",
-        q6_pair_decode_variant="pack8_fixed_meta_gemv_decode_bf16_f32_out",
     )
     assert [name for name, _ in calls] == ["pair", "pair"]
     qg_args, qg_kwargs = calls[0][1]
@@ -620,41 +604,8 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     assert kv_kwargs["out_features_b"] == 1024
     assert kv_kwargs["output_dtype"] == "f32"
     assert kv_kwargs["registered_decode_only"] is True
-    assert kv_kwargs["registered_decode_variant"] == (
-        "pack8_fixed_meta_gemv_decode_bf16_f32_out"
-    )
+    assert kv_kwargs.get("registered_decode_variant") is None
     assert kv_kwargs["libraries"] is libraries.linear
-
-    calls.clear()
-    q6_q_weight = weight("q6_q", quant_key="gguf_q6_k")
-    q6_gate_weight = weight("q6_gate", quant_key="gguf_q6_k")
-    assert runner_module.launch_laguna_attention_projections(
-        q6_q_weight,
-        k_weight,
-        v_weight,
-        q6_gate_weight,
-        10,
-        20,
-        30,
-        40,
-        50,
-        1,
-        3072,
-        9216,
-        1024,
-        1024,
-        72,
-        backend="hip_gfx1100",
-        stream=7,
-        libraries=libraries,
-        runtime="runtime-sentinel",
-        query_gate_decode_variant="wave32x2_gemv_decode_bf16_f32_out",
-        q6_pair_decode_variant="pack8_fixed_meta_gemv_decode_bf16_f32_out",
-    )
-    assert [call[1][1]["registered_decode_variant"] for call in calls] == [
-        "pack8_fixed_meta_gemv_decode_bf16_f32_out",
-        "pack8_fixed_meta_gemv_decode_bf16_f32_out",
-    ]
 
     calls.clear()
     assert not runner_module.launch_laguna_attention_projections(
