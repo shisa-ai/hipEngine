@@ -35,6 +35,7 @@ from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_dense_q4_prefill_mode,
+    resolve_laguna_group_compact_mode,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
@@ -135,6 +136,10 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.grouped_compact_source_rows_key.variant == (
         "active_experts_source_rows"
     )
+    assert plan.grouped_compact_parallel_key.variant == "active_experts_parallel"
+    assert plan.grouped_compact_source_rows_parallel_key.variant == (
+        "active_experts_source_rows_parallel"
+    )
     assert plan.mmq_tile_map_key == KernelKey(
         "hip_gfx1151", "moe_mmq_tile_map", "generic", "tile32"
     )
@@ -195,6 +200,18 @@ def test_laguna_dense_q4_prefill_mode_is_explicit_and_fail_closed() -> None:
     )
     with pytest.raises(ValueError, match="dense/shared Q4"):
         resolve_laguna_dense_q4_prefill_mode("hip_gfx1151", "rowtile8")
+
+
+def test_laguna_group_compact_mode_is_backend_qualified() -> None:
+    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"
+    assert resolve_laguna_group_compact_mode("hip_gfx1151") == "parallel"
+    assert resolve_laguna_group_compact_mode("hip_gfx1151", "serial") == "serial"
+    assert (
+        resolve_laguna_group_compact_mode("hip_gfx1151", "parallel")
+        == "parallel"
+    )
+    with pytest.raises(ValueError, match="group compact"):
+        resolve_laguna_group_compact_mode("hip_gfx1151", "atomic")
 
 
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
@@ -340,6 +357,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     grouped_scratch = None
     fused_scratch = None
     mmq_scratch = None
+    mmq_parallel_scratch = None
     down_rowvec_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
@@ -521,6 +539,27 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
                 == np.argmax(mmq_actual, axis=-1)
             )
         ) >= 0.9
+        mmq_parallel_scratch = allocate_laguna_moe_scratch(
+            plan,
+            max_rows=3,
+        )
+        mmq_parallel_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            mmq_parallel_scratch,
+            rows=3,
+            selected_down_mode="grouped_smallm_fused",
+            selected_gate_up_mode="mmq32_d4x3",
+            group_compact_mode="parallel",
+        )
+        mmq_parallel_actual = _read_bf16(
+            mmq_parallel_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(mmq_parallel_actual),
+            _f32_to_bf16_u16(mmq_actual),
+        )
         down_rowvec_scratch = allocate_laguna_moe_scratch(
             plan,
             max_rows=3,
@@ -619,6 +658,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if mmq_parallel_scratch is not None:
+            mmq_parallel_scratch.free()
         if down_rowvec_scratch is not None:
             down_rowvec_scratch.free()
         if mmq_scratch is not None:

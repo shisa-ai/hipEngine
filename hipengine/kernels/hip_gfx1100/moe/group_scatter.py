@@ -15,8 +15,14 @@ _SYMBOL_COUNT = "hipengine_qwen35_moe_group_count"
 _SYMBOL_PREFIX = "hipengine_qwen35_moe_group_prefix"
 _SYMBOL_PREFIX_ACTIVE = "hipengine_qwen35_moe_group_prefix_active"
 _SYMBOL_COMPACT_ACTIVE = "hipengine_qwen35_moe_group_compact_active"
+_SYMBOL_COMPACT_ACTIVE_PARALLEL = (
+    "hipengine_qwen35_moe_group_compact_active_parallel"
+)
 _SYMBOL_COMPACT_ACTIVE_SOURCE_ROWS = (
     "hipengine_qwen35_moe_group_compact_active_source_rows"
+)
+_SYMBOL_COMPACT_ACTIVE_SOURCE_ROWS_PARALLEL = (
+    "hipengine_qwen35_moe_group_compact_active_source_rows_parallel"
 )
 _SYMBOL_TILE_MAP = "hipengine_qwen35_moe_wmma_tile_map"
 _SYMBOL_MMQ32_TILE_MAP = "hipengine_qwen35_moe_mmq32_tile_map"
@@ -183,6 +189,7 @@ def qwen35_moe_group_compact_active(
     total_lanes: int,
     num_experts: int,
     *,
+    parallel: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -195,7 +202,10 @@ def qwen35_moe_group_compact_active(
         raise ValueError("compact active num_experts must be <= 256")
     library = library or build_qwen35_moe_group_scatter(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_COMPACT_ACTIVE)
+    fn = getattr(
+        library,
+        _SYMBOL_COMPACT_ACTIVE_PARALLEL if parallel else _SYMBOL_COMPACT_ACTIVE,
+    )
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -239,6 +249,7 @@ def qwen35_moe_group_compact_active_source_rows(
     num_experts: int,
     top_k: int,
     *,
+    parallel: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -252,7 +263,14 @@ def qwen35_moe_group_compact_active_source_rows(
         raise ValueError("compact active num_experts must be <= 256")
     library = library or build_qwen35_moe_group_scatter(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_COMPACT_ACTIVE_SOURCE_ROWS)
+    fn = getattr(
+        library,
+        (
+            _SYMBOL_COMPACT_ACTIVE_SOURCE_ROWS_PARALLEL
+            if parallel
+            else _SYMBOL_COMPACT_ACTIVE_SOURCE_ROWS
+        ),
+    )
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -283,6 +301,23 @@ def qwen35_moe_group_compact_active_source_rows(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def qwen35_moe_group_compact_active_parallel(*args: object, **kwargs: object) -> None:
+    """Launch the stable parallel count/prefix/scatter compact path."""
+
+    kwargs["parallel"] = True
+    qwen35_moe_group_compact_active(*args, **kwargs)
+
+
+def qwen35_moe_group_compact_active_source_rows_parallel(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Launch stable parallel compaction with compact-to-source metadata."""
+
+    kwargs["parallel"] = True
+    qwen35_moe_group_compact_active_source_rows(*args, **kwargs)
 
 
 def qwen35_moe_wmma_tile_map(
@@ -602,9 +637,29 @@ def register_qwen35_moe_group_scatter_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "moe_group_compact",
             "generic",
+            "active_experts_parallel",
+        ),
+        qwen35_moe_group_compact_active_parallel,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_group_compact",
+            "generic",
             "active_experts_source_rows",
         ),
         qwen35_moe_group_compact_active_source_rows,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_group_compact",
+            "generic",
+            "active_experts_source_rows_parallel",
+        ),
+        qwen35_moe_group_compact_active_source_rows_parallel,
         replace=replace,
     )
     register(

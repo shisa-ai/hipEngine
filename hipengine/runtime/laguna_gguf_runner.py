@@ -82,6 +82,7 @@ from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     laguna_moe_scratch_nbytes,
     resolve_laguna_dense_q4_prefill_mode,
+    resolve_laguna_group_compact_mode,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
@@ -1545,6 +1546,7 @@ class LagunaGGUFResidentSession:
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
         self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(self.backend)
+        self.group_compact_mode = resolve_laguna_group_compact_mode(self.backend)
         self.f16_prefill_mode = resolve_laguna_f16_prefill_mode(self.backend)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -1719,6 +1721,14 @@ class LagunaGGUFResidentSession:
         """Select the explicit dense/shared Q4 rows>1 projection route."""
 
         self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(
+            self.backend,
+            mode,
+        )
+
+    def set_group_compact_mode(self, mode: str) -> None:
+        """Select stable serial or parallel MoE metadata compaction."""
+
+        self.group_compact_mode = resolve_laguna_group_compact_mode(
             self.backend,
             mode,
         )
@@ -2702,6 +2712,7 @@ class LagunaGGUFResidentSession:
             selected_down_mode=self.selected_down_mode,
             selected_gate_up_mode=self.selected_gate_up_mode,
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
+            group_compact_mode=self.group_compact_mode,
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,

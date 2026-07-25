@@ -89,6 +89,8 @@ _BASELINE_SELECTED_GATE_UP_MODE = "direct"
 _SELECTED_MMQ32_MIN_ROWS = 32
 _DENSE_Q4_PREFILL_MODES = frozenset({"retained", "wmma_pack8"})
 _BASELINE_DENSE_Q4_PREFILL_MODE = "retained"
+_GROUP_COMPACT_MODES = frozenset({"serial", "parallel"})
+_BASELINE_GROUP_COMPACT_MODE = "serial"
 _Q8_1_DS4_BLOCK_BYTES = 144
 _Q8_1_DS4_F32_BLOCK_BYTES = 160
 _Q8_1_DS4_RESIDUAL_PLANES = 3
@@ -159,6 +161,27 @@ def resolve_laguna_dense_q4_prefill_mode(
     return parsed
 
 
+def resolve_laguna_group_compact_mode(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve stable serial or architecture-qualified parallel compaction."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_MOE_GROUP_COMPACT_MODE",
+            _BASELINE_GROUP_COMPACT_MODE,
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _GROUP_COMPACT_MODES:
+        raise ValueError("unsupported Laguna MoE group compact mode")
+    return parsed
+
+
 @dataclass(frozen=True)
 class LagunaMoESelectedRoute:
     """One registry-resolved selected-expert ABI and resident allocation."""
@@ -205,7 +228,9 @@ class LagunaMoEKernelPlan:
     grouped_prefix_active_key: KernelKey
     grouped_scatter_key: KernelKey
     grouped_compact_key: KernelKey
+    grouped_compact_parallel_key: KernelKey
     grouped_compact_source_rows_key: KernelKey
+    grouped_compact_source_rows_parallel_key: KernelKey
     mmq_tile_map_key: KernelKey
     mmq64_tile_map_key: KernelKey
     grouped_gather_key: KernelKey
@@ -235,7 +260,9 @@ class LagunaMoEKernelPlan:
     grouped_prefix_active: Callable
     grouped_scatter: Callable
     grouped_compact: Callable
+    grouped_compact_parallel: Callable
     grouped_compact_source_rows: Callable
+    grouped_compact_source_rows_parallel: Callable
     mmq_tile_map: Callable
     mmq64_tile_map: Callable
     grouped_gather: Callable
@@ -268,7 +295,9 @@ class LagunaMoEKernelPlan:
             self.grouped_prefix_active_key,
             self.grouped_scatter_key,
             self.grouped_compact_key,
+            self.grouped_compact_parallel_key,
             self.grouped_compact_source_rows_key,
+            self.grouped_compact_source_rows_parallel_key,
             self.mmq_tile_map_key,
             self.mmq64_tile_map_key,
             self.grouped_gather_key,
@@ -469,11 +498,23 @@ def resolve_laguna_moe_plan(
         "grouped_compact": KernelKey(
             backend, "moe_group_compact", "generic", "active_experts"
         ),
+        "grouped_compact_parallel": KernelKey(
+            backend,
+            "moe_group_compact",
+            "generic",
+            "active_experts_parallel",
+        ),
         "grouped_compact_source_rows": KernelKey(
             backend,
             "moe_group_compact",
             "generic",
             "active_experts_source_rows",
+        ),
+        "grouped_compact_source_rows_parallel": KernelKey(
+            backend,
+            "moe_group_compact",
+            "generic",
+            "active_experts_source_rows_parallel",
         ),
         "mmq_tile_map": KernelKey(
             backend,
@@ -669,7 +710,11 @@ def resolve_laguna_moe_plan(
         grouped_prefix_active_key=keys["grouped_prefix_active"],
         grouped_scatter_key=keys["grouped_scatter"],
         grouped_compact_key=keys["grouped_compact"],
+        grouped_compact_parallel_key=keys["grouped_compact_parallel"],
         grouped_compact_source_rows_key=keys["grouped_compact_source_rows"],
+        grouped_compact_source_rows_parallel_key=keys[
+            "grouped_compact_source_rows_parallel"
+        ],
         mmq_tile_map_key=keys["mmq_tile_map"],
         mmq64_tile_map_key=keys["mmq64_tile_map"],
         grouped_gather_key=keys["grouped_gather"],
@@ -682,7 +727,11 @@ def resolve_laguna_moe_plan(
         grouped_prefix_active=functions["grouped_prefix_active"],
         grouped_scatter=functions["grouped_scatter"],
         grouped_compact=functions["grouped_compact"],
+        grouped_compact_parallel=functions["grouped_compact_parallel"],
         grouped_compact_source_rows=functions["grouped_compact_source_rows"],
+        grouped_compact_source_rows_parallel=functions[
+            "grouped_compact_source_rows_parallel"
+        ],
         mmq_tile_map=functions["mmq_tile_map"],
         mmq64_tile_map=functions["mmq64_tile_map"],
         grouped_gather=functions["grouped_gather"],
@@ -1091,6 +1140,7 @@ def _launch_selected_gate_up_mmq32_d4x3(
     rowvec: bool = False,
     wave_cols: bool = False,
     direct_wave_decode: bool = False,
+    group_compact_mode: str = "serial",
 ) -> bool:
     """Run Q4T16 selected gate/up in compact order and retain its down metadata."""
 
@@ -1112,7 +1162,12 @@ def _launch_selected_gate_up_mmq32_d4x3(
     if tile_capacity > lanes:
         raise ValueError("Laguna MMQ32 tile metadata exceeds bounded lane storage")
 
-    plan.grouped_compact_source_rows(
+    grouped_compact_source_rows = (
+        plan.grouped_compact_source_rows_parallel
+        if group_compact_mode == "parallel"
+        else plan.grouped_compact_source_rows
+    )
+    grouped_compact_source_rows(
         scratch.selected_experts.ptr,
         scratch.scaled_routing_weights.ptr,
         scratch.grouped_expert_start.ptr,
@@ -1476,6 +1531,7 @@ def _launch_grouped_smallm_down(
     libraries: Mapping[str, object] | None,
     defer_weighted_sum: bool = False,
     compact_input_ready: bool = False,
+    group_compact_mode: str = "serial",
 ) -> None:
     """Group lane-order intermediates on device and run exact small-M down."""
 
@@ -1490,7 +1546,12 @@ def _launch_grouped_smallm_down(
     active_runtime = runtime or get_hip_runtime()
     grouped_input_ptr = scratch.expert_intermediate.ptr
     if not compact_input_ready:
-        plan.grouped_compact(
+        grouped_compact = (
+            plan.grouped_compact_parallel
+            if group_compact_mode == "parallel"
+            else plan.grouped_compact
+        )
+        grouped_compact(
             scratch.selected_experts.ptr,
             scratch.scaled_routing_weights.ptr,
             scratch.grouped_expert_start.ptr,
@@ -1725,6 +1786,7 @@ def run_laguna_moe_rows(
     selected_down_mode: str = "direct",
     selected_gate_up_mode: str = "direct",
     dense_q4_prefill_mode: str = "retained",
+    group_compact_mode: str = "serial",
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
@@ -1745,6 +1807,8 @@ def run_laguna_moe_rows(
         )
     if dense_q4_prefill_mode not in _DENSE_Q4_PREFILL_MODES:
         raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
+    if group_compact_mode not in _GROUP_COMPACT_MODES:
+        raise ValueError("unsupported Laguna MoE group compact mode")
     use_q4_pack8_wmma = dense_q4_prefill_mode == "wmma_pack8"
     if tokens <= 0 or tokens > scratch.max_rows:
         raise ValueError(f"rows must be within [1, {scratch.max_rows}]")
@@ -1821,6 +1885,7 @@ def run_laguna_moe_rows(
             rowvec=gate_up_rowvec,
             wave_cols=gate_up_wave_cols,
             direct_wave_decode=gate_up_direct_wave_decode,
+            group_compact_mode=group_compact_mode,
         )
     if not compact_gate_up:
         _launch_selected_gate_up(
@@ -1920,6 +1985,7 @@ def run_laguna_moe_rows(
             libraries=libraries,
             defer_weighted_sum=use_grouped_fused_combine,
             compact_input_ready=compact_gate_up,
+            group_compact_mode=group_compact_mode,
         )
     else:
         _launch_selected_down(
@@ -2059,6 +2125,7 @@ __all__ = [
     "allocate_laguna_moe_scratch",
     "laguna_moe_scratch_nbytes",
     "resolve_laguna_moe_plan",
+    "resolve_laguna_group_compact_mode",
     "resolve_laguna_selected_down_mode",
     "resolve_laguna_dense_q4_prefill_mode",
     "resolve_laguna_selected_gate_up_mode",

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "candidate_retained_pending_clean_publication",
+  "system": {
+    "hardware": "AMD Radeon 8060S",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151"
+  },
+  "model": {
+    "name": "Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "workload": {
+    "kind": "production_prefill",
+    "tokens": 512,
+    "matrix_chunk_rows": 512,
+    "attention_chunk_rows": 128,
+    "repetitions": 7,
+    "order": "counterbalanced",
+    "resident_owner": "shared"
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/laguna_group_compact_parallel_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-group-compact-parallel-ab-dirty.json",
+  "results": {
+    "serial_rollback": {
+      "samples_tok_s": [
+        490.0554760380675,
+        491.32564855230044,
+        491.46457019207793,
+        489.0764778055995,
+        489.0933519556879,
+        493.5809569823835,
+        492.6417560268635
+      ],
+      "median_tok_s": 491.32564855230044,
+      "median_wall_ms": 1042.0787140028551
+    },
+    "parallel_candidate": {
+      "samples_tok_s": [
+        497.77735898743356,
+        497.3336230112361,
+        498.3584520531121,
+        497.6195914925977,
+        503.62051612285927,
+        499.9284438779099,
+        497.440928307521
+      ],
+      "median_tok_s": 497.77735898743356,
+      "median_wall_ms": 1028.5722939297557
+    },
+    "relative_change_percent": 1.3131230690160756,
+    "median_wall_change_ms": -13.506420073099434,
+    "paired_wins": 7,
+    "paired_samples": 7,
+    "next_token_id": 2930
+  },
+  "correctness": {
+    "metadata_arrays_exact": true,
+    "complete_moe_bf16_output_exact": true,
+    "full_model_next_token_equal": true,
+    "quality_gate_transfer": {
+      "reason": "Stable compaction emits byte-identical metadata and complete MoE BF16 output.",
+      "max_kl": 0.04954258196634279,
+      "top1_matches": 316,
+      "top1_total": 320,
+      "min_category_top1_percent": 96.875
+    }
+  },
+  "leaf": {
+    "shape": "M512 top10 E256",
+    "serial_median_ms": 0.3488796234130859,
+    "parallel_median_ms": 0.058969167868296306,
+    "relative_change_percent": -83.0975603300068
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-parallel-compact-trace.sjZsgL -o parallel-compact -- .venv/bin/python -m pytest -q 'tests/test_qwen35_moe_group_scatter_plan.py::test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle[True]'",
+    "sha256": "36906945b967b7b7c9a36b0e97958322c387964c89ba5b2e32e45c426b0f82c1",
+    "kernels": [
+      {
+        "name": "qwen35_moe_group_count_active_parallel_kernel",
+        "duration_ns": 2124,
+        "workgroup_size": 256,
+        "vgpr": 16,
+        "lds_bytes": 2048,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "qwen35_moe_group_prefix_active_parallel_kernel",
+        "duration_ns": 1723,
+        "workgroup_size": 1,
+        "vgpr": 8,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "qwen35_moe_group_scatter_active_parallel_kernel",
+        "duration_ns": 1844,
+        "workgroup_size": 256,
+        "vgpr": 32,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    ]
+  },
+  "raw_output_sha256": "af23811e811188f50adf75e1a425136a6a3312d4e617e382eb57cd977e7e9297"
+}

@@ -65,6 +65,9 @@ LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols_direct"
 # Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
 # scalar-staged, and exact routes remain rollbacks.
 LAGUNA_SELECTED_DOWN_MODE = "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+# Stable expert-major count/prefix/scatter uses one workgroup per expert instead
+# of one workgroup serially scanning all 5,120 routed lanes twice.
+LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
@@ -296,6 +299,7 @@ __all__ = [
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
+    "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",
