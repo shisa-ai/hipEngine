@@ -36,7 +36,10 @@ orders. It preserves 723 dispatches/token and moves h32 decode **59.500 ->
 60.942 tok/s (+2.425%)**. A subsequent exact local64 heterogeneous IQ2/shared-
 Q5 owner would remove 46 launches/token without the earlier local128/four-wave
 penalties, but it regresses first/last actual-layer event and wall
-**0.12-0.68%** and is rejected and removed before runtime integration.
+**0.12-0.68%** and is rejected and removed before runtime integration. A
+narrower exact Q5-output screen packs two unchanged fixed-metadata waves into
+one local64 workgroup, but all first/last global/SWA boundaries regress event
+**6.69-10.15%** and wall **6.51-7.66%**; it is also removed before runtime.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1108,6 +1111,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Does cooperative Q6 metadata publication still help inside that mixed dispatch? | [`...mixed-q6-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-retained.json): yes. It preserves exact state and 723 dispatches/token, improves clean projection work **8.08-10.10%**, and moves complete-suite h32 decode **58.466 -> 59.211 tok/s (+1.275%)**. |
 | Can the same fixed-metadata Q5 owner accelerate shared gate/up? | [`...shared-q5-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-retained.json): yes. The BF16 pair is byte-exact, improves first/last actual pair event/wall **26.88-27.61%**, improves clean shared-pair work **45.99-47.13%**, and moves complete-suite h32 decode **59.500 -> 60.942 tok/s (+2.425%)** at unchanged 723 dispatches/token. |
 | Does that one-wave Q5 body make a mixed IQ2/shared launch viable? | [`...mixed-iq2-q5-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-iq2-q5-local64-rejected.json): no. All three BF16 outputs are exact and the candidate keeps the retained IQ2 VGPR/LDS ceiling, but both first/last actual layers regress event/wall **0.12-0.68%**; the candidate is removed before runtime integration. |
+| Can two exact fixed-metadata Q5 output waves share one local64 workgroup? | [`...q5-output-wave32x4-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-output-wave32x4-rejected.json): no. K6144/K9216 N3072 outputs are byte-exact and LDS/spill-free, but logical VGPR rises **73 -> 81** and all first/last global/SWA event/wall rows regress **6.51-10.15%**; the candidate is removed before runtime integration. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-shared-Q5 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-shared-q5.json) measures retained hipEngine **61.554/60.942 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **4.37%/5.70%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1119,7 +1123,7 @@ Python, sampling, graph replay, a missing compiler flag, or one unfused router.
 The clean GPU trace proves otherwise.
 
 hipEngine has already transferred the broad Qwen playbook and improved Laguna
-from **19.596 to 59.211 tok/s**. The expanded review removes two tempting but
+from **19.596 to 60.942 tok/s**. The expanded review removes two tempting but
 wrong shortcuts: neither a generic ACO/Clang upgrade nor a broad Q8_1 switch is
 supported by the evidence.
 
@@ -1134,10 +1138,11 @@ at live `>=257`; P1-P3 are closed. P4.1's exact gated split reducers and the
 current-P4 exact head+KV body are retained after independent-body, full-state,
 trace, clean-context, and complete-category gates. The device-pinned matched
 reaudit replaces the non-equivalent 94.513-tok/s headline with a formal
-**64.418 tok/s** h32 target; current retained hipEngine reaches **59.211 tok/s**
-and still needs **8.79%** more. Direct AQL, unchanged graph capture, host
+**64.418 tok/s** h32 target; current retained hipEngine reaches **60.942 tok/s**
+and still needs **5.70%** more. Direct AQL, unchanged graph capture, host
 packets, and launch cleanup alone are mechanically closed. Exact Q5
 fixed-metadata loads, the subsequent heterogeneous attention-projection quad,
-and its fixed-Q6-metadata sibling are retained after both clean context orders
-and both complete 18-prompt orders pass; the objective remains open for a
-genuinely new exact device-work or dispatch contraction.
+its fixed-Q6-metadata sibling, and the shared-Q5 fixed-metadata pair are
+retained after both clean context orders and both complete 18-prompt orders
+pass; the objective remains open for a genuinely new exact device-work or
+dispatch contraction.
