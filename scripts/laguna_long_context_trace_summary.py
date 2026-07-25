@@ -92,7 +92,10 @@ def _kernel_family(name: str) -> str:
         marker in lowered
         for marker in ("gemv_kernel", "grouped_smallm_kernel", "mmq64x32")
     ):
-        if "mmq64x32" in lowered and "kernel<1, true, false, 64>" in lowered:
+        if (
+            "mmq64x32" in lowered
+            and "kernel<1, true, false, 64" in lowered
+        ):
             return "selected_q4_q6_down"
         return "selected_q4_gate_up"
     if any(
