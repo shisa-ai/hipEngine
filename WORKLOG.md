@@ -179158,3 +179158,25 @@ Vulkan local sizes verbatim will close the measured gap.
   385.997 tok/s. The invariant metadata is cache-resident and neutral; focus
   returns to quant payload consumption and padded-row work. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json`.
+
+## 2026-07-26 — Reject local32 small-expert hybrid
+
+- Decoded all 47 natural pp512 route-count vectors: experts with one through
+  eight rows are 3,906/10,237 active groups (38.16%), 27.83% of the 14,034
+  MMQ32 tiles, but only 6.42% of routed rows. Layer 1 has 77 such groups among
+  228 active experts.
+- Added a RED/GREEN output128 x rows8 local32 specialization of the exact
+  production D8 body. Its first focused run exposed that shrinking the block
+  left columns 32..127 metadata uninitialized; a thread-strided metadata load
+  repaired the 0/3/7/8-row K512/N128 CPU-reference quality fixture.
+- The actual layer-1 hybrid packed once, ran production rows32 for experts with
+  at least nine rows, ran local32 for smaller experts, and included the second
+  launch. Seven counter-rotated burst-three samples regressed
+  11.463122 -> 13.194743 ms (+15.106%) with matching finite checksum/max_abs.
+- Cached tracing reports the local32 specialization at VGPR224, SGPR128,
+  LDS5632B, scratch0. One wave serializes output128 weight-cache population;
+  the loader/register cost overwhelms removal of three idle compute waves.
+  Removed every candidate surface; production remains 385.997 tok/s. Raw
+  result/trace SHA-256 values are `6b6dd783...9aa0` / `05864e62...afd`.
+  Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-small8-hybrid-rejected.json`.
