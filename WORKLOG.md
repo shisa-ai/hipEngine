@@ -180296,3 +180296,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `2c03f6cea9cf092911df4d794cb1d4a458ba1bc7eda397fa7f13efd041137386`.
   Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-f16-output-range-direct-production.json`.
+
+## 2026-07-26 — Reject resident-T16 aligned LDS weight staging
+
+- Screened the next exact gate/up premise without changing resident bytes or
+  dot order. Each wave cooperatively replaced 32 scattered per-lane global
+  byte-load instructions per K32 with two aligned 64-bit loads per lane into a
+  2 KB LDS Q4 stage, then direct-consumed staged nibbles after the already
+  required activation/weight barrier. No barrier was added.
+- The new mode is BF16 byte-exact to direct wave decode and all **11**
+  CPU-reference/GPU quality parameterizations pass. On the actual layer-1
+  natural-M512 routing/weight leaf, eleven counter-rotated burst-5 samples
+  regress **6.917592 -> 6.990233 ms (+1.050%)**.
+- Conclusion: wave coalescing already makes the apparent T16 scatter efficient;
+  LDS stores and reads add net traffic. Removed the template parameter, staged
+  body/export, Python selector, harness mode, and fixture parameterization.
+  Production remains **505.185 tok/s** and the tracked tree is back to the
+  production code. Raw SHA-256:
+  `5f3c5ee4d5fc74b7602daae2b1c4d30465ef182e6053177939a3aa290095a6d4`.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wave-lds-stage-rejected.json`.

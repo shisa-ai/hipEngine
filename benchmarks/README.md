@@ -51,6 +51,13 @@ retention evidence. Clean selector-unset publication retains the route at
 **0.326%/0.259%**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-f16-output-range-direct-production.json).
 
+The next exact gate/up load screen is closed. Staging each resident-T16 K32
+payload with aligned 64-bit loads in 2 KB LDS adds no barrier and is byte-exact,
+but regresses the actual layer-1 natural-M512 leaf **6.918 -> 6.990 ms
+(+1.05%)**. All candidate surfaces were removed; production remains
+**505.185 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-gate-wave-lds-stage-rejected.json).
+
 Latest retained hipEngine revisions in this scoreboard:
 `7ecd940b9` for exact static-range direct F16 boundaries in Laguna production,
 `1bac6ead5` for the exact direct attention-norm cast in Laguna production,

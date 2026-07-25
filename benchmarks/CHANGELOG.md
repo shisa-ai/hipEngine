@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna gate/up LDS weight stage] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / two aligned 64-bit loads per lane stage each resident-T16 K32 payload in 2 KB LDS with no extra barrier and byte-exact output, but the actual layer-1 natural-M512 leaf regresses direct wave decode **6.918 -> 6.990 ms (+1.05%)**; all candidate surfaces are removed and production remains **505.185 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wave-lds-stage-rejected.json`.
+
 - [retained exact gfx1151 Laguna direct attention-output cast production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset pp512 improves **503.869 -> 505.185 tok/s (+0.261%)**, every sample remains above 500 (**minimum 503.198 tok/s**), 1K/4K improve **0.326%/0.259%**, and cached tracing reaches **510.946 tok/s** with both scaled-row cast kernels absent; complete state is exact and the absolute quality gate transfers; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-output-range-direct-production.json`.
 
 - [retained exact gfx1151 Laguna direct attention-output cast default candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the static worst-layer gated attention BF16 bound is **7,957.539** with **4.116x** FP16 margin after the separate 2x admission reserve; removing the final row scale improves the exact 48-layer cast sequence **3.404 -> 2.680 ms (-21.27%)**, while seven-pair pp512 is complete-state exact at **505.805 -> 506.284 tok/s (+0.095%)** inside aggregate variance; gfx1151 selects the route pending clean publication; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-output-range-direct-candidate.json`.
