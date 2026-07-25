@@ -641,7 +641,7 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. Screen a register-K64 nibble-reuse body that loads each Q4 payload once for both 32-value subblocks; preserve the successful wave-column mapping and exact dot order. |
+| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. T16 already stores K32 subblocks independently, so raw-GGUF K64 nibble reuse does not apply. Screen a wider column tile that performs more dot work per activation-LDS/barrier interval, then non-temporal weight loads if compiler inspection proves the cache policy changed. |
 | Selected D4 Q4/Q6 down | **216.616 ms** | **19.30%** | Q4 wave columns are retained; Q6 quartet-shuffle wave columns regress. Reopen Q6 only with a mapping that avoids the VGPR88/shuffle penalty, such as two-row-half wave pairs at local128 or direct per-column decode. |
 | Global + SWA attention | **217.589 ms** | **19.39%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.626 ms** | **11.91%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
@@ -679,10 +679,12 @@ and preserve K accumulation order.
 Immediate execution queue:
 
 1. Keep the retained Q4-down result and do not retry its rejected Q6
-   quartet-shuffle analogue. Screen register-resident **K64 Q4 nibble reuse**
-   first on gate/up: each source payload should feed its low/high K32
-   subblocks without a second vector-cache fetch, while accumulation order and
-   output bytes remain unchanged. Gate the actual layer-1 leaf before runtime.
+   quartet-shuffle analogue. The suggested raw-GGUF K64 nibble reuse is
+   inapplicable to resident T16 because its K32 subblocks occupy distinct
+   bytes. Instead screen a **two-columns-per-lane 256x32 gate/up tile** that
+   halves activation-LDS and barrier work per output while preserving weight
+   bytes, K order, and BF16 outputs. Gate the actual layer-1 leaf before
+   runtime.
 2. If K64 is not positive, screen a Q6 local128 wave-column mapping with two
    row-half wave pairs or direct per-column decode; reject it unless Q6 alone
    improves and production BF16 bytes remain exact.

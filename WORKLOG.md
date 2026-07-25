@@ -179386,6 +179386,8 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json`
   and refreshed the benchmark rollup, changelog, kernel catalog, refactor
   ledger, and post-350 plan. The 500 gate remains open; only about 115 ms of
-  current pp512 wall must be removed. The next exact screen is register-K64
-  Q4 nibble reuse in the dominant gate/up family; the rejected Q6
+  current pp512 wall must be removed. Follow-up source inspection corrected
+  the provisional K64 item: resident T16 stores each K32 subblock in distinct
+  bytes, so raw-GGUF low/high-nibble reuse does not apply. The next exact
+  screen widens the dominant gate/up wave-column tile; the rejected Q6
   quartet-shuffle mapping remains closed.
