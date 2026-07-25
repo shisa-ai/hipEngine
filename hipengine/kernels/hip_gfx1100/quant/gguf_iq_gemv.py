@@ -26,6 +26,9 @@ _SYMBOL_IQ2_DUAL_SILU = (
     "hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out"
 )
 _SYMBOL_IQ2_DUAL_SILU_TILE2 = _SYMBOL_IQ2_DUAL_SILU
+_SYMBOL_IQ2_DUAL_SILU_TILE2_GRID64 = (
+    "hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out"
+)
 _SYMBOL_IQ3_SELECTED = "hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out"
 _SYMBOL_IQ3_SELECTED_K1024_WAVE4 = (
     "hipengine_gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out"
@@ -483,6 +486,42 @@ def gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out(
     )
 
 
+def gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_dual_silu(
+        _SYMBOL_IQ2_DUAL_SILU_TILE2_GRID64,
+        x_ptr,
+        selected_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        x_rows=x_rows,
+        rows=rows,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -844,6 +883,11 @@ def register_gguf_iq_gemv_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq2_xs",
+            "selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq2_xs",
             "selected_gemv_decode_tile1_bf16_bf16_out",
             gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
         ),
@@ -903,6 +947,7 @@ __all__ = [
     "gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out",

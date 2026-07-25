@@ -17,7 +17,9 @@ retained as the gfx1100 default after exact model-state, trace, clean-context,
 and complete-category gates. A subsequent exact local32 IQ2 tile2 reconstruction
 is bit exact but slower on both first/last actual layers and is removed. A
 separate, c=1-only wave64 code-object build of the unchanged tile2 source also
-fails its clean promotion gate and is removed.
+fails its clean promotion gate and is removed. A new exact c=1 sibling using a
+canonical 64-bit IQ2 magnitude table is correctness-admitted and default-off
+pending clean context and complete-category gates.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1010,6 +1012,31 @@ build/wrapper, c=1 route/library owner, CLI selector, tests, and refactor debt
 are removed; retained wave32 tile2 remains canonical. Evidence:
 [`correctness`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-correctness.json)
 and [`rejection`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-rejected.json).
+
+The next exact IQ2 contraction targets selector reconstruction rather than
+ownership or wave geometry. The retained body stores the canonical grid in
+1 KiB of packed two-bit codes, then reconstructs each magnitude with shifts,
+integer multiply/add, and uint-to-float conversion. The default-off sibling
+stores the same eight unsigned magnitudes per selector as one 64-bit constant;
+it keeps the cheaper parity `popc`, every FMA/reduction, and both BF16/SiLU
+boundaries. This adds only 3 KiB of code-object constants—no duplicated weights
+or persistent sidecar. The hot leaf contracts **1,246 -> 986** disassembly lines
+(-20.9%), logical VGPR **132 -> 110**, uint-to-float conversions **66 -> 10**,
+and multiplies **78 -> 14**, with zero spill and unchanged LDS. A separate
+sign-only LUT control is rejected because its eight extra random loads regress
+the retained compact-grid events **1.28-1.69%**; parity `popc` stays.
+
+First/last actual IQ2 layers 1/45 are BF16-bit exact and improve repository-built
+events **33.73%/30.78%** and synchronized wall **33.43%/30.00%**. The
+shared-weight gate matches bulk prefill, full logits/top-1, all 48 hidden and 47
+routed boundaries, active K/V plus every span byte, reset, and lifecycle through
+16 decode transitions. Cached tracing records 92 c=1 candidate calls at
+local64/VGPR112/LDS512/scratch0 with plausible **39.24-44.96 us** durations;
+all 46 bulk-prefill calls remain on retained compact-grid local64/VGPR136. The
+candidate is separately registered and default-off. It is correctness-admitted,
+not a retained throughput claim; two clean process orders at short/512/1K/
+near-4K and both complete 18-prompt orders still decide promotion. Evidence:
+[`...iq2-grid64-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-correctness.json).
 
 ## 9. Do not chase without new evidence
 
