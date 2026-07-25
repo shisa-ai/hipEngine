@@ -611,11 +611,11 @@ Current progress:
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
 | LAP-1 | Complete | Direct resident-T16 MMQ32 is BF16-bit identical to X8, positive at all seven natural shapes, **2.502x/3.959x/5.502x** retained at M128/M256/M512, and within **4.66%/4.05%/3.02%** of X8 with no transpose or sidecar. |
 | LAP-2 primitive | Complete | Three-plane pack, direct/guarded T16 MMQ, bounded queue, and overflow-safe exact correction landed in `d9bb6ad88`; 35 focused tests and cached trace pass. |
-| LAP-BW0 / LAP-Q0 | Deferred by integrated result | The absolute bandwidth/quality-debt ledger remains useful for further roofline work, but it no longer blocks testing the now-above-target compounded candidate. |
+| LAP-BW0 / LAP-Q0 | LAP-Q0 complete; LAP-BW0 open | Direct production-versus-all-exact attribution exposed that the prior shipping-relative gate was insufficient: heuristic-4 production reaches max KL **0.0535024**. A shape-qualified hipBLASLt schedule keeps heuristic 4 except K3072xN72 SWA gate on heuristic 2 and passes the absolute 320-step gate at max KL **0.0495426**, **316/320** top-1. |
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | Clean committed Q4/Q6 row-vector down staging measures selector-unset pp512 **385.997 tok/s** median versus scalar down **379.827 (+1.625%)**, all token 2930 and with complete sample separation. It compounds with the prior D8 row-vector gate/up default, is BF16 byte-identical, and carries forward the retained 320-step quality gate. Cached-only tracing measures **388.014/358.319/296.060 tok/s** at 512/1K/4K, cuts selected down **276.556 -> 254.006 ms (-8.15%)**, and returns all tracked allocations after close. |
+| Production publication | Correctness repair pending clean republication | Clean Q4/Q6 row-vector production measured selector-unset pp512 **385.997 tok/s** before the absolute-quality audit. The K3072xN72 hipBLASLt schedule repairs **0.0535024 -> 0.0495426** max KL and measures **385.907 tok/s** in a seven-repeat same-owner candidate screen versus **386.589** for the old schedule (-0.176%, effectively neutral). A clean committed absolute category run and selector-unset wall confirmation replace the old publication before further promotion. |
 | LAP-7–LAP-8 | Current scalar production retained | Attention is **216.727 ms / 16.62%** of kernel sum. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, and qhead3 sharing all completed negative gates. Source-qualified qrow4 remains production; attention needs a new async/library-class premise before reopening. |
 
 ## Post-350 campaign — 500 production gate, 700 stretch
@@ -659,35 +659,44 @@ The current trace gives concrete Amdahl checkpoints, not performance claims:
   controller-bandwidth claim; LAP-BW0 must replace it with encoded and physical
   traffic plus in-load clocks.
 
-The quality contract remains binding. The production route sits at maximum KL
-**0.040724836**, leaving only **0.009275164** below the 0.05 ceiling. The
-rejected D4 gate candidate already showed that another approximate shortcut can
-hold 355+ tok/s while failing quality at KL **0.0767056**. Prefer exact
-data-movement/scheduling wins and preserve K accumulation order; run LAP-Q0
-before admitting any new approximation.
+The quality contract remains binding. LAP-Q0 found that the prior
+**0.040724836** result compared current production with an already approximate
+shipping control and was not an absolute budget measurement. Direct
+production-versus-all-exact reached **0.053502420** and therefore failed. A
+one-shape hipBLASLt schedule—heuristic 2 only for the K3072xN72 SWA gate GEMM,
+heuristic 4 everywhere else—passes at **0.049542582**, leaving only
+**0.000457418** below the 0.05 ceiling. The rejected D4 gate candidate already
+showed that another approximate shortcut can hold 355+ tok/s while failing
+quality at KL **0.0767056**. New approximate paths are closed unless they first
+buy back absolute quality budget; prefer exact data-movement/scheduling wins
+and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
+1. Complete the clean committed production-versus-all-exact category gate and
+   selector-unset pp512 confirmation for the K3072xN72 hipBLASLt schedule.
+   Future production publications must use this absolute comparison rather than
+   an already-approximate shipping control.
+2. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Do not retry 64-row expert accumulation. The routing-qualified hybrid
+3. Do not retry 64-row expert accumulation. The routing-qualified hybrid
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
    around a wave-transpose/direct-consume primitive instead. Persistent K256
    weight slabs with F32 partial spills also completed a negative actual-weight
    gate. Merely planarizing the existing 40-byte LDS records and hoisting
    invariant T16 `d`/`dmin` metadata are both neutral; a local32 small-expert
    split is slower because it serializes weight-cache population.
-3. Apply any further winning expert schedule to Q4/Q6 down, then run clean
+4. Apply any further winning expert schedule to Q4/Q6 down, then run clean
    selector-unset pp512 and the complete
    category/decode/determinism/lifecycle gate. Retain every exact same-suite
    non-regressive improvement; 500 tok/s closes the next production milestone.
-4. Raise the currently hard-capped matrix capacity and screen **1024/2048**
+5. Raise the currently hard-capped matrix capacity and screen **1024/2048**
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle
    evidence. This receives no pp512 credit.
-5. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
+6. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
    2.778% Q4 metadata saving is a permanent but roughly **1.1% pp512**
    gate/up-byte upper bound at the current family share.
 

@@ -179180,3 +179180,40 @@ Vulkan local sizes verbatim will close the measured gap.
   result/trace SHA-256 values are `6b6dd783...9aa0` / `05864e62...afd`.
   Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-small8-hybrid-rejected.json`.
+
+## 2026-07-26 — Repair the absolute Laguna production quality gate
+
+- LAP-Q0 found that the published **0.040724836** maximum KL compared the
+  current D8/D4 production lane with the already approximate shipping control,
+  not with all-exact. A direct ten-prompt/320-step teacher-forced audit against
+  all-exact measured **0.053502420** maximum KL and **316/320 (98.75%)**
+  top-1, so the selector-unset heuristic-4 production schedule was outside the
+  repository's absolute KL contract despite passing the earlier relative gate.
+- One-factor exact-family ablations on the maximum trajectory reduced KL with
+  exact F16 projection, global attention, dense/shared projection, or D4 down,
+  but every whole-family rollback gave back a material production win.
+  hipBLASLt's seven zero-workspace heuristics were then screened. No single
+  heuristic passed all heldouts: index 2 fell to **272.795 tok/s** and still
+  hit KL **0.093465** elsewhere; index 5 measured **373.084 tok/s** but hit
+  **0.063036**; index 6 measured **363.637 tok/s** but hit **0.144046**.
+- A structural K/N-shape screen found one surviving schedule: keep heuristic 4
+  for every source-F16 problem except the tiny SWA attention-gate
+  **K3072xN72** contraction, where heuristic 2 is used. It passes the complete
+  direct all-exact audit at maximum KL **0.049542582**, **316/320** top-1,
+  finite logits, and per-category top-1 at least **96.875%**. The three
+  sensitive prompt maxima are **0.049543/0.034562/0.043694**. Selection depends
+  only on the immutable GEMM shape, never prompt, token, category, or layer ID.
+- Seven counterbalanced same-owner pp512 repetitions measured old schedule
+  **386.589 tok/s** versus the quality-qualified schedule **385.907 tok/s**
+  (**-0.176%**, identical next token 2930). This is a correctness repair, not a
+  performance claim; a clean committed selector-unset confirmation remains
+  required. RED/GREEN adds descriptor-selection coverage, and the canonical
+  category harness now exposes `--comparison production_absolute` with the
+  current row-vector D8/D4, WMMA dense/shared, online attention, and scaled
+  hipBLASLt lane directly against all-exact.
+- Validation: `tests/test_laguna_f16_hipblaslt.py tests/test_hipblaslt.py
+  tests/test_laguna_grouped_down_category_bench.py` reports **23 passed**;
+  `py_compile` and `git diff --check` pass. The attempted nonexistent focused
+  node in `test_laguna_gguf_runner.py` performed no test work; per focused
+  repair policy it was replaced by the actual affected files rather than a
+  broad rerun.

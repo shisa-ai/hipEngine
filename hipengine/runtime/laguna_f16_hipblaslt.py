@@ -13,6 +13,12 @@ from hipengine.kernels.backends import backend_package_capability
 
 _MODES = frozenset({"retained", "hipblaslt_scaled"})
 _BASELINE_MODE = "retained"
+_QUALITY_ALGORITHM_BY_KN = {
+    # The default heuristic-4 schedule misses the cumulative all-exact quality
+    # gate at 0.05350 KL.  Restricting heuristic 2 to the tiny sliding-attention
+    # gate projection restores the gate without slowing the wide projections.
+    (3072, 72): 2,
+}
 
 
 def resolve_laguna_f16_prefill_mode(
@@ -43,7 +49,7 @@ class _CachedProblem:
 
 
 class LagunaF16HipblasLt:
-    """Cache zero-workspace hipBLASLt descriptors for one Laguna session."""
+    """Cache quality-qualified zero-workspace hipBLASLt descriptors."""
 
     def __init__(
         self,
@@ -73,7 +79,11 @@ class LagunaF16HipblasLt:
         cached = self._problems.get(shape)
         if cached is None:
             problem = self.owner.problem(*shape)
-            algorithm = problem.algorithm(self.preferred_algorithm_index)
+            algorithm_index = _QUALITY_ALGORITHM_BY_KN.get(
+                (shape[1], shape[2]),
+                self.preferred_algorithm_index,
+            )
+            algorithm = problem.algorithm(algorithm_index)
             if int(algorithm.workspace_size) != 0:
                 raise RuntimeError("Laguna hipBLASLt route requires a zero-workspace algorithm")
             cached = _CachedProblem(problem=problem, algorithm=algorithm)
