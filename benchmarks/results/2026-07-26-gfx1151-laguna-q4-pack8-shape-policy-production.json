@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T04:24:00+09:00",
+  "kind": "hipengine_laguna_q4_pack8_shape_policy_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "matched clean Laguna S 2.1 Q4_K_M matrix512/attention128 pp512 plus exact Q4 tile transfer and cached all-family attribution on gfx1151",
+  "repo": {
+    "revision": "3c1e5b452bb101b620c26e149e700277980f657b",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "family": "resident-pack8 Q4 dense/shared WMMA prefill",
+    "policy": {
+      "M512_K3072_N1024": "64x16",
+      "M512_K1024_N3072": "64x32",
+      "M512_K3072_N12288": "32x32",
+      "all_other_shapes": "64x16"
+    },
+    "scope": "gfx1151 four-axis registry override; gfx1100 remains 64x16",
+    "rollback": "HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16",
+    "resident_layout": "unchanged resident pack8 qweight plus FP32 scale/min planes",
+    "arithmetic": "unchanged FP16 WMMA operands, FP32 K accumulation order, and BF16 stores"
+  },
+  "pp512": {
+    "scope": "one resident owner; one 128-row warmup per mode; seven counterbalanced synchronized repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_pack8_shape_ab.py --repetitions 7 --output /tmp/laguna-q4-pack8-shape-policy-clean-ab.json",
+    "rollback_64x16_samples_tok_s": [
+      490.043214404306,
+      488.0577492443695,
+      488.3692068749502,
+      485.17485957004897,
+      488.69211360655294,
+      490.98132846958276,
+      491.0496843925528
+    ],
+    "rollback_64x16_median_tok_s": 488.69211360655294,
+    "selector_unset_shape_policy_samples_tok_s": [
+      488.0166887550249,
+      489.9220634691668,
+      488.0547936158531,
+      484.33658696426517,
+      494.046436973508,
+      492.5382973055111,
+      491.37147416095553
+    ],
+    "selector_unset_shape_policy_median_tok_s": 489.9220634691668,
+    "paired_speedup": 1.0025168195441847,
+    "paired_improvement_percent": 0.2516819544184701,
+    "paired_repetitions_won": 4,
+    "paired_repetitions_total": 7,
+    "complete_sample_separation": false,
+    "previous_publication_median_tok_s": 490.09621371771993,
+    "change_vs_previous_publication_percent": -0.035533889811567576,
+    "matched_median_wall_reduction_ms": 2.6302379556000233,
+    "clean_wall_gap_to_500_ms": 21.064180972985902,
+    "next_token_ids_all_2930": true,
+    "raw_json_sha256": "80414fa6bfdd861d36e983b7ff4662ddc80e74285817d685c04f52f9531456f2",
+    "raw_json_committed": false
+  },
+  "correctness_transfer": {
+    "actual_model_weights_checked": 120,
+    "actual_model_weight_output_mismatches": 0,
+    "policy_counts": {
+      "64x16": 94,
+      "64x32": 24,
+      "32x32": 2
+    },
+    "all_six_tiles_bf16_byte_identical_on_each_actual_shape": true,
+    "reason_absolute_quality_transfers": "Every changed Q4 projection produces the same BF16 bytes as the prior 64x16 schedule; all downstream inputs and admitted approximations are unchanged.",
+    "retained_absolute_quality_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_matches": 316,
+    "top1_total": 320,
+    "minimum_category_top1_agreement": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "cached_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-pack8-shape-policy-profile-3c1e5b452 --output-file laguna-q4-pack8-shape-policy --log-level error -- .venv/bin/python3 scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-pack8-shape-policy-profile-3c1e5b452/child.json",
+    "timings": {
+      "512": {
+        "prefill_tok_s": 492.71652812258515,
+        "prefill_seconds": 1.039137050975114,
+        "kernel_span_ms": 1033.443276,
+        "kernel_sum_ms": 1021.64655
+      },
+      "1024": {
+        "prefill_tok_s": 442.5547898446549,
+        "prefill_seconds": 2.313837797031738,
+        "kernel_span_ms": 2310.86621,
+        "kernel_sum_ms": 2286.863781
+      },
+      "4096": {
+        "prefill_tok_s": 351.53260253726677,
+        "prefill_seconds": 11.651835336000659,
+        "kernel_span_ms": 11643.156159,
+        "kernel_sum_ms": 11523.890306
+      }
+    },
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 317.198696,
+      "selected_q4_q6_down": 204.070813,
+      "global_attention": 44.108381,
+      "swa_attention": 174.255768,
+      "source_f16_projection": 134.564486,
+      "dense_shared_quant_projection": 52.989373,
+      "router": 32.143933,
+      "norm_rope_gate": 24.927617,
+      "activation_reduce_residual": 18.492466,
+      "other": 16.842333,
+      "lm_head_argmax": 1.173322,
+      "prefill_kv_write": 0.842693,
+      "embedding": 0.036669
+    },
+    "dense_breakdown_ms": {
+      "q4_64x16_94_calls": 28.768636,
+      "q4_64x32_24_calls": 6.98695,
+      "q4_32x32_2_calls": 6.18032,
+      "q4_shape_policy_total": 41.935906,
+      "q4_previous_64x16_total": 43.702481,
+      "q4_change_percent": -4.042276226834806,
+      "q6_16x32_total": 11.053467,
+      "family_previous_ms": 54.833697,
+      "family_change_percent": -3.3634865072110665
+    },
+    "q4_resources": {
+      "64x16": {
+        "workgroup_size": 32,
+        "vgpr": 88,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "64x32": {
+        "workgroup_size": 32,
+        "vgpr": 144,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "32x32": {
+        "workgroup_size": 32,
+        "vgpr": 88,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    },
+    "raw_csv_sha256": "3c0b874b4ccda895a5779ebff2d6d6c01455ea460d912d628b189ff3ec705f2b",
+    "child_json_sha256": "c27f2d6d9e380b80e31be2c699762a6f9a1249704186065a37de9fcaf4eb21ad",
+    "summary_json_sha256": "346a1184d6cf72c122b468c619fe2ae3d8b951b87857191098238327313019fa",
+    "raw_files_committed": false,
+    "correctness_pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "decision": {
+    "pass": true,
+    "action": "Retain the exact shape policy as the gfx1151 production default. The matched wall median and family trace are positive; preserve the 64x16 rollback for one release window.",
+    "qualification": "The clean wall distributions overlap and the absolute median is 0.036% below the prior publication, so this is retained as a family-attributed exact micro-win rather than a new topline increase.",
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  },
+  "supersedes": "benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json"
+}

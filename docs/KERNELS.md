@@ -741,18 +741,21 @@ Q6 family **29.248 -> 11.131 ms (-61.94%)**, and reaches
 `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` is explicit release-window rollback
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`).
 
-Resident-pack8 Q4 dense/shared WMMA now has a retained gfx1151 shape-policy
-candidate. The real pp512 mix is 94 M512/K3072/N1024 shared gate/up calls,
+Resident-pack8 Q4 dense/shared WMMA now has a retained gfx1151 production
+shape policy. The real pp512 mix is 94 M512/K3072/N1024 shared gate/up calls,
 24 M512/K1024/N3072 shared-down calls, and two M512/K3072/N12288 layer-0
 gate/up calls. Nine counter-rotated burst-three samples keep the first at
 64x16, select 64x32 for shared down, and select 32x32 for layer 0, reducing the
 call-weighted leaf window **34.782 -> 33.031 ms (-5.03%)**. Direct execution
 over all 120 actual resident projections reports zero BF16 mismatches versus
-64x16. Dirty one-owner pp512 improves **489.036 -> 491.014 tok/s (+0.404%)**
-with six of seven paired wins and token 2930. gfx1100 remains unchanged;
-`HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` is bounded rollback pending clean
-publication and a refreshed trace
-(`benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`).
+64x16. Clean matched pp512 improves **488.692 -> 489.922 tok/s (+0.252%)**
+with four of seven paired wins and token 2930. Cached tracing independently
+reaches **492.717 tok/s**, cuts Q4 dense **43.702 -> 41.936 ms (-4.04%)**,
+and cuts total dense/shared **54.834 -> 52.989 ms (-3.36%)**. The absolute
+wall median is flat within noise versus the prior publication, so this is
+retained as a family-attributed exact micro-win. gfx1100 remains unchanged;
+`HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` is release-window rollback
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`).
 
 ## DFlash / MTP lineage map
 

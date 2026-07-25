@@ -179722,3 +179722,32 @@ Vulkan local sizes verbatim will close the measured gap.
   Retain as an exact candidate micro-win; require clean publication and a
   refreshed family trace before changing the production headline. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`.
+
+## 2026-07-26 — Publish exact Q4 pack8 shape-policy production
+
+- Committed the gfx1151-only shape policy as `3c1e5b452`; gfx1100 remains on
+  64x16. Clean seven-repeat matched pp512 improves explicit 64x16
+  **488.692114 -> 489.922063 tok/s (+0.252%)** with four of seven paired wins
+  and token 2930 throughout. The absolute median is **0.036%** below the prior
+  490.096 publication, so aggregate wall is flat within noise. Raw JSON
+  SHA-256:
+  `80414fa6bfdd861d36e983b7ff4662ddc80e74285817d685c04f52f9531456f2`.
+- Cached all-family tracing independently measures
+  **492.717/442.555/351.533 tok/s** at 512/1K/4K. At pp512, wall/span/kernel
+  sum are **1,039.137/1,033.443/1,021.647 ms**. Q4 dense falls
+  **43.702 -> 41.936 ms (-4.04%)** and total dense/shared falls
+  **54.834 -> 52.989 ms (-3.36%)**. The trace names exactly 94 64x16 calls,
+  24 64x32 calls, and two 32x32 calls; all are local32/LDS0/scratch0.
+  Raw trace/child/summary SHA-256:
+  `3c0b874...f2b` / `c27f2d6...1ad` / `346a118...9fa`.
+- All **120** actual Q4 projections are byte-identical to 64x16, transferring
+  the direct all-exact maximum KL **0.049542582**, **316/320** top-1, decode,
+  determinism, Poolside, allocation, and lifecycle gates. Retain the exact
+  family-attributed micro-win as production even though aggregate wall
+  overlaps, per the performance-win policy.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, and
+  post-350 plan. Conservative production is **489.922 tok/s**; the traced
+  kernel-span gap to 500 is **9.4 ms**. Next screen: Q6 selected-down local64
+  with one shared weight decode, not the closed duplicate-decode row halves.

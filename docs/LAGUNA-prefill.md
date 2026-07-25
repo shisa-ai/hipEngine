@@ -648,17 +648,17 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **318.897 ms** | **31.08%** | Direct per-column decode is retained. Pair/shuffle, local64, 256-column, multi-K LDS, and non-temporal variants are closed; the next gate/up screen must change work ownership or data movement materially. |
-| Selected D4 Q4/Q6 down | **205.132 ms** | **19.99%** | Direct Q4 decode is retained. Q6 row-vector remains the largest down component and its tested quartet/direct row-half mappings remain closed. |
-| Global + SWA attention | **219.393 ms** | **21.38%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
-| Scaled hipBLASLt source-F16 | **133.176 ms** | **12.98%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
-| Q4/Q6 WMMA dense/shared | **54.834 ms** | **5.34%** | Q6 16x32 is production. The exact Q4 64x16/64x32/32x32 shape policy is a retained candidate after cutting its call-weighted leaf window **34.782 -> 33.031 ms (-5.03%)**; clean publication/trace is pending. |
-| All remaining named/other kernels | **94.520 ms** | **9.21%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
+| Selected D8 Q4 gate/up | **317.199 ms** | **31.05%** | Direct per-column decode is retained. Pair/shuffle, local64, 256-column, multi-K LDS, and non-temporal variants are closed; the next gate/up screen must change work ownership or data movement materially. |
+| Selected D4 Q4/Q6 down | **204.071 ms** | **19.97%** | Direct Q4 decode is retained. Q6 row-vector is **127.656 ms** and remains the largest down component; screen local64 while retaining one shared weight decode, distinct from the closed row-half variants that duplicate decode. |
+| Global + SWA attention | **218.364 ms** | **21.37%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
+| Scaled hipBLASLt source-F16 | **134.564 ms** | **13.17%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
+| Q4/Q6 WMMA dense/shared | **52.989 ms** | **5.19%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Q4 falls **43.702 -> 41.936 ms (-4.04%)** and the family falls **54.834 -> 52.989 ms (-3.36%)**. |
+| All remaining named/other kernels | **94.459 ms** | **9.25%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
-- Only **13.6 ms** of traced pp512 kernel span and about **20.7 ms** of clean
-  median wall separate production from 500.
+- Only **9.4 ms** of traced pp512 kernel span and about **21.1 ms** of
+  conservative clean median wall separate production from 500.
 - Reducing global+SWA attention from **217.7 ms** toward **100 ms** models to
   roughly **534 tok/s** with every other family unchanged.
 - Combining **2x** selected experts with an **80 ms** attention window models
@@ -684,10 +684,11 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Publish the exact Q4 pack8 shape-policy candidate from a clean revision and
-   refresh the all-family trace. The 94+24+2 policy cuts the call-weighted leaf
-   window **34.782 -> 33.031 ms (-5.03%)**, has zero mismatches across all 120
-   actual projections, and improves dirty pp512 **489.036 -> 491.014 tok/s**.
+1. Screen a **shared-weight Q6 selected-down local64 row-vector** body. Two
+   wave32s each own 16 routed rows while the workgroup decodes the 64-column
+   Q6 tile once into the existing 4 KiB LDS cache. This is materially distinct
+   from the rejected quartet/direct row-half bodies, which duplicated streamed
+   Q6 decode across two column-owning row halves.
 2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1289,12 +1290,27 @@ selector-unset publication and a refreshed family trace remain required.
 Evidence:
 [`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json).
 
+Clean publication is complete at revision `3c1e5b452`. Matched pp512 improves
+explicit 64x16 **488.692 -> 489.922 tok/s (+0.252%)** with four of seven
+paired wins and token 2930 throughout. The distributions overlap and the
+absolute median is **0.036%** below the prior 490.096 publication, so the
+system wall is flat within noise. Cached tracing provides the retainable
+attribution: **492.717/442.555/351.533 tok/s** at 512/1K/4K, Q4 dense
+**43.702 -> 41.936 ms (-4.04%)**, and total dense/shared
+**54.834 -> 52.989 ms (-3.36%)**. All 120 actual Q4 outputs remain
+byte-identical, so the direct all-exact maximum KL **0.049542582** and
+**316/320** top-1 transfer unchanged. Production evidence:
+[`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json).
+
 Production evidence:
 
-- [`2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json)
-  is the current retained selector-unset publication at **490.096 tok/s**
-  median with the transferred direct all-exact gate at maximum KL
+- [`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json)
+  is the current retained exact micro-win: conservative clean median
+  **489.922 tok/s**, cached trace **492.717 tok/s**, and unchanged maximum KL
   **0.049542582**.
+- [`2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json)
+  is the superseded pre-Q4-shape-policy publication at **490.096 tok/s**
+  median and the Q6 tile provenance.
 - [`2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json)
   is the superseded direct-Q4-down publication at **480.629 tok/s** median and
   the direct all-exact quality source.
@@ -1921,6 +1937,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-candidate.json`
