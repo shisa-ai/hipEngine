@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_laguna_prefill_kernel_candidate",
+  "date": "2026-07-25",
+  "status": "retained_candidate_pending_clean_production_gate",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "model": {
+    "name": "Laguna-S-2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "baseline_revision": "f5e5022cafc1c3f8259ac717a56831dff40ca05b",
+    "tracked_clean": false,
+    "reason": "candidate kernel and selector were measured before their atomic commit"
+  },
+  "workload": {
+    "tokens": 512,
+    "matrix_chunk_rows": 512,
+    "attention_chunk_rows": 128,
+    "gpu_max_hw_queues": 1,
+    "repetitions": 5,
+    "ordering": "counterbalanced",
+    "ownership": "one resident-weight owner with a fresh child session per sample"
+  },
+  "change": {
+    "baseline_mode": "mmq128x32_d8_f32",
+    "candidate_mode": "mmq128x32_d8_f32_rowvec",
+    "description": "load each routed Q8 activation row through two 16-byte vectors, read its source mapping once per K32 interval, and stage all eight packed int32 values from one thread",
+    "unchanged": [
+      "resident T16 weights",
+      "D8 activation bytes and FP32 metadata",
+      "128x32 tile",
+      "weight decode",
+      "packed-dot arithmetic and accumulation order",
+      "BF16 output boundary"
+    ]
+  },
+  "correctness": {
+    "cpu_reference_gate": {
+      "command": "uv run pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate",
+      "result": "5 passed"
+    },
+    "candidate_vs_baseline": {
+      "output": "BF16 byte-identical",
+      "full_model_next_tokens": {
+        "baseline": [2930, 2930, 2930, 2930, 2930],
+        "candidate": [2930, 2930, 2930, 2930, 2930]
+      }
+    }
+  },
+  "performance": {
+    "baseline": {
+      "samples_tok_s": [
+        369.3820241337408,
+        369.3367026231378,
+        368.3670247960656,
+        368.32903990432953,
+        368.45046173718526
+      ],
+      "median_tok_s": 368.45046173718526,
+      "median_wall_ms": 1389.6033610217273
+    },
+    "candidate": {
+      "samples_tok_s": [
+        381.54608909646925,
+        381.3289256765246,
+        379.66068517839,
+        378.9584342049292,
+        379.1106366627777
+      ],
+      "median_tok_s": 379.66068517839,
+      "median_wall_ms": 1348.5726070357487
+    },
+    "candidate_vs_baseline_percent": 3.0425320647856635,
+    "candidate_vs_published_366_932636_percent": 3.468769994716414
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file gate-rowvec -- env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate",
+    "candidate_template": "<1, false, true, 128, true>",
+    "baseline_template": "<1, false, true, 128, false>",
+    "candidate_duration_us": 226.144,
+    "baseline_duration_us": 264.416,
+    "workgroup_size": 128,
+    "vgpr_count": 80,
+    "sgpr_count": 128,
+    "lds_bytes": 6656,
+    "scratch_bytes": 0,
+    "raw_csv_sha256": "4efbcafdf912f0e161a6c1c7a55d4227f3d0372bb10cdf79b498c61fab11b101"
+  },
+  "promotion": {
+    "candidate_selected_for_gfx1151": true,
+    "clean_selector_unset_confirmation_required": true,
+    "production_claim_updated": false
+  }
+}

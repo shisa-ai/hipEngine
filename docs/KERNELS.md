@@ -554,6 +554,21 @@ uses it; qrow2 remains residual
 
 ### Laguna post-350 selected-expert screens
 
+The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
+specialization. One thread owns each routed activation row, reads its compact
+source mapping once per K32 interval, and stages the row through two aligned
+16-byte loads instead of reconstructing eight int32 packs byte-by-byte across
+the workgroup. Resident T16 weights, D8 bytes/metadata, dot arithmetic,
+accumulation order, and BF16 output are unchanged. The uneven/empty-expert
+fixture is BF16 byte-identical to the prior consumer and passes the independent
+CPU-reference gate. Cached tracing records local128/VGPR80/SGPR128,
+6,656 B LDS, zero scratch, and **264.416 -> 226.144 us** on the comparison
+fixture. A one-load five-pair pp512 screen improves **368.450 -> 379.661 tok/s
+(+3.043%)**, always token 2930. gfx1151 selects the row-vector body; the old
+D8 consumer remains explicit rollback pending the clean selector-unset
+production gate
+(`benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-candidate.json`).
+
 The routing-qualified hybrid keeps MMQ128x32 for experts at or below 32 rows
 and tests MMQ128x64 only above 32. Frozen natural pp512 routing predicts
 **5,728 -> 3,102 (-45.8%)** large-expert tiles, but the actual layer-1
