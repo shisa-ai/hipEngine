@@ -178478,3 +178478,43 @@ Vulkan local sizes verbatim will close the measured gap.
   After implementation,
   `python3 -m pytest -q tests/test_laguna_grouped_down_category_bench.py
   tests/test_laguna_target_ar_bench.py` passes all 23 tests.
+
+## 2026-07-25 — Repair the Laguna 350 candidate with same-byte D8 gate packing
+
+- The first complete `prefill_350` gate rejects the D4-gate/D4-down candidate
+  on quality, not performance. Aggregate natural-prompt prefill improves
+  **2.56547x** to **180.145 tok/s**; every category is positive, h16/h32 E2E
+  improve **1.5421x/1.3172x**, decode is neutral, Poolside passes at KL
+  **0.0000678**, and lifecycle recovers. Across 320 teacher-forced steps,
+  however, maximum KL is **0.0767056** with **318/320** top-1; the two failing
+  prompts are both `mixed_ja_en`. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-category.json`,
+  SHA-256 `8d39e7e83d75713f224c139e5326c1e632c0ad639f8ec5d8e380b38d35ee9751`.
+- One-plane precision ablation isolated activation grouping as the repairable
+  surface: D4x2 gate with D4 down passes the failing prompts at max KL
+  **0.0309187/0.0446053**, and D4 gate with D4x2 down reaches
+  **0.0162782/0.0358050**, but either adds another full activation plane.
+  Reverting the already-integrated F16 or dense candidates did not reliably
+  remove the failure.
+- Added a same-byte D8 activation pack: eight FP32 scales plus 128 int8 values
+  remain exactly **160 bytes** per 128 activations, so each 16-value half-block
+  receives its own scale without scratch growth. The Q4 consumer reconstructs
+  each half's signed quant sum for the min term. D8 gate/up plus D4 down passes
+  the complete 320-step diagnostic at max KL **0.040724836** and
+  **317/320 (99.0625%)** top-1. Category maxima/top-1 are code
+  **0.0407248, 128/128**; general_en **0.0117508, 62/64**; general_ja
+  **0.0173264, 64/64**; mixed **0.0311104, 63/64**.
+- Widened only the D8 dual-Q4 consumer to **128 columns x 32 routed rows**;
+  D4 selected down remains 64x32. The truthful explicit mode is
+  `mmq128x32_d8_f32`. With online attention, row-scaled hipBLASLt, and
+  Q4/Q6 WMMA dense/shared held on, exact reconstructed-sum pp512 samples are
+  **1.446529/1.437871/1.436295 seconds**, or
+  **353.951/356.082/356.473 tok/s**, always next token **2930**. A raw-sum
+  shortcut was slightly faster but missed the quality ceiling and was removed.
+- `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q
+  tests/test_gguf_q4_k_q8_1_selected_prefill.py tests/test_laguna_moe_gpu.py
+  tests/test_laguna_gguf_runner.py
+  tests/test_laguna_grouped_down_category_bench.py
+  tests/test_laguna_target_ar_bench.py` passes with two expected skips.
+  `py_compile` passes. Backend defaults remain unchanged until the clean
+  complete category gate admits this exact revision.
