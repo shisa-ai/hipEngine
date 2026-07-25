@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T23:55:57+09:00",
+  "kind": "hipengine_laguna_weight_soa_rejected",
+  "status": "actual_weight_leaf_neutral_removed",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M layer-1 D8 Q4 gate/up LDS weight-cache layout diagnostic on gfx1151",
+  "repo": {
+    "base_revision": "6dc501170",
+    "tracked_dirty_diagnostic": true,
+    "all_candidate_surfaces_removed": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "gate_up_t16_bytes": 931135488
+  },
+  "routing": {
+    "rows": 512,
+    "top_k": 10,
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "compact_rows": 5120,
+    "mmq32_padded_rows": 9504,
+    "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9"
+  },
+  "design": {
+    "production_lds": "AoS [column][8 packed quant words + 2 FP32 metadata values], 40-byte column stride",
+    "candidate_lds": "SoA [quant plane][column] plus [metadata plane][column]",
+    "global_bytes_changed": false,
+    "arithmetic_or_accumulation_order_changed": false,
+    "intended_effect": "replace the AoS two-way LDS bank mapping with contiguous same-plane wave loads"
+  },
+  "correctness": {
+    "red": "focused test initially failed because the diagnostic weight_soa selector did not exist",
+    "green": "counts 0/7/18/33, K512, dual N128 candidate is BF16 byte-identical to production and passes the CPU quality gate",
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate[1-True-True-True]'"
+  },
+  "leaf": {
+    "protocol": "actual layer-1 weights and natural pp512 routing; producer-row pack inclusive; four warmups; 31 counter-rotated samples; burst=5",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-rowvec,t16-mmq128x32-d8-f32-rowvec-weight-soa --warmups 4 --samples 31 --burst 5",
+    "production_median_ms": 10.708847045898438,
+    "candidate_median_ms": 10.695574188232422,
+    "candidate_delta_percent": -0.1239429194303309,
+    "production_mean_ms": 10.741719498172882,
+    "candidate_mean_ms": 10.722488034156061,
+    "candidate_mean_delta_percent": -0.1790352468251675,
+    "raw_result_sha256": "6d287b6cdb5a991476c57b5630cfd455f266b8105626d5b78dd3c23a59d19cf3",
+    "sanity": "candidate checksum, max_abs, and every BF16 output equal production"
+  },
+  "trace": {
+    "raw_csv_sha256": "93e659bfca3aaed3dfcdad487ef8aa232238130e219b87456f255329f826f7d8",
+    "raw_csv_committed": false,
+    "kernel_specialization": "<1,false,true,128,true,true>",
+    "workgroup_size": 128,
+    "lds_bytes": 6656,
+    "vgpr": 80,
+    "sgpr": 128,
+    "scratch_bytes": 0,
+    "resource_delta_vs_production": "none"
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "infrastructure_blocked",
+    "reason": "configured read-only reference /home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "decision": "Reject and remove. A 0.124% median leaf change with identical compiled resources is below the promotion threshold and cannot materially move the 537 ms all-layer family."
+}
