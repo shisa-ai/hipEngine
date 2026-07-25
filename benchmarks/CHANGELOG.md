@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna Q6 dense/shared WMMA 16x32 production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / selector-unset matrix512/attention128 pp512 improves explicit 64x16 rollback **481.950 -> 490.096 tok/s (+1.690%)** with complete seven-sample separation and token 2930; all 24 actual Q6 projection weights have zero BF16 mismatches, so the admitted max KL **0.049542582** transfers, while cached tracing measures **491.171 tok/s** and cuts dense/shared **72.866 -> 54.834 ms (-24.75%)**, with Q6 alone **29.248 -> 11.131 ms (-61.94%)**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`.
+
 - [retained candidate gfx1151 Laguna Q6 dense/shared WMMA 16x32] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / exact actual-weight leaf timing cuts the 23-call M512/K1024/N3072 shared-down shape **0.942 -> 0.306 ms/call (-67.50%)** and the one M512/K12288/N3072 layer-0 down call **10.629 -> 3.616 ms (-65.98%)**; one-owner matrix512/attention128 pp512 improves 64x16 rollback **480.727 -> 488.513 tok/s (+1.620%)** with complete seven-sample separation and token 2930, while clean publication remains pending; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-candidate.json`.
 
 - [rejected and removed gfx1151 Laguna direct local256 gate/up] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural-M512 leaf regresses **6.868 -> 7.181 ms (+4.559%)** with a 256x32/local256 direct per-column body; output is BF16-byte exact, but every one of nine counter-rotated samples loses, so the candidate is removed before runtime integration and 128x32/local128 remains production; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local256-rejected.json`.
