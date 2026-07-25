@@ -3,15 +3,17 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`](results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json).
-It binds matched clean timing and cached attribution to an exact gfx1151 Q4
-pack8 shape policy at revision `3c1e5b452`. All 120 actual Q4 projection
-outputs are BF16-byte identical to rollback, so the direct all-exact 320-step
-quality gate transfers unchanged. Conservative median pp512 is **489.922
-tok/s**, the independent cached trace is **492.717 tok/s**, and absolute
+[`2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`](results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json).
+It binds matched clean timing and cached attribution to an exact gfx1151
+64-row Q6 selected-down body at revision `f9a39715b`. The changed consumer is
+BF16-byte identical to its 32-row rollback, so the direct all-exact 320-step
+quality gate transfers unchanged. Conservative median pp512 is **492.640
+tok/s**, the independent cached trace is **493.509 tok/s**, and absolute
 maximum KL remains **0.049542582**.
 
 Latest retained hipEngine revisions in this scoreboard:
+`f9a39715be6a72cb550f058a4c89109e1e265d4b` for the exact 64-row Q6
+selected-down body and tile64 metadata in Laguna production,
 `3c1e5b452bb101b620c26e149e700277980f657b` for the exact Q4 pack8
 64x16/64x32/32x32 shape policy in Laguna production,
 `c4e2fbd1ddea8100a663754ceedbceaef174a38e` for scratch-free Q6 16x32
@@ -645,14 +647,14 @@ state families, and all 10 live full-attention K/V families match independent
 c1. Ragged prefill uses the explicitly labelled `per_segment_ragged_exact`
 fallback; this is a correctness artifact with `performance_claim=false`.
 
-The retained Laguna Q4 pack8 shape-policy candidate is recorded in
+The retained Laguna Q4 pack8 shape-policy production is recorded in
 [`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`](results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json).
 Exact 94+24+2 call-weighted leaf timing improves **34.782 -> 33.031 ms
 (-5.03%)** with 64x16/64x32/32x32 shape-specific tiles. All 120 actual Q4
 projections have zero BF16 mismatches versus 64x16, while dirty one-owner
 matrix512/attention128 pp512 improves **489.036 -> 491.014 tok/s (+0.404%)**
-with six of seven paired wins and token 2930. Clean publication remains
-pending.
+with six of seven paired wins and token 2930. The later clean publication is
+linked from the superseded platform row below.
 
 The rejected Laguna Q6 selected-down shared-weight local64 screen is recorded
 in
@@ -661,11 +663,19 @@ Actual layer-1 natural-M512 timing regresses **5.223 -> 5.308 ms (+1.635%)**
 despite BF16-byte identity, so every candidate surface is removed and Q6
 local128 remains production.
 
+The retained Laguna Q6 selected-down 64-row production is recorded in
+[`2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`](results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json).
+Clean matched pp512 improves the explicit 32-row rollback **489.110 ->
+492.640 tok/s (+0.722%)**, wins all seven paired repetitions, and selects
+token 2930 throughout. Cached tracing independently reaches **493.509 tok/s**
+and cuts the 23 full-M512 Q6 calls **127.888 -> 126.040 ms**.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact Q4/Q6 dense-tile production prefill | 2026-07-26 | clean measured/default `3c1e5b452`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions, all-120-Q4-weight byte-identity transfer, and cached all-family trace | **Current retained quality-gated production default**: gfx1151 keeps Q4 shared gate/up at 64x16, selects Q4 shared down 64x32 and layer-0 gate/up 32x32, and retains Q6 16x32; gfx1100 is unchanged. All 120 actual Q4 projections have zero BF16 mismatches versus 64x16. Clean matched pp512 improves **488.692 -> 489.922 tok/s (+0.252%)**, with four of seven paired wins and token 2930; the absolute median is flat within noise versus the prior 490.096 publication. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing independently measures **492.717/442.555/351.533 tok/s** at 512/1K/4K, cuts Q4 dense **43.702 -> 41.936 ms (-4.04%)**, and cuts total dense/shared **54.834 -> 52.989 ms (-3.36%)**. [`artifact`](results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json). | Yes, for matched c=1 pp512 and the exact Q4 tile/retained direct all-exact quality scope | Screen a shared-weight Q6 selected-down local64 row-vector body; rerun after any arithmetic/layout, matrix/attention policy, model/quant/KV, compiler/runtime, or device/queue policy change. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M 64-row Q6 selected-down production prefill | 2026-07-26 | clean measured/default `f9a39715b`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions, exact production-shape transfer, and cached all-family trace | **Current retained quality-gated production default**: gfx1151 uses one local128 64-column x 64-row body for Q6 selected down, reducing its runtime grid from 408 to 332 workgroups per output tile; Q4 selected down and gfx1100 are unchanged. Clean matched pp512 improves the explicit 32-row rollback **489.110 -> 492.640 tok/s (+0.722%)**, wins all seven paired repetitions, and selects token 2930 throughout. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing independently measures **493.509/443.214/351.871 tok/s** at 512/1K/4K; the 23 full-M512 Q6 calls fall **127.888 -> 126.040 ms**. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json). | Yes, for matched c=1 pp512 and the exact Q6 selected-down/retained direct all-exact quality scope | Continue exact selected-expert data-movement work; rerun after any arithmetic/layout, matrix/attention policy, model/quant/KV, compiler/runtime, or device/queue policy change. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact Q4/Q6 dense-tile production prefill | 2026-07-26 | clean measured/default `3c1e5b452`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions, all-120-Q4-weight byte-identity transfer, and cached all-family trace | **Superseded exact Q4 shape-policy production**: gfx1151 keeps Q4 shared gate/up at 64x16, selects Q4 shared down 64x32 and layer-0 gate/up 32x32, and retains Q6 16x32; gfx1100 is unchanged. All 120 actual Q4 projections have zero BF16 mismatches versus 64x16. Clean matched pp512 improves **488.692 -> 489.922 tok/s (+0.252%)**, with four of seven paired wins and token 2930. Direct all-exact quality transfers unchanged at max KL **0.049542582** and **316/320 (98.75%)** top-1. Cached tracing independently measures **492.717/442.555/351.533 tok/s** at 512/1K/4K, cuts Q4 dense **43.702 -> 41.936 ms (-4.04%)**, and cuts total dense/shared **54.834 -> 52.989 ms (-3.36%)**. [`artifact`](results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json). | Superseded; exact Q4 shape-policy provenance | Use the 64-row Q6 selected-down row above for current production performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M absolute-quality production prefill | 2026-07-26 | clean measured/default `9ae1e4ea6`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; five pp512 repetitions plus three-repeat ten-prompt all-exact category gate | **Superseded pre-wave-column production**: hipBLASLt heuristic 4 remains selected for every source-F16 shape except the tiny K3072xN72 SWA attention gate, which uses heuristic 2. Clean selector-unset pp512 is **386.552 tok/s** with samples **387.110/386.988/385.748/385.039/386.552**, all token 2930. Direct all-exact quality passes at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle recovery. Natural-prompt production prefill is **53.436 -> 198.461 tok/s (3.714x)** versus all-exact. [`artifact`](results/2026-07-26-gfx1151-laguna-production-absolute-quality.json). | Superseded; absolute-quality schedule provenance | Use the wave-column production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M row-vector selected-down production prefill | 2026-07-25 | clean measured/default `69cc0d369`; retained quality `319dfdf3a`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; five paired repetitions | **Superseded before the absolute-quality audit**: assigning one thread per routed D4 activation row in both Q4 and Q6 down preserves BF16 output byte-for-byte and moves clean paired pp512 **379.827 -> 385.997 tok/s (+1.625%)**, with complete sample separation and token 2930 throughout. Its **0.040724836** KL row was relative to an already approximate shipping control and is not an absolute production-quality result; the 2026-07-26 row above repairs and supersedes that claim. Cached-only tracing remains valid attribution at **388.014/358.319/296.060 tok/s** for the pre-repair schedule. [`artifact`](results/2026-07-25-gfx1151-laguna-down-rowvec-production.json). | Superseded; expert-body and trace attribution only | Use the absolute-quality production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M row-vector D8 production prefill | 2026-07-25 | clean measured/default `bd76e452d`; trace attribution repair `dad8c5a8c`; retained quality `319dfdf3a`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; five paired repetitions | **Superseded retained production row**: assigning one thread per routed Q8 activation row preserves D8/BF16 arithmetic byte-for-byte and moves clean paired pp512 **368.203 -> 379.811 tok/s (+3.153%)**, with complete sample separation and token 2930 throughout; prior published production rises **366.933 -> 379.811 (+3.510%)**. The admitted max KL **0.040724836**, **317/320** top-1, neutral decode, and exact lifecycle carry forward without a new approximation. Cached-only tracing measures **381.448/351.663/292.417 tok/s** at 512/1K/4K, cuts selected gate/up **581.061 -> 537.923 ms (-7.42%)**, and cuts kernel sum **1,369.727 -> 1,326.263 ms (-3.17%)**. [`artifact`](results/2026-07-25-gfx1151-laguna-gate-rowvec-production.json). | Yes, for selector-unset c=1 pp512 and the declared bit-identical expert/quality/lifecycle scope | Superseded by the Q4/Q6 row-vector selected-down production row; retain as gate/up provenance. |

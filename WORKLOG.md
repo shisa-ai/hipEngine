@@ -179803,3 +179803,35 @@ Vulkan local sizes verbatim will close the measured gap.
   Retain as the candidate default and require a clean committed A/B before
   publishing production. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`.
+
+## 2026-07-26 — Publish Q6 selected-down 64-row production
+
+- Committed the exact gfx1151 body at `f9a39715b`. A clean seven-repeat
+  counterbalanced one-owner matrix512/attention128 pp512 A/B improves the
+  explicit 32-row rollback **489.109923 -> 492.639894 tok/s (+0.721713%)**,
+  wins all seven paired repetitions, reduces median wall **7.501 ms**, and
+  selects token 2930 in all 14 runs. Raw JSON SHA-256:
+  `177e034b5f6b71111ecd106e3ca549eda1f4eb02ee8d883693ae29e12c2b66be`.
+- Cached-build-only all-family tracing independently measures
+  **493.509/443.214/351.871 tok/s** at 512/1K/4K. At pp512,
+  wall/span/kernel sum are **1,037.468/1,033.496/1,021.905 ms**. Selected
+  Q4/Q6 down is **201.848 ms**; the 23 full-M512 Q6 candidate calls are
+  **126.040 ms** versus the traced 32-row rollback's **127.888 ms**. The
+  candidate body is local128/VGPR88/LDS5632B/scratch0.
+- Trace child/kernel/summary/agent SHA-256:
+  `303d6afd2de1dc98ed0bb4e74f63c5f08614915c7e06fb910196b64803d27735` /
+  `31db8f7fb33a47f98d460f81a7ad229636b517539c3615140f57637fa223643d` /
+  `cafc009e00704962f2f749c28b8e5af30b358c6a833943b80b8ac235e1979fcf` /
+  `451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078`.
+  Tracked allocation returns to zero from a **77,461,325,460-byte** peak.
+- Because the new consumer is BF16-byte exact to rollback, the direct
+  all-exact maximum KL **0.049542582**, **316/320** top-1, minimum category
+  **96.875%**, Poolside, decode, determinism, and lifecycle gates transfer
+  unchanged. Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`
+  and refreshed the rollup, changelog, kernel catalog, refactor trigger, and
+  post-350 plan. Conservative production is **492.640 tok/s**; **15.299 ms**
+  of clean median wall and **9.496 ms** of traced kernel span remain to 500.
+- Next bounded screen: paired K64 nibble consumption in the direct
+  wave-column Q4 selected gate/up consumer, preserving resident T16 bytes,
+  tile geometry, LDS staging, FP32 accumulation order, and BF16 output.
