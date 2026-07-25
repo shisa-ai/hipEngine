@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_production_absolute_quality_repair",
+  "status": "retained_production_default",
+  "pass": true,
+  "created_at": "2026-07-25T15:58:57.626252+00:00",
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Laguna S 2.1 Q4_K_M pp512 on gfx1151 plus direct all-exact ten-prompt quality, decode, determinism, Poolside, and lifecycle gates",
+  "repo": {
+    "revision": "9ae1e4ea609520f476132d50794a74be58b5de5a",
+    "tracked_clean": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "hip_total_bytes": 128849018880,
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "change": {
+    "family": "scaled hipBLASLt source-F16 projection",
+    "default_algorithm_index": 4,
+    "quality_override": {
+      "in_features": 3072,
+      "out_features": 72,
+      "role": "SWA attention gate",
+      "algorithm_index": 2
+    },
+    "dispatch_count_changed": false,
+    "persistent_bytes_changed": false,
+    "decode_route_changed": false
+  },
+  "absolute_quality": {
+    "baseline": "all_exact",
+    "candidate": "selector-unset production defaults",
+    "teacher_forced_steps": 320,
+    "finite": true,
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_matches": 316,
+    "top1_total": 320,
+    "top1_agreement": 0.9875,
+    "categories": {
+      "code": {
+        "max_kl_divergence": 0.04954258196634279,
+        "top1_matches": 128,
+        "top1_total": 128
+      },
+      "general_en": {
+        "max_kl_divergence": 0.037411925860079964,
+        "top1_matches": 62,
+        "top1_total": 64
+      },
+      "general_ja": {
+        "max_kl_divergence": 0.006586768777142813,
+        "top1_matches": 64,
+        "top1_total": 64
+      },
+      "mixed_ja_en": {
+        "max_kl_divergence": 0.043694208612767196,
+        "top1_matches": 62,
+        "top1_total": 64
+      }
+    },
+    "poolside_oracle": {
+      "pass": true,
+      "kl_divergence": 0.000017512451201671218,
+      "candidate_top1": 94557,
+      "reference_top1": 94557
+    },
+    "free_running_exact_pairs": 24,
+    "free_running_total_pairs": 30,
+    "same_mode_repeat_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_allocated_bytes": 109859542160,
+    "tracked_freed_bytes": 109859542160
+  },
+  "natural_prompt_performance": {
+    "all_exact_prefill_tok_s": 53.43622636723877,
+    "production_prefill_tok_s": 198.46056523487937,
+    "prefill_speedup": 3.713970441530909,
+    "h16_e2e_speedup": 1.8812805476188417,
+    "h32_e2e_speedup": 1.5086494111593869,
+    "h16_decode_speedup": 0.9998594911629215,
+    "h32_decode_speedup": 0.9998314127172596
+  },
+  "pp512": {
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "repetitions": 5,
+    "selector_unset_samples_tok_s": [
+      387.10983700420485,
+      386.98774973333906,
+      385.7480765467181,
+      385.03877398588605,
+      386.5520621343619
+    ],
+    "selector_unset_median_tok_s": 386.5520621343619,
+    "next_token_ids": [
+      2930,
+      2930,
+      2930,
+      2930,
+      2930
+    ],
+    "previous_publication_median_tok_s": 385.99708834662647,
+    "change_vs_previous_publication_percent": 0.14377667720566478,
+    "minimum_milestone_tok_s": 350.0,
+    "all_samples_above_milestone": true
+  },
+  "source_runs": {
+    "absolute_quality": {
+      "raw_path": "/tmp/2026-07-26-gfx1151-laguna-production-absolute.raw.json",
+      "raw_sha256": "2dde2de7d42f248ee443ca9a1d4fa51486635576174504c15878682820f39702",
+      "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison production_absolute --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-26-gfx1151-laguna-production-absolute.raw.json"
+    },
+    "pp512": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_down_rowvec_screen.py",
+      "timing": "one resident owner; warm each mode; five counterbalanced synchronized pp512 repetitions"
+    }
+  },
+  "decision": {
+    "pass": true,
+    "failed_checks": [],
+    "reason": "The shape-only hipBLASLt schedule restores direct all-exact KL compliance, preserves category top-1/decode/determinism/lifecycle gates, and clean selector-unset pp512 remains above 350 tok/s in every sample."
+  },
+  "supersedes_quality_claim": "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json"
+}

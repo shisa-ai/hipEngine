@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-26
+
+- [retained absolute-quality gfx1151 Laguna production repair] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / direct all-exact -> selector-unset production passes at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle by selecting hipBLASLt heuristic 2 only for the K3072xN72 SWA gate while retaining heuristic 4 elsewhere; clean matrix512/attention128 pp512 is **386.552 tok/s** with all five samples **385.039–387.110**, superseding the prior shipping-relative **0.040724836** quality claim that masked an absolute **0.053502420** failure; `benchmarks/results/2026-07-26-gfx1151-laguna-production-absolute-quality.json`.
+
 ## 2026-07-25
 
 - [rejected and removed gfx1151 Laguna scalar qrow4 SWA key splitting] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / explicit matrix512/attention128 pp512 scalar qrow4 contiguous-key splits regress production **385.998 -> 379.597 tok/s (-1.658%)** with four waves and **386.075 -> 377.219 (-2.294%)** with two waves, always token 2930. The wrap/eviction oracle passes, but the four-way body allocates VGPR88/LDS8704B and its barriers, partial-PV LDS, and online-state merge outweigh key parallelism; all code/registry/runtime/test surfaces are removed. This closes scalar qrow4 state splitting, not tiled QK/PV; `benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`.
