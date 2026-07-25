@@ -179415,3 +179415,24 @@ Vulkan local sizes verbatim will close the measured gap.
   The next bounded gate/up screen is non-temporal T16 weight loading, admitted
   to timing only if extracted ISA proves the compiler emitted a distinct cache
   policy.
+
+## 2026-07-26 — Reject non-temporal Laguna T16 gate/up loads
+
+- RED extended the exact Q4 T16 D8 wave-column fixture and failed on the
+  missing diagnostic selector. GREEN added a separate production-geometry
+  export using `__builtin_nontemporal_load` only for T16 weight quant and
+  metadata loads; the focused CPU-reference bundle reports **13 passed** and
+  the actual-layer BF16 checksum remains **1114.1769413301445**.
+- Extracted gfx1151 ISA proves the requested policy survived compilation: all
+  32 `global_load_u8` quant loads and both `global_load_d16_b16` metadata
+  loads gain `slc dlc`; activation/routing loads and the **13,704-byte** kernel
+  body remain unchanged. The device object SHA-256 is
+  `4f068007f0dec8c5b8a36b3189d00302ad309fdbeb43654803f2afc047206f20`.
+- Nine counter-rotated burst-three actual layer-1/natural-M512 samples regress
+  production **7.810509 -> 10.355449 ms (+32.584%)**. Removed every candidate
+  HIP, wrapper, leaf-harness, and test surface. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json`;
+  raw output SHA-256
+  `2dfcb4084c6e762ff34fb708eb6c82036963c38f4a1c537c679e7c806ad0000a`.
+  The 500 gate remains open at **448.203 tok/s**; next screen the independent
+  Q6 local128 row-half/direct-column mapping.

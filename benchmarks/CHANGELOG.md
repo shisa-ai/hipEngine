@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed gfx1151 Laguna non-temporal T16 gate/up loads] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural-M512 leaf regresses **7.811 -> 10.355 ms (+32.584%)** after extracted ISA confirms all streamed T16 Q4 byte/half loads gain `slc dlc`; the 13-case gate passes and actual BF16 checksum is identical, but cache bypass is harmful, so every candidate surface is removed; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json`.
+
 - [rejected and removed gfx1151 Laguna gate/up wave-column geometries] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural-M512 leaf retains 128x32/local128 at **8.048 ms** over 64x32/local64 **8.087 ms (+0.486%)** and two-columns-per-lane 256x32 **9.702 ms (+20.550%)**; all outputs are BF16-byte identical, but local64 keeps VGPR80 and the 64-accumulator wide body rises to VGPR128, so all candidate surfaces are removed; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`.
 
 - [retained exact gfx1151 Laguna Q4-down wave-column production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / selector-unset matrix512/attention128 pp512 improves all-row-vector rollback **433.081 -> 448.203 tok/s (+3.492%)** with complete seven-sample separation and token 2930 by mapping Q4 output columns across two wave32s while leaving the independently slower Q6 transfer rejected; direct all-exact quality remains max KL **0.049542582**, **316/320** top-1 with neutral decode and exact lifecycle, while cached tracing measures **449.522 tok/s** and cuts selected down **257.747 -> 216.616 ms (-15.96%)**; `benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-production.json`.

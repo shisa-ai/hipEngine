@@ -641,7 +641,7 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. T16 K64 nibble reuse is inapplicable, and measured 64/256-column alternatives lose. Screen non-temporal weight loads only if compiler inspection proves the cache policy changed; otherwise move to a new scheduling/layout premise. |
+| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. T16 K64 nibble reuse is inapplicable, measured 64/256-column alternatives lose, and explicit `slc dlc` weight loads regress the natural M512 leaf by 32.58%. A further win requires a new scheduling/layout premise. |
 | Selected D4 Q4/Q6 down | **216.616 ms** | **19.30%** | Q4 wave columns are retained; Q6 quartet-shuffle wave columns regress. Reopen Q6 only with a mapping that avoids the VGPR88/shuffle penalty, such as two-row-half wave pairs at local128 or direct per-column decode. |
 | Global + SWA attention | **217.589 ms** | **19.39%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.626 ms** | **11.91%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
@@ -681,12 +681,12 @@ Immediate execution queue:
 1. Keep the retained Q4-down result and do not retry its rejected Q6
    quartet-shuffle analogue. Raw-GGUF K64 nibble reuse is inapplicable to T16;
    64x32/local64 and two-columns-per-lane 256x32 both lost the actual layer-1
-   gate. Screen non-temporal T16 weight loads next, but proceed to timing only
-   if extracted ISA proves a distinct cache policy.
-2. If non-temporal loads are unavailable or not positive, screen a Q6 local128
-   wave-column mapping with two row-half wave pairs or direct per-column
-   decode; reject it unless Q6 alone improves and production BF16 bytes remain
-   exact.
+   gate. Explicit non-temporal T16 weight loads emitted `slc dlc` exactly as
+   requested but regressed the natural M512 leaf by 32.58%; do not retry cache
+   bypass without a materially different traffic profile.
+2. Screen a Q6 local128 wave-column mapping with two row-half wave pairs or
+   direct per-column decode; reject it unless Q6 alone improves and production
+   BF16 bytes remain exact.
 3. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1112,6 +1112,22 @@ relief at VGPR80, while the wide tile rises to VGPR128; all three use 1,536 B
 LDS and zero scratch. The production 128x32/local128 geometry is retained and
 all candidate HIP/wrapper/harness/test surfaces are removed. Evidence:
 [`2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-geometry-rejected.json).
+
+Twenty-second post-350 screen: **non-temporal T16 weight loads rejected and
+removed**. A separate production-geometry export applied
+`__builtin_nontemporal_load` only to the streamed T16 Q4 quant and metadata
+loads. Extracted gfx1151 ISA proves this was not a no-op: all 32
+`global_load_u8` quant loads and both `global_load_d16_b16` metadata loads
+gain `slc dlc`, while activation/routing loads, the 13,704-byte kernel body,
+and arithmetic remain unchanged.
+
+The focused CPU-reference bundle passes all 13 cases, and both actual-layer
+paths produce the same finite BF16 checksum **1114.1769413301445**. Nine
+counter-rotated burst-three natural-M512 samples nevertheless regress
+production **7.811 -> 10.355 ms (+32.584%)**. Bypassing the default cache
+policy is therefore actively harmful for this resident-T16 access pattern.
+All diagnostic HIP, wrapper, harness, and test surfaces were removed. Evidence:
+[`2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json).
 
 Production evidence:
 
@@ -1670,7 +1686,8 @@ Do not repeat:
 - per-dispatch T16-to-raw/X8 shared transposes. Direct T16 MMQ addressing is
   already implemented and is not part of this closed work;
 - blanket non-temporal weight loads for rows>1 without a new cache/traffic
-  profile; the prior gfx1151 control regressed rows>1 to 0.68x;
+  profile; both the prior gfx1151 control and the production-geometry T16
+  `slc dlc` screen regress decisively;
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - AOTriton Laguna head-dim-128 adaptation without a newly supported geometry;
 - graph replay or launch-count work while span-minus-sum is sub-percent.
