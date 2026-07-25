@@ -140,6 +140,26 @@ def test_iq2_grid64_cli_is_defaults_on_with_explicit_disable(monkeypatch) -> Non
     assert benchmark._parse_args().disable_iq2_grid64
 
 
+def test_q5_fixed_metadata_cli_is_explicit_and_role_scoped(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    args = benchmark._parse_args()
+    assert not args.q5_fixed_meta_output
+    assert not args.q5_fixed_meta_query_gate
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        [
+            "laguna_target_ar_bench.py",
+            "--q5-fixed-meta-output",
+            "--q5-fixed-meta-query-gate",
+        ],
+    )
+    args = benchmark._parse_args()
+    assert args.q5_fixed_meta_output
+    assert args.q5_fixed_meta_query_gate
+
+
 def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
     monkeypatch,
 ) -> None:

@@ -118,6 +118,21 @@ def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() ->
     assert resolve_laguna_q5_wave32x2_variants(
         "hip_gfx1151", output=True, query_gate=True
     ) == expected
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100",
+        fixed_meta_output=True,
+        fixed_meta_query_gate=True,
+    ) == (
+        "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+        "wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+    )
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100",
+        output=False,
+        query_gate=False,
+        fixed_meta_output=True,
+        fixed_meta_query_gate=True,
+    ) == (None, None)
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:

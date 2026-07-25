@@ -96,6 +96,12 @@ _I64_NBYTES = DType.INT64.itemsize
 _U8_NBYTES = DType.BOOL.itemsize
 _Q5_WAVE32X2_OUTPUT_VARIANT = "wave32x2_gemv_decode_bf16_bf16_out"
 _Q5_WAVE32X2_QUERY_GATE_VARIANT = "wave32x2_gemv_decode_bf16_f32_out"
+_Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT = (
+    "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+)
+_Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT = (
+    "wave32x2_fixed_meta_gemv_decode_bf16_f32_out"
+)
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -1151,8 +1157,10 @@ def resolve_laguna_q5_wave32x2_variants(
     *,
     output: bool | None = None,
     query_gate: bool | None = None,
+    fixed_meta_output: bool = False,
+    fixed_meta_query_gate: bool = False,
 ) -> tuple[str | None, str | None]:
-    """Resolve D12 role variants from backend metadata with explicit rollback."""
+    """Resolve D12 role variants and explicit exact fixed-metadata candidates."""
 
     output_enabled = (
         bool(backend_package_capability(backend, "LAGUNA_Q5_WAVE32X2_OUTPUT", False))
@@ -1164,9 +1172,19 @@ def resolve_laguna_q5_wave32x2_variants(
         if query_gate is None
         else bool(query_gate)
     )
+    output_variant = (
+        _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT
+        if fixed_meta_output
+        else _Q5_WAVE32X2_OUTPUT_VARIANT
+    )
+    query_gate_variant = (
+        _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
+        if fixed_meta_query_gate
+        else _Q5_WAVE32X2_QUERY_GATE_VARIANT
+    )
     return (
-        _Q5_WAVE32X2_OUTPUT_VARIANT if output_enabled else None,
-        _Q5_WAVE32X2_QUERY_GATE_VARIANT if query_gate_enabled else None,
+        output_variant if output_enabled else None,
+        query_gate_variant if query_gate_enabled else None,
     )
 
 
@@ -1572,6 +1590,8 @@ class LagunaGGUFResidentSession:
         use_head_kv_fusion: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
+        use_q5_fixed_meta_output: bool = False,
+        use_q5_fixed_meta_query_gate: bool = False,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1606,11 +1626,19 @@ class LagunaGGUFResidentSession:
                 self.backend,
                 output=use_q5_wave32x2_output,
                 query_gate=use_q5_wave32x2_query_gate,
+                fixed_meta_output=use_q5_fixed_meta_output,
+                fixed_meta_query_gate=use_q5_fixed_meta_query_gate,
             )
         )
         self.use_head_kv_fusion = False
         self.use_q5_wave32x2_output = self._q5_output_variant is not None
         self.use_q5_wave32x2_query_gate = self._q5_query_gate_variant is not None
+        self.use_q5_fixed_meta_output = (
+            self._q5_output_variant == _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT
+        )
+        self.use_q5_fixed_meta_query_gate = (
+            self._q5_query_gate_variant == _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
+        )
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
             self.backend,

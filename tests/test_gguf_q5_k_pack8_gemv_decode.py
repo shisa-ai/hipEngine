@@ -22,7 +22,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out,
     gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out,
+    gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out,
+    gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
+    gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out,
     gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out,
     register_gguf_k_gemv_kernels,
@@ -118,6 +121,18 @@ def test_q5_k_pack8_decode_registry_keys_resolve() -> None:
         quant="gguf_q5_k",
         variant="wave32x2_gemv_decode_bf16_f32_out",
     ) is gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q5_k",
+        variant="wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+    ) is gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear_pair",
+        quant="gguf_q5_k",
+        variant="wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+    ) is gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out
     assert not is_registered(
         KernelKey(
             "hip_gfx1100",
@@ -263,6 +278,50 @@ def test_q5_k_wave32x2_is_bit_exact_to_pack8_for_synthetic_blocks(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("in_features,out_features", [(256, 8), (512, 16)])
+def test_q5_k_wave32x2_fixed_meta_is_bit_exact_to_retained(
+    in_features: int,
+    out_features: int,
+) -> None:
+    rng = np.random.default_rng(20260725 + in_features + out_features)
+    x = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(1, in_features)))
+    qweight = make_q5_k_weight(out_features, in_features)
+    library = build_gguf_k_gemv(load=True)
+
+    expected_bf16 = _run(
+        gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out,
+        x,
+        qweight,
+        out_dtype=np.uint16,
+        library=library,
+    )
+    actual_bf16 = _run(
+        gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
+        x,
+        qweight,
+        out_dtype=np.uint16,
+        library=library,
+    )
+    expected_f32 = _run(
+        gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out,
+        x,
+        qweight,
+        out_dtype=np.float32,
+        library=library,
+    )
+    actual_f32 = _run(
+        gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
+        x,
+        qweight,
+        out_dtype=np.float32,
+        library=library,
+    )
+
+    np.testing.assert_array_equal(actual_bf16, expected_bf16)
+    np.testing.assert_array_equal(actual_f32.view(np.uint32), expected_f32.view(np.uint32))
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_q5_k_wave32x2_preserves_adversarial_nonfinite_classes_and_defined_bits() -> None:
     in_features, out_features = 256, 8
     x = _f32_to_bf16_u16(
@@ -307,21 +366,38 @@ def test_q5_k_wave32x2_preserves_adversarial_nonfinite_classes_and_defined_bits(
         out_dtype=np.float32,
         library=library,
     )
+    fixed_meta_bf16 = _run(
+        gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
+        x,
+        qweight,
+        out_dtype=np.uint16,
+        library=library,
+    )
+    fixed_meta_f32 = _run(
+        gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
+        x,
+        qweight,
+        out_dtype=np.float32,
+        library=library,
+    )
 
     expected_bf16_nan = (expected_bf16 & 0x7FFF) > 0x7F80
-    actual_bf16_nan = (actual_bf16 & 0x7FFF) > 0x7F80
-    np.testing.assert_array_equal(actual_bf16_nan, expected_bf16_nan)
-    np.testing.assert_array_equal(
-        actual_bf16[~expected_bf16_nan], expected_bf16[~expected_bf16_nan]
-    )
+    for observed_bf16 in (actual_bf16, fixed_meta_bf16):
+        observed_bf16_nan = (observed_bf16 & 0x7FFF) > 0x7F80
+        np.testing.assert_array_equal(observed_bf16_nan, expected_bf16_nan)
+        np.testing.assert_array_equal(
+            observed_bf16[~expected_bf16_nan], expected_bf16[~expected_bf16_nan]
+        )
     expected_f32_bits = expected_f32.view(np.uint32)
-    actual_f32_bits = actual_f32.view(np.uint32)
     expected_f32_nan = (expected_f32_bits & 0x7FFFFFFF) > 0x7F800000
-    actual_f32_nan = (actual_f32_bits & 0x7FFFFFFF) > 0x7F800000
-    np.testing.assert_array_equal(actual_f32_nan, expected_f32_nan)
-    np.testing.assert_array_equal(
-        actual_f32_bits[~expected_f32_nan], expected_f32_bits[~expected_f32_nan]
-    )
+    for observed_f32 in (actual_f32, fixed_meta_f32):
+        observed_f32_bits = observed_f32.view(np.uint32)
+        observed_f32_nan = (observed_f32_bits & 0x7FFFFFFF) > 0x7F800000
+        np.testing.assert_array_equal(observed_f32_nan, expected_f32_nan)
+        np.testing.assert_array_equal(
+            observed_f32_bits[~expected_f32_nan],
+            expected_f32_bits[~expected_f32_nan],
+        )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -348,7 +424,15 @@ def test_q5_k_wave32x2_is_bit_exact_at_laguna_output_shapes(in_features: int) ->
         out_dtype=np.uint16,
         library=library,
     )
+    fixed_meta = _run(
+        gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
+        x,
+        qweight,
+        out_dtype=np.uint16,
+        library=library,
+    )
     np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(fixed_meta, expected)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -487,10 +571,14 @@ def test_q5_k_pack8_decode_f32_pair_is_bit_exact_at_laguna_attention_shapes(
     actual_b = np.empty((rows, out_features_b), dtype=np.float32)
     candidate_a = np.empty((rows, out_features_a), dtype=np.float32)
     candidate_b = np.empty((rows, out_features_b), dtype=np.float32)
+    fixed_meta_a = np.empty((rows, out_features_a), dtype=np.float32)
+    fixed_meta_b = np.empty((rows, out_features_b), dtype=np.float32)
     actual_a_buf = malloc(actual_a.nbytes)
     actual_b_buf = malloc(actual_b.nbytes)
     candidate_a_buf = malloc(candidate_a.nbytes)
     candidate_b_buf = malloc(candidate_b.nbytes)
+    fixed_meta_a_buf = malloc(fixed_meta_a.nbytes)
+    fixed_meta_b_buf = malloc(fixed_meta_b.nbytes)
     try:
         copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
         copy_host_to_device(qweight_a_buf, host_array_ptr(qweight_a), qweight_a.nbytes)
@@ -519,12 +607,28 @@ def test_q5_k_pack8_decode_f32_pair_is_bit_exact_at_laguna_attention_shapes(
             out_features_b,
             library=library,
         )
+        gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out(
+            x_buf.ptr,
+            qweight_a_buf.ptr,
+            qweight_b_buf.ptr,
+            fixed_meta_a_buf.ptr,
+            fixed_meta_b_buf.ptr,
+            rows,
+            in_features,
+            out_features_a,
+            out_features_b,
+            library=library,
+        )
         copy_device_to_host(host_array_ptr(actual_a), actual_a_buf, actual_a.nbytes)
         copy_device_to_host(host_array_ptr(actual_b), actual_b_buf, actual_b.nbytes)
         copy_device_to_host(host_array_ptr(candidate_a), candidate_a_buf, candidate_a.nbytes)
         copy_device_to_host(host_array_ptr(candidate_b), candidate_b_buf, candidate_b.nbytes)
+        copy_device_to_host(host_array_ptr(fixed_meta_a), fixed_meta_a_buf, fixed_meta_a.nbytes)
+        copy_device_to_host(host_array_ptr(fixed_meta_b), fixed_meta_b_buf, fixed_meta_b.nbytes)
     finally:
         for buffer in (
+            fixed_meta_b_buf,
+            fixed_meta_a_buf,
             candidate_b_buf,
             candidate_a_buf,
             actual_b_buf,
@@ -539,3 +643,5 @@ def test_q5_k_pack8_decode_f32_pair_is_bit_exact_at_laguna_attention_shapes(
     np.testing.assert_array_equal(actual_b.view(np.uint32), expected_b.view(np.uint32))
     np.testing.assert_array_equal(candidate_a.view(np.uint32), expected_a.view(np.uint32))
     np.testing.assert_array_equal(candidate_b.view(np.uint32), expected_b.view(np.uint32))
+    np.testing.assert_array_equal(fixed_meta_a.view(np.uint32), expected_a.view(np.uint32))
+    np.testing.assert_array_equal(fixed_meta_b.view(np.uint32), expected_b.view(np.uint32))

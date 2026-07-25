@@ -69,6 +69,16 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="roll back the exact expanded-magnitude IQ2 c=1 default",
     )
+    parser.add_argument(
+        "--q5-fixed-meta-output",
+        action="store_true",
+        help="select the exact fixed-metadata Q5 c=1 attention-output candidate",
+    )
+    parser.add_argument(
+        "--q5-fixed-meta-query-gate",
+        action="store_true",
+        help="select the exact fixed-metadata Q5 c=1 query/gate candidate",
+    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -198,6 +208,8 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         prefill_chunk_size=args.chunk_size,
         iq3_c1_down_schedule=args.iq3_c1_down_schedule,
         use_iq2_grid64=False if args.disable_iq2_grid64 else None,
+        use_q5_fixed_meta_output=args.q5_fixed_meta_output,
+        use_q5_fixed_meta_query_gate=args.q5_fixed_meta_query_gate,
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
         swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -576,6 +588,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.chunk_size,
             iq3_c1_down_schedule=args.iq3_c1_down_schedule,
             use_iq2_grid64=False if args.disable_iq2_grid64 else None,
+            use_q5_fixed_meta_output=args.q5_fixed_meta_output,
+            use_q5_fixed_meta_query_gate=args.q5_fixed_meta_query_gate,
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -695,6 +709,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_swa_split_wave_local": owner.use_swa_split_wave_local,
             "use_head_kv_fusion": owner.use_head_kv_fusion,
             "use_iq2_grid64": owner.use_iq2_grid64,
+            "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
+            "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {
