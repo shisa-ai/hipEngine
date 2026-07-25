@@ -3083,6 +3083,16 @@ extern "C" int hipengine_gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
+extern "C" int hipengine_gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out(
+    const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,
+    uint16_t* out_a, uint16_t* out_b, int64_t rows, int64_t in_features,
+    int64_t out_features_a, int64_t out_features_b, int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out<uint16_t>(
+      x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features_a,
+      out_features_b, threads, stream);
+}
+
 extern "C" int hipengine_gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out(
     const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,
     float* out_a, float* out_b, int64_t rows, int64_t in_features,

@@ -27,6 +27,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_iq2_grid64,
     resolve_laguna_mixed_attention_projections,
     resolve_laguna_mixed_q6_fixed_meta_attention,
+    resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
 )
 from tests._laguna_synthetic import make_laguna_info
@@ -134,6 +135,16 @@ def test_laguna_mixed_q6_fixed_metadata_default_is_gfx1100_only_and_rollbackable
     assert resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1100", True)
     assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1100", False)
     assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1151")
+
+
+def test_laguna_q5_shared_fixed_metadata_is_default_off_and_rollbackable() -> None:
+    assert not backend_package_capability(
+        "hip_gfx1100", "LAGUNA_Q5_SHARED_FIXED_METADATA", False
+    )
+    assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1100")
+    assert resolve_laguna_q5_shared_fixed_meta("hip_gfx1100", True)
+    assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1100", False)
+    assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1151")
 
 
 def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() -> None:

@@ -106,6 +106,7 @@ _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT = (
 _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT = (
     "wave32x2_fixed_meta_gemv_decode_bf16_f32_out"
 )
+_Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -1284,6 +1285,23 @@ def resolve_laguna_mixed_q6_fixed_meta_attention(
     )
 
 
+def resolve_laguna_q5_shared_fixed_meta(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the default-off exact shared-Q5 pair candidate."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_Q5_SHARED_FIXED_METADATA",
+            False,
+        )
+    )
+
+
 def resolve_laguna_q5_wave32x2_variants(
     backend: str,
     *,
@@ -1737,6 +1755,7 @@ class LagunaGGUFResidentSession:
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
         use_q5_fixed_meta_query_gate: bool | None = None,
+        use_q5_shared_fixed_meta: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         iq3_selected_down_tile: int = 1,
@@ -1785,6 +1804,13 @@ class LagunaGGUFResidentSession:
         )
         self.use_q5_fixed_meta_query_gate = (
             self._q5_query_gate_variant == _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
+        )
+        self.use_q5_shared_fixed_meta = resolve_laguna_q5_shared_fixed_meta(
+            self.backend,
+            use_q5_shared_fixed_meta,
+        )
+        self._q5_shared_pair_variant = (
+            _Q5_SHARED_FIXED_META_VARIANT if self.use_q5_shared_fixed_meta else None
         )
         self.use_mixed_q5_q6_attention = resolve_laguna_mixed_attention_projections(
             self.backend,
@@ -3204,6 +3230,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,
+            shared_pair_decode_variant=self._q5_shared_pair_variant,
         )
         config = self.weights.config
         if layer_id + 1 < config.block_count:
@@ -3684,5 +3711,6 @@ __all__ = [
     "resolve_laguna_iq2_grid64",
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
+    "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",
 ]

@@ -1212,7 +1212,7 @@ def _resolve_gguf_linear_pair_kind(
     )
     if (
         registered_decode_variant is not None
-        and output_dtype == GGUF_OUTPUT_F32
+        and output_dtype in {GGUF_OUTPUT_BF16, GGUF_OUTPUT_F32}
         and use_gemv
         and rows == 1
         and dispatch_a.abi == "raw"

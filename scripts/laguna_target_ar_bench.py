@@ -80,6 +80,11 @@ def _parse_args() -> argparse.Namespace:
         help="roll back exact fixed-metadata Q5 c=1 query/gate",
     )
     parser.add_argument(
+        "--use-q5-shared-fixed-meta",
+        action="store_true",
+        help="enable exact fixed-metadata wave32x2 for c=1 shared Q5 gate/up",
+    )
+    parser.add_argument(
         "--disable-mixed-q5-q6-attention",
         action="store_true",
         help="restore the exact Q5/Q6 pair and Q8 singleton projection chain",
@@ -224,6 +229,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_q5_fixed_meta_query_gate=(
             False if args.disable_q5_fixed_meta_query_gate else None
         ),
+        use_q5_shared_fixed_meta=(True if args.use_q5_shared_fixed_meta else None),
         use_mixed_q5_q6_attention=(
             False if args.disable_mixed_q5_q6_attention else None
         ),
@@ -614,6 +620,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_q5_fixed_meta_query_gate=(
                 False if args.disable_q5_fixed_meta_query_gate else None
             ),
+            use_q5_shared_fixed_meta=(
+                True if args.use_q5_shared_fixed_meta else None
+            ),
             use_mixed_q5_q6_attention=(
                 False if args.disable_mixed_q5_q6_attention else None
             ),
@@ -741,6 +750,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_iq2_grid64": owner.use_iq2_grid64,
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
             "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,
+            "use_q5_shared_fixed_meta": owner.use_q5_shared_fixed_meta,
             "use_mixed_q5_q6_attention": owner.use_mixed_q5_q6_attention,
             "use_mixed_q6_fixed_meta_attention": (
                 owner.use_mixed_q6_fixed_meta_attention
