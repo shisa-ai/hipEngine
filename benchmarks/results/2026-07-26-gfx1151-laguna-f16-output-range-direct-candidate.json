@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_default_candidate",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "hidden_size": 3072,
+    "layers": 48
+  },
+  "range_proof": {
+    "method": "Per-layer Cauchy-Schwarz over the actual attention norm maximum and F16 value/gate maximum row L2 norms, including FP32 dot accumulation, BF16 round-to-nearest expansion, a 2x online-attention numerical factor, and the runtime's separate 2x admission reserve.",
+    "worst_layer": 46,
+    "attention_norm_abs_max": 0.26171875,
+    "value_row_l2_max": 2.2755058433777586,
+    "gate_row_l2_max": 8.178021150369057,
+    "gated_attention_bf16_abs_bound": 7957.538643636415,
+    "runtime_admission_bound": 15915.07728727283,
+    "fp16_max_finite": 65504.0,
+    "admission_margin_ratio": 4.115845548069255,
+    "consequence": "Every finite gated attention BF16 output in the declared model path selects row scale 1 before the F16 attention-output projection."
+  },
+  "exact_cast_micro": {
+    "protocol": "Eleven counterbalanced HIP-event samples of all 48 pp512 attention-output input/output cast pairs: 12x width 6144 and 36x width 9216.",
+    "scaled_samples_ms": [
+      3.56941294670105,
+      3.4197421073913574,
+      3.4039320945739746,
+      3.405186891555786,
+      3.400538921356201,
+      3.3979849815368652,
+      3.412421941757202,
+      3.3984270095825195,
+      3.3993079662323,
+      3.407118082046509,
+      3.394824981689453
+    ],
+    "direct_samples_ms": [
+      2.7715260982513428,
+      2.7110838890075684,
+      2.6820690631866455,
+      2.679795026779175,
+      2.6790740489959717,
+      2.6819190979003906,
+      2.679203987121582,
+      2.6800050735473633,
+      2.679368019104004,
+      2.6798489093780518,
+      2.687222957611084
+    ],
+    "scaled_median_ms": 3.4039320945739746,
+    "direct_median_ms": 2.6800050735473633,
+    "latency_change_percent": -21.2673755208156,
+    "median_saved_ms": 0.7239270210266113
+  },
+  "full_model_ab": {
+    "protocol": {
+      "tokens": 512,
+      "matrix_chunk_rows": 512,
+      "attention_chunk_rows": 128,
+      "repetitions": 7,
+      "order": "counterbalanced",
+      "resident_owner": "shared",
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u -c 'import scripts.laguna_f16_norm_direct_ab as m; m._MODES={\"norm_direct_rollback\":\"hipblaslt_norm_direct\",\"range_direct_candidate\":\"hipblaslt_range_direct\"}; raise SystemExit(m.main())' --repetitions 7 --require-cached-build --output /tmp/laguna-f16-output-direct-ab.json"
+    },
+    "norm_direct_rollback_samples_tok_s": [
+      506.70074469996734,
+      505.5234704061072,
+      505.80459476533764,
+      503.4331867031384,
+      504.3472849182406,
+      507.5285365624172,
+      506.8262603209654
+    ],
+    "range_direct_candidate_samples_tok_s": [
+      507.8040547351094,
+      507.07058930575204,
+      505.6228085492752,
+      506.26828213986755,
+      504.3175064834963,
+      506.6798504349525,
+      506.2842917928656
+    ],
+    "norm_direct_rollback_median_tok_s": 505.80459476533764,
+    "range_direct_candidate_median_tok_s": 506.2842917928656,
+    "relative_change_percent": 0.09483840844712876,
+    "median_wall_change_ms": -0.9590908885002136,
+    "paired_wins": 3,
+    "paired_samples": 7,
+    "next_token_id": 2930,
+    "complete_state_exact": true,
+    "logits_sha256": "0014c1cbbf2aa19f24e4a354f0ef1593f818840677c000eb0423584a233446cb",
+    "final_hidden_sha256": "7f45e9925b176db56e5efad6fc49d5a399924f62f17c8678f59dfb485d9c2b7c",
+    "post_layer_hidden_sha256": "f7d73ad00f630ca6a55d1b004809e84088515ff2772f51b33180450d09fff2f8",
+    "kv_sha256": "aaa785452719e996b27e6929c83c0089f89d45f466a077da2336edc2c133748a",
+    "raw_sha256": "e5624cd226cc125747d8eebdd97beb79ede4952c9a7bd1536d287aaf2b74576f"
+  },
+  "decision": {
+    "retained": true,
+    "scope": "gfx1151 package default candidate",
+    "production_change": "LAGUNA_F16_PREFILL_MODE selects hipblaslt_range_direct",
+    "quality_transfer": "Complete state is byte/value exact to admitted hipblaslt_norm_direct, so the absolute quality gate transfers.",
+    "next": "Commit, run clean selector-unset production publication, and refresh cached family attribution."
+  }
+}

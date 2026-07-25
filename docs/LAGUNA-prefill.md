@@ -694,8 +694,14 @@ Immediate execution queue:
    with complete-state exactness. Clean selector-unset publication reaches
    **503.869 tok/s** median and refreshed attribution cuts source-F16
    **134.442 -> 128.274 ms (-4.588%)**. The remaining scaled boundary is the
-   unnormalized attention output; reopen it only with a static model-wide
-   range proof, not sampled activation maxima.
+   unnormalized attention output. A static per-layer Cauchy-Schwarz proof over
+   actual norm/value/gate weights now bounds its BF16 producer at
+   **7,957.539**, leaving **4.116x** FP16 margin after the runtime's separate
+   2x reserve. The range-direct candidate improves the exact 48-layer cast
+   sequence **3.404 -> 2.680 ms (-21.27%)** and is complete-state exact in
+   seven pp512 pairs; full-model medians move **505.805 -> 506.284 tok/s
+   (+0.095%)** inside run variance. It is the gfx1151 candidate default;
+   clean selector-unset publication and refreshed attribution are next.
 2. Reopen the **218.516 ms attention** family only with a different premise
    from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles, and
    single-wave two-head fusion. The head-pair body was exact but regressed

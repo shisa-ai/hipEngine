@@ -34,7 +34,7 @@ should be removed or collapsed.
   rejected D4 gate default candidate at that boundary. Pre-admission pp512
   samples were 353.951/356.082/356.473 tok/s.
 
-## Laguna `f16_prefill_mode=hipblaslt_norm_direct`
+## Laguna `f16_prefill_mode=hipblaslt_range_direct`
 
 - Added 2026-07-25 as an explicit session-local LAP-6 candidate. Rows greater
   than one cast each BF16 producer row once into existing FP16-sized scratch,
@@ -54,6 +54,14 @@ should be removed or collapsed.
   `hipblaslt_scaled` only as a one-release rollback for the range-qualified
   producer boundary, then collapse it while retaining the general scaled cast
   for the unnormalized attention-output projection.
+- The second 2026-07-26 range proof computes per-layer value/gate maximum row
+  L2 norms from the resident F16 source and applies Cauchy-Schwarz, FP32 dot,
+  BF16-rounding, and 2x online-attention safety factors. The worst gated
+  attention-output bound is **7,957.539**, still **4.116x** inside FP16 after
+  the runtime's separate 2x admission reserve. `hipblaslt_range_direct` now
+  removes the remaining output row reduction/scale and is the gfx1151 default;
+  keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
+  one-release rollback window, then collapse both selectors.
 
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 

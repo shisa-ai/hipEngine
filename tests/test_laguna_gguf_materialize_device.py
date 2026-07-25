@@ -78,6 +78,13 @@ def test_laguna_materialize_spec_copies_dense_and_raw_source_bytes() -> None:
             DType.FP32,
         ),
         (
+            "layers.0.attn_v",
+            tensor_info("attn_v", (2, 4), GGMLQuantizationType.F16),
+            np.arange(8, dtype=np.float16).reshape(2, 4),
+            "raw",
+            DType.FP16,
+        ),
+        (
             "root.token_embedding",
             tensor_info("q4_raw", (2, 256), GGMLQuantizationType.Q4_K),
             np.arange(2 * 144, dtype=np.uint8).reshape(2, 144),
@@ -98,6 +105,11 @@ def test_laguna_materialize_spec_copies_dense_and_raw_source_bytes() -> None:
         assert _device_bytes(weight, runtime, allocation_name) == raw.tobytes()
         assert weight.source_abs_max == (
             float(np.max(np.abs(raw))) if slot_path.endswith(".attn_norm") else None
+        )
+        assert weight.source_row_l2_max == (
+            float(np.max(np.linalg.norm(raw.astype(np.float64), axis=1)))
+            if slot_path.endswith(".attn_v")
+            else None
         )
         weight.free(runtime=runtime)
         assert runtime.buffers == {}

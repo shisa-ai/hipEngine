@@ -677,6 +677,13 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
                 slot: SimpleNamespace(
                     spec=SimpleNamespace(layout=LAYOUT_DENSE_F16),
                     source_abs_max=0.294921875 if slot == "attn_norm" else None,
+                    source_row_l2_max=(
+                        2.0
+                        if slot == "attn_v"
+                        else 8.0
+                        if slot == "attn_gate"
+                        else None
+                    ),
                 )
                 for slot in (
                     "attn_q",
@@ -785,7 +792,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
     )
     assert session.dense_q4_prefill_mode == "wmma_pack8"
-    assert session.f16_prefill_mode == "hipblaslt_norm_direct"
+    assert session.f16_prefill_mode == "hipblaslt_range_direct"
     assert session.group_compact_mode == "parallel"
     assert session.verifier_scratch is None
     session.close()
@@ -807,15 +814,22 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert materialize_kwargs["safety_reserve_nbytes"] == 4 * 2**30
 
 
-def test_laguna_direct_norm_prefill_mode_requires_safe_complete_norm_metadata() -> None:
+def test_laguna_direct_prefill_modes_require_safe_complete_range_metadata() -> None:
     config = _config()
 
     class Layer:
-        def __init__(self, norm_abs_max):
+        def __init__(self, norm_abs_max, *, v_row_l2=2.0, gate_row_l2=8.0):
             self.weights = {
                 slot: SimpleNamespace(
                     spec=SimpleNamespace(layout=LAYOUT_DENSE_F16),
                     source_abs_max=norm_abs_max if slot == "attn_norm" else None,
+                    source_row_l2_max=(
+                        v_row_l2
+                        if slot == "attn_v"
+                        else gate_row_l2
+                        if slot == "attn_gate"
+                        else None
+                    ),
                 )
                 for slot in (
                     "attn_q",
@@ -838,6 +852,8 @@ def test_laguna_direct_norm_prefill_mode_requires_safe_complete_norm_metadata() 
     )
     session.set_f16_prefill_mode("hipblaslt_norm_direct")
     assert session.f16_prefill_mode == "hipblaslt_norm_direct"
+    session.set_f16_prefill_mode("hipblaslt_range_direct")
+    assert session.f16_prefill_mode == "hipblaslt_range_direct"
 
     session.weights = SimpleNamespace(
         config=config,
@@ -845,6 +861,16 @@ def test_laguna_direct_norm_prefill_mode_requires_safe_complete_norm_metadata() 
     )
     with pytest.raises(ValueError, match="missing"):
         session.set_f16_prefill_mode("hipblaslt_norm_direct")
+
+    session.weights = SimpleNamespace(
+        config=config,
+        layers=(
+            Layer(0.294921875, v_row_l2=None),
+            *tuple(Layer(0.294921875) for _ in range(config.block_count - 1)),
+        ),
+    )
+    with pytest.raises(ValueError, match="missing"):
+        session.set_f16_prefill_mode("hipblaslt_range_direct")
 
 
 def test_laguna_borrowed_session_rejects_loader_cache_options() -> None:
