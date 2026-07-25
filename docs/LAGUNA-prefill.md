@@ -529,7 +529,7 @@ integration must preserve the existing one-set T16 residency and exact decode.
 
 That decision unblocks current work but does not prove expanded metadata is the
 best permanent streaming layout. The 2.778% is paid on every bandwidth-bound
-pass. One bounded replacement screen remains open:
+pass. One bounded replacement screen was therefore run:
 
 - **T16-lite:** keep T16's 16-column Q4 nibble interleave and FP16 `d/dmin`, but
   retain the source-packed 6-bit scale/min field. Per 16 columns/K256 this is
@@ -538,13 +538,23 @@ pass. One bounded replacement screen remains open:
 - **X16:** the cheaper control, grouping 16 source blocks without expanded
   scale/min metadata.
 
-Both are compatible with the closed-work rules: neither is X8 direct decode,
-a sidecar, nor a per-dispatch T16→raw transpose. Admit at most one
-materializer/decode/MMQ screen after the higher-value library/dense work. It
-must beat current T16 on both exact c1 decode and prefill GB/s before replacing
-the resident format. The prior 4.69x direct-X8 result is recorded as an
-untuned-kernel failure, not proof that byte-neutral layouts are intrinsically
-bad.
+T16-lite is now **closed**. The final byte-plane-major layout is exactly
+2,304 bytes and its best consumer expands the 192 packed metadata bytes once
+per K256 tile into 512 bytes of LDS. It is BF16-bit exact at c1/c2/c4/c8, but
+regresses current T16 by **17.63%/12.66%/11.95%/11.22%**
+(T16 **0.161214/0.351595/0.688972/1.351014 ms** versus T16-lite
+**0.189635/0.396094/0.771278/1.502643 ms**). Earlier direct packed-decode
+controls were roughly 3x T16, so the optimized result is the relevant bound.
+The layout fails its exact-decode prerequisite and does not receive an MMQ,
+materializer, or runtime route. The host byte-neutral roundtrip oracle remains
+for any genuinely different microtile premise. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-t16-lite-decode-rejected.json`.
+
+X16 remains only a cheaper control compatible with the closed-work rules. Any
+future X16 or different microtiled replacement must beat current T16 on both
+exact c1 decode and prefill GB/s before replacing the resident format. The
+prior 4.69x direct-X8 result is recorded as an untuned-kernel failure, not
+proof that every byte-neutral layout is intrinsically bad.
 
 ## Quality strategy
 
@@ -731,8 +741,10 @@ Immediate execution queue:
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle
    evidence. This receives no pp512 credit.
-6. Any future T16-lite/X16 or microtiled replacement must run the exact
-   c1/c2/c4/c8 screen before an integrated prefill route. T128 is closed:
+6. Do not retry T16-lite: its best exact byte-plane/LDS decoder loses
+   **11.22–17.63%** at c1/c2/c4/c8. Any future X16 or genuinely different
+   microtiled replacement must run the same exact screen before an integrated
+   prefill route. T128 is also closed:
    column-major payload locality bought **12.23%** at the M512 leaf but the
    best exact virtual-thread decoder still lost **6.10–6.86%**. Do not retain
    a second resident view or pay a prefill-to-decode transpose.

@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T23:48:40.068788+00:00",
+  "kind": "hipengine_laguna_q4_k_t16_lite_exact_decode_leaf",
+  "status": "rejected",
+  "performance_claim": false,
+  "scope": "actual layer-1 K3072/N1024 Q4_K gate/up exact decode leaf",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "gpu_max_hw_queues": "1"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1
+  },
+  "workload": {
+    "producer_rows": [1, 2, 4, 8],
+    "top_k": 10,
+    "in_features": 3072,
+    "out_features": 1024,
+    "experts": 256
+  },
+  "layouts": {
+    "t16_lite_pair_bytes": 905969664,
+    "t16_pair_bytes": 931135488,
+    "saved_pair_bytes": 25165824,
+    "saved_percent": 2.7027027027027026,
+    "temporary_side_by_side_one_layer_only": true
+  },
+  "protocol": {
+    "warmups": 3,
+    "samples": 11,
+    "burst": 5,
+    "timing": "counterbalanced HIP-event elapsed time",
+    "correctness": "BF16 bit equality to retained exact T16",
+    "decode_gate": "all c1/c2/c4/c8 exact and no slower than T16",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_t16_lite_exact_decode_bench.py --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-k-t16-lite-exact-decode-byteplane-lds.json"
+  },
+  "repo": {
+    "revision": "8d143ac52ed9fc6377b85e99946a8b2b9df6bf42",
+    "tracked_tree": "candidate-only dirty tree; no performance claim"
+  },
+  "memory": {
+    "tracked_peak_bytes": 1837482624,
+    "tracked_after_bytes": 0
+  },
+  "results": {
+    "1": {
+      "selected_routes": 10,
+      "t16_ms": 0.1612141966819763,
+      "t16_lite_ms": 0.18963539600372314,
+      "t16_lite_over_t16": 1.1762946434414379,
+      "t16_lite_regression_percent": 17.629464344143784,
+      "bf16_mismatches": 0,
+      "finite": true
+    },
+    "2": {
+      "selected_routes": 20,
+      "t16_ms": 0.35159499645233155,
+      "t16_lite_ms": 0.3960943937301636,
+      "t16_lite_over_t16": 1.126564364472875,
+      "t16_lite_regression_percent": 12.65643644728749,
+      "bf16_mismatches": 0,
+      "finite": true
+    },
+    "4": {
+      "selected_routes": 40,
+      "t16_ms": 0.6889718055725098,
+      "t16_lite_ms": 0.771278190612793,
+      "t16_lite_over_t16": 1.1194626316702316,
+      "t16_lite_regression_percent": 11.946263167023163,
+      "bf16_mismatches": 0,
+      "finite": true
+    },
+    "8": {
+      "selected_routes": 80,
+      "t16_ms": 1.3510140419006347,
+      "t16_lite_ms": 1.5026426315307617,
+      "t16_lite_over_t16": 1.1122331707350819,
+      "t16_lite_regression_percent": 11.223317073508188,
+      "bf16_mismatches": 0,
+      "finite": true
+    }
+  },
+  "developmental_controls": {
+    "column_major_metadata_direct_decode_over_t16": {
+      "c1": 3.487651,
+      "c2": 3.076548,
+      "c4": 3.197696,
+      "c8": 3.255270
+    },
+    "byte_plane_metadata_direct_decode_over_t16": {
+      "c1": 3.106835,
+      "c2": 2.940927,
+      "c4": 3.068088,
+      "c8": 3.151791
+    },
+    "final_consumer": "byte-plane packed metadata expanded once per K256 tile into 512 bytes of LDS"
+  },
+  "gate": {
+    "exact": true,
+    "decode_positive_all_shapes": false,
+    "passed": false
+  },
+  "decision": {
+    "runtime_dispatch_changed": false,
+    "materializer_changed": false,
+    "production_throughput_tok_s": 505.084327,
+    "prefill_consumer_built": false,
+    "reason": "the best exact decode consumer regresses every natural shape by 11.22-17.63%; T16-lite fails its prerequisite before integrated prefill"
+  }
+}

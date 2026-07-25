@@ -180468,3 +180468,27 @@ Vulkan local sizes verbatim will close the measured gap.
   remains fail-closed. `py_compile` also passes. This is a diagnostic layout
   only; no quant registry, materializer, runtime dispatch, or production
   residency changed.
+
+## 2026-07-26 — Reject T16-lite exact decode
+
+- Built the bounded actual layer-1 K3072/N1024 c1/c2/c4/c8 screen before any
+  materializer, runtime, or prefill-MMQ work. The first column-major packed
+  metadata consumer was exact but **3.49x/3.08x/3.20x/3.26x** T16 because the
+  inner 16-column coefficients became 12-byte-strided. Transposing the packed
+  field to `[packed_byte, column]` improved coalescing but direct decode
+  remained roughly 3x.
+- The final source-faithful consumer expands all gate/up scale/min bytes once
+  per K256 tile into 512 bytes of LDS. It is BF16-bit exact with zero
+  mismatches at every natural shape and returns tracked allocations to zero.
+  Counterbalanced 11-sample medians are:
+  - c1: **0.161214 -> 0.189635 ms (+17.63%)**
+  - c2: **0.351595 -> 0.396094 ms (+12.66%)**
+  - c4: **0.688972 -> 0.771278 ms (+11.95%)**
+  - c8: **1.351014 -> 1.502643 ms (+11.22%)**
+- T16-lite therefore fails its no-regression decode prerequisite. Removed its
+  HIP export, wrapper, GPU fixture, and benchmark harness; the production
+  kernel sources are byte-identical to the pre-screen revision. No prefill
+  consumer was built. The byte-neutral host roundtrip oracle remains and now
+  records the coalesced byte-plane ordering; its focused suite passes **8/8**.
+  Production remains **505.084 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-t16-lite-decode-rejected.json`.

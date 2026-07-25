@@ -141,7 +141,8 @@ class GGUFQ4KTile16Lite:
     ``tiles`` has shape ``[experts, out_tiles16, blocks_per_row, 2304]``.
     The d/dmin and Q4 payload have the same column-local arrangement as T16;
     the middle 192 bytes retain each column's exact 12-byte GGUF scale/min
-    field. This makes the replacement layout byte-neutral with 16 raw Q4_K
+    field transposed as ``[packed_byte, column]`` for coalesced coefficient
+    loads. This makes the replacement layout byte-neutral with 16 raw Q4_K
     blocks while retaining T16's Q payload locality.
     """
 
@@ -418,7 +419,7 @@ def repack_gguf_q4_k_tile16_lite(raw_qweight: Any) -> GGUFQ4KTile16Lite:
             GGUF_Q4_K_TILE16_LITE_Q_OFFSET,
         ] = (
             cols[..., 4:16]
-            .transpose(0, 2, 1, 3)
+            .transpose(0, 2, 3, 1)
             .reshape(
                 experts,
                 blocks_per_row,
@@ -553,10 +554,10 @@ def unpack_gguf_q4_k_tile16_lite(
             .reshape(
                 experts,
                 blocks_per_row,
-                GGUF_Q4_K_TILE16_COLS,
                 12,
+                GGUF_Q4_K_TILE16_COLS,
             )
-            .transpose(0, 2, 1, 3)
+            .transpose(0, 3, 1, 2)
         )
 
         q_packed_cols = src[
