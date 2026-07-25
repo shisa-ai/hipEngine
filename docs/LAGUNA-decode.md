@@ -33,7 +33,10 @@ pair is also retained as the gfx1100 default after production-shape and actual-
 weight bit identity, **26.88-27.61%** first/last event-and-wall wins, full-state/
 lifecycle identity, both clean context orders, and both complete category
 orders. It preserves 723 dispatches/token and moves h32 decode **59.500 ->
-60.942 tok/s (+2.425%)**.
+60.942 tok/s (+2.425%)**. A subsequent exact local64 heterogeneous IQ2/shared-
+Q5 owner would remove 46 launches/token without the earlier local128/four-wave
+penalties, but it regresses first/last actual-layer event and wall
+**0.12-0.68%** and is rejected and removed before runtime integration.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1104,6 +1107,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Does one heterogeneous projection dispatch help? | [`...mixed-attention-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-retained.json): yes. Exact Q5/Q6 and Q6/Q8 quads remove **49 launches/token**, improve every clean context, and move complete-suite h32 decode **57.833 -> 58.425 tok/s (+1.024%)**. |
 | Does cooperative Q6 metadata publication still help inside that mixed dispatch? | [`...mixed-q6-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-retained.json): yes. It preserves exact state and 723 dispatches/token, improves clean projection work **8.08-10.10%**, and moves complete-suite h32 decode **58.466 -> 59.211 tok/s (+1.275%)**. |
 | Can the same fixed-metadata Q5 owner accelerate shared gate/up? | [`...shared-q5-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-retained.json): yes. The BF16 pair is byte-exact, improves first/last actual pair event/wall **26.88-27.61%**, improves clean shared-pair work **45.99-47.13%**, and moves complete-suite h32 decode **59.500 -> 60.942 tok/s (+2.425%)** at unchanged 723 dispatches/token. |
+| Does that one-wave Q5 body make a mixed IQ2/shared launch viable? | [`...mixed-iq2-q5-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-iq2-q5-local64-rejected.json): no. All three BF16 outputs are exact and the candidate keeps the retained IQ2 VGPR/LDS ceiling, but both first/last actual layers regress event/wall **0.12-0.68%**; the candidate is removed before runtime integration. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-shared-Q5 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-shared-q5.json) measures retained hipEngine **61.554/60.942 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **4.37%/5.70%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 

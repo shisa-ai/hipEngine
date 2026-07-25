@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q2_xl_mixed_iq2_q5_local64_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "baseline": {
+    "name": "retained IQ2 grid64 selected gate/up+SiLU plus fixed-metadata shared-Q5 BF16 pair",
+    "revision": "fd49a78d5",
+    "canonical_h16_decode_tok_s": 61.55420990315515,
+    "canonical_h32_decode_tok_s": 60.9422647734879,
+    "canonical_ms_per_token": 16.40897337368132,
+    "dispatches_per_token": 723,
+    "vulkan_h32_tok_s": 64.41823922786776,
+    "additional_speedup_required_pct": 5.703717226951555
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "candidate": {
+    "description": "One exact heterogeneous c=1 local64 dispatch for retained selected IQ2_XS grid64 gate/up+SiLU and the new one-wave fixed-metadata shared-Q5 BF16 pair",
+    "removed": true,
+    "selected_owner": "the retained two-wave local64 IQ2 grid64 body and __launch_bounds__(256,2) contract, flattened over top-k/output pairs",
+    "shared_owner": "wave 0 replays the retained local32 fixed-address-metadata Q5 pair body; wave 1 is inactive only for shared blocks",
+    "difference_from_prior_rejected_candidate": "removes the prior local128 candidate's inactive second selected wave and replaces its four-wave/LDS Q5 pack8 body with the retained one-wave/LDS-free fixed-metadata pair",
+    "launch_contraction_if_integrated_per_token": 46,
+    "candidate_dispatches_per_token_if_integrated": 677,
+    "persistent_weight_copy_delta_bytes": 0,
+    "workspace_delta_bytes": 0
+  },
+  "red_green": {
+    "red": "production-shape test collection fails only because the local64 mixed wrapper/key is absent",
+    "red_sha256": "f052cfa8d172e90a24c4061e61cfcde1fac1fa4ebda47ce1ceadb96179838881",
+    "green": "10 IQ2 tests pass, including K3072 selected N1024/top-10 plus shared N1024+N1024 BF16 byte identity and four-axis key resolution",
+    "green_sha256": "7040371af15613c02e821ec0eecc1d1330f691ace4cef93a41bfa358822c4103"
+  },
+  "codegen": {
+    "library_sha256": "45c77db03ec4d1c4c83810c7f2eb1088a0408ee3d8591e8281cf5f0614550569",
+    "code_object_sha256": "7662a47dcc4180c3cd8d44e6984f4dddcd612e174da692e9d5e907b9c8ae9fe4",
+    "candidate_logical_vgpr": 110,
+    "retained_iq2_logical_vgpr": 110,
+    "candidate_logical_sgpr": 70,
+    "candidate_group_segment_fixed_bytes": 128,
+    "candidate_private_segment_fixed_bytes": 0,
+    "candidate_launch_threads": 64,
+    "interpretation": "The candidate preserves the retained selected-IQ2 register/LDS ceiling and does not inherit the rejected local128 Q5 schedule; actual weights still decide because heterogeneous branch/address/code footprint can exceed the removed launch overhead."
+  },
+  "actual_weight_screen": {
+    "protocol": {
+      "layers": [1, 46],
+      "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+      "top_k": 10,
+      "num_experts": 256,
+      "in_features": 3072,
+      "selected_features": 1024,
+      "shared_features": 1024,
+      "warmups": 50,
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "timers": ["HIP event", "synchronized wall"]
+    },
+    "all_three_bf16_outputs_exact": true,
+    "all_boundary_event_and_wall_improve": false,
+    "rows": [
+      {
+        "layer_id": 1,
+        "control_event_us": 50.635929107666016,
+        "candidate_event_us": 50.866522789001465,
+        "event_regression_pct": 0.4553953791291976,
+        "control_wall_us": 50.571245374158025,
+        "candidate_wall_us": 50.91515020467341,
+        "wall_regression_pct": 0.680040263930537,
+        "selected_output_bf16_equal": true,
+        "shared_gate_output_bf16_equal": true,
+        "shared_up_output_bf16_equal": true
+      },
+      {
+        "layer_id": 46,
+        "control_event_us": 51.53775691986084,
+        "candidate_event_us": 51.60135269165039,
+        "event_regression_pct": 0.1233964681242039,
+        "control_wall_us": 51.601509330794215,
+        "candidate_wall_us": 51.73655925318599,
+        "wall_regression_pct": 0.26171700041954793,
+        "selected_output_bf16_equal": true,
+        "shared_gate_output_bf16_equal": true,
+        "shared_up_output_bf16_equal": true
+      }
+    ]
+  },
+  "checks": {
+    "production_shape_oracle_pass": true,
+    "actual_first_last_event_improve": false,
+    "actual_first_last_wall_improve": false,
+    "performance_precondition_pass": false,
+    "runtime_selector_added": false,
+    "full_model_state_gate_skipped_after_precondition_failure": true,
+    "kernel_trace_skipped_after_precondition_failure": true,
+    "clean_context_gate_skipped_after_precondition_failure": true,
+    "category_gate_skipped_after_precondition_failure": true,
+    "candidate_removed": true,
+    "retained_tests_restored": true
+  },
+  "provenance": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq2_q5_local64_fixed_actual.py",
+    "harness_sha256": "52de5d1fcd8db0d03e41f9e956a06ec711d9a07cd5c0620e09e06ccd2bb41051",
+    "raw_stdout_sha256": "66046d24f06a2e2720d9101fd28c161c51e11c51a448530abc4d4957f2663e4a",
+    "candidate_patch_sha256": "0305817b27117048af7d3c408c5dd7ce641011a2bdefc08ca35d9f3cf6b5c0bf",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "preflight_failure": {
+      "reason": "The inherited harness supplied one shared width to the retained unequal-pair wrapper; it stopped on the first warmup before timing. Adding the identical second width was the only correction.",
+      "sha256": "acc96cf889005d183124d7bf2d8f84182f626b46fa870cbdefc02bc2c0512ab3"
+    },
+    "restored_test_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_iq2_xs_gemv.py tests/test_gguf_q5_k_pack8_gemv_decode.py",
+    "restored_tests_passed": 25,
+    "restored_tests_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797"
+  },
+  "decision": {
+    "action": "reject and remove before runtime integration",
+    "reason": "The exact local64 heterogeneous owner regresses both HIP event and synchronized wall on both first and last actual sparse layers; the 46-launch/token contraction cannot be admitted when every measured boundary is slower.",
+    "retained_default_unchanged": true,
+    "next": "rank a different exact contraction from the retained 723-dispatch trace; do not repeat either heterogeneous IQ2/Q5 owner unchanged"
+  }
+}
