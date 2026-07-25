@@ -179665,3 +179665,33 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-candidate.json`.
   Commit the exact candidate, then require clean selector-unset publication
   and a refreshed all-family trace. The 500 and 700 gates remain open.
+
+## 2026-07-26 — Publish Q6 dense/shared 16x32 at 490.096 tok/s
+
+- Committed the exact gfx1151 registry override as `c4e2fbd1d`, leaving
+  gfx1100 at 64x16. Clean seven-repeat one-owner matrix512/attention128 pp512
+  improves explicit 64x16 rollback **481.949586 -> 490.096214 tok/s
+  (+1.690%)**. Candidate samples **488.107005–494.701786** completely exceed
+  rollback **479.520845–483.685830**, and every run selects token 2930. Raw
+  log SHA-256:
+  `8cb6167bb58fd5ca8202e5029c1fbb34b9571e6906dcf03f567425bfa72dbe40`.
+- Direct 16x32-versus-64x16 execution over all **24** actual model Q6
+  dense/shared weights at their production M512 shapes reports zero BF16
+  mismatches. The only changed leaf is therefore byte-identical and transfers
+  the admitted all-exact maximum KL **0.049542582**, **316/320** top-1,
+  decode, determinism, Poolside, allocation, and lifecycle gates.
+- Cached all-family tracing measures **491.171/441.091/351.095 tok/s** at
+  512/1K/4K, with pp512 wall/span/kernel sum
+  **1,042.407/1,037.621/1,025.952 ms**. Dense/shared falls
+  **72.866 -> 54.834 ms (-24.75%)**; Q6 alone falls
+  **29.248 -> 11.131 ms (-61.94%)**, while Q4 is flat at **43.702 ms**.
+  The production symbol is local32/VGPR136/SGPR128/LDS0/scratch0. Raw
+  trace/child/summary SHA-256:
+  `a5b7489...669` / `97fb458...13b` / `9713513...acc`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, refactor
+  ledger, and post-350 plan. Production is now **490.096 tok/s**. The gap to
+  500 is about **20.7 ms** of clean median wall or **13.6 ms** of traced kernel
+  span. The next bounded exact task sweeps per-shape Q4 dense/shared tiles over
+  the real **94+24+2** call mix.
