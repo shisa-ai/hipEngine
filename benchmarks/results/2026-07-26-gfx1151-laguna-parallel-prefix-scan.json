@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_exact_subwindow",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "change": {
+    "before": "one-thread loop over up to 256 expert counts",
+    "after": "one-block Blelloch exclusive scan plus wave-ballot active-ID compaction",
+    "arithmetic": "exact int64 prefix and stable ascending active IDs",
+    "caller_visible_scratch_bytes": 0
+  },
+  "correctness": {
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/pytest -q tests/test_qwen35_moe_group_scatter_plan.py tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle",
+    "passed": 10,
+    "metadata_arrays_exact": true,
+    "complete_moe_bf16_output_exact": true
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-parallel-prefix-scan-trace.iXdpbO -o parallel-prefix -- .venv/bin/python -m pytest -q 'tests/test_qwen35_moe_group_scatter_plan.py::test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle[True]'",
+    "prefix_kernel": {
+      "duration_ns": 2404,
+      "workgroup_size": 256,
+      "vgpr": 24,
+      "lds_bytes": 2560,
+      "scratch_bytes": 0
+    },
+    "prior_production_prefix": {
+      "calls": 47,
+      "total_ms": 1.52,
+      "mean_us": 32.340425531914896
+    },
+    "projected_pp512_saving_ms": 1.407012,
+    "sha256": "63cec2ba0a523ddd15843b4f5a6f55a6cf49a711956231fe5600c6fbb966d94f"
+  },
+  "dirty_full_model_sanity": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/laguna_group_compact_parallel_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-parallel-prefix-scan-dirty.json",
+    "serial_rollback_median_tok_s": 490.19535005933943,
+    "parallel_scan_default_samples_tok_s": [
+      496.6682432257976,
+      497.88549875484586,
+      497.55612672099534,
+      497.158094829323,
+      503.0573343734239,
+      500.25557882826894,
+      498.59557847985656
+    ],
+    "parallel_scan_default_median_tok_s": 497.88549875484586,
+    "paired_wins_vs_serial_full_compactor": 7,
+    "next_token_id": 2930,
+    "raw_sha256": "6991ec98c07167f1477ce83a37e7ef454b06ce52bdda1b63a79fe12c58f185df",
+    "performance_claim": "subwindow only; clean aggregate publication is deferred to the next compounded production gate"
+  }
+}

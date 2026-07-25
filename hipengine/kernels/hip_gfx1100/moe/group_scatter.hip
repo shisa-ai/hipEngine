@@ -176,27 +176,80 @@ __global__ void qwen35_moe_group_count_active_parallel_kernel(
   }
 }
 
-__launch_bounds__(1, 1)
+__launch_bounds__(256, 1)
 __global__ void qwen35_moe_group_prefix_active_parallel_kernel(
     int64_t* __restrict__ expert_start,
     int64_t* __restrict__ active_experts,
     int64_t* __restrict__ active_count,
     int64_t num_experts) {
-  if (blockIdx.x != 0 || threadIdx.x != 0) {
+  if (blockIdx.x != 0) {
     return;
   }
-  int64_t offset = 0;
-  int64_t active = 0;
-  for (int64_t expert = 0; expert < num_experts; ++expert) {
-    const int64_t count = expert_start[expert];
-    expert_start[expert] = offset;
-    if (count > 0) {
-      active_experts[active++] = expert;
-      offset += count;
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int64_t count =
+      tid < num_experts ? expert_start[tid] : 0;
+  __shared__ int64_t scan[256];
+  __shared__ int wave_counts[8];
+  __shared__ int wave_starts[8];
+  __shared__ int64_t total;
+  scan[tid] = count;
+  __syncthreads();
+
+  // Blelloch exclusive scan over the fixed 256-expert upper bound.
+  for (int offset = 1; offset < 256; offset <<= 1) {
+    const int index = (tid + 1) * offset * 2 - 1;
+    if (index < 256) {
+      scan[index] += scan[index - offset];
     }
+    __syncthreads();
   }
-  expert_start[num_experts] = offset;
-  active_count[0] = active;
+  if (tid == 0) {
+    total = scan[255];
+    scan[255] = 0;
+  }
+  __syncthreads();
+  for (int offset = 128; offset > 0; offset >>= 1) {
+    const int index = (tid + 1) * offset * 2 - 1;
+    if (index < 256) {
+      const int64_t left = scan[index - offset];
+      scan[index - offset] = scan[index];
+      scan[index] += left;
+    }
+    __syncthreads();
+  }
+
+  if (tid < num_experts) {
+    expert_start[tid] = scan[tid];
+  }
+  if (tid == 0) {
+    expert_start[num_experts] = total;
+  }
+
+  const int lane32 = tid & 31;
+  const int wave = tid >> 5;
+  const unsigned long long mask =
+      __ballot(tid < num_experts && count > 0);
+  if (lane32 == 0) {
+    wave_counts[wave] = __popcll(mask);
+  }
+  __syncthreads();
+  if (tid == 0) {
+    int active = 0;
+#pragma unroll
+    for (int wave_idx = 0; wave_idx < 8; ++wave_idx) {
+      wave_starts[wave_idx] = active;
+      active += wave_counts[wave_idx];
+    }
+    active_count[0] = active;
+  }
+  __syncthreads();
+  if (tid < num_experts && count > 0) {
+    const unsigned long long lower_mask =
+        lane32 == 0 ? 0ull : ((1ull << lane32) - 1ull);
+    const int rank = __popcll(mask & lower_mask);
+    active_experts[wave_starts[wave] + rank] = tid;
+  }
 }
 
 __launch_bounds__(256, 1)
@@ -633,7 +686,7 @@ int launch_qwen35_moe_group_compact_active_parallel(
   hipLaunchKernelGGL(
       qwen35_moe_group_prefix_active_parallel_kernel,
       dim3(1),
-      dim3(1),
+      dim3(256),
       0,
       stream,
       expert_start,

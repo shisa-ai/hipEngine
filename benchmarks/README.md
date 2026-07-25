@@ -681,6 +681,15 @@ tok/s** at 512/1K/4K and cuts the former 16.752-ms serial metadata window to
 **2.564 ms**. The 500 gate remains open because its three-sample minimum and
 median contract has not yet passed.
 
+The exact parallel-prefix follow-up is recorded in
+[`2026-07-26-gfx1151-laguna-parallel-prefix-scan.json`](results/2026-07-26-gfx1151-laguna-parallel-prefix-scan.json).
+It replaces the remaining one-thread 256-expert loop with a one-block
+exclusive scan and stable ballot compaction. Cached tracing moves the prefix
+from **32.34 us/layer** in the production trace to **2.404 us**, a projected
+**1.407 ms** pp512 saving, with exact metadata and complete MoE BF16 output.
+This is a retained sub-window result; the conservative production topline
+remains **497.408 tok/s** until the next clean compounded gate.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
