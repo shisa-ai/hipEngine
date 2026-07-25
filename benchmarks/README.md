@@ -1900,7 +1900,7 @@ ms/token**. Pinned Vulkan remains **64.418 tok/s**, so another **11.62%** is
 required and completion stays open. Role-scoped `use_q5_fixed_meta_*=False` /
 `--disable-q5-fixed-meta-*` retains the registered coefficient-publication
 wave32x2 fallback; rows>1 and unsupported backends retain the existing exact
-routes. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-correctness.json) and [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json).
+routes. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-correctness.json), [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json), and [post-Q5 matched Vulkan audit](results/2026-07-25-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-q5.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
