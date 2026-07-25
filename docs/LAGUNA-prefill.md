@@ -642,7 +642,7 @@ and achievable-bandwidth evidence.
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. T16 K64 nibble reuse is inapplicable, measured 64/256-column alternatives lose, and explicit `slc dlc` weight loads regress the natural M512 leaf by 32.58%. A further win requires a new scheduling/layout premise. |
-| Selected D4 Q4/Q6 down | **216.616 ms** | **19.30%** | Q4 wave columns are retained; Q6 quartet-shuffle wave columns regress. Reopen Q6 only with a mapping that avoids the VGPR88/shuffle penalty, such as two-row-half wave pairs at local128 or direct per-column decode. |
+| Selected D4 Q4/Q6 down | **216.616 ms** | **19.30%** | Q4 wave columns are retained. Q6 local64 quartet-shuffle, local128 row-half quartet, and local128 direct-column mappings all regress; retain its one-decode shared-weight row-vector path. |
 | Global + SWA attention | **217.589 ms** | **19.39%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.626 ms** | **11.91%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **71.169 ms** | **6.34%** | Freeze. It cannot move the next milestone materially. |
@@ -684,9 +684,12 @@ Immediate execution queue:
    gate. Explicit non-temporal T16 weight loads emitted `slc dlc` exactly as
    requested but regressed the natural M512 leaf by 32.58%; do not retry cache
    bypass without a materially different traffic profile.
-2. Screen a Q6 local128 wave-column mapping with two row-half wave pairs or
-   direct per-column decode; reject it unless Q6 alone improves and production
-   BF16 bytes remain exact.
+2. Keep Q6 row-vector production. Both local128 row-half mappings are exact
+   but regress; direct per-column decode narrows the loss to 2.89% yet still
+   cannot repay duplicated Q6 weight decode. The next dominant-family screen
+   replaces Q4 pair-decode/shuffle with direct per-column decode without
+   duplicating row ownership; gate it independently on the actual gate/up leaf
+   before any runtime integration.
 3. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1128,6 +1131,24 @@ production **7.811 -> 10.355 ms (+32.584%)**. Bypassing the default cache
 policy is therefore actively harmful for this resident-T16 access pattern.
 All diagnostic HIP, wrapper, harness, and test surfaces were removed. Evidence:
 [`2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json).
+
+Twenty-third post-350 screen: **Q6 local128 row-half wave mappings rejected
+and removed**. Four wave32s retained the production 16 accumulators per lane:
+waves 0/1 covered columns 0-31/32-63 for rows 0-15, and waves 2/3 repeated
+those column halves for rows 16-31. One variant retained quartet decode plus
+wave shuffles; the other decoded each lane's column directly. Both removed the
+4,096-byte shared weight cache while necessarily decoding each streamed Q6
+weight tile twice.
+
+The six-case CPU-reference gate passes and both candidates are BF16-byte
+identical to row-vector production. In a one-owner, seven-repetition
+matrix512/attention128 pp512 screen with retained Q4 wave columns unchanged,
+production measures **447.756 tok/s**. Row-half quartet/shuffle falls to
+**411.122 (-8.182%)**; direct per-column decode improves that result but still
+lands at **434.797 (-2.894%)**. Every run selects token 2930. Candidate text
+also grows from production's 8,372 bytes to 14,008/11,128 bytes. All kernel,
+wrapper, runtime, and test surfaces were removed. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-row-half-wavecols-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-row-half-wavecols-rejected.json).
 
 Production evidence:
 
