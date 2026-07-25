@@ -439,6 +439,8 @@ def main() -> int:
                 },
             },
             "command": [
+                "env",
+                "PYTHONPATH=.",
                 "python3",
                 "scripts/laguna_prefill_production_publication.py",
                 "--quality-artifact",
