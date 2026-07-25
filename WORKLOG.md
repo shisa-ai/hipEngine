@@ -179436,3 +179436,24 @@ Vulkan local sizes verbatim will close the measured gap.
   `2dfcb4084c6e762ff34fb708eb6c82036963c38f4a1c537c679e7c806ad0000a`.
   The 500 gate remains open at **448.203 tok/s**; next screen the independent
   Q6 local128 row-half/direct-column mapping.
+
+## 2026-07-26 — Reject Q6 local128 row-half wave mappings
+
+- RED expanded the Q6 T16 D4 fixture and failed on the missing row-half wrapper
+  selector. GREEN added exact local128 row-half mappings with the same **16
+  accumulators/lane** as production: a quartet-decode/shuffle body and a
+  direct-per-column body. All six Q6 configurations pass the CPU-reference
+  gate, and both candidates are BF16-byte identical to row-vector production.
+- One-owner matrix512/attention128 pp512 with retained Q4 wave columns held
+  constant measured production **447.755769 tok/s**, row-half quartet/shuffle
+  **411.122315 (-8.182%)**, and row-half direct decode **434.797377
+  (-2.894%)** across seven counterbalanced repetitions each. Every run selects
+  token 2930. Candidate text grows from **8,372 bytes** production to
+  **14,008/11,128 bytes**; direct decode removes the shuffle penalty but cannot
+  repay decoding every streamed Q6 tile once per row half.
+- Removed all candidate HIP, wrapper, runtime, and test surfaces. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-row-half-wavecols-rejected.json`.
+  Q6 row-vector production is closed under the tested direct-column schedules.
+  The 500 gate remains open at **448.203 tok/s**; next screen Q4 direct-column
+  decode inside the retained wave-column geometry, which does not duplicate
+  row ownership.

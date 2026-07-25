@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26",
+  "status": "rejected_and_removed",
+  "kind": "hipengine_laguna_q6_row_half_wave_columns_full_model_screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "queue_count": 1
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "scope": "Q6 selected down only; retained Q4 wave-column down held constant",
+    "geometry": "64 output columns x 32 routed rows, local128",
+    "row_mapping": "waves 0/1 own rows 0-15 and columns 0-31/32-63; waves 2/3 repeat the column halves for rows 16-31",
+    "accumulators_per_lane": 16,
+    "quartet_variant": "quartet leader decodes four Q6 columns and distributes them with four wave shuffles",
+    "direct_variant": "each lane decodes its own Q6 column without wave shuffles",
+    "tradeoff": "both variants duplicate streamed Q6 weight decode across the two row halves to remove the 4096-byte shared weight cache"
+  },
+  "validation": {
+    "red": "The expanded Q6 fixture failed on the missing row-half wrapper selector.",
+    "green": "Six Q6 configurations passed the CPU-reference quality gate; both candidates were BF16-byte identical to production.",
+    "all_full_model_next_tokens_equal": true,
+    "next_token": 2930
+  },
+  "code_object": {
+    "production_template": "<1,true,false,128,false,false>",
+    "row_half_quartet_template": "<1,true,false,128,true,false>",
+    "row_half_direct_template": "<1,true,false,128,true,true>",
+    "production_text_bytes": 8372,
+    "row_half_quartet_text_bytes": 14008,
+    "row_half_direct_text_bytes": 11128,
+    "device_object_sha256": "f91c9fb1447cf51f6e346b9922bda42d4b3a42b5541ebe39550cd22e5f7f5862"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_gate_wavecols_screen.py",
+    "scope": "one resident owner; matrix512/attention128; one 128-row warmup per mode; seven counterbalanced synchronized pp512 repetitions",
+    "performance_claim": false
+  },
+  "results": {
+    "production_samples_tok_s": [
+      447.6602949584942,
+      447.3665847204827,
+      446.4598471462795,
+      447.7557693780065,
+      448.2535972746633,
+      448.27720088680144,
+      447.87806505693203
+    ],
+    "production_median_tok_s": 447.7557693780065,
+    "row_half_quartet_samples_tok_s": [
+      411.13428542334367,
+      410.82649525365576,
+      413.4971771634597,
+      411.12231487792525,
+      411.7928324176249,
+      410.90077772687556,
+      410.60160741013203
+    ],
+    "row_half_quartet_median_tok_s": 411.12231487792525,
+    "row_half_quartet_change_percent": -8.181570625202683,
+    "row_half_direct_samples_tok_s": [
+      433.91593127433026,
+      434.45462385730264,
+      435.2478977592496,
+      435.0248040259775,
+      434.2344632853758,
+      434.87104673887785,
+      434.79737690426106
+    ],
+    "row_half_direct_median_tok_s": 434.79737690426106,
+    "row_half_direct_change_percent": -2.894076047695915
+  },
+  "decision": {
+    "retain": "Q6 row-vector production with one shared weight decode per workgroup",
+    "remove": "both Q6 row-half kernels, symbols, wrapper selectors, runtime modes, and tests",
+    "reason": "Even without wave shuffles, duplicating Q6 weight decode across row halves costs more than eliminating shared-weight LDS."
+  },
+  "performance_claim": false
+}
