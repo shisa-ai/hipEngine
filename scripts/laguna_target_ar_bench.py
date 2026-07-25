@@ -83,6 +83,11 @@ def _parse_args() -> argparse.Namespace:
         help="use the exact unfused split-reducer plus attention-gate chain",
     )
     parser.add_argument(
+        "--disable-swa-split-wave-local",
+        action="store_true",
+        help="use the exact shared-statistics SWA split reducer",
+    )
+    parser.add_argument(
         "--disable-head-kv-fusion",
         action="store_true",
         help="use separate exact head RMSNorm/RoPE and BF16 KV append launches",
@@ -193,6 +198,9 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_swa_split_tile16=False if args.disable_swa_split_tile16 else None,
         use_split_attention=False if args.disable_split_attention else None,
         use_split_gate_fusion=False if args.disable_split_gate_fusion else None,
+        use_swa_split_wave_local=(
+            False if args.disable_swa_split_wave_local else None
+        ),
         use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
     )
 
@@ -567,6 +575,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_swa_split_tile16=False if args.disable_swa_split_tile16 else None,
             use_split_attention=False if args.disable_split_attention else None,
             use_split_gate_fusion=False if args.disable_split_gate_fusion else None,
+            use_swa_split_wave_local=(
+                False if args.disable_swa_split_wave_local else None
+            ),
             use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
         )
         load_seconds = time.perf_counter() - load_started
@@ -674,6 +685,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_swa_split_tile16": owner.use_swa_split_tile16,
             "use_split_attention": owner.use_split_attention,
             "use_split_gate_fusion": owner.use_split_gate_fusion,
+            "use_swa_split_wave_local": owner.use_swa_split_wave_local,
             "use_head_kv_fusion": owner.use_head_kv_fusion,
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,

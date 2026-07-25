@@ -762,14 +762,18 @@ def allocate_laguna_kv_cache(
         if use_split_gate_fusion is None
         else use_split_gate_fusion
     )
-    selected_swa_split_wave_local = bool(
-        backend_package_capability(
-            backend,
-            "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
-            False,
+    selected_swa_split_wave_local = (
+        False
+        if use_split_attention is False
+        else bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
+                False,
+            )
+            if use_swa_split_wave_local is None
+            else use_swa_split_wave_local
         )
-        if use_swa_split_wave_local is None
-        else use_swa_split_wave_local
     )
     if selected_swa_split_wave_local and (
         parsed_swa_split is None or not selected_split_gate_fusion

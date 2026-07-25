@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-25
+
+- [retained gfx1100 Laguna Q2 XL exact wave-local SWA reducer] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / shared-statistics split reducer -> exact barrier/LDS-free wave-local reducer moves two-order 18-prompt h32 decode **52.211 -> 52.514 tok/s (+0.580%)**, or prior retained **52.391 -> 52.514 (+0.235%)**; every train/heldout category decode improves, clean short/512/1K/near-4K kernel sum improves **0.94-1.98%**, and full logits/hidden/routed/KV/spans/reset/lifecycle remain exact; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-retained.json`.
+
 ## 2026-07-24
 
 - [device-pinned matched Laguna completion reaudit, Vulkan still faster] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / all 18 natural-greedy category+heldout prompts at context 4096 and transition-normalized h16/h32: current-P4 hipEngine **52.855/52.391 tok/s** versus `GGML_VK_VISIBLE_DEVICES=0` llama.cpp Vulkan **64.245/64.418 tok/s** (**-17.73%/-18.67%**), requiring **+21.55%/+22.96%** more hipEngine throughput; pinned Vulkan reproduces the prior row within 0.13%, all correctness/lifecycle/memory/selector/trace gates pass, but completion fails; `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-vulkan-matched-completion-reaudit.json`.

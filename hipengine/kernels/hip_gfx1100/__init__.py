@@ -26,6 +26,10 @@ LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 # BF16 store into each retained split reducer. The unfused registered chain is
 # the explicit rollback and remains the below-threshold fallback.
 LAGUNA_SPLIT_GATE_FUSION = True
+# The retained SWA reducer replays exact scalar softmax statistics independently
+# in each logical wave. This removes all block barriers/LDS and improves every
+# clean context plus the complete two-order category suite.
+LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
 # Current-P4 first/last-layer, clean context, full-state, and complete two-order
 # category evidence admits exact c=1 head RMSNorm+RoPE+BF16 KV append fusion.
 # Rows/prefill and other backends retain the registered two-launch fallback.
@@ -99,6 +103,7 @@ __all__ = [
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
+    "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
