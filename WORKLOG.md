@@ -178910,3 +178910,24 @@ Vulkan local sizes verbatim will close the measured gap.
   Commit this logical unit, then require a clean selector-unset confirmation
   before publishing production. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-candidate.json`.
+
+## 2026-07-25 — Publish source-qualified qrow4 SWA production
+
+- Clean committed revision `36b318ac9` measures selector-unset pp512
+  **366.933 tok/s** median
+  (**368.632/368.395/358.248/363.788/366.933**) versus explicit old qrow4
+  **364.753** (**365.804/364.753/359.107/364.225/364.784**), always token
+  2930: **+0.598% paired** and **+0.574%** over the prior published 364.839.
+- The cached-only all-family trace measures
+  **369.532/342.620/285.563 tok/s** at 512/1K/4K with exact tokens
+  **2930/95/7772**, positions, determinism, and all **77,461,325,460** tracked
+  bytes returned after close. Raw CSV SHA-256:
+  `6b19b3e7ad469045d54b0f8389656771d09a5f47867f87792d65ee30812d18b0`.
+- At pp512, SWA falls **185.603 -> 173.749 ms (-6.39%)**, combined attention
+  **229.181 -> 217.249 ms (-5.21%)**, and kernel sum
+  **1,381.545 -> 1,369.727 ms (-0.855%)**. The source-qualified kernel is
+  local32, VGPR80, SGPR128, LDS0, scratch0.
+- Published
+  `benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, and post-350
+  plan. The 500 production gate remains open.
