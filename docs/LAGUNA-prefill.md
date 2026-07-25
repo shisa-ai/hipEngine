@@ -685,9 +685,10 @@ Immediate execution queue:
    halves activation-LDS and barrier work per output while preserving weight
    bytes, K order, and BF16 outputs. Gate the actual layer-1 leaf before
    runtime.
-2. If K64 is not positive, screen a Q6 local128 wave-column mapping with two
-   row-half wave pairs or direct per-column decode; reject it unless Q6 alone
-   improves and production BF16 bytes remain exact.
+2. If the wider gate/up tile is not positive, screen a Q6 local128
+   wave-column mapping with two row-half wave pairs or direct per-column
+   decode; reject it unless Q6 alone improves and production BF16 bytes remain
+   exact.
 3. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
