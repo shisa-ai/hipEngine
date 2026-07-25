@@ -674,7 +674,9 @@ Immediate execution queue:
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
 2. Do not retry 64-row expert accumulation. The routing-qualified hybrid
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
-   around less weight/LDS traffic or a wave-transpose primitive instead.
+   around a wave-transpose/direct-consume primitive instead. Persistent K256
+   weight slabs with F32 partial spills also completed a negative actual-weight
+   gate.
 3. Apply any further winning expert schedule to Q4/Q6 down, then run clean
    selector-unset pp512 and the complete
    category/decode/determinism/lifecycle gate. Retain every exact same-suite
@@ -932,6 +934,24 @@ were removed. Synchronous-LDS tiled attention is closed until a different
 async-copy, supported-library, or fused-softmax premise changes the resource
 model. Evidence:
 [`2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json).
+
+Fourteenth post-350 screen: **rejected and removed before integration**. A
+persistent D8 gate/up kernel assigned one local128 workgroup to each active
+expert/output128 tile, staged all eight decoded K32 weight tiles for one K256
+slab, and processed the expert's 32-row tiles sequentially. This preserved the
+production split16 packed-dot and K order; F32 partial outputs carried state
+between K256 slabs. The 0/7/18/65-row K512/N128 primitive was BF16
+byte-identical to production.
+
+The body traced at VGPR248, SGPR128, LDS42,496B, scratch0 and requires
+**40 MiB** of F32 partial workspace at the actual pp512 leaf. Running it for
+all active experts costs **37.547 ms** versus **11.463 ms** production. More
+decisively, restricting it to experts above 32 rows still costs **13.278 ms**,
+already **16.14% slower** than the complete **11.433 ms** production leaf
+before adding the required small-expert launch. The candidate was removed
+without a full-model screen. Do not retry persistent K256 slabs while
+accumulation requires global partial spills. Evidence:
+[`2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json).
 
 Production evidence:
 
@@ -1547,6 +1567,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-production.json`

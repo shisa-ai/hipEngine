@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T23:47:24+09:00",
+  "kind": "hipengine_laguna_persistent_expert_rejected",
+  "status": "actual_weight_leaf_rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M layer-1 D8 Q4 gate/up persistent-expert diagnostic on gfx1151",
+  "repo": {
+    "base_revision": "f565187cf",
+    "tracked_dirty_diagnostic": true,
+    "all_candidate_surfaces_removed": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "gate_up_t16_bytes": 931135488
+  },
+  "routing": {
+    "rows": 512,
+    "top_k": 10,
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "compact_rows": 5120,
+    "mmq32_padded_rows": 9504,
+    "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9"
+  },
+  "design": {
+    "geometry": "one local128 workgroup per expert and 128 output columns",
+    "weight_reuse": "stage all eight K32 decoded weight tiles for one K256 slab, then process every 32-row tile of the expert sequentially",
+    "accumulation": "same split16 D8 packed dots and order as production; F32 partial output spilled between 12 K256 slabs",
+    "partial_workspace_bytes": 41943040,
+    "lds_bytes": 42496,
+    "vgpr": 248,
+    "sgpr": 128,
+    "scratch_bytes": 0
+  },
+  "correctness": {
+    "synthetic": "BF16 byte-identical to production row-vector MMQ for counts 0/7/18/65 at K512 and dual N128",
+    "actual_leaf": "all-expert checksum/max_abs exactly match production",
+    "full_quality_gate_run": false,
+    "full_quality_gate_reason": "actual-weight leaf performance rejected the premise"
+  },
+  "leaf": {
+    "protocol": "actual layer-1 weights and natural pp512 routing; pack-inclusive; two warmups; seven counter-rotated samples; burst=3",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-rowvec,t16-persistent128x32-d8-f32 --warmups 2 --samples 7 --burst 3",
+    "production_samples_ms": [
+      11.392391204833984,
+      11.458571116129557,
+      11.481399536132812,
+      11.427691141764322,
+      11.871576944986979,
+      11.432502746582031,
+      11.39874521891276
+    ],
+    "production_median_ms": 11.432502746582031,
+    "persistent_large_only_samples_ms": [
+      13.224180857340494,
+      13.228628794352213,
+      13.348225911458334,
+      13.23833974202474,
+      13.392093658447266,
+      13.359074910481771,
+      13.277723948160807
+    ],
+    "persistent_large_only_median_ms": 13.277723948160807,
+    "persistent_large_only_delta_percent_vs_full_production": 16.140133464043483,
+    "qualification": "candidate owns only experts above 32 rows; its measured time excludes the still-required production launch for smaller active experts",
+    "all_expert_persistent_median_ms": 37.54661305745443,
+    "all_expert_persistent_slowdown": 3.2753588625017085
+  },
+  "trace": {
+    "raw_csv_sha256": "993a72150882c593c479e918a6feab21d69c64ed280d4c7394fdef67a93d3137",
+    "raw_csv_committed": false,
+    "workgroup_size": 128,
+    "lds_bytes": 42496,
+    "vgpr": 248,
+    "sgpr": 128,
+    "scratch_bytes": 0
+  },
+  "decision": "Reject and remove. The large-expert persistent subset is already 16.14% slower than the complete production leaf before adding the required small-expert launch. K256 weight reuse cannot repay 42.5 KiB LDS residency plus 40 MiB of repeated F32 partial traffic."
+}
