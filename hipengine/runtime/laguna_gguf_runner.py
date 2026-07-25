@@ -1556,6 +1556,7 @@ class LagunaGGUFResidentSession:
         use_swa_split_tile16: bool | None = None,
         use_split_attention: bool | None = None,
         use_split_gate_fusion: bool | None = None,
+        use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_head_kv_fusion: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
@@ -1582,6 +1583,7 @@ class LagunaGGUFResidentSession:
         self.use_swa_split_tile16 = use_swa_split_tile16
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
+        self.use_swa_split_wave_local = use_swa_split_wave_local
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -1729,8 +1731,10 @@ class LagunaGGUFResidentSession:
                 use_swa_split_tile16=self.use_swa_split_tile16,
                 use_split_attention=self.use_split_attention,
                 use_split_gate_fusion=self.use_split_gate_fusion,
+                use_swa_split_wave_local=self.use_swa_split_wave_local,
             )
             self.use_split_gate_fusion = self.kv_cache.split_gate_fusion
+            self.use_swa_split_wave_local = self.kv_cache.swa_split_wave_local
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
