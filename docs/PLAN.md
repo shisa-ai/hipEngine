@@ -1349,9 +1349,12 @@ reconstructs the signed half-block sums required by the min term. The complete
 320-step diagnostic now passes at maximum KL **0.040724836**, **317/320**
 top-1. Compounded with LAP-5/LAP-6 and the raw-Q6 64x16 dense/shared consumer,
 exact reconstructed-sum pp512 repeats at **353.951/356.082/356.473 tok/s**
-with next token 2930. The implementation remains explicit only until the clean
-complete multi-prompt quality/performance/lifecycle gate and selector-unset
-default publication finish.
+with next token 2930. The clean complete category gate admits the compounded
+route at maximum KL **0.040724836**, **317/320** top-1, **2.615x** aggregate
+natural-prompt prefill, flat decode, and exact tracked-lifecycle recovery.
+gfx1151 now selects D8 gate/up, D4 down, row-scaled hipBLASLt, and Q4/Q6 WMMA
+dense/shared as package defaults. Clean selector-unset pp512 and milestone
+publication remain.
 Streaming families target at
 least 70% of the measured achievable-read ceiling unless profiling proves
 another limiter. The detailed gates, sequence, and T16-lite/X16

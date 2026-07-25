@@ -180,7 +180,12 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
 
 
 def test_laguna_dense_q4_prefill_mode_is_explicit_and_fail_closed() -> None:
-    assert resolve_laguna_dense_q4_prefill_mode("hip_gfx1151") == "retained"
+    assert resolve_laguna_dense_q4_prefill_mode("hip_gfx1100") == "retained"
+    assert resolve_laguna_dense_q4_prefill_mode("hip_gfx1151") == "wmma_pack8"
+    assert (
+        resolve_laguna_dense_q4_prefill_mode("hip_gfx1151", "retained")
+        == "retained"
+    )
     assert (
         resolve_laguna_dense_q4_prefill_mode("hip_gfx1151", "wmma_pack8")
         == "wmma_pack8"
@@ -193,7 +198,7 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151")
-        == "adaptive_grouped_smallm_fused"
+        == "mmq64x32_d4_f32"
     )
     assert resolve_laguna_selected_down_mode("hip_gfx1151", "direct") == "direct"
     assert (
@@ -211,9 +216,16 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
             resolve_laguna_selected_down_mode("hip_gfx1151", rejected)
 
 
-def test_laguna_selected_gate_up_default_is_explicit_until_quality_gate() -> None:
+def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "direct"
-    assert resolve_laguna_selected_gate_up_mode("hip_gfx1151") == "direct"
+    assert (
+        resolve_laguna_selected_gate_up_mode("hip_gfx1151")
+        == "mmq128x32_d8_f32"
+    )
+    assert (
+        resolve_laguna_selected_gate_up_mode("hip_gfx1151", "direct")
+        == "direct"
+    )
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "mmq32_d4x3")
         == "mmq32_d4x3"

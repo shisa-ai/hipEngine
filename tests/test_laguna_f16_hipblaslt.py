@@ -12,7 +12,12 @@ from hipengine.runtime.laguna_f16_hipblaslt import (
 
 
 def test_laguna_f16_hipblaslt_mode_is_explicit_and_validated() -> None:
-    assert resolve_laguna_f16_prefill_mode("hip_gfx1151") == "retained"
+    assert resolve_laguna_f16_prefill_mode("hip_gfx1100") == "retained"
+    assert resolve_laguna_f16_prefill_mode("hip_gfx1151") == "hipblaslt_scaled"
+    assert (
+        resolve_laguna_f16_prefill_mode("hip_gfx1151", "retained")
+        == "retained"
+    )
     assert (
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_scaled")
         == "hipblaslt_scaled"
