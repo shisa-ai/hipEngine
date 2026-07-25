@@ -648,6 +648,7 @@ class LagunaEagerLibraries:
     iq_selected_experts: object
     moe_group: object
     routed_sum: object
+    iq_selected_experts_wave64: object | None = None
 
     @property
     def embedding_libraries(self) -> Mapping[str, object]:
@@ -688,6 +689,11 @@ class LagunaEagerLibraries:
             "router_select": self.router_select,
             "selected_gate_up": self.selected_experts,
             "selected_gate_up_iq": self.iq_selected_experts,
+            **(
+                {"selected_gate_up_iq_wave64": self.iq_selected_experts_wave64}
+                if self.iq_selected_experts_wave64 is not None
+                else {}
+            ),
             "selected_silu": self.dense_silu,
             "selected_down": self.selected_experts,
             "selected_down_iq": self.iq_selected_experts,
@@ -1124,6 +1130,17 @@ class LagunaDFlashVerifyResult:
         return len(self.committed_input_ids)
 
 
+def resolve_laguna_iq2_wave64(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the architecture-qualified exact IQ2 wave64 candidate."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(backend_package_capability(backend, "LAGUNA_IQ2_WAVE64", False))
+
+
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -1452,6 +1469,7 @@ def load_laguna_eager_libraries(
     backend: str,
     compiler_version: str | None = None,
     require_cached: bool = False,
+    use_iq2_wave64: bool = False,
 ) -> LagunaEagerLibraries:
     """Build/load every library used by one eager session exactly once."""
 
@@ -1474,7 +1492,10 @@ def load_laguna_eager_libraries(
     )
     from hipengine.kernels.hip_gfx1100.moe.laguna_router import build_laguna_router
     from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
-    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import build_gguf_iq_gemv
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
+        build_gguf_iq_gemv,
+        build_gguf_iq_gemv_wave64,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
         build_gguf_q4_k_gemv,
@@ -1523,6 +1544,9 @@ def load_laguna_eager_libraries(
             router_select=build_laguna_router(**kwargs),
             selected_experts=build_gguf_t16_selected_gemv(**kwargs),
             iq_selected_experts=build_gguf_iq_gemv(**kwargs),
+            iq_selected_experts_wave64=(
+                build_gguf_iq_gemv_wave64(**kwargs) if use_iq2_wave64 else None
+            ),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
         )
@@ -1563,6 +1587,7 @@ class LagunaGGUFResidentSession:
         use_q5_wave32x2_query_gate: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
+        use_iq2_wave64: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1603,6 +1628,10 @@ class LagunaGGUFResidentSession:
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
             self.backend,
             iq3_c1_down_schedule,
+        )
+        self.use_iq2_wave64 = resolve_laguna_iq2_wave64(
+            self.backend,
+            use_iq2_wave64,
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -1666,6 +1695,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
+                use_iq2_wave64=self.use_iq2_wave64,
             )
             if resident_weights is None:
                 self.weights = materialize_laguna_gguf_weights(
@@ -1687,6 +1717,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
+                use_iq2_wave64=self.use_iq2_wave64,
             )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
@@ -3470,5 +3501,6 @@ __all__ = [
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",
     "resolve_laguna_head_kv_fusion",
+    "resolve_laguna_iq2_wave64",
     "resolve_laguna_q5_wave32x2_variants",
 ]

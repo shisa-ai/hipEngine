@@ -11,6 +11,8 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_iq_gemv.hip")
 _OUTPUT_NAME = "gguf_iq_gemv.so"
+_WAVE64_OUTPUT_NAME = "gguf_iq_gemv_wave64.so"
+_WAVE64_FLAGS = ("-mwavefrontsize64",)
 _QK_K = 256
 _ALLOWED_THREADS = frozenset({64, 128, 256})
 _IQ3_WAVE4_THREADS = frozenset({32})
@@ -77,6 +79,46 @@ def build_gguf_iq_gemv(
         cache_root=cache_root,
         compiler_version=compiler_version,
         output_name=_OUTPUT_NAME,
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
+def plan_gguf_iq_gemv_wave64_build(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+) -> BuildArtifact:
+    return plan_hip_build(
+        sources=[_SOURCE],
+        family="gguf_iq_gemv_wave64",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        extra_flags=_WAVE64_FLAGS,
+        output_name=_WAVE64_OUTPUT_NAME,
+    )
+
+
+def build_gguf_iq_gemv_wave64(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    return build_hip(
+        sources=[_SOURCE],
+        family="gguf_iq_gemv_wave64",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        extra_flags=_WAVE64_FLAGS,
+        output_name=_WAVE64_OUTPUT_NAME,
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
@@ -483,6 +525,47 @@ def gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out(
     )
 
 
+def gguf_iq2_xs_selected_dual_silu_gemv_tile2_wave64_exact_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if library is None:
+        candidate = build_gguf_iq_gemv_wave64(load=True)
+        if not isinstance(candidate, ctypes.CDLL):
+            raise TypeError("wave64 IQ GEMV build did not return a loaded library")
+        library = candidate
+    _launch_dual_silu(
+        _SYMBOL_IQ2_DUAL_SILU_TILE2,
+        x_ptr,
+        selected_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        x_rows=x_rows,
+        rows=rows,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -853,6 +936,11 @@ def register_gguf_iq_gemv_kernels(*, replace: bool = True) -> None:
             gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
         ),
         (
+            "gguf_iq2_xs",
+            "selected_dual_silu_gemv_decode_tile2_wave64_exact_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_silu_gemv_tile2_wave64_exact_bf16_bf16_out,
+        ),
+        (
             "gguf_iq3_xxs",
             "selected_gemv_decode_bf16_bf16_out",
             gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
@@ -900,9 +988,11 @@ register_gguf_iq_gemv_kernels()
 
 __all__ = [
     "build_gguf_iq_gemv",
+    "build_gguf_iq_gemv_wave64",
     "gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_silu_gemv_tile2_wave64_exact_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out",
@@ -916,5 +1006,6 @@ __all__ = [
     "iq3_selected_default_threads",
     "iq_weighted_down_default_threads",
     "plan_gguf_iq_gemv_build",
+    "plan_gguf_iq_gemv_wave64_build",
     "register_gguf_iq_gemv_kernels",
 ]
