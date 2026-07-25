@@ -179217,3 +179217,33 @@ Vulkan local sizes verbatim will close the measured gap.
   node in `test_laguna_gguf_runner.py` performed no test work; per focused
   repair policy it was replaced by the actual affected files rather than a
   broad rerun.
+
+## 2026-07-26 — Publish the absolute-quality Laguna production baseline
+
+- Clean committed revision `9ae1e4ea6` passes the new canonical
+  `production_absolute` gate. Direct all-exact -> selector-unset production
+  measures maximum KL **0.04954258196634279**, **316/320 (98.75%)** top-1,
+  finite logits, and category top-1 **100%/96.875%/100%/96.875%**. The frozen
+  Poolside oracle passes at KL **1.751245e-5** with exact top-1 94557, same-mode
+  free-running repeats are deterministic, decode is neutral at
+  **0.999859/0.999831x** for h16/h32, and all
+  **109,859,542,160 allocated/freed bytes** return to zero.
+- The same clean category run reports natural-prompt prefill
+  **53.436 -> 198.461 tok/s (3.71397x)**, h16/h32 E2E
+  **1.88128x/1.50865x**, with all categories positive. Raw artifact SHA-256 is
+  `2dde2de7d42f248ee443ca9a1d4fa51486635576174504c15878682820f39702` at
+  `/tmp/2026-07-26-gfx1151-laguna-production-absolute.raw.json`; the exact
+  command is recorded in the compact production artifact.
+- A separate clean selector-unset matrix512/attention128 pp512 confirmation
+  measures **387.110/386.988/385.748/385.039/386.552 tok/s**, median
+  **386.552**, with token 2930 in every sample. The prior **385.997 tok/s**
+  publication is superseded, while its all-family trace remains the latest
+  attribution because the quality repair changes only the tiny N72 hipBLASLt
+  algorithm descriptor.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-production-absolute-quality.json`
+  and updated the benchmark scoreboard/changelog and Laguna campaign status.
+  Production is now both above 350 and directly compliant with the absolute
+  quality contract; the 500/700 campaign resumes from **386.552 tok/s** with
+  only **0.000457418** KL headroom, so further approximate arithmetic stays
+  closed until quality budget is bought back.
