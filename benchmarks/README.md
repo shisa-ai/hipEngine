@@ -2020,7 +2020,7 @@ tok/s**, so another **4.35%** is required and completion stays open.
 `use_mixed_local32_fixed_meta_attention=False` /
 `--disable-mixed-local32-fixed-meta-attention` restores the registered local128
 fixed-Q6 mixed quad; layer 47, rows>1, registry misses, and unsupported backends
-retain their existing routes. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-correctness.json) and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json).
+retain their existing routes. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-correctness.json), [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json), and [post-local32 matched Vulkan audit](results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
