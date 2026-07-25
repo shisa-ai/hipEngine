@@ -178778,3 +178778,40 @@ Vulkan local sizes verbatim will close the measured gap.
   claim. Commit, then run the clean selector-unset confirmation and all-family
   reprofile. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json`.
+
+## 2026-07-25 — Publish qrow4 Laguna production and rebaseline residual
+
+- Clean revision `3e1cb5993` confirms selector-unset pp512 at
+  **364.839 tok/s** median (**365.309/364.839/363.944**), minimum
+  **363.944**, versus paired qrow2 **353.181**, always token 2930:
+  **+3.30% paired** and **+2.824%** over the prior 354.820 production
+  publication.
+- The cached-only all-family command was
+  `HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3
+  --kernel-trace --output-format csv --output-directory <tmp> --output-file
+  production-qrow4 --log-level error -- python3
+  scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1
+  --warmup-rows 128 --compiler-version-file
+  /tmp/laguna_hipcc_version.txt --require-cached-build --output
+  <tmp>/profile.json`. It measures **366.260/339.178/282.939 tok/s** at
+  512/1K/4K with tokens **2930/95/7772**, exact final positions, deterministic
+  outputs, and all **77,461,325,460** tracked bytes returned after close. Raw
+  trace SHA-256:
+  `30d5c878abc4c0a333b4746ca35609644a8fcd557906f3e7f844681827100963`.
+- At pp512, global/SWA attention moves
+  **46.736/227.989 -> 43.577/185.603 ms**. Combined attention falls
+  **274.724 -> 229.181 ms (-16.58%; -45.544 ms)** and kernel sum falls
+  **1,427.220 -> 1,381.545 ms (-45.676 ms)**. The trace records global/SWA
+  qrow4 at local32, VGPR72/80, SGPR128, zero LDS/scratch, and half the qrow2
+  grid-Y.
+- The current residual is selected D8 gate/up **581.806 ms / 42.11%**,
+  selected Q4/Q6 down **276.861 ms / 20.04%**, attention
+  **229.181 ms / 16.59%**, source-F16 **130.965 ms / 9.48%**,
+  dense/shared **70.391 ms / 5.10%**, and all remaining
+  **92.341 ms / 6.68%**. The combined expert window is now **62.15%** and
+  is the primary 500 tok/s lever. One bounded qrow8 screen remains worthwhile
+  before a full cooperative attention tile.
+- Published
+  `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`
+  and updated the benchmark rollup, changelog, kernel catalog, and post-350
+  plan. The 500 production gate remains open; 700 remains the stretch target.

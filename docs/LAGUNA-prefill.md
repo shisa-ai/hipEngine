@@ -14,13 +14,13 @@ The repaired gate/up route uses one FP32 scale per 16 activations in the same
 complete category gate admits it at maximum KL 0.0407248, 317/320 top-1, and
 2.615x aggregate natural-prompt prefill. The four compounded routes are now
 gfx1151 package defaults. Clean selector-unset production publication passes at
-**354.820 tok/s** median (**353.421/355.584/354.820**), with every pp512
-sample above the 350 tok/s target. A cached-only production trace independently
-reproduces **354.763 tok/s** and names every intended kernel family. The 350
-milestone is complete; the campaign remains active for post-milestone roofline
-and long-prompt work. The execution order below was re-audited on 2026-07-25
-after correcting the Vulkan comparator geometry and adding an absolute
-bandwidth target.
+**364.839 tok/s** median (**365.309/364.839/363.944**), with every pp512
+sample above the prior 350 tok/s milestone. A cached-only production trace
+independently reproduces **366.260 tok/s** and names every intended kernel
+family, including M128-qualified online qrow4 attention. The campaign remains
+active toward the 500 gate and 700 stretch. The execution order below was
+re-audited on 2026-07-25 after correcting the Vulkan comparator geometry and
+adding an absolute bandwidth target.
 
 ## Outcome
 
@@ -30,8 +30,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **354.820 tok/s**
-selector-unset, **4.655x** the old row and **2.978%** above the Vulkan control.
+The quality-admitted production default now measures **364.839 tok/s**
+selector-unset, **4.786x** the old row and **5.885%** above the Vulkan control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
 Strix Halo has a **256 GB/s** theoretical LPDDR5X roof and the existing
@@ -614,15 +614,15 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete | Clean selector-unset M512/attention128 pp512 samples are **353.421/355.584/354.820 tok/s** (median **354.820**), all token 2930. The fail-closed publication binds those timings to the retained 320-step quality artifact and exact package capabilities. Cached-only tracing independently measures **354.763 tok/s** and executes D8-pack/128-column gate-up MMQ, D4 Q4/Q6 down MMQ, Q4/Q6 WMMA dense/shared, scaled hipBLASLt, and online global/SWA attention with zero tracked allocations after close. |
+| Production publication | Complete | Clean selector-unset M512/attention128 pp512 samples are **365.309/364.839/363.944 tok/s** (median **364.839**), all token 2930. Qrow4 is byte-identical to qrow2 and therefore carries forward the retained 320-step quality gate without a new approximation. Cached-only tracing independently measures **366.260 tok/s**, executes every intended family, and returns all tracked allocations after close. |
 | LAP-7–LAP-8 | Deferred | Reprofile after linear work; attention starts only at its measured threshold. |
 
 ## Post-350 campaign — 500 production gate, 700 stretch
 
 The 350 tok/s milestone proves the compounded production package, but it is
-not a roofline result. The clean cached production trace measures **1.443218
-seconds** synchronized pp512 wall, **1.440122 seconds** kernel span, and
-**1.427220 seconds** kernel sum. Only **15.997 ms / 1.11%** of wall lies
+not a roofline result. The current qrow4 production trace measures **1.397915
+seconds** synchronized pp512 wall, **1.393084 seconds** kernel span, and
+**1.381545 seconds** kernel sum. Only **16.371 ms / 1.17%** of wall lies
 outside the summed kernels, so graphs, Python removal, and submission tuning
 are explicitly closed until a later trace changes that conclusion.
 
@@ -636,21 +636,21 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Multi-K, 64-row, local256, and coalesced-raw screens are rejected below. Park simple body tuning; retain only a bounded hybrid-large-expert screen after new trace/counter evidence. |
-| Selected D4 Q4/Q6 down | **276.169 ms** | **19.35%** | Carry the winning expert schedule into Q4 and Q6 down, then reprofile the combined 60.11% expert window. |
-| Global + SWA attention | **274.724 ms** | **19.25%** | The first LAP-7 step retains four-query K/V reuse on complete M128 tiles at **365.048 tok/s** dirty selector-unset median. Clean confirmation/reprofile it, then continue toward the `KVLiveSpans`-aware M16-query x K64-key tiled path. |
-| Scaled hipBLASLt source-F16 | **130.373 ms** | **9.13%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
-| Q4/Q6 WMMA dense/shared | **70.098 ms** | **4.91%** | Freeze. It is only about 7.2 ms behind the homologous Vulkan family and cannot move the next milestone materially. |
-| All remaining named/other kernels | **94.058 ms** | **6.59%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
+| Selected D8 Q4 gate/up | **581.806 ms** | **42.11%** | Primary 500 lever. Multi-K, 64-row, local256, and coalesced-raw screens are rejected below; use routing/counter evidence for one hybrid-large-expert schedule. |
+| Selected D4 Q4/Q6 down | **276.861 ms** | **20.04%** | Apply a winning expert schedule to Q4 and Q6 down, then reprofile the combined **62.15%** expert window. |
+| Global + SWA attention | **229.181 ms** | **16.59%** | Qrow4 saves **45.544 ms / 16.58%**. Run one bounded qrow8/M128 screen; if VGPR pressure rejects it, move to the `KVLiveSpans`-aware M16-query x K64-key cooperative tile. |
+| Scaled hipBLASLt source-F16 | **130.965 ms** | **9.48%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
+| Q4/Q6 WMMA dense/shared | **70.391 ms** | **5.10%** | Freeze. It cannot move the next milestone materially. |
+| All remaining named/other kernels | **92.341 ms** | **6.68%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
 - **1.25x/1.5x/2x** combined selected-expert throughput models to about
-  **403/442/505 tok/s** with every other family unchanged.
-- Reducing global+SWA attention from **274.7 ms** toward **80 ms** models to
-  about **410 tok/s** with every other family unchanged.
+  **416/458/526 tok/s** with every other family unchanged.
+- Reducing global+SWA attention from **229.2 ms** toward **80 ms** models to
+  about **408 tok/s** with every other family unchanged.
 - Combining **2x** selected experts with an **80 ms** attention window models
-  to about **625 tok/s**. Reaching 700 requires a stronger measured expert
+  to about **621 tok/s**. Reaching 700 requires a stronger measured expert
   bandwidth result, additional attention reduction, or both.
 - The frozen routing byte lower bound makes the current gate/up window about
   **62.3 GB/s encoded-weight-equivalent**, only **28.2%** of the existing
@@ -671,11 +671,10 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Clean-confirm and reprofile the retained LAP-7 qrow4/M128 step, then
-   continue cooperative tiled attention. Its primary residual gates are
-   pp512, 1K, and 4K family wall plus full `KVLiveSpans`/causal/ring
-   correctness and the complete quality lane.
-3. Use the next trace/counters to decide one bounded hybrid expert screen:
+2. Run one bounded qrow8/M128 attention screen. Retain only if pp512 and the
+   512/1K/4K attention family improve; otherwise remove it and reserve further
+   attention work for the cooperative M16-query x K64-key design.
+3. Use the current trace/counters to decide one bounded hybrid expert screen:
    retain 128x32 for <=32-row experts and route only >32-row experts through a
    64-row consumer. Do not build it without per-route evidence that the large
    groups individually win.
@@ -757,7 +756,7 @@ smaller LDS allocation. The candidate was removed. Do not revisit raw LDS
 staging without a wave-transpose/unpack primitive that avoids per-lane scalar
 reconstruction.
 
-Fifth post-350 screen: **retained candidate pending clean confirmation**.
+Fifth post-350 screen: **retained production**.
 The online global and SWA kernels now share each streamed BF16 K/V row across
 four adjacent queries on complete 128-row attention tiles; short and residual
 tiles retain qrow2. The wrapped/evicted 508..515 fixture, including a
@@ -771,17 +770,25 @@ global+SWA at **365.249 tok/s** median
 (**365.249/366.556/364.684**) versus qrow2 production at **353.836**
 (**353.836/353.437/353.926**), always token 2930: **+3.23%**. SWA-only
 qrow4 reached **363.214**, while global-only was neutral at **353.722**.
-After installing the M128-qualified gfx1151 defaults, the dirty
-selector-unset confirmation measured **365.048 tok/s** median with a
-**363.735** minimum versus the paired qrow2 **352.920**, again always token
-2930. This is not yet the new production claim: commit the candidate and run
-the clean selector-unset production gate first. Evidence:
+After committing the M128-qualified gfx1151 defaults, the clean
+selector-unset confirmation measured **364.839 tok/s** median
+(**365.309/364.839/363.944**) versus the paired qrow2 **353.181**, again
+always token 2930: **+3.30%**. The cached all-family trace measures
+**366.260/339.178/282.939 tok/s** at 512/1K/4K. Qrow4 cuts global/SWA
+attention **46.736/227.989 -> 43.577/185.603 ms**, saving **45.544 ms**
+and reducing the combined attention share from **19.25% to 16.59%**; kernel
+sum falls **45.676 ms**. Evidence:
 [`2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json).
+Production:
+[`2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json).
 
 Production evidence:
 
+- [`2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json)
+  is the current retained selector-unset publication and all-family trace
+  summary at **364.839 tok/s** median.
 - [`2026-07-25-gfx1151-laguna-prefill-350-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production.json)
-  is the retained publication artifact.
+  is the superseded 350-milestone publication artifact.
 - [`2026-07-25-gfx1151-laguna-prefill-350-production-default.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-default.json)
   is the raw selector-unset 27-row timing/state screen. Its historical
   cross-matrix byte-equality policy correctly rejects the already-admitted

@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T08:48:02.554371+00:00",
+  "kind": "hipengine_laguna_prefill_qrow4_production",
+  "status": "retained_production",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Laguna S 2.1 Q4_K_M pp512 on gfx1151 with matrix512/attention128, plus cached-only 512/1K/4K attribution",
+  "repo": {
+    "revision": "3e1cb59934e6433e54ac0ada07052e2d13b3cdba",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 77461325460
+  },
+  "production_defaults": {
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "global_prefill_variant": "global_context_rows_qrow4_m128_online_spans",
+    "swa_prefill_variant": "swa_context_rows_qrow4_m128_online_spans",
+    "residual_attention_variant": "qrow2 online",
+    "selected_gate_up_mode": "mmq128x32_d8_f32",
+    "selected_down_mode": "mmq64x32_d4_f32",
+    "f16_projection_mode": "hipblaslt_scaled",
+    "dense_q4_prefill_mode": "wmma_pack8"
+  },
+  "clean_selector_unset_pp512": {
+    "command": "PYTHONPATH=. python3 /tmp/laguna_qrow4_attention_screen.py",
+    "protocol": "one resident model load; M128 warmup per lane; three counterbalanced repetitions; perf_counter around prefill plus device_synchronize",
+    "candidate_samples_tok_s": [
+      365.3090296050938,
+      364.83862765391024,
+      363.944413906041
+    ],
+    "candidate_median_tok_s": 364.83862765391024,
+    "candidate_minimum_tok_s": 363.944413906041,
+    "candidate_next_token_ids": [
+      2930,
+      2930,
+      2930
+    ],
+    "paired_qrow2_samples_tok_s": [
+      353.18096174170984,
+      353.18370452531394,
+      353.14988920510746
+    ],
+    "paired_qrow2_median_tok_s": 353.18096174170984,
+    "speedup_vs_paired_qrow2": 1.0330076283124399,
+    "speedup_vs_prior_production_354_819979": 1.0282358639503506
+  },
+  "correctness_and_quality": {
+    "focused_command": "uv run pytest -q tests/test_laguna_kv_attention.py tests/test_gfx1151_backend.py",
+    "focused_result": "33 passed",
+    "qrow4_vs_qrow2_output": "F32 byte-identical for global and SWA on the wrapped/evicted KVLiveSpans fixture",
+    "partial_group": "seven-row qrow4 output matches the exact retained global/SWA reference",
+    "quality_transfer": "qrow4 changes only independent query-row scheduling and preserves each row's qrow2 operation order; no new approximation or KL consumer is introduced",
+    "retained_quality_artifact": "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json",
+    "teacher_forced_steps": 320,
+    "max_kl_divergence": 0.040724836,
+    "top1_agreement": 0.990625,
+    "top1_matches": 317,
+    "decode": "unchanged",
+    "deterministic": true,
+    "lifecycle_recovered": true
+  },
+  "cached_production_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file production-qrow4 --log-level error -- python3 scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/profile.json",
+    "summary_command": "python3 scripts/laguna_long_context_trace_summary.py --child <tmp>/profile.json --trace <tmp>/production-qrow4_kernel_trace.csv --output <tmp>/summary.json",
+    "raw_csv_sha256": "30d5c878abc4c0a333b4746ca35609644a8fcd557906f3e7f844681827100963",
+    "raw_csv_committed": false,
+    "timings": {
+      "512": {
+        "tok_s": 366.2596712212892,
+        "wall_seconds": 1.3979153049876913,
+        "next_token_id": 2930
+      },
+      "1024": {
+        "tok_s": 339.17792601551906,
+        "wall_seconds": 3.0190643949899822,
+        "next_token_id": 95
+      },
+      "4096": {
+        "tok_s": 282.9390268368579,
+        "wall_seconds": 14.476617262000218,
+        "next_token_id": 7772
+      }
+    },
+    "pp512": {
+      "dispatches": 1961,
+      "kernel_span_ms": 1393.083678,
+      "kernel_sum_ms": 1381.544522,
+      "family_table": {
+        "selected_q4_gate_up": {
+          "calls": 94,
+          "duration_ms": 581.806304,
+          "kernel_sum_share": 0.4211274372524348
+        },
+        "selected_q4_q6_down": {
+          "calls": 94,
+          "duration_ms": 276.861056,
+          "kernel_sum_share": 0.20039966254522198
+        },
+        "global_attention": {
+          "calls": 48,
+          "duration_ms": 43.577274,
+          "kernel_sum_share": 0.03154243189855013
+        },
+        "swa_attention": {
+          "calls": 144,
+          "duration_ms": 185.603444,
+          "kernel_sum_share": 0.13434488794563798
+        },
+        "source_f16_projection": {
+          "calls": 576,
+          "duration_ms": 130.96456,
+          "kernel_sum_share": 0.09479575787424388
+        },
+        "dense_shared_quant_projection": {
+          "calls": 144,
+          "duration_ms": 70.391325,
+          "kernel_sum_share": 0.050951181000014126
+        }
+      },
+      "attention_total_ms": 229.180718,
+      "attention_kernel_sum_share": 0.1658873198441881
+    },
+    "qrow4_resources": {
+      "global": {
+        "workgroup_size": 32,
+        "vgpr_count": 72,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0,
+        "grid": "1536x32"
+      },
+      "swa": {
+        "workgroup_size": 32,
+        "vgpr_count": 80,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0,
+        "grid": "2304x32"
+      }
+    }
+  },
+  "comparison_to_prior_production_trace": {
+    "prior_artifact": "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-trace.json",
+    "profiled_pp512_tok_s": {
+      "before": 354.76279496109424,
+      "after": 366.2596712212892,
+      "delta_pct": 3.240722089094983
+    },
+    "attention_ms": {
+      "before": 274.724343,
+      "after": 229.180718,
+      "saved": 45.543625,
+      "delta_pct": -16.577935723737436
+    },
+    "global_attention_ms": {
+      "before": 46.735833,
+      "after": 43.577274,
+      "delta_pct": -6.758323960974433
+    },
+    "swa_attention_ms": {
+      "before": 227.98851,
+      "after": 185.603444,
+      "delta_pct": -18.59087811048021
+    },
+    "kernel_sum_ms": {
+      "before": 1427.220402,
+      "after": 1381.544522,
+      "saved": 45.67588,
+      "delta_pct": -3.200338219380372
+    },
+    "profiled_long_context_tok_s_delta_pct": {
+      "512": 3.240722089094983,
+      "1024": 5.383851488432212,
+      "4096": 6.86138520570827
+    }
+  },
+  "milestone": {
+    "current_production_pp512_tok_s": 364.83862765391024,
+    "next_gate_tok_s": 500.0,
+    "stretch_tok_s": 700.0,
+    "next_primary_family": "selected expert gate/up and down",
+    "attention_followup": "bounded qrow8 screen, then cooperative M16-query x K64-key tiling if register pressure rejects qrow8"
+  },
+  "conclusion": "Retain the M128-qualified qrow4 global/SWA default. It saves 45.54 ms of pp512 attention time and raises clean selector-unset production to 364.839 tok/s without changing per-row arithmetic or quality. Attention falls to 16.59% of kernel sum; the combined selected-expert path is now 62.15% and is the primary 500 tok/s lever."
+}
