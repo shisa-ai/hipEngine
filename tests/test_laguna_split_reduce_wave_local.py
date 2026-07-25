@@ -30,7 +30,9 @@ def _require_cached_build() -> bool:
 def test_laguna_swa_split_wave_local_variants_are_registered() -> None:
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans,
+        laguna_swa_attention_decode_split_exact_gated_wave_local_dim2_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans,
+        laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_dim2_bf16_spans,
         register_laguna_kv_attention_kernels,
     )
     from hipengine.kernels.registry import resolve
@@ -54,6 +56,24 @@ def test_laguna_swa_split_wave_local_variants_are_registered() -> None:
         )
         is laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_attention_decode",
+            quant="bf16",
+            variant="swa_context_split_exact_gated_wave_local_dim2_spans",
+        )
+        is laguna_swa_attention_decode_split_exact_gated_wave_local_dim2_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_attention_decode",
+            quant="bf16",
+            variant="swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
+        )
+        is laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_dim2_bf16_spans
+    )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -70,8 +90,10 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
         build_laguna_kv_attention,
         laguna_swa_attention_decode_split_exact_gated_bf16_spans,
         laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans,
+        laguna_swa_attention_decode_split_exact_gated_wave_local_dim2_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans,
+        laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_dim2_bf16_spans,
     )
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
@@ -95,7 +117,7 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
     )
     cache = allocate_laguna_kv_cache(
         config,
-        context_length=capacity,
+        context_length=capacity + 1,
         backend="hip_gfx1100",
         runtime=runtime,
     )
@@ -108,8 +130,10 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
         query_device = malloc(width * 4, runtime=runtime)
         gate_device = malloc(heads * 4, runtime=runtime)
         retained_context_device = malloc(width * 4, runtime=runtime)
+        wave_local_context_device = malloc(width * 4, runtime=runtime)
         candidate_context_device = malloc(width * 4, runtime=runtime)
         retained_gated_device = malloc(width * 2, runtime=runtime)
+        wave_local_gated_device = malloc(width * 2, runtime=runtime)
         candidate_gated_device = malloc(width * 2, runtime=runtime)
         score_scratch_device = malloc(heads * capacity * 4, runtime=runtime)
         physical_scratch_device = malloc(heads * capacity * 4, runtime=runtime)
@@ -120,8 +144,10 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
                 query_device,
                 gate_device,
                 retained_context_device,
+                wave_local_context_device,
                 candidate_context_device,
                 retained_gated_device,
+                wave_local_gated_device,
                 candidate_gated_device,
                 score_scratch_device,
                 physical_scratch_device,
@@ -129,6 +155,8 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
         )
 
         query = rng.normal(0.0, 0.12, size=(heads, head_dim)).astype(np.float32)
+        query[0] = 0.0  # tied scores
+        query[1] *= 1.0e4  # finite extremes and softmax underflow
         gate = np.resize(
             np.array([-40.0, -1.0, -0.0, 0.0, 1.0, 40.0], dtype=np.float32),
             heads,
@@ -137,22 +165,100 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
         copy_host_to_device(gate_device, host_array_ptr(gate), runtime=runtime)
         state = cache.layer(0)
 
-        for position in range(257):
+        empty_common = (
+            query_device.ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+        )
+        empty_tail = (
+            score_scratch_device.ptr,
+            physical_scratch_device.ptr,
+            state.spans,
+            1,
+            heads,
+            kv_heads,
+            head_dim,
+            head_dim**-0.5,
+        )
+        laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans(
+            *empty_common,
+            wave_local_context_device.ptr,
+            gate_device.ptr,
+            wave_local_gated_device.ptr,
+            *empty_tail,
+            sliding_window=capacity,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_swa_attention_decode_split_exact_gated_wave_local_dim2_bf16_spans(
+            *empty_common,
+            candidate_context_device.ptr,
+            gate_device.ptr,
+            candidate_gated_device.ptr,
+            *empty_tail,
+            sliding_window=capacity,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        empty_context = np.empty(width, dtype=np.float32)
+        empty_candidate_context = np.empty_like(empty_context)
+        empty_gated = np.empty(width, dtype=np.uint16)
+        empty_candidate_gated = np.empty_like(empty_gated)
+        copy_device_to_host(
+            host_array_ptr(empty_context),
+            wave_local_context_device,
+            nbytes=empty_context.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(empty_candidate_context),
+            candidate_context_device,
+            nbytes=empty_candidate_context.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(empty_gated),
+            wave_local_gated_device,
+            nbytes=empty_gated.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(empty_candidate_gated),
+            candidate_gated_device,
+            nbytes=empty_candidate_gated.nbytes,
+            runtime=runtime,
+        )
+        np.testing.assert_array_equal(empty_candidate_context, empty_context)
+        np.testing.assert_array_equal(empty_candidate_gated, empty_gated)
+        np.testing.assert_array_equal(empty_context, np.zeros_like(empty_context))
+        np.testing.assert_array_equal(empty_gated, np.zeros_like(empty_gated))
+
+        boundary_positions = {64, 69, 126, 127, 255, 256, 510, 511, 512}
+        for position in range(513):
             key = rng.normal(0.0, 0.12, size=(kv_heads, head_dim)).astype(np.float32)
             value = rng.normal(0.0, 0.12, size=(kv_heads, head_dim)).astype(np.float32)
             copy_host_to_device(key_device, host_array_ptr(key), runtime=runtime)
             copy_host_to_device(value_device, host_array_ptr(value), runtime=runtime)
             cache.prepare_position(position)
             cache.append(0, key_device.ptr, value_device.ptr, library=library)
-            if position not in (64, 256):
+            if position == 512:
+                cache.evict_swa_position(0, 100)
+            if position not in boundary_positions:
                 continue
 
             retained = laguna_swa_attention_decode_split_exact_gated_bf16_spans
-            candidate = laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans
-            if position == 256:
+            wave_local = laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans
+            candidate = (
+                laguna_swa_attention_decode_split_exact_gated_wave_local_dim2_bf16_spans
+            )
+            if position >= 256:
                 retained = laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans
-                candidate = (
+                wave_local = (
                     laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans
+                )
+                candidate = (
+                    laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_dim2_bf16_spans
                 )
             common = (
                 query_device.ptr,
@@ -163,7 +269,7 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
                 score_scratch_device.ptr,
                 physical_scratch_device.ptr,
                 state.spans,
-                position + 1,
+                min(position + 1, capacity),
                 heads,
                 kv_heads,
                 head_dim,
@@ -174,6 +280,16 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
                 retained_context_device.ptr,
                 gate_device.ptr,
                 retained_gated_device.ptr,
+                *tail,
+                sliding_window=capacity,
+                library=library,
+                runtime=runtime,
+            )
+            wave_local(
+                *common,
+                wave_local_context_device.ptr,
+                gate_device.ptr,
+                wave_local_gated_device.ptr,
                 *tail,
                 sliding_window=capacity,
                 library=library,
@@ -192,13 +308,21 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
             runtime.device_synchronize()
 
             retained_context = np.empty(width, dtype=np.float32)
+            wave_local_context = np.empty_like(retained_context)
             candidate_context = np.empty_like(retained_context)
             retained_gated = np.empty(width, dtype=np.uint16)
+            wave_local_gated = np.empty_like(retained_gated)
             candidate_gated = np.empty_like(retained_gated)
             copy_device_to_host(
                 host_array_ptr(retained_context),
                 retained_context_device,
                 nbytes=retained_context.nbytes,
+                runtime=runtime,
+            )
+            copy_device_to_host(
+                host_array_ptr(wave_local_context),
+                wave_local_context_device,
+                nbytes=wave_local_context.nbytes,
                 runtime=runtime,
             )
             copy_device_to_host(
@@ -214,11 +338,19 @@ def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
                 runtime=runtime,
             )
             copy_device_to_host(
+                host_array_ptr(wave_local_gated),
+                wave_local_gated_device,
+                nbytes=wave_local_gated.nbytes,
+                runtime=runtime,
+            )
+            copy_device_to_host(
                 host_array_ptr(candidate_gated),
                 candidate_gated_device,
                 nbytes=candidate_gated.nbytes,
                 runtime=runtime,
             )
+            np.testing.assert_array_equal(wave_local_context, retained_context)
+            np.testing.assert_array_equal(wave_local_gated, retained_gated)
             np.testing.assert_array_equal(candidate_context, retained_context)
             np.testing.assert_array_equal(candidate_gated, retained_gated)
     finally:

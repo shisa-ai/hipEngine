@@ -1,0 +1,369 @@
+{
+  "actual_weight_screen": {
+    "all_f32_context_and_bf16_gated_outputs_exact": true,
+    "all_layer_live_event_and_wall_improve": true,
+    "event_improvement_pct_range": [
+      0.27487686970039116,
+      0.6845443449300048
+    ],
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "layers": [
+        1,
+        46,
+        47
+      ],
+      "live_counts": [
+        70,
+        128,
+        257,
+        512
+      ],
+      "prompt_id": "code_merge_intervals",
+      "prompt_tokens": 69,
+      "score_producer_by_live": {
+        "128": "wave32",
+        "257": "tile16",
+        "512": "tile16",
+        "70": "wave32"
+      },
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "warmups_per_mode": 50
+    },
+    "rows": [
+      {
+        "candidate_event_us": 31.8312406539917,
+        "candidate_wall_us": 31.92885546013713,
+        "context_f32_exact": true,
+        "control_event_us": 31.951439380645752,
+        "control_wall_us": 32.059260411188006,
+        "event_improvement_pct": 0.37619189928219665,
+        "gated_bf16_exact": true,
+        "layer_id": 1,
+        "live_count": 70,
+        "score_producer": "wave32",
+        "wall_improvement_pct": 0.4067621940691102
+      },
+      {
+        "candidate_event_us": 31.846039295196533,
+        "candidate_wall_us": 31.95406054146588,
+        "context_f32_exact": true,
+        "control_event_us": 31.994245052337646,
+        "control_wall_us": 32.069210428744555,
+        "event_improvement_pct": 0.4632262986629998,
+        "gated_bf16_exact": true,
+        "layer_id": 46,
+        "live_count": 70,
+        "score_producer": "wave32",
+        "wall_improvement_pct": 0.3590667987742657
+      },
+      {
+        "candidate_event_us": 31.841440200805664,
+        "candidate_wall_us": 31.938609899953008,
+        "context_f32_exact": true,
+        "control_event_us": 31.986045837402344,
+        "control_wall_us": 32.0560100954026,
+        "event_improvement_pct": 0.45208975605102175,
+        "gated_bf16_exact": true,
+        "layer_id": 47,
+        "live_count": 70,
+        "score_producer": "wave32",
+        "wall_improvement_pct": 0.36623458471654047
+      },
+      {
+        "candidate_event_us": 51.00878715515137,
+        "candidate_wall_us": 51.10283032990992,
+        "context_f32_exact": true,
+        "control_event_us": 51.19818687438965,
+        "control_wall_us": 51.271734992042184,
+        "event_improvement_pct": 0.36993442698070034,
+        "gated_bf16_exact": true,
+        "layer_id": 1,
+        "live_count": 128,
+        "score_producer": "wave32",
+        "wall_improvement_pct": 0.32943036189135855
+      },
+      {
+        "candidate_event_us": 51.02853775024414,
+        "candidate_wall_us": 51.11313425004482,
+        "context_f32_exact": true,
+        "control_event_us": 51.233792304992676,
+        "control_wall_us": 51.27373500727117,
+        "event_improvement_pct": 0.4006233884204069,
+        "gated_bf16_exact": true,
+        "layer_id": 46,
+        "live_count": 128,
+        "score_producer": "wave32",
+        "wall_improvement_pct": 0.31322227101959754
+      },
+      {
+        "candidate_event_us": 51.08619213104248,
+        "candidate_wall_us": 51.14643485285342,
+        "context_f32_exact": true,
+        "control_event_us": 51.25823974609375,
+        "control_wall_us": 51.2977852486074,
+        "event_improvement_pct": 0.3356486994159469,
+        "gated_bf16_exact": true,
+        "layer_id": 47,
+        "live_count": 128,
+        "score_producer": "wave32",
+        "wall_improvement_pct": 0.295042748961738
+      },
+      {
+        "candidate_event_us": 98.25836181640625,
+        "candidate_wall_us": 98.2866098638624,
+        "context_f32_exact": true,
+        "control_event_us": 98.52919578552246,
+        "control_wall_us": 98.63186511211097,
+        "event_improvement_pct": 0.27487686970039116,
+        "gated_bf16_exact": true,
+        "layer_id": 1,
+        "live_count": 257,
+        "score_producer": "tile16",
+        "wall_improvement_pct": 0.3500443268066977
+      },
+      {
+        "candidate_event_us": 98.5627555847168,
+        "candidate_wall_us": 98.65116444416344,
+        "context_f32_exact": true,
+        "control_event_us": 98.90356063842773,
+        "control_wall_us": 98.9622191991657,
+        "event_improvement_pct": 0.34458319954410177,
+        "gated_bf16_exact": true,
+        "layer_id": 46,
+        "live_count": 257,
+        "score_producer": "tile16",
+        "wall_improvement_pct": 0.3143166730893987
+      },
+      {
+        "candidate_event_us": 98.18276405334473,
+        "candidate_wall_us": 98.27631060034037,
+        "context_f32_exact": true,
+        "control_event_us": 98.50000381469727,
+        "control_wall_us": 98.58891018666327,
+        "event_improvement_pct": 0.32207081123504233,
+        "gated_bf16_exact": true,
+        "layer_id": 47,
+        "live_count": 257,
+        "score_producer": "tile16",
+        "wall_improvement_pct": 0.31707378216377924
+      },
+      {
+        "candidate_event_us": 200.687255859375,
+        "candidate_wall_us": 200.9687793906778,
+        "context_f32_exact": true,
+        "control_event_us": 202.06087112426758,
+        "control_wall_us": 204.84248525463045,
+        "event_improvement_pct": 0.6798027036356791,
+        "gated_bf16_exact": true,
+        "layer_id": 1,
+        "live_count": 512,
+        "score_producer": "tile16",
+        "wall_improvement_pct": 1.8910656444816154
+      },
+      {
+        "candidate_event_us": 201.02638244628906,
+        "candidate_wall_us": 200.99418004974723,
+        "context_f32_exact": true,
+        "control_event_us": 202.2782325744629,
+        "control_wall_us": 205.71374567225575,
+        "event_improvement_pct": 0.6188753541303549,
+        "gated_bf16_exact": true,
+        "layer_id": 46,
+        "live_count": 512,
+        "score_producer": "tile16",
+        "wall_improvement_pct": 2.2942393115663595
+      },
+      {
+        "candidate_event_us": 201.07250213623047,
+        "candidate_wall_us": 201.29758515395224,
+        "context_f32_exact": true,
+        "control_event_us": 202.4584197998047,
+        "control_wall_us": 205.94939938746393,
+        "event_improvement_pct": 0.6845443449300048,
+        "gated_bf16_exact": true,
+        "layer_id": 47,
+        "live_count": 512,
+        "score_producer": "tile16",
+        "wall_improvement_pct": 2.2587170670791634
+      }
+    ],
+    "tracked_peak_allocated_bytes": 40070064180,
+    "tracked_peak_allocations": 1161,
+    "tracked_returned_to_baseline": true,
+    "wall_improvement_pct_range": [
+      0.295042748961738,
+      2.2942393115663595
+    ]
+  },
+  "baseline": {
+    "additional_h32_speedup_required_pct": 4.350869291461135,
+    "canonical_h16_decode_tok_s": 62.35358698325803,
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "canonical_h32_ms_per_token": 16.198963297077867,
+    "dispatches_per_token": 723,
+    "revision": "d2efee0daae98fb78c942175470b920de28e2d39",
+    "vulkan_h32_tok_s": 64.41823922786776
+  },
+  "cached_trace": {
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 24,
+    "candidate_calls": 10,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-dim2-trace --output-file trace -- .venv/bin/python -m pytest -q tests/test_laguna_split_reduce_wave_local.py -k matches_retained_reducer",
+    "duration_us_range": [
+      2.44,
+      225.361
+    ],
+    "grid_x": 4608,
+    "kernel": "laguna_swa_attention_split_exact_gated_wave_local_dim2_reduce_kernel",
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "stderr_sha256": "e42751ae15e4b26598b1c5b14b8ffcf96057726bf5c8d14761588b21cead1cdb",
+    "stdout_sha256": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "trace_sha256": "ef0850afd8fc3f0ab7afcc9e58115990e7444add1873ecfd34a6e2bac3e7126d",
+    "workgroup": 64
+  },
+  "candidate": {
+    "default_selected": false,
+    "description": "One local64 workgroup remains assigned to one query head; each thread owns two adjacent dimensions, one packed BF16 load feeds two independent slot-order FMA chains, and two wave leaders retain the scalar max/denominator order.",
+    "dispatches_per_token_delta_if_integrated": 0,
+    "grid_threads_per_call": {
+      "candidate": 4608,
+      "control": 9216
+    },
+    "persistent_weight_copy_delta_bytes": 0,
+    "registered_variants": [
+      "swa_context_split_exact_gated_wave_local_dim2_spans",
+      "swa_context_split_tile16_exact_gated_wave_local_dim2_spans"
+    ],
+    "retained_fallback": "existing local128 wave-local normal/tile16 reducers",
+    "runtime_selector_added": false,
+    "wave32s_per_call": {
+      "candidate": 144,
+      "control": 288
+    },
+    "workgroups_per_call": {
+      "candidate": 72,
+      "control": 72
+    },
+    "workspace_delta_bytes": 0
+  },
+  "checks": {
+    "actual_first_last_all_live_event_improve": true,
+    "actual_first_last_all_live_wall_improve": true,
+    "cached_trace_gate_pass": true,
+    "category_gate_pending": true,
+    "clean_context_gate_pending": true,
+    "codegen_resource_gate_pass": true,
+    "full_model_state_gate_pending": true,
+    "performance_precondition_pass": true,
+    "primitive_exact_gate_pass": true,
+    "runtime_selector_absent": true
+  },
+  "codegen": {
+    "code_object_sha256": "fac4c753e98986cdf47cfbe8a66f338f4ac653827282e2bfbfd7df5283fbb531",
+    "fatbin_sha256": "c7e339adcc34853a8f09885c77084f36fce8231ff3488f84f8042d922089eb7e",
+    "library_sha256": "e7573f05e6e2bb8d7348cd29a2149ea20d936fd4ba86c0551fc57dc0452e55f3",
+    "objdump_sha256": "00b6e74c54e266ba3640d7c3f3c18a5e46f39f016e4086b45f3cdb6d386db913",
+    "readobj_sha256": "83dda04ea22b10d0e57219f5a2605fa204362ad8bfa7445d956ef3ffcafdd705",
+    "static_instruction_counts": {
+      "candidate_global_load_u16": 0,
+      "candidate_instructions": 1075,
+      "candidate_packed_global_load_b32_present": true,
+      "control_global_load_u16": 4,
+      "control_instructions": 1035
+    },
+    "static_metadata": {
+      "group_segment_fixed_bytes": 0,
+      "logical_sgpr": 50,
+      "logical_vgpr": 18,
+      "max_flat_workgroup_size": 64,
+      "private_segment_fixed_bytes": 0,
+      "sgpr_spills": 0,
+      "uses_dynamic_stack": false,
+      "vgpr_spills": 0,
+      "wavefront_size": 32
+    }
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "admit the primitive and proceed to default-off runtime/full-state integration in a separate committed unit",
+    "canonical_h32_tok_s_unchanged": 61.73234556191569,
+    "completion_claim": false,
+    "reason": "The candidate preserves every output bit, clears the local64 resource gate, and improves both event and wall medians in all 12 actual layer/live rows without reducing query-head workgroups.",
+    "retained_default_unchanged": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_swa_local64_dim2_reducer_correctness",
+  "model": {
+    "head_dim": 128,
+    "kv_dtype": "bf16",
+    "kv_heads": 8,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "query_heads": 72,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "swa_layers": 36
+  },
+  "performance_claim": false,
+  "primitive_correctness": {
+    "adversarial_cases": [
+      "empty/invalid live span",
+      "tied scores",
+      "finite extreme scores",
+      "softmax underflow",
+      "SWA ring wrap/stale slot replacement",
+      "sparse eviction",
+      "extreme softplus gates"
+    ],
+    "bf16_gated_bit_exact": true,
+    "f32_context_bit_exact": true,
+    "live_counts": [
+      65,
+      70,
+      127,
+      128,
+      256,
+      257,
+      511,
+      512
+    ],
+    "max_kl": 0.0,
+    "normal_and_tile16_score_producers": true,
+    "packed_low_high_bf16_and_final_pair_exact": true,
+    "top1_agreement": 1.0
+  },
+  "provenance": {
+    "actual_harness_sha256": "86773a90d64218f9c7adc2f06c700d1f015b8b3995cc566646b95d965ba7bea5",
+    "actual_raw_sha256": "b270d5625169e082e4be40b7e4ea7537bfc5dbe7196510b4db91c2b71a96d33d",
+    "actual_stdout_sha256": "03c68b62eed82a2d142e9af92c426d6e424b65c70c8ae0c7c1c61a09c84819f4",
+    "design_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-design.json",
+    "design_sha256": "f8a1b24a630d93ff5bc404ad632f398d2b9739f42a134cfd84e2db3aacd449ba",
+    "hip_source_sha256": "03a0f1029e7cf9e2e4f6e747b46415c25bddd0f6099e1f587f608c2037c853a9",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "python_source_sha256": "efa26a8285218350f59ab4a129eef75ac3890d9d39a70a63bbc1fcc5bfbbf7a7",
+    "test_source_sha256": "4d53f1f11012bfc0688059e1ea3656f5c9b69ba7bc77a084a50366a326439629"
+  },
+  "red_green": {
+    "green_result": "2 passed across empty spans, ties/extreme scores, live 65/70/127/128/256/257/511/512, sparse eviction, and first ring wrap",
+    "green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "red_result": "2 failed only because the two dim2 wrapper imports/keys were absent",
+    "red_sha256": "2123b1531ef265f4dc6cf3cff2b5f717456f3d72223d0df3c65ad041b25a48bd"
+  },
+  "regression_tests": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_split_gate_fusion.py tests/test_laguna_split_reduce_wave_local.py tests/test_kernel_registry.py",
+    "log_sha256": "511fb971caf59261241ec2a3919d9d10c7dcb9ec044ee07d50b2db465184f057",
+    "passed": 15
+  },
+  "schema": 1,
+  "status": "primitive_admitted_pending_runtime_gates"
+}
