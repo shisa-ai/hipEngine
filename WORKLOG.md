@@ -178815,3 +178815,31 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`
   and updated the benchmark rollup, changelog, kernel catalog, and post-350
   plan. The 500 production gate remains open; 700 remains the stretch target.
+
+## 2026-07-25 — Retain global-only M128 qrow8 candidate
+
+- Generalized the global online attention consumer to qrow8 and screened
+  global and SWA independently. The initial three-repeat pp512 screen measured
+  qrow4 production **365.392 tok/s**, qrow8 both **349.895**, global-only
+  **365.923**, and SWA-only **349.177**, always token 2930. SWA qrow8 is a
+  clear regression and all of its code/test/registry surface was removed.
+- A five-repeat matched global-only confirmation measured qrow4
+  **365.471 tok/s** median
+  (**366.362/364.409/365.105/367.885/365.471**) versus qrow8
+  **366.126** (**366.379/366.545/365.815/366.101/366.126**): **+0.179%**,
+  always token 2930. The gfx1151 candidate selects qrow8 only for complete
+  M128 global tiles and retains qrow2 for residuals; SWA remains qrow4.
+- The final focused bundle
+  `uv run pytest -q tests/test_laguna_kv_attention.py
+  tests/test_gfx1151_backend.py` passed **33 tests**. The seed-508
+  wrap/eviction fixture proves full-eight and seven-row partial global qrow8
+  output byte-identical to qrow2.
+- Cached final-source tracing names
+  `laguna_global_attention_prefill_qrows_online_bf16_kernel<8>` at local32,
+  VGPR112, SGPR128, LDS0, scratch0. Raw CSV SHA-256:
+  `7d66a41c2219cdd570f708a4d210a2b056d80324b5d0e50c53beace6e3af494d`.
+  Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-global-qrow8-candidate.json`.
+- This is not yet a production performance claim: commit the logical unit,
+  then require a clean selector-unset/qrow4 paired confirmation because the
+  measured margin is small.

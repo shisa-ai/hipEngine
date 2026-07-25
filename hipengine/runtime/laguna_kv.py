@@ -30,6 +30,8 @@ _GLOBAL_PREFILL_VARIANTS = frozenset(
         "global_context_rows_qrow2_online_spans",
         "global_context_rows_qrow4_online_spans",
         "global_context_rows_qrow4_m128_online_spans",
+        "global_context_rows_qrow8_online_spans",
+        "global_context_rows_qrow8_m128_online_spans",
     }
 )
 _BASELINE_SWA_DECODE_VARIANT = "swa_context_spans"
