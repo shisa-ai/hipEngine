@@ -178855,3 +178855,22 @@ Vulkan local sizes verbatim will close the measured gap.
   C/Python/registry/runtime/default/test surface; SWA qrow8 had already been
   removed. Global and SWA remain on M128-qualified qrow4, and production stays
   **364.839 tok/s**.
+
+## 2026-07-25 — Reject routing-qualified hybrid64 selected experts
+
+- Frozen natural pp512 routing contains **8,306** groups / **93,403** lanes at
+  <=32 rows and **1,931** groups / **147,237** lanes above 32. Keeping
+  MMQ128x32 for the small route and using MMQ128x64 only for the large route
+  predicts **5,728 -> 3,102 (-45.8%)** large-group tiles.
+- Added the explicit leaf under RED/GREEN, reusing tile32 metadata: small
+  experts launch the unchanged body, while even local large-expert tiles cover
+  up to 64 rows. The 0/7/18/33/65 fixture is BF16 byte-identical to production;
+  the focused harness/registry/GPU bundle passed **8 tests**.
+- Actual layer-1 K3072/N1024 gate/up weights plus recorded natural M512 routes
+  reject it before runtime integration. Inclusive production MMQ128x32 is
+  **12.332 ms** median; hybrid64 is **13.179 ms (+6.87%)** across seven
+  counter-rotated, burst-3 HIP-event samples. Both checksums are
+  **1114.1769413301445**.
+- Removed the C/Python/registry/harness/test surface. The second filtered launch
+  and doubled row accumulators outweigh tile savings. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json`.

@@ -533,6 +533,17 @@ committed gate to **363.475 -> 361.055 (-0.666%)**. SWA qrow8 also regresses
 **365.392 -> 349.177 tok/s**. Global and SWA therefore remain qrow4
 (`benchmarks/results/2026-07-25-gfx1151-laguna-global-qrow8-candidate.json`).
 
+### Laguna post-350 selected-expert screens
+
+The routing-qualified hybrid keeps MMQ128x32 for experts at or below 32 rows
+and tests MMQ128x64 only above 32. Frozen natural pp512 routing predicts
+**5,728 -> 3,102 (-45.8%)** large-expert tiles, but the actual layer-1
+K3072/N1024 D8 gate/up leaf regresses **12.332 -> 13.179 ms (+6.87%)**.
+Output is BF16 byte-identical on mixed empty/small/large fixtures. The wider
+accumulator body and second filtered launch are removed; do not retry 64-row
+expert accumulation without a different mapping
+(`benchmarks/results/2026-07-25-gfx1151-laguna-hybrid64-expert-rejected.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
