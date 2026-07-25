@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_production",
+  "revision": "1bac6ead5",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "change": {
+    "route": "hipblaslt_norm_direct",
+    "maximum_attention_norm_weight_abs": 0.294921875,
+    "rmsnorm_output_abs_bound": 16.346229496431278,
+    "fp16_max_finite": 65504.0,
+    "consequence": "The Q/K/V/gate attention-RMSNorm input scale is provably one. Direct BF16-to-FP16 input conversion and removal of four identity F32 restores are exact."
+  },
+  "matched_ab": {
+    "protocol": "seven counterbalanced same-owner pp512 pairs, matrix chunk 512, attention chunk 128",
+    "scaled_rollback_median_tok_s": 502.34810998487063,
+    "norm_direct_median_tok_s": 505.88685468551375,
+    "relative_change_percent": 0.7044407314978685,
+    "median_wall_change_ms": -7.129532052204013,
+    "paired_wins": 7,
+    "paired_samples": 7,
+    "next_token_id": 2930,
+    "raw_sha256": "a3c7d96ac2a8361424dd042dc95c29c884121e81ca73aa9d9e33f10c6354636c"
+  },
+  "clean_selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1151 --context-length 4096 --lengths 512,1024,4096 --chunk-size 512 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-f16-norm-direct-clean-long.json",
+    "pp512_samples_tok_s": [
+      508.9984969726145,
+      501.7900507409057,
+      502.0825895124266,
+      503.8692736684947,
+      504.1961666950698,
+      503.3021205184838,
+      505.5049608738568
+    ],
+    "pp512_median_tok_s": 503.8692736684947,
+    "pp512_minimum_tok_s": 501.7900507409057,
+    "pp512_median_wall_ms": 1016.1365789826959,
+    "prior_production_median_tok_s": 503.3489941514725,
+    "relative_change_percent": 0.10336357538556218,
+    "pp1024_median_tok_s": 452.5567016640906,
+    "pp4096_median_tok_s": 356.9866529161743,
+    "next_token_ids": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "lifecycle": "pass",
+    "raw_sha256": "415630db29cd9e2f3208268851ec922901ff8db07cb6dbf10b5112457e858bb9"
+  },
+  "correctness": {
+    "complete_state_vs_scaled_rollback": "All logits, final and pre-final hidden, live KV, spans, cursor, token, and token logit are exact.",
+    "exactness_raw_sha256": "0c494dc72b5f8d25de657f27cba0df3a6f3b8e55536d73a12fa02fb97e9b5860",
+    "transferred_max_kl": 0.04954258196634279,
+    "transferred_top1_matches": 316,
+    "transferred_total_steps": 320,
+    "minimum_category_top1_percent": 96.875,
+    "poolside": "pass",
+    "decode": "neutral",
+    "determinism": "pass",
+    "lifecycle": "pass"
+  },
+  "cached_profile": {
+    "pp512_tok_s": 507.0667943610147,
+    "pp1024_tok_s": 455.3886694790129,
+    "pp4096_tok_s": 359.1828836332362,
+    "pp512_kernel_span_ms": 1004.954145,
+    "pp512_kernel_sum_ms": 994.149902,
+    "pp512_dispatches": 1886,
+    "families_ms": {
+      "selected_gate_up": 320.096598,
+      "selected_down": 203.000397,
+      "global_attention": 44.831832,
+      "sliding_attention": 174.54984,
+      "source_f16": 128.274379,
+      "dense_shared": 53.352738,
+      "router": 23.330553,
+      "activation": 17.809273,
+      "norm": 24.69035,
+      "kv": 0.851311,
+      "lm_head": 1.17216,
+      "embedding": 0.036749,
+      "other": 2.153722
+    },
+    "source_f16_prior_ms": 134.442353,
+    "source_f16_change_percent": -4.587832825557007,
+    "source_f16_dispatches_prior": 576,
+    "source_f16_dispatches": 336,
+    "f32_scale_rows_dispatches": 0,
+    "child_sha256": "1869df547cf738325e39c162f4a1effbd97b4a0c455aa8c9aefffa6bf32e481d",
+    "trace_sha256": "9e7e4c3df9eec86cf0c5988e9c0912782f3caf5dee651f07ff4afb707a346d20",
+    "summary_sha256": "ddbd5e5171571082f4a915d87fe3201adc92e0cec7d0b7f3e413829febfc5ba2"
+  },
+  "decision": {
+    "retained": true,
+    "scope": "gfx1151 production default",
+    "rollback": "hipblaslt_scaled remains explicit",
+    "next": "Return to selected-expert and attention ceilings toward the 700 tok/s stretch."
+  }
+}
