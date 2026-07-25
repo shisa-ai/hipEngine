@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T02:24:00+09:00",
+  "kind": "hipengine_laguna_gate_wave_column_geometry_screen",
+  "status": "rejected_and_removed",
+  "pass": true,
+  "performance_claim": false,
+  "repo": {
+    "revision": "bf3feafc0836657d63f6ec0b03c8ac6d69fe2d1f",
+    "tracked_dirty_diagnostic": true,
+    "candidate_surfaces_removed": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "weights": "actual resident T16 gate/up",
+    "routing": "natural M512 per-expert counts from LAP-0",
+    "active_experts": 228,
+    "compact_rows": 5120,
+    "padded_mmq32_rows": 9504,
+    "max_expert_rows": 232
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols,t16-mmq64x32-d8-f32-wavecols,t16-mmq256x32-d8-f32-wavecols2 --warmups 2 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-gate-wavecols-geometry-leaf.json",
+    "timing": "counter-rotated HIP events, median of nine burst-three samples",
+    "activation_pack_included": true,
+    "resident_layout": "unchanged T16",
+    "candidate_sidecar": false
+  },
+  "results": {
+    "production_128x32_local128": {
+      "samples_ms": [
+        7.97299321492513,
+        8.002480189005533,
+        8.047952016194662,
+        8.079362869262695,
+        8.034759521484375,
+        8.040009180704752,
+        8.192335764567057,
+        8.139398574829102,
+        8.067797342936197
+      ],
+      "median_ms": 8.047952016194662,
+      "workgroup_size": 128,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "candidate_64x32_local64": {
+      "samples_ms": [
+        8.040051778157553,
+        8.035393397013346,
+        8.071641286214193,
+        8.101925532023111,
+        8.08161989847819,
+        8.087071736653646,
+        8.09396489461263,
+        8.219947814941406,
+        8.210385004679361
+      ],
+      "median_ms": 8.087071736653646,
+      "regression_percent": 0.4860829237085973,
+      "workgroup_size": 64,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "candidate_256x32_two_columns_per_lane": {
+      "samples_ms": [
+        9.674545923868815,
+        9.704856236775717,
+        9.699086507161459,
+        9.719998677571615,
+        9.653781255086264,
+        9.705612182617188,
+        9.70177968343099,
+        9.913417180379232,
+        9.665648142496744
+      ],
+      "median_ms": 9.70177968343099,
+      "regression_percent": 20.5496710704584,
+      "workgroup_size": 128,
+      "vgpr": 128,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    }
+  },
+  "correctness": {
+    "cpu_reference_gate_pass": true,
+    "bf16_byte_identical_to_production": true,
+    "finite": true,
+    "shared_checksum_f64": 1114.1769413301445
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-gate-wavecols-geometry-trace --output-file geometry --log-level error -- .venv/bin/python3 scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols,t16-mmq64x32-d8-f32-wavecols,t16-mmq256x32-d8-f32-wavecols2 --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-wavecols-geometry-trace/child.json",
+    "raw_csv_sha256": "a196c8f4876f2ebf0a372e95e580dbf26f656da201dba5ddf108ebd3b9b61961",
+    "raw_files_committed": false
+  },
+  "decision": {
+    "pass": true,
+    "action": "Reject and remove both alternate geometries; retain 128x32/local128.",
+    "reason": "Local64 is slightly slower with no resource relief, while two columns per lane raises VGPR 80 to 128 and regresses the actual leaf 20.55%. The production geometry is the measured optimum among 64/128/256 output-column tiles under this mapping."
+  }
+}
