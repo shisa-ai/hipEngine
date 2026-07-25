@@ -654,6 +654,13 @@ matrix512/attention128 pp512 improves **489.036 -> 491.014 tok/s (+0.404%)**
 with six of seven paired wins and token 2930. Clean publication remains
 pending.
 
+The rejected Laguna Q6 selected-down shared-weight local64 screen is recorded
+in
+[`2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`](results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json).
+Actual layer-1 natural-M512 timing regresses **5.223 -> 5.308 ms (+1.635%)**
+despite BF16-byte identity, so every candidate surface is removed and Q6
+local128 remains production.
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |

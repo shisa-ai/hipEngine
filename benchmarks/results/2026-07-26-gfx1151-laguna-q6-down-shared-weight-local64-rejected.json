@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T04:31:00+09:00",
+  "kind": "hipengine_laguna_q6_down_shared_weight_local64_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "scope": "actual layer-1 Q6 selected-down resident T16 weight with natural M512 routing",
+    "shape": {
+      "compact_rows": 5120,
+      "padded_rows": 9504,
+      "in_features": 1024,
+      "out_features": 3072,
+      "experts": 256
+    },
+    "production": "64 output columns x 32 routed rows, local128, four waves x eight rows, one shared weight decode",
+    "candidate": "64 output columns x 32 routed rows, local64, two waves x sixteen rows, one shared weight decode",
+    "distinction_from_closed_row_halves": "The candidate retains one LDS weight tile and one decode per workgroup; rejected quartet/direct row halves duplicated streamed weight decode."
+  },
+  "validation": {
+    "red": "The expanded Q6 primitive test failed because the local64 selector did not exist.",
+    "green": "The local64 shared-weight body passes the uneven/empty-expert CPU-reference quality gate and is BF16-byte identical to production.",
+    "actual_weight_bf16_mismatches": 0,
+    "actual_weight_checksum": 512418274684
+  },
+  "protocol": {
+    "scope": "nine counter-rotated burst-three HIP-event samples; pack excluded; actual resident weight and natural routing metadata",
+    "tracked_clean_after_removal": true
+  },
+  "results": {
+    "production_local128_samples_ms": [
+      5.220780372619629,
+      5.222811063130696,
+      5.22151533762614,
+      5.560150782267253,
+      5.4637711842854815,
+      5.211311022440593,
+      5.21656068166097,
+      5.224535306294759,
+      5.23537031809489
+    ],
+    "production_local128_median_ms": 5.222811063130696,
+    "candidate_local64_samples_ms": [
+      5.2787825266520185,
+      5.264101664225261,
+      5.2718095779418945,
+      5.376513163248698,
+      5.59158452351888,
+      5.3193003336588545,
+      5.2878007888793945,
+      5.341194152832031,
+      5.308213551839192
+    ],
+    "candidate_local64_median_ms": 5.308213551839192,
+    "candidate_change_percent": 1.635182427167936
+  },
+  "decision": {
+    "action": "Reject and remove the local64 primitive, wrapper selector, and test surface before runtime integration.",
+    "reason": "Doubling per-lane row accumulators and serial weight-cache fills costs more than the smaller workgroup saves.",
+    "retain": "Q6 selected-down 64x32/local128 row-vector production"
+  }
+}

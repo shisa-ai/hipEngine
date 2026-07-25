@@ -649,7 +649,7 @@ and achievable-bandwidth evidence.
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **317.199 ms** | **31.05%** | Direct per-column decode is retained. Pair/shuffle, local64, 256-column, multi-K LDS, and non-temporal variants are closed; the next gate/up screen must change work ownership or data movement materially. |
-| Selected D4 Q4/Q6 down | **204.071 ms** | **19.97%** | Direct Q4 decode is retained. Q6 row-vector is **127.656 ms** and remains the largest down component; screen local64 while retaining one shared weight decode, distinct from the closed row-half variants that duplicate decode. |
+| Selected D4 Q4/Q6 down | **204.071 ms** | **19.97%** | Direct Q4 decode is retained. Q6 row-vector is **127.656 ms** and remains the largest down component; local64 and duplicate-decode row halves are closed. Screen a 64-row tile that amortizes one shared decode across high-count experts. |
 | Global + SWA attention | **218.364 ms** | **21.37%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **134.564 ms** | **13.17%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **52.989 ms** | **5.19%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Q4 falls **43.702 -> 41.936 ms (-4.04%)** and the family falls **54.834 -> 52.989 ms (-3.36%)**. |
@@ -684,11 +684,11 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Screen a **shared-weight Q6 selected-down local64 row-vector** body. Two
-   wave32s each own 16 routed rows while the workgroup decodes the 64-column
-   Q6 tile once into the existing 4 KiB LDS cache. This is materially distinct
-   from the rejected quartet/direct row-half bodies, which duplicated streamed
-   Q6 decode across two column-owning row halves.
+1. Screen a **Q6 selected-down 64-row tile** with natural expert compaction.
+   Across the 23 Q6 layers, padding to 64 rows reduces routed weight-tile
+   workgroups **6,946 -> 5,671 (-18.36%)**. Keep one shared weight decode and
+   preserve per-row K order; reject if the doubled accumulator set erases that
+   traffic reduction.
 2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1301,6 +1301,20 @@ attribution: **492.717/442.555/351.533 tok/s** at 512/1K/4K, Q4 dense
 byte-identical, so the direct all-exact maximum KL **0.049542582** and
 **316/320** top-1 transfer unchanged. Production evidence:
 [`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json).
+
+Thirtieth post-350 screen: **Q6 shared-weight local64 rejected and removed**.
+The candidate kept the production 64-column/32-row tile and one 4 KiB LDS
+weight decode, but assigned two waves 16 rows each instead of four waves eight
+rows each. It is therefore distinct from the already-closed row-half variants
+that duplicated streamed weight decode. The uneven/empty-expert oracle and
+actual layer output are BF16-byte exact.
+
+Actual layer-1 natural-M512 timing nevertheless regresses **5.223 -> 5.308 ms
+(+1.635%)** across nine counter-rotated burst-three samples. Doubling
+accumulators per lane and making each thread fill two weight-cache entries
+costs more than the smaller workgroup saves. Every candidate surface was
+removed before runtime integration; Q6 local128 remains production. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json).
 
 Production evidence:
 
@@ -1937,6 +1951,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`

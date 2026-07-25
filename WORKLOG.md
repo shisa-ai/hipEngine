@@ -179751,3 +179751,23 @@ Vulkan local sizes verbatim will close the measured gap.
   post-350 plan. Conservative production is **489.922 tok/s**; the traced
   kernel-span gap to 500 is **9.4 ms**. Next screen: Q6 selected-down local64
   with one shared weight decode, not the closed duplicate-decode row halves.
+
+## 2026-07-26 — Reject Q6 selected-down shared-weight local64
+
+- RED added a Q6 local64 row-vector case and failed on the missing wrapper
+  selector. GREEN generalized row ownership and weight-cache fills so two
+  waves own 16 rows each while preserving the single 4 KiB shared 64-column
+  weight tile. The uneven/empty-expert CPU-reference gate passes and output is
+  BF16-byte identical to local128.
+- On the actual layer-1 Q6 selected-down T16 weight with natural M512 routing
+  (5,120 compact / 9,504 padded rows, K1024/N3072), nine counter-rotated
+  burst-three samples regress **5.222811 -> 5.308214 ms (+1.635%)**. Actual
+  output has zero BF16 mismatches and checksum **512418274684**.
+- Rejected before runtime integration and removed the HIP export, Python
+  selector, and RED/GREEN test addition. Tracked source returned byte-for-byte
+  to `dfa815eab`; Q6 local128 row-vector remains production. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`.
+- Natural routing shows a higher-upside distinct premise: across the 23 Q6
+  layers, 32-row padding launches **6,946** weight-tile workgroups while
+  64-row padding needs **5,671 (-18.36%)**. The next bounded screen tests one
+  shared decode across a 64-row tile while preserving K accumulation order.

@@ -757,6 +757,14 @@ retained as a family-attributed exact micro-win. gfx1100 remains unchanged;
 `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` is release-window rollback
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`).
 
+The Q6 selected-down shared-weight local64 screen is rejected and removed.
+Unlike the earlier duplicate-decode row halves, this candidate retained one
+4 KiB LDS weight tile and assigned two waves 16 routed rows each. It is
+BF16-byte exact, but actual layer-1 natural-M512 timing regresses
+**5.223 -> 5.308 ms (+1.635%)**. Doubling accumulators per lane and serializing
+more cache fills outweighs the smaller workgroup; local128 remains production
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
