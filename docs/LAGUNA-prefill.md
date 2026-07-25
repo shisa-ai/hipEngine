@@ -1062,6 +1062,24 @@ remains explicit rollback through the next retained checkpoint. Evidence:
 and the implementation-worktree
 [`candidate packet`](../benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-candidate.json).
 
+Twentieth post-350 screen: **Q4 retained candidate; Q6 rejected**. The
+64-column transfer uses two wave32s, each owning 32 output columns and all 32
+routed rows. Q4 pair decode/shuffle removes its decoded-weight LDS tile while
+preserving D4 row-vector activation staging, packed dots, K order, resident
+T16 bytes, and BF16 outputs. The Q4 body moves
+local128/VGPR56/LDS4096B to local64/VGPR80/LDS1536B with zero scratch.
+
+The quant-isolated actual-model gate is decisive. Across seven
+counterbalanced repetitions per mode, row-vector production measures
+**433.791 tok/s**, Q4-wave/Q6-row **448.945 (+3.493%)**, Q4-row/Q6-wave
+**428.184 (-1.293%)**, and both-wave **442.941 (+2.109%)**. Every run returns
+token 2930; the Q4/Q6 primitive candidates are independently BF16
+byte-identical and pass their CPU-reference gates. gfx1151 therefore selects
+Q4-only `mmq64x32_d4_f32_wavecols_q4`; Q6 remains row-vector, and its
+quartet-shuffle runtime routes are removed. Clean selector-unset production,
+absolute quality, and all-family tracing remain open. Evidence:
+[`2026-07-26-gfx1151-laguna-down-wavecols-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-down-wavecols-candidate.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-wavecols-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-production.json)

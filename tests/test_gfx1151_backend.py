@@ -219,7 +219,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_scaled"
     assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
     assert LAGUNA_SELECTED_GATE_UP_MODE == "mmq128x32_d8_f32_wavecols"
-    assert LAGUNA_SELECTED_DOWN_MODE == "mmq64x32_d4_f32_rowvec"
+    assert LAGUNA_SELECTED_DOWN_MODE == "mmq64x32_d4_f32_wavecols_q4"
     assert LAGUNA_PREFILL_MATRIX_ROWS == 512
     assert (
         LAGUNA_GLOBAL_PREFILL_VARIANT

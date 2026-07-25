@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T01:58:00+09:00",
+  "kind": "hipengine_laguna_selected_down_wave_column_quant_split_candidate",
+  "status": "retained_q4_candidate_q6_rejected",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M T16 D4 selected-down wave-column remap on gfx1151",
+  "repo": {
+    "revision": "3236af966",
+    "tracked_clean": false,
+    "qualification": "Candidate measurements were made in the implementation worktree; clean selector-unset production publication remains required."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "candidate": {
+    "retained_mode": "mmq64x32_d4_f32_wavecols_q4",
+    "geometry": "64 output columns x 32 routed rows",
+    "mapping": "two wave32 groups each own 32 output columns and all 32 rows",
+    "accumulators_per_lane": 32,
+    "q4_weight_path": "each even lane decodes one adjacent T16 column pair; wave shuffle distributes the high-nibble column; decoded weights remain in registers",
+    "q6_weight_path": "quartet decode plus four wave shuffles was tested and rejected",
+    "activation_path": "unchanged D4 row-vector stage",
+    "arithmetic": "unchanged packed dots and K32 accumulation order",
+    "resident_layout": "unchanged T16; no sidecar or transpose",
+    "q6_production_path": "mmq64x32_d4_f32_rowvec"
+  },
+  "validation": {
+    "red": "The Q4/Q6 candidate fixtures failed on the missing wave_cols wrapper ABI, and the runtime fixture failed on the absent explicit mode.",
+    "primitive_green": "Q4 and Q6 candidate outputs were BF16 byte-identical to their row-vector controls and passed the independent CPU-reference KL/top-1 gates.",
+    "focused_green": "The complete kernel plus affected runtime/backend/category/publication/profile bundle reported 103 passes.",
+    "all_full_model_runs_same_next_token": true,
+    "next_token": 2930
+  },
+  "full_model_quant_split": {
+    "scope": "one resident owner; matrix512/attention128; one 128-row warmup per mode; seven counterbalanced synchronized pp512 repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_gate_wavecols_screen.py",
+    "row_vector_samples_tok_s": [
+      434.1817348769575,
+      436.03988133601325,
+      434.2104847420691,
+      433.79096129243567,
+      433.46702304851107,
+      433.7054715351001,
+      433.31331523876065
+    ],
+    "row_vector_median_tok_s": 433.79096129243567,
+    "q4_wave_q6_row_samples_tok_s": [
+      447.18955321027164,
+      447.2565376879188,
+      449.45040747654076,
+      448.94518302807586,
+      448.5664646062294,
+      448.973440252092,
+      448.9888835013402
+    ],
+    "q4_wave_q6_row_median_tok_s": 448.94518302807586,
+    "q4_only_speedup": 1.034934387960712,
+    "q4_only_improvement_percent": 3.493438796071202,
+    "q4_row_q6_wave_samples_tok_s": [
+      428.4035997882075,
+      427.58119299675883,
+      428.9551441560565,
+      428.6637546711244,
+      427.85232065376084,
+      428.0954956594291,
+      428.184174583898
+    ],
+    "q4_row_q6_wave_median_tok_s": 428.184174583898,
+    "q6_only_speedup": 0.9870749111695809,
+    "q6_only_change_percent": -1.2925088830419096,
+    "both_wave_samples_tok_s": [
+      442.9412433627292,
+      440.8342719677757,
+      443.15894460522514,
+      443.3369909438437,
+      442.9643352484544,
+      442.61412822239885,
+      442.9262236781424
+    ],
+    "both_wave_median_tok_s": 442.9412433627292,
+    "both_wave_speedup": 1.0210937591761506,
+    "both_wave_improvement_percent": 2.109375917615064,
+    "complete_q4_sample_separation": true,
+    "next_tokens": {
+      "row_vector": [2930, 2930, 2930, 2930, 2930, 2930, 2930],
+      "q4_wave_q6_row": [2930, 2930, 2930, 2930, 2930, 2930, 2930],
+      "q4_row_q6_wave": [2930, 2930, 2930, 2930, 2930, 2930, 2930],
+      "both_wave": [2930, 2930, 2930, 2930, 2930, 2930, 2930]
+    }
+  },
+  "trace": {
+    "scope": "cached primitive execution of the Q4 and Q6 candidate plus controls",
+    "q4_wave_resources": {
+      "kernel_template": "<1, true, false, 64, true, true, 64>",
+      "workgroup_size": 64,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "q4_row_vector_resources": {
+      "workgroup_size": 128,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 4096,
+      "scratch_bytes": 0
+    },
+    "q6_wave_resources": {
+      "workgroup_size": 64,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "q6_row_vector_resources": {
+      "workgroup_size": 128,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 4096,
+      "scratch_bytes": 0
+    },
+    "raw_csv_sha256": "59dc992a9af888e0cec2915ff92ee4e08ddaf3f993de85757d7058b12863b097",
+    "raw_csv_committed": false
+  },
+  "decision": {
+    "action": "Promote Q4-only wave-column selected down as the gfx1151 candidate default; retain Q6 row-vector production and remove Q6/combined runtime selectors.",
+    "q4_production_publication_pending": true,
+    "q6_wave_rejected": true,
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  }
+}

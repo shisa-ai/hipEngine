@@ -40,7 +40,7 @@ def test_production_absolute_comparison_uses_current_defaults() -> None:
         "production_absolute_candidate"
     ]
     assert lane.selected_gate_up_mode == "mmq128x32_d8_f32_wavecols"
-    assert lane.selected_down_mode == "mmq64x32_d4_f32_rowvec"
+    assert lane.selected_down_mode == "mmq64x32_d4_f32_wavecols_q4"
     assert lane.f16_projection_mode == "hipblaslt_scaled"
     assert lane.dense_q4_prefill_mode == "wmma_pack8"
 
