@@ -1737,20 +1737,22 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("residual_passes", "split16", "rowvec"),
+    ("residual_passes", "split16", "rowvec", "wave_cols"),
     [
-        (1, False, False),
-        (2, False, False),
-        (3, False, False),
-        (1, False, True),
-        (1, True, False),
-        (1, True, True),
+        (1, False, False, False),
+        (2, False, False, False),
+        (3, False, False, False),
+        (1, False, True, False),
+        (1, True, False, False),
+        (1, True, True, False),
+        (1, True, True, True),
     ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     residual_passes: int,
     split16: bool,
     rowvec: bool,
+    wave_cols: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1861,6 +1863,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             residual_passes=residual_passes,
             split16=split16,
             rowvec=rowvec,
+            wave_cols=wave_cols,
             library=library,
             runtime=runtime,
         )

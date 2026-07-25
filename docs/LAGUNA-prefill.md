@@ -1029,6 +1029,27 @@ both accumulator mappings; reopen it only with a premise that also avoids the
 local256/second-launch cost. Evidence:
 [`2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-mmq128x64-t256-rejected.json).
 
+Nineteenth post-350 screen: **retained candidate pending clean
+publication**. The wave-column remap assigns each of four wave32 groups 32
+output columns and all 32 routed rows. Each lane retains **32 accumulators**;
+an even lane decodes one adjacent T16 column pair, a wave shuffle distributes
+the high-nibble column, and decoded weights remain in registers. This removes
+the 5,120-byte shared weight cache without changing D8 activation staging,
+packed-dot arithmetic, K accumulation order, resident T16 bytes, or output
+boundaries.
+
+The uneven/empty-expert fixture is BF16 byte-identical to row-vector
+production and passes the independent CPU-reference gate. The actual layer-1
+natural pp512 leaf improves **11.467 -> 8.086 ms (1.418x; -29.49%)**,
+including the D8 pack. Seven counterbalanced full-model repetitions improve
+**385.941 -> 433.380 tok/s (+12.29%)**, with complete sample separation and
+token 2930 in every run. Cached tracing names
+`<1,false,true,128,true,true>` at local128, VGPR80, SGPR128, **1,536 B LDS**,
+and scratch0 versus production's 6,656 B LDS. gfx1151 now selects the
+wave-column mode; the old row-vector body remains explicit rollback while the
+clean selector-unset production and absolute-quality gates run. Evidence:
+[`2026-07-26-gfx1151-laguna-wavecols-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-wavecols-candidate.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-production-absolute-quality.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-production-absolute-quality.json)

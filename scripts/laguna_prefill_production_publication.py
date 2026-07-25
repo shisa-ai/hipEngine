@@ -57,7 +57,7 @@ CAPABILITY_DEFAULTS = {
     ),
     "selected_gate_up_mode": (
         "LAGUNA_SELECTED_GATE_UP_MODE",
-        "mmq128x32_d8_f32_rowvec",
+        "mmq128x32_d8_f32_wavecols",
     ),
     "selected_down_mode": (
         "LAGUNA_SELECTED_DOWN_MODE",
@@ -123,12 +123,15 @@ def _expected_candidate_modes(defaults: Mapping[str, Any]) -> dict[str, Any]:
             == "mmq64x32_d4_f32_rowvec"
             else defaults["selected_down_mode"]
         ),
-        # The current row-vector consumer is BF16 byte-identical to the D8
+        # The current wave-column consumer is BF16 byte-identical to the D8
         # arithmetic admitted by this historical 320-step quality artifact.
         "selected_gate_up_mode": (
             "mmq128x32_d8_f32"
             if defaults["selected_gate_up_mode"]
-            == "mmq128x32_d8_f32_rowvec"
+            in (
+                "mmq128x32_d8_f32_rowvec",
+                "mmq128x32_d8_f32_wavecols",
+            )
             else defaults["selected_gate_up_mode"]
         ),
         # Source qualification skips only the current/cache source that the

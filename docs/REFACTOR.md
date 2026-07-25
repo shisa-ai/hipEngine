@@ -995,3 +995,15 @@ should be boring.
   unnecessary, or a replacement isolation design passes the full stability
   gate and survives one release cycle. Then delete the rejected duplicate
   route and selector; keep only the proven scheduling policy.
+
+## Laguna D8 row-vector selected gate/up rollback
+
+- Added 2026-07-26 after the exact wave-column MMQ128x32 consumer became the
+  gfx1151 candidate default. The older `mmq128x32_d8_f32_rowvec` mode remains
+  an explicit session-level rollback while the new
+  `mmq128x32_d8_f32_wavecols` route completes clean production and
+  absolute-quality publication.
+- Remove when: the wave-column route passes the clean selector-unset pp512,
+  cached trace, and canonical absolute-quality gates and survives the next
+  retained production checkpoint. Keep the underlying scalar-staged D8 body
+  only if it still serves a tested unmeasured-backend fallback.

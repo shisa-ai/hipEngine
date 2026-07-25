@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T01:28:05+09:00",
+  "kind": "hipengine_laguna_wave_column_selected_gate_up_candidate",
+  "status": "retained_candidate_pending_clean_production_gate",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M T16 D8 selected gate/up wave-column remap on gfx1151",
+  "repo": {
+    "revision": "263870bfad688837f53e87bf2e0e5d2d451c86ba",
+    "tracked_clean": false,
+    "qualification": "Candidate measurements were made in the implementation worktree; selector-unset clean production publication remains required."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer_leaf": 1,
+    "in_features": 3072,
+    "out_features_each": 1024
+  },
+  "candidate": {
+    "mode": "mmq128x32_d8_f32_wavecols",
+    "geometry": "128 output columns x 32 routed rows",
+    "mapping": "four wave32 groups each own 32 output columns and all 32 rows",
+    "accumulators_per_lane": 32,
+    "weight_path": "each even lane decodes one adjacent T16 column pair; wave shuffle distributes the high-nibble column; decoded weights remain in registers",
+    "activation_path": "unchanged D8 row-vector stage",
+    "arithmetic": "unchanged split16 packed dots and K32 accumulation order",
+    "resident_layout": "unchanged T16; no sidecar or transpose"
+  },
+  "validation": {
+    "red": "The candidate fixture failed on the missing wave_cols wrapper ABI.",
+    "focused_green": "Seven Q4 D4/D8 configurations passed, including BF16 byte equality between wave-column and production row-vector D8; the complete focused kernel/runtime/backend/category/publication/profile bundle reported 81 passes.",
+    "correctness_gate": "Independent CPU-reference KL <=0.05 and top-1 >=90%; wave-column output is BF16 byte-identical to production on the uneven/empty-expert fixture.",
+    "next_token": 2930,
+    "all_full_model_runs_same_next_token": true
+  },
+  "leaf": {
+    "scope": "actual layer-1 gate/up weights and frozen natural pp512 routing; BF16-to-D8 pack included",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32,t16-mmq128x32-d8-f32-wavecols --warmups 2 --samples 11 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-mmq-wavecols-layer1-leaf.json",
+    "production_median_ms": 11.467398071289063,
+    "candidate_median_ms": 8.085804748535157,
+    "speedup": 1.4182135764985573,
+    "duration_reduction_percent": 29.48875849370228,
+    "finite": true,
+    "production_checksum_f64": 1114.1769413301445,
+    "candidate_checksum_f64": 1114.1769413301445,
+    "raw_output": "/tmp/laguna-mmq-wavecols-layer1-leaf.json",
+    "raw_output_committed": false
+  },
+  "full_model": {
+    "scope": "one resident owner; matrix512/attention128; one 128-row warmup per mode; seven counterbalanced synchronized pp512 repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_gate_wavecols_screen.py",
+    "production_samples_tok_s": [
+      386.1205327676523,
+      385.86086215898575,
+      385.9414090797584,
+      386.8655527243279,
+      386.6765159639777,
+      385.7952410536934,
+      385.64788847810246
+    ],
+    "production_median_tok_s": 385.9414090797584,
+    "candidate_samples_tok_s": [
+      432.64459088715023,
+      433.67293846156656,
+      432.64689995566613,
+      432.7161703612001,
+      433.4767955583175,
+      433.803244801922,
+      433.3798014051953
+    ],
+    "candidate_median_tok_s": 433.3798014051953,
+    "speedup": 1.122916046864599,
+    "improvement_percent": 12.29160468645989,
+    "complete_sample_separation": true,
+    "next_tokens": {
+      "production": [2930, 2930, 2930, 2930, 2930, 2930, 2930],
+      "candidate": [2930, 2930, 2930, 2930, 2930, 2930, 2930]
+    }
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wavecols-profile --output-file wavecols-leaf --log-level error -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-wavecols-profile/child.json",
+    "kernel_template": "<1, false, true, 128, true, true>",
+    "durations_ms": [8.804618, 8.275827],
+    "workgroup_size": 128,
+    "vgpr": 80,
+    "sgpr": 128,
+    "lds_bytes": 1536,
+    "scratch_bytes": 0,
+    "production_lds_bytes": 6656,
+    "raw_csv_sha256": "15c3203bc67cc7d65f01aa643c84c09cbbd281e1b4bde0fdeecae1d93134009d",
+    "child_json_sha256": "e85480bd8d65e330995021659c6cc38cf69ab9294979e26b43afee6125702372",
+    "raw_files_committed": false
+  },
+  "decision": {
+    "action": "Promote the wave-column mode as the gfx1151 default and retain the old row-vector mode as explicit rollback while the clean selector-unset production and absolute-quality gates run.",
+    "production_publication_pending": true,
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  }
+}
