@@ -37,11 +37,17 @@ _SYMBOL_SWA_ATTENTION_SPLIT_EXACT = (
 _SYMBOL_SWA_ATTENTION_SPLIT_EXACT_GATED = (
     "hipengine_laguna_swa_attention_decode_split_exact_gated_bf16_spans"
 )
+_SYMBOL_SWA_ATTENTION_SPLIT_EXACT_GATED_WAVE_LOCAL = (
+    "hipengine_laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans"
+)
 _SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT = (
     "hipengine_laguna_swa_attention_decode_split_tile16_exact_bf16_spans"
 )
 _SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT_GATED = (
     "hipengine_laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans"
+)
+_SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT_GATED_WAVE_LOCAL = (
+    "hipengine_laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans"
 )
 _SYMBOL_SWA_PREFILL = "hipengine_laguna_swa_attention_prefill_bf16_spans"
 _SYMBOL_SWA_PREFILL_WAVE32_EXACT = (
@@ -1028,6 +1034,98 @@ def laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans(
     )
 
 
+def laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact split SWA with wave-private softmax statistics."""
+
+    _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+        _SYMBOL_SWA_ATTENTION_SPLIT_EXACT_GATED_WAVE_LOCAL,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        gate_ptr,
+        gated_out_ptr,
+        score_scratch_ptr,
+        physical_scratch_ptr,
+        spans,
+        scan_slots,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        sliding_window=sliding_window,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact tile16 split SWA with wave-private softmax statistics."""
+
+    _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+        _SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT_GATED_WAVE_LOCAL,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        gate_ptr,
+        gated_out_ptr,
+        score_scratch_ptr,
+        physical_scratch_ptr,
+        spans,
+        scan_slots,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        sliding_window=sliding_window,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
     symbol: str,
     query_ptr: int,
@@ -1286,6 +1384,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "swa_context_split_exact_gated_wave_local_spans",
+            laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "swa_context_split_tile16_exact_spans",
             laguna_swa_attention_decode_split_tile16_exact_bf16_spans,
         ),
@@ -1293,6 +1396,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
             "laguna_attention_decode",
             "swa_context_split_tile16_exact_gated_spans",
             laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
+            "swa_context_split_tile16_exact_gated_wave_local_spans",
+            laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans,
         ),
         (
             "laguna_attention_prefill",
@@ -1426,8 +1534,10 @@ __all__ = [
     "laguna_swa_attention_decode_token4_exact_bf16_spans",
     "laguna_swa_attention_decode_split_exact_bf16_spans",
     "laguna_swa_attention_decode_split_exact_gated_bf16_spans",
+    "laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans",
     "laguna_swa_attention_decode_split_tile16_exact_bf16_spans",
     "laguna_swa_attention_decode_split_tile16_exact_gated_bf16_spans",
+    "laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans",
     "laguna_swa_attention_prefill_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
     "laguna_swa_head_rmsnorm_rope_write_kv_f32_spans",

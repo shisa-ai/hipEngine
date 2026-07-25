@@ -11,7 +11,10 @@ defaults. A correctness-fenced one-doorbell native-AQL owner is slower and
 rejected. The device-pinned matched Vulkan reaudit still fails at both horizons.
 A fresh exact SWA split-reducer max-scan synchronization contraction passed
 correctness and actual-layer screens but failed the clean short dispatch-span
-guard; it is rejected and removed before category measurement.
+guard; it is rejected and removed before category measurement. A distinct
+wave-local reducer that removes all remaining block barriers and reducer LDS is
+correctness-admitted/default-off after exact model-state, trace, and strong
+actual-layer gates; clean context and complete-category promotion are pending.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -949,6 +952,23 @@ exports, wrappers, registry keys, runtime selector, and tests are removed;
 retained current-P4 remains canonical. Evidence:
 [`correctness`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-no-max-sync-correctness.json)
 and [`rejection`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-no-max-sync-rejected.json).
+
+The next screen uses a distinct premise rather than relaxing that rejection.
+Each of four logical wave leaders independently replays the retained scalar
+maximum and denominator order, broadcasts each four-weight batch within its
+wave, and leaves every dimension's slot-order FMA chain unchanged. Duplicating
+scalar score/`expf` work removes every cross-wave barrier and all reducer LDS.
+The separately registered/default-off normal-score and tile16-score siblings
+are F32/BF16 bit exact at live 65/257. A shared-weight gate matches full logits,
+all 48 hidden and 47 routed boundaries, active K/V plus every span field, reset,
+and lifecycle through 16 decode transitions (`KL=0`, top-1 100%). First/last
+actual SWA layers at live 70/128/257/512 improve inclusive events
+**4.87-18.91%** and synchronized wall **4.84-18.96%** in every row. Cached
+tracing records 72 candidate calls and zero retained reducer calls at local128,
+VGPR24, SGPR128, **LDS0**, and scratch0. This is correctness admission only;
+clean short/512/1K/near-4K plus both complete 18-prompt process orders still
+decide promotion. Evidence:
+[`...p4-swa-wave-local-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-correctness.json).
 
 ## 9. Do not chase without new evidence
 
