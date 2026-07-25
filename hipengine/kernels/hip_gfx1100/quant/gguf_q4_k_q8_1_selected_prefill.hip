@@ -2823,7 +2823,8 @@ template <
     int MMQ_M = 64,
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
-    int THREADS = 128>
+    int THREADS = 128,
+    bool DIRECT_WAVE_DECODE = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -2849,6 +2850,9 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   constexpr int ROW_ITERS = WAVE_COLUMNS ? MMQ_N : WNITER;
   typedef int mmq_i32x4_t
       __attribute__((__vector_size__(4 * sizeof(int))));
+  static_assert(
+      !DIRECT_WAVE_DECODE || WAVE_COLUMNS,
+      "direct Q4 decode requires wave-column mapping");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -2923,21 +2927,27 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
             qweight + tile_index * Q4_K_T16_BLOCK_BYTES;
 #pragma unroll
         for (int pack = 0; pack < 8; ++pack) {
-          uint32_t packed0 = 0;
-          uint32_t packed1 = 0;
-          if ((lane & 1) == 0) {
-            pack_q4_k_t16_u8x4_pair(
-                tile,
-                subblock,
-                pack * 4,
-                col >> 1,
-                packed0,
-                packed1);
+          if constexpr (DIRECT_WAVE_DECODE) {
+            wave_weight.qs[pack] =
+                pack_q4_k_t16_u8x4(
+                    tile, subblock, pack * 4, col);
+          } else {
+            uint32_t packed0 = 0;
+            uint32_t packed1 = 0;
+            if ((lane & 1) == 0) {
+              pack_q4_k_t16_u8x4_pair(
+                  tile,
+                  subblock,
+                  pack * 4,
+                  col >> 1,
+                  packed0,
+                  packed1);
+            }
+            const uint32_t high_col = __shfl(
+                packed1, lane & ~1, 32);
+            wave_weight.qs[pack] =
+                (lane & 1) ? high_col : packed0;
           }
-          const uint32_t high_col = __shfl(
-              packed1, lane & ~1, 32);
-          wave_weight.qs[pack] =
-              (lane & 1) ? high_col : packed0;
         }
         wave_weight.dm[0] =
             fp16_bytes_to_float(
@@ -3257,7 +3267,8 @@ template <
     int MMQ_M = 64,
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
-    int THREADS = 128>
+    int THREADS = 128,
+    bool DIRECT_WAVE_DECODE = false>
 int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* compact_to_source,
@@ -3301,7 +3312,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
           MMQ_M,
           ROWVEC_ACTIVATION_STAGE,
           WAVE_COLUMNS,
-          THREADS>),
+          THREADS,
+          DIRECT_WAVE_DECODE>),
       grid,
       block,
       0,
@@ -4241,6 +4253,51 @@ hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_prefill_co
       true,
       128,
       true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      true,
+      128,
+      true,
+      true,
+      128,
       true>(
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
       compact_to_source,

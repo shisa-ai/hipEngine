@@ -16,13 +16,16 @@ that direct production-versus-all-exact reached 0.0535024. Production now uses
 hipBLASLt heuristic 2 only for the K3072xN72 SWA gate shape and heuristic 4
 elsewhere; the clean absolute gate passes at maximum KL 0.0495426 and 316/320
 top-1. The compounded routes are gfx1151 package defaults. The exact
-wave-column D8 gate/up remap is now retained: clean selector-unset production
-measures **432.355 tok/s** median, and cached-only all-family tracing measures
-**434.994 tok/s** while naming every intended kernel family. D4 Q4/Q6 down
-retains its bit-identical row-vector stage. The campaign remains active toward
-the 500 gate and 700 stretch. The execution order below was re-audited on
-2026-07-26 after correcting both the Vulkan comparator geometry and the
-absolute quality baseline.
+wave-column D8 gate/up remap and Q4-only D4 down remap are retained: clean
+selector-unset production measures **448.203 tok/s** median, and cached-only
+all-family tracing measures **449.522 tok/s** while naming every intended
+kernel family. Q6 down retains its bit-identical row-vector stage. A direct
+per-column Q4 gate/up decode is now the next gfx1151 default candidate: its
+implementation-worktree screen reaches **472.533 tok/s**, pending clean
+production publication. The campaign remains active toward the 500 gate and
+700 stretch. The execution order below was re-audited on 2026-07-26 after
+correcting both the Vulkan comparator geometry and the absolute quality
+baseline.
 
 ## Outcome
 
@@ -32,8 +35,10 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **432.355 tok/s**
-selector-unset, **5.672x** the old row and **25.481%** above the Vulkan control.
+The quality-admitted production default now measures **448.203 tok/s**
+selector-unset, **5.880x** the old row and **30.080%** above the Vulkan
+control. The direct-decode candidate is not included in those production
+claims until its clean selector-unset gate completes.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
 Strix Halo has a **256 GB/s** theoretical LPDDR5X roof and the existing
@@ -620,6 +625,7 @@ Current progress:
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
 | Production publication | Complete/current | Clean revision `7086f8cdd` directly gates production against all-exact at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle. Exact Q4 down wave columns move clean selector-unset pp512 **433.081 -> 448.203 tok/s (+3.492%)** after the earlier gate/up remap; all seven production samples are **446.152–448.762** with token 2930. |
+| Direct Q4 gate/up wave decode | Retained candidate; clean publication pending | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)** and the seven-repeat integrated screen improves **447.582 -> 472.533 tok/s (+5.575%)**, with BF16-byte identity and token 2930 throughout. |
 | LAP-7–LAP-8 | Current scalar production retained | Attention is **217.589 ms / 19.39%** of kernel sum. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, and qhead3 sharing all completed negative gates. Source-qualified qrow4 remains production; attention needs a new async/library-class premise before reopening. |
 
 ## Post-350 campaign — 500 production gate, 700 stretch
@@ -641,7 +647,7 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. T16 K64 nibble reuse is inapplicable, measured 64/256-column alternatives lose, and explicit `slc dlc` weight loads regress the natural M512 leaf by 32.58%. A further win requires a new scheduling/layout premise. |
+| Selected D8 Q4 gate/up | **389.893 ms** | **34.74%** | Primary lever. Direct per-column T16 decode is the current retained candidate: **8.107 -> 6.916 ms (-14.69%)** on the actual leaf and **447.582 -> 472.533 tok/s (+5.575%)** integrated. Clean publication is the next gate; the family trace is refreshed from that revision. |
 | Selected D4 Q4/Q6 down | **216.616 ms** | **19.30%** | Q4 wave columns are retained. Q6 local64 quartet-shuffle, local128 row-half quartet, and local128 direct-column mappings all regress; retain its one-decode shared-weight row-vector path. |
 | Global + SWA attention | **217.589 ms** | **19.39%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.626 ms** | **11.91%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
@@ -678,19 +684,16 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Keep the retained Q4-down result and do not retry its rejected Q6
-   quartet-shuffle analogue. Raw-GGUF K64 nibble reuse is inapplicable to T16;
-   64x32/local64 and two-columns-per-lane 256x32 both lost the actual layer-1
-   gate. Explicit non-temporal T16 weight loads emitted `slc dlc` exactly as
-   requested but regressed the natural M512 leaf by 32.58%; do not retry cache
-   bypass without a materially different traffic profile.
-2. Keep Q6 row-vector production. Both local128 row-half mappings are exact
-   but regress; direct per-column decode narrows the loss to 2.89% yet still
-   cannot repay duplicated Q6 weight decode. The next dominant-family screen
-   replaces Q4 pair-decode/shuffle with direct per-column decode without
-   duplicating row ownership; gate it independently on the actual gate/up leaf
-   before any runtime integration.
-3. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
+1. Publish direct per-column Q4 gate/up decode from a clean committed revision.
+   It already passes the primitive CPU-reference/byte gate and improves the
+   actual leaf **14.69%** plus integrated pp512 **5.575%**. Require clean
+   selector-unset timing, direct all-exact quality, lifecycle, and an all-family
+   trace before calling it production.
+2. Transfer direct per-column decode to **Q4 down only**, preserving Q6
+   row-vector production. Gate Q4 independently against the retained
+   pair-decode/shuffle body before integration; do not duplicate Q6 decode or
+   reopen its rejected quartet/row-half mappings.
+3. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
@@ -1149,6 +1152,28 @@ lands at **434.797 (-2.894%)**. Every run selects token 2930. Candidate text
 also grows from production's 8,372 bytes to 14,008/11,128 bytes. All kernel,
 wrapper, runtime, and test surfaces were removed. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-row-half-wavecols-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-row-half-wavecols-rejected.json).
+
+Twenty-fourth post-350 screen: **direct per-column Q4 gate/up decode retained
+as the next default candidate**. The production wave-column body made each
+even lane decode an adjacent T16 column pair and shuffled the second column to
+its odd neighbor. The candidate instead has every lane decode its own column.
+It preserves the 128x32/local128 geometry, D8 activation bytes, resident T16
+layout, packed-dot arithmetic, K accumulation order, and BF16 stores; only the
+decode ownership changes.
+
+The nine-case Q4 CPU-reference gate passes and the candidate is BF16-byte
+identical to pair-decode production. Nine counter-rotated burst-three samples
+on actual layer-1 weights and natural M512 routing improve the pack-inclusive
+leaf **8.107 -> 6.916 ms (-14.693%)**, with identical finite checksum
+**1114.1769413301445**. A seven-repeat one-owner matrix512/attention128 screen
+then improves integrated pp512 **447.582 -> 472.533 tok/s (+5.575%)** with
+complete sample separation and token 2930 throughout. Cached tracing names
+template `<1,false,true,128,true,true,128,true>` at local128, VGPR88,
+LDS1536B, and zero scratch. Its **13,416-byte** text is 752 bytes smaller than
+pair decode in the same object. This remains a candidate—not a production
+claim—until the committed clean selector-unset timing, direct all-exact
+quality, lifecycle, and refreshed all-family trace complete. Evidence:
+[`2026-07-26-gfx1151-laguna-q4-direct-wavecols-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-candidate.json).
 
 Production evidence:
 

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained candidate gfx1151 Laguna direct Q4 wave decode] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural-M512 gate/up improves **8.107 -> 6.916 ms (-14.693%)** and one-owner matrix512/attention128 pp512 improves pair-decode **447.582 -> 472.533 tok/s (+5.575%)** by having every wave-column lane decode its own T16 column and removing pair shuffles; output is BF16-byte identical and every run selects token 2930, while clean selector-unset production publication remains pending; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-candidate.json`.
+
 - [rejected and removed gfx1151 Laguna Q6 row-half wave mappings] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / one-owner matrix512/attention128 pp512 regresses production **447.756 -> 411.122 tok/s (-8.182%)** with local128 quartet/shuffle row halves and **447.756 -> 434.797 (-2.894%)** with direct per-column decode; both are BF16-byte exact and all runs select token 2930, but duplicating streamed Q6 decode cannot repay removing its shared-weight LDS, so all candidate surfaces are removed; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-row-half-wavecols-rejected.json`.
 
 - [rejected and removed gfx1151 Laguna non-temporal T16 gate/up loads] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural-M512 leaf regresses **7.811 -> 10.355 ms (+32.584%)** after extracted ISA confirms all streamed T16 Q4 byte/half loads gain `slc dlc`; the 13-case gate passes and actual BF16 checksum is identical, but cache bypass is harmful, so every candidate surface is removed; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json`.

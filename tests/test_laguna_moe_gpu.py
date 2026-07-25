@@ -234,7 +234,7 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "direct"
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151")
-        == "mmq128x32_d8_f32_wavecols"
+        == "mmq128x32_d8_f32_wavecols_direct"
     )
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "direct")
@@ -252,9 +252,9 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
     )
     assert (
         resolve_laguna_selected_gate_up_mode(
-            "hip_gfx1151", "mmq128x32_d8_f32_wavecols"
+            "hip_gfx1151", "mmq128x32_d8_f32_wavecols_direct"
         )
-        == "mmq128x32_d8_f32_wavecols"
+        == "mmq128x32_d8_f32_wavecols_direct"
     )
     with pytest.raises(ValueError, match="unsupported Laguna selected gate/up mode"):
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unsafe")

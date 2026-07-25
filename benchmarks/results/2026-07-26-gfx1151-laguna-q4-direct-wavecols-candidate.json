@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T02:51:42+09:00",
+  "kind": "hipengine_laguna_q4_direct_wave_column_decode_candidate",
+  "status": "retained_candidate_pending_clean_production_gate",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M resident-T16 D8 selected gate/up direct per-column wave decode on gfx1151",
+  "repo": {
+    "revision": "5c0282ad4e6d6286f288470bac182814fc7afdb8",
+    "tracked_clean": false,
+    "qualification": "Candidate measurements were made in the implementation worktree; clean selector-unset production publication remains required."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer_leaf": 1,
+    "in_features": 3072,
+    "out_features_each": 1024
+  },
+  "candidate": {
+    "mode": "mmq128x32_d8_f32_wavecols_direct",
+    "geometry": "128 output columns x 32 routed rows",
+    "mapping": "four wave32 groups each own one output column per lane and all 32 routed rows",
+    "weight_path": "each lane directly decodes its resident-T16 Q4 column; no adjacent-column pair decode and no wave shuffle",
+    "activation_path": "unchanged D8 row-vector stage",
+    "arithmetic": "unchanged split16 packed dots, K32 accumulation order, and BF16 output",
+    "resident_layout": "unchanged T16; no sidecar or transpose",
+    "rollback_mode": "mmq128x32_d8_f32_wavecols"
+  },
+  "validation": {
+    "red": "The direct-decode fixture failed on the missing direct_wave_decode wrapper ABI.",
+    "primitive_green": "All nine Q4 configurations passed the independent CPU-reference quality gate; the direct candidate is BF16-byte identical to pair-decode production.",
+    "affected_bundle": "The complete changed kernel/runtime/backend/category/publication bundle passed with two expected skips.",
+    "actual_layer_checksum_f64": 1114.1769413301445,
+    "all_full_model_runs_same_next_token": true,
+    "next_token": 2930
+  },
+  "leaf": {
+    "scope": "actual layer-1 gate/up weights and frozen natural pp512 routing; BF16-to-D8 pack included; nine counter-rotated burst-three samples",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols,t16-mmq128x32-d8-f32-wavecols-direct --warmups 2 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-wavecols-direct-leaf.json",
+    "pair_decode_samples_ms": [
+      8.035814921061197,
+      8.119540532430014,
+      8.106677373250326,
+      8.1155637105306,
+      8.075143814086914,
+      8.176950454711914,
+      8.078472773234049,
+      8.162216186523438,
+      8.081972122192383
+    ],
+    "pair_decode_median_ms": 8.106677373250326,
+    "direct_decode_samples_ms": [
+      6.769533157348633,
+      6.867286682128906,
+      6.931423187255859,
+      6.915580113728841,
+      6.925774892171224,
+      6.954308827718099,
+      6.895400365193685,
+      6.925376256306966,
+      6.890511830647786
+    ],
+    "direct_decode_median_ms": 6.915580113728841,
+    "speedup": 1.1722338892664859,
+    "duration_reduction_percent": 14.692792184523826,
+    "finite": true,
+    "pair_decode_checksum_f64": 1114.1769413301445,
+    "direct_decode_checksum_f64": 1114.1769413301445,
+    "raw_output_sha256": "6a3ae87c4d7204b5b1314731d2c79dc3dacb1d2984aebd539237100946b9ea72",
+    "raw_output_committed": false
+  },
+  "full_model": {
+    "scope": "one resident owner; matrix512/attention128; one 128-row warmup per mode; seven paired synchronized pp512 repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_gate_wavecols_screen.py",
+    "pair_decode_samples_tok_s": [
+      445.7169574716303,
+      446.3859162892983,
+      447.58186119101407,
+      446.30335563287196,
+      450.12339265456,
+      448.21479110734083,
+      448.03022949216063
+    ],
+    "pair_decode_median_tok_s": 447.58186119101407,
+    "direct_decode_samples_tok_s": [
+      472.5273874046144,
+      472.50986343557236,
+      472.5331897037872,
+      472.1645614698173,
+      475.1593533977859,
+      474.97261231411005,
+      474.59783760786326
+    ],
+    "direct_decode_median_tok_s": 472.5331897037872,
+    "speedup": 1.0557469608942098,
+    "improvement_percent": 5.574696089420983,
+    "complete_sample_separation": true,
+    "next_tokens": {
+      "pair_decode": [
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930
+      ],
+      "direct_decode": [
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930,
+        2930
+      ]
+    }
+  },
+  "trace": {
+    "scope": "cached focused CPU-reference fixture under rocprofv3",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-direct-wavecols-trace --output-file q4-direct-wavecols -- .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate[1-True-True-True-False-True]'",
+    "kernel_template": "<1, false, true, 128, true, true, 128, true>",
+    "duration_us": 31.459,
+    "workgroup_size": 128,
+    "vgpr": 88,
+    "sgpr": 128,
+    "lds_bytes": 1536,
+    "scratch_bytes": 0,
+    "direct_text_bytes": 13416,
+    "pair_decode_text_bytes_same_object": 14168,
+    "raw_csv_sha256": "e1cd7bd09b92a1acd45a39fa472d8ab1d46c10d353e3c499ad662efd6e3d9f8f",
+    "raw_files_committed": false
+  },
+  "decision": {
+    "action": "Promote direct per-column Q4 wave decode as the gfx1151 candidate default; retain pair decode as explicit rollback through clean selector-unset production publication.",
+    "production_publication_pending": true,
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true
+  }
+}

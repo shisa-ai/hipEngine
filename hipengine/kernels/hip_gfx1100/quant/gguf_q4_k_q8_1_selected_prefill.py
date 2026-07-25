@@ -101,6 +101,10 @@ _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
     "mmq128x32_wavecols_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
+    "mmq128x32_wavecols_direct_prefill_compact32_bf16_bf16_out"
+)
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -406,6 +410,7 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
     split16: bool = False,
     rowvec: bool = False,
     wave_cols: bool = False,
+    direct_wave_decode: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -431,10 +436,14 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         raise ValueError("rowvec requires residual_passes=1")
     if wave_cols and not (split16 and rowvec):
         raise ValueError("wave_cols requires split16 and rowvec")
+    if direct_wave_decode and not wave_cols:
+        raise ValueError("direct_wave_decode requires wave_cols")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_BF16
+        _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_BF16
+        if direct_wave_decode
+        else _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_BF16
         if wave_cols
         else (
             _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_ROWVEC_BF16

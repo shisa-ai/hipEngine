@@ -55,7 +55,7 @@ LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # one 32-column output slice to each wave, and holds decoded T16 weights in
 # registers. Packed-dot arithmetic and K order remain bit-for-bit unchanged.
 # Other backends retain exact.
-LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols"
+LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols_direct"
 # The post-350 down screen maps Q4 output columns across two wave32s while
 # preserving the range-safe D4 resident-T16 integer-dot arithmetic. Q6 keeps
 # the faster row-vector mapping; the scalar-staged and exact routes remain

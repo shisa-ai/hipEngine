@@ -57,7 +57,7 @@ CAPABILITY_DEFAULTS = {
     ),
     "selected_gate_up_mode": (
         "LAGUNA_SELECTED_GATE_UP_MODE",
-        "mmq128x32_d8_f32_wavecols",
+        "mmq128x32_d8_f32_wavecols_direct",
     ),
     "selected_down_mode": (
         "LAGUNA_SELECTED_DOWN_MODE",
@@ -131,6 +131,7 @@ def _expected_candidate_modes(defaults: Mapping[str, Any]) -> dict[str, Any]:
             in (
                 "mmq128x32_d8_f32_rowvec",
                 "mmq128x32_d8_f32_wavecols",
+                "mmq128x32_d8_f32_wavecols_direct",
             )
             else defaults["selected_gate_up_mode"]
         ),
