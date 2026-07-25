@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T21:35:04+09:00",
+  "kind": "hipengine_laguna_swa_qrow4_qhead3_rejected",
+  "status": "rejected_full_model_regression",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M selector-explicit pp512 SWA attention on gfx1151",
+  "repo": {
+    "revision": "c7d0be6ee29a9cd1e75d4836eefa313410ba61a3",
+    "tracked_clean": false,
+    "qualification": "The candidate existed only for the bounded screen and was removed after rejection."
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "rows": 512,
+    "matrix_chunk": 512,
+    "attention_chunk": 128
+  },
+  "candidate": {
+    "query_rows_per_wave": 4,
+    "query_heads_per_workgroup": 3,
+    "production_workgroups_per_row_tile": 72,
+    "candidate_workgroups_per_row_tile": 24,
+    "mapping": "three wave32 query heads sharing one qgroup9 KV head",
+    "k8_float_lds": "eight keys per tile; 16 KiB LDS; two barriers per tile",
+    "k32_bf16_lds": "32 keys per tile; 32 KiB LDS; two barriers per tile"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python /tmp/laguna_qrow4_attention_screen.py",
+    "timing": "one resident owner; warm each mode; five counterbalanced synchronized pp512 repetitions",
+    "global_variant": "global_context_rows_qrow4_m128_online_spans",
+    "production_swa_variant": "swa_context_rows_qrow4_m128_online_spans",
+    "candidate_swa_variant": "swa_context_rows_qrow4_qhead3_online_spans"
+  },
+  "results": {
+    "k8_float_lds": {
+      "production_samples_tok_s": [
+        364.5232891807989,
+        364.89141622629427,
+        362.7448853774344,
+        364.73795281113695,
+        366.7035195279456
+      ],
+      "production_median_tok_s": 364.73795281113695,
+      "candidate_samples_tok_s": [
+        299.0845593601906,
+        297.49941284660827,
+        298.6516892370442,
+        297.39982140276055,
+        299.1734508213715
+      ],
+      "candidate_median_tok_s": 298.6516892370442,
+      "candidate_delta_percent": -18.115
+    },
+    "k32_bf16_lds": {
+      "production_samples_tok_s": [
+        364.9425542083561,
+        365.2803439046806,
+        364.1201673762996,
+        363.91883961680696,
+        365.23887879950087
+      ],
+      "production_median_tok_s": 364.9425542083561,
+      "candidate_samples_tok_s": [
+        257.06427295747875,
+        256.6724124085396,
+        256.93583081811147,
+        256.69663913279345,
+        256.38218635848915
+      ],
+      "candidate_median_tok_s": 256.69663913279345,
+      "candidate_delta_percent": -29.66
+    },
+    "next_tokens": {
+      "production": 2930,
+      "candidate": 2930,
+      "all_repetitions_equal": true
+    }
+  },
+  "validation": {
+    "red": "Registry import failed before the qhead3 wrapper existed.",
+    "k8_green": "The focused registry and wrap/eviction GPU tests passed; full-eight and odd-seven outputs were F32 byte-identical to production qrow4.",
+    "k32_diagnostic": "The wrap/eviction output differed by at most 6.519258e-09 absolute after BF16 LDS conversion rescheduling; no quality claim was made."
+  },
+  "conclusion": "Reject and remove. Cross-wave LDS sharing reduces KV loads and workgroups but synchronization and LDS occupancy dominate; the exact K8 route regresses 18.1% and the lower-barrier K32 route regresses 29.7%."
+}

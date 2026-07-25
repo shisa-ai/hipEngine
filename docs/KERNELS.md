@@ -532,6 +532,14 @@ dirty **365.471 -> 366.126 tok/s (+0.179%)** signal reverses in the clean
 committed gate to **363.475 -> 361.055 (-0.666%)**. SWA qrow8 also regresses
 **365.392 -> 349.177 tok/s**. Global and SWA therefore remain qrow4
 (`benchmarks/results/2026-07-25-gfx1151-laguna-global-qrow8-candidate.json`).
+The simpler qhead3 cooperative SWA schedule is also rejected and removed.
+Grouping three qrow4 wave32 heads around one qgroup9 KV head cuts workgroups
+**72 -> 24**, but exact K8/float-LDS staging regresses matched pp512
+**364.738 -> 298.652 tok/s (-18.1%)**. K32/BF16-LDS staging reduces barrier
+frequency 4x yet regresses further **364.943 -> 256.697 tok/s (-29.7%)**.
+Cross-wave synchronous LDS reuse is closed; a future cooperative attention
+body must parallelize key work without this barrier/occupancy structure
+(`benchmarks/results/2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json`).
 
 ### Laguna post-350 selected-expert screens
 
