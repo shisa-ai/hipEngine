@@ -63,9 +63,10 @@ The first design is:
 
 The original `LAP-*` sequence is now substantially complete. Exact row-vector
 staging for Q4/Q6 down is promoted. The active post-350 queue is the production
-bandwidth ledger, a true key-parallel attention tile, and further
-counter-directed expert work. Submission and graph work remain deferred
-because the current trace leaves only 1.17% of wall outside summed kernels.
+bandwidth ledger and further counter-directed expert work; the synchronous-LDS
+key-parallel attention premise completed a negative gate. Submission and graph
+work remain deferred because the current trace leaves only 1.17% of wall
+outside summed kernels.
 
 The first 2026-07-25 layout checkpoint changed item 5. X8 remains the fastest
 proven MMQ32 input and an important arithmetic control, but its optimized
@@ -615,7 +616,7 @@ Current progress:
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
 | Production publication | Complete/current | Clean committed Q4/Q6 row-vector down staging measures selector-unset pp512 **385.997 tok/s** median versus scalar down **379.827 (+1.625%)**, all token 2930 and with complete sample separation. It compounds with the prior D8 row-vector gate/up default, is BF16 byte-identical, and carries forward the retained 320-step quality gate. Cached-only tracing measures **388.014/358.319/296.060 tok/s** at 512/1K/4K, cuts selected down **276.556 -> 254.006 ms (-8.15%)**, and returns all tracked allocations after close. |
-| LAP-7–LAP-8 | Active after exact down | Attention is now **216.727 ms / 16.62%** of kernel sum. The next attention premise is a true key-parallel M16-query x K64-key tile; qrow8 and qhead3 sharing are rejected. |
+| LAP-7–LAP-8 | Current scalar production retained | Attention is **216.727 ms / 16.62%** of kernel sum. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, and qhead3 sharing all completed negative gates. Source-qualified qrow4 remains production; attention needs a new async/library-class premise before reopening. |
 
 ## Post-350 campaign — 500 production gate, 700 stretch
 
@@ -638,7 +639,7 @@ and achievable-bandwidth evidence.
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **537.396 ms** | **41.21%** | Primary expert lever. Row-vector staging removed repeated source-map reads/byte assembly; the next body must reduce weight/LDS work without expanding row accumulators. |
 | Selected D4 Q4/Q6 down | **254.006 ms** | **19.48%** | Q4/Q6 row-vector staging is promoted and cut this family **8.15%**. Apply the next winning expert-body premise here only after it wins gate/up. |
-| Global + SWA attention | **216.727 ms** | **16.62%** | Source-qualified qrow4 is retained. Qrow8 and cross-wave qhead3 LDS reuse are rejected; a true key-parallel tile is the immediate bounded task. |
+| Global + SWA attention | **216.727 ms** | **16.62%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **131.081 ms** | **10.05%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **70.674 ms** | **5.42%** | Freeze. It cannot move the next milestone materially. |
 | All remaining named/other kernels | **94.177 ms** | **7.22%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
@@ -667,26 +668,22 @@ before admitting any new approximation.
 
 Immediate execution queue:
 
-1. Build the cooperative M16-query x K64-key `KVLiveSpans` attention tile.
-   Qrow8, three-query-head LDS sharing, and scalar qrow4 split-state merging
-   have completed their rejection gates; the remaining premise must tile QK
-   and PV work rather than merge full 128-dimensional partial outputs.
-2. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
+1. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-3. Do not retry 64-row expert accumulation. The routing-qualified hybrid
+2. Do not retry 64-row expert accumulation. The routing-qualified hybrid
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
    around less weight/LDS traffic or a wave-transpose primitive instead.
-4. Apply any further winning expert schedule to Q4/Q6 down, then run clean
+3. Apply any further winning expert schedule to Q4/Q6 down, then run clean
    selector-unset pp512 and the complete
    category/decode/determinism/lifecycle gate. Retain every exact same-suite
    non-regressive improvement; 500 tok/s closes the next production milestone.
-5. Raise the currently hard-capped matrix capacity and screen **1024/2048**
+4. Raise the currently hard-capped matrix capacity and screen **1024/2048**
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle
    evidence. This receives no pp512 credit.
-6. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
+5. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
    2.778% Q4 metadata saving is a permanent but roughly **1.1% pp512**
    gate/up-byte upper bound at the current family share.
 
@@ -914,6 +911,27 @@ the parallel key ranges. All code/registry/runtime/test surfaces are removed.
 This closes scalar qrow4 state splitting, not the M16xK64 tiled-QK/PV premise.
 Evidence:
 [`2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json).
+
+Thirteenth post-350 screen: **rejected and removed**. A true tiled-WMMA SWA
+body used four wave32 BF16 WMMA waves for a 16-query x 64-key QK tile, shared
+each staged K/V tile across adjacent queries, and accumulated cooperative
+online-softmax/PV state. The 16/15-row 500..515 wrap/eviction oracle passed at
+`rtol=2e-5, atol=2e-6`. It also exposed two correctness landmines that are now
+recorded for any future tiled body: mixed current/cache slot indices require an
+explicit cross-wave phase barrier, and logically invalid cache payload must be
+sanitized before branch-free zero-weight PV because `0 * NaN` is NaN.
+
+The fully correct M16 body traced at local128, VGPR248, SGPR128, LDS50,688B,
+scratch0 and regressed paired pp512 **386.631 -> 370.586 tok/s (-4.150%)**.
+An M8 pre-wrap specialization retained the proven qrow4 fallback at/after ring
+wrap, reused its K LDS allocation for V to cut LDS to 22,016B, and reduced
+VGPR to 224. It still regressed **386.539 -> 352.446 (-8.820%)** because it
+doubled workgroups and wasted half of each 16-row WMMA query tile. Every correct
+full-model run selected token 2930. All C/Python/registry/runtime/test surfaces
+were removed. Synchronous-LDS tiled attention is closed until a different
+async-copy, supported-library, or fused-softmax premise changes the resource
+model. Evidence:
+[`2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json).
 
 Production evidence:
 
@@ -1329,7 +1347,7 @@ token **2930**. The measured **687.5 ms** wall reduction captures most of the
 755.7 ms library opportunity. This is an integrated candidate, not a default
 promotion; cumulative KL/category/lifecycle and a clean A/B remain mandatory.
 
-### LAP-7 — build `KVLiveSpans`-aware cooperative tiled attention
+### LAP-7 — `KVLiveSpans`-aware cooperative tiled attention (rejected)
 
 Start only after a fresh post-LAP-6 profile puts attention at 10% or more of
 kernel time, or the remaining comparator gap is dominated by it.
@@ -1349,10 +1367,12 @@ Deliverables:
 Do not retry paired row2 score materialization, qgroup9, or the invalid
 head-dim-128 AOTriton adapter. Those premises are closed.
 
-Current checkpoint: attention measures **216.727 ms / 16.62%** of kernel sum,
-so its start threshold is satisfied and the 310 tok/s compatibility target is
-obsolete. Reduce the family toward **0.08 seconds or less** while preserving
-the full `KVLiveSpans` contract.
+Completion result: the start threshold was satisfied, but correct M16xK64 and
+M8xK64 tiled-WMMA bodies regressed pp512 **4.15%** and **8.82%** respectively.
+The resource floor was VGPR248/LDS50,688B for M16 and VGPR224/LDS22,016B for
+the K/V-reusing M8 specialization. Both were removed. Source-qualified qrow4
+remains production; reopen LAP-7 only for a different async-copy,
+supported-library, or materially fused-softmax premise.
 
 ### LAP-8 — final residual profile and qualified parity
 
@@ -1527,6 +1547,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-production.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`
