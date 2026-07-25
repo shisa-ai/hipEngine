@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26",
+  "kind": "hipengine_laguna_swa_qrow4_head2_rejected",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "baseline": "source-qualified SWA online qrow4",
+    "body": "single-wave source-qualified SWA online qrow4 with two adjacent GQA heads",
+    "intended_effect": "reuse each K/V row across two query heads without LDS, barriers, or reduced dimension parallelism",
+    "qgroup9_workgroups": "72 -> 40 per row group",
+    "candidate_removed": true
+  },
+  "correctness": {
+    "red": "The ring-wrap fixture failed to import the missing head2 wrapper.",
+    "green": "The 508..515 full-eight and ragged-seven wrap/eviction fixture was F32-byte identical to production qrow4.",
+    "full_model_exact": true,
+    "matched_next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "matched_full_logits_hidden_and_cursor": true,
+    "tracked_allocations_recovered": true
+  },
+  "measurement": {
+    "scope": "same-load matrix128/attention128 diagnostic with model load excluded",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_prefill_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --baseline-variant swa_context_rows_qrow4_sourcequal_online_spans --candidate-variant swa_context_rows_qrow4_head2_sourcequal_online_spans --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-head2-fullmodel-smoke.json",
+    "raw_sha256": "f12614a6291dd2b1d83e8bccf89b674e3561006ef3a855b93e0036f7a8546c73",
+    "load_seconds_excluded": 49.81527418096084,
+    "rows": {
+      "512": {
+        "baseline_seconds": 1.7511270280228928,
+        "candidate_seconds": 1.783318878035061,
+        "baseline_tok_s": 292.3831291542983,
+        "candidate_tok_s": 287.10513094783363,
+        "candidate_delta_percent": -1.8051651002337077
+      },
+      "1024": {
+        "baseline_seconds": 3.720126043073833,
+        "candidate_seconds": 3.805759518989362,
+        "baseline_tok_s": 275.2594907117444,
+        "candidate_tok_s": 269.0658710542825,
+        "candidate_delta_percent": -2.2501021277947175
+      },
+      "4096": {
+        "baseline_seconds": 17.35758487507701,
+        "candidate_seconds": 17.788019629078917,
+        "baseline_tok_s": 235.97752967817925,
+        "candidate_tok_s": 230.26734203194127,
+        "candidate_delta_percent": -2.4198014336472617
+      }
+    }
+  },
+  "decision": {
+    "outcome": "reject_and_remove",
+    "reason": "Doubling per-wave query and online-PV state loses at all three lengths; register/occupancy cost exceeds the saved K/V loads.",
+    "production_unchanged_tok_s": 503.3489941514725
+  }
+}

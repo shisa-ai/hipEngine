@@ -180052,3 +180052,32 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next: keep the proven 32-row direct-decode consumer and test a weight-traffic
   or synchronization reduction. Do not retry independent WMMA widening or the
   rejected 64-row F32-partial-spill geometry.
+
+## 2026-07-26 — Reject single-wave qrow4 two-head SWA fusion
+
+- This screen was distinct from both prior head-sharing failures. The old
+  global head pair halved per-head token parallelism, while qhead3 used three
+  waves plus synchronous LDS. The temporary candidate kept all 32 lanes on
+  each head's 128 dimensions and interleaved two adjacent qgroup9 heads in one
+  qrow4 wave, sharing source-qualified K/V registers with no LDS or barriers.
+  It reduced theoretical row-group workgroups **72 -> 40**.
+- RED imported the missing head2 wrapper and failed. GREEN passed the 508..515
+  full-eight and ragged-seven wrap/eviction fixture F32-byte exactly against
+  production source-qualified qrow4. Same-load full-model comparisons also
+  matched complete logits, final/pre-final hidden hashes, cursors, and exact
+  next tokens **2930/95/7772** at 512/1K/4K; tracked allocations returned to
+  zero.
+- The matrix128/attention128 diagnostic regressed at every length:
+  **292.383 -> 287.105 tok/s (-1.805%)** at 512,
+  **275.259 -> 269.066 (-2.250%)** at 1K, and
+  **235.978 -> 230.267 (-2.420%)** at 4K. Model load **49.815 s** was
+  excluded. Raw SHA-256:
+  `f12614a6291dd2b1d83e8bccf89b674e3561006ef3a855b93e0036f7a8546c73`.
+- Rejected and removed all kernel/wrapper/registry/runtime/test/harness
+  surfaces. Doubling per-wave query and online-PV state costs more
+  register/occupancy than the saved K/V reads. Production remains unchanged
+  at the clean **503.348994 tok/s** median. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-swa-qrow4-head2-rejected.json`.
+- Attention is now closed to scalar state widening, cross-wave synchronous
+  sharing, and independent-WMMA tiles. Reopen only for a supported
+  library-class body or an async pipeline with a different resource model.
