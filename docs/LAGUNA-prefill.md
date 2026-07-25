@@ -638,7 +638,7 @@ and achievable-bandwidth evidence.
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **581.806 ms** | **42.11%** | Primary 500 lever. Multi-K, universal/hybrid 64-row, local256, and coalesced-raw screens are rejected below; the next body must reduce weight/LDS work without expanding row accumulators. |
 | Selected D4 Q4/Q6 down | **276.861 ms** | **20.04%** | Apply a winning expert schedule to Q4 and Q6 down, then reprofile the combined **62.15%** expert window. |
-| Global + SWA attention | **229.181 ms** | **16.59%** | Qrow4 saves **45.544 ms / 16.58%**. Qrow8 and cross-wave qhead3 LDS reuse are rejected; the remaining path must parallelize key work without a barrier per small key tile. |
+| Global + SWA attention | **229.181 ms** | **16.59%** | Qrow4 saves **45.544 ms / 16.58%**. Source-qualified SWA qrow4 is a byte-identical **+0.806%** pp512 candidate pending a clean gate; qrow8 and cross-wave qhead3 LDS reuse are rejected. |
 | Scaled hipBLASLt source-F16 | **130.965 ms** | **9.48%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
 | Q4/Q6 WMMA dense/shared | **70.391 ms** | **5.10%** | Freeze. It cannot move the next milestone materially. |
 | All remaining named/other kernels | **92.341 ms** | **6.68%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
@@ -822,6 +822,24 @@ surfaces were removed. This does not reject a true key-parallel online tile,
 but it closes cross-wave GQA row sharing with synchronous LDS staging.
 Evidence:
 [`2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json).
+
+Ninth post-350 screen: **retained candidate pending a clean gate**. The
+single-wave qrow4 SWA body now qualifies current/cache K/V loads after
+visibility is known. Current-chunk logical slots no longer fetch cached K/V
+when every visible row uses current K/V; prior slots do not fetch current K/V.
+Dot, online-softmax, PV, and output order are unchanged. Full-eight and
+odd-seven wrap/eviction outputs are F32 byte-identical to production qrow4,
+and the 33-test attention/backend bundle passes. Cached tracing names
+`laguna_swa_attention_prefill_qrows_online_bf16_kernel<4, true>` at local32,
+VGPR80, SGPR128, LDS0, and scratch0.
+
+The one-load five-pair pp512 screen measures **368.531 tok/s** median
+(minimum **367.010**) versus qrow4 **365.584** (maximum **366.503**):
+**+0.806%**, always token 2930. The gfx1151 M128 selector now uses the
+qualified body while residual tiles retain qrow2. Commit, then require a clean
+selector-unset confirmation before publishing a new production topline.
+Evidence:
+[`2026-07-25-gfx1151-laguna-swa-sourcequal-candidate.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-candidate.json).
 
 Production evidence:
 

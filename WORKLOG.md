@@ -178892,3 +178892,21 @@ Vulkan local sizes verbatim will close the measured gap.
   cross-wave GQA row sharing is closed because barrier/LDS occupancy dominates;
   this does not close a genuinely key-parallel online-softmax tile. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json`.
+
+## 2026-07-25 — Retain source-qualified qrow4 SWA candidate
+
+- Added an explicit single-wave qrow4 SWA specialization that computes
+  visibility first and skips the unused current/cache K/V source. It preserves
+  dot, online-softmax, PV, and output order. Full-eight and odd-seven
+  wrap/eviction outputs are F32 byte-identical to production qrow4.
+- The focused attention/backend bundle passes **33 tests**. Cached gfx1151
+  tracing names the `<4, true>` template at local32, VGPR80, SGPR128, LDS0,
+  scratch0; raw CSV SHA-256 is
+  `503ae1c7a4049463247c04f7927b2cad16f94236e828bba938929adbf1963490`.
+- The one-load, five-pair pp512 screen measures qrow4 **365.584 tok/s**
+  median versus source-qualified **368.531 (+0.806%)**, always token 2930;
+  candidate minimum **367.010** exceeds baseline maximum **366.503**.
+- M128 SWA now selects the qualified body while residual tiles retain qrow2.
+  Commit this logical unit, then require a clean selector-unset confirmation
+  before publishing production. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-candidate.json`.

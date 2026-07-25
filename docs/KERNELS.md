@@ -540,6 +540,14 @@ frequency 4x yet regresses further **364.943 -> 256.697 tok/s (-29.7%)**.
 Cross-wave synchronous LDS reuse is closed; a future cooperative attention
 body must parallelize key work without this barrier/occupancy structure
 (`benchmarks/results/2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json`).
+The follow-up source-qualified qrow4 SWA candidate stays single-wave and
+barrier-free: after visibility is known it skips the unused current or cached
+K/V source. Full-eight and odd-seven wrap/eviction outputs are byte-identical
+to qrow4; the cached gfx1151 trace is local32/VGPR80/SGPR128/LDS0/scratch0.
+The five-pair dirty same-owner screen improves **365.584 -> 368.531 tok/s
+(+0.806%)**, with candidate minimum above baseline maximum. The M128-qualified
+selector uses it pending a clean selector-unset gate; qrow2 remains residual
+(`benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-candidate.json`).
 
 ### Laguna post-350 selected-expert screens
 
