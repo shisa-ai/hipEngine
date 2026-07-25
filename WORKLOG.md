@@ -180026,3 +180026,29 @@ Vulkan local sizes verbatim will close the measured gap.
   first target is a materially wider exact selected gate/up consumer, followed
   by an attention premise distinct from rejected qrow8/key-split/synchronous
   WMMA routes.
+
+## 2026-07-26 — Reject exact D8 integer-WMMA 128x32 gate/up
+
+- RED added an `integer_wmma` selector to the ragged compact Q4T16 D8
+  correctness fixture and failed on the missing launch ABI. GREEN implemented
+  a temporary local128, four-wave 128-column x 32-row consumer. It preserved
+  the two independent K16 scales, quant sums, FP32 accumulation order, and BF16
+  store boundary; the focused fixture and actual-weight leaf checksum were
+  BF16-byte identical to the established path.
+- On actual layer-1 gate/up weights with recorded natural M512 routing, nine
+  counter-rotated burst-three samples regress the production direct-decode
+  leaf **6.901979 -> 8.179439 ms (+18.5086% latency, 0.8438x throughput)**.
+  The candidate duplicates 16-column WMMA operand loads and retains 32 FP32
+  accumulators per lane, so integer matrix instructions do not repay their
+  operand/register cost at this geometry. Raw SHA-256:
+  `f0e964a5feeb3a78dca22a3f821306fd60d2e76bca0ddeb900aa6f6278b84de5`.
+- Rejected and removed the kernel, wrapper selector, benchmark mode, and RED
+  case. Production remains unchanged at the clean **503.348994 tok/s** median.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-d8-wmma128x32-rejected.json`.
+- The lineage check could not inspect external parents because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel was
+  ported; this screen was developed and removed entirely in-tree.
+- Next: keep the proven 32-row direct-decode consumer and test a weight-traffic
+  or synchronization reduction. Do not retry independent WMMA widening or the
+  rejected 64-row F32-partial-spill geometry.
