@@ -52,12 +52,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_fp16_bf16_out,
     gguf_q4_k_wmma_prefill_fp16_f32_out,
     gguf_q4_k_wmma_prefill_fp16_fp16_out,
+    gguf_q6_k_wmma_prefill_bf16_bf16_out,
     plan_gguf_q4_k_prefill_build,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
 from tests.test_gguf_q4_k_gemv import make_q4_k_weight
+from tests._gguf_synthetic_weights import make_q6_k_weight
 
 
 def _hip_available() -> bool:
@@ -118,6 +120,15 @@ def test_gguf_q4_k_wmma_prefill_registry_and_build_plan() -> None:
             variant="pack8_wmma_prefill_bf16_bf16_out",
         )
         is gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q6_k",
+            variant="wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q6_k_wmma_prefill_bf16_bf16_out
     )
 
     artifact = plan_gguf_q4_k_prefill_build(compiler_version="test-compiler")
@@ -514,6 +525,65 @@ def test_gguf_q4_k_pack8_wmma_is_bf16_exact_to_raw_wmma() -> None:
     )
     np.testing.assert_allclose(
         _bf16_bits_to_float32(pack8_out),
+        reference,
+        **_TOLERANCES[("bf16", "bf16")],
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("rows", "in_features", "out_features"),
+    [(17, 256, 80), (64, 512, 128)],
+)
+def test_gguf_q6_k_wmma_prefill_matches_cpu_reference(
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> None:
+    activation = _make_activation(rows, in_features, seed=23)
+    host_in = _prepare_input(activation, "bf16")
+    qweight = make_q6_k_weight(out_features, in_features)
+    host_out = np.empty((rows, out_features), dtype=np.uint16)
+    reference = gguf_quant_gemv(
+        _decode_input_for_cpu_reference(host_in, "bf16"),
+        qweight,
+        GGMLQuantizationType.Q6_K,
+    )
+
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_prefill(load=True)
+    buffers = []
+    try:
+        for host in (host_in, qweight):
+            buffer = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(
+                buffer,
+                host_array_ptr(np.ascontiguousarray(host)),
+                runtime=runtime,
+            )
+            buffers.append(buffer)
+        out_dev = malloc(host_out.nbytes, runtime=runtime)
+        buffers.append(out_dev)
+        gguf_q6_k_wmma_prefill_bf16_bf16_out(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            out_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_allclose(
+        _bf16_bits_to_float32(host_out),
         reference,
         **_TOLERANCES[("bf16", "bf16")],
     )

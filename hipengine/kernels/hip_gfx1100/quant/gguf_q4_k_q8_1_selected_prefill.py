@@ -45,6 +45,31 @@ _SYMBOL_DS4_WMMA32_LDS_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32
 _SYMBOL_WMMA_I8_PROBE = "hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16"
 _SYMBOL_DS4_PACK_BF16 = "hipengine_gguf_q8_1_mmq_ds4_pack_bf16"
 _SYMBOL_DS4X3_PACK_BF16 = "hipengine_gguf_q8_1_mmq_ds4_pack_bf16_d4x3"
+_SYMBOL_DS4_F32_PACK_BF16 = {
+    1: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4",
+    2: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x2",
+    3: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3",
+}
+_SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16 = {
+    passes: (
+        "hipengine_gguf_q6_k_t16_selected_q8_1_"
+        f"ds4{'x' + str(passes) if passes > 1 else ''}_f32_"
+        "mmq64x32_prefill_compact32_bf16_bf16_out"
+    )
+    for passes in (1, 2, 3)
+}
+_SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
+    passes: (
+        "hipengine_gguf_q4_k_t16_selected_dual_q8_1_"
+        f"ds4{'x' + str(passes) if passes > 1 else ''}_f32_"
+        "mmq64x32_prefill_compact32_bf16_bf16_out"
+    )
+    for passes in (1, 2, 3)
+}
+_SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
+    "mmq64x32_prefill_compact32_bf16_bf16_out"
+)
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -195,6 +220,269 @@ def gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
         ctypes.c_void_p(out_q8_ptr),
         ctypes.c_int64(rows),
         ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+    x_bf16_ptr: int,
+    out_q8_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    residual_passes: int = 3,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Pack BF16 rows as three residual DS4 planes with FP32 metadata."""
+
+    _check_positive(rows, "rows")
+    _check_positive(hidden, "hidden")
+    if hidden % _Q8_1_MMQ_BLOCK != 0:
+        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    if residual_passes not in _SYMBOL_DS4_F32_PACK_BF16:
+        raise ValueError("residual_passes must be 1, 2, or 3")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DS4_F32_PACK_BF16[residual_passes])
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_bf16_ptr),
+        ctypes.c_void_p(out_q8_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    residual_passes: int = 3,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch range-safe three-plane Q6T16 64x32 packed-dot selected down."""
+
+    _check_positive(compact_rows, "compact_rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features, "out_features")
+    _check_positive(num_experts, "num_experts")
+    _check_positive(mmq_total_rows, "mmq_total_rows")
+    if in_features % _Q4_K_BLOCK != 0:
+        raise ValueError("in_features must be divisible by GGUF K block size 256")
+    if out_features % 64 != 0:
+        raise ValueError("out_features must be a multiple of 64")
+    if mmq_total_rows % 32 != 0:
+        raise ValueError("mmq_total_rows must be a multiple of 32")
+    if residual_passes not in _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16:
+        raise ValueError("residual_passes must be 1, 2, or 3")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16[residual_passes],
+    )
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_mmq32_ptr),
+        ctypes.c_void_p(mmq_tile_expert_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(mmq_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    source_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    residual_passes: int = 3,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP32-metadata Q4T16 64x32 packed-dot selected gate/up."""
+
+    _check_positive(source_rows, "source_rows")
+    _check_mmq32_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+    )
+    if out_features_a % 64 != 0 or out_features_b % 64 != 0:
+        raise ValueError("out_features must be multiples of 64")
+    if residual_passes not in _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16:
+        raise ValueError("residual_passes must be 1, 2, or 3")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16[residual_passes],
+    )
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(compact_to_source_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_mmq32_ptr),
+        ctypes.c_void_p(mmq_tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(source_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(mmq_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch one-plane Q4T16 64x32 packed-dot selected down."""
+
+    _check_positive(compact_rows, "compact_rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features, "out_features")
+    _check_positive(num_experts, "num_experts")
+    _check_positive(mmq_total_rows, "mmq_total_rows")
+    if in_features % _Q4_K_BLOCK != 0:
+        raise ValueError("in_features must be divisible by GGUF K block size 256")
+    if out_features % 64 != 0:
+        raise ValueError("out_features must be a multiple of 64")
+    if mmq_total_rows % 32 != 0:
+        raise ValueError("mmq_total_rows must be a multiple of 32")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_mmq32_ptr),
+        ctypes.c_void_p(mmq_tile_expert_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(mmq_total_rows),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
@@ -1242,6 +1530,16 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
     register(
         KernelKey(
             backend="hip_gfx1100",
+            layer="activation_quant",
+            quant="q8_1_ds4x3_f32",
+            variant="bf16",
+        ),
+        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
             layer="moe_linear",
             quant="gguf_q4_k",
             variant="selected_dual_q8_1_prefill_compact32_bf16_bf16_out",
@@ -1304,6 +1602,19 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
             backend="hip_gfx1100",
             layer="moe_linear",
             quant="gguf_q4_k_t16_v1",
+            variant=(
+                "selected_dual_q8_1_ds4x3_f32_mmq64x32_"
+                "prefill_compact32_bf16_bf16_out"
+            ),
+        ),
+        gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
             variant="selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out",
         ),
         gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
@@ -1317,6 +1628,32 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
             variant="selected_dual_sparse_exact_bf16",
         ),
         gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q6_k_t16_v1",
+            variant=(
+                "selected_q8_1_ds4x3_f32_mmq64x32_"
+                "prefill_compact32_bf16_bf16_out"
+            ),
+        ),
+        gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_v1",
+            variant=(
+                "selected_q8_1_ds4x3_f32_mmq64x32_"
+                "prefill_compact32_bf16_bf16_out"
+            ),
+        ),
+        gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
         replace=replace,
     )
     register(

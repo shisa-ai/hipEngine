@@ -14,17 +14,19 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## Laguna `selected_gate_up_mode=mmq32_d4x3`
+## Laguna selected one-plane FP32-DS MMQ modes
 
-- Added 2026-07-25 as an explicit session-local LAP-3 candidate. It keeps
-  `direct` as the backend default, uses D4x3 producer-row activation packing
-  only from 32 rows, and retains the exact selected gate/up plus regroup/gather
-  chain as the required fallback.
+- Added 2026-07-25 as explicit session-local LAP-3/LAP-4 candidates. The
+  fastest `mmq64x32_d4_f32` route uses one range-safe FP32-DS activation plane
+  from 32 rows for selected Q4 gate/up and Q4/Q6 down. It retains direct/exact
+  selected and grouped-down paths as required fallbacks; D4x2/D4x3 remain
+  diagnostics.
 - Remove the experimental selector after the canonical full-model quality,
   clean pp512/category, memory, lifecycle, and decode-neutral gates decide the
   route. If accepted, make MMQ the gfx1151 package capability and retain only
   the exact rollback path; if rejected, remove the runner setter and candidate
   scratch ownership while keeping the registered leaf/repair diagnostics.
+  The pre-admission compounded pp512 result is 355.721 tok/s.
 
 ## Laguna `f16_prefill_mode=hipblaslt_scaled`
 
@@ -43,9 +45,9 @@ should be removed or collapsed.
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
 - Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16
-  use a 64x16 wave32 WMMA consumer over the existing rank-2 Q4 pack8 bytes and
-  effective FP32 scale/min planes. It adds no sidecar, leaves decode unchanged,
-  and retains the exact pack8 FMA path as fallback.
+  use 64x16 wave32 WMMA consumers over existing rank-2 Q4 pack8 bytes/effective
+  FP32 scale/min planes and raw Q6_K bytes. They add no sidecar, leave decode
+  unchanged, and retain exact pack8/raw FMA paths as fallbacks.
 - Remove the selector after the canonical cumulative category/teacher-forced
   quality, clean pp512, memory, lifecycle, and decode-neutral gates. If
   accepted, make the WMMA route a gfx1151 package capability and keep only the

@@ -168,6 +168,59 @@ def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:
     ]
 
 
+def test_launch_q6_raw_wmma_prefill_uses_resident_raw_abi() -> None:
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q6_k",
+        "wmma_prefill_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_kernel(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_kernel, replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=512,
+            in_features=3072,
+            out_features=1024,
+            stream=7,
+            libraries={
+                "gguf_q6_k:wmma_prefill_bf16_bf16_out": "wmma-library"
+            },
+            runtime="runtime-sentinel",
+            use_wmma_prefill=False,
+            use_gemv_decode=False,
+            use_q4_pack8_wmma=True,
+        )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 10, 200, 512, 3072, 1024),
+            {
+                "stream": 7,
+                "runtime": "runtime-sentinel",
+                "library": "wmma-library",
+            },
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     ("weight", "output_dtype", "key", "expected_args"),
     [

@@ -1,11 +1,12 @@
-"""Raw-pointer wrappers for the GGUF Q4_K batched WMMA prefill kernels.
+"""Raw-pointer wrappers for GGUF K-quant batched WMMA prefill kernels.
 
 This module owns the C ABI exports defined in ``gguf_q4_k_prefill.hip``
 (see docs/GGUF.md "P8: real batched prefill GEMM" for the wider plan).
 The single-output kernels are real GEMM-style batched WMMA prefill: one
 wave32 block computes a TM x TN output tile via
 ``__builtin_amdgcn_wmma_f32_16x16x16_f16_w32``, with raw GGUF Q4_K
-``block_q4_K`` or resident pack8 dequant in the inner K-loop.
+``block_q4_K``, resident Q4_K pack8, or raw ``block_q6_K`` dequant in the
+inner K-loop.
 
 The dual variant mirrors ``awq_fusedw4_prefill_dual_fp16_kernel``'s grid
 split for dense gate+up: the first half of x-tiles writes A/gate and the
@@ -78,6 +79,10 @@ def build_gguf_q4_k_prefill(
 
 def _symbol(variant: str) -> str:
     return f"hipengine_gguf_q4_k_{variant}"
+
+
+def _q6_symbol(variant: str) -> str:
+    return f"hipengine_gguf_q6_k_{variant}"
 
 
 def _default_tiles(rows: int, out_features: int) -> tuple[int, int]:
@@ -319,6 +324,22 @@ def _make_pack8_wrapper(variant: str):
     return wrapper
 
 
+def _make_q6_wrapper(variant: str):
+    sym = _q6_symbol(variant)
+
+    def wrapper(*args, **kwargs) -> None:
+        kwargs.setdefault("tile_m", 64)
+        kwargs.setdefault("tile_n", 16)
+        _launch(sym, *args, **kwargs)
+
+    wrapper.__name__ = f"gguf_q6_k_{variant}"
+    wrapper.__qualname__ = wrapper.__name__
+    wrapper.__doc__ = (
+        f"Launch raw GGUF Q6_K WMMA prefill (C symbol: {sym})."
+    )
+    return wrapper
+
+
 # Single-output dtype matrix. Names mirror Q8_0 WMMA prefill so dispatch can
 # swap prefill_* -> wmma_prefill_* by string prefix when raw Q4_K is available.
 gguf_q4_k_wmma_prefill_bf16_bf16_out = _make_wrapper("wmma_prefill_bf16_bf16_out")
@@ -332,6 +353,9 @@ gguf_q4_k_wmma_prefill_f32_fp16_out = _make_wrapper("wmma_prefill_f32_fp16_out")
 gguf_q4_k_wmma_prefill_f32_f32_out = _make_wrapper("wmma_prefill_f32_f32_out")
 gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out = _make_pack8_wrapper(
     "pack8_wmma_prefill_bf16_bf16_out"
+)
+gguf_q6_k_wmma_prefill_bf16_bf16_out = _make_q6_wrapper(
+    "wmma_prefill_bf16_bf16_out"
 )
 
 # GGUF runtime pair fast path uses BF16 hidden activations and BF16 outputs.
@@ -375,6 +399,16 @@ def register_gguf_q4_k_prefill_kernels(*, replace: bool = True) -> None:
             fn,
             replace=replace,
         )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k",
+            "wmma_prefill_bf16_bf16_out",
+        ),
+        gguf_q6_k_wmma_prefill_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 register_gguf_q4_k_prefill_kernels()
@@ -397,4 +431,5 @@ __all__ = [
     "gguf_q4_k_wmma_prefill_f32_f32_out",
     "gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_wmma_prefill_dual_bf16_bf16_out",
+    "gguf_q6_k_wmma_prefill_bf16_bf16_out",
 ]

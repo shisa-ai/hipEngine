@@ -126,6 +126,7 @@ _ROWTILE_QUANT_BLOCKS: Mapping[str, int] = {
 _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q8_0": 32,
     "gguf_q4_k": 256,
+    "gguf_q6_k": 256,
     # P10.B4: Q8T16 dense WMMA prefill consumes T16 tiles with 32 K-values
     # per tile slab. Same block alignment as raw Q8_0.
     "gguf_q8_0_t16_v1": 32,
@@ -1869,24 +1870,39 @@ def _q4_pack8_wmma_dispatch(
     rows: int,
     enabled: bool,
 ) -> GGUFLinearDispatch:
-    """Select the wide resident-pack8 Q4_K WMMA prefill leaf."""
+    """Select Laguna's wide dense/shared K-quant WMMA prefill leaves."""
 
-    if (
-        not enabled
-        or rows < 16
-        or dispatch.abi != "pack8"
-        or dispatch.key.variant != "pack8_prefill_bf16_bf16_out"
-    ):
+    if not enabled or rows < 16:
         return dispatch
-    key = KernelKey(
-        dispatch.key.backend,
-        dispatch.key.layer,
-        dispatch.key.quant,
-        "pack8_wmma_prefill_bf16_bf16_out",
-    )
+    if (
+        dispatch.abi == "pack8"
+        and dispatch.key.quant == "gguf_q4_k"
+        and dispatch.key.variant == "pack8_prefill_bf16_bf16_out"
+    ):
+        key = KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            "pack8_wmma_prefill_bf16_bf16_out",
+        )
+        abi = dispatch.abi
+    elif (
+        dispatch.abi == "raw"
+        and dispatch.key.quant == "gguf_q6_k"
+        and dispatch.key.variant == "prefill_bf16_bf16_out"
+    ):
+        key = KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            "wmma_prefill_bf16_bf16_out",
+        )
+        abi = "wmma_raw"
+    else:
+        return dispatch
     if not is_registered(key):
         return dispatch
-    return GGUFLinearDispatch(key, dispatch.abi)
+    return GGUFLinearDispatch(key, abi)
 
 
 def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:

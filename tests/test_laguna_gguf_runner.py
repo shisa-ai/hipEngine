@@ -197,8 +197,8 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     plan = LagunaPrefillScratchPlan.build(config, moe_plan, policy=policy)
 
     assert plan.rows_nbytes == 334_651_392
-    assert plan.moe_nbytes == 103_583_776
-    assert plan.total_nbytes == 438_235_168
+    assert plan.moe_nbytes == 104_173_600
+    assert plan.total_nbytes == 438_824_992
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
 
@@ -744,7 +744,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     )
     assert session.prefill_chunk_size == 512
     assert session.prefill_attention_chunk_size == 128
-    assert session.prefill_scratch_plan.total_nbytes == 438_235_168
+    assert session.prefill_scratch_plan.total_nbytes == 438_824_992
     assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
     assert (
         session.global_prefill_variant
