@@ -162,6 +162,18 @@ def test_q5_fixed_metadata_cli_is_defaults_on_with_role_scoped_disable(
     assert args.disable_q5_fixed_meta_query_gate
 
 
+def test_q6_fixed_metadata_pair_cli_is_explicit_opt_in(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().enable_q6_fixed_meta_pair
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--enable-q6-fixed-meta-pair"],
+    )
+    assert benchmark._parse_args().enable_q6_fixed_meta_pair
+
+
 def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
     monkeypatch,
 ) -> None:

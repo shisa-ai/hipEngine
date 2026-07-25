@@ -785,6 +785,168 @@ __global__ void gguf_q6_k_pair_pack8_decode_out_kernel(
   }
 }
 
+// Decode-specialized raw Q6_K pack8. One local128 workgroup cooperatively
+// stages each output pack's 128 exact d*scale coefficients once per superblock,
+// matching the retained standalone Q6 decode leaf. Every thread then preserves
+// its [t, t+128] accumulator updates, wave reductions, cross-wave sums, and
+// output stores exactly.
+template <typename scalar_t, typename out_t>
+__device__ __forceinline__ void gguf_q6_k_pack8_fixed_meta_decode_out_block(
+    const scalar_t* __restrict__ x_row,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int out_pack,
+    int in_features,
+    int out_features,
+    float* __restrict__ block_scales) {
+  const int tid = threadIdx.x;
+  const int out_col = out_pack << 3;
+  const int blocks_per_row = in_features / QK_K;
+  const int row_bytes = blocks_per_row * Q6_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ weight_rows[8];
+#pragma unroll
+  for (int channel = 0; channel < 8; ++channel) {
+    weight_rows[channel] =
+        qweight + static_cast<int64_t>(out_col + channel) * row_bytes;
+  }
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+    const int meta_channel = tid >> 4;
+    const int scale_index = tid & 15;
+    const uint8_t* __restrict__ meta_block =
+        weight_rows[meta_channel] +
+        static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const float d = fp16_bytes_to_float(meta_block + 208);
+    const int8_t* __restrict__ scales =
+        reinterpret_cast<const int8_t*>(meta_block + 192);
+    block_scales[tid] = d * static_cast<float>(scales[scale_index]);
+    __syncthreads();
+
+    const int k_base = block_idx * QK_K;
+    const uint8_t* __restrict__ ql0 =
+        weight_rows[0] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ ql1 =
+        weight_rows[1] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ ql2 =
+        weight_rows[2] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ ql3 =
+        weight_rows[3] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ ql4 =
+        weight_rows[4] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ ql5 =
+        weight_rows[5] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ ql6 =
+        weight_rows[6] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ ql7 =
+        weight_rows[7] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ qh0 = ql0 + 128;
+    const uint8_t* __restrict__ qh1 = ql1 + 128;
+    const uint8_t* __restrict__ qh2 = ql2 + 128;
+    const uint8_t* __restrict__ qh3 = ql3 + 128;
+    const uint8_t* __restrict__ qh4 = ql4 + 128;
+    const uint8_t* __restrict__ qh5 = ql5 + 128;
+    const uint8_t* __restrict__ qh6 = ql6 + 128;
+    const uint8_t* __restrict__ qh7 = ql7 + 128;
+
+    for (int within = tid; within < QK_K; within += blockDim.x) {
+      const int group32 = within >> 5;
+      const int lane = within & 31;
+      const int scale = within >> 4;
+      const int base64 = group32 >= 4 ? 64 : 0;
+      const bool low_nibble = (group32 & 2) == 0;
+      const int ql_index = base64 + (group32 & 1) * 32 + lane;
+      const int qh_index = (group32 >= 4 ? 32 : 0) + lane;
+      const int qh_shift = 2 * (group32 & 3);
+      const float xv = scalar_to_float<scalar_t>(x_row[k_base + within]);
+
+      const uint8_t lb0 = ql0[ql_index];
+      const uint8_t lb1 = ql1[ql_index];
+      const uint8_t lb2 = ql2[ql_index];
+      const uint8_t lb3 = ql3[ql_index];
+      const uint8_t lb4 = ql4[ql_index];
+      const uint8_t lb5 = ql5[ql_index];
+      const uint8_t lb6 = ql6[ql_index];
+      const uint8_t lb7 = ql7[ql_index];
+      const uint8_t l0 = low_nibble ? (lb0 & 0x0Fu) : (lb0 >> 4);
+      const uint8_t l1 = low_nibble ? (lb1 & 0x0Fu) : (lb1 >> 4);
+      const uint8_t l2 = low_nibble ? (lb2 & 0x0Fu) : (lb2 >> 4);
+      const uint8_t l3 = low_nibble ? (lb3 & 0x0Fu) : (lb3 >> 4);
+      const uint8_t l4 = low_nibble ? (lb4 & 0x0Fu) : (lb4 >> 4);
+      const uint8_t l5 = low_nibble ? (lb5 & 0x0Fu) : (lb5 >> 4);
+      const uint8_t l6 = low_nibble ? (lb6 & 0x0Fu) : (lb6 >> 4);
+      const uint8_t l7 = low_nibble ? (lb7 & 0x0Fu) : (lb7 >> 4);
+      const uint8_t h0 = (qh0[qh_index] >> qh_shift) & 0x03u;
+      const uint8_t h1 = (qh1[qh_index] >> qh_shift) & 0x03u;
+      const uint8_t h2 = (qh2[qh_index] >> qh_shift) & 0x03u;
+      const uint8_t h3 = (qh3[qh_index] >> qh_shift) & 0x03u;
+      const uint8_t h4 = (qh4[qh_index] >> qh_shift) & 0x03u;
+      const uint8_t h5 = (qh5[qh_index] >> qh_shift) & 0x03u;
+      const uint8_t h6 = (qh6[qh_index] >> qh_shift) & 0x03u;
+      const uint8_t h7 = (qh7[qh_index] >> qh_shift) & 0x03u;
+      const float q0 = static_cast<float>(static_cast<int>(l0 | (h0 << 4)) - 32);
+      const float q1 = static_cast<float>(static_cast<int>(l1 | (h1 << 4)) - 32);
+      const float q2 = static_cast<float>(static_cast<int>(l2 | (h2 << 4)) - 32);
+      const float q3 = static_cast<float>(static_cast<int>(l3 | (h3 << 4)) - 32);
+      const float q4 = static_cast<float>(static_cast<int>(l4 | (h4 << 4)) - 32);
+      const float q5 = static_cast<float>(static_cast<int>(l5 | (h5 << 4)) - 32);
+      const float q6 = static_cast<float>(static_cast<int>(l6 | (h6 << 4)) - 32);
+      const float q7 = static_cast<float>(static_cast<int>(l7 | (h7 << 4)) - 32);
+
+      acc0 = fmaf(xv, block_scales[0 * 16 + scale] * q0, acc0);
+      acc1 = fmaf(xv, block_scales[1 * 16 + scale] * q1, acc1);
+      acc2 = fmaf(xv, block_scales[2 * 16 + scale] * q2, acc2);
+      acc3 = fmaf(xv, block_scales[3 * 16 + scale] * q3, acc3);
+      acc4 = fmaf(xv, block_scales[4 * 16 + scale] * q4, acc4);
+      acc5 = fmaf(xv, block_scales[5 * 16 + scale] * q5, acc5);
+      acc6 = fmaf(xv, block_scales[6 * 16 + scale] * q6, acc6);
+      acc7 = fmaf(xv, block_scales[7 * 16 + scale] * q7, acc7);
+    }
+    __syncthreads();
+  }
+
+  GGUF_K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                      r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    const int64_t out_base = out_col;
+    store_output<out_t>(out, out_base + 0, r0);
+    store_output<out_t>(out, out_base + 1, r1);
+    store_output<out_t>(out, out_base + 2, r2);
+    store_output<out_t>(out, out_base + 3, r3);
+    store_output<out_t>(out, out_base + 4, r4);
+    store_output<out_t>(out, out_base + 5, r5);
+    store_output<out_t>(out, out_base + 6, r6);
+    store_output<out_t>(out, out_base + 7, r7);
+  }
+}
+
+template <typename scalar_t, typename out_t>
+__launch_bounds__(128, 4)
+__global__ void gguf_q6_k_pair_pack8_fixed_meta_decode_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    out_t* __restrict__ out_a,
+    out_t* __restrict__ out_b,
+    int in_features,
+    int out_features_a,
+    int out_features_b) {
+  const int packs_a = out_features_a >> 3;
+  const int flat_pack = blockIdx.x;
+  const bool projection_b = flat_pack >= packs_a;
+  const int out_pack = projection_b ? flat_pack - packs_a : flat_pack;
+  __shared__ float block_scales[8 * 16];
+  gguf_q6_k_pack8_fixed_meta_decode_out_block(
+      x,
+      projection_b ? qweight_b : qweight_a,
+      projection_b ? out_b : out_a,
+      out_pack,
+      in_features,
+      projection_b ? out_features_b : out_features_a,
+      block_scales);
+}
+
 // Decode-specialized raw Q5_K pack8. The legacy generic pack8 body decodes
 // d/dmin and the packed 6-bit scale/min fields independently for every K
 // element and output channel. This schedule hoists those 8x8 coefficients once
@@ -1653,6 +1815,39 @@ int launch_gguf_q6_k_pair_pack8_decode_out(
 }
 
 template <typename out_t>
+int launch_gguf_q6_k_pair_pack8_fixed_meta_decode_out(
+    const uint16_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    out_t* out_a,
+    out_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || qweight_b == nullptr ||
+      out_a == nullptr || out_b == nullptr || rows != 1 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features_a <= 0 || out_features_b <= 0 ||
+      (out_features_a % 8) != 0 || (out_features_b % 8) != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_q6_k_pair_pack8_fixed_meta_decode_out_kernel<uint16_t, out_t>
+      <<<dim3(static_cast<unsigned int>((out_features_a + out_features_b) / 8)),
+          dim3(128), 0, stream>>>(
+          x,
+          qweight_a,
+          qweight_b,
+          out_a,
+          out_b,
+          static_cast<int>(in_features),
+          static_cast<int>(out_features_a),
+          static_cast<int>(out_features_b));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t>
 int launch_gguf_q5_k_pack8_decode_out(
     const uint16_t* x,
     const uint8_t* qweight,
@@ -2247,6 +2442,16 @@ extern "C" int hipengine_gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out(
     int64_t out_features_a, int64_t out_features_b, int64_t threads,
     hipStream_t stream) {
   return launch_gguf_q6_k_pair_pack8_decode_out<float>(
+      x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features_a,
+      out_features_b, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pair_pack8_fixed_meta_gemv_decode_bf16_f32_out(
+    const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,
+    float* out_a, float* out_b, int64_t rows, int64_t in_features,
+    int64_t out_features_a, int64_t out_features_b, int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q6_k_pair_pack8_fixed_meta_decode_out<float>(
       x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features_a,
       out_features_b, threads, stream);
 }

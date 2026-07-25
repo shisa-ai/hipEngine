@@ -102,6 +102,7 @@ _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT = (
 _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT = (
     "wave32x2_fixed_meta_gemv_decode_bf16_f32_out"
 )
+_Q6_PAIR_FIXED_META_VARIANT = "pack8_fixed_meta_gemv_decode_bf16_f32_out"
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -913,6 +914,20 @@ def launch_laguna_qkv(
     )
 
 
+def _registered_attention_pair_variant(
+    weight,
+    *,
+    backend: str,
+    variants: Sequence[str | None],
+) -> str | None:
+    for variant in variants:
+        if variant is not None and is_registered(
+            KernelKey(backend, "linear_pair", weight.spec.quant_key, variant)
+        ):
+            return variant
+    return None
+
+
 def launch_laguna_attention_projections(
     q_weight,
     k_weight,
@@ -935,6 +950,7 @@ def launch_laguna_attention_projections(
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
     query_gate_decode_variant: str | None = None,
+    q6_pair_decode_variant: str | None = None,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
@@ -948,6 +964,11 @@ def launch_laguna_attention_projections(
         q_weight.spec.layout == LAYOUT_RAW_GGUF
         and gate_weight.spec.layout == LAYOUT_RAW_GGUF
     ):
+        registered_variant = _registered_attention_pair_variant(
+            q_weight,
+            backend=backend,
+            variants=(query_gate_decode_variant, q6_pair_decode_variant),
+        )
         q_gate_fused = launch_gguf_linear_pair(
             q_weight,
             gate_weight,
@@ -966,7 +987,7 @@ def launch_laguna_attention_projections(
             use_wmma_prefill=False,
             use_gemv_decode=rows == 1,
             registered_decode_only=True,
-            registered_decode_variant=query_gate_decode_variant,
+            registered_decode_variant=registered_variant,
         )
 
     kv_fused = False
@@ -974,6 +995,11 @@ def launch_laguna_attention_projections(
         k_weight.spec.layout == LAYOUT_RAW_GGUF
         and v_weight.spec.layout == LAYOUT_RAW_GGUF
     ):
+        registered_variant = _registered_attention_pair_variant(
+            k_weight,
+            backend=backend,
+            variants=(q6_pair_decode_variant,),
+        )
         kv_fused = launch_gguf_linear_pair(
             k_weight,
             v_weight,
@@ -992,6 +1018,7 @@ def launch_laguna_attention_projections(
             use_wmma_prefill=False,
             use_gemv_decode=rows == 1,
             registered_decode_only=True,
+            registered_decode_variant=registered_variant,
         )
 
     if not q_gate_fused and not kv_fused:
@@ -1150,6 +1177,22 @@ def resolve_laguna_head_kv_fusion(
     if requested is not None:
         return bool(requested)
     return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
+
+
+def resolve_laguna_q6_pair_variant(
+    backend: str,
+    requested: bool | None = None,
+) -> str | None:
+    """Resolve the gfx1100-only exact Q6 K/V pair candidate."""
+
+    if backend != "hip_gfx1100":
+        return None
+    enabled = (
+        bool(backend_package_capability(backend, "LAGUNA_Q6_FIXED_METADATA_PAIR", False))
+        if requested is None
+        else bool(requested)
+    )
+    return _Q6_PAIR_FIXED_META_VARIANT if enabled else None
 
 
 def resolve_laguna_q5_wave32x2_variants(
@@ -1605,6 +1648,7 @@ class LagunaGGUFResidentSession:
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
         use_q5_fixed_meta_query_gate: bool | None = None,
+        use_q6_fixed_meta_pair: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1652,6 +1696,11 @@ class LagunaGGUFResidentSession:
         self.use_q5_fixed_meta_query_gate = (
             self._q5_query_gate_variant == _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
         )
+        self._q6_pair_variant = resolve_laguna_q6_pair_variant(
+            self.backend,
+            use_q6_fixed_meta_pair,
+        )
+        self.use_q6_fixed_meta_pair = self._q6_pair_variant is not None
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
             self.backend,
@@ -2468,6 +2517,7 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries,
             runtime=self.runtime,
             query_gate_decode_variant=self._q5_query_gate_variant,
+            q6_pair_decode_variant=self._q6_pair_variant,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -2855,6 +2905,7 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries,
             runtime=self.runtime,
             query_gate_decode_variant=self._q5_query_gate_variant,
+            q6_pair_decode_variant=self._q6_pair_variant,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         head_kv = (
@@ -3530,4 +3581,5 @@ __all__ = [
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",
     "resolve_laguna_q5_wave32x2_variants",
+    "resolve_laguna_q6_pair_variant",
 ]
