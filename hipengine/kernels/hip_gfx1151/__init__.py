@@ -56,10 +56,13 @@ LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
-# one 32-column output slice to each wave, and holds decoded T16 weights in
-# registers. Packed-dot arithmetic and K order remain bit-for-bit unchanged.
+# one 32-column output slice to each wave, holds decoded T16 weights in
+# registers, and ping-pongs the activation tile to remove one barrier per K32.
+# Packed-dot arithmetic and K order remain bit-for-bit unchanged.
 # Other backends retain exact.
-LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols_direct"
+LAGUNA_SELECTED_GATE_UP_MODE = (
+    "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+)
 # Exact eight-token router tiling preserves every token/expert's K traversal
 # and reduction tree while reusing each F32 weight row twice as long.
 LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"

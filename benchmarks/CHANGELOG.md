@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna gate/up activation-double-buffer default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean seven-pair pp512 improves direct rollback **505.970 -> 507.405 tok/s (+0.284%, 2.862 ms saved)** with **5/7** pair wins and exact logits/hidden/KV/cursor/token state in all fourteen runs; the one-barrier-per-K32 body is now the gfx1151 package default pending clean selector-unset publication; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-default.json`.
+
 - [retained exact gfx1151 Laguna gate/up activation-double-buffer candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / ping-ponging the 1.5 KB activation tile removes one of two barriers per K32 with unchanged resident bytes and BF16 byte-exact output; the actual layer-1 natural-M512 inclusive leaf improves **6.995 -> 6.907 ms (-1.258%, +1.274% throughput)** and cached rocprof observes the intended one-barrier template; retained explicitly pending clean complete-state promotion, while production remains **505.185 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-candidate.json`.
 
 - [rejected and removed exact gfx1151 Laguna gate/up LDS weight stage] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / two aligned 64-bit loads per lane stage each resident-T16 K32 payload in 2 KB LDS with no extra barrier and byte-exact output, but the actual layer-1 natural-M512 leaf regresses direct wave decode **6.918 -> 6.990 ms (+1.05%)**; all candidate surfaces are removed and production remains **505.185 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wave-lds-stage-rejected.json`.

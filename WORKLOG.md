@@ -180349,3 +180349,28 @@ Vulkan local sizes verbatim will close the measured gap.
   next-token logit, and next token for every child session. This is the clean
   complete-state promotion gate for the retained activation-double-buffer
   candidate.
+
+## 2026-07-26 — Promote activation-double-buffer gate/up to gfx1151 default
+
+- Clean committed seven-pair pp512 A/B at revision `d08d1997e` improves direct
+  rollback **505.970 -> 507.405 tok/s (+0.284%)**, saves **2.862 ms** median
+  wall, and wins **5/7** pairs. Candidate samples are
+  **505.553-508.428 tok/s**; raw SHA-256:
+  `49f5460761d5bce9b86b1e38d0dfe25be762e36ee28956489da344da0c16547e`.
+- All fourteen runs are complete-state identical: token 2930, next-token
+  logit, F32 logits, final/post-layer BF16 hidden, KV state, final cursor, and
+  deterministic repeats. The candidate is also primitive BF16 byte-exact, so
+  the admitted max KL **0.049542582**, **316/320** top-1, minimum category
+  top-1 **96.875%**, Poolside/decode/determinism/lifecycle gates transfer.
+- Promoted
+  `mmq128x32_d8_f32_wavecols_direct_doublebuf` to the gfx1151 package
+  default. The prior direct path remains explicit synchronization rollback.
+  Updated the production publication alias so the new exact consumer maps to
+  the same admitted D8 arithmetic. Next: clean selector-unset publication.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-default.json`.
+- Focused package validation initially found the backend test still expected
+  the superseded `hipblaslt_norm_direct` F16 default even though production
+  already selects retained `hipblaslt_range_direct`. Updated that stale
+  expectation; the repaired node passes. The original focused run's other
+  eight tests passed and were not repeated.

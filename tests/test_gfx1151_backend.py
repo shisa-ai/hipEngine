@@ -224,13 +224,13 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
     assert LAGUNA_F16_PREFILL_STRATEGY == "wmma_comp_swa"
     assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
-    assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_norm_direct"
+    assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_range_direct"
     assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
     assert LAGUNA_MOE_GROUP_COMPACT_MODE == "parallel"
     assert LAGUNA_ROUTER_LOGITS_MODE == "token_tile_8"
     assert (
         LAGUNA_SELECTED_GATE_UP_MODE
-        == "mmq128x32_d8_f32_wavecols_direct"
+        == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
     )
     assert (
         LAGUNA_SELECTED_DOWN_MODE
