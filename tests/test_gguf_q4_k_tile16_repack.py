@@ -7,8 +7,11 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_COLS,
+    GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES,
     repack_gguf_q4_k_tile16,
+    repack_gguf_q4_k_tile16_lite,
     unpack_gguf_q4_k_tile16,
+    unpack_gguf_q4_k_tile16_lite,
 )
 
 
@@ -55,12 +58,48 @@ def test_q4_k_tile16_repack_has_expected_near_raw_storage_overhead() -> None:
     assert packed.tiles.nbytes / raw.nbytes == pytest.approx(2368 / 2304)
 
 
+def test_q4_k_tile16_lite_repack_roundtrips_raw_bytes_exactly() -> None:
+    raw = _raw_q4_k_bytes(experts=3, out_features=32, blocks_per_row=2)
+
+    packed = repack_gguf_q4_k_tile16_lite(raw)
+    restored = unpack_gguf_q4_k_tile16_lite(packed)
+
+    assert packed.tiles.shape == (
+        3,
+        2,
+        2,
+        GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES,
+    )
+    assert packed.experts == 3
+    assert packed.out_features == 32
+    assert packed.in_features == 512
+    np.testing.assert_array_equal(restored, raw)
+
+
+def test_q4_k_tile16_lite_is_byte_neutral_with_raw_q4_k() -> None:
+    raw = _raw_q4_k_bytes(experts=2, out_features=16, blocks_per_row=3)
+    packed = repack_gguf_q4_k_tile16_lite(raw)
+
+    raw_tile_bytes = GGUF_Q4_K_TILE16_COLS * GGUF_Q4_K_BLOCK_BYTES
+    assert raw_tile_bytes == 2304
+    assert GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES == raw_tile_bytes
+    assert packed.tiles.nbytes == raw.nbytes
+
+
 def test_q4_k_tile16_unpack_rejects_out_feature_mismatch() -> None:
     raw = _raw_q4_k_bytes(experts=1, out_features=16, blocks_per_row=1)
     packed = repack_gguf_q4_k_tile16(raw)
 
     with pytest.raises(ValueError, match="out_features mismatch"):
         unpack_gguf_q4_k_tile16(packed.tiles, out_features=32)
+
+
+def test_q4_k_tile16_lite_unpack_rejects_out_feature_mismatch() -> None:
+    raw = _raw_q4_k_bytes(experts=1, out_features=16, blocks_per_row=1)
+    packed = repack_gguf_q4_k_tile16_lite(raw)
+
+    with pytest.raises(ValueError, match="out_features mismatch"):
+        unpack_gguf_q4_k_tile16_lite(packed.tiles, out_features=32)
 
 
 def test_q4_k_tile16_repack_validates_shape() -> None:
