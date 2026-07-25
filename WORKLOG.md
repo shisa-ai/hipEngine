@@ -180270,3 +180270,29 @@ Vulkan local sizes verbatim will close the measured gap.
   while its changed nodes pass in isolation. Clean selector-unset publication
   and cached attribution are next. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-f16-output-range-direct-candidate.json`.
+
+## 2026-07-26 — Publish static-range F16 boundaries in gfx1151 production
+
+- Clean selector-unset publication from committed revision `7ecd940b9` reaches
+  **505.185 tok/s** pp512 median across seven samples, with every sample above
+  500 (**minimum 503.198 tok/s**) and token 2930 throughout. This improves the
+  prior **503.869 tok/s** production row **0.261%** and saves **2.647 ms**
+  median wall. 1K/4K also improve **0.326%/0.259%** to
+  **454.031/357.911 tok/s**; lifecycle passes. Raw SHA-256:
+  `50c7ac53aac10ac29a09df58ae61bb94b2fbd4e69fa89d98af60b25112ee9afc`.
+- The clean cached trace independently reaches
+  **510.946/457.990/359.631 tok/s** at 512/1K/4K. pp512 kernel span/sum are
+  **997.983/987.182 ms** across 1,886 dispatches. The 240 hipBLASLt
+  contractions consume **123.907 ms**; 96 direct input and 48 direct output
+  casts add **3.860 ms**. Both scaled-row cast kernels have zero dispatches.
+- Refreshed pp512 families are gate/up **318.559 ms**, down **201.765 ms**,
+  global+SWA attention **217.310 ms**, complete source-F16 boundary
+  **127.767 ms**, dense/shared **52.642 ms**, and router **23.344 ms**.
+  Non-kernel/overlap wall is only **14.881 ms / 1.49%**, so the next material
+  work remains expert weight consumption and attention.
+- Complete-state identity transfers max KL **0.049542582**, **316/320** top-1,
+  minimum category top-1 **96.875%**, Poolside, decode, determinism, and
+  lifecycle unchanged. Trace SHA-256:
+  `2c03f6cea9cf092911df4d794cb1d4a458ba1bc7eda397fa7f13efd041137386`.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-output-range-direct-production.json`.
