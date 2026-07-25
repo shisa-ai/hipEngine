@@ -1095,9 +1095,9 @@ should be boring.
   count/prefix/ballot-scatter path.
 - The session-level `serial` selector and registered one-pass kernels remain
   for rollback and unmeasured backends. The production-shape leaf improves
-  **0.348880 -> 0.058969 ms (-83.10%)**, and the dirty committed-candidate
-  screen improves **491.326 -> 497.777 tok/s (+1.313%)** with all seven paired
-  wins.
+  **0.348880 -> 0.058969 ms (-83.10%)**, and clean publication improves
+  **490.824 -> 497.408 tok/s (+1.341%)** with all seven paired wins. Cached
+  attribution independently reaches **500.325 tok/s**.
 - Remove the explicit gfx1151 serial session selector after the next retained
   exact MoE metadata checkpoint. Keep the serial registry primitive if another
   backend still requires it as an unfused/reference fallback.

@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_production",
+  "revision": "f91eccb5d16d8269199d4b1060df183c91dafad8",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "tokens": 512,
+    "matrix_chunk_rows": 512,
+    "attention_chunk_rows": 128,
+    "repetitions": 7,
+    "order": "counterbalanced",
+    "resident_owner": "shared",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/laguna_group_compact_parallel_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-group-compact-parallel-ab-clean-f91eccb5d.json"
+  },
+  "results": {
+    "serial_rollback": {
+      "samples_tok_s": [
+        489.3462001732106,
+        490.82383887269265,
+        491.0037002842104,
+        488.4622073744866,
+        488.9100737642854,
+        492.50850410597405,
+        493.1958588044396
+      ],
+      "median_tok_s": 490.82383887269265,
+      "median_wall_ms": 1043.1441169930622
+    },
+    "parallel_production": {
+      "samples_tok_s": [
+        497.2205545783105,
+        497.40803100682297,
+        495.63688718742407,
+        496.2903647408881,
+        502.6948859341022,
+        498.9184612163935,
+        498.92077641557296
+      ],
+      "median_tok_s": 497.40803100682297,
+      "median_wall_ms": 1029.3360140640289
+    },
+    "relative_change_percent": 1.3414572831777383,
+    "median_wall_change_ms": -13.808102929033339,
+    "paired_wins": 7,
+    "paired_samples": 7,
+    "next_token_id": 2930
+  },
+  "correctness": {
+    "metadata_arrays_exact": true,
+    "complete_moe_bf16_output_exact": true,
+    "full_model_next_token_equal": true,
+    "quality_gate_transfer": {
+      "reason": "The stable parallel scheduler emits byte-identical metadata and complete MoE BF16 output.",
+      "max_kl": 0.04954258196634279,
+      "top1_matches": 316,
+      "top1_total": 320,
+      "min_category_top1_percent": 96.875,
+      "poolside": "pass",
+      "decode": "neutral",
+      "determinism": "pass",
+      "lifecycle": "pass"
+    }
+  },
+  "cached_profile": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-parallel-compact-profile.aVAe0E --output-file epyc -- .venv/bin/python -u scripts/laguna_long_context_profile.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1151 --context-length 4096 --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-post-parallel-compact-profile.aVAe0E/child.json",
+    "tok_s": {
+      "512": 500.32463593868124,
+      "1024": 449.46758649424885,
+      "4096": 355.60618736442194
+    },
+    "pp512": {
+      "wall_ms": 1023.3355769887567,
+      "kernel_span_ms": 1018.443594,
+      "kernel_sum_ms": 1006.892327,
+      "dispatches": 2078,
+      "families_ms": {
+        "selected_q4_gate_up": 319.438001,
+        "selected_q4_q6_down": 202.524941,
+        "global_attention": 44.099548,
+        "swa_attention": 174.667274,
+        "source_f16_projection": 133.630857,
+        "dense_shared_quant_projection": 52.91667,
+        "remaining": 79.615036
+      },
+      "parallel_compaction_ms": {
+        "count": 0.277,
+        "prefix": 1.52,
+        "scatter": 0.767
+      }
+    },
+    "tracked_peak_bytes": 77461325460,
+    "tracked_returned_to_zero": true,
+    "sha256": {
+      "child": "b727ac7bcc4846f3a45e7d92ec996d30134d05abac7646a684671df3d2cf99c0",
+      "kernel_trace": "926f2052a480d060944e9665de07e51b6974a8f2dc822f8b9968a9ff3df2b631",
+      "summary": "33d171304d95cdb409bfa3aff24639a403c3e43781476258e07ef38c1604a3a1",
+      "agent": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+    }
+  },
+  "gate_status": {
+    "production_default": true,
+    "500_tok_s_gate": "open",
+    "reason": "The cached attribution run crossed 500 once, but the declared gate requires at least three clean samples with median and minimum >=500 tok/s."
+  },
+  "raw_ab_sha256": "34fadfd1327406ca0db186c2bee15cc79577a13d575d30986276acabac7bb134"
+}
