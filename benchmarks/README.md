@@ -1988,7 +1988,7 @@ prefill is **-0.163%**, and TTFT **+0.091%**. Relative to the prior retained
 **64.418 tok/s**, so another **5.70%** is required and completion stays open.
 `use_q5_shared_fixed_meta=False` / `--disable-q5-shared-fixed-meta` restores the
 registered local128 pack8 pair; rows>1, key/shape misses, layer 47, and
-unsupported backends retain their existing routes. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-correctness.json) and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-retained.json).
+unsupported backends retain their existing routes. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-correctness.json), [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-retained.json), and [post-shared-Q5 matched Vulkan audit](results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-shared-q5.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**
