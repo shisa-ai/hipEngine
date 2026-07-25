@@ -540,6 +540,15 @@ frequency 4x yet regresses further **364.943 -> 256.697 tok/s (-29.7%)**.
 Cross-wave synchronous LDS reuse is closed; a future cooperative attention
 body must parallelize key work without this barrier/occupancy structure
 (`benchmarks/results/2026-07-25-gfx1151-laguna-swa-qhead3-rejected.json`).
+Scalar qrow4 key splitting is also closed. Contiguous two/four-wave key ranges
+preserve one K/V read per token and pass the wrap/eviction tolerance oracle,
+but regress pp512 **386.075 -> 377.219 (-2.29%)** and
+**385.998 -> 379.597 (-1.66%)**. The four-way body is
+local128/VGPR88/LDS8704B/scratch0; partial-PV LDS plus two barriers and state
+merge outweigh key parallelism. All candidate surfaces are removed. A future
+route must tile QK/PV instead of merging complete 128-dimensional partial
+outputs
+(`benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`).
 The follow-up source-qualified qrow4 SWA candidate stays single-wave and
 barrier-free: after visibility is known it skips the unused current or cached
 K/V source. Full-eight and odd-seven wrap/eviction outputs are byte-identical

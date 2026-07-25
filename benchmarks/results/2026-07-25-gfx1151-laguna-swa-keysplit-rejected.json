@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T22:58:00+09:00",
+  "kind": "hipengine_laguna_swa_keysplit_rejected",
+  "status": "measured_rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M explicit scalar-qrow4 key-parallel SWA diagnostics on gfx1151",
+  "repo": {
+    "base_revision": "71e808aa22cbc1c20e2c4f181dba51dd1c8ed02f",
+    "tracked_dirty_diagnostic": true,
+    "all_candidate_surfaces_removed": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "design": {
+    "query_rows": 4,
+    "key_splits": [
+      2,
+      4
+    ],
+    "mapping": "one workgroup per qrow4/head; contiguous logical-key ranges per wave; one K/V load per token shared across four query rows",
+    "merge": "partial online max, denominator, and 128-dimensional PV state merged in split order through LDS",
+    "qualified_sources": true
+  },
+  "correctness": {
+    "wrap_eviction_oracle": "passed against source-qualified qrow4 at rtol=2e-5, atol=2e-6 for full-eight and odd-seven rows crossing the 512-slot ring",
+    "full_model_next_token_id": 2930,
+    "all_full_model_tokens_equal": true
+  },
+  "pp512": {
+    "protocol": "one resident owner; warm both modes; three counterbalanced synchronized pairs per candidate",
+    "keysplit4": {
+      "production_samples_tok_s": [
+        387.1954618210883,
+        385.9982843530155,
+        385.6345734524319
+      ],
+      "production_median_tok_s": 385.9982843530155,
+      "candidate_samples_tok_s": [
+        379.5104766275499,
+        379.59702354741455,
+        379.6482721783052
+      ],
+      "candidate_median_tok_s": 379.59702354741455,
+      "delta_percent": -1.658365092562597
+    },
+    "keysplit2": {
+      "production_samples_tok_s": [
+        386.0748897982981,
+        385.82651615251064,
+        386.4752494329785
+      ],
+      "production_median_tok_s": 386.0748897982981,
+      "candidate_samples_tok_s": [
+        377.0811249749491,
+        377.2186927981627,
+        377.3611934076218
+      ],
+      "candidate_median_tok_s": 377.2186927981627,
+      "delta_percent": -2.2939065021199023
+    }
+  },
+  "trace": {
+    "raw_csv_sha256": "9e6f323c0292529126d16e46d4e513d84401524087755106dc5c2f2ad0ae66a6",
+    "raw_csv_committed": false,
+    "keysplit4": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 8704,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": "Reject and remove both scalar qrow4 split-state routes. Extra waves, two workgroup barriers, LDS partial PV storage, and online-state merge outweigh contiguous-key parallelism. This closes scalar qrow4 state splitting, not a cooperative tiled QK/PV kernel."
+}

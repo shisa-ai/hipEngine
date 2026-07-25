@@ -668,9 +668,9 @@ before admitting any new approximation.
 Immediate execution queue:
 
 1. Build the cooperative M16-query x K64-key `KVLiveSpans` attention tile.
-   Qrow8 and the simpler three-query-head LDS-sharing schedule have completed
-   their rejection gates; do not mistake GQA load sharing for key-parallel
-   Flash Attention.
+   Qrow8, three-query-head LDS sharing, and scalar qrow4 split-state merging
+   have completed their rejection gates; the remaining premise must tile QK
+   and PV work rather than merge full 128-dimensional partial outputs.
 2. Publish the post-admission LAP-BW0 ledger from the current all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -898,6 +898,22 @@ measures **388.014/358.319/296.060 tok/s** at 512/1K/4K, cuts selected down
 [`2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json).
 Production:
 [`2026-07-25-gfx1151-laguna-down-rowvec-production.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-production.json).
+
+Twelfth post-350 screen: **rejected and removed**. A true contiguous-key
+split was applied inside one source-qualified qrow4 workgroup while preserving
+one K/V read per token across the four query rows. Each wave produced a local
+online max, denominator, and 128-dimensional PV state; the workgroup merged
+those states in split order through LDS. The wrap/eviction oracle passes at
+`rtol=2e-5, atol=2e-6`.
+
+Four key waves regress paired pp512 **385.998 -> 379.597 tok/s (-1.658%)**;
+two waves regress **386.075 -> 377.219 (-2.294%)**. All runs select token 2930.
+The traced four-way kernel is local128, VGPR88, SGPR128, LDS8704B, scratch0.
+The extra waves, two barriers, partial-PV LDS, and merge arithmetic outweigh
+the parallel key ranges. All code/registry/runtime/test surfaces are removed.
+This closes scalar qrow4 state splitting, not the M16xK64 tiled-QK/PV premise.
+Evidence:
+[`2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json).
 
 Production evidence:
 
@@ -1511,6 +1527,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-production.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-gate-rowvec-production.json`
