@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T04:41:37+09:00",
+  "kind": "hipengine_laguna_q6_down_rows64_candidate",
+  "status": "retained_candidate_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "repo": {
+    "base_revision": "76063f1080536203bf2f4443d9478eff4551173b",
+    "tracked_dirty_candidate": true
+  },
+  "candidate": {
+    "scope": "Q6_K selected down only; Q4 selected down remains on its existing 64-column x 32-row direct wave-column body",
+    "production": "64 output columns x 32 routed rows, local128, four wave32 row groups",
+    "candidate": "64 output columns x 64 routed rows, local128, four wave32 groups x 16 rows, one shared weight decode",
+    "metadata": "registry-backed tile64 device prefix/map overwrites the reusable tile32 metadata only after Q4 gate/up has consumed it",
+    "rollback_mode": "mmq64x32_d4_f32_wavecols_direct_q4",
+    "candidate_mode": "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+  },
+  "actual_layer1_leaf": {
+    "shape": {
+      "compact_rows": 5120,
+      "actual_padded_rows_32": 9504,
+      "actual_padded_rows_64": 15808,
+      "runtime_upper_rows_32": 13056,
+      "runtime_upper_rows_64": 21248,
+      "runtime_workgroups_per_output_tile_32": 408,
+      "runtime_workgroups_per_output_tile_64": 332,
+      "in_features": 1024,
+      "out_features": 3072,
+      "experts": 256
+    },
+    "protocol": "nine counter-rotated burst-three HIP-event samples; pack excluded; runtime static upper grids with -1 sentinel tiles",
+    "production_median_ms": 5.25991694132487,
+    "candidate_median_ms": 5.161105791727702,
+    "candidate_change_percent": -1.8785686294939707,
+    "bf16_mismatches": 0,
+    "checksum": 509500838004
+  },
+  "full_model_dirty_ab": {
+    "workload": "Poolside Laguna S 2.1 Q4_K_M pp512, matrix512, attention128, BF16 KV, one shared resident owner",
+    "protocol": "seven counterbalanced repetitions per mode",
+    "rollback_samples_tok_s": [
+      491.920581554996,
+      490.1050030477584,
+      489.786187775172,
+      488.872623624937,
+      489.0044843773168,
+      493.3908484215754,
+      492.90639775686316
+    ],
+    "rollback_median_tok_s": 490.1050030477584,
+    "candidate_samples_tok_s": [
+      491.3349751690264,
+      491.16100234480075,
+      491.03015271146324,
+      489.46104944900407,
+      498.84669956620377,
+      494.8583296180626,
+      494.04594165618784
+    ],
+    "candidate_median_tok_s": 491.3349751690264,
+    "candidate_change_percent": 0.2509609397209456,
+    "median_wall_change_ms": -2.615160890854895,
+    "next_tokens": {
+      "rollback": [2930, 2930, 2930, 2930, 2930, 2930, 2930],
+      "candidate": [2930, 2930, 2930, 2930, 2930, 2930, 2930]
+    },
+    "raw_sha256": "0636a7b89c3ba3efe8a4aec85561480cc3d2ced0556c34fb952f0e33d6507006"
+  },
+  "trace": {
+    "protocol": "cached-build-only rocprofv3 kernel trace over one rollback and one candidate pp512 run plus 128-row warmups",
+    "candidate_q6_full_calls": 23,
+    "candidate_q6_full_grid_y": 332,
+    "candidate_q6_full_sum_ms": 126.039663,
+    "candidate_q6_full_median_ms": 5.451988,
+    "rollback_q6_full_calls": 23,
+    "rollback_q6_full_grid_y": 408,
+    "rollback_q6_full_sum_ms": 127.888255,
+    "rollback_q6_full_median_ms": 5.576182,
+    "candidate_resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "tile_map_resources": {
+      "workgroup_size": 256,
+      "vgpr": 16,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "kernel_trace_sha256": "63b8e56289b5f1ac62b6f46f164b13912cef5dc1ea92e99a842afe220be83409",
+    "agent_info_sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078",
+    "ab_sha256": "8507be772a7bf2e543aa91ed8a4e12fc1f52b5d6ecb9ca3b92104bdf74b2351d"
+  },
+  "validation": {
+    "red": "Primitive failed on the absent tile_rows wrapper contract; runtime collection failed on the absent tile64 metadata registry ABI.",
+    "green": "Q6 uneven/empty-expert CPU-reference cases, tile64 device metadata oracle, Q4/Q6 production-shape runtime equality, and backend/default contracts pass.",
+    "focused_bundle": "98 passed, 2 skipped; repaired stale default assertion then 23 passed",
+    "py_compile": "passed",
+    "diff_check": "passed",
+    "quality_transfer": "The candidate is BF16-bit exact to the rollback, so the retained direct all-exact maximum KL 0.04954258196634279 and 316/320 top-1 gate transfer unchanged."
+  },
+  "decision": {
+    "action": "Retain as the gfx1151 candidate default and require a clean committed A/B before changing the production headline.",
+    "reason": "The runtime-grid leaf and whole-model medians are both positive with exact output and zero scratch.",
+    "next": "Commit the logical unit, run clean seven-repeat A/B, then publish and refresh the all-family profile."
+  }
+}

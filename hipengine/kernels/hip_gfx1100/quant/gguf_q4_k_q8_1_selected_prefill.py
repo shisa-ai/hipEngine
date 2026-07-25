@@ -65,6 +65,10 @@ _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
     "hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_"
     "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q6_T16_DS4_F32_MMQ64X64_ROWVEC_BF16 = (
+    "hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_"
+    "mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
+)
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
         "hipengine_gguf_q4_k_t16_selected_dual_q8_1_"
@@ -329,11 +333,12 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     *,
     residual_passes: int = 3,
     rowvec: bool = False,
+    tile_rows: int = 32,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch range-safe three-plane Q6T16 64x32 packed-dot selected down."""
+    """Launch range-safe Q6T16 packed-dot selected down."""
 
     _check_positive(compact_rows, "compact_rows")
     _check_positive(in_features, "in_features")
@@ -344,18 +349,24 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
         raise ValueError("in_features must be divisible by GGUF K block size 256")
     if out_features % 64 != 0:
         raise ValueError("out_features must be a multiple of 64")
-    if mmq_total_rows % 32 != 0:
-        raise ValueError("mmq_total_rows must be a multiple of 32")
+    if tile_rows not in (32, 64):
+        raise ValueError("tile_rows must be 32 or 64")
+    if mmq_total_rows % tile_rows != 0:
+        raise ValueError(f"mmq_total_rows must be a multiple of {tile_rows}")
     if residual_passes not in _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16:
         raise ValueError("residual_passes must be 1, 2, or 3")
     if rowvec and residual_passes != 1:
         raise ValueError("rowvec requires residual_passes=1")
+    if tile_rows == 64 and not rowvec:
+        raise ValueError("tile_rows=64 requires rowvec=True")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
         (
-            _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_ROWVEC_BF16
+            _SYMBOL_Q6_T16_DS4_F32_MMQ64X64_ROWVEC_BF16
+            if tile_rows == 64
+            else _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_ROWVEC_BF16
             if rowvec
             else _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16[residual_passes]
         ),

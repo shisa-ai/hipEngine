@@ -179771,3 +179771,35 @@ Vulkan local sizes verbatim will close the measured gap.
   layers, 32-row padding launches **6,946** weight-tile workgroups while
   64-row padding needs **5,671 (-18.36%)**. The next bounded screen tests one
   shared decode across a 64-row tile while preserving K accumulation order.
+
+## 2026-07-26 — Retain Q6 selected-down 64-row candidate
+
+- RED first extended the Q6 primitive with a 64-row case and failed on the
+  absent wrapper contract. Runtime RED then required a registry-backed tile64
+  device map and failed collection on the absent ABI. GREEN generalizes only
+  the Q6 row tile, adds `moe_mmq_tile_map/generic/tile64`, and rebuilds the
+  reusable starts/tile IDs after Q4 gate/up. Q4 down remains on the production
+  64x32 direct wave-column route; the prior hybrid mode is explicit rollback.
+- The uneven/empty-expert CPU-reference gate, tile64 device metadata oracle,
+  and production-shape Q4/Q6 runtime comparisons pass. Candidate and rollback
+  outputs are BF16-bit exact. The focused five-file bundle established 98
+  passes with two expected skips; one stale backend-default assertion was
+  repaired with a focused 23-pass rerun. `py_compile` and `git diff --check`
+  pass.
+- On actual layer-1 Q6 T16 weights plus natural M512 routing, runtime static
+  upper grids are 408 workgroups/tile for rows32 and 332 for rows64. Nine
+  counter-rotated burst-three samples improve **5.259917 -> 5.161106 ms
+  (-1.879%)** with zero BF16 mismatches and checksum **509500838004**.
+- Seven dirty-tree counterbalanced one-owner matrix512/attention128 pp512
+  repetitions improve explicit rows32 rollback **490.105003 -> 491.334975
+  tok/s (+0.250961%)**, reduce median wall by **2.615 ms**, and select token
+  2930 in all 14 runs. Raw SHA-256:
+  `0636a7b89c3ba3efe8a4aec85561480cc3d2ced0556c34fb952f0e33d6507006`.
+- Cached-build-only production tracing names candidate template
+  `<1,true,false,128,64>` at local128/VGPR88/LDS5632B/scratch0. Its 23 full
+  M512 calls total **126.040 ms** versus rows32 **127.888 ms**; the tile map is
+  local256/VGPR16/LDS0/scratch0. Trace SHA-256:
+  `63b8e56289b5f1ac62b6f46f164b13912cef5dc1ea92e99a842afe220be83409`.
+  Retain as the candidate default and require a clean committed A/B before
+  publishing production. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`.

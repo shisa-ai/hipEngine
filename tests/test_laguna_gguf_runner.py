@@ -760,7 +760,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     )
     assert (
         session.selected_down_mode
-        == "mmq64x32_d4_f32_wavecols_direct_q4"
+        == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
     )
     assert session.dense_q4_prefill_mode == "wmma_pack8"
     assert session.f16_prefill_mode == "hipblaslt_scaled"

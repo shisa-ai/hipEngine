@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_scatter,
     qwen35_moe_group_scatter_gather_lowp,
     qwen35_moe_mmq32_tile_map,
+    qwen35_moe_mmq64_tile_map,
     qwen35_moe_wmma_tile_map,
     register_qwen35_moe_group_scatter_kernels,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "qwen35_moe_group_scatter",
     "qwen35_moe_group_scatter_gather_lowp",
     "qwen35_moe_mmq32_tile_map",
+    "qwen35_moe_mmq64_tile_map",
     "qwen35_moe_wmma_tile_map",
     "qwen35_moe_prefill_grouped_compact",
     "qwen35_moe_prefill_selected_c1_rows",

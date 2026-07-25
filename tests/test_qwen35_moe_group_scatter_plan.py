@@ -25,8 +25,9 @@ from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_moe_group_scatter_gather_lowp,
     qwen35_moe_prefill_grouped_compact,
     qwen35_moe_prefill_selected_c1_rows,
-    qwen35_moe_wmma_tile_map,
     qwen35_moe_mmq32_tile_map,
+    qwen35_moe_mmq64_tile_map,
+    qwen35_moe_wmma_tile_map,
     register_qwen35_moe_group_scatter_kernels,
     register_qwen35_moe_prefill_kernels,
 )
@@ -103,6 +104,15 @@ def test_qwen35_moe_group_scatter_registers_prefill_metadata_variants() -> None:
             variant="tile32",
         )
         is qwen35_moe_mmq32_tile_map
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_mmq_tile_map",
+            quant="generic",
+            variant="tile64",
+        )
+        is qwen35_moe_mmq64_tile_map
     )
     assert (
         resolve(
@@ -287,6 +297,7 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
     weights = np.asarray([0.2, 0.1, 0.4, 0.3, 0.5, 0.6, 0.7, 0.8], dtype=np.float32)
     expected_starts = np.asarray([0, 0, 3, 5, 5, 8], dtype=np.int64)
     expected_starts32 = np.asarray([0, 0, 32, 64, 64, 96], dtype=np.int64)
+    expected_starts64 = np.asarray([0, 0, 64, 128, 128, 192], dtype=np.int64)
     expected_active = np.asarray([1, 2, 4], dtype=np.int64)
     expected_lanes = np.asarray([1, 3, 7, 0, 4, 2, 5, 6], dtype=np.int64)
     expected_sources = expected_lanes // 2
@@ -300,6 +311,7 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
         copy_host_to_device(weights_buffer, host_array_ptr(weights), weights.nbytes)
         starts_buffer = malloc(expected_starts.nbytes)
         starts32_buffer = malloc(expected_starts32.nbytes)
+        starts64_buffer = malloc(expected_starts64.nbytes)
         active_buffer = malloc(5 * np.dtype(np.int64).itemsize)
         active_count_buffer = malloc(np.dtype(np.int64).itemsize)
         lanes_buffer = malloc(selected.nbytes)
@@ -307,10 +319,12 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
         sorted_weights_buffer = malloc(weights.nbytes)
         tiles_buffer = malloc(expected_tiles.nbytes)
         total32_buffer = malloc(np.dtype(np.int64).itemsize)
+        total64_buffer = malloc(np.dtype(np.int64).itemsize)
         buffers.extend(
             (
                 starts_buffer,
                 starts32_buffer,
+                starts64_buffer,
                 active_buffer,
                 active_count_buffer,
                 lanes_buffer,
@@ -318,6 +332,7 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
                 sorted_weights_buffer,
                 tiles_buffer,
                 total32_buffer,
+                total64_buffer,
             )
         )
 
@@ -342,9 +357,18 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
             5,
             tile_capacity=expected_tiles.size,
         )
+        qwen35_moe_mmq64_tile_map(
+            starts_buffer.ptr,
+            starts64_buffer.ptr,
+            tiles_buffer.ptr,
+            total64_buffer.ptr,
+            5,
+            tile_capacity=expected_tiles.size,
+        )
 
         starts = np.empty_like(expected_starts)
         starts32 = np.empty_like(expected_starts32)
+        starts64 = np.empty_like(expected_starts64)
         active = np.empty(5, dtype=np.int64)
         active_count = np.empty(1, dtype=np.int64)
         lanes = np.empty_like(selected)
@@ -352,9 +376,11 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
         sorted_weights = np.empty_like(weights)
         tiles = np.empty_like(expected_tiles)
         total32 = np.empty(1, dtype=np.int64)
+        total64 = np.empty(1, dtype=np.int64)
         for array, buffer in (
             (starts, starts_buffer),
             (starts32, starts32_buffer),
+            (starts64, starts64_buffer),
             (active, active_buffer),
             (active_count, active_count_buffer),
             (lanes, lanes_buffer),
@@ -362,10 +388,12 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
             (sorted_weights, sorted_weights_buffer),
             (tiles, tiles_buffer),
             (total32, total32_buffer),
+            (total64, total64_buffer),
         ):
             copy_device_to_host(host_array_ptr(array), buffer, array.nbytes)
         np.testing.assert_array_equal(starts, expected_starts)
         np.testing.assert_array_equal(starts32, expected_starts32)
+        np.testing.assert_array_equal(starts64, expected_starts64)
         assert active_count.tolist() == [3]
         np.testing.assert_array_equal(active[:3], expected_active)
         np.testing.assert_array_equal(lanes, expected_lanes)
@@ -373,6 +401,7 @@ def test_group_compact_source_rows_and_mmq32_tile_map_match_cpu_oracle() -> None
         np.testing.assert_array_equal(sorted_weights, weights[expected_lanes])
         np.testing.assert_array_equal(tiles, expected_tiles)
         assert total32.tolist() == [96]
+        assert total64.tolist() == [192]
     finally:
         for buffer in reversed(buffers):
             free(buffer)

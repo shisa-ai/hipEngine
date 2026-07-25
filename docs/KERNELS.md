@@ -714,6 +714,18 @@ candidate surface was removed; 128x32/local128 direct decode remains
 production
 (`benchmarks/results/2026-07-26-gfx1151-laguna-gate-direct-local64-rejected.json`).
 
+Q6 selected down now has an exact 64-column x 64-row/local128 candidate.
+Four wave32 groups own 16 rows each while one 5,632-byte LDS tile retains the
+single shared 64-column weight decode. The new `moe_mmq_tile_map/generic/tile64`
+registry leaf rewrites the reusable expert starts/tile IDs after Q4 gate/up;
+Q4 down remains on its 32-row direct wave-column body. Actual layer-1
+runtime-bound timing improves **5.260 -> 5.161 ms (-1.879%)**, with zero BF16
+mismatches, and dirty one-owner pp512 improves **490.105 -> 491.335 tok/s
+(+0.251%)**. Cached tracing names template `<1,true,false,128,64>` at
+local128/VGPR88/LDS5632B/scratch0 and grid-Y 332 versus the 32-row rollback's
+408. The candidate is pending clean publication
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`).
+
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate
 halves workgroups and activation staging without the rejected two-columns-per-

@@ -60,11 +60,11 @@ LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # registers. Packed-dot arithmetic and K order remain bit-for-bit unchanged.
 # Other backends retain exact.
 LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols_direct"
-# The post-350 down screen maps Q4 output columns across two wave32s while
-# preserving the range-safe D4 resident-T16 integer-dot arithmetic. Q6 keeps
-# the faster row-vector mapping; the scalar-staged and exact routes remain
-# rollbacks.
-LAGUNA_SELECTED_DOWN_MODE = "mmq64x32_d4_f32_wavecols_direct_q4"
+# The post-350 down screen maps Q4 output columns across two wave32s and lets
+# the Q6 row-vector consumer reuse one decoded tile across 64 routed rows.
+# Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
+# scalar-staged, and exact routes remain rollbacks.
+LAGUNA_SELECTED_DOWN_MODE = "mmq64x64_d4_f32_q6_wavecols_direct_q4"
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"

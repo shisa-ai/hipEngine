@@ -65,6 +65,7 @@ _SELECTED_DOWN_MODES = frozenset(
         "mmq64x32_d4_f32_rowvec",
         "mmq64x32_d4_f32_wavecols_q4",
         "mmq64x32_d4_f32_wavecols_direct_q4",
+        "mmq64x64_d4_f32_q6_wavecols_direct_q4",
         "mmq64x32_d4x2_f32",
         "mmq64x32_d4x3_f32",
     }
@@ -92,6 +93,7 @@ _Q8_1_DS4_BLOCK_BYTES = 144
 _Q8_1_DS4_F32_BLOCK_BYTES = 160
 _Q8_1_DS4_RESIDUAL_PLANES = 3
 _MMQ32_ROWS = 32
+_MMQ64_ROWS = 64
 
 
 def resolve_laguna_selected_gate_up_mode(
@@ -205,6 +207,7 @@ class LagunaMoEKernelPlan:
     grouped_compact_key: KernelKey
     grouped_compact_source_rows_key: KernelKey
     mmq_tile_map_key: KernelKey
+    mmq64_tile_map_key: KernelKey
     grouped_gather_key: KernelKey
     grouped_smallm_down_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
@@ -234,6 +237,7 @@ class LagunaMoEKernelPlan:
     grouped_compact: Callable
     grouped_compact_source_rows: Callable
     mmq_tile_map: Callable
+    mmq64_tile_map: Callable
     grouped_gather: Callable
     grouped_smallm_downs: Mapping[str, Callable]
     grouped_weighted_sum: Callable
@@ -266,6 +270,7 @@ class LagunaMoEKernelPlan:
             self.grouped_compact_key,
             self.grouped_compact_source_rows_key,
             self.mmq_tile_map_key,
+            self.mmq64_tile_map_key,
             self.grouped_gather_key,
             *tuple(self.grouped_smallm_down_keys.values()),
             self.grouped_weighted_sum_key,
@@ -476,6 +481,12 @@ def resolve_laguna_moe_plan(
             "generic",
             "tile32",
         ),
+        "mmq64_tile_map": KernelKey(
+            backend,
+            "moe_mmq_tile_map",
+            "generic",
+            "tile64",
+        ),
         "grouped_gather": KernelKey(
             backend, "moe_gather_packed_hidden", "generic", "bf16_lanes"
         ),
@@ -660,6 +671,7 @@ def resolve_laguna_moe_plan(
         grouped_compact_key=keys["grouped_compact"],
         grouped_compact_source_rows_key=keys["grouped_compact_source_rows"],
         mmq_tile_map_key=keys["mmq_tile_map"],
+        mmq64_tile_map_key=keys["mmq64_tile_map"],
         grouped_gather_key=keys["grouped_gather"],
         grouped_smallm_down_keys=grouped_smallm_down_keys,
         grouped_weighted_sum_key=keys["grouped_weighted_sum"],
@@ -672,6 +684,7 @@ def resolve_laguna_moe_plan(
         grouped_compact=functions["grouped_compact"],
         grouped_compact_source_rows=functions["grouped_compact_source_rows"],
         mmq_tile_map=functions["mmq_tile_map"],
+        mmq64_tile_map=functions["mmq64_tile_map"],
         grouped_gather=functions["grouped_gather"],
         grouped_smallm_downs=grouped_smallm_downs,
         grouped_weighted_sum=functions["grouped_weighted_sum"],
@@ -1042,9 +1055,24 @@ def _launch_selected_gate_up(
 
 
 def _mmq32_static_upper_rows(lanes: int, expert_count: int) -> int:
+    return _mmq_static_upper_rows(
+        lanes,
+        expert_count,
+        tile_rows=_MMQ32_ROWS,
+    )
+
+
+def _mmq_static_upper_rows(
+    lanes: int,
+    expert_count: int,
+    *,
+    tile_rows: int,
+) -> int:
     active_upper = min(int(lanes), int(expert_count))
-    padded_upper = int(lanes) + (_MMQ32_ROWS - 1) * active_upper
-    return ((padded_upper + _MMQ32_ROWS - 1) // _MMQ32_ROWS) * _MMQ32_ROWS
+    padded_upper = int(lanes) + (int(tile_rows) - 1) * active_upper
+    return (
+        (padded_upper + int(tile_rows) - 1) // int(tile_rows)
+    ) * int(tile_rows)
 
 
 def _launch_selected_gate_up_mmq32_d4x3(
@@ -1334,6 +1362,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
     rowvec: bool = False,
     wave_cols_q4: bool = False,
     direct_wave_decode_q4: bool = False,
+    q6_tile_rows: int = _MMQ32_ROWS,
 ) -> bool:
     """Quantize compact post-SiLU rows and run range-safe Q6T16 MMQ down."""
 
@@ -1353,6 +1382,34 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
         and weight.spec.quant_key == "gguf_q4_k_t16_v1"
     )
     active_runtime = runtime or get_hip_runtime()
+    tile_rows = (
+        q6_tile_rows
+        if weight.spec.quant_key == "gguf_q6_k_t16_v1"
+        else _MMQ32_ROWS
+    )
+    mmq_total_rows = _mmq_static_upper_rows(
+        lanes,
+        plan.expert_count,
+        tile_rows=tile_rows,
+    )
+    if tile_rows == _MMQ64_ROWS:
+        tile_capacity = mmq_total_rows // tile_rows
+        if tile_capacity > lanes:
+            raise ValueError("Laguna MMQ64 tile metadata exceeds bounded lane storage")
+        plan.mmq64_tile_map(
+            scratch.grouped_expert_start.ptr,
+            scratch.grouped_expert_start_mmq32.ptr,
+            scratch.grouped_sorted_experts.ptr,
+            scratch.grouped_mmq_total.ptr,
+            plan.expert_count,
+            tile_capacity=tile_capacity,
+            **_stage_kwargs(
+                "grouped_metadata",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
     plan.down_activation_quant(
         scratch.expert_intermediate.ptr,
         scratch.expert_gate_up.ptr,
@@ -1377,9 +1434,12 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
         plan.expert_ffn_size,
         plan.hidden_size,
         plan.expert_count,
-        _mmq32_static_upper_rows(lanes, plan.expert_count),
+        mmq_total_rows,
         **(
-            {"residual_passes": residual_passes}
+            {
+                "residual_passes": residual_passes,
+                "tile_rows": tile_rows,
+            }
             if weight.spec.quant_key == "gguf_q6_k_t16_v1"
             else {}
         ),
@@ -1774,19 +1834,39 @@ def run_laguna_moe_rows(
             libraries=libraries,
         )
     mmq_down_config = {
-        "mmq64x32_d4_f32": (1, False, False, False),
-        "mmq64x32_d4_f32_rowvec": (1, True, False, False),
-        "mmq64x32_d4_f32_wavecols_q4": (1, True, True, False),
-        "mmq64x32_d4_f32_wavecols_direct_q4": (1, True, True, True),
-        "mmq64x32_d4x2_f32": (2, False, False, False),
-        "mmq64x32_d4x3_f32": (3, False, False, False),
+        "mmq64x32_d4_f32": (1, False, False, False, _MMQ32_ROWS),
+        "mmq64x32_d4_f32_rowvec": (1, True, False, False, _MMQ32_ROWS),
+        "mmq64x32_d4_f32_wavecols_q4": (
+            1,
+            True,
+            True,
+            False,
+            _MMQ32_ROWS,
+        ),
+        "mmq64x32_d4_f32_wavecols_direct_q4": (
+            1,
+            True,
+            True,
+            True,
+            _MMQ32_ROWS,
+        ),
+        "mmq64x64_d4_f32_q6_wavecols_direct_q4": (
+            1,
+            True,
+            True,
+            True,
+            _MMQ64_ROWS,
+        ),
+        "mmq64x32_d4x2_f32": (2, False, False, False, _MMQ32_ROWS),
+        "mmq64x32_d4x3_f32": (3, False, False, False, _MMQ32_ROWS),
     }.get(selected_down_mode)
     (
         mmq_down_passes,
         mmq_down_rowvec,
         mmq_down_wave_cols_q4,
         mmq_down_direct_wave_decode_q4,
-    ) = mmq_down_config or (None, False, False, False)
+        mmq_down_q6_tile_rows,
+    ) = mmq_down_config or (None, False, False, False, _MMQ32_ROWS)
     use_mmq_down = (
         compact_gate_up
         and mmq_down_passes is not None
@@ -1801,6 +1881,7 @@ def run_laguna_moe_rows(
             rowvec=mmq_down_rowvec,
             wave_cols_q4=mmq_down_wave_cols_q4,
             direct_wave_decode_q4=mmq_down_direct_wave_decode_q4,
+            q6_tile_rows=mmq_down_q6_tile_rows,
         )
     )
     use_grouped_fused_combine = selected_down_mode == "grouped_smallm_fused" or (

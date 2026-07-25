@@ -3340,7 +3340,8 @@ template <
     int ACTIVATION_PASSES,
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
-    int THREADS = 128>
+    int THREADS = 128,
+    int MMQ_N = 32>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3356,14 +3357,16 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
     int64_t num_experts,
     int64_t mmq_total_rows) {
   constexpr int MMQ_M = 64;
-  constexpr int MMQ_N = 32;
   constexpr int MMQ_K = 32;
-  constexpr int WNITER = 8;
+  constexpr int WNITER = MMQ_N / (THREADS / 32);
   constexpr int COL_ITERS = WAVE_COLUMNS ? 1 : 2;
   constexpr int ROW_ITERS = WAVE_COLUMNS ? MMQ_N : WNITER;
   typedef int mmq_i32x4_t
       __attribute__((__vector_size__(4 * sizeof(int))));
   static_assert(ACTIVATION_PASSES > 0, "at least one activation plane required");
+  static_assert(MMQ_N == 32 || MMQ_N == 64, "unsupported row tile");
+  static_assert(THREADS % 32 == 0, "thread count must contain whole waves");
+  static_assert(MMQ_N % (THREADS / 32) == 0, "row tile must divide across waves");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -3737,7 +3740,8 @@ template <
     int ACTIVATION_PASSES,
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
-    int THREADS = 128>
+    int THREADS = 128,
+    int MMQ_N = 32>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -3756,19 +3760,20 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
       qweight == nullptr || out == nullptr || compact_rows <= 0 ||
       in_features <= 0 || out_features <= 0 || num_experts <= 0 ||
       mmq_total_rows <= 0 || (in_features % QK_K) != 0 ||
-      (out_features % 64) != 0 || (mmq_total_rows % 32) != 0) {
+      (out_features % 64) != 0 || (mmq_total_rows % MMQ_N) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const dim3 block(THREADS);
   const dim3 grid(
       static_cast<unsigned int>(out_features / 64),
-      static_cast<unsigned int>(mmq_total_rows / 32));
+      static_cast<unsigned int>(mmq_total_rows / MMQ_N));
   hipLaunchKernelGGL(
       (gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<
           ACTIVATION_PASSES,
           ROWVEC_ACTIVATION_STAGE,
           WAVE_COLUMNS,
-          THREADS>),
+          THREADS,
+          MMQ_N>),
       grid,
       block,
       0,
@@ -4619,6 +4624,40 @@ hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_rowvec_prefill_compact32_
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
       expert_start_compact,
       expert_start_mmq32,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
       tile_expert,
       qweight,
       out,
