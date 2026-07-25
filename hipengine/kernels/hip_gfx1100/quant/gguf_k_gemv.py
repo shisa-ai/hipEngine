@@ -232,6 +232,11 @@ gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out = _make_wave32x2_wrapper
 gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out = _make_wave32x2_wrapper(
     _symbol("gguf_q5_k", "wave32x2_fixed_meta_gemv_decode_bf16_f32_out")
 )
+gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out = (
+    _make_unequal_wave32x2_wrapper(
+        _symbol("gguf_q5_k", "pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out")
+    )
+)
 gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out = (
     _make_unequal_wave32x2_wrapper(
         _symbol("gguf_q5_k", "pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out")
@@ -359,6 +364,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             "wave32x2_gemv_decode_bf16_f32_out",
         ),
         gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q5_k",
+            "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
         replace=replace,
     )
     register(
@@ -910,6 +925,7 @@ __all__ = [
     "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",

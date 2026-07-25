@@ -1,0 +1,243 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q2_xl_shared_q5_fixed_metadata_correctness",
+  "status": "correctness_admitted_pending_formal_performance_gate",
+  "performance_claim": false,
+  "baseline": {
+    "revision": "374fc39d5",
+    "h16_decode_tok_s": 59.78748544066653,
+    "h32_decode_tok_s": 59.2111347430388,
+    "dispatches_per_token": 723,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "additional_speedup_required_pct": 8.794130542213836
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "device": 0,
+    "queues": 1,
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "candidate": {
+    "scope": "46 c=1 shared-expert Q5_K gate/up pairs in sparse layers 1-46",
+    "description": "Instantiate the retained exact wave32x2 fixed-metadata Q5 block as a same-input BF16-output pair and select it only through a registered c=1 custom pair variant",
+    "default": false,
+    "selector": "LagunaGGUFResidentSession(use_q5_shared_fixed_meta=True) or scripts/laguna_target_ar_bench.py --use-q5-shared-fixed-meta",
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair",
+      "gguf_q5_k",
+      "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+    ],
+    "fallback": "registered local128 pack8 pair; rows>1 keep the existing rows path, layer 47 Q6 misses the Q5 key and keeps its existing exact fallback, and unsupported backends remain unchanged",
+    "persistent_weight_copy_delta_bytes": 0,
+    "workspace_delta_bytes": 0,
+    "dispatches_per_token": {
+      "control": 723,
+      "candidate": 723,
+      "removed": 0
+    },
+    "unchanged_boundaries": [
+      "raw 176-byte Q5_K weights",
+      "eight per-output-pair accumulator chains",
+      "each [t,t+128] K sequence",
+      "four independent 16/8/4/2/1 shuffle reductions",
+      "logical group 0/1/2/3 final addition",
+      "separate BF16 gate and up stores",
+      "standalone shared SiLU and shared-down fallback chain"
+    ]
+  },
+  "red_green": {
+    "kernel_red": "candidate BF16 pair wrapper import absent",
+    "kernel_red_sha256": "d64f7f575b1f36a2a2dce4bc3480edbb944eac12745eedf98698b21e2e99c738",
+    "kernel_green": "16 production/synthetic Q5 tests pass, including K3072/N1024+N1024 byte identity and registry resolution",
+    "kernel_green_sha256": "ecf57d762b443151696ef4727347520d0d5715719bac1e0cd93caddf627ffa61",
+    "runtime_red": "BF16 custom-pair resolver, Laguna selector, and benchmark CLI absent",
+    "runtime_red_sha256": "92fb26b41637d34b0797086d0b546bed2ac5fed45a62182215adbe10e9e2c0de",
+    "runtime_green": "88 linear-dispatch, runner, and benchmark tests pass",
+    "runtime_green_sha256": "31d4f6ed061187bd4bcaecd24059371e79ed220f567109eaef744423f52fcf35"
+  },
+  "codegen": {
+    "control": {
+      "kernel": "gguf_q5_k_pair_pack8_decode_out_kernel<unsigned short, unsigned short>",
+      "static_instructions": 701,
+      "barriers": 3,
+      "reduction_ds_bpermute": 40,
+      "logical_vgpr": 72,
+      "sgpr": 60,
+      "group_segment_fixed_bytes": 768,
+      "private_segment_fixed_bytes": 0,
+      "spills": 0
+    },
+    "candidate": {
+      "kernel": "gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out_kernel<unsigned short, unsigned short>",
+      "static_instructions": 508,
+      "barriers": 0,
+      "reduction_ds_bpermute": 40,
+      "logical_vgpr": 73,
+      "sgpr": 60,
+      "group_segment_fixed_bytes": 0,
+      "private_segment_fixed_bytes": 0,
+      "spills": 0
+    },
+    "interpretation": "The candidate removes the local128 coefficient-publication LDS/barriers and fixed-address metadata work while preserving all reduction shuffles; actual weights decide admission because it launches four times as many smaller workgroups."
+  },
+  "actual_weight_screen": {
+    "protocol": {
+      "warmups": 50,
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "layers": [
+        1,
+        46
+      ]
+    },
+    "all_bf16_bytes_exact": true,
+    "all_event_and_wall_positive": true,
+    "rows": [
+      {
+        "layer_id": 1,
+        "shape": [
+          [
+            1024,
+            3072
+          ],
+          [
+            1024,
+            3072
+          ]
+        ],
+        "control_event_us": 16.705315113067627,
+        "candidate_event_us": 12.092684507369995,
+        "event_improvement_pct": 27.61175454924182,
+        "control_wall_us": 16.725939931347966,
+        "candidate_wall_us": 12.129724491387606,
+        "wall_improvement_pct": 27.479564430014936,
+        "complete_bf16_equal": true,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0
+      },
+      {
+        "layer_id": 46,
+        "shape": [
+          [
+            1024,
+            3072
+          ],
+          [
+            1024,
+            3072
+          ]
+        ],
+        "control_event_us": 16.26431941986084,
+        "candidate_event_us": 11.80048942565918,
+        "event_improvement_pct": 27.445538168358564,
+        "control_wall_us": 16.27628575079143,
+        "candidate_wall_us": 11.901468969881535,
+        "wall_improvement_pct": 26.87847121814737,
+        "complete_bf16_equal": true,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0
+      }
+    ]
+  },
+  "full_state_gate": {
+    "passed": true,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "decode_transitions": 16,
+    "bulk_prefill_exact": true,
+    "full_logits_and_argmax_exact": true,
+    "hidden_boundaries_exact": 48,
+    "routed_boundaries_exact": 47,
+    "active_kv_and_all_live_spans_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_peak_allocations": 1500,
+    "tracked_returned_to_baseline": true
+  },
+  "cached_trace": {
+    "decode_transitions": 2,
+    "dispatches_per_token": 723,
+    "candidate_calls_total": 92,
+    "candidate_calls_per_token": 46,
+    "generic_shared_pair_calls": 0,
+    "candidate_resources": {
+      "workgroup": 32,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "candidate_duration_us_range": [
+      10.28,
+      12.28
+    ],
+    "bulk_prefill_q5_pack8_calls": 4,
+    "finite_logits": true,
+    "tracked_returned_to_baseline": true,
+    "compiler_ran_under_profiler": false,
+    "dispatch_id_evidence": {
+      "decode_1_inclusive": [
+        1439,
+        2161
+      ],
+      "decode_2_inclusive": [
+        2167,
+        2889
+      ]
+    }
+  },
+  "provenance": {
+    "library_sha256": "fcab41e6c69f56159ab63fb4180d335285a6b22fb2fd4bbe8a8f6b9371454bd2",
+    "code_object_sha256": "3db006277e7a7d9c8d6040eb9168d4fd16e9983a0dad00d96457f672b7f0b65f",
+    "disassembly_sha256": "b916ba3f8e70d2a0c09413a687c3018b3b42c01f8ec1847ae014be0b48b6029b",
+    "metadata_sha256": "3b25eebc368cd0f4fbf75f97bafed8ed03851f76156d8225b3b703b2488b9874",
+    "candidate_code_and_tests_diff_sha256": "915862ccc3a575043ca117b2ff7e519a28c8751a71ac2b1329c8810f99040fd0",
+    "actual_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_shared_q5_fixed_meta_actual.py",
+    "actual_harness_sha256": "b9ada9739480055ef4a5fe9623d9d61799fc50e6c74f387c0a07435a2d83d060",
+    "actual_raw_sha256": "fef905fffab8ebbbd92c9f35e2c20e3a0fb1af3b233dedbc6b23c9dea9505e21",
+    "state_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_shared_q5_fixed_meta_correctness.py",
+    "state_harness_sha256": "fc3d72ab56fb94179940680ddd63dc5957020a129a8e321f0b909772e75bac1c",
+    "state_raw_sha256": "03daf5403195736bd8bf303b0daeda27558f412eb32e7f2d63b28de61c84c665",
+    "state_stdout_sha256": "74f04dedb3a5b159eac782badc184a8fe1ebe43e41e317d2a2de356942005433",
+    "trace_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-shared-q5-fixed-meta-trace --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_shared_q5_fixed_meta_model.py",
+    "trace_harness_sha256": "3da8320643deb23a7b8cbb1fef60f52da1adb09a555ab7599b35158aa102f9d2",
+    "trace_child_sha256": "95bd2b3b1930ffd3c397c903051604654e0c3396e27735ffe063e4ab98ca4e66",
+    "trace_csv_sha256": "95238e36979c378ba48230c5351cfa2d55baea8203d89bd49836a784c29f3c8b"
+  },
+  "validation": {
+    "kernel_tests_passed": 16,
+    "runtime_tests_passed": 88,
+    "focused_regression_tests_passed": 152,
+    "focused_regression_sha256": "793de57f7e731cd474d92b5f18d39137b5d7186114cc8b45c1295daac4520ad6",
+    "ruff": true,
+    "compileall": true,
+    "json": true,
+    "changed_doc_links": true,
+    "diff_check": true,
+    "hip_available": true,
+    "lineage_checked": true,
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "lineage_note": "Only the already catalogued unrelated Qwen/PARO/smoke parent drift is reported."
+  },
+  "decision": {
+    "action": "admit explicit/default-off for clean context and complete-category promotion gates",
+    "next": "freeze both process orders at short/512/1K/near-4K, then run both complete 18-prompt/two-repetition category orders only if every mechanical row passes",
+    "failure_policy": "remove the wrapper/key/selector/tests on any frozen mechanical or category failure",
+    "retained_default_unchanged": true
+  }
+}

@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out,
     gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out,
+    gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
     gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out,
     gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
@@ -127,6 +128,12 @@ def test_q5_k_pack8_decode_registry_keys_resolve() -> None:
         quant="gguf_q5_k",
         variant="wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     ) is gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear_pair",
+        quant="gguf_q5_k",
+        variant="wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+    ) is gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear_pair",
@@ -508,8 +515,12 @@ def test_q5_k_pack8_decode_pair_is_bit_exact_to_two_singletons() -> None:
     qweight_b_buf = malloc(qweight_b.nbytes)
     actual_a = np.empty((rows, out_features), dtype=np.uint16)
     actual_b = np.empty((rows, out_features), dtype=np.uint16)
+    fixed_meta_a = np.empty((rows, out_features), dtype=np.uint16)
+    fixed_meta_b = np.empty((rows, out_features), dtype=np.uint16)
     actual_a_buf = malloc(actual_a.nbytes)
     actual_b_buf = malloc(actual_b.nbytes)
+    fixed_meta_a_buf = malloc(fixed_meta_a.nbytes)
+    fixed_meta_b_buf = malloc(fixed_meta_b.nbytes)
     try:
         copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
         copy_host_to_device(qweight_a_buf, host_array_ptr(qweight_a), qweight_a.nbytes)
@@ -525,14 +536,42 @@ def test_q5_k_pack8_decode_pair_is_bit_exact_to_two_singletons() -> None:
             out_features,
             library=library,
         )
+        gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out(
+            x_buf.ptr,
+            qweight_a_buf.ptr,
+            qweight_b_buf.ptr,
+            fixed_meta_a_buf.ptr,
+            fixed_meta_b_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features,
+            library=library,
+        )
         copy_device_to_host(host_array_ptr(actual_a), actual_a_buf, actual_a.nbytes)
         copy_device_to_host(host_array_ptr(actual_b), actual_b_buf, actual_b.nbytes)
+        copy_device_to_host(
+            host_array_ptr(fixed_meta_a), fixed_meta_a_buf, fixed_meta_a.nbytes
+        )
+        copy_device_to_host(
+            host_array_ptr(fixed_meta_b), fixed_meta_b_buf, fixed_meta_b.nbytes
+        )
     finally:
-        for buffer in (actual_b_buf, actual_a_buf, qweight_b_buf, qweight_a_buf, x_buf):
+        for buffer in (
+            fixed_meta_b_buf,
+            fixed_meta_a_buf,
+            actual_b_buf,
+            actual_a_buf,
+            qweight_b_buf,
+            qweight_a_buf,
+            x_buf,
+        ):
             free(buffer)
 
     np.testing.assert_array_equal(actual_a, expected_a)
     np.testing.assert_array_equal(actual_b, expected_b)
+    np.testing.assert_array_equal(fixed_meta_a, expected_a)
+    np.testing.assert_array_equal(fixed_meta_b, expected_b)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
