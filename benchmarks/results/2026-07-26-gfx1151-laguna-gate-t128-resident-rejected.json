@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "created_at": "2026-07-26T06:30:06+09:00",
-  "kind": "hipengine_laguna_gate_t128_leaf_candidate",
-  "status": "retained_candidate_not_production",
+  "kind": "hipengine_laguna_gate_t128_resident_layout_rejected",
+  "status": "rejected_and_removed",
   "hardware": {
     "gpu": "AMD Radeon 8060S Graphics",
     "arch": "gfx1151",
@@ -29,14 +29,14 @@
   },
   "candidate": {
     "layout": "gguf_q4_k_t128_v1",
-    "description": "Byte-neutral groups of 128 output columns; FP16 d/dmin and expanded scale/min metadata retain T16 arithmetic while each column's K32 Q4 payload is sixteen consecutive nibble-pair bytes.",
+    "description": "Byte-neutral versus current T16 (and still 2.778% larger than raw/X8): groups of 128 output columns retain FP16 d/dmin and expanded scale/min metadata while each column's K32 Q4 payload is sixteen consecutive nibble-pair bytes.",
     "resident_bytes_gate_plus_up": 931135488,
     "baseline_t16_resident_bytes_gate_plus_up": 931135488,
     "extra_resident_weight_bytes": 0,
     "leaf_only_side_by_side_bytes": 931135488,
     "production_sidecar_allowed": false,
     "runtime_promoted": false,
-    "next_gate": "Implement and benchmark an exact sole-resident T128 decode consumer at natural c1/c2/c4/c8; do not promote or retain a duplicate T128 sidecar."
+    "next_gate": "Closed. The best exact sole-resident decode consumer misses the <=2% c1/c2/c4/c8 gate at every shape; all T128 code, materializer, selector, harness, and fixture surfaces were removed."
   },
   "protocol": {
     "timing": "counter-rotated HIP-event elapsed time",
@@ -92,6 +92,96 @@
     "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate' -q",
     "focused_result": "11 passed"
   },
+  "decode_gate": {
+    "protocol": {
+      "producer_rows": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "selected_routes": [
+        10,
+        20,
+        40,
+        80
+      ],
+      "warmups": 3,
+      "samples": 11,
+      "burst": 5,
+      "timing": "counterbalanced HIP-event elapsed time",
+      "promotion_gate": "zero BF16 mismatches and candidate/T16 <=1.02 at every shape",
+      "command_template": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_x8_exact_decode_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --layer 1 --candidate <mode> --producer-rows 1,2,4,8 --warmups 3 --samples 11 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output <path>"
+    },
+    "direct_t128": {
+      "candidate_ms": [
+        0.20818960666656494,
+        0.43201699256896975,
+        0.8468748092651367,
+        1.6539093017578126
+      ],
+      "t16_ms": [
+        0.1552906036376953,
+        0.352034592628479,
+        0.6885543823242187,
+        1.358907413482666
+      ],
+      "regression_percent": [
+        34.0645227655158,
+        22.7200399095155,
+        22.9931623420225,
+        21.7087555302317
+      ],
+      "raw_sha256": "c2b65a942a6b86a25627fd119e79ab103de3a6818f6b2effc8d2318a0a0c542d"
+    },
+    "best_tile4_local64_virtual_thread": {
+      "candidate_ms": [
+        0.17119239568710326,
+        0.37229740619659424,
+        0.7320995807647706,
+        1.4442434310913086
+      ],
+      "t16_ms": [
+        0.16030019521713257,
+        0.3508814096450806,
+        0.6882976055145263,
+        1.351510238647461
+      ],
+      "regression_percent": [
+        6.79487660961162,
+        6.1034856686127,
+        6.36381339980119,
+        6.86144949494807
+      ],
+      "bf16_mismatches": 0,
+      "raw_sha256": "7506da75482e0d28e6907f706230a02f135da3a7bab84693410f59f8c6c99f9f"
+    },
+    "other_exact_screens": {
+      "lds_reconstruct_t16": "3.262x-3.855x T16 latency",
+      "adjacent_k_pair_shuffle_reuse": "3.228x-3.385x T16 latency",
+      "tile4_local128_c1": "1.108901x T16 latency",
+      "tile8_local128_c1": "1.170175x T16 latency",
+      "tile2_local128_c1": "1.510510x T16 latency",
+      "tile1_local128_c1": "2.536248x T16 latency",
+      "tile4_local32_virtual_thread": "1.201x-1.227x T16 latency"
+    },
+    "exact": true,
+    "within_two_percent": false,
+    "passed": false,
+    "tracked_peak_bytes": 1862648448,
+    "tracked_after_bytes": 0,
+    "resource_trace": {
+      "t16_direct_vgpr": 200,
+      "t128_direct_vgpr": 200,
+      "t128_pairreuse_vgpr": 224,
+      "t128_staged_vgpr": 208,
+      "t128_staged_lds_bytes": 5632,
+      "t128_tile4_local128_vgpr": 64,
+      "t128_tile8_local128_vgpr": 104,
+      "direct_trace_sha256": "172e77b48487bdb578a05d204378dc1f4c035b62ca2e6d4aa14c1722489366fa",
+      "narrow_trace_sha256": "b500496f01fa6acb2182955105b24770f710c5082a722dd18d890ef4034e4b41"
+    }
+  },
   "trace": {
     "kernel": "(anonymous namespace)::gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1, false, true, 128, true, true, 128, true, true>",
     "local_size": 128,
@@ -111,6 +201,6 @@
   "production": {
     "unchanged_tok_s": 503.3489941514725,
     "quality_transfer": "No production path changed.",
-    "disposition": "Retain the layout, exact primitive, repacker, fixture, and leaf harness as the next sole-resident-layout candidate. Promotion is forbidden until the decode and full runtime gates pass."
+    "disposition": "Reject T128 as the sole resident layout. The prefill leaf proves column-contiguous Q4 payload locality is valuable, but no exact decode consumer meets the <=2% gate. Production stays on T16; every T128 implementation surface is removed and only this evidence remains."
   }
 }
