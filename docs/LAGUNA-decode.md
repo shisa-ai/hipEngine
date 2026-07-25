@@ -28,11 +28,12 @@ per token and is retained as the gfx1100 c=1 default after the same complete
 state, context, and category gates. Its subsequent exact fixed-Q6-metadata
 sibling preserves the 723-launch structure and is retained as the gfx1100
 default after improving every clean context and every train/heldout category
-decode in both complete process orders. A new exact BF16 shared-Q5 pair is
-correctness-admitted/default-off after production-shape and actual-weight bit
-identity, **26.88-27.61%** first/last event-and-wall wins, full-state/lifecycle
-identity, and a cached 46-call/token trace; clean context/category gates remain
-pending.
+decode in both complete process orders. The subsequent exact BF16 shared-Q5
+pair is also retained as the gfx1100 default after production-shape and actual-
+weight bit identity, **26.88-27.61%** first/last event-and-wall wins, full-state/
+lifecycle identity, both clean context orders, and both complete category
+orders. It preserves 723 dispatches/token and moves h32 decode **59.500 ->
+60.942 tok/s (+2.425%)**.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1087,7 +1088,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Question | Evidence |
 | --- | --- |
 | Is 93.67 tok/s reproducible? | [`...llamacpp-vulkan-review.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json) |
-| What is the retained hipEngine row? | [`...mixed-q6-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-retained.json) |
+| What is the retained hipEngine row? | [`...shared-q5-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-retained.json) |
 | What dominates D12? | D12 clean profile plus [`...d9-residual-profile.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-residual-profile.json) with D12 leaf replacements |
 | What did D0–D17 retain/reject? | [`LAGUNA.md`](LAGUNA.md), “Laguna Q2 XL Decode Optimization Campaign” |
 | Is IQ2 already tuned? | [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) |
@@ -1102,8 +1103,8 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Does fixed-address Q5 metadata help without a repack? | [`...q5-fixed-metadata-retained.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-retained.json): yes. Two uniform 128-bit metadata loads remove 32 coefficient exchanges, reduce logical VGPR **89 -> 72**, improve clean Q5 **22.68-23.12%**, and move complete-suite h32 decode **54.476 -> 57.711 tok/s (+5.938%)** at exact full state. |
 | Does one heterogeneous projection dispatch help? | [`...mixed-attention-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-attention-retained.json): yes. Exact Q5/Q6 and Q6/Q8 quads remove **49 launches/token**, improve every clean context, and move complete-suite h32 decode **57.833 -> 58.425 tok/s (+1.024%)**. |
 | Does cooperative Q6 metadata publication still help inside that mixed dispatch? | [`...mixed-q6-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-retained.json): yes. It preserves exact state and 723 dispatches/token, improves clean projection work **8.08-10.10%**, and moves complete-suite h32 decode **58.466 -> 59.211 tok/s (+1.275%)**. |
-| Can the same fixed-metadata Q5 owner accelerate shared gate/up? | [`...shared-q5-fixed-metadata-correctness.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-correctness.json): mechanically yes, pending complete performance gates. The BF16 pair is byte-exact, improves first/last actual pair event/wall **26.88-27.61%**, passes complete state/lifecycle, and owns exactly 46 local32/LDS0 calls/token at unchanged 723 dispatches/token. |
-| Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-fixed-Q6 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-fixed-q6.json) measures retained hipEngine **59.787/59.211 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **7.46%/8.79%** is required. |
+| Can the same fixed-metadata Q5 owner accelerate shared gate/up? | [`...shared-q5-fixed-metadata-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-retained.json): yes. The BF16 pair is byte-exact, improves first/last actual pair event/wall **26.88-27.61%**, improves clean shared-pair work **45.99-47.13%**, and moves complete-suite h32 decode **59.500 -> 60.942 tok/s (+2.425%)** at unchanged 723 dispatches/token. |
+| Does retained hipEngine beat Vulkan under matched natural completion? | No. The retained shared-Q5 row measures **61.554/60.942 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **4.37%/5.70%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
 ## Bottom line

@@ -13,6 +13,10 @@ LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
 # both clean context orders, and both complete 18-prompt category orders.
 # Explicit role-scoped disables retain the registered coefficient-publication path.
 LAGUNA_Q5_FIXED_METADATA = True
+# The exact local32 BF16 pair for shared-Q5 gate/up passes first/last actual
+# weights, full state, both clean context orders, and both complete category
+# orders. Explicit disable restores the registered local128 pack8 pair.
+LAGUNA_Q5_SHARED_FIXED_METADATA = True
 # Exact mixed Q5/Q6 and corrected Q6/Q8 projection quads pass actual layers,
 # full state, both clean context orders, and both complete category orders.
 # Explicit disable retains the registered Q5/Q6 pair and Q8 singleton chain.
@@ -117,6 +121,7 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",
+    "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SPLIT_GATE_FUSION",

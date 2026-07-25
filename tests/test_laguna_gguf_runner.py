@@ -137,11 +137,14 @@ def test_laguna_mixed_q6_fixed_metadata_default_is_gfx1100_only_and_rollbackable
     assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1151")
 
 
-def test_laguna_q5_shared_fixed_metadata_is_default_off_and_rollbackable() -> None:
-    assert not backend_package_capability(
+def test_laguna_q5_shared_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_Q5_SHARED_FIXED_METADATA", False
-    )
-    assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1100")
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_Q5_SHARED_FIXED_METADATA", False
+    ) is False
+    assert resolve_laguna_q5_shared_fixed_meta("hip_gfx1100")
     assert resolve_laguna_q5_shared_fixed_meta("hip_gfx1100", True)
     assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1100", False)
     assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1151")

@@ -20,6 +20,7 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`756a1dcd3bcf240bed9dd787edabc2851b458032` for the exact fixed-metadata W7900 Laguna S 2.1 UD-Q2_K_XL shared-Q5 BF16 pair,
 `65f13a87720d4b0e999f5eec5d6fd57a82357841` for exact fixed-Q6 metadata inside the W7900 Laguna S 2.1 UD-Q2_K_XL mixed projection quads,
 `dd3b9c646` for the preceding exact W7900 Laguna S 2.1 UD-Q2_K_XL mixed
 attention-projection quads,
@@ -1324,6 +1325,9 @@ slot-order reducer.
 | Generic-Q6 mixed-projection matched control | 42.963 | 1.937 s | 58.466 | 7.024 | 12.530 |
 | Exact fixed-Q6 metadata mixed projections | **42.887** | **1.936 s** | **59.211** | **7.023** | **12.545** |
 | Fixed-Q6 metadata change vs matched control | **-0.177%** | **-0.042%** | **+1.275%** | **-0.018%** | **+0.121%** |
+| Generic shared-Q5 pair matched control | 43.008 | 1.934 s | 59.500 | 7.045 | 12.586 |
+| Exact fixed-metadata shared-Q5 pair | **42.938** | **1.936 s** | **60.942** | **7.053** | **12.631** |
+| Shared-Q5 fixed-metadata change vs matched control | **-0.163%** | **+0.091%** | **+2.425%** | **+0.118%** | **+0.357%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -1962,6 +1966,29 @@ Vulkan remains **64.418 tok/s**, so another **8.79%** is required and completion
 stays open. `use_mixed_q6_fixed_meta_attention=False` /
 `--disable-mixed-q6-fixed-meta-attention` restores the registered generic-Q6
 mixed quad. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-correctness.json), [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-q6-fixed-metadata-retained.json), and [post-fixed-Q6 matched Vulkan audit](results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-fixed-q6.json).
+
+##### Laguna Q2 XL shared-Q5 fixed metadata (retained gfx1100 default)
+
+The same exact local32 fixed-address-metadata owner now replaces the local128
+pack8 pair for the 46 shared gate/up projections in sparse layers 1-46. Raw
+weights, BF16 stores, each accumulator/reduction sequence, pair launch count,
+standalone SiLU/shared-down chain, and layer-47 Q6 route are unchanged. First/
+last actual pairs are byte-exact and improve event/wall **26.88-27.61%**; full
+logits, all 48 hidden/47 routed boundaries, active K/V and every live-span
+field, reset, and lifecycle remain exact.
+
+Both clean process orders preserve **723 dispatches/token** and improve shared
+pair work **45.99-47.13%**, kernel sum **1.32-3.02%**, span **1.43-2.62%**, and
+profiled-child throughput **0.89-3.33%** across short/512/1K/near-4K. Both
+complete 18-prompt orders move h16/h32 decode **60.083/59.500 -> 61.554/60.942
+tok/s (+2.448%/+2.425%)**. Every train/heldout category improves
+**2.091-3.007%**; category E2E stays within **-0.031% to +0.551%**, aggregate
+prefill is **-0.163%**, and TTFT **+0.091%**. Relative to the prior retained
+59.211 row, h32 improves **2.924%** to **16.409 ms/token**. Pinned Vulkan remains
+**64.418 tok/s**, so another **5.70%** is required and completion stays open.
+`use_q5_shared_fixed_meta=False` / `--disable-q5-shared-fixed-meta` restores the
+registered local128 pack8 pair; rows>1, key/shape misses, layer 47, and
+unsupported backends retain their existing routes. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-correctness.json) and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-shared-q5-fixed-metadata-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**

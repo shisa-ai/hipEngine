@@ -1289,7 +1289,7 @@ def resolve_laguna_q5_shared_fixed_meta(
     backend: str,
     requested: bool | None = None,
 ) -> bool:
-    """Resolve the default-off exact shared-Q5 pair candidate."""
+    """Resolve the exact shared-Q5 pair default with explicit rollback."""
 
     if requested is not None:
         return bool(requested)
