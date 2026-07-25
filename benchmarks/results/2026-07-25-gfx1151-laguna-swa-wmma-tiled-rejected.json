@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T23:34:28+09:00",
+  "kind": "hipengine_laguna_swa_wmma_tiled_rejected",
+  "status": "measured_rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M explicit tiled-WMMA SWA diagnostics on gfx1151",
+  "repo": {
+    "base_revision": "e9ec03bbf",
+    "tracked_dirty_diagnostic": true,
+    "all_candidate_surfaces_removed": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "design": {
+    "key_tile": 64,
+    "head_dim": 128,
+    "workgroup_size": 128,
+    "qk": "four wave32 BF16 16x16x16 WMMA waves across K64",
+    "pv": "cooperative FP32 online-softmax/PV with one K/V stage shared across adjacent queries",
+    "ring_correctness": "mixed current/cached source repair in M16; explicit source-qualified qrow4 fallback after the pre-wrap region in M8",
+    "lds_reuse_followup": "M8 overwrote the K tile with V after QK/softmax to reduce simultaneous LDS residency"
+  },
+  "correctness": {
+    "primitive": "16-row and 15-row 500..515 wrap/eviction outputs passed against source-qualified qrow4 at rtol=2e-5, atol=2e-6",
+    "prewrap": "128-row 384..511 tiled output plus 512..513 fallback passed against production",
+    "allocator_reuse_landmine": "masked invalid cache payload can contain BF16 NaN; branch-free versions must sanitize logically uninitialized payload before zero-weight PV",
+    "full_model_next_token_id": 2930,
+    "candidate_repeat_deterministic": true,
+    "full_quality_gate_run": false,
+    "full_quality_gate_reason": "both correct candidates failed the pp512 performance gate"
+  },
+  "pp512": {
+    "protocol": "one resident owner; warm both modes; three counterbalanced synchronized pairs; matrix512/attention128",
+    "m16_k64_correct": {
+      "production_samples_tok_s": [
+        386.9793210105205,
+        386.631348500097,
+        386.0581903994772
+      ],
+      "production_median_tok_s": 386.631348500097,
+      "candidate_samples_tok_s": [
+        370.9240440087575,
+        370.43059214030177,
+        370.58556253568867
+      ],
+      "candidate_median_tok_s": 370.58556253568867,
+      "delta_percent": -4.150151307351713,
+      "all_next_tokens_equal": true
+    },
+    "m8_k64_prewrap_lds_reuse": {
+      "production_samples_tok_s": [
+        386.53947429073185,
+        387.29705831628576,
+        386.2062077904355
+      ],
+      "production_median_tok_s": 386.53947429073185,
+      "candidate_samples_tok_s": [
+        352.02525079139036,
+        353.2473227305499,
+        352.44618693029383
+      ],
+      "candidate_median_tok_s": 352.44618693029383,
+      "delta_percent": -8.820130834760509,
+      "all_next_tokens_equal": true
+    }
+  },
+  "trace": {
+    "raw_csv_committed": false,
+    "m16_mixed_source": {
+      "raw_csv_sha256": "b92c5adc914f62cccca504fa808693b5dc6bfc196756058533ae52080f91fb3a",
+      "lds_bytes": 50688,
+      "vgpr": 248,
+      "sgpr": 128,
+      "scratch_bytes": 0
+    },
+    "m8_prewrap_lds_reuse": {
+      "raw_csv_sha256": "2ab95730bc7f70c14da7438585a5eb45797213f7209afbbe0ab4c3222f475b88",
+      "lds_bytes": 22016,
+      "vgpr": 224,
+      "sgpr": 128,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": "Reject and remove both tiled-WMMA routes. M16 K/V reuse is outweighed by 50.7 KiB LDS and maximum-register pressure. M8 lowers LDS to 22.0 KiB but doubles workgroups, wastes half of each 16-row WMMA query tile, and remains slower. Source-qualified scalar qrow4 stays production."
+}

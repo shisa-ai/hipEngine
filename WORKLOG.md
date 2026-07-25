@@ -179076,3 +179076,25 @@ Vulkan local sizes verbatim will close the measured gap.
   more than key parallelism saves. This does not close an M16xK64 tiled QK/PV
   body. Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-swa-keysplit-rejected.json`.
+
+## 2026-07-25 — Reject tiled-WMMA SWA attention
+
+- Built a cooperative 128-thread SWA body with four BF16 WMMA waves over a
+  16-query x 64-key QK tile and an online FP32 softmax/PV consumer. The
+  16/15-row 500..515 wrap/eviction oracle passed at
+  `rtol=2e-5, atol=2e-6`.
+- Diagnosed and repaired two candidate correctness failures before timing:
+  mixed current/cache indices need a barrier between reset and population, and
+  uninitialized cache payload must be sanitized before branch-free PV because
+  a masked `0 * NaN` still produces NaN. Repeated full-model runs then remained
+  deterministic and selected token 2930.
+- The fully correct M16 body traced at local128, VGPR248, SGPR128, LDS50,688B,
+  scratch0 and regressed paired pp512 **386.631 -> 370.586 tok/s
+  (-4.150%)**. An M8 pre-wrap specialization kept qrow4 as its wrap fallback
+  and reused K LDS for V, reducing resources to VGPR224/LDS22,016B, but
+  regressed **386.539 -> 352.446 (-8.820%)**.
+- Removed every candidate C/Python/registry/runtime/test surface. Synchronous
+  LDS tiled attention is closed pending a materially different async-copy,
+  supported-library, or fused-softmax premise. Production remains
+  **385.997 tok/s**. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`.
