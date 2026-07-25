@@ -913,6 +913,68 @@ def launch_laguna_qkv(
     )
 
 
+def launch_laguna_mixed_attention_projections(
+    q_weight,
+    k_weight,
+    v_weight,
+    gate_weight,
+    x_ptr: int,
+    q_ptr: int,
+    k_ptr: int,
+    v_ptr: int,
+    gate_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    k_features: int,
+    v_features: int,
+    gate_features: int,
+    *,
+    backend: str,
+    stream: int,
+    libraries: LagunaEagerLibraries,
+    runtime: HipRuntime | None,
+) -> bool:
+    """Launch a registered c=1 mixed-quant projection quad or fail closed."""
+
+    weights = (q_weight, k_weight, v_weight, gate_weight)
+    if rows != 1 or any(weight.spec.layout != LAYOUT_RAW_GGUF for weight in weights):
+        return False
+    quant = "+".join(weight.spec.quant_key for weight in weights)
+    key = KernelKey(
+        backend,
+        "attention_projection_quad",
+        quant,
+        "mixed_pack8_gemv_decode_bf16_f32_out",
+    )
+    if not is_registered(key):
+        return False
+    fn = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    fn(
+        x_ptr,
+        *(weight.allocation("raw").tensor.ptr for weight in weights),
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        gate_ptr,
+        rows,
+        in_features,
+        q_features,
+        k_features,
+        v_features,
+        gate_features,
+        stream=stream,
+        library=libraries.linear.get(q_weight.spec.quant_key),
+        runtime=runtime,
+    )
+    return True
+
+
 def launch_laguna_attention_projections(
     q_weight,
     k_weight,
@@ -935,13 +997,38 @@ def launch_laguna_attention_projections(
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
     query_gate_decode_variant: str | None = None,
+    use_mixed_q5_q6_attention: bool = False,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
+    The optional registered mixed-Q5/Q6 quad is c=1-only and fail-closed.
     Registered query/gate and K/V pairs are decode-only and fail closed.
     Rows greater than one, registry/shape/quant misses, and unmeasured layouts
     retain the established fused-QKV or singleton fallbacks.
     """
+
+    if use_mixed_q5_q6_attention and launch_laguna_mixed_attention_projections(
+        q_weight,
+        k_weight,
+        v_weight,
+        gate_weight,
+        x_ptr,
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        gate_ptr,
+        rows,
+        in_features,
+        q_features,
+        k_features,
+        v_features,
+        gate_features,
+        backend=backend,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+    ):
+        return True
 
     q_gate_fused = False
     if (
@@ -1605,6 +1692,7 @@ class LagunaGGUFResidentSession:
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
         use_q5_fixed_meta_query_gate: bool | None = None,
+        use_mixed_q5_q6_attention: bool = False,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1652,6 +1740,7 @@ class LagunaGGUFResidentSession:
         self.use_q5_fixed_meta_query_gate = (
             self._q5_query_gate_variant == _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
         )
+        self.use_mixed_q5_q6_attention = bool(use_mixed_q5_q6_attention)
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
             self.backend,
@@ -2468,6 +2557,7 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries,
             runtime=self.runtime,
             query_gate_decode_variant=self._q5_query_gate_variant,
+            use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -2855,6 +2945,7 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries,
             runtime=self.runtime,
             query_gate_decode_variant=self._q5_query_gate_variant,
+            use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         head_kv = (
@@ -3524,6 +3615,7 @@ __all__ = [
     "LagunaVerifierScratch",
     "capture_laguna_hidden_rows",
     "capture_laguna_hidden_tap",
+    "launch_laguna_mixed_attention_projections",
     "launch_laguna_moe_tail_next_rmsnorm",
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",

@@ -33,6 +33,13 @@ def _cached_fn(library: ctypes.CDLL, symbol: str, argtypes: list) -> ctypes._CFu
 _OUTPUT_NAME = "gguf_k_gemv.so"
 _ALLOWED_THREADS = {64, 128, 256}
 _QTYPE_BLOCK_SIZE = {"gguf_q8_0": 32, "gguf_q5_k": 256, "gguf_q6_k": 256}
+_MIXED_ATTENTION_VARIANT = "mixed_pack8_gemv_decode_bf16_f32_out"
+_MIXED_ATTENTION_Q5_QG_QUANT = (
+    "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k"
+)
+_MIXED_ATTENTION_Q6_QG_Q8_KV_QUANT = (
+    "gguf_q6_k+gguf_q8_0+gguf_q8_0+gguf_q6_k"
+)
 
 
 def plan_gguf_k_gemv_build(
@@ -134,6 +141,13 @@ def _make_unequal_wave32x2_wrapper(symbol: str):
 def _make_pack8_wrapper(quant: str, symbol: str):
     def wrapper(*args, **kwargs) -> None:
         _launch(quant, symbol, *args, require_pack8=True, **kwargs)
+
+    return wrapper
+
+
+def _make_mixed_attention_wrapper(symbol: str, primary_roles: tuple[int, int]):
+    def wrapper(*args, **kwargs) -> None:
+        _launch_mixed_attention(symbol, *args, primary_roles=primary_roles, **kwargs)
 
     return wrapper
 
@@ -248,6 +262,18 @@ gguf_q6_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q6_k", _symbol("g
 gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out = _make_unequal_dual_pack8_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "pair_pack8_gemv_decode_bf16_f32_out")
 )
+_MIXED_ATTENTION_SYMBOL = (
+    "hipengine_gguf_q5_q6_mixed_attention_pack8_gemv_decode_bf16_f32_out"
+)
+gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out = (
+    _make_mixed_attention_wrapper(_MIXED_ATTENTION_SYMBOL, (0, 3))
+)
+gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out = (
+    _make_mixed_attention_wrapper(
+        "hipengine_gguf_q6_q8_mixed_attention_pack8_gemv_decode_bf16_f32_out",
+        (0, 3),
+    )
+)
 gguf_q6_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "selected_gemv_bf16_bf16_out"))
 gguf_q6_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "selected_silu_gemv_bf16_bf16_out")
@@ -328,6 +354,26 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             "wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
         ),
         gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_projection_quad",
+            _MIXED_ATTENTION_Q5_QG_QUANT,
+            _MIXED_ATTENTION_VARIANT,
+        ),
+        gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_projection_quad",
+            _MIXED_ATTENTION_Q6_QG_Q8_KV_QUANT,
+            _MIXED_ATTENTION_VARIANT,
+        ),
+        gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out,
         replace=replace,
     )
 
@@ -510,6 +556,58 @@ def _launch_unequal_wave32x2(
         out_features,
         out_features_b,
         threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_mixed_attention(
+    symbol: str,
+    x_ptr: int,
+    qweight_q_ptr: int,
+    qweight_k_ptr: int,
+    qweight_v_ptr: int,
+    qweight_gate_ptr: int,
+    out_q_ptr: int,
+    out_k_ptr: int,
+    out_v_ptr: int,
+    out_gate_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    k_features: int,
+    v_features: int,
+    gate_features: int,
+    *,
+    primary_roles: tuple[int, int],
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if rows != 1:
+        raise ValueError("rows must be exactly 1 for mixed GGUF K attention decode")
+    if in_features <= 0 or in_features % _QTYPE_BLOCK_SIZE["gguf_q5_k"] != 0:
+        raise ValueError("in_features must be positive and divisible by GGUF K block size 256")
+    features = (q_features, k_features, v_features, gate_features)
+    if any(value <= 0 or value % 8 != 0 for value in features):
+        raise ValueError("all mixed GGUF K attention output features must be positive and divisible by 8")
+    qweights = (qweight_q_ptr, qweight_k_ptr, qweight_v_ptr, qweight_gate_ptr)
+    outputs = (out_q_ptr, out_k_ptr, out_v_ptr, out_gate_ptr)
+    secondary_roles = tuple(index for index in range(4) if index not in primary_roles)
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library,
+        symbol,
+        [_VOID] * 9 + [_I64] * 6 + [_VOID],
+    )
+    err = fn(
+        x_ptr,
+        *(qweights[index] for index in (*primary_roles, *secondary_roles)),
+        *(outputs[index] for index in (*primary_roles, *secondary_roles)),
+        rows,
+        in_features,
+        *(features[index] for index in (*primary_roles, *secondary_roles)),
         stream,
     )
     _check_launch(runtime, err)
@@ -763,6 +861,8 @@ register_gguf_k_gemv_kernels()
 __all__ = [
     "build_gguf_k_gemv",
     "gguf_q5_k_gemv_f32_f32_out",
+    "gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out",
+    "gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out",
     "gguf_q5_k_gemv_f32_fp16_out",
     "gguf_q5_k_gemv_fp16_f32_out",
     "gguf_q5_k_gemv_fp16_fp16_out",
