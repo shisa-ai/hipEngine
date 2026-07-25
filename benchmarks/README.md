@@ -1,14 +1,19 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-25**
+Last updated: **2026-07-25**
 
-The current Laguna arithmetic-prefill control packet is
-[`2026-07-24-gfx1151-laguna-prefill-lap0-control.json`](results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
-It combines clean source revisions `89cb4e6e6` (cumulative quality),
-`8d26a9562` (profile/routing), and `41d21a474` (activation proxies); it changes
-no retained runtime default.
+The current Laguna arithmetic-prefill production packet is
+[`2026-07-25-gfx1151-laguna-prefill-350-production.json`](results/2026-07-25-gfx1151-laguna-prefill-350-production.json).
+It binds clean selector-unset timing revision `ab0a8ea3b` to the retained
+320-step quality revision `319dfdf3a` and the promoted gfx1151 package
+capabilities. Median pp512 is **354.820 tok/s** and all three samples exceed
+350 tok/s.
 
 Latest retained hipEngine revisions in this scoreboard:
+`ab0a8ea3bf783ff033881d7c54a38205b35423e6` for the quality-admitted gfx1151
+Laguna D8/D4 MMQ, row-scaled hipBLASLt, and Q4/Q6 WMMA production defaults,
+`7b710c09ed7c402317990011d624b6010509eac2` for the clean fail-closed
+production publication gate,
 `84c50b205b865b54070f96ff9b6d2feea653c295` for the exact byte-neutral
 gfx1151 Laguna Q4_K X8 MMQ32 live-row primitive,
 `1d6566de3f6ec394d6a3e34e2f37e2a70250368c` for the quality-gated gfx1151
@@ -620,6 +625,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M production prefill | 2026-07-25 | clean selector-unset timing `ab0a8ea3b`; retained quality `319dfdf3a`; promoted defaults `ab0a8ea3b`; fail-closed publication `7b710c09e`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; three repetitions | **Retained quality-gated production default; 350 target passed**: pp512 moves the prior production **76.226 -> 354.820 tok/s (+365.484%; 4.655x)** with samples **353.421/355.584/354.820**, all token 2930. Selector-unset 1K/4K medians are **322.922/264.245 tok/s**. The complete category lane passes 320 teacher-forced steps at max KL **0.040724836**, **317/320 (99.0625%)** top-1, every category >=96.875%, **2.615x** aggregate natural-prompt prefill, neutral decode, deterministic repeats, Poolside KL **0.0000175125**, and exact lifecycle recovery. The package defaults are D8 128x32 gate/up MMQ, D4 64x32 Q4/Q6 down MMQ, scaled hipBLASLt source-F16, Q4/Q6 64x16 WMMA dense/shared, and online global/SWA attention. Cached-only tracing independently measures **354.763 tok/s** and names every intended family; gate/up is local128/VGPR80/LDS6656B/scratch0. [`publication`](results/2026-07-25-gfx1151-laguna-prefill-350-production.json) · [`quality`](results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json) · [`trace`](results/2026-07-25-gfx1151-laguna-prefill-350-production-trace.json). | Yes, for selector-unset c=1 pp512 and the declared quality/category/lifecycle scope | Rerun after selected-expert arithmetic/layout, F16 or dense/shared route, matrix/attention policy, model/quant/KV, compiler/runtime, or device/queue policy changes; gate other backends independently. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 direct-T16 MMQ32 natural-shape gate | 2026-07-25 | clean measured `272ee08d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit primitive; LAP-1 leaf gate passed; runtime default unchanged pending repair**: direct T16 reads the existing resident bytes with no layout transpose or sidecar. Producer-pack-inclusive T16 speedups over retained direct are **1.174/1.528/1.662/2.464/2.502/3.959/5.502x**; M128/M256/M512 are only **4.66%/4.05%/3.02%** behind X8. T16/X8 checksums are exact at every shape; focused tests report 31 passes; cached resources are local128/VGPR48/LDS2048B/scratch0 and device ISA contains `v_dot4_i32_iu8`. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json). | Yes for the one-layer natural-routing leaf scope only; no full-model/default claim | Calibrate residual/repair arithmetic, then integrate the sole-resident T16 route and run all-layer performance, category quality, decode, milestone-shape, and lifecycle gates. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 exact X8 decode gate | 2026-07-25 | clean measured `420bf8392`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; c1/c2/c4/c8 producer rows with top-10 | **Rejected sole-resident X8 premise; current T16 residency unchanged**: the optimized local128 X8 fallback is BF16-bit exact at every shape and catches T16 at c4/c8, but c1/c2 T16 -> X8 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate. X8/T16 pair bytes are **905,969,664/931,135,488**; the temporary comparison peaks at **1,837,482,624 bytes** and returns to zero. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json). | Negative layout decision; no runtime/default claim | Superseded by the retained direct-T16 LAP-1 leaf; do not retry dynamic X8-to-T16 reconstruction or add a complete T16 sidecar. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 X8 MMQ32 live-row screen | 2026-07-24 | clean measured `84c50b205`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit prefill control; natural-shape body gate passed; runtime default unchanged**: clamping live rows and bypassing padded-route dot work makes byte-neutral X8 positive at every frozen shape. Producer-pack-inclusive speedups over retained direct are **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**; X8 time falls **18.65–36.45%** versus the prior layout screen. Raw/X8 checksums remain exact; focused tests report 29 passes; cached X8 resources are local128/VGPR48/LDS2048B/scratch0. An all-full synthetic control regresses **8.34%**. The 2026-07-25 exact-decode row supersedes X8 as a resident candidate but preserves it as the MMQ ceiling. [`artifact`](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json). | Yes for the exact one-layer natural-routing leaf scope only; no full-model or default claim | Direct T16 now passes the same leaf gate; retain X8 only as the arithmetic ceiling while repair and runtime integration proceed. |
@@ -1827,6 +1833,33 @@ repeats, and lifecycle pass. gfx1151 now selects online SWA prefill by backend
 capability; exact context-qualified qrow2 and wave32 remain explicit rollback,
 and unmeasured backends retain their prior defaults.
 [Retained SWA online gate](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json).
+
+The arithmetic-prefill campaign supersedes that 76.226 tok/s production row.
+The promoted gfx1151 defaults combine same-byte D8 producer packing with a
+128-column resident-T16 gate/up integer-dot tile, D4 Q4/Q6 down tiles,
+row-scaled hipBLASLt source-F16 projections, and resident Q4/raw-Q6 64x16 WMMA
+dense/shared consumers. A clean selector-unset three-repeat screen measures
+pp512 **353.421/355.584/354.820 tok/s** (median **354.820**), 1K
+**321.270/322.922/323.210**, and 4K **263.436/265.000/264.245 tok/s**.
+The pp512 change is **76.226 -> 354.820 (+365.484%; 4.655x)** and exceeds the
+qualified Vulkan row by **2.978%**.
+
+The complete ten-prompt quality lane passes at max KL **0.040724836** and
+**317/320 (99.0625%)** teacher-forced top-1, with every category above the 90%
+floor, **2.615x** aggregate natural-prompt prefill, neutral h16/h32 decode,
+deterministic repeats, the Poolside oracle, and exact allocation recovery. A
+fail-closed publication step binds that quality revision and the package
+capabilities to the clean selector-unset timing revision. It explicitly does
+not reinterpret the old matrix-policy byte-equality screen: that screen remains
+rejected across M128/M256/M512 because the admitted arithmetic is approximate;
+same-policy repeated state is deterministic. Cached-only final tracing
+independently measures **354.763 tok/s**, attributes **40.8%/19.4%/9.1%/4.9%**
+of pp512 kernel sum to selected gate/up, selected down, source-F16, and
+dense/shared quant respectively, and names all intended families with zero
+scratch on the D8/D4 MMQ kernels.
+[Production publication](results/2026-07-25-gfx1151-laguna-prefill-350-production.json) ·
+[complete quality gate](results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json) ·
+[production trace](results/2026-07-25-gfx1151-laguna-prefill-350-production-trace.json).
 
 A read-only same-device/same-GGUF llama.cpp Vulkan pp512 profile now gives a
 concrete external control. The user's unprofiled `c0bc8591e` build measures

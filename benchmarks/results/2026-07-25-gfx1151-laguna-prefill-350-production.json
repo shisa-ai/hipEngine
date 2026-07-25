@@ -1,0 +1,213 @@
+{
+  "command": [
+    "env",
+    "PYTHONPATH=.",
+    "python3",
+    "scripts/laguna_prefill_production_publication.py",
+    "--quality-artifact",
+    "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json",
+    "--matrix-artifact",
+    "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-default.json",
+    "--output",
+    "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production.json"
+  ],
+  "created_at": "2026-07-25T01:18:22.113892+00:00",
+  "decision": {
+    "failed_checks": [],
+    "minimum_pp512_tok_s": 350.0,
+    "pass": true,
+    "policy": "complete retained category quality plus selector-unset M512 three-repeat speed, deterministic same-policy state, exact tracked lifecycle, clean provenance, and package-default binding"
+  },
+  "headline": {
+    "attention_rows": 128,
+    "matrix_rows": 512,
+    "median_seconds": 1.4429852609755471,
+    "median_tok_s": 354.81997900231937,
+    "next_token_id": 2930,
+    "prompt_tokens": 512,
+    "samples_seconds": [
+      1.4486984489485621,
+      1.4398829750716686,
+      1.4429852609755471
+    ],
+    "samples_tok_s": [
+      353.42068625227,
+      355.5844529480014,
+      354.81997900231937
+    ]
+  },
+  "kind": "hipengine_laguna_prefill_production_publication",
+  "lifecycle": {
+    "matrix_all_sessions_returned_to_baseline": true,
+    "matrix_tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77855630632,
+      "peak_allocations": 1752,
+      "total_allocated_bytes": 93349535724,
+      "total_freed_bytes": 93349535724
+    },
+    "matrix_tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "quality_tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77920823228,
+      "peak_allocations": 2101,
+      "total_allocated_bytes": 109859542160,
+      "total_freed_bytes": 109859542160
+    },
+    "quality_tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "limitations": [
+    "The historical matrix-policy gate remains rejected because quality-admitted approximate arithmetic is not byte-identical across M128/M256/M512.",
+    "This publication does not admit a new matrix chunk policy; it measures the already-selected M512 package default.",
+    "The 512/1024/4096 speed screen uses one deterministic canonical-prompt-derived token stream."
+  ],
+  "milestones": {
+    "1024": {
+      "median_seconds": 3.1710489839315414,
+      "median_tok_s": 322.9215332808958,
+      "next_token_id": 95,
+      "samples_seconds": [
+        3.187354202964343,
+        3.1710489839315414,
+        3.168217221973464
+      ],
+      "samples_tok_s": [
+        321.26959691133374,
+        322.9215332808958,
+        323.21016150595773
+      ]
+    },
+    "4096": {
+      "median_seconds": 15.500778753892519,
+      "median_tok_s": 264.24478828016447,
+      "next_token_id": 7772,
+      "samples_seconds": [
+        15.548365665017627,
+        15.456575528951362,
+        15.500778753892519
+      ],
+      "samples_tok_s": [
+        263.4360477651756,
+        265.000484248783,
+        264.24478828016447
+      ]
+    },
+    "512": {
+      "median_seconds": 1.4429852609755471,
+      "median_tok_s": 354.81997900231937,
+      "next_token_id": 2930,
+      "samples_seconds": [
+        1.4486984489485621,
+        1.4398829750716686,
+        1.4429852609755471
+      ],
+      "samples_tok_s": [
+        353.42068625227,
+        355.5844529480014,
+        354.81997900231937
+      ]
+    }
+  },
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset production Laguna-S 2.1 Q4_K_M prefill on gfx1151",
+  "production_defaults": {
+    "attention_rows": 128,
+    "dense_q4_prefill_mode": "wmma_pack8",
+    "f16_prefill_strategy": "wmma_comp_swa",
+    "f16_projection_mode": "hipblaslt_scaled",
+    "global_prefill_variant": "global_context_rows_qrow2_online_spans",
+    "matrix_rows": 512,
+    "selected_down_mode": "mmq64x32_d4_f32",
+    "selected_gate_up_mode": "mmq128x32_d8_f32",
+    "swa_prefill_variant": "swa_context_rows_qrow2_online_spans"
+  },
+  "quality": {
+    "categories": {
+      "code": {
+        "finite": true,
+        "max_kl_divergence": 0.040724836283071615,
+        "steps": 128,
+        "top1_agreement": 1.0,
+        "top1_matches": 128
+      },
+      "general_en": {
+        "finite": true,
+        "max_kl_divergence": 0.011750754604565395,
+        "steps": 64,
+        "top1_agreement": 0.96875,
+        "top1_matches": 62
+      },
+      "general_ja": {
+        "finite": true,
+        "max_kl_divergence": 0.017326411656200434,
+        "steps": 64,
+        "top1_agreement": 1.0,
+        "top1_matches": 64
+      },
+      "mixed_ja_en": {
+        "finite": true,
+        "max_kl_divergence": 0.03111038660746268,
+        "steps": 64,
+        "top1_agreement": 0.984375,
+        "top1_matches": 63
+      }
+    },
+    "free_running_same_mode_repeat_deterministic": true,
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 1.7512451201671218e-05,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_v1_oracle.json",
+      "oracle_distribution": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "teacher_forced_max_kl_divergence": 0.040724836283071615,
+    "teacher_forced_steps": 320,
+    "teacher_forced_top1_agreement": 0.990625,
+    "teacher_forced_top1_matches": 317
+  },
+  "repo": {
+    "matrix_revision": "ab0a8ea3bf783ff033881d7c54a38205b35423e6",
+    "quality_revision": "319dfdf3aaef980bfaafcc327e0fbd925d5dec4f",
+    "revision": "7b710c09ed7c402317990011d624b6010509eac2",
+    "source_revisions_are_ancestors": true,
+    "tracked_clean": true
+  },
+  "schema": 1,
+  "sources": {
+    "matrix": {
+      "historical_failed_checks": [
+        "matrix_policy_outputs_or_state_not_exact",
+        "no_larger_policy_improves_every_length"
+      ],
+      "path": "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-default.json",
+      "sha256": "be0a3330f3fe4a5c3e8896839be29c1fed49d74cea48e492316f8ab7184cee54"
+    },
+    "quality": {
+      "path": "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json",
+      "sha256": "eb255229e60bdea599ee7b47c7a94b32b94182157fa1d3abf318b299ee262dff"
+    }
+  },
+  "status": "retained_production_default"
+}

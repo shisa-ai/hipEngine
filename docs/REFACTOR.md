@@ -26,11 +26,13 @@ should be removed or collapsed.
   D4x2/D4x3 remain diagnostics.
 - Promoted on gfx1151 after the clean category gate passed at max KL
   0.040724836, 317/320 top-1, 2.615x aggregate prefill, flat decode, and exact
-  lifecycle recovery. Retain the explicit exact/D4x2/D4x3 rollback modes for
-  one release and remove the rejected D4 gate default candidate plus redundant
-  selectors after clean selector-unset pp512/milestone publication and the
-  rollback window. Pre-admission pp512 samples were
-  353.951/356.082/356.473 tok/s.
+  lifecycle recovery. Clean selector-unset publication now passes at
+  **354.820 tok/s** median with all three pp512 samples above 350, and the final
+  cached trace names the D8 128-column consumer. Retain the explicit
+  exact/D4x2/D4x3 rollback modes for one release; the rollback window is now
+  the sole removal condition for redundant experiment selectors. Remove the
+  rejected D4 gate default candidate at that boundary. Pre-admission pp512
+  samples were 353.951/356.082/356.473 tok/s.
 
 ## Laguna `f16_prefill_mode=hipblaslt_scaled`
 
@@ -41,9 +43,9 @@ should be removed or collapsed.
   before the next boundary. Decode and the retained custom projection route
   remain unchanged.
 - Promoted as the gfx1151 package capability by the clean compounded category
-  gate. Retain exact tiled as rollback for one release; remove the session
-  selector after clean selector-unset pp512/milestone publication and the
-  rollback window.
+  gate. Clean selector-unset pp512/milestone publication and the final
+  hipBLASLt trace now pass. Retain exact tiled as rollback for one release;
+  remove the session selector after that rollback window.
 
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
@@ -52,9 +54,9 @@ should be removed or collapsed.
   FP32 scale/min planes and raw Q6_K bytes. They add no sidecar, leave decode
   unchanged, and retain exact pack8/raw FMA paths as fallbacks.
 - Promoted as the gfx1151 package capability by the clean compounded category
-  gate. Keep the exact fallback for one release; remove the session selector
-  after clean selector-unset pp512/milestone publication and the rollback
-  window.
+  gate. Clean selector-unset pp512/milestone publication and the final Q4/Q6
+  WMMA trace now pass. Keep the exact fallback for one release; remove the
+  session selector after that rollback window.
 
 ## Priority Cleanup (do first)
 

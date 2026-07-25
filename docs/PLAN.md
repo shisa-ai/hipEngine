@@ -1353,12 +1353,17 @@ with next token 2930. The clean complete category gate admits the compounded
 route at maximum KL **0.040724836**, **317/320** top-1, **2.615x** aggregate
 natural-prompt prefill, flat decode, and exact tracked-lifecycle recovery.
 gfx1151 now selects D8 gate/up, D4 down, row-scaled hipBLASLt, and Q4/Q6 WMMA
-dense/shared as package defaults. Clean selector-unset pp512 and milestone
-publication remain.
-Streaming families target at
-least 70% of the measured achievable-read ceiling unless profiling proves
-another limiter. The detailed gates, sequence, and T16-lite/X16
-replacement-layout screen remain owned by `LAGUNA-prefill.md`.
+dense/shared as package defaults. Clean selector-unset production pp512 passes
+at **353.421/355.584/354.820 tok/s** (median **354.820**, **4.655x** the old
+76.226 row), with every sample above 350, token 2930, deterministic repeated
+state, and exact lifecycle recovery. A cached-only production trace
+independently reaches **354.763 tok/s** and names the D8 128-column gate/up
+MMQ, D4 Q4/Q6 down, Q4/Q6 WMMA dense/shared, scaled hipBLASLt, and online
+attention families. The production milestone is complete. Streaming families
+still target at least 70% of the measured achievable-read ceiling unless
+profiling proves another limiter; the detailed post-350 sequence and
+T16-lite/X16 replacement-layout screen remain owned by
+`LAGUNA-prefill.md`.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

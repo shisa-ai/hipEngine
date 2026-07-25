@@ -178553,3 +178553,66 @@ Vulkan local sizes verbatim will close the measured gap.
   rollback modes are unchanged. The focused backend/resolver/runner bundle
   passes with two expected HIP skips. Next commit this promotion, then measure
   selector-unset production pp512 on the clean revision.
+
+## 2026-07-25 — Close the 350 tok/s Laguna production milestone
+
+- Clean promoted revision `ab0a8ea3b` ran the selector-unset command
+  `HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run
+  python3 -u scripts/laguna_matrix_chunk_bench.py --repetitions 3
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build --output
+  benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-default.json`.
+  Production M512/attention128 pp512 samples are
+  **1.448698/1.439883/1.442985 seconds**, or
+  **353.421/355.584/354.820 tok/s**; median is **354.820 tok/s** and every
+  sample exceeds the 350 target. All repetitions select token **2930**.
+  Selector-unset 1K/4K medians are **322.922/264.245 tok/s**, with stable
+  tokens **95/7772**.
+- The historical matrix-policy harness intentionally emits
+  `measured_rejected`: it requires byte equality between M128, M256, and M512,
+  while the just-admitted D8/D4 arithmetic is approximate and deterministic
+  only within a fixed policy. Its only failed checks are
+  `matrix_policy_outputs_or_state_not_exact` and
+  `no_larger_policy_improves_every_length`; same-mode repeats and every
+  session/global tracked-lifecycle check pass. The raw artifact is retained as
+  evidence, not relabelled.
+- Added the fail-closed
+  `scripts/laguna_prefill_production_publication.py` postprocessor and six unit
+  tests. It accepts only the two declared legacy matrix failures, then requires
+  the retained 320-step category gate, package-default equality, clean ancestor
+  provenance, at least three pp512 repetitions all >=350 tok/s, deterministic
+  repeated state at 512/1K/4K, equal model fingerprints, and zero tracked
+  allocations after both runs. `PYTHONPATH=. python3 -m pytest -q
+  tests/test_laguna_prefill_production_publication.py` reports **6 passed**.
+  Clean revision `7b710c09e` produces retained artifact
+  `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production.json`,
+  SHA-256
+  `561c56c08e305497399c05aade104e48d22834e94d2a35312eb7c470898b4af3`.
+- Cached-only production tracing ran
+  `HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3
+  --kernel-trace --output-format csv --output-directory
+  /tmp/laguna-production-trace.3awwBx --output-file production-default --
+  python3 scripts/laguna_long_context_profile.py --chunk-size 512
+  --repetitions 1 --warmup-rows 128 --compiler-version-file
+  /tmp/laguna_hipcc_version.txt --require-cached-build --output
+  /tmp/laguna-production-trace.3awwBx/profile.json`. The profiled pass
+  independently reaches **354.763/321.850/264.772 tok/s** at 512/1K/4K,
+  returns all **77,461,325,460** tracked bytes, and preserves tokens
+  **2930/95/7772**. Raw trace SHA-256 is
+  `e10c0f60029d97c5e18c6838895ccb4b02a8884a7d77acf9c4f020f068d5a575`.
+- The attached compact trace
+  `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-production-trace.json`
+  proves the intended production families execute. At pp512, 94 gate/up calls
+  including D8 packs consume **581.799 ms**, 94 Q4/Q6 down calls including D4
+  packs consume **276.169 ms**, scaled hipBLASLt/casts consume **130.373 ms**,
+  dense/shared Q4/Q6 WMMA consumes **70.098 ms**, and global/SWA attention
+  consumes **46.736/227.989 ms**. The D8 gate/up consumer specialization is
+  local128/VGPR80/LDS6656B/scratch0; D8 pack is
+  local128/VGPR16/LDS512B/scratch0. The compact trace artifact SHA-256 is
+  `0085ec88a5fa1143ed1a1172ebd0e397414fac41904f82c26f403b126cb9f70f`.
+- Updated the trace classifier for the promoted D8/D4 MMQ, Q4/Q6 WMMA, and
+  scaled hipBLASLt symbols. The focused trace/publication bundle reports
+  **31 passed**. The production change from the preceding retained pp512 row is
+  **76.226 -> 354.820 tok/s (+365.484%; 4.655x)**, while complete quality
+  remains max KL **0.040724836**, **317/320** top-1, neutral decode, and exact
+  lifecycle recovery.
