@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-25T22:32:12+09:00",
+  "kind": "hipengine_laguna_selected_down_rowvec_candidate",
+  "status": "retained_exact_candidate_default_pending_clean_production",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Laguna S 2.1 Q4_K_M selector-explicit c=1 pp512 selected-down staging on gfx1151",
+  "repo": {
+    "base_revision": "eddcecb5e60e22fc4c426439c38261cc5f5cb975",
+    "tracked_dirty_candidate": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "resident_nbytes": 77461325460
+  },
+  "protocol": {
+    "matrix_chunk": 512,
+    "attention_chunk": 128,
+    "timing": "one resident owner; warm each mode; five alternating-order synchronized pp512 repetitions",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python /tmp/laguna_down_rowvec_screen.py",
+    "baseline_mode": "mmq64x32_d4_f32",
+    "q4_only_mode": "temporary quant-scoped row-vector Q4 screen",
+    "q6_only_mode": "temporary quant-scoped row-vector Q6 screen",
+    "combined_mode": "mmq64x32_d4_f32_rowvec"
+  },
+  "pp512": {
+    "old": {
+      "samples_tok_s": [
+        381.2503914095917,
+        381.23969441502936,
+        381.21109340075515,
+        380.35727720239476,
+        379.80360642864696
+      ],
+      "median_tok_s": 381.21109340075515
+    },
+    "q4_only": {
+      "samples_tok_s": [
+        384.88713046964006,
+        385.63566499409535,
+        384.59444167606273,
+        383.9792516751314,
+        384.0962337637036
+      ],
+      "median_tok_s": 384.59444167606273,
+      "delta_percent": 0.887526185328
+    },
+    "q6_only": {
+      "samples_tok_s": [
+        383.56614221983705,
+        381.9772988292841,
+        383.4542484466346,
+        382.98104895741966,
+        382.7665191278347
+      ],
+      "median_tok_s": 382.98104895741966,
+      "delta_percent": 0.464298019471
+    },
+    "combined": {
+      "samples_tok_s": [
+        386.6123801779595,
+        386.8498855637925,
+        387.36101559574223,
+        386.0846871309558,
+        385.53908205170444
+      ],
+      "median_tok_s": 386.6123801779595,
+      "delta_percent": 1.416875550242,
+      "delta_vs_published_379_811_percent": 1.790597514124,
+      "minimum_exceeds_baseline_maximum": true
+    },
+    "next_token_id": 2930,
+    "all_next_tokens_equal": true
+  },
+  "correctness": {
+    "arithmetic": "activation staging only; resident weights, D4 bytes/FP32 metadata, packed dots, Q4/Q6 decode, accumulation order, and BF16 outputs are unchanged",
+    "q4": "row-vector dual and identity-source single-Q4 symbols are BF16 byte-identical to scalar staging on uneven/empty expert fixtures",
+    "q6": "row-vector Q6 symbol is BF16 byte-identical to scalar staging on the uneven/empty expert fixture",
+    "runtime": "production-shape synthetic Q4 and Q6 MoE outputs are BF16 byte-identical between scalar and combined row-vector down",
+    "focused_validation": "76-case kernel/runtime/backend/publication bundle passed",
+    "quality_debt_added": false
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file down-rowvec --log-level error -- python3 /tmp/laguna_down_rowvec_trace_child.py",
+    "directory": "/tmp/laguna-down-rowvec-trace.h1dCKx",
+    "raw_csv_sha256": "4946dc0b34484c6fff803c7e80439a15f74666ef9d78e15170a1bd138b0c9965",
+    "raw_csv_committed": false,
+    "tok_s": 387.1772924406157,
+    "next_token_id": 2930,
+    "q4": {
+      "template": "<1, true, false, 64, true>",
+      "calls": 24,
+      "old_ms": 139.553937,
+      "new_ms": 126.97235,
+      "delta_percent": -9.015572953703,
+      "workgroup_size": 128,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 4096,
+      "scratch_bytes": 0
+    },
+    "q6": {
+      "template": "<1, true>",
+      "calls": 23,
+      "old_ms": 132.467312,
+      "new_ms": 122.312323,
+      "delta_percent": -7.666033866529,
+      "workgroup_size": 128,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 4096,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": "Promote the combined row-vector down mode as the gfx1151 package default. Remove the temporary quant-scoped runtime selectors; retain scalar-staged D4 MMQ as explicit rollback. Require a clean selector-unset production gate before updating the topline."
+}

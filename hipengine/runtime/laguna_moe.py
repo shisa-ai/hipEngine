@@ -62,6 +62,7 @@ _SELECTED_DOWN_MODES = frozenset(
         "grouped_smallm_fused",
         "adaptive_grouped_smallm_fused",
         "mmq64x32_d4_f32",
+        "mmq64x32_d4_f32_rowvec",
         "mmq64x32_d4x2_f32",
         "mmq64x32_d4x3_f32",
     }
@@ -1322,6 +1323,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
     residual_passes: int,
+    rowvec: bool = False,
 ) -> bool:
     """Quantize compact post-SiLU rows and run range-safe Q6T16 MMQ down."""
 
@@ -1367,6 +1369,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
             if weight.spec.quant_key == "gguf_q6_k_t16_v1"
             else {}
         ),
+        rowvec=rowvec,
         **_stage_kwargs(
             "selected_gate_up_prefill",
             libraries,
@@ -1733,11 +1736,16 @@ def run_laguna_moe_rows(
             runtime=runtime,
             libraries=libraries,
         )
-    mmq_down_passes = {
-        "mmq64x32_d4_f32": 1,
-        "mmq64x32_d4x2_f32": 2,
-        "mmq64x32_d4x3_f32": 3,
+    mmq_down_config = {
+        "mmq64x32_d4_f32": (1, False),
+        "mmq64x32_d4_f32_rowvec": (1, True),
+        "mmq64x32_d4x2_f32": (2, False),
+        "mmq64x32_d4x3_f32": (3, False),
     }.get(selected_down_mode)
+    (
+        mmq_down_passes,
+        mmq_down_rowvec,
+    ) = mmq_down_config or (None, False)
     use_mmq_down = (
         compact_gate_up
         and mmq_down_passes is not None
@@ -1749,6 +1757,7 @@ def run_laguna_moe_rows(
             runtime=runtime,
             libraries=libraries,
             residual_passes=mmq_down_passes,
+            rowvec=mmq_down_rowvec,
         )
     )
     use_grouped_fused_combine = selected_down_mode == "grouped_smallm_fused" or (

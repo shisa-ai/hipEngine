@@ -178996,3 +178996,39 @@ Vulkan local sizes verbatim will close the measured gap.
   and refreshed the benchmark rollup, changelog, kernel catalog, fail-closed
   publication helper, and post-350 plan. The 500 production gate and 700
   stretch remain open. Focused publication/profile tests report **33 passed**.
+
+## 2026-07-25 — Start exact row-vector selected-down transfer
+
+- ROCm is alive on Radeon 8060S/gfx1151. The required broad lineage audit
+  could not complete because the registered read-only Atlas reference path
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. This is unrelated to
+  the in-tree Laguna MMQ family; run the narrow registered Qwen expert-source
+  audit before editing and preserve the broad-audit failure as an environment
+  qualification.
+- The narrow Qwen expert-source audit was also unavailable because registered
+  path `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. No external kernel
+  was ported: this task specializes the already-admitted in-tree Q4/Q6 T16
+  MMQ body.
+- Added RED coverage for D4 Q4 row-vector staging, D4 Q6 row-vector staging,
+  and explicit fail-closed down modes. The implementation assigns one thread
+  per compact activation row and uses two aligned 16-byte Q8 loads while
+  preserving metadata, resident-weight decode, dots, accumulation, and BF16
+  output. Q4 dual/single and Q6 primitive outputs are BF16 byte-identical to
+  scalar staging, as is the production-shape synthetic MoE. The focused
+  kernel/runtime/backend/publication bundle reports **76 passed**.
+- A one-load five-pair pp512 screen measures scalar down **381.211 tok/s**
+  median versus Q4-only **384.594 (+0.888%)**, Q6-only
+  **382.981 (+0.464%)**, and combined **386.612 (+1.417%)**. Every combined
+  sample exceeds every scalar sample and all 20 runs select token 2930.
+  gfx1151 now selects only the combined row-vector mode; the temporary
+  quant-scoped runtime selectors were removed.
+- Cached pp512 tracing independently measures **387.177 tok/s** and names Q4
+  `<1, true, false, 64, true>` plus Q6 `<1, true>`. Q4 falls
+  **139.554 -> 126.972 ms (-9.02%)** and Q6
+  **132.467 -> 122.312 ms (-7.67%)**. Both are local128, 4,096 B LDS, and
+  scratch0; Q4/Q6 allocate VGPR56/72. Raw CSV SHA-256 is
+  `4946dc0b34484c6fff803c7e80439a15f74666ef9d78e15170a1bd138b0c9965`.
+  Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-down-rowvec-candidate.json`.
+  A clean selector-unset production confirmation remains mandatory before the
+  topline changes.
