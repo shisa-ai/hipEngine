@@ -64,6 +64,12 @@ instruction work. The primitive is byte-exact and all 12 isolated rows improve
 passes full state and tracing. The frozen clean gate nevertheless rejects it:
 at context 512 the reducer regresses **0.073%** and complete SWA regresses
 **0.247%**. Runtime selection is removed; the primitive remains diagnostic.
+Post-dim2 re-ranking now selects a materially different exact IQ3 screen:
+replace the retained K1024 wave4 producer's 32 compare/select sign operations
+with load-free IEEE-754 sign-bit insertion while preserving all ownership,
+FMA, reduction, BF16, and launch boundaries. A same-profile temporary compile
+contracts static instructions **527 -> 499** and logical SGPR **28 -> 18**;
+this remains a design, not an implemented or measured performance result.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1139,6 +1145,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Does exact GQA3 value reuse accelerate the SWA reducer? | [`...swa-gqa3-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json): no. All F32 context and BF16 gated outputs are byte-exact, but reducing **72 -> 24** workgroups regresses every layer-1/46/47 live-70/128/257/512 row by **61.16-89.95%**; the candidate is removed before runtime integration. |
 | Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
+| What is the next exact screen? | [`...iq3-signbit-design.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-design.json): a gfx1100-only K1024 wave4 sibling inserts each IQ3 sign directly into FP32 bit 31 with no LUT/load or arithmetic reassociation. The same-profile probe removes **32 compares + 32 cndmasks**, contracts **527 -> 499** instructions and logical SGPR **28 -> 18**, and stays in the allocated VGPR88/LDS0/scratch0 class; first/last actual IQ3 producer and inclusive producer+reducer event/wall must all improve before runtime integration. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-local32 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) measures hipEngine **62.354/61.732 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **3.03%/4.35%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1186,3 +1193,10 @@ query-head workgroups and passes primitive, codegen, actual-weight, full-state,
 and cached-trace gates, but its complete clean context-512 reducer/SWA regresses
 **0.073%/0.247%**. The frozen gate rejects runtime promotion; the selector and
 capability are removed, categories are skipped, and local128 remains canonical.
+The next selected screen is instead a load-free exact IQ3 sign-bit insertion
+sibling scoped to the retained K1024 wave4 producer. It preserves all 45
+route/output producer calls, the unchanged weighted reducer, and 723 model
+kernels/token. Temporary codegen and exactness probes justify implementation,
+but the candidate must still pass committed RED/GREEN, exhaustive selector,
+repository-codegen, first/last actual-weight, full-state, clean-context, and
+complete-category gates before any default or performance claim.
