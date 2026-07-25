@@ -209,6 +209,17 @@ gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out = _make_wave32x2_wrapper(
 gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out = _make_unequal_wave32x2_wrapper(
     _symbol("gguf_q5_k", "pair_wave32x2_gemv_decode_bf16_f32_out")
 )
+gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out = _make_wave32x2_wrapper(
+    _symbol("gguf_q5_k", "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out")
+)
+gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out = _make_wave32x2_wrapper(
+    _symbol("gguf_q5_k", "wave32x2_fixed_meta_gemv_decode_bf16_f32_out")
+)
+gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_unequal_wave32x2_wrapper(
+        _symbol("gguf_q5_k", "pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out")
+    )
+)
 gguf_q5_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_silu_gemv_bf16_bf16_out")
@@ -307,6 +318,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             "wave32x2_gemv_decode_bf16_f32_out",
         ),
         gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q5_k",
+            "wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
+        gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out,
         replace=replace,
     )
 
@@ -693,6 +714,7 @@ _WRAPPERS = {
         "pack8_gemv_decode_bf16_f32_out": gguf_q5_k_pack8_gemv_decode_bf16_f32_out,
         "pack8_gemv_decode_bf16_bf16_out": gguf_q5_k_pack8_gemv_decode_bf16_bf16_out,
         "wave32x2_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out,
+        "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
         "selected_silu_gemv_bf16_bf16_out": gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
@@ -751,7 +773,10 @@ __all__ = [
     "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
