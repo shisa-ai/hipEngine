@@ -2,8 +2,8 @@
   "schema": 1,
   "created_at": "2026-07-25T21:09:33+09:00",
   "kind": "hipengine_laguna_global_attention_qrow8_candidate",
-  "status": "retained_candidate_pending_clean_confirmation",
-  "pass": true,
+  "status": "rejected_clean_production_regression",
+  "pass": false,
   "performance_claim": false,
   "scope": "Laguna S 2.1 Q4_K_M pp512 global-attention qrow4/qrow8 A/B on gfx1151",
   "repo": {
@@ -61,6 +61,30 @@
     "speedup": 1.001791,
     "next_token_id_all_runs": 2930
   },
+  "clean_committed_confirmation": {
+    "candidate_commit": "2f1db0d49",
+    "tracked_clean": true,
+    "repetitions": 5,
+    "production_qrow4_samples_tok_s": [
+      358.6472681146049,
+      363.475136598454,
+      360.90656784423925,
+      365.3164125517771,
+      363.9994489394642
+    ],
+    "production_qrow4_median_tok_s": 363.475136598454,
+    "selector_unset_qrow8_samples_tok_s": [
+      361.05475544626927,
+      360.5248208639128,
+      359.23348805465764,
+      363.5276332348916,
+      363.39846824521845
+    ],
+    "selector_unset_qrow8_median_tok_s": 361.05475544626927,
+    "speedup": 0.993340,
+    "next_token_id_all_runs": 2930,
+    "decision": "Reject and remove global qrow8; retain qrow4 production."
+  },
   "correctness": {
     "command": "uv run pytest -q tests/test_laguna_kv_attention.py tests/test_gfx1151_backend.py",
     "result": "33 passed",
@@ -79,5 +103,5 @@
     "lds_bytes": 0,
     "scratch_bytes": 0
   },
-  "conclusion": "Global qrow8 has a small repeated paired gain and remains bounded to complete M128 tiles. SWA qrow8 is a clear regression and has been removed. Commit the global-only candidate and require a clean paired confirmation before production promotion."
+  "conclusion": "The clean committed gate disproves the dirty +0.179% signal: selector-unset global qrow8 regresses paired pp512 by 0.666%. Both global and SWA qrow8 are removed; qrow4 remains production."
 }

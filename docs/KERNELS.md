@@ -526,12 +526,11 @@ is **364.839 tok/s** median with **363.944** minimum; cached tracing cuts the
 attention family **274.724 -> 229.181 ms (-16.58%)**. Qrow2 remains the
 short/residual-tile route. Evidence:
 `benchmarks/results/2026-07-25-gfx1151-laguna-prefill-qrow4-production.json`.
-The bounded qrow8 follow-up retains only a complete-M128 global candidate:
-it is byte-identical to qrow2, traces local32/VGPR112/LDS0/scratch0, and
-improves a five-repeat paired pp512 median **365.471 -> 366.126 tok/s
-(+0.179%)**. SWA qrow8 regresses **365.392 -> 349.177 tok/s** and is removed;
-SWA remains qrow4. Clean committed confirmation is required before changing
-the production number
+The bounded qrow8 follow-up is rejected and removed. Global qrow8 is
+byte-identical to qrow2 and traces local32/VGPR112/LDS0/scratch0, but its
+dirty **365.471 -> 366.126 tok/s (+0.179%)** signal reverses in the clean
+committed gate to **363.475 -> 361.055 (-0.666%)**. SWA qrow8 also regresses
+**365.392 -> 349.177 tok/s**. Global and SWA therefore remain qrow4
 (`benchmarks/results/2026-07-25-gfx1151-laguna-global-qrow8-candidate.json`).
 
 ## DFlash / MTP lineage map

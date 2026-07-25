@@ -178843,3 +178843,15 @@ Vulkan local sizes verbatim will close the measured gap.
 - This is not yet a production performance claim: commit the logical unit,
   then require a clean selector-unset/qrow4 paired confirmation because the
   measured margin is small.
+
+## 2026-07-25 — Reject global qrow8 after clean committed gate
+
+- At committed candidate revision `2f1db0d49`, the one-load, five-repeat
+  counterbalanced pp512 gate measured qrow4 **363.475 tok/s** median
+  (**358.647/363.475/360.907/365.316/363.999**) versus selector-unset qrow8
+  **361.055** (**361.055/360.525/359.233/363.528/363.398**), always token
+  2930: **-0.666%**.
+- The clean result rejects the dirty +0.179% signal. Removed the global qrow8
+  C/Python/registry/runtime/default/test surface; SWA qrow8 had already been
+  removed. Global and SWA remain on M128-qualified qrow4, and production stays
+  **364.839 tok/s**.

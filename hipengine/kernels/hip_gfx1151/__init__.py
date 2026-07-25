@@ -44,10 +44,10 @@ LAGUNA_F16_PREFILL_MIN_ROWS = 16
 # Other backends retain the 128-row runtime fallback until measured independently.
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 # The post-350 LAP-7 screen reuses each streamed BF16 K/V row across four
-# adjacent queries. SWA retains qrow4; global uses qrow8 on complete M128 tiles
-# after a bounded paired screen. Both are byte-identical to online-qrow2 on the
-# wrap/eviction oracle. Qrow2/exact remain rollback; other backends are unchanged.
-LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow8_m128_online_spans"
+# adjacent queries. It is byte-identical to the admitted online-qrow2 arithmetic
+# on the wrap/eviction oracle and improves matched pp512 production by 3.23%.
+# Qrow2/exact variants remain explicit rollback; unmeasured backends are unchanged.
+LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_m128_online_spans"
 LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
