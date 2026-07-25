@@ -1133,3 +1133,8 @@ should be boring.
   synchronization rollback through one later expert-family checkpoint. If the
   complete-state A/B is negative, remove the double-buffer export, selector,
   harness mode, and template branch immediately.
+- The first trigger is satisfied: clean pp512 improves **505.970 -> 507.405
+  tok/s (+0.284%)** with **5/7** pair wins and complete-state exactness, and
+  the package default is promoted. Remove the redundant positive selector and
+  A/B harness after clean selector-unset publication; keep the prior direct
+  body as rollback through one subsequent expert-family checkpoint.

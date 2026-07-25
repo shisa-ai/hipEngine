@@ -785,7 +785,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     )
     assert (
         session.selected_gate_up_mode
-        == "mmq128x32_d8_f32_wavecols_direct"
+        == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
     )
     assert (
         session.selected_down_mode

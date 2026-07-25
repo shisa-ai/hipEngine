@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_default_candidate",
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "prompt_tokens": 512,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "revision": "d08d1997e",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "repetitions": 7,
+    "order": "alternating rollback/candidate pairs on one borrowed resident-weight owner",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-gate-doublebuf-ab-clean.json"
+  },
+  "performance": {
+    "direct_rollback_samples_tok_s": [
+      505.45013951369265,
+      507.19738794585305,
+      507.4830481631467,
+      505.4575480527648,
+      505.12423478349626,
+      509.40829865306324,
+      505.96970628271254
+    ],
+    "double_buffer_samples_tok_s": [
+      508.4284967058471,
+      508.1639839194287,
+      507.4047412161372,
+      507.1431739883154,
+      505.55258377751767,
+      506.26502875575443,
+      508.1500514440276
+    ],
+    "direct_rollback_median_tok_s": 505.96970628271254,
+    "double_buffer_median_tok_s": 507.4047412161372,
+    "throughput_change_percent": 0.28362072187437803,
+    "median_wall_savings_ms": 2.8618930373340845,
+    "candidate_pair_wins": 5,
+    "pair_count": 7
+  },
+  "correctness": {
+    "complete_state_exact": true,
+    "next_token": 2930,
+    "next_token_logit_hex": "0x1.a856da0000000p+4",
+    "logits_sha256": "0014c1cbbf2aa19f24e4a354f0ef1593f818840677c000eb0423584a233446cb",
+    "final_hidden_sha256": "7f45e9925b176db56e5efad6fc49d5a399924f62f17c8678f59dfb485d9c2b7c",
+    "post_layer_hidden_sha256": "f7d73ad00f630ca6a55d1b004809e84088515ff2772f51b33180450d09fff2f8",
+    "kv_sha256": "aaa785452719e996b27e6929c83c0089f89d45f466a077da2336edc2c133748a",
+    "final_position": 511,
+    "quality_transfer": {
+      "max_kl_divergence": 0.04954258196634279,
+      "top1_agreement": "316/320",
+      "minimum_category_top1": 0.96875,
+      "basis": "The candidate is BF16 byte-exact to the quality-admitted direct gate/up consumer."
+    }
+  },
+  "provenance": {
+    "raw_sha256": "49f5460761d5bce9b86b1e38d0dfe25be762e36ee28956489da344da0c16547e",
+    "leaf_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-candidate.json"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_package_default_changed": true,
+    "rollback": "mmq128x32_d8_f32_wavecols_direct",
+    "next_gate": "Clean selector-unset production publication."
+  }
+}
