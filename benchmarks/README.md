@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-24**
+Last reviewed: **2026-07-25**
 
 Latest retained hipEngine revisions in this scoreboard:
 `b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2` for the clean gfx1151 Laguna
@@ -20,6 +20,8 @@ Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
+`853516ecdd3a464b38013064a1d8ccacc20556c5` for the exact W7900 Laguna S 2.1
+UD-Q2_K_XL IQ2 expanded-magnitude grid,
 `367c1f622167653c733896e3a2a1f5972f9961c4` for exact W7900 Laguna S 2.1
 UD-Q2_K_XL current-P4 head RMSNorm+RoPE+BF16-KV fusion,
 `46539dedb8b84e4f7511f3320fa740e2f41092a6` for exact W7900 Laguna S 2.1
@@ -1229,9 +1231,9 @@ recoverable from the linked compact artifacts, changelog, and
 
 **Status: exact dense decode, P0 IQ3 wave4 route/output ownership, P2 exact
 split attention plus SWA tile16 scores, P4.1 split-reducer+gate, current-P4 head
-RMSNorm+RoPE+BF16-KV, wave-local exact SWA split reduction, token4 SWA,
-raw-Q5 wave32x2, raw-Q6 attention pairing, and aggregate MoE-tail plus next-RMS
-are the retained W7900 target-only AR default.**
+RMSNorm+RoPE+BF16-KV, wave-local exact SWA split reduction, expanded-magnitude
+IQ2 gate/up, token4 SWA, raw-Q5 wave32x2, raw-Q6 attention pairing, and
+aggregate MoE-tail plus next-RMS are the retained W7900 target-only AR default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1304,6 +1306,9 @@ slot-order reducer.
 | Wave-local matched shared-reducer control | 42.962 | 1.937 s | 52.211 | 6.931 | 12.225 |
 | Exact wave-local SWA split reducer | **42.907** | **1.936 s** | **52.514** | **6.928** | **12.229** |
 | Wave-local change vs matched shared reducer | **-0.126%** | **-0.027%** | **+0.580%** | **-0.047%** | **+0.033%** |
+| IQ2 compact-grid matched control | 42.909 | 1.937 s | 52.650 | 6.930 | 12.237 |
+| Exact IQ2 expanded-magnitude grid | **42.878** | **1.938 s** | **54.540** | **6.956** | **12.326** |
+| Expanded-grid change vs matched compact grid | **-0.072%** | **+0.042%** | **+3.590%** | **+0.373%** | **+0.730%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -1837,6 +1842,32 @@ passing. Relative to the prior retained h32 row this is **+0.235%**, or
 another **22.67%** is required and completion stays open. Explicit
 `use_swa_split_wave_local=False` / `--disable-swa-split-wave-local` retains the
 shared-statistics reducer. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-correctness.json) and [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-retained.json).
+
+##### Laguna Q2 XL exact IQ2 expanded-magnitude grid (retained gfx1100 default)
+
+The c=1 sibling replaces the retained 1-KiB packed selector-code table and its
+per-use magnitude reconstruction with one canonical 64-bit magnitude entry per
+selector. It adds 3 KiB of code-object constants, not model weights or a
+persistent sidecar, and keeps parity `popc`, every FMA/reduction, and both BF16/
+SiLU boundaries. The hot leaf contracts **1,246 -> 986** disassembly lines,
+logical VGPR **132 -> 110**, uint-to-float conversions **66 -> 10**, and
+multiplies **78 -> 14**, with no spill. First/last actual layers are bit exact
+and improve events **30.78-33.73%** plus synchronized wall **30.00-33.43%**.
+Full logits, all 48 hidden and 47 routed boundaries, active K/V plus every span
+byte, reset, and lifecycle are exact. Cached tracing records local64/VGPR112/
+SGPR128/LDS512/scratch0; rows>1 remain on compact-grid VGPR136.
+
+Two clean process orders improve the complete 46-call IQ2 family
+**20.31-21.54%**, kernel sum **1.30-3.70%**, dispatch span **1.20-3.09%**, and
+profiled-child throughput **1.19-2.17%** at short/512/1K/near-4K, with exactly
+772 dispatches/token. Both complete 18-prompt orders move h16/h32 decode
+**53.068/52.650 -> 55.022/54.540 tok/s (+3.683%/+3.590%)**. Every train/
+heldout category decode improves **3.426-3.794%** and every E2E row improves;
+prefill is **-0.072%** and TTFT **+0.042%**. Relative to the prior retained
+52.514 row, h32 improves **3.858%** to **18.335 ms/token**. Pinned Vulkan remains
+**64.418 tok/s**, so another **18.11%** is required and completion stays open.
+`use_iq2_grid64=False` / `--disable-iq2-grid64` retains the registered
+compact-grid fallback; rows>1 and unsupported backends always use it. [Correctness artifact](results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-correctness.json) and [retained artifact](results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**

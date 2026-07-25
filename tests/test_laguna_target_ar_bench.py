@@ -128,6 +128,18 @@ def test_paired_correctness_requires_serial_bulk_and_repeat_determinism() -> Non
     assert failed["same_mode_repeat_deterministic"] is False
 
 
+def test_iq2_grid64_cli_is_defaults_on_with_explicit_disable(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().disable_iq2_grid64
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--disable-iq2-grid64"],
+    )
+    assert benchmark._parse_args().disable_iq2_grid64
+
+
 def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
     monkeypatch,
 ) -> None:

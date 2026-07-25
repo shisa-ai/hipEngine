@@ -64,8 +64,8 @@ def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
 
 
-def test_laguna_iq2_grid64_candidate_is_explicit_and_default_off() -> None:
-    assert not resolve_laguna_iq2_grid64("hip_gfx1100")
+def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert resolve_laguna_iq2_grid64("hip_gfx1100")
     assert resolve_laguna_iq2_grid64("hip_gfx1100", True)
     assert not resolve_laguna_iq2_grid64("hip_gfx1100", False)
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")

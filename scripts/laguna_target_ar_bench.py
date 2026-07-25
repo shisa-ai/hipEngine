@@ -65,9 +65,9 @@ def _parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument(
-        "--iq2-grid64",
+        "--disable-iq2-grid64",
         action="store_true",
-        help="use the exact expanded-magnitude IQ2 c=1 candidate",
+        help="roll back the exact expanded-magnitude IQ2 c=1 default",
     )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
@@ -197,7 +197,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         require_cached_build=args.require_cached_build,
         prefill_chunk_size=args.chunk_size,
         iq3_c1_down_schedule=args.iq3_c1_down_schedule,
-        use_iq2_grid64=args.iq2_grid64,
+        use_iq2_grid64=False if args.disable_iq2_grid64 else None,
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
         swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -575,7 +575,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
             iq3_c1_down_schedule=args.iq3_c1_down_schedule,
-            use_iq2_grid64=args.iq2_grid64,
+            use_iq2_grid64=False if args.disable_iq2_grid64 else None,
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,

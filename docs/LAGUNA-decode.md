@@ -18,8 +18,8 @@ and complete-category gates. A subsequent exact local32 IQ2 tile2 reconstruction
 is bit exact but slower on both first/last actual layers and is removed. A
 separate, c=1-only wave64 code-object build of the unchanged tile2 source also
 fails its clean promotion gate and is removed. A new exact c=1 sibling using a
-canonical 64-bit IQ2 magnitude table is correctness-admitted and default-off
-pending clean context and complete-category gates.
+canonical 64-bit IQ2 magnitude table passes clean context and complete-category
+gates and is retained as the gfx1100 default.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1033,10 +1033,19 @@ routed boundaries, active K/V plus every span byte, reset, and lifecycle through
 16 decode transitions. Cached tracing records 92 c=1 candidate calls at
 local64/VGPR112/LDS512/scratch0 with plausible **39.24-44.96 us** durations;
 all 46 bulk-prefill calls remain on retained compact-grid local64/VGPR136. The
-candidate is separately registered and default-off. It is correctness-admitted,
-not a retained throughput claim; two clean process orders at short/512/1K/
-near-4K and both complete 18-prompt orders still decide promotion. Evidence:
-[`...iq2-grid64-correctness.json`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-correctness.json).
+candidate is separately registered. Two clean process orders improve the IQ2
+family **20.31-21.54%**, kernel sum **1.30-3.70%**, dispatch span
+**1.20-3.09%**, and profiled-child throughput **1.19-2.17%** at every context.
+Both complete 18-prompt orders move h32 decode **52.650 -> 54.540 tok/s
+(+3.590%)** and h32 E2E **+0.730%**; every train/heldout category decode and
+E2E row improves, while prefill is **-0.072%** and TTFT **+0.042%**. gfx1100
+now defaults the expanded grid; explicit `use_iq2_grid64=False` /
+`--disable-iq2-grid64`, rows>1, and unsupported backends retain the compact-grid
+fallback. Relative to the prior
+retained 52.514 row, this is **+3.858%** or **18.335 ms/token**. Pinned Vulkan
+still requires another **18.11%**, so completion remains open. Evidence:
+[`correctness`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-correctness.json)
+and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-retained.json).
 
 ## 9. Do not chase without new evidence
 

@@ -13,6 +13,10 @@ LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
 LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
+# The exact expanded-magnitude IQ2 grid contracts selector reconstruction and
+# passes actual-layer, full-state, clean-context, and complete-category gates.
+# Rows>1 and other backends retain the compact-grid tile2 fallback.
+LAGUNA_IQ2_GRID64 = True
 # Clean P2.1 exact split profiles and the complete category/heldout gate admit
 # independent global/SWA crossovers. Registered single-block readers remain the
 # below-threshold and explicit-disable fallback on gfx1100; other backends do
@@ -96,6 +100,7 @@ GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 __all__ = [
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
+    "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",

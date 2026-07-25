@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_iq2_grid64_retained",
+  "date": "2026-07-25",
+  "status": "retained_default",
+  "performance_claim": true,
+  "performance_claim_scope": "Poolside Laguna S 2.1 UD-Q2_K_XL target-only c=1 greedy AR on Radeon Pro W7900/gfx1100, all 18 train+heldout prompts, h16/h32, two repetitions in both process orders; model load excluded",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "implementation_revision": "853516ecdd3a464b38013064a1d8ccacc20556c5",
+    "measurement_revision": "c089af8a2b5536b4f1a436c9188037532bac156f",
+    "description": "Exact c=1 IQ2 selected gate/up+SiLU tile2 sibling using one canonical uint64 magnitude-grid entry per selector while retaining parity popc and every FMA, reduction, BF16, and SiLU boundary",
+    "registry_key": "moe_linear/gguf_iq2_xs/selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out",
+    "dispatches_per_token": {"control": 772, "candidate": 772},
+    "constant_data_delta_bytes": 3072,
+    "workspace_delta_bytes": 0,
+    "persistent_weight_copy_delta_bytes": 0,
+    "default": "LAGUNA_IQ2_GRID64=True on hip_gfx1100",
+    "rollback": "LagunaGGUFResidentSession(..., use_iq2_grid64=False) or scripts/laguna_target_ar_bench.py --disable-iq2-grid64",
+    "fallback": "Registered compact-grid exact tile2 route; permanently retained for rows>1, explicit rollback, gfx1151, registry miss, and unsupported backends"
+  },
+  "correctness": {
+    "correctness_artifact": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid64-correctness.json",
+    "correctness_artifact_sha256": "57e9f78cfd41c815f63b21db5696b9eaa5791d409bf56381218fd166837f2f07",
+    "full_logits_and_argmax_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_bf16_kv_and_all_span_fields_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_returned_to_baseline": true,
+    "default_vs_rollback": {
+      "decode_steps": 16,
+      "passed": true,
+      "raw_sha256": "57e92d1fa5ede5c69a68f910a80d0c3d7a580c6912a59e5856a6bd577d25e970",
+      "harness_sha256": "4ecfcd11fb8a39d8e3f3d1f997aac80ddfa72426490810e560ad9fdb4de09ed9",
+      "stdout_sha256": "0f7b1b5d8019e70c1eb8a9b51a3a143b9c006e5a83141e4f6a1bea668bed6362"
+    }
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_iq2_grid64_clean_profiles.sh",
+    "revision": "c089af8a2b5536b4f1a436c9188037532bac156f",
+    "summary_sha256": "2113547c217b073894585836d490042e5bb4dc97a4883c9fd82b25a9644cbddc",
+    "report_sha256": "9bc35b5b675caad10d34638581a4015dc185445501a591c180d4eb75ddde4b7d",
+    "contract_sha256": "415c088814a2886b8a2c4a5db083bf8a07f22ff0a05482ef6df1ec533f3e0ad5",
+    "harness_sha256": {
+      "runner": "1136c1e64a931956f62e77350d26bdf68b3d42dc8f40ad5433f80bb684e33dc9",
+      "child": "7e7dec0be12f0ff026f526602e0a9bbfc1298d4cbf9c9566a1b9533c1d817105",
+      "analyzer": "971e24bd64cfdf5ad229c3cb9db60fa198f88caa86c4e8463ed39a700314cb3c"
+    },
+    "contexts": [
+      {"label": "short", "iq2_delta_pct": -21.540865252861032, "kernel_sum_delta_pct": -3.6960955272565044, "span_delta_pct": -3.094861635536106, "profiled_child_tok_s_delta_pct": 2.149026275059218},
+      {"label": "512", "iq2_delta_pct": -20.76773056447976, "kernel_sum_delta_pct": -2.167981119657092, "span_delta_pct": -1.9358159583919954, "profiled_child_tok_s_delta_pct": 1.2101760536461947},
+      {"label": "1024", "iq2_delta_pct": -20.618162940155038, "kernel_sum_delta_pct": -1.8046903888286114, "span_delta_pct": -1.5685879591411767, "profiled_child_tok_s_delta_pct": 2.171017852565127},
+      {"label": "3968", "iq2_delta_pct": -20.308242447948764, "kernel_sum_delta_pct": -1.295822729554208, "span_delta_pct": -1.200223788714705, "profiled_child_tok_s_delta_pct": 1.193212410604283}
+    ],
+    "ids_exact": true,
+    "finite": true,
+    "lifecycle": true,
+    "dispatches_per_token": 772,
+    "resource_gate": {
+      "candidate": {"workgroup": 64, "grid_x": 32768, "vgpr": 112, "sgpr": 128, "lds_bytes": 512, "scratch_bytes": 0},
+      "control": {"workgroup": 64, "grid_x": 32768, "vgpr": 136, "sgpr": 128, "lds_bytes": 512, "scratch_bytes": 0},
+      "passed": true
+    },
+    "mechanical_gate_pass": true
+  },
+  "category_gate": {
+    "commands": [
+      "bash /tmp/run_laguna_iq2_grid64_category.sh",
+      "bash /tmp/run_laguna_iq2_grid64_category_reverse.sh"
+    ],
+    "protocol": "all 18 train+heldout prompts; serial and bulk; h16/h32; two repetitions; process order compact-grid/expanded-grid then expanded-grid/compact-grid; pooled synchronized seconds",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "aggregate": {
+      "control": {
+        "h16_decode_tok_s": 53.067524775367644,
+        "h32_decode_tok_s": 52.650229582719334,
+        "h16_e2e_output_tok_s": 6.929674024594969,
+        "h32_e2e_output_tok_s": 12.236890015814968,
+        "prefill_tok_s": 42.90899510179163,
+        "ttft_median_seconds": 1.9370759601006284
+      },
+      "candidate": {
+        "h16_decode_tok_s": 55.021869239436406,
+        "h32_decode_tok_s": 54.54041693466998,
+        "h16_e2e_output_tok_s": 6.955546092249,
+        "h32_e2e_output_tok_s": 12.326231089792623,
+        "prefill_tok_s": 42.87827778156787,
+        "ttft_median_seconds": 1.9378953644772992
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 3.6827503682175022,
+        "h32_decode_tok_s": 3.590083779180775,
+        "h16_e2e_output_tok_s": 0.3733518714185591,
+        "h32_e2e_output_tok_s": 0.7300962406476597,
+        "prefill_tok_s": -0.07158713493731206,
+        "ttft_median_seconds": 0.04230109678446947
+      }
+    },
+    "all_train_and_heldout_category_decode_improve": true,
+    "category_decode_delta_range_pct": [3.426281870403458, 3.7940891982382485],
+    "category_e2e_delta_range_pct": [0.27951181058099017, 0.8714556458794487],
+    "category_prefill_delta_range_pct": [-0.18605532104848388, 0.013008407096548602],
+    "all_e2e_prefill_ttft_guards_pass": true,
+    "all_ids_oracles_and_lifecycle_exact": true,
+    "comparison_sha256": "feb43035e437e2a222d2e0b0bd87ca9ddfab6891422f40e01184449dd2c60584",
+    "report_sha256": "b84ec407caee98e2bc58d1a546630fea4b54f05bd61f2ea147f531a3d40b83b3",
+    "harness_sha256": {
+      "forward": "661b66a36645083db1e607feaf233ca1b1e52787f236305e0869ecc8299d6675",
+      "reverse": "cba7dfccea67565548d6a1693c4a404b1fa52d76dec5f9964f8439105b7a0eca",
+      "benchmark": "c5825fafcefab3a6f94613c0c0e0798f6ecfe9ed2fbb6c9236d9202b29e95804",
+      "comparison": "0b8e1130390f5af9003680ff8fd4f71aee5a4cf3049e8ba8de783b18bff17f2c"
+    },
+    "raw_sha256": {
+      "control_forward": "c161623efdb2bdac2f500a021b8735d43c7b01e3352291b288f764c56e637dda",
+      "candidate_forward": "0787e8076669ff9df2bcd2e6046dfe2d1c1d553b91c8b549cecc276f4dd2ebe0",
+      "candidate_reverse": "4e4453751050fb102e9a6968bbb9a87395ace1249afcf0b559c3d4f5fa00c232",
+      "control_reverse": "cf38c8dfc2abfa5f7c4aec39022eefcb9a5641bed56f928143ca97e8a1b319a4"
+    },
+    "pass": true
+  },
+  "promotion_red": {
+    "result": "failed on absent gfx1100 LAGUNA_IQ2_GRID64 capability",
+    "log_sha256": "cba585e2c3b6687d28d0a112892b15b55f2dbe9613fa2b09b8b2eb99df4d0375",
+    "green_sha256": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d"
+  },
+  "topline": {
+    "previous_retained_h32_decode_tok_s": 52.51425720911967,
+    "paired_control_h32_decode_tok_s": 52.650229582719334,
+    "new_h32_decode_tok_s": 54.54041693466998,
+    "new_ms_per_token": 18.335026686683157,
+    "paired_improvement_pct": 3.590083779180775,
+    "improvement_vs_previous_retained_pct": 3.858304074418939,
+    "matched_vulkan_h32_tok_s": 64.418,
+    "additional_speedup_required_pct": 18.110574910275574,
+    "objective_met": false
+  },
+  "acceptance": {
+    "correctness": true,
+    "mechanical": true,
+    "category": true,
+    "promote_gfx1100_default": true,
+    "matched_vulkan_beaten": false
+  }
+}
