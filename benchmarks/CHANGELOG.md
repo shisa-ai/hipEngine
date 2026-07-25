@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-25
 
+- [rejected gfx1100 Laguna Q2 XL IQ2 launch-bounds retune] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained `__launch_bounds__(256,2)` -> only `(64,8)` changes ISA across eight occupancy candidates and remains BF16-bit exact, but first/last actual-layer synchronized wall is mixed at **+0.616%/-0.206%** despite event changes **-0.668%/-0.296%**; no source/runtime route is added and canonical h32 remains **52.514 tok/s**; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-launch-bounds-rejected.json`.
+
 - [rejected and removed gfx1100 Laguna Q2 XL exact IQ2 wave64 code object] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained wave32 -> unchanged exact tile2 source compiled wave64 passes actual-layer/state/trace admission and lowers VGPR **136 -> 96**, but clean pooled 1K IQ2 regresses **0.404%** and 512 profiled-child throughput regresses **0.562%**; near-4K/categories stop, all candidate routing/build/test code is removed, and canonical h32 remains **52.514 tok/s**; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-rejected.json`.
 
 - [rejected and removed gfx1100 Laguna Q2 XL exact IQ2 tile2 local32] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained local64 tile2 -> exact local32 sequential two-partition reconstruction remains BF16-bit equal but regresses first/last actual-layer events **5.08-5.15%** and synchronized wall **4.50-5.27%**; no runtime, trace, or category route is retained and canonical h32 remains **52.514 tok/s**; `benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-tile2-wave32-rejected.json`.
