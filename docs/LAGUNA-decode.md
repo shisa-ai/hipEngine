@@ -45,12 +45,16 @@ modeled BF16 value payload **66.67%**, but collapsing 72 independent query-head
 workgroups to 24 regresses all layer-1/46/47 live-70/128/257/512 rows by
 **61.33-89.58%** event and **61.16-89.95%** wall. It is removed before runtime;
 GQA value reuse does not offset the lost parallelism/cache-visible reuse. The
-next selected screen returns to the largest short family: an exact all-local32
-Q5/Q6 mixed projection keeps the same **131,840/181,376** global/SWA grid
+subsequent exact all-local32 Q5/Q6 mixed projection is now correctness-admitted
+but remains default-off. It keeps the same **131,840/181,376** global/SWA grid
 threads and wave count, gives each retained Q5 pair its own workgroup, and
 replays each Q6 output pair's four original local128 partitions in one wave.
-It targets the current **2.128 ms/token** local128/VGPR88/LDS1024 family without
-removing parallel work or changing arithmetic.
+All production outputs and full model state are bit-exact; first/last actual
+layers improve **11.39-14.77%** in HIP events and **11.24-15.72%** in synchronized
+wall. Cached tracing confirms 47 candidate calls/token at local32/VGPR80/LDS0/
+scratch0, one unchanged layer-47 mixed call, and the retained **723 dispatches/
+token**. Both clean context orders and both complete category orders still gate
+promotion, so canonical h32 remains **60.942 tok/s**.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1160,9 +1164,11 @@ retained after both clean context orders and both complete 18-prompt orders
 pass. Exact three-query-head SWA value reuse is now also rejected: it passes the
 primitive arithmetic and resource gates but loses **61-90%** on every actual
 layer/live boundary when **72 -> 24** workgroups remove query-head parallelism.
-The retained one-head wave-local reducer remains canonical. The next exact
-screen targets the largest short family instead: an all-local32 Q5/Q6 mixed
-projection preserves the same total threads/waves while removing the local128
-union's LDS/barriers and resource footprint from independent Q5 waves. The
-objective remains open until that candidate passes its frozen actual-weight,
-state, trace, context, and complete-category gates.
+The retained one-head wave-local reducer remains canonical. The subsequent
+all-local32 Q5/Q6 mixed projection preserves the same total threads/waves while
+removing the local128 union's LDS/barriers and resource footprint from
+independent Q5 waves. It is now default-off correctness-admitted: production
+outputs and full state are exact, all four actual-layer event/wall rows improve,
+and cached tracing records local32/VGPR80/LDS0/scratch0 at unchanged 723
+model kernels/token. The objective remains open until this candidate passes
+both frozen clean-context orders and both complete-category orders.

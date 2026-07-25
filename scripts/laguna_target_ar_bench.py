@@ -94,6 +94,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="restore generic Q6 blocks inside the exact mixed projection quad",
     )
+    parser.add_argument(
+        "--mixed-local32-fixed-meta-attention",
+        action="store_true",
+        help="screen the exact default-off all-local32 Q5/Q6 projection quad",
+    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -237,6 +242,9 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         ),
         use_mixed_q6_fixed_meta_attention=(
             False if args.disable_mixed_q6_fixed_meta_attention else None
+        ),
+        use_mixed_local32_fixed_meta_attention=(
+            True if args.mixed_local32_fixed_meta_attention else None
         ),
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
@@ -631,6 +639,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_mixed_q6_fixed_meta_attention=(
                 False if args.disable_mixed_q6_fixed_meta_attention else None
             ),
+            use_mixed_local32_fixed_meta_attention=(
+                True if args.mixed_local32_fixed_meta_attention else None
+            ),
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -756,6 +767,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_mixed_q5_q6_attention": owner.use_mixed_q5_q6_attention,
             "use_mixed_q6_fixed_meta_attention": (
                 owner.use_mixed_q6_fixed_meta_attention
+            ),
+            "use_mixed_local32_fixed_meta_attention": (
+                owner.use_mixed_local32_fixed_meta_attention
             ),
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,

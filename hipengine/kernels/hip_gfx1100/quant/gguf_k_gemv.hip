@@ -149,6 +149,23 @@ __device__ inline float q6_k_weight(const uint8_t* row, int k) {
   return d * static_cast<float>(scale * q);
 }
 
+__device__ __forceinline__ int q6_k_quant_from_block(
+    const uint8_t* __restrict__ block,
+    int within) {
+  const int group32 = within >> 5;
+  const int lane = within & 31;
+  const uint8_t* __restrict__ qh = block + 128;
+  const int base64 = group32 >= 4 ? 64 : 0;
+  const bool low_nibble = (group32 & 2) == 0;
+  const int ql_index = base64 + (group32 & 1) * 32 + lane;
+  const uint8_t ql_byte = block[ql_index];
+  const uint8_t low = low_nibble ? (ql_byte & 0x0Fu) : (ql_byte >> 4);
+  const int qh_index = (group32 >= 4 ? 32 : 0) + lane;
+  const int qh_shift = 2 * (group32 & 3);
+  const uint8_t high = (qh[qh_index] >> qh_shift) & 0x03u;
+  return static_cast<int>(low | (high << 4)) - 32;
+}
+
 __device__ inline int gguf_k_dp4a_u8_s8(uint32_t a, uint32_t b, int c) {
 #if defined(__HIP_DEVICE_COMPILE__)
   return __builtin_amdgcn_sudot4(true, static_cast<int>(a), true, static_cast<int>(b), c, false);
@@ -1298,6 +1315,103 @@ __device__ __forceinline__ void gguf_q5_k_wave32x2_fixed_meta_decode_out_block(
   }
 }
 
+// Exact local32 Q6 sibling for the retained local128 fixed-metadata pack. One
+// wave owns two adjacent outputs and carries the four original wave partitions
+// independently. Each partition replays its original [tid, tid+128] FMA order,
+// uses the same wave tree, and lane zero adds wave totals in order 0..3.
+template <typename scalar_t, typename out_t>
+__device__ __forceinline__ void gguf_q6_k_wave32x2_fixed_meta_decode_out_block(
+    const scalar_t* __restrict__ x_row,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int out_pair,
+    int in_features,
+    int out_features) {
+  const int lane = threadIdx.x & 31;
+  const int out_col = out_pair << 1;
+  const int blocks_per_row = in_features / QK_K;
+  const int row_bytes = blocks_per_row * Q6_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ weight_row0 =
+      qweight + static_cast<int64_t>(out_col) * row_bytes;
+  const uint8_t* __restrict__ weight_row1 = weight_row0 + row_bytes;
+
+  float acc00 = 0.0f, acc01 = 0.0f, acc02 = 0.0f, acc03 = 0.0f;
+  float acc10 = 0.0f, acc11 = 0.0f, acc12 = 0.0f, acc13 = 0.0f;
+  for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+    const uint8_t* __restrict__ block0 =
+        weight_row0 + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ block1 =
+        weight_row1 + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ meta_block = lane < 16 ? block0 : block1;
+    const int8_t* __restrict__ scales =
+        reinterpret_cast<const int8_t*>(meta_block + 192);
+    const float d = fp16_bytes_to_float(meta_block + 208);
+    const float lane_scale =
+        d * static_cast<float>(scales[lane & 15]);
+    const int k_base = block_idx * QK_K;
+
+#define GGUF_Q6_K_WAVE32X2_FIXED_META_PART(PART, ACC0, ACC1) \
+    { \
+      const int within0 = lane + 32 * PART; \
+      const int scale_index0 = within0 >> 4; \
+      const float scale0 = __shfl(lane_scale, scale_index0, 32); \
+      const float scale1 = __shfl(lane_scale, 16 + scale_index0, 32); \
+      const float x0 = scalar_to_float<scalar_t>(x_row[k_base + within0]); \
+      ACC0 = fmaf( \
+          x0, \
+          scale0 * static_cast<float>(q6_k_quant_from_block(block0, within0)), \
+          ACC0); \
+      ACC1 = fmaf( \
+          x0, \
+          scale1 * static_cast<float>(q6_k_quant_from_block(block1, within0)), \
+          ACC1); \
+      const int within1 = within0 + 128; \
+      const int scale_index1 = within1 >> 4; \
+      const float scale2 = __shfl(lane_scale, scale_index1, 32); \
+      const float scale3 = __shfl(lane_scale, 16 + scale_index1, 32); \
+      const float x1 = scalar_to_float<scalar_t>(x_row[k_base + within1]); \
+      ACC0 = fmaf( \
+          x1, \
+          scale2 * static_cast<float>(q6_k_quant_from_block(block0, within1)), \
+          ACC0); \
+      ACC1 = fmaf( \
+          x1, \
+          scale3 * static_cast<float>(q6_k_quant_from_block(block1, within1)), \
+          ACC1); \
+    }
+    GGUF_Q6_K_WAVE32X2_FIXED_META_PART(0, acc00, acc10);
+    GGUF_Q6_K_WAVE32X2_FIXED_META_PART(1, acc01, acc11);
+    GGUF_Q6_K_WAVE32X2_FIXED_META_PART(2, acc02, acc12);
+    GGUF_Q6_K_WAVE32X2_FIXED_META_PART(3, acc03, acc13);
+#undef GGUF_Q6_K_WAVE32X2_FIXED_META_PART
+  }
+
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    acc00 += __shfl_down(acc00, offset);
+    acc01 += __shfl_down(acc01, offset);
+    acc02 += __shfl_down(acc02, offset);
+    acc03 += __shfl_down(acc03, offset);
+    acc10 += __shfl_down(acc10, offset);
+    acc11 += __shfl_down(acc11, offset);
+    acc12 += __shfl_down(acc12, offset);
+    acc13 += __shfl_down(acc13, offset);
+  }
+  if (lane == 0) {
+    float total0 = 0.0f;
+    total0 += acc00;
+    total0 += acc01;
+    total0 += acc02;
+    total0 += acc03;
+    float total1 = 0.0f;
+    total1 += acc10;
+    total1 += acc11;
+    total1 += acc12;
+    total1 += acc13;
+    store_output<out_t>(out, out_col, total0);
+    store_output<out_t>(out, out_col + 1, total1);
+  }
+}
+
 template <typename scalar_t, typename out_t>
 __launch_bounds__(32, 8)
 __global__ void gguf_q5_k_wave32x2_decode_out_kernel(
@@ -1537,6 +1651,57 @@ __global__ void gguf_q5_q6_mixed_q6_fixed_meta_attention_decode_out_kernel(
       out_pack,
       in_features,
       q6_block_scales);
+}
+
+// All-local32 sibling of the retained Q5/Q6 fixed-metadata mixed projection.
+// Grid threads and wave count are unchanged: every Q5 pair or Q6 pair is one
+// independent workgroup, while the local128 fallback remains separately
+// registered for runtime admission and rollback.
+template <typename scalar_t, typename out_t>
+__launch_bounds__(32, 8)
+__global__ void gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ q5_weight_a,
+    const uint8_t* __restrict__ q5_weight_b,
+    const uint8_t* __restrict__ q6_weight_a,
+    const uint8_t* __restrict__ q6_weight_b,
+    out_t* __restrict__ q5_out_a,
+    out_t* __restrict__ q5_out_b,
+    out_t* __restrict__ q6_out_a,
+    out_t* __restrict__ q6_out_b,
+    int in_features,
+    int q5_features_a,
+    int q5_features_b,
+    int q6_features_a,
+    int q6_features_b) {
+  const int q5_pairs = (q5_features_a + q5_features_b) >> 1;
+  const int flat_pair = blockIdx.x;
+  if (flat_pair < q5_pairs) {
+    const int pairs_a = q5_features_a >> 1;
+    const bool projection_b = flat_pair >= pairs_a;
+    const int out_pair = projection_b ? flat_pair - pairs_a : flat_pair;
+    gguf_q5_k_wave32x2_fixed_meta_decode_out_block(
+        x,
+        projection_b ? q5_weight_b : q5_weight_a,
+        projection_b ? q5_out_b : q5_out_a,
+        0,
+        out_pair,
+        in_features,
+        projection_b ? q5_features_b : q5_features_a);
+    return;
+  }
+
+  const int q6_flat_pair = flat_pair - q5_pairs;
+  const int q6_pairs_a = q6_features_a >> 1;
+  const bool projection_b = q6_flat_pair >= q6_pairs_a;
+  const int out_pair = projection_b ? q6_flat_pair - q6_pairs_a : q6_flat_pair;
+  gguf_q6_k_wave32x2_fixed_meta_decode_out_block(
+      x,
+      projection_b ? q6_weight_b : q6_weight_a,
+      projection_b ? q6_out_b : q6_out_a,
+      out_pair,
+      in_features,
+      projection_b ? q6_features_b : q6_features_a);
 }
 
 // Laguna layer 47 reverses the raw-Q6 role onto query/gate while K/V are Q8_0.
@@ -2443,6 +2608,55 @@ int launch_gguf_q5_q6_mixed_q6_fixed_meta_attention_decode_out(
 }
 
 template <typename out_t>
+int launch_gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out(
+    const uint16_t* x,
+    const uint8_t* q5_weight_a,
+    const uint8_t* q5_weight_b,
+    const uint8_t* q6_weight_a,
+    const uint8_t* q6_weight_b,
+    out_t* q5_out_a,
+    out_t* q5_out_b,
+    out_t* q6_out_a,
+    out_t* q6_out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q5_features_a,
+    int64_t q5_features_b,
+    int64_t q6_features_a,
+    int64_t q6_features_b,
+    hipStream_t stream) {
+  if (x == nullptr || q5_weight_a == nullptr || q5_weight_b == nullptr ||
+      q6_weight_a == nullptr || q6_weight_b == nullptr || q5_out_a == nullptr ||
+      q5_out_b == nullptr || q6_out_a == nullptr || q6_out_b == nullptr ||
+      rows != 1 || in_features <= 0 || (in_features % QK_K) != 0 ||
+      q5_features_a <= 0 || q5_features_b <= 0 || q6_features_a <= 0 ||
+      q6_features_b <= 0 || (q5_features_a % 8) != 0 ||
+      (q5_features_b % 8) != 0 || (q6_features_a % 8) != 0 ||
+      (q6_features_b % 8) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t q5_pairs = (q5_features_a + q5_features_b) / 2;
+  const int64_t q6_pairs = (q6_features_a + q6_features_b) / 2;
+  gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel<uint16_t, out_t>
+      <<<dim3(static_cast<unsigned int>(q5_pairs + q6_pairs)), dim3(32), 0, stream>>>(
+          x,
+          q5_weight_a,
+          q5_weight_b,
+          q6_weight_a,
+          q6_weight_b,
+          q5_out_a,
+          q5_out_b,
+          q6_out_a,
+          q6_out_b,
+          static_cast<int>(in_features),
+          static_cast<int>(q5_features_a),
+          static_cast<int>(q5_features_b),
+          static_cast<int>(q6_features_a),
+          static_cast<int>(q6_features_b));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t>
 int launch_gguf_q6_q8_mixed_attention_decode_out(
     const uint16_t* x,
     const uint8_t* q6_weight_a,
@@ -2961,6 +3175,29 @@ extern "C" int hipengine_gguf_q5_q6_mixed_q6_fixed_meta_attention_pack8_gemv_dec
     int64_t q6_features_b,
     hipStream_t stream) {
   return launch_gguf_q5_q6_mixed_q6_fixed_meta_attention_decode_out<float>(
+      x, q5_weight_a, q5_weight_b, q6_weight_a, q6_weight_b, q5_out_a,
+      q5_out_b, q6_out_a, q6_out_b, rows, in_features, q5_features_a,
+      q5_features_b, q6_features_a, q6_features_b, stream);
+}
+
+extern "C" int hipengine_gguf_q5_q6_mixed_local32_fixed_meta_attention_pack8_gemv_decode_bf16_f32_out(
+    const uint16_t* x,
+    const uint8_t* q5_weight_a,
+    const uint8_t* q5_weight_b,
+    const uint8_t* q6_weight_a,
+    const uint8_t* q6_weight_b,
+    float* q5_out_a,
+    float* q5_out_b,
+    float* q6_out_a,
+    float* q6_out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q5_features_a,
+    int64_t q5_features_b,
+    int64_t q6_features_a,
+    int64_t q6_features_b,
+    hipStream_t stream) {
+  return launch_gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out<float>(
       x, q5_weight_a, q5_weight_b, q6_weight_a, q6_weight_b, q5_out_a,
       q5_out_b, q6_out_a, q6_out_b, rows, in_features, q5_features_a,
       q5_features_b, q6_features_a, q6_features_b, stream);
