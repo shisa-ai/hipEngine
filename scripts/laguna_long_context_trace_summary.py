@@ -69,16 +69,43 @@ def _kernel_family(name: str) -> str:
         return "embedding"
     if "argmax_stage" in lowered:
         return "lm_head_argmax"
-    if "laguna_f16w_" in lowered and any(
-        marker in lowered for marker in ("gemv_kernel", "tiled_exact_kernel", "wmma")
+    if (
+        "laguna_f16w_" in lowered
+        and any(
+            marker in lowered for marker in ("gemv_kernel", "tiled_exact_kernel", "wmma")
+        )
+    ) or any(
+        marker in lowered
+        for marker in (
+            "cijk_alik_bljk_hss_",
+            "bf16_to_fp16_scaled_rows_kernel",
+            "f32_scale_rows_kernel",
+            "f32_scale_rows_to_bf16_kernel",
+        )
     ):
         return "source_f16_projection"
-    if "q4_k_t16_selected_dual" in lowered and any(
-        marker in lowered for marker in ("gemv_kernel", "grouped_smallm_kernel")
-    ):
+    if "gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel" in lowered:
         return "selected_q4_gate_up"
-    if "qk_t16_selected" in lowered and any(
-        marker in lowered for marker in ("gemv_kernel", "grouped_smallm_kernel")
+    if "gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel" in lowered:
+        return "selected_q4_q6_down"
+    if "q4_k_t16_selected_dual" in lowered and any(
+        marker in lowered
+        for marker in ("gemv_kernel", "grouped_smallm_kernel", "mmq64x32")
+    ):
+        if "mmq64x32" in lowered and "kernel<1, true, false, 64>" in lowered:
+            return "selected_q4_q6_down"
+        return "selected_q4_gate_up"
+    if any(
+        marker in lowered
+        for marker in (
+            "qk_t16_selected",
+            "q4_k_t16_selected",
+            "q5_k_t16_selected",
+            "q6_k_t16_selected",
+        )
+    ) and any(
+        marker in lowered
+        for marker in ("gemv_kernel", "grouped_smallm_kernel", "mmq64x32")
     ):
         return "selected_q4_q6_down"
     if "laguna_global_attention_prefill" in lowered:
@@ -113,6 +140,7 @@ def _kernel_family(name: str) -> str:
             "q5_k_t16_gemv",
             "q6_k_t16_gemv",
             "gguf_k_prefill_out_kernel",
+            "_k_prefill_wmma_kernel",
         )
     ):
         return "dense_shared_quant_projection"
