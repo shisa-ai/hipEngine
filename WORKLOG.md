@@ -178744,3 +178744,37 @@ Vulkan local sizes verbatim will close the measured gap.
   The next primary implementation target is the measured 274.724 ms
   global+SWA attention window. Expert-body tuning is parked pending a bounded
   hybrid-large-expert or wave-transpose premise supported by new evidence.
+
+## 2026-07-25 — Retain M128-qualified Laguna online qrow4 candidate
+
+- Generalized the global and SWA online-qrow2 bodies over a compile-time query
+  row count, added explicit qrow4 variants, and installed gfx1151 selectors
+  that use qrow4 only for complete M128 attention tiles while preserving qrow2
+  for short/residual tiles. The unfused exact and qrow2 rollback variants are
+  unchanged.
+- The focused `KVLiveSpans` GPU fixture seeds 508 cached rows, crosses the
+  physical ring boundary through 515, applies explicit eviction, and checks
+  full eight-row and partial seven-row groups. Qrow4 is F32 byte-identical to
+  qrow2 for both global and SWA. The complete focused bundle
+  `uv run pytest -q tests/test_laguna_kv_attention.py
+  tests/test_gfx1151_backend.py` passed **33 tests** after one isolated stale
+  default-expectation failure was repaired and rerun according to the focused
+  repair rule.
+- Cached `rocprofv3 --kernel-trace` on that fixture names the global/SWA
+  `<4>` templates at local32, VGPR **72/80**, SGPR128, LDS0, and scratch0.
+  Qrow2 is retained for residual tiles because the same eight-row trace favors
+  its lower VGPR **48/56** footprint. Raw CSV SHA-256:
+  `981653a84fcbf5b28256f1dfda60be0b95269a6b92667f88ce63d14fbbd45c20`.
+- The pinned same-owner, matrix512/attention128, one-queue, three-repeat
+  counterbalanced pp512 diagnostic measured qrow4 global+SWA
+  **365.249 tok/s** median (**365.249/366.556/364.684**) versus production
+  qrow2 **353.836** (**353.836/353.437/353.926**), always token 2930:
+  **+3.23%**. SWA-only qrow4 reached **363.214**; global-only was neutral at
+  **353.722**.
+- After installing the qualified defaults, a second selector-unset diagnostic
+  measured **365.048 tok/s** median (**365.065/365.048/363.735**) versus the
+  paired qrow2 **352.920**, always token 2930. Because the tree contained the
+  candidate, this remains a retained diagnostic rather than the new production
+  claim. Commit, then run the clean selector-unset confirmation and all-family
+  reprofile. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-attention-qrow4-candidate.json`.

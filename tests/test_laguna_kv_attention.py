@@ -86,6 +86,8 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_global_attention_decode_bf16_spans,
         laguna_global_attention_prefill_bf16_spans,
         laguna_global_attention_prefill_qrow2_online_bf16_spans,
+        laguna_global_attention_prefill_qrow4_m128_online_bf16_spans,
+        laguna_global_attention_prefill_qrow4_online_bf16_spans,
         laguna_global_write_kv_rows_f32_spans,
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
@@ -93,6 +95,8 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow2_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow2_online_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_m128_online_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_online_bf16_spans,
         laguna_swa_attention_prefill_wave32_exact_bf16_spans,
         laguna_swa_write_kv_f32_spans,
         laguna_swa_write_kv_rows_f32_spans,
@@ -172,6 +176,24 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             backend="hip_gfx1151",
             layer="laguna_attention_prefill",
             quant="bf16",
+            variant="global_context_rows_qrow4_online_spans",
+        )
+        is laguna_global_attention_prefill_qrow4_online_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="global_context_rows_qrow4_m128_online_spans",
+        )
+        is laguna_global_attention_prefill_qrow4_m128_online_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
             variant="swa_context_rows_spans",
         )
         is laguna_swa_attention_prefill_bf16_spans
@@ -202,6 +224,24 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             variant="swa_context_rows_qrow2_online_spans",
         )
         is laguna_swa_attention_prefill_qrow2_online_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_qrow4_online_spans",
+        )
+        is laguna_swa_attention_prefill_qrow4_online_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_qrow4_m128_online_spans",
+        )
+        is laguna_swa_attention_prefill_qrow4_m128_online_bf16_spans
     )
     assert (
         resolve(
@@ -383,7 +423,8 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert all(layer.spans.token_positions is not None for layer in cache.layers)
     assert all(layer.spans.evict_mask is not None for layer in cache.layers)
     assert all(
-        layer.attention_prefill_variant == "global_context_rows_qrow2_online_spans"
+        layer.attention_prefill_variant
+        == "global_context_rows_qrow4_m128_online_spans"
         for layer in cache.layers
         if layer.attention_type == FULL_ATTENTION
     )
@@ -393,14 +434,14 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
         if layer.attention_type == SLIDING_ATTENTION
     )
     assert all(
-        layer.attention_prefill_variant == "swa_context_rows_qrow2_online_spans"
+        layer.attention_prefill_variant == "swa_context_rows_qrow4_m128_online_spans"
         for layer in cache.layers
         if layer.attention_type == SLIDING_ATTENTION
     )
     assert cache.allocation_count == 243
     assert (
         resolve_laguna_global_prefill_variant("hip_gfx1151")
-        == "global_context_rows_qrow2_online_spans"
+        == "global_context_rows_qrow4_m128_online_spans"
     )
     assert (
         resolve_laguna_global_prefill_variant(
@@ -411,7 +452,7 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     )
     assert (
         resolve_laguna_swa_prefill_variant("hip_gfx1151")
-        == "swa_context_rows_qrow2_online_spans"
+        == "swa_context_rows_qrow4_m128_online_spans"
     )
     assert (
         resolve_laguna_swa_prefill_variant(
@@ -852,7 +893,9 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
         laguna_global_attention_prefill_qrow2_online_bf16_spans,
+        laguna_global_attention_prefill_qrow4_online_bf16_spans,
         laguna_swa_attention_prefill_qrow2_online_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_online_bf16_spans,
     )
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
@@ -917,10 +960,14 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         global_bulk_out = malloc(query_global.nbytes, runtime=runtime)
         global_online_out = malloc(query_global.nbytes, runtime=runtime)
         global_online_odd_out = malloc(query_global.nbytes, runtime=runtime)
+        global_qrow4_online_out = malloc(query_global.nbytes, runtime=runtime)
+        global_qrow4_online_odd_out = malloc(query_global.nbytes, runtime=runtime)
         swa_bulk_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_wave32_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_qrow2_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_qrow2_online_out = malloc(query_swa.nbytes, runtime=runtime)
+        swa_qrow4_online_out = malloc(query_swa.nbytes, runtime=runtime)
+        swa_qrow4_online_odd_out = malloc(query_swa.nbytes, runtime=runtime)
         global_serial_out = malloc(query_global[0].nbytes, runtime=runtime)
         swa_serial_out = malloc(query_swa[0].nbytes, runtime=runtime)
         allocations.extend(
@@ -932,10 +979,14 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
                 global_bulk_out,
                 global_online_out,
                 global_online_odd_out,
+                global_qrow4_online_out,
+                global_qrow4_online_odd_out,
                 swa_bulk_out,
                 swa_wave32_out,
                 swa_qrow2_out,
                 swa_qrow2_online_out,
+                swa_qrow4_online_out,
+                swa_qrow4_online_odd_out,
                 global_serial_out,
                 swa_serial_out,
             )
@@ -983,6 +1034,27 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             (rows - 1, global_online_odd_out),
         ):
             laguna_global_attention_prefill_qrow2_online_bf16_spans(
+                global_query_rows.ptr,
+                key_rows.ptr + seed_rows * row_bytes,
+                value_rows.ptr + seed_rows * row_bytes,
+                global_layer.key_cache.ptr,
+                global_layer.value_cache.ptr,
+                online_out.ptr,
+                global_layer.spans,
+                online_rows,
+                global_layer.capacity,
+                global_layer.q_heads,
+                config.head_count_kv,
+                config.key_length,
+                config.key_length**-0.5,
+                library=library,
+                runtime=runtime,
+            )
+        for online_rows, online_out in (
+            (rows, global_qrow4_online_out),
+            (rows - 1, global_qrow4_online_odd_out),
+        ):
+            laguna_global_attention_prefill_qrow4_online_bf16_spans(
                 global_query_rows.ptr,
                 key_rows.ptr + seed_rows * row_bytes,
                 value_rows.ptr + seed_rows * row_bytes,
@@ -1072,6 +1144,28 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             library=library,
             runtime=runtime,
         )
+        for online_rows, online_out in (
+            (rows, swa_qrow4_online_out),
+            (rows - 1, swa_qrow4_online_odd_out),
+        ):
+            laguna_swa_attention_prefill_qrow4_online_bf16_spans(
+                swa_query_rows.ptr,
+                key_rows.ptr + seed_rows * row_bytes,
+                value_rows.ptr + seed_rows * row_bytes,
+                swa_layer.key_cache.ptr,
+                swa_layer.value_cache.ptr,
+                online_out.ptr,
+                swa_layer.spans,
+                online_rows,
+                swa_layer.q_heads,
+                config.head_count_kv,
+                config.key_length,
+                config.key_length**-0.5,
+                sliding_window=config.sliding_window,
+                start_position=seed_rows,
+                library=library,
+                runtime=runtime,
+            )
         qrow2.append_rows(
             1,
             key_rows.ptr + seed_rows * row_bytes,
@@ -1116,10 +1210,14 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         actual_global = np.empty_like(query_global)
         actual_global_online = np.empty_like(query_global)
         actual_global_online_odd = np.empty_like(query_global[:-1])
+        actual_global_qrow4_online = np.empty_like(query_global)
+        actual_global_qrow4_online_odd = np.empty_like(query_global[:-1])
         actual_swa = np.empty_like(query_swa)
         actual_swa_wave32 = np.empty_like(query_swa)
         actual_swa_qrow2 = np.empty_like(query_swa)
         actual_swa_qrow2_online = np.empty_like(query_swa)
+        actual_swa_qrow4_online = np.empty_like(query_swa)
+        actual_swa_qrow4_online_odd = np.empty_like(query_swa[:-1])
         runtime.device_synchronize()
         copy_device_to_host(
             host_array_ptr(actual_global),
@@ -1137,6 +1235,18 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             host_array_ptr(actual_global_online_odd),
             global_online_odd_out,
             actual_global_online_odd.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_global_qrow4_online),
+            global_qrow4_online_out,
+            actual_global_qrow4_online.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_global_qrow4_online_odd),
+            global_qrow4_online_odd_out,
+            actual_global_qrow4_online_odd.nbytes,
             runtime=runtime,
         )
         copy_device_to_host(
@@ -1163,10 +1273,38 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             actual_swa_qrow2_online.nbytes,
             runtime=runtime,
         )
+        copy_device_to_host(
+            host_array_ptr(actual_swa_qrow4_online),
+            swa_qrow4_online_out,
+            actual_swa_qrow4_online.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_swa_qrow4_online_odd),
+            swa_qrow4_online_odd_out,
+            actual_swa_qrow4_online_odd.nbytes,
+            runtime=runtime,
+        )
         np.testing.assert_array_equal(actual_global, expected_global)
         np.testing.assert_allclose(actual_global_online, actual_global, rtol=2e-5, atol=2e-6)
         np.testing.assert_allclose(
             actual_global_online_odd,
+            actual_global[:-1],
+            rtol=2e-5,
+            atol=2e-6,
+        )
+        np.testing.assert_allclose(
+            actual_global_qrow4_online,
+            actual_global,
+            rtol=2e-5,
+            atol=2e-6,
+        )
+        np.testing.assert_array_equal(
+            actual_global_qrow4_online,
+            actual_global_online,
+        )
+        np.testing.assert_allclose(
+            actual_global_qrow4_online_odd,
             actual_global[:-1],
             rtol=2e-5,
             atol=2e-6,
@@ -1177,6 +1315,22 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         np.testing.assert_allclose(
             actual_swa_qrow2_online,
             actual_swa_wave32,
+            rtol=2e-5,
+            atol=2e-6,
+        )
+        np.testing.assert_allclose(
+            actual_swa_qrow4_online,
+            actual_swa_wave32,
+            rtol=2e-5,
+            atol=2e-6,
+        )
+        np.testing.assert_array_equal(
+            actual_swa_qrow4_online,
+            actual_swa_qrow2_online,
+        )
+        np.testing.assert_allclose(
+            actual_swa_qrow4_online_odd,
+            actual_swa_wave32[:-1],
             rtol=2e-5,
             atol=2e-6,
         )
