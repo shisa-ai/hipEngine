@@ -1081,7 +1081,9 @@ should be boring.
   rollback. The actual runtime-bound Q6 leaf improves **5.260 -> 5.161 ms**,
   dirty pp512 improves **490.105 -> 491.335 tok/s**, and outputs are BF16-bit
   exact.
-- Remove the explicit 32-row Q6 session selector after clean publication and
-  one subsequent retained selected-expert checkpoint. Keep the underlying
-  32-row template if it remains the fallback for non-gfx1151 backends or
-  shapes below the 64-row admission threshold.
+- Clean publication is complete at **489.110 -> 492.640 tok/s (+0.722%)**
+  with all seven paired wins and cached attribution at **493.509 tok/s**.
+  Remove the explicit 32-row Q6 session selector after one subsequent retained
+  selected-expert checkpoint. Keep the underlying 32-row template if it
+  remains the fallback for non-gfx1151 backends or shapes below the 64-row
+  admission threshold.

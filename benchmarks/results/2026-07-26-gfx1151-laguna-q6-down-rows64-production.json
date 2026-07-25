@@ -1,0 +1,160 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T04:48:28+09:00",
+  "kind": "hipengine_laguna_q6_down_rows64_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "matched clean Laguna S 2.1 Q4_K_M matrix512/attention128 pp512 plus BF16-byte-exact Q6 selected-down transfer and cached all-family attribution on gfx1151",
+  "repo": {
+    "revision": "f9a39715be6a72cb550f058a4c89109e1e265d4b",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "family": "resident-T16 Q6_K selected-down prefill",
+    "rollback": "64 output columns x 32 routed rows, local128, four wave32 row groups",
+    "production": "64 output columns x 64 routed rows, local128, four wave32 groups x 16 rows, one shared weight decode",
+    "metadata": "registry-backed tile64 device prefix/map overwrites reusable tile32 metadata only after Q4 gate/up consumes it",
+    "rollback_mode": "mmq64x32_d4_f32_wavecols_direct_q4",
+    "production_mode": "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+    "scope": "gfx1151 Q6_K selected down only; Q4 selected down and gfx1100 are unchanged",
+    "resident_layout": "unchanged T16 Q6_K bytes",
+    "arithmetic": "unchanged FP32 K accumulation order and BF16 stores"
+  },
+  "pp512": {
+    "scope": "one resident owner; one 128-row warmup per mode; seven counterbalanced synchronized repetitions",
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python scripts/laguna_q6_rows64_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-q6-rows64-clean-ab.json",
+    "rollback_rows32_samples_tok_s": [
+      492.10553962748594,
+      488.0271777778875,
+      489.1099230972716,
+      487.87269632591733,
+      489.10405136101747,
+      492.46955904302735,
+      492.1981380322102
+    ],
+    "rollback_rows32_median_tok_s": 489.1099230972716,
+    "selector_unset_rows64_samples_tok_s": [
+      492.45825426807266,
+      492.63989406062944,
+      490.14712993841493,
+      489.48348738396254,
+      496.86561399454695,
+      493.3007584643616,
+      493.2768067132836
+    ],
+    "selector_unset_rows64_median_tok_s": 492.63989406062944,
+    "paired_speedup": 1.0072171321755332,
+    "paired_improvement_percent": 0.7217132175533214,
+    "paired_repetitions_won": 7,
+    "paired_repetitions_total": 7,
+    "complete_sample_separation": false,
+    "previous_publication_median_tok_s": 489.9220634691668,
+    "change_vs_previous_publication_percent": 0.5547475392754464,
+    "matched_median_wall_reduction_ms": 7.500756066292524,
+    "clean_wall_gap_to_500_ms": 15.298697025515139,
+    "next_token_ids_all_2930": true,
+    "raw_json_sha256": "177e034b5f6b71111ecd106e3ca549eda1f4eb02ee8d883693ae29e12c2b66be",
+    "raw_json_committed": false
+  },
+  "correctness_transfer": {
+    "actual_layer1_bf16_mismatches": 0,
+    "actual_layer1_checksum": 509500838004,
+    "runtime_production_shape_q4_q6_exact": true,
+    "tile64_device_metadata_oracle_pass": true,
+    "reason_absolute_quality_transfers": "The changed Q6 selected-down consumer produces the same BF16 bytes as the 32-row rollback; all downstream inputs and admitted approximations are unchanged.",
+    "retained_absolute_quality_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_matches": 316,
+    "top1_total": 320,
+    "minimum_category_top1_agreement": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "cached_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q6-rows64-production-profile-f9a39715b --output-file laguna-q6-rows64-production --log-level error -- .venv/bin/python3 scripts/laguna_long_context_profile.py --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-rows64-production-profile-f9a39715b/child.json",
+    "timings": {
+      "512": {
+        "prefill_tok_s": 493.50907513560065,
+        "prefill_seconds": 1.0374682570109144,
+        "kernel_span_ms": 1033.495573,
+        "kernel_sum_ms": 1021.905474
+      },
+      "1024": {
+        "prefill_tok_s": 443.21398585434105,
+        "prefill_seconds": 2.3103964059846476,
+        "kernel_span_ms": 2305.741342,
+        "kernel_sum_ms": 2280.836321
+      },
+      "4096": {
+        "prefill_tok_s": 351.8707426577354,
+        "prefill_seconds": 11.64063817600254,
+        "kernel_span_ms": 11630.155117,
+        "kernel_sum_ms": 11503.976809
+      }
+    },
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 319.177929,
+      "selected_q4_q6_down": 201.848288,
+      "global_attention": 43.966499,
+      "swa_attention": 173.591983,
+      "source_f16_projection": 133.65471,
+      "dense_shared_quant_projection": 53.071348,
+      "router": 32.190449,
+      "norm_rope_gate": 24.919929,
+      "activation_reduce_residual": 20.450422,
+      "other": 16.975614,
+      "lm_head_argmax": 1.17765,
+      "prefill_kv_write": 0.844104,
+      "embedding": 0.036549
+    },
+    "q6_candidate_trace": {
+      "full_m512_calls": 23,
+      "grid_y": 332,
+      "sum_ms": 126.039663,
+      "median_ms": 5.451988,
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "q6_rollback_trace": {
+      "full_m512_calls": 23,
+      "grid_y": 408,
+      "sum_ms": 127.888255,
+      "median_ms": 5.576182
+    },
+    "kernel_trace_sha256": "31db8f7fb33a47f98d460f81a7ad229636b517539c3615140f57637fa223643d",
+    "child_json_sha256": "303d6afd2de1dc98ed0bb4e74f63c5f08614915c7e06fb910196b64803d27735",
+    "summary_json_sha256": "cafc009e00704962f2f749c28b8e5af30b358c6a833943b80b8ac235e1979fcf",
+    "agent_info_sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078",
+    "raw_files_committed": false,
+    "correctness_pass": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_peak_bytes": 77461325460
+  },
+  "decision": {
+    "pass": true,
+    "action": "Retain the exact 64-row Q6 selected-down body as the gfx1151 production default. Preserve the 32-row mode through one subsequent selected-expert checkpoint.",
+    "pp500_gate_open": true,
+    "pp700_stretch_open": true,
+    "next": "The clean median is 15.299 ms from the 500 tok/s wall. Continue with an exact selected-expert data-movement screen against the refreshed family trace."
+  },
+  "supersedes": "benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json"
+}

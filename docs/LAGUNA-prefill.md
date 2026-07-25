@@ -631,10 +631,10 @@ Current progress:
 ## Post-350 campaign — 500 production gate, 700 stretch
 
 The 350 tok/s milestone proves the compounded production package, but it is
-not a roofline result. The current direct-Q4 gate/up-and-down production trace
-measures **1.062248 seconds** synchronized pp512 wall, **1.058485 seconds**
-kernel span, and **1.046442 seconds** kernel sum. Only
-**15.806 ms / 1.49%** of wall lies outside the summed kernels, so graphs,
+not a roofline result. The current 64-row-Q6 selected-down production trace
+measures **1.037468 seconds** synchronized pp512 wall, **1.033496 seconds**
+kernel span, and **1.021905 seconds** kernel sum. Only
+**15.563 ms / 1.50%** of wall lies outside the summed kernels, so graphs,
 Python removal, and submission
 tuning are explicitly closed until a later trace changes that conclusion.
 
@@ -648,17 +648,17 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **317.199 ms** | **31.05%** | Direct per-column decode is retained. Pair/shuffle, local64, 256-column, multi-K LDS, and non-temporal variants are closed; the next gate/up screen must change work ownership or data movement materially. |
-| Selected D4 Q4/Q6 down | **204.071 ms** | **19.97%** | Direct Q4 decode is retained. Q6 row-vector is **127.656 ms** and remains the largest down component; local64 and duplicate-decode row halves are closed. Screen a 64-row tile that amortizes one shared decode across high-count experts. |
-| Global + SWA attention | **218.364 ms** | **21.37%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
-| Scaled hipBLASLt source-F16 | **134.564 ms** | **13.17%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
-| Q4/Q6 WMMA dense/shared | **52.989 ms** | **5.19%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Q4 falls **43.702 -> 41.936 ms (-4.04%)** and the family falls **54.834 -> 52.989 ms (-3.36%)**. |
-| All remaining named/other kernels | **94.459 ms** | **9.25%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
+| Selected D8 Q4 gate/up | **319.178 ms** | **31.23%** | Direct per-column decode is retained. Pair/shuffle, local64, 256-column, multi-K LDS, and non-temporal variants are closed; next screen paired K64 nibble consumption without LDS restaging so each fetched T16 quant payload serves both adjacent K32 halves. |
+| Selected D4 Q4/Q6 down | **201.848 ms** | **19.75%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer falls **127.888 -> 126.040 ms**; local64 and duplicate-decode row halves stay closed. |
+| Global + SWA attention | **217.558 ms** | **21.29%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
+| Scaled hipBLASLt source-F16 | **133.655 ms** | **13.08%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
+| Q4/Q6 WMMA dense/shared | **53.071 ms** | **5.19%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
+| All remaining named/other kernels | **96.595 ms** | **9.45%** | Do not tune router, norm/RoPE, reductions, KV write, or tails without a new >=5% family ceiling. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
-- Only **9.4 ms** of traced pp512 kernel span and about **21.1 ms** of
-  conservative clean median wall separate production from 500.
+- Only **9.5 ms** of traced pp512 kernel span and **15.3 ms** of conservative
+  clean median wall separate production from 500.
 - Reducing global+SWA attention from **217.7 ms** toward **100 ms** models to
   roughly **534 tok/s** with every other family unchanged.
 - Combining **2x** selected experts with an **80 ms** attention window models
@@ -684,11 +684,11 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Screen a **Q6 selected-down 64-row tile** with natural expert compaction.
-   Across the 23 Q6 layers, padding to 64 rows reduces routed weight-tile
-   workgroups **6,946 -> 5,671 (-18.36%)**. Keep one shared weight decode and
-   preserve per-row K order; reject if the doubled accumulator set erases that
-   traffic reduction.
+1. Screen **paired K64 nibble consumption** in the direct wave-column Q4
+   selected gate/up consumer. Reuse each fetched T16 quant payload for both
+   adjacent K32 halves without changing resident layout, FP32 reduction order,
+   tile geometry, or LDS staging. Require BF16-byte identity first, then an
+   actual layer-1 natural-M512 leaf win before runtime integration.
 2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
@@ -1316,8 +1316,8 @@ costs more than the smaller workgroup saves. Every candidate surface was
 removed before runtime integration; Q6 local128 remains production. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json).
 
-Thirty-first post-350 screen: **Q6 64-row selected down retained as a
-candidate default**. Unlike the rejected local64 schedule, this body keeps
+Thirty-first post-350 screen: **Q6 64-row selected down retained in
+production**. Unlike the rejected local64 schedule, this body keeps
 local128 and one shared 64-column weight decode, but gives each of four
 wave32s 16 routed rows. A registry-backed tile64 device map rebuilds metadata
 only for Q6 down after Q4 gate/up has consumed its 32-row map; Q4 down remains
@@ -1332,17 +1332,28 @@ token 2930. Cached tracing names the intended `<1,true,false,128,64>` body at
 local128/VGPR88/LDS5632B/scratch0; across the 23 full-M512 Q6 calls it cuts
 **127.888 -> 126.040 ms** despite the added tile64 map. The exact candidate is
 default in the implementation tree, with the prior
-`mmq64x32_d4_f32_wavecols_direct_q4` mode retained as rollback. Clean
-publication is still required before changing the production headline.
+`mmq64x32_d4_f32_wavecols_direct_q4` mode retained as rollback.
+
+Clean committed publication at `f9a39715b` improves the explicit 32-row
+rollback **489.110 -> 492.640 tok/s (+0.722%)**. The candidate wins all seven
+paired repetitions, reduces median wall **7.501 ms**, and selects token 2930
+throughout. The cached all-family trace independently reaches
+**493.509/443.214/351.871 tok/s** at 512/1K/4K; pp512 wall/span/kernel sum are
+**1,037.468/1,033.496/1,021.905 ms**. Absolute quality remains
+**0.049542582** maximum KL and **316/320** top-1 by BF16-byte-exact transfer.
 Evidence:
-[`2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json).
+
+- [`candidate`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json)
+- [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json)
 
 Production evidence:
 
+- [`2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json)
+  is current production: conservative clean median **492.640 tok/s**, cached
+  trace **493.509 tok/s**, and unchanged maximum KL **0.049542582**.
 - [`2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json)
-  is the current retained exact micro-win: conservative clean median
-  **489.922 tok/s**, cached trace **492.717 tok/s**, and unchanged maximum KL
-  **0.049542582**.
+  is the superseded exact Q4 shape-policy publication at **489.922 tok/s**
+  median and **492.717 tok/s** cached trace.
 - [`2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-dense-wmma16x32-production.json)
   is the superseded pre-Q4-shape-policy publication at **490.096 tok/s**
   median and the Q6 tile provenance.
@@ -1963,15 +1974,16 @@ Matching **344.56 tok/s** is the first external floor. Because the Vulkan
 control uses a different token stream, F16 KV, and backend numerical policy,
 “beat llama.cpp” still requires a matched timing/token/KV contract or an
 explicit qualification. The engineering goal is now stronger: reduce the
-current **1.139-second** pp512 wall through the 500 tok/s production gate and
-toward the 700 tok/s stretch, then continue until the major streaming families
-are close to the same-host bandwidth roof while preserving hipEngine's stricter
-correctness contract.
+current conservative **1.039-second** pp512 wall through the 500 tok/s
+production gate and toward the 700 tok/s stretch, then continue until the
+major streaming families are close to the same-host bandwidth roof while
+preserving hipEngine's stricter correctness contract.
 
 ## Evidence index
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-pack8-shape-policy-production.json`
