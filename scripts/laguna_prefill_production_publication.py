@@ -49,15 +49,15 @@ CAPABILITY_DEFAULTS = {
     "matrix_rows": ("LAGUNA_PREFILL_MATRIX_ROWS", EXPECTED_MATRIX_ROWS),
     "global_prefill_variant": (
         "LAGUNA_GLOBAL_PREFILL_VARIANT",
-        "global_context_rows_qrow2_online_spans",
+        "global_context_rows_qrow4_m128_online_spans",
     ),
     "swa_prefill_variant": (
         "LAGUNA_SWA_PREFILL_VARIANT",
-        "swa_context_rows_qrow2_online_spans",
+        "swa_context_rows_qrow4_m128_online_spans",
     ),
     "selected_gate_up_mode": (
         "LAGUNA_SELECTED_GATE_UP_MODE",
-        "mmq128x32_d8_f32",
+        "mmq128x32_d8_f32_rowvec",
     ),
     "selected_down_mode": (
         "LAGUNA_SELECTED_DOWN_MODE",
@@ -107,10 +107,31 @@ def _expected_candidate_modes(defaults: Mapping[str, Any]) -> dict[str, Any]:
         "dense_q4_prefill_mode": defaults["dense_q4_prefill_mode"],
         "f16_prefill_mode": defaults["f16_prefill_strategy"],
         "f16_projection_mode": defaults["f16_projection_mode"],
-        "global_prefill_variant": defaults["global_prefill_variant"],
+        # Qrow4 is F32 byte-identical to the admitted online-qrow2 arithmetic
+        # on complete tiles and preserves qrow2 for residual tiles.
+        "global_prefill_variant": (
+            "global_context_rows_qrow2_online_spans"
+            if defaults["global_prefill_variant"]
+            == "global_context_rows_qrow4_m128_online_spans"
+            else defaults["global_prefill_variant"]
+        ),
         "selected_down_mode": defaults["selected_down_mode"],
-        "selected_gate_up_mode": defaults["selected_gate_up_mode"],
-        "swa_prefill_variant": defaults["swa_prefill_variant"],
+        # The current row-vector consumer is BF16 byte-identical to the D8
+        # arithmetic admitted by this historical 320-step quality artifact.
+        "selected_gate_up_mode": (
+            "mmq128x32_d8_f32"
+            if defaults["selected_gate_up_mode"]
+            == "mmq128x32_d8_f32_rowvec"
+            else defaults["selected_gate_up_mode"]
+        ),
+        # Source qualification skips only the current/cache source that the
+        # admitted online-qrow2/qrow4 arithmetic would not consume.
+        "swa_prefill_variant": (
+            "swa_context_rows_qrow2_online_spans"
+            if defaults["swa_prefill_variant"]
+            == "swa_context_rows_qrow4_m128_online_spans"
+            else defaults["swa_prefill_variant"]
+        ),
     }
 
 
