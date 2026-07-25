@@ -16,7 +16,7 @@ import statistics
 import subprocess
 import sys
 import time
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -247,6 +247,7 @@ def _oracle_gate(
     *,
     global_prefill_variant: str | None = None,
     swa_prefill_variant: str | None = None,
+    session_configurator: Callable[[LagunaGGUFResidentSession], None] | None = None,
 ) -> dict[str, Any]:
     template = json.loads(args.template.read_text(encoding="utf-8"))
     oracle = json.loads(args.oracle.read_text(encoding="utf-8"))
@@ -261,6 +262,8 @@ def _oracle_gate(
         swa_prefill_variant=swa_prefill_variant,
     )
     try:
+        if session_configurator is not None:
+            session_configurator(session)
         result = session.prefill(prompt_ids, use_bulk=True)
         logits = np.empty(session.config.vocab_size, dtype=np.float32)
         owner.runtime.memcpy(

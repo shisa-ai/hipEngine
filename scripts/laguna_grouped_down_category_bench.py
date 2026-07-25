@@ -75,6 +75,9 @@ class PrefillLaneConfiguration:
     global_prefill_variant: str
     swa_prefill_variant: str
     selected_down_mode: str
+    selected_gate_up_mode: str = "direct"
+    f16_projection_mode: str = "retained"
+    dense_q4_prefill_mode: str = "retained"
 
 
 GROUPED_DOWN_COMPARISON = CategoryComparison(
@@ -155,6 +158,19 @@ CUMULATIVE_CONTROL_COMPARISON = CategoryComparison(
     require_shape_screen=False,
     require_performance_gate=False,
 )
+PREFILL_350_COMPARISON = CategoryComparison(
+    name="prefill_350",
+    modes=("shipping_control", "prefill_350_candidate"),
+    aggregate_key="prefill_350_candidate_vs_shipping_control",
+    screen_kind="not_applicable",
+    screen_status="not_applicable",
+    screen_decision_key="not_applicable",
+    require_positive_wall=True,
+    execution_mode="cumulative_prefill",
+    require_exact_free_running=False,
+    screen_requires_model=False,
+    require_shape_screen=False,
+)
 _GLOBAL_PREFILL_VARIANTS = {
     "global_exact": "global_context_rows_spans",
     "global_qrow2_online": "global_context_rows_qrow2_online_spans",
@@ -177,6 +193,15 @@ _PREFILL_LANE_CONFIGURATIONS = {
         swa_prefill_variant="swa_context_rows_qrow2_online_spans",
         selected_down_mode="adaptive_grouped_smallm_fused",
     ),
+    "prefill_350_candidate": PrefillLaneConfiguration(
+        f16_prefill_mode="wmma_comp_swa",
+        global_prefill_variant="global_context_rows_qrow2_online_spans",
+        swa_prefill_variant="swa_context_rows_qrow2_online_spans",
+        selected_down_mode="mmq64x32_d4_f32",
+        selected_gate_up_mode="mmq64x32_d4_f32",
+        f16_projection_mode="hipblaslt_scaled",
+        dense_q4_prefill_mode="wmma_pack8",
+    ),
 }
 _COMPARISONS = {
     comparison.name: comparison
@@ -188,6 +213,7 @@ _COMPARISONS = {
         SWA_QROW2_ONLINE_COMPARISON,
         GLOBAL_QROW2_ONLINE_COMPARISON,
         CUMULATIVE_CONTROL_COMPARISON,
+        PREFILL_350_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -309,7 +335,10 @@ def _session_for_mode(
             global_prefill_variant=lane.global_prefill_variant,
             swa_prefill_variant=lane.swa_prefill_variant,
         )
+        session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
         session.set_selected_down_mode(lane.selected_down_mode)
+        session.set_f16_prefill_mode(lane.f16_projection_mode)
+        session.set_dense_q4_prefill_mode(lane.dense_q4_prefill_mode)
         return session
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
@@ -347,12 +376,20 @@ def _oracle_for_candidate(
         )
     if comparison.execution_mode == "cumulative_prefill":
         lane = _PREFILL_LANE_CONFIGURATIONS[candidate_mode]
+
+        def configure_session(session: LagunaGGUFResidentSession) -> None:
+            session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
+            session.set_selected_down_mode(lane.selected_down_mode)
+            session.set_f16_prefill_mode(lane.f16_projection_mode)
+            session.set_dense_q4_prefill_mode(lane.dense_q4_prefill_mode)
+
         with _f16_prefill_mode(lane.f16_prefill_mode):
             return _oracle_gate(
                 owner,
                 args,
                 global_prefill_variant=lane.global_prefill_variant,
                 swa_prefill_variant=lane.swa_prefill_variant,
+                session_configurator=configure_session,
             )
     return _oracle_gate(owner, args)
 
@@ -1106,7 +1143,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "selected_down_mode": _PREFILL_LANE_CONFIGURATIONS[
                             mode
                         ].selected_down_mode,
-                        "dense_shared_route": "current exact registered path",
+                        "selected_gate_up_mode": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].selected_gate_up_mode,
+                        "f16_projection_mode": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].f16_projection_mode,
+                        "dense_q4_prefill_mode": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].dense_q4_prefill_mode,
                     }
                     for mode in comparison.modes
                 }
