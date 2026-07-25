@@ -180316,3 +180316,27 @@ Vulkan local sizes verbatim will close the measured gap.
   `5f3c5ee4d5fc74b7602daae2b1c4d30465ef182e6053177939a3aa290095a6d4`.
   Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-gate-wave-lds-stage-rejected.json`.
+
+## 2026-07-26 — Retain exact gate/up activation double-buffer candidate
+
+- Added a direct-wave-column candidate that ping-pongs the **1,536-byte**
+  activation tile across two LDS slots. The next K32 stages into the inactive
+  slot, so the kernel removes the trailing synchronization from every K32:
+  **two barriers -> one** with no resident-byte or arithmetic-order change.
+- RED first failed on the missing wrapper option. GREEN passes all **11**
+  CPU-reference/GPU parameterizations; the candidate output is BF16
+  byte-for-byte equal to the current direct consumer.
+- On actual layer-1 weights and natural M512 routing, eleven counter-rotated
+  burst-5 samples improve the inclusive D8 pack + dual gate/up leaf
+  **6.994897 -> 6.906879 ms (-1.258%, +1.274% throughput)**. Extrapolating
+  only the observed per-layer delta across 47 routed layers saves **4.137 ms**.
+  Raw SHA-256:
+  `e0b9136b8d4efd538bbb2ee86d45490ee9791723fcf7f44d831bdb39bc57cfdc`.
+- Cached `rocprofv3 --kernel-trace` observes the intended
+  `<1,false,true,128,true,true,128,true,true>` template three times at
+  **7.456/7.253/7.335 ms**. Trace SHA-256:
+  `921c0e5505771da417417234415547acbf11503d761808cb231fda04bb665810`.
+- Retained as an explicit gfx1151 runtime candidate. Package-default promotion
+  waits only for clean complete-state A/B; production remains
+  **505.185 tok/s** in this commit. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-candidate.json`.

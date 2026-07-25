@@ -706,6 +706,19 @@ top-1 with neutral decode and exact lifecycle. Cached tracing measures
 cleanup
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-production.json`).
 
+An exact activation-double-buffer sibling is retained explicitly for the next
+clean gate. It keeps the direct 128x32/local128 weight decode and arithmetic,
+but ping-pongs the 1,536-byte activation cache across two LDS slots so the
+trailing synchronization after each K32 can be removed. LDS rises to 3,072
+bytes while barriers fall from two to one per K32; resident bytes and BF16
+output are unchanged. All 11 CPU-reference/GPU parameterizations pass.
+Actual layer-1 natural-M512 pack-inclusive time improves **6.995 -> 6.907 ms
+(-1.258%)**. Cached tracing names
+`<1,false,true,128,true,true,128,true,true>` at plausible **7.253-7.456 ms**
+for the profiled leaf. Package-default promotion remains pending clean
+complete-state A/B
+(`benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-candidate.json`).
+
 The same direct-decode premise is retained in Q4-down production.
 Within the 64x32/local64 wave-column body, every lane decodes its own
 resident-T16 Q4 column; D4 activation staging, packed-dot arithmetic, K order,

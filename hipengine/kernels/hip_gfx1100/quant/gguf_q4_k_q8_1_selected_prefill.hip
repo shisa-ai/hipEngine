@@ -2824,7 +2824,8 @@ template <
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
-    bool DIRECT_WAVE_DECODE = false>
+    bool DIRECT_WAVE_DECODE = false,
+    bool DOUBLE_BUFFER_ACTIVATION = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -2853,6 +2854,10 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   static_assert(
       !DIRECT_WAVE_DECODE || WAVE_COLUMNS,
       "direct Q4 decode requires wave-column mapping");
+  static_assert(
+      !DOUBLE_BUFFER_ACTIVATION ||
+          (WAVE_COLUMNS && DIRECT_WAVE_DECODE),
+      "activation double buffer requires direct wave-column decode");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -2904,10 +2909,13 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   __shared__ q4_k_mmq64_f32_cache
       weight_tile[WAVE_COLUMNS ? 1 : MMQ_M];
   __shared__ q8_1_mmq32_f32_cache
-      activation_tile[ACTIVATION_PASSES][MMQ_N];
+      activation_tile[DOUBLE_BUFFER_ACTIVATION ? 2 : 1]
+                     [ACTIVATION_PASSES][MMQ_N];
 
   const int k32_iters = static_cast<int>(in_features / MMQ_K);
   for (int k32 = 0; k32 < k32_iters; ++k32) {
+    const int activation_slot =
+        DOUBLE_BUFFER_ACTIVATION ? (k32 & 1) : 0;
     const int weight_block = k32 >> 3;
     const int subblock = k32 & 7;
 
@@ -3063,7 +3071,8 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
 #pragma unroll
           for (int pack = 0; pack < 4; ++pack) {
             const int32_t packed = packed0[pack];
-            activation_tile[pass][row_offset].qs[pack] = packed;
+            activation_tile[activation_slot][pass][row_offset].qs[pack] =
+                packed;
             if constexpr (SPLIT16) {
               sum0 = gguf_q4_k_mmq_dp4a(
                   0x01010101u,
@@ -3074,7 +3083,8 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
 #pragma unroll
           for (int pack = 0; pack < 4; ++pack) {
             const int32_t packed = packed1[pack];
-            activation_tile[pass][row_offset].qs[pack + 4] = packed;
+            activation_tile[activation_slot][pass][row_offset]
+                           .qs[pack + 4] = packed;
             if constexpr (SPLIT16) {
               sum1 = gguf_q4_k_mmq_dp4a(
                   0x01010101u,
@@ -3082,10 +3092,12 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                   sum1);
             }
           }
-          activation_tile[pass][row_offset].d = d;
-          activation_tile[pass][row_offset].s = s;
-          activation_tile[pass][row_offset].sums[0] = sum0;
-          activation_tile[pass][row_offset].sums[1] = sum1;
+          activation_tile[activation_slot][pass][row_offset].d = d;
+          activation_tile[activation_slot][pass][row_offset].s = s;
+          activation_tile[activation_slot][pass][row_offset].sums[0] =
+              sum0;
+          activation_tile[activation_slot][pass][row_offset].sums[1] =
+              sum1;
         }
       }
     } else {
@@ -3115,7 +3127,8 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                 xb.qs + (k32 & 3) * Q8_1_BLOCK + pack * 4;
             packed = pack_i8x4(qs);
           }
-          activation_tile[pass][row_offset].qs[pack] = packed;
+          activation_tile[activation_slot][pass][row_offset].qs[pack] =
+              packed;
         }
       }
       if (tid < MMQ_N) {
@@ -3165,10 +3178,12 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
               }
             }
           }
-          activation_tile[pass][row_offset].d = d;
-          activation_tile[pass][row_offset].s = s;
-          activation_tile[pass][row_offset].sums[0] = sum0;
-          activation_tile[pass][row_offset].sums[1] = sum1;
+          activation_tile[activation_slot][pass][row_offset].d = d;
+          activation_tile[activation_slot][pass][row_offset].s = s;
+          activation_tile[activation_slot][pass][row_offset].sums[0] =
+              sum0;
+          activation_tile[activation_slot][pass][row_offset].sums[1] =
+              sum1;
         }
       }
     }
@@ -3193,7 +3208,7 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
 #pragma unroll
         for (int pass = 0; pass < ACTIVATION_PASSES; ++pass) {
           const q8_1_mmq32_f32_cache& xb =
-              activation_tile[pass][row_offset];
+              activation_tile[activation_slot][pass][row_offset];
           if constexpr (SPLIT16) {
             int dot0 = 0;
             int dot1 = 0;
@@ -3234,7 +3249,9 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
         }
       }
     }
-    __syncthreads();
+    if constexpr (!DOUBLE_BUFFER_ACTIVATION) {
+      __syncthreads();
+    }
   }
 
 #pragma unroll
@@ -3268,7 +3285,8 @@ template <
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
-    bool DIRECT_WAVE_DECODE = false>
+    bool DIRECT_WAVE_DECODE = false,
+    bool DOUBLE_BUFFER_ACTIVATION = false>
 int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* compact_to_source,
@@ -3313,7 +3331,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
           ROWVEC_ACTIVATION_STAGE,
           WAVE_COLUMNS,
           THREADS,
-          DIRECT_WAVE_DECODE>),
+          DIRECT_WAVE_DECODE,
+          DOUBLE_BUFFER_ACTIVATION>),
       grid,
       block,
       0,
@@ -4303,6 +4322,52 @@ hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_pre
       true,
       true,
       128,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      true,
+      128,
+      true,
+      true,
+      128,
+      true,
       true>(
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
       compact_to_source,
