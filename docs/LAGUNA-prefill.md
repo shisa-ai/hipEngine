@@ -648,12 +648,12 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **319.438 ms** | **31.73%** | Direct per-column decode is retained. T16 K64 nibble reuse is inapplicable because adjacent K32 payloads are stored separately. The immediate exact boundary screen is gate-only MMQ followed by up-MMQ+SiLU, preserving both BF16 projection boundaries while eliminating the separate SiLU memory pass. |
+| Selected D8 Q4 gate/up | **319.438 ms** | **31.73%** | Direct per-column decode is retained. T16 K64 nibble reuse is inapplicable because adjacent K32 payloads are stored separately. Gate-only MMQ followed by up-MMQ+SiLU was exact but regressed full-model median **498.012 -> 497.210 tok/s** because splitting the dual weight consumer cost more than removing the SiLU pass; that shape is closed. |
 | Selected D4 Q4/Q6 down | **202.525 ms** | **20.11%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. |
 | Global + SWA attention | **218.767 ms** | **21.73%** | Source-qualified qrow4 is retained. Scalar key splitting and tiled M16/M8 WMMA both lose; freeze synchronous-LDS attention until an async-copy, supported library, or materially different fused-softmax premise appears. |
 | Scaled hipBLASLt source-F16 | **133.631 ms** | **13.27%** | The contractions are at the measured library ceiling, but the refreshed trace exposes **9.53 ms** of scale/cast/restore kernels; permit exact producer/consumer fusion screens. |
 | Q4/Q6 WMMA dense/shared | **52.917 ms** | **5.26%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
-| Router, norms, reductions, metadata, KV/tails | **79.615 ms** | **7.91%** | Stable parallel compaction cuts **16.752 -> 2.564 ms** in the published trace; the retained one-block prefix follow-up projects another **1.407 ms** saving. Router logits are **30.658 ms** and reopen after the MMQ/SiLU boundary. |
+| Router, norms, reductions, metadata, KV/tails | **79.615 ms** | **7.91%** | Stable parallel compaction cuts **16.752 -> 2.564 ms** in the published trace; the retained one-block prefix follow-up projects another **1.407 ms** saving. Router logits are **30.658 ms** and are now the immediate exact target. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
@@ -686,26 +686,32 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Screen **gate-only MMQ then up-MMQ+SiLU**. The up consumer must BF16-round
-   both gate and up projections exactly before applying the existing `expf`
-   SiLU expression and BF16 output boundary. The registered dual-MMQ plus
-   separate SiLU chain remains the required unfused fallback.
-2. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
+1. Widen exact **router-logit token reuse** from the current four-token tile.
+   Preserve each token/expert's K traversal and 256-thread reduction
+   association, F32 logits, selected IDs, and routing weights. Screen 8- and
+   16-token tiles first; only add expert tiling if the simple reuse sweep does
+   not recover the required wall.
+2. Promote the fastest exact router tile and run the clean pp512 gate. The
+   gate-only MMQ then up-MMQ+SiLU boundary is closed: it was BF16-byte exact
+   but changed **498.012 -> 497.210 tok/s (-0.161%)**, winning only one of
+   seven paired repetitions. Do not retry without a single cooperative
+   dual-weight consumer that avoids the split-dispatch cost.
+3. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-3. Do not retry 64-row expert accumulation. The routing-qualified hybrid
+4. Do not retry 64-row expert accumulation. The routing-qualified hybrid
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
    around a wave-transpose/direct-consume primitive instead. Persistent K256
    weight slabs with F32 partial spills also completed a negative actual-weight
    gate. Merely planarizing the existing 40-byte LDS records and hoisting
    invariant T16 `d`/`dmin` metadata are both neutral; a local32 small-expert
    split is slower because it serializes weight-cache population.
-4. Raise the currently hard-capped matrix capacity and screen **1024/2048**
+5. Raise the currently hard-capped matrix capacity and screen **1024/2048**
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle
    evidence. This receives no pp512 credit.
-5. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
+6. Screen byte-neutral T16-lite/X16 only after those larger opportunities. Its
    2.778% Q4 metadata saving is a permanent but roughly **1.1% pp512**
    gate/up-byte upper bound at the current family share.
 
