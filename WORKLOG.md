@@ -178642,3 +178642,36 @@ Vulkan local sizes verbatim will close the measured gap.
   Source-F16, dense/shared, graphs, router/norm/tails, rejected raw-sum/D4-gate
   approximations, and duplicate resident sidecars stay closed absent new
   evidence.
+
+## 2026-07-25 — Reject resident-T16 multi-K LDS staging
+
+- The required kernel-lineage audit could not complete because the configured
+  read-only checkout `/home/lhl/amd-gpu-tuning/reference/atlas` is absent:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` fails at
+  `git -C .../reference/atlas rev-parse --short HEAD`. ROCm and gfx1151 are
+  healthy, and the affected Laguna kernel remains cataloged in `docs/KERNELS.md`.
+- RED added explicit K64/K128 resolver and kernel cases. The implementation
+  staged two/four K32 intervals before one compute interval, preserving K
+  accumulation order. Both variants compiled, passed the uneven/empty-expert
+  CPU KL/top-1 fixture, and were BF16-bit identical to the production K32
+  output. LDS grew from **6,656 bytes** to **13,312/26,624 bytes**.
+- A counterbalanced same-load dirty-tree full-model screen used the pinned
+  Poolside model/cache, matrix512/attention128, one HIP queue, cached builds,
+  one 128-row warmup per mode, and three pp512 repetitions per mode. It
+  measured:
+  - production K32: **353.516 tok/s** median
+    (**353.516/353.235/353.581**), token 2930;
+  - staged K64: **318.850 tok/s** median
+    (**318.007/318.850/318.937**), token 2930;
+  - staged K128: **269.071 tok/s** median
+    (**269.084/269.071/268.901**), token 2930.
+- Rejected and removed both variants. Resident T16 stores each K32 subblock
+  separately, so the raw-Q4 K64 trick cannot reuse both nibble planes from one
+  source byte. The screen only amortized barriers while increasing LDS and
+  reducing occupancy. The production source remains unchanged. The raw final
+  production trace further shows activation packing is negligible:
+  D8 gate/up pack **1.225 ms** versus the gate/up MMQ consumer
+  **580.573 ms**; down packing is **4.581 ms** versus Q4/Q6 consumers
+  **139.600/131.987 ms**. The next bounded screen is a 128-column x 64-row
+  natural-route tile that can reduce repeated complete weight streams for
+  experts above 32 rows.

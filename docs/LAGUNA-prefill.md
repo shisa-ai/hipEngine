@@ -635,7 +635,7 @@ and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. Screen K64 nibble reuse and 4–8 K32 stages/double buffering while preserving the admitted arithmetic and accumulation order. |
+| Selected D8 Q4 gate/up | **581.799 ms** | **40.76%** | Primary target. The first multi-K staging screen is rejected below; next reduce repeated expert-weight reads with a 128-column x 64-row natural-route tile while preserving the admitted arithmetic and accumulation order. |
 | Selected D4 Q4/Q6 down | **276.169 ms** | **19.35%** | Carry the winning expert schedule into Q4 and Q6 down, then reprofile the combined 60.11% expert window. |
 | Global + SWA attention | **274.724 ms** | **19.25%** | Build the `KVLiveSpans`-aware M16-query x K64-key tiled path after the next expert trace; it is already above LAP-7's 10% start threshold. |
 | Scaled hipBLASLt source-F16 | **130.373 ms** | **9.13%** | Freeze unless a new trace exposes conversion overhead; this is already at the measured inclusive library ceiling. |
@@ -670,11 +670,11 @@ Immediate execution queue:
    locked/recorded clocks, per-family encoded and physical bytes, and
    counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-2. Screen the selected gate/up K loop in bounded exact variants: current K32,
-   K64 consuming both Q4 nibble planes per source fetch, 4–8 K32 stages per
-   synchronization interval, and double buffering where resource evidence
-   supports it. Report producer-pack-inclusive family and production wall,
-   local/VGPR/LDS/scratch, and all natural shapes.
+2. Screen a 128-column x 64-row selected gate/up tile against the current
+   128x32 production body. Invalid rows must bypass dot work, while experts
+   above 32 natural rows avoid a second complete weight stream. Report
+   producer-pack-inclusive family and production wall, local/VGPR/LDS/scratch,
+   active-expert/tile counts, and all natural shapes.
 3. Apply only the winning schedule to Q4/Q6 down, then run clean selector-unset
    pp512 and the complete category/decode/determinism/lifecycle gate. Retain
    every exact same-suite non-regressive improvement; 500 tok/s closes the next
@@ -703,6 +703,16 @@ Post-350 exclusions:
 The current campaign authority is the retained production packet and trace
 below. Every new modeled table is rebuilt from the most recently promoted
 trace rather than the pre-campaign 76 tok/s bridge.
+
+First post-350 screen: **rejected**. A BF16-bit-identical T16 K64/K128 staged
+gate/up body amortized two workgroup barriers across two/four K32 intervals, but
+multiplied LDS from 6,656 bytes to 13,312/26,624 bytes without eliminating a
+resident-T16 weight read. A counterbalanced dirty-tree full-model diagnostic
+measured K32/K64/K128 medians **353.516/318.850/269.071 tok/s**, always token
+2930. The variants were removed. The raw-source K64 “both nibble planes from
+one byte” lever does not transfer to T16: its resident payload stores K32
+subblocks separately. Do not retry multi-K LDS staging unless a different
+resident layout or asynchronous copy mechanism changes that premise.
 
 Production evidence:
 
