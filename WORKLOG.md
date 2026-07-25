@@ -179140,3 +179140,21 @@ Vulkan local sizes verbatim will close the measured gap.
   reduce global decode/load work or materially change the consume schedule.
   Artifact:
   `benchmarks/results/2026-07-25-gfx1151-laguna-weight-soa-rejected.json`.
+
+## 2026-07-26 — Reject invariant T16 metadata hoist
+
+- Added a RED/GREEN diagnostic D8 specialization that retained each output
+  column's T16 metadata tile pointer and FP16 `d`/`dmin` bases across all eight
+  K32 subblocks of a K256 slab. It removed an estimated 3,584 bytes per
+  output128/K256 slab while preserving scaled metadata arithmetic, packed dots,
+  and K order. The 0/7/18/33-row K512/N128 oracle was BF16 byte-identical.
+- ISA inspection confirmed the base loads moved behind the subblock-zero path.
+  The cached trace remained local128, VGPR80, SGPR128, LDS6656B, scratch0.
+- Thirty-one counter-rotated, burst-five actual layer-1 pp512 samples measured
+  production 11.443188 ms and candidate 11.446249 ms (+0.027%); means differed
+  by only -0.082%. Raw result/trace SHA-256 values are
+  `d409870b...056` / `2b4ce41a...2700`.
+- Removed every diagnostic C/Python/harness/test surface. Production remains
+  385.997 tok/s. The invariant metadata is cache-resident and neutral; focus
+  returns to quant payload consumption and padded-row work. Artifact:
+  `benchmarks/results/2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json`.

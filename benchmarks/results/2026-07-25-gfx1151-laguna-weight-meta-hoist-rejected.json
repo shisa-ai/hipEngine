@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T00:02:00+09:00",
+  "kind": "hipengine_laguna_weight_meta_hoist_rejected",
+  "status": "actual_weight_leaf_neutral_removed",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 Q4_K_M layer-1 D8 Q4 gate/up invariant T16 metadata-hoist diagnostic on gfx1151",
+  "repo": {
+    "base_revision": "f3cd75499",
+    "tracked_dirty_diagnostic": true,
+    "all_candidate_surfaces_removed": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "gate_up_t16_bytes": 931135488
+  },
+  "routing": {
+    "rows": 512,
+    "top_k": 10,
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "compact_rows": 5120,
+    "mmq32_padded_rows": 9504,
+    "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9"
+  },
+  "design": {
+    "change": "load each column's FP16 T16 d/dmin base and metadata tile pointer once per K256 instead of once per K32",
+    "dynamic_base_load_reduction": "8x to 1x per output column/K256",
+    "estimated_removed_weight_bytes_per_output128_k256": 3584,
+    "global_quant_payload_changed": false,
+    "arithmetic_or_accumulation_order_changed": false
+  },
+  "correctness": {
+    "red": "focused test initially failed because the diagnostic weight_meta_hoist selector did not exist",
+    "green": "counts 0/7/18/33, K512, dual N128 candidate is BF16 byte-identical to production and passes the CPU quality gate",
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate[1-True-True-True]'"
+  },
+  "leaf": {
+    "protocol": "actual layer-1 weights and natural pp512 routing; producer-row pack inclusive; four warmups; 31 counter-rotated samples; burst=5",
+    "production_median_ms": 11.4431884765625,
+    "candidate_median_ms": 11.446248626708984,
+    "candidate_delta_percent": 0.026742110843946953,
+    "production_mean_ms": 11.477268785045993,
+    "candidate_mean_ms": 11.467873727121662,
+    "candidate_mean_delta_percent": -0.08185795854648292,
+    "raw_result_sha256": "d409870b93efcd6a6bd7c77899de4366c011ea27a7310108020e6d7c74f7e056",
+    "sanity": "candidate checksum, max_abs, and every BF16 output equal production"
+  },
+  "trace": {
+    "raw_csv_sha256": "2b4ce41aa406b8f8f7b938f130a48227ad77cae0fab17bacedae49973de82700",
+    "raw_csv_committed": false,
+    "kernel_specialization": "<1,false,true,128,true,true>",
+    "workgroup_size": 128,
+    "lds_bytes": 6656,
+    "vgpr": 80,
+    "sgpr": 128,
+    "scratch_bytes": 0,
+    "resource_delta_vs_production": "none",
+    "isa_audit": "base loads are guarded by the subblock-zero path; intended hoist survived compilation"
+  },
+  "decision": "Reject and remove. The median regresses 0.027%, the mean improves only 0.082%, and resources are unchanged. Invariant d/dmin traffic is cache-resident and not the limiting expert path."
+}

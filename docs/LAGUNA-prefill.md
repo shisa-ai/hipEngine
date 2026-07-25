@@ -676,7 +676,8 @@ Immediate execution queue:
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
    around a wave-transpose/direct-consume primitive instead. Persistent K256
    weight slabs with F32 partial spills also completed a negative actual-weight
-   gate, and merely planarizing the existing 40-byte LDS records is neutral.
+   gate. Merely planarizing the existing 40-byte LDS records and hoisting
+   invariant T16 `d`/`dmin` metadata are both neutral.
 3. Apply any further winning expert schedule to Q4/Q6 down, then run clean
    selector-unset pp512 and the complete
    category/decode/determinism/lifecycle gate. Retain every exact same-suite
@@ -968,6 +969,21 @@ all candidate surfaces were removed. The next expert body must reduce global
 decode/load work or change the wave-level consume schedule, not just rearrange
 the current LDS record. Evidence:
 [`2026-07-25-gfx1151-laguna-weight-soa-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-weight-soa-rejected.json).
+
+Sixteenth post-350 screen: **neutral and removed before integration**. The D8
+body rereads each column's FP16 T16 `d` and `dmin` base on every K32 subblock.
+An exact specialization retained the metadata tile pointer and both bases
+across all eight subblocks of a K256 slab, removing an estimated 3,584 bytes
+per output128/K256 slab while leaving the quant payload, scaled metadata
+arithmetic, packed dots, and K order unchanged. ISA inspection confirms the
+base loads moved behind the subblock-zero path.
+
+The focused oracle is BF16 byte-identical, but 31 counter-rotated actual-weight
+samples move **11.443 -> 11.446 ms (+0.027%)**; means differ by only -0.082%.
+The candidate again traces at local128, VGPR80, SGPR128, LDS6656B, scratch0.
+The invariant bases are evidently cache-resident and not limiting. All
+candidate surfaces were removed. Evidence:
+[`2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json`](../benchmarks/results/2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json).
 
 Production evidence:
 
@@ -1583,6 +1599,7 @@ correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-25-gfx1151-laguna-weight-meta-hoist-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-weight-soa-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-persistent-expert-rejected.json`
 - `benchmarks/results/2026-07-25-gfx1151-laguna-swa-wmma-tiled-rejected.json`
