@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna direct attention-norm cast production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / seven-pair pp512 improves scaled rollback **502.348 -> 505.887 tok/s (+0.704%)** with complete-state exactness; clean selector-unset production improves **503.349 -> 503.869 tok/s (+0.103%)**, every sample remains above 500 (**minimum 501.790 tok/s**), and cached source-F16 attribution falls **134.442 -> 128.274 ms (-4.588%)** with dispatches **576 -> 336**; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-production.json`.
+
 - [retained exact gfx1151 Laguna direct attention-norm cast default candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / all 48 attention-norm weights prove a model output bound **16.34623** versus FP16 max 65,504, making the row scale exactly one; exact glue improves **4.434 -> 0.767 ms (-82.70%)** and seven-pair pp512 improves **502.348 -> 505.887 tok/s (+0.704%)** with exact logits/hidden/KV/cursor and all paired wins; gfx1151 selects the route pending clean selector-unset publication; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`.
 
 - [rejected and removed exact gfx1151 Laguna fused-four source-F16 restore] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / cached pp512 attribution splits the **134.442 ms** family into **124.927 ms** hipBLASLt and **9.516 ms** cast/scale/restore; one exact launch per layer reduces Q/K/V/gate restores **192 -> 48** but regresses their 12-full/36-SWA sequence **3.474 -> 6.114 ms (+76.0%)**, so all candidate surfaces are removed and production stays **503.349 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json`.

@@ -180219,3 +180219,28 @@ Vulkan local sizes verbatim will close the measured gap.
   **39 tests**. Production publication remains pending a clean selector-unset
   run from this committed revision. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`.
+
+## 2026-07-26 — Publish direct attention-norm cast in gfx1151 production
+
+- Clean selector-unset matrix512/attention128 long-context publication from
+  committed revision `1bac6ead5` reaches **503.869 tok/s** median pp512 across
+  seven samples, with every sample above 500 (**minimum 501.790 tok/s**) and
+  token 2930 throughout. This is **+0.103%** over the prior 503.349 tok/s
+  production packet; 1K/4K medians are **452.557/356.987 tok/s** and lifecycle
+  passes. Raw SHA-256:
+  `415630db29cd9e2f3208268851ec922901ff8db07cb6dbf10b5112457e858bb9`.
+- A separate clean cached trace independently reaches
+  **507.067/455.389/359.183 tok/s** at 512/1K/4K. pp512 kernel span/sum are
+  **1004.954/994.150 ms** across 1,886 dispatches. Source-F16 falls
+  **134.442 -> 128.274 ms (-4.588%)**, classified dispatches fall
+  **576 -> 336**, and `f32_scale_rows_kernel` is absent.
+- The refreshed pp512 ceiling is selected gate/up **320.097 ms**, selected down
+  **203.000 ms**, global+SWA attention **219.382 ms**, source-F16
+  **128.274 ms**, dense/shared **53.353 ms**, and router **23.331 ms**. The
+  next material work returns to exact expert weight consumption and a new
+  attention premise toward 700 tok/s.
+- Complete logits/hidden/KV/cursor exactness transfers the absolute production
+  gate unchanged: maximum KL **0.049542582**, **316/320** top-1, minimum
+  category top-1 **96.875%**, Poolside pass, neutral decode, deterministic
+  repeats, and exact lifecycle. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-production.json`.

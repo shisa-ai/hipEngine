@@ -3,15 +3,14 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-router-token-tile8-production.json`](results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json).
-It binds matched clean timing and cached attribution to exact eight-token
-router-logit reuse at revision `238eb28cd`. Router logits, selected IDs,
-routing weights, and complete MoE BF16 output are byte-identical, so the direct
-all-exact 320-step quality gate transfers unchanged. Conservative median pp512
-is **503.349 tok/s**, all seven clean samples are at least **501.698 tok/s**,
-the independent cached trace is **504.631 tok/s**, and absolute maximum KL
-remains **0.049542582**. The declared 500 tok/s production gate is closed; the
-active stretch target is 700 tok/s.
+[`2026-07-26-gfx1151-laguna-f16-norm-direct-production.json`](results/2026-07-26-gfx1151-laguna-f16-norm-direct-production.json).
+It binds matched A/B, clean selector-unset timing, complete-state exactness, and
+cached attribution to direct attention-RMSNorm BF16-to-FP16 consumption at
+revision `1bac6ead5`. Conservative median pp512 is **503.869 tok/s**, all seven
+clean samples are at least **501.790 tok/s**, the independent cached trace is
+**507.067 tok/s**, and absolute maximum KL remains **0.049542582**. The
+declared 500 tok/s production gate is closed; the active stretch target is
+700 tok/s.
 
 The first post-500 replacement-layout screen is closed. Q4_K T128 improves the
 exact actual layer-1 natural-M512 gate/up leaf **7.015 -> 6.157 ms (-12.23%,
@@ -35,12 +34,13 @@ the input row scale is provably one. A direct BF16-to-FP16 primitive plus
 removal of four identity output restores improves the exact pp512 glue mix
 **4.434 -> 0.767 ms (-82.70%, 5.780x)** with byte parity. Seven-pair full
 pp512 improves **502.348 -> 505.887 tok/s (+0.704%)** with exact
-logits/hidden/KV/cursor and all paired wins. gfx1151 now selects the route as
-its candidate default; published production remains **503.349 tok/s** pending
-the clean selector-unset refresh.
-[`artifact`](results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json).
+logits/hidden/KV/cursor and all paired wins. The clean selector-unset refresh
+retains it in production at **503.869 tok/s** median and **501.790 tok/s**
+minimum while cached source-F16 attribution falls **134.442 -> 128.274 ms**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-f16-norm-direct-production.json).
 
 Latest retained hipEngine revisions in this scoreboard:
+`1bac6ead5` for the exact direct attention-norm cast in Laguna production,
 `238eb28cd1c748c1755ac8871db4c0e140c3fee4` for exact eight-token
 Laguna router-logit reuse,
 `f91eccb5d16d8269199d4b1060df183c91dafad8` for exact stable parallel
