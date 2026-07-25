@@ -1032,10 +1032,11 @@ should be boring.
   and arithmetic, is BF16-byte identical, improves the actual layer-1 leaf
   **8.107 -> 6.916 ms**, and improves the implementation-worktree pp512 screen
   **447.582 -> 472.533 tok/s**.
-- Remove the explicit pair-decode session route after the direct mode passes
-  clean selector-unset timing, direct all-exact quality, lifecycle, and
-  all-family tracing. Keep no duplicate positive selector solely for
-  historical benchmarking.
+- Removal trigger is satisfied: clean selector-unset pp512 improves
+  **449.020 -> 474.363 tok/s**, direct all-exact quality/lifecycle pass, and
+  cached all-family tracing names the intended direct template. Remove the
+  explicit pair-decode session route during immediate cleanup; keep no
+  duplicate positive selector solely for historical benchmarking.
 
 ## Laguna rejected Q6 down wave-column template branch
 

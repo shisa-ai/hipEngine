@@ -179488,3 +179488,37 @@ Vulkan local sizes verbatim will close the measured gap.
   This is not yet a production claim: commit first, then require clean
   selector-unset timing, direct all-exact quality/lifecycle, and a refreshed
   all-family trace. The 500 and 700 gates remain open.
+
+## 2026-07-26 — Publish direct Q4 gate/up decode at 474.363 tok/s
+
+- Committed the candidate as `d7134100d`, restoring a tracked-clean tree.
+  Clean one-owner matrix512/attention128 pp512 over seven counterbalanced
+  repetitions improves explicit pair-decode rollback **449.020213 ->
+  474.362976 tok/s (+5.644%)**. All direct samples are
+  **471.774035–476.131622**, completely separated from rollback, and every run
+  selects token 2930. Raw log SHA-256:
+  `45df3a9ed377abe12b9e92fe5a93869508a6ab77827c44d6ca2ff1f3f05ef0a2`.
+- The fresh direct production-versus-all-exact ten-prompt lane passes maximum
+  KL **0.04954258196634279**, **316/320 (98.75%)** top-1, and minimum category
+  agreement **96.875%**. Poolside top-1 is exact, same-mode repeats are
+  deterministic, tracked allocation/free is exactly
+  **109,859,542,160 bytes**, and h16/h32 decode ratios are
+  **0.999943/0.999975**. Natural-prompt prefill is
+  **53.432 -> 228.356 tok/s (4.274x)**. Raw JSON SHA-256:
+  `157e9337fe8c490d3fb2fb0118f725d20cb85c012372f5c324fb6d6086a00610`.
+- Cached all-family tracing measures **475.267/429.785/343.453 tok/s** at
+  512/1K/4K, with pp512 wall/span/kernel sum
+  **1,077.288/1,073.891/1,062.220 ms**. Selected gate/up falls
+  **389.893 -> 317.722 ms (-18.51%)** and is now **29.91%** of kernel sum.
+  Selected down is **224.241 ms / 21.11%**, split into Q4 consumer
+  **90.280 ms**, Q6 consumer **128.896 ms**, and activation pack **5.065 ms**.
+  Attention is **217.696 ms / 20.49%**, source-F16 **133.942 ms / 12.61%**,
+  and dense/shared **72.661 ms / 6.84%**. Raw trace/child/summary SHA-256:
+  `f678ab2...1dd` / `0913d89...910` / `01782d5...f96`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-direct-wavecols-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, refactor
+  ledger, and plan. Production is now **474.363 tok/s**. Only **53.3 ms** of
+  traced pp512 wall separates it from 500; next bounded task is direct
+  per-column decode for the **90.280 ms Q4-down** consumer while Q6 remains
+  row-vector.
