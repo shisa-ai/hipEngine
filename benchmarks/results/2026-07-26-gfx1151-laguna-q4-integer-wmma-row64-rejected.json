@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T20:32:00+00:00",
+  "kind": "hipengine_laguna_q4_integer_wmma_row64_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "f0ac6dc1a5db75809098da82740c91b96c1c61bc",
+    "candidate_tracked_dirty": true,
+    "candidate_surfaces_removed": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "gate_up_resident_bytes": 931135488
+  },
+  "hypothesis": {
+    "production": "one local128 workgroup owns one 128-column x 32-row tile and uses scalar v_dot4_i32_i8",
+    "candidate": "one local128 workgroup owns one 64-column x 64-row tile and uses exact integer WMMA, preserving 32 FP32 accumulators per lane while reusing each staged K32 weight tile across two row32 groups",
+    "padding_free_hybrid": "complete pairs of production row32 tiles use the integer-WMMA body; every odd row32 tail uses production",
+    "unchanged": "T16 resident weights, one-plane D8 activation cache, Q4_K scale/min arithmetic, BF16 output, no resident sidecar",
+    "goal": "halve weight rereads without local256 occupancy or serial row-outer ownership"
+  },
+  "correctness": {
+    "fixture_counts": [
+      0,
+      7,
+      18,
+      33
+    ],
+    "candidate_vs_production_bf16_mismatches": 0,
+    "actual_weight_checksums_equal": true,
+    "cpu_reference_kl_limit": 0.05,
+    "cpu_reference_top1_minimum": 0.9,
+    "focused_cases_passed": 12,
+    "result": "pass"
+  },
+  "protocol": {
+    "full_row64_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq64x64-d8-f32-integer-wmma --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-wmma64x64-actual.json",
+    "padding_free_hybrid_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq-d8-f32-integer-wmma-pairs --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-wmma64x64-pairs-actual.json",
+    "timing": "counter-rotated HIP events; each sample is the mean of a three-launch burst",
+    "natural_routing_artifact": "/tmp/laguna-lap1-routing-all-shapes.json",
+    "candidate_build_prebuilt": true,
+    "candidate_build_cached_only_during_timing": true
+  },
+  "results": {
+    "full_row64": {
+      "m256": {
+        "production_row32_tiles": 239,
+        "candidate_row64_tiles": 226,
+        "production_median_ms": 4.385556538899739,
+        "candidate_median_ms": 8.391478856404623,
+        "latency_change_percent": 91.34353375614901
+      },
+      "m512": {
+        "production_row32_tiles": 297,
+        "candidate_row64_tiles": 247,
+        "production_median_ms": 6.806545257568359,
+        "candidate_median_ms": 10.067129135131836,
+        "latency_change_percent": 47.90365382405937
+      }
+    },
+    "padding_free_hybrid": {
+      "m256": {
+        "integer_wmma_row64_tiles": 13,
+        "production_row32_tail_tiles": 213,
+        "production_median_ms": 4.427780469258626,
+        "candidate_median_ms": 4.88056755065918,
+        "latency_change_percent": 10.226050829398204
+      },
+      "m512": {
+        "integer_wmma_row64_tiles": 50,
+        "production_row32_tail_tiles": 197,
+        "production_median_ms": 6.892733256022136,
+        "candidate_median_ms": 6.93672243754069,
+        "latency_change_percent": 0.6381964872951063
+      }
+    }
+  },
+  "source_runs": [
+    {
+      "path": "/tmp/laguna-q4-wmma64x64-actual.json",
+      "sha256": "168c9af9cf5483d9d5128cc3145a3448c31f8a87eac2fa7cb5926010fbfc65ef"
+    },
+    {
+      "path": "/tmp/laguna-q4-wmma64x64-pairs-actual.json",
+      "sha256": "84481b698615dda420753b2f0728c37e8f4bfac61474d592bb8ac5ab106f9a16"
+    }
+  ],
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked because configured read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout is absent"
+  },
+  "decision": {
+    "retain": false,
+    "rocprof_required": false,
+    "reason": "integer-WMMA operand setup and synchronization consume more than the saved row-pair weight traffic; even the padding-free split launch loses at both natural shapes",
+    "production_512_tok_s": 632.6179846953831,
+    "next_action": "do not retry this 64-column x 64-row integer-WMMA contraction; seek a different quality/performance allocation or contraction architecture"
+  }
+}

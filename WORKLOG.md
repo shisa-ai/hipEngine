@@ -183402,3 +183402,29 @@ Vulkan local sizes verbatim will close the measured gap.
   cross-row reuse must keep a K tile live while multiple row tiles consume it
   or use a different contraction architecture. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-persistent-expert-rows-rejected.json`.
+
+## 2026-07-27 — Reject Q4 row64 integer-WMMA gate/up
+
+- Before the port-shaped screen,
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` remained
+  blocked only because the configured read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+- RED added an exact integer-WMMA selector to the Q4 gate/up CPU-reference
+  fixture. GREEN implemented a temporary local128 64-column x 64-row
+  contraction that preserves 32 FP32 accumulators/lane and reuses each
+  staged K32 weight tile across two row32 groups. Counts `[0,7,18,33]` are
+  BF16-bit exact versus production and the complete **12-case** matrix passes.
+- Full row64 padding is decisively negative on 21 counter-rotated,
+  cached-only actual-weight samples: M256 regresses
+  **4.3856 -> 8.3915 ms (+91.34%)** and M512
+  **6.8065 -> 10.0671 ms (+47.90%)**.
+- A final padding-free split schedule sends only complete production row32
+  pairs through integer WMMA and all odd tails through production. It still
+  regresses M256 **4.4278 -> 4.8806 ms (+10.23%)** with 13 row64 pairs and
+  M512 **6.8927 -> 6.9367 ms (+0.64%)** with 50 pairs. Actual-weight
+  checksums agree.
+- Integer-WMMA setup/synchronization and the second launch consume the saved
+  row-pair traffic. Every temporary HIP/Python/harness/test surface was
+  removed; no retained-kernel trace is warranted. Production remains
+  **632.618 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json`.

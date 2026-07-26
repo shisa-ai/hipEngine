@@ -1383,6 +1383,24 @@ Immediate execution queue:
    consume it or change the contraction architecture.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-persistent-expert-rows-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-persistent-expert-rows-rejected.json).
+30. **Rejected and removed:** use exact integer WMMA in a local128,
+   64-column x 64-row gate/up tile. This is distinct from the rejected
+   local256 row64 body: it preserves 32 FP32 accumulators/lane and keeps each
+   staged K32 weight tile live across two row32 groups. The empty/uneven/
+   33-row fixture is BF16-bit exact versus production and the complete
+   12-case CPU-reference matrix passes. Full row64 padding regresses the
+   actual layer-1 leaf **4.386 -> 8.391 ms (+91.34%)** at M256 and
+   **6.807 -> 10.067 ms (+47.90%)** at M512. A padding-free split schedule
+   then sends only complete row32 pairs through integer WMMA and every odd
+   tail through production. It still regresses
+   **4.428 -> 4.881 ms (+10.23%)** with 13 row64 pairs at M256 and
+   **6.893 -> 6.937 ms (+0.64%)** with 50 pairs at M512. Integer-WMMA operand
+   setup, synchronization, and the second launch consume all saved weight
+   traffic. Every candidate kernel, wrapper, harness mode, and test is
+   removed; no retained kernel trace is warranted. Do not retry this exact
+   64x64 contraction.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json).
 
 Post-350 exclusions:
 
