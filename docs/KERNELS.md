@@ -178,6 +178,21 @@ attention **82.763 -> 73.330 ms (-11.40%)** and dispatches
 SGPR128/LDS0/scratch0. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-{candidate,production}.json`.
 
+The successor causal-softmax candidate maps exactly one score row to one
+wave32 workgroup. It removes the prior local256 kernel's eight LDS partials
+and four workgroup barriers while preserving complete `KVLiveSpans`
+qualification, causal visibility, the F32 score/output ABI, and the
+packed-query QK/PV contractions. The qualified 48-layer attention model
+improves **72.738 -> 62.755 ms (-13.73%)**; seven complete pp512 pairs improve
+**614.668 -> 620.032 tok/s (+0.873%, 6/7 wins)**. The changed reduction tree
+passes its explicit quality gate: all-exact KL improves
+**0.002097 -> 0.001796**, production-to-candidate KL is **0.0000971**, and
+top-1 remains 2930. Cached tracing names the candidate at
+local32/VGPR24/SGPR128/LDS0/scratch0. gfx1151 enables the capability with the
+block256 body retained as explicit numerical rollback; clean selector-unset
+publication remains pending. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers

@@ -1319,6 +1319,26 @@ Immediate execution queue:
    accumulator lifetime.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json).
+27. **Admitted gfx1151 candidate; clean publication pending:** replace the
+   dense-initial causal-softmax block reduction with one wave32 per score row.
+   The established body launches local256 for each row, merges eight wave
+   partials through LDS, and crosses four workgroup barriers. The candidate
+   launches local32, uses wave shuffles only, and keeps the complete
+   `KVLiveSpans` qualification, causal mask, F32 score ABI, exp/inverse
+   operations, and packed-query QK/PV contractions. Screening one/two/four/
+   eight independent rows per workgroup selects the simplest one-row policy.
+   The qualified 48-layer packed-attention model improves
+   **72.738 -> 62.755 ms (-13.73%)**. Seven complete pp512 pairs improve
+   **614.668 -> 620.032 tok/s (+0.873%, 6/7 wins)** and save **7.206 ms** at
+   the paired median wall. Reassociation is distribution-gated: all-exact KL
+   improves **0.002097 -> 0.001796**, production-to-candidate KL is
+   **0.0000971**, and all top-1 IDs remain 2930. Cached tracing names the
+   retained kernel at local32/VGPR24/SGPR128/LDS0/scratch0. gfx1151 enables
+   the capability with an explicit block256 rollback. Do not advance the
+   production topline from **629.101 tok/s** until a clean selector-unset
+   512/1K/4K publication passes.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json).
 
 Post-350 exclusions:
 

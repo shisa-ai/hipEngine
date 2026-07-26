@@ -1896,6 +1896,65 @@ __global__ void laguna_dense_initial_causal_softmax_f32_kernel(
   if (token1 < visible) scores[base + token1] *= inverse;
 }
 
+__launch_bounds__(256, 2)
+__global__ void laguna_dense_initial_causal_softmax_wave_rows_f32_kernel(
+    float* __restrict__ scores,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t context,
+    int64_t num_q_heads,
+    int64_t start_position,
+    float scale) {
+  constexpr int kWave = 32;
+  const int lane = static_cast<int>(threadIdx.x);
+  const int64_t group = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = group % rows;
+  const int64_t q_head = group / rows;
+  if (q_head >= num_q_heads || live_counts[0] < context ||
+      row_positions[0] != start_position ||
+      token_positions[0] != 0 ||
+      token_positions[context - 1] != context - 1 ||
+      evict_mask[0] != 0 || evict_mask[context - 1] != 0) {
+    return;
+  }
+  const int64_t visible = start_position + row + 1 < context
+      ? start_position + row + 1
+      : context;
+  const int64_t base = (q_head * rows + row) * context;
+  const float lowest = -3.4028234663852886e38f;
+  float local_max = lowest;
+  for (int64_t token = lane; token < visible; token += kWave) {
+    local_max = fmaxf(local_max, scores[base + token] * scale);
+  }
+#pragma unroll
+  for (int offset = kWave / 2; offset > 0; offset >>= 1) {
+    local_max = fmaxf(
+        local_max,
+        __shfl_down(local_max, offset, kWave));
+  }
+  const float maximum = __shfl(local_max, 0, kWave);
+  float local_sum = 0.0f;
+  for (int64_t token = lane; token < context; token += kWave) {
+    const float weight = token < visible
+        ? expf(scores[base + token] * scale - maximum)
+        : 0.0f;
+    scores[base + token] = weight;
+    local_sum += weight;
+  }
+#pragma unroll
+  for (int offset = kWave / 2; offset > 0; offset >>= 1) {
+    local_sum += __shfl_down(local_sum, offset, kWave);
+  }
+  const float denominator = __shfl(local_sum, 0, kWave);
+  const float inverse = 1.0f / fmaxf(denominator, 1.0e-20f);
+  for (int64_t token = lane; token < visible; token += kWave) {
+    scores[base + token] *= inverse;
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_laguna_dense_initial_cache_bf16_to_f32_spans(
@@ -2041,6 +2100,45 @@ extern "C" int hipengine_laguna_dense_initial_causal_softmax_f32_spans(
       laguna_dense_initial_causal_softmax_f32_kernel,
       dim3(static_cast<unsigned int>(rows * num_q_heads)),
       dim3(256),
+      0,
+      stream,
+      scores,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
+      context,
+      num_q_heads,
+      start_position,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
+    float* scores,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t context,
+    int64_t num_q_heads,
+    int64_t start_position,
+    float scale,
+    hipStream_t stream) {
+  if (scores == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || rows <= 0 || rows > 128 ||
+      context <= 0 || context > 512 || num_q_heads <= 0 ||
+      start_position < 0 || start_position + rows != context) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_dense_initial_causal_softmax_wave_rows_f32_kernel,
+      dim3(static_cast<unsigned int>(rows * num_q_heads)),
+      dim3(32),
       0,
       stream,
       scores,
