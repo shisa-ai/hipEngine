@@ -181963,3 +181963,39 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-gate-up-physical-counters.json`.
   LAP-BW0 next profiles Q4 and Q6 selected down separately, then admits only a
   schedule whose byte model removes row-tile weight rereads.
+
+## 2026-07-26 — Complete LAP-BW0 physical counters for selected down
+
+- Collected `FETCH_SIZE` and `MemUnitBusy` in separate `rocprofv3` processes
+  over the clean cached production profile. The pp512 slice is the second
+  contiguous grid group after M128 warmup and contains all 24 Q4 and 23 Q6
+  selected-down calls. Every 512/1K/4K run selected exact tokens
+  **2930/95/7772**, final positions and lifecycle are exact, and tracked
+  allocations return to zero.
+- Q4 down physically fetches **13.405366 GB** in **72.195387 ms**:
+  **185.682 GB/s / 84.019%** of the 221-GB/s stream anchor and **87.777%**
+  duration-weighted memory-unit busy. Its 32-row schedule turns **5,144**
+  active expert groups into **7,088** weight passes (**1.3779x**).
+  Scheduled weight requests are **12.890407 GB**, **96.16%** of physical
+  fetch; the active-expert-once floor is **9.355002 GB**.
+- Q6 down physically fetches **14.740415 GB** in **118.887831 ms**:
+  **123.986 GB/s / 56.102%** of the anchor and **66.958%** memory-unit busy.
+  Its 64-row schedule turns **5,093** active groups into **5,671** passes
+  (**1.1135x**). Scheduled requests are **14.633902 GB**, **99.28%** of
+  physical fetch; the active-expert-once floor is **13.142385 GB**.
+- The focused production Q6 layer-1 cross-check is **4.864420 ms**, fetches
+  **651,865,728 bytes**, and records **67.114%** memory-unit busy,
+  **93.349%** occupancy, **0.853%** LDS stall, **35.190%** L2 hit, and a
+  **2.804-GHz** in-kernel median. Q6 is neither an LDS nor occupancy problem;
+  larger row geometry and K staging are already closed.
+- Perfect removal of all scheduled duplicate weights is only **19.04 ms** for
+  Q4 plus **12.03 ms** for Q6. Applied without replacement cost, that moves
+  the 559.290-tok/s wall only to about **579 tok/s**. Selected down cannot
+  produce 700 alone.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-selected-down-physical-counters.json`.
+  Q4 remains the selected-down priority. The next bounded screen is a
+  down-specific persistent K256 body: K1024, one projection, and four partial
+  passes materially reduce the state/workspace burden versus the already
+  rejected K3072 dual gate/up twelve-pass body. It must win on actual Q4
+  layers before runtime integration.
