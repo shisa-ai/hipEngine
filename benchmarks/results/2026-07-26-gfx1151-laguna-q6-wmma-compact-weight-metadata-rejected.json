@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T15:46:25+00:00",
+  "kind": "hipengine_laguna_q6_wmma_compact_weight_metadata_screen",
+  "status": "rejected_and_removed",
+  "repo_revision": "b9c8262120e742bd11fc3b60169b027eb096161d",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M with resident planar-qmicro Q6_K selected down",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "scope": "production Q6 planar-qmicro integer-WMMA selected down; D4 activation; 64 output columns x 64 routed rows; local128",
+    "premise": "replace each 40-byte shared weight record (eight quant dwords plus two combined FP32 scales) with a 36-byte record containing eight quant dwords plus the source FP16 d and two int8 Q6 scales packed in one dword; reconstruct the exact combined FP32 scales in the WMMA consumer",
+    "invariants": "resident weights, activation quantization, WMMA fragments, -32*sum(x) correction, ordered FP32 K32 accumulation, and BF16 stores remain unchanged",
+    "resident_delta_bytes": 0,
+    "logical_shared_bytes": {
+      "production": 5120,
+      "candidate": 4864
+    }
+  },
+  "correctness": {
+    "red": "The production-shaped uneven/empty-expert test initially failed because the wrapper had no compact-weight-metadata selector.",
+    "green": "The distinct exact specialization passed the production-shaped CPU-reference fixture.",
+    "actual_weight_bf16_mismatches_vs_production": 0,
+    "actual_weight_checksum": 509500838004,
+    "memory_returned": true,
+    "peak_tracked_bytes": 2326720536,
+    "post_removal_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate' tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151 tests/test_laguna_moe_gpu.py::test_laguna_mmq_selected_down_reuses_exact_grouped_combine",
+    "post_removal_result": "15 passed"
+  },
+  "actual_weight_layer1_leaf": {
+    "shape": {
+      "natural_prompt_rows": 512,
+      "compact_routed_rows": 5120,
+      "padded_rows64": 15808,
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "resident_weight_bytes": 660602880
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-wmma-compact-weight-metadata-leaf-21.json",
+    "timing": "HIP events; activation packing excluded; counter-rotated over fourteen modes; burst seven",
+    "production_hoist_median_ms": 4.5136536189488,
+    "compact_weight_metadata_median_ms": 4.8221010480608255,
+    "change_percent": 6.833653070256207,
+    "candidate_wins": 0,
+    "pairs": 21,
+    "production_range_ms": [
+      4.504080636160714,
+      4.52236693246024
+    ],
+    "candidate_range_ms": [
+      4.814630235944476,
+      4.88014166695731
+    ],
+    "raw_sha256": "fdb77ca62a59acd8a28f393a3f3c55bf9fe44076cfc9aecfcfe5dd778b827618"
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-file laguna-q6-compact-meta -- HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/laguna_q6_qmicro_leaf.py --samples 1 --warmups 0 --prefill-burst 1 --decode-burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build",
+    "production_kernel_ms": 4.498239,
+    "candidate_kernel_ms": 4.804895,
+    "production_resources": {
+      "local_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes": 0
+    },
+    "candidate_resources": {
+      "local_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes": 0
+    },
+    "raw_csv_sha256": "164aad7aec17d12cb107e2ac33834ee8f934dd91c63519bf24c58258eae0bed9",
+    "child_json_sha256": "3cc58090387568ada344cf7ec6a2b9033f234bffbce4289cddf826eb80a5727f"
+  },
+  "code_object": {
+    "production_kernel_code_bytes": 10716,
+    "candidate_kernel_code_bytes": 12104,
+    "finding": "The candidate grows the kernel body while the physical LDS allocation and occupancy resources remain unchanged. Both disassemblies contain 32 scalar FP32 multiplies in the inspected body, so moving reconstruction outside the inner fragment loop has no remaining compiler-level premise."
+  },
+  "decision": {
+    "pass": false,
+    "reason": "The nominal 256-byte logical LDS reduction rounds to the same 5120-byte allocation and exact combined-scale reconstruction loses every pair, regressing the leaf by 6.834%.",
+    "action": "Remove the HIP specialization, export, wrapper selector, CPU-reference parameter, and leaf-harness mode. Preserve the production 40-byte record with precomputed FP32 combined scales.",
+    "production_prefill_tok_s": 577.395613,
+    "next": "Freeze Q6-local metadata variants and use current-production critical-path analysis to select a wall-level physical-byte, scheduling, or fusion mechanism."
+  }
+}

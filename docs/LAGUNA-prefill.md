@@ -771,7 +771,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Current production family | Inclusive pp512 kernel time | Inclusive-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **341.011 ms** | **28.41%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters already reach **195.88 GB/s / 88.64%** of the read anchor; this remains the largest inclusive family but needs a physical-byte architecture, not another local decode tweak. |
-| Selected D4 Q4/Q6 down | **180.656 ms** | **15.05%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Activation-fragment reuse cuts pp512 Q6 **109.290 -> 108.233 ms (-0.97%)** and the 115-call 512/1K/4K Q6 window **792.625 -> 779.709 ms (-1.63%)**. Exact result-metadata lane broadcast is the next bounded screen before a WMMA-specific K64 schedule. |
+| Selected D4 Q4/Q6 down | **180.656 ms** | **15.05%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Activation-fragment reuse cuts pp512 Q6 **109.290 -> 108.233 ms (-0.97%)** and the 115-call 512/1K/4K Q6 window **792.625 -> 779.709 ms (-1.63%)**. Result-metadata broadcast and compact shared weight metadata both regress decisively; Q6-local metadata work is frozen. The remaining down opportunity requires fewer physical weight bytes or a different cross-tile schedule. |
 | Global + SWA attention | **143.669 ms** | **11.97%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
 | Static-range direct hipBLASLt source-F16 | **124.185 ms** | **10.35%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
 | Q4/Q6 WMMA dense/shared | **94.565 ms** | **7.88%** | This inclusive family overlaps routed work. The retained least-priority shared schedule keeps nearly all of it off the critical path. |
@@ -1194,14 +1194,25 @@ Immediate execution queue:
    positions, and complete allocation return. Evidence:
    [`2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json).
    [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-production.json).
-20. **Active next screen:** broadcast each result row's invariant `d` and two
-   K16 sums from the two owning lanes across each 16-lane half-wave instead of
-   having all 16 column lanes reread identical LDS metadata. Keep the exact
-   WMMA fragments, corrections, scale multiplication, and FP32 K32 order.
-   Gate on the 13-case CPU oracle, cached resources, and the 21-pair actual
-   leaf. Remove it if shuffle cost outweighs the LDS reduction. Only then
-   consider a WMMA-specific K64 screen; do not inherit the rejected scalar K64
-   schedule blindly or accept scratch/VGPR growth without measured payoff.
+20. **Rejected and removed:** broadcasting each result row's invariant `d`
+   and two K16 sums from lanes 0/16 is BF16 exact, but two wave shuffles per
+   result row are much more expensive than gfx1151 same-address LDS service.
+   Twenty-one actual layer-1 natural-M512 pairs regress
+   **4.5149 -> 6.3418 ms (+40.46%, 0/21 wins)**. The distinct HIP
+   specialization, wrapper selector, test parameter, and harness mode were
+   removed.
+21. **Rejected and removed:** compacting the Q6 integer-WMMA shared weight
+   record from **40 -> 36 bytes/column** by staging the source FP16 `d` and two
+   int8 scales in one dword is BF16 exact, but reconstructing the combined
+   FP32 scales grows the kernel body and regresses twenty-one actual layer-1
+   natural-M512 pairs **4.5137 -> 4.8221 ms (+6.834%, 0/21 wins)**.
+   The logical shared tile falls **5,120 -> 4,864 bytes**, but the hardware
+   allocation remains rounded to **5,120 bytes**; local128, VGPR96, SGPR128,
+   and scratch0 are unchanged. The candidate was removed. Q6-local metadata
+   variants and single-stage pseudo-K64 loop unrolling are closed: adjacent
+   planar K32 records are independent, so a loop-only K64 form cannot reuse
+   quant bytes or remove either synchronization boundary. Resume this family
+   only with a physical-byte or cross-tile reuse mechanism.
 
 Post-350 exclusions:
 
@@ -2970,6 +2981,10 @@ Do not repeat:
 - Q6 WMMA result-metadata half-wave broadcast: replacing same-address LDS reads
   with two wave shuffles per result row is exact but regresses the actual
   natural-M512 leaf **4.5149 -> 6.3418 ms (+40.46%, 0/21 wins)**;
+- Q6 WMMA compact shared weight metadata: shrinking the logical staged record
+  **40 -> 36 bytes/column** is exact, but LDS allocation remains **5,120 B**
+  after rounding and exact scale reconstruction regresses the actual
+  natural-M512 leaf **4.5137 -> 4.8221 ms (+6.834%, 0/21 wins)**;
 - Q6 static-upper sentinel grids and launch-bounds occupancy hints: unused
   workgroups are effectively free, while `(128,2)` emits the same
   VGPR/LDS/scratch resources and no repeatable speed change as `(128,1)`;
