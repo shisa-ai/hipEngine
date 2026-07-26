@@ -61,7 +61,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--chunk-size", type=int, default=64)
     parser.add_argument(
         "--iq3-c1-down-schedule",
-        choices=("serial_weighted", "wave4_reduce"),
+        choices=("serial_weighted", "wave4_reduce", "wave10_fused"),
         default=None,
     )
     parser.add_argument(

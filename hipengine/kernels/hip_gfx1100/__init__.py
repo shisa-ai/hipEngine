@@ -37,6 +37,10 @@ LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = True
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
 LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
+# Default-off admission for the exact local320 ten-wave IQ3 producer/reducer
+# composite. The retained wave4 plus registered reducer remains the default
+# until full-state, clean-context, and complete-category gates pass.
+LAGUNA_IQ3_WAVE10_FUSED = False
 # The exact expanded-magnitude IQ2 grid contracts selector reconstruction and
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
@@ -126,6 +130,7 @@ __all__ = [
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
+    "LAGUNA_IQ3_WAVE10_FUSED",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
