@@ -552,8 +552,10 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert cache.pending_positions == ()
     with pytest.raises(ValueError, match="consecutive"):
         cache.prepare_rows((5, 7))
-    with pytest.raises(ValueError, match="capacity"):
-        cache.prepare_rows(tuple(range(5, 5 + 513)))
+    wide_positions = tuple(range(5, 5 + 2_048))
+    cache.prepare_rows(wide_positions)
+    assert cache.pending_positions == wide_positions
+    cache.discard_rows()
 
     cache.reset()
     assert cache.position == -1
@@ -638,6 +640,21 @@ def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
         cache.prepare_rows(tuple(range(512, 640)))
         assert cache.can_preappend_prefill(0, 128)
         assert not cache.can_preappend_prefill(1, 128)
+        cache.discard_rows()
+        wide_positions = tuple(range(512, 512 + 2_048))
+        cache.prepare_rows(wide_positions)
+        with pytest.raises(ValueError, match="SWA ring"):
+            cache.append_rows(1, 0x2000, 0x3000, 2_048)
+        cache.append_rows(
+            1,
+            0x2000,
+            0x3000,
+            128,
+            row_offset=1_024,
+            row_positions_ptr=positions_ptr + 1_024 * DType.INT64.itemsize,
+        )
+        wide_spans = calls[-1][1][4]
+        assert wide_spans.row_positions.ptr == positions_ptr + 1_024 * 8
         cache.discard_rows()
     finally:
         cache.free()
@@ -1796,7 +1813,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_laguna_swa_resident_attention_slices_match_128_row_chunks_at_511_512_513() -> None:
+def test_laguna_swa_resident_attention_slices_match_chunks_across_ring_wrap() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (
         copy_device_to_host,
@@ -1826,19 +1843,19 @@ def test_laguna_swa_resident_attention_slices_match_128_row_chunks_at_511_512_51
     )
     baseline = allocate_laguna_kv_cache(
         config,
-        context_length=514,
+        context_length=1_024,
         backend="hip_gfx1151",
         runtime=runtime,
     )
     sliced = allocate_laguna_kv_cache(
         config,
-        context_length=514,
+        context_length=1_024,
         backend="hip_gfx1151",
         runtime=runtime,
     )
     rng = np.random.default_rng(1513)
     seed_rows = 384
-    rows = 130
+    rows = 640
     keys = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
     values = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
     queries = rng.normal(0.0, 0.12, size=(rows, 72, 128)).astype(np.float32)
@@ -1870,7 +1887,11 @@ def test_laguna_swa_resident_attention_slices_match_128_row_chunks_at_511_512_51
             cache.append_rows(0, key_rows.ptr, value_rows.ptr, seed_rows, library=library)
             cache.commit_rows()
 
-        for offset, count in ((0, 128), (128, 2)):
+        attention_slices = tuple(
+            (offset, min(128, rows - offset))
+            for offset in range(0, rows, 128)
+        )
+        for offset, count in attention_slices:
             chunk_positions = tuple(int(value) for value in positions[offset : offset + count])
             baseline.prepare_rows(chunk_positions)
             baseline.attend_prefill(
@@ -1892,7 +1913,7 @@ def test_laguna_swa_resident_attention_slices_match_128_row_chunks_at_511_512_51
             baseline.commit_rows()
 
         sliced.prepare_rows(tuple(int(value) for value in positions))
-        for offset, count in ((0, 128), (128, 2)):
+        for offset, count in attention_slices:
             slice_position_ptr = position_rows.ptr + offset * DType.INT64.itemsize
             sliced.attend_prefill(
                 0,
@@ -1932,7 +1953,7 @@ def test_laguna_swa_resident_attention_slices_match_128_row_chunks_at_511_512_51
             runtime=runtime,
         )
         np.testing.assert_array_equal(sliced_context, baseline_context)
-        assert baseline.position == sliced.position == 513
+        assert baseline.position == sliced.position == 1_023
 
         baseline_state = baseline.layer(0)
         sliced_state = sliced.layer(0)

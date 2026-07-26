@@ -559,7 +559,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "token_source": token_source,
             "boundary_gate": (
                 "tests/test_laguna_kv_attention.py::"
-                "test_laguna_swa_resident_attention_slices_match_128_row_chunks_at_511_512_513"
+                "test_laguna_swa_resident_attention_slices_match_chunks_across_ring_wrap"
             ),
         },
         "load": {
