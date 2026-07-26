@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T09:45:20Z",
+  "kind": "hipengine_laguna_selected_down_physical_counter_audit",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "scope": "Production Laguna S 2.1 Q4_K_M pp512 Q4 and Q6 selected-down consumers on gfx1151",
+  "repo": {
+    "revision": "492b5ac23e8dd55d8abb6d61e55a51572eb77797",
+    "tracked_status": []
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1,
+    "performance_level": "auto",
+    "performance_level_qualification": "The root-owned sysfs performance-level control is not writable by the benchmark user. No locked-clock claim is made."
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "rows": 512,
+    "experts": 256,
+    "top_k": 10,
+    "q4_down_layers": 24,
+    "q6_down_layers": 23
+  },
+  "routing": {
+    "artifact": "/tmp/laguna-lap0-routing-8d26a9562.json",
+    "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9",
+    "q4": {
+      "compact_rows": 122880,
+      "active_expert_groups": 5144,
+      "row_tile": 32,
+      "scheduled_row_tiles": 7088,
+      "weight_reread_factor": 1.3779160186625194
+    },
+    "q6": {
+      "compact_rows": 117760,
+      "active_expert_groups": 5093,
+      "row_tile": 64,
+      "scheduled_row_tiles": 5671,
+      "weight_reread_factor": 1.1134891026899667
+    }
+  },
+  "protocol": {
+    "command_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --pmc <FETCH_SIZE|MemUnitBusy> --kernel-include-regex '.*gguf_q[46]_k_t16_selected.*' --output-directory <TMP> --output-file down_<COUNTER> -f csv -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <TMP>/child.json",
+    "counter_collection": "One hardware-compatible counter group per process",
+    "pp512_selection": "The second contiguous grid-size group after the M128 warmup: Q4 grid 1,253,376 threads / 24 calls; Q6 grid 2,039,808 threads / 23 calls",
+    "profile_correctness": {
+      "next_tokens": [
+        2930,
+        95,
+        7772
+      ],
+      "final_positions_exact": true,
+      "tracked_returned_to_baseline": true
+    },
+    "raw_csv": {
+      "FETCH_SIZE_sha256": "3c754ea3deaa3ba425d6cb7c6dcfb3db299514a2006a0c1451ae9503aa991ff2",
+      "MemUnitBusy_sha256": "a338d26085c04f969106ba7000d68ef55488d5d671a213638b9cc994925be8a2"
+    }
+  },
+  "q4_down": {
+    "kernel": "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,true,false,64,true,true,64,true,false>",
+    "calls": 24,
+    "counter_duration_ms": 72.195387,
+    "physical_fetch_gb": 13.405366336,
+    "physical_bandwidth_gb_s": 185.68175742308856,
+    "percent_of_221_gb_s_stream_anchor": 84.01889476157854,
+    "duration_weighted_mem_unit_busy_percent": 87.77702231593148,
+    "median_mem_unit_busy_percent": 88.100821,
+    "scheduled_weight_request_gb": 12.890406912,
+    "unique_active_expert_weight_gb": 9.355001856,
+    "physical_fetch_over_scheduled_weight_request": 1.0399490433091458,
+    "route_tile_reread_gb": 3.535405056,
+    "route_tile_reread_perfect_removal_ms_at_measured_bandwidth": 19.040131378896522,
+    "interpretation": "Q4 down is controller-bandwidth-bound and its physical fetch closely tracks the scheduled row-tile weight request. The remaining local arithmetic/LDS ceiling is small; eliminating the 1.378x row-tile reread is the only material exact in-family lever."
+  },
+  "q6_down": {
+    "kernel": "gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,true,false,128,64,true,true,true,true>",
+    "calls": 23,
+    "counter_duration_ms": 118.887831,
+    "physical_fetch_gb": 14.74041536,
+    "physical_bandwidth_gb_s": 123.98590533626609,
+    "percent_of_221_gb_s_stream_anchor": 56.10221960917018,
+    "duration_weighted_mem_unit_busy_percent": 66.95783023813419,
+    "median_mem_unit_busy_percent": 67.200224,
+    "scheduled_weight_request_gb": 14.63390208,
+    "unique_active_expert_weight_gb": 13.14238464,
+    "physical_fetch_over_scheduled_weight_request": 1.0072785289540491,
+    "route_tile_reread_gb": 1.49151744,
+    "route_tile_reread_perfect_removal_ms_at_measured_bandwidth": 12.029733831073859,
+    "layer1_cross_check": {
+      "control_median_ms": 4.864419937133789,
+      "physical_fetch_bytes": 651865728,
+      "physical_bandwidth_gb_s": 134.00687778286098,
+      "MemUnitBusy_percent": 67.11358,
+      "OccupancyPercent": 93.348966,
+      "ALUStalledByLDS_percent": 0.852875919,
+      "L2CacheHit_percent": 35.189518,
+      "in_kernel_engine_clock_ghz": 2.8041587597261017
+    },
+    "interpretation": "Q6 down is not saturating the controller, has only a 1.113x route-tile reread factor, and is not LDS- or occupancy-limited. Its remaining cost includes Q6 decode/instruction latency; larger row geometry and K staging are already rejected."
+  },
+  "combined": {
+    "counter_duration_ms": 191.083218,
+    "physical_fetch_gb": 28.145781696,
+    "physical_bandwidth_gb_s": 147.29593729157315,
+    "route_tile_reread_perfect_removal_ms": 31.06986520997038,
+    "perfect_route_reread_removal_pp512_tok_s_from_559_wall": 578.9391864600237,
+    "qualification": "The perfect-removal row is an Amdahl bound, not a performance claim. It assumes all scheduled duplicate weight requests disappear at current per-family bandwidth with no replacement cost."
+  },
+  "decision": {
+    "lap_bw0_selected_down": "complete",
+    "priority": "Q4 down",
+    "next": "Screen a down-specific expert-persistent K256 slab that exploits K1024 and one projection: four partial passes, approximately one quarter of the rejected K3072 dual gate/up persistent state. Reject before integration unless it is exact and positive on actual Q4 layers.",
+    "closed": [
+      "more Q4 local arithmetic/LDS tuning without byte reduction",
+      "more Q6 row-width or K-staging sweeps",
+      "claiming 700 from selected-down alone"
+    ]
+  }
+}
