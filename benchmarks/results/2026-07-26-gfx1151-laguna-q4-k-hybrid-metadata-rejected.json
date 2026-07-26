@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q4_k_hybrid_metadata_screen",
+  "status": "rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "weights": "blk.1.ffn_gate_exps.weight + blk.1.ffn_up_exps.weight"
+  },
+  "candidate": {
+    "geometry": "production 128 output columns x 32 routed rows, local128, direct per-column wave decode, D8 activation double buffer",
+    "layout": "one expanded 8x16 coefficient plane plus one packed 8x4x3 coefficient plane, with unchanged T16-local Q4 payload",
+    "orderings": [
+      "packed scale / expanded min",
+      "expanded scale / packed min"
+    ],
+    "layout_bytes": {
+      "resident_t16_gate_up_pair": 931135488,
+      "hybrid_gate_up_pair": 918552576,
+      "saved": 12582912,
+      "saved_percent": 1.3513513514,
+      "tile_bytes": 2336,
+      "sidecar": 0
+    }
+  },
+  "correctness": {
+    "red": "Two host roundtrip cases failed import before the hybrid repack existed; two production-shape GPU cases failed because the wrapper had no hybrid selector.",
+    "green": "Both layouts round-trip raw Q4_K bytes exactly. All 13 focused Q4 selected-prefill CPU-reference cases pass, including both hybrid orderings on counts [0,7,18,33], K512/N128.",
+    "candidate_bf16_bit_identical_to_production": true,
+    "actual_layer_checksum_f64": 1114.1769413301445,
+    "finite": true
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,hybrid-scale-mmq128x32-d8-f32-wavecols-direct-doublebuf,hybrid-min-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <result.json>",
+    "timing": "counter-rotated HIP events; each mode includes the unchanged D8 activation pack",
+    "interleaved_three_byte_records": {
+      "production_median_ms": 6.819005966186523,
+      "packed_scale_median_ms": 7.066003799438477,
+      "packed_scale_regression_percent": 3.6221970545,
+      "packed_min_median_ms": 7.0639597574869795,
+      "packed_min_regression_percent": 3.5922213958,
+      "raw_sha256": "14f1e4e583f0985f1d1a74b8b14e8499a6e5353a139176ed06ba8a2037e9ee98"
+    },
+    "planar_three_byte_records": {
+      "description": "three 32-byte metadata byte planes, matching the successful Q6 planar layout-order premise",
+      "production_median_ms": 6.799527486165364,
+      "packed_scale_median_ms": 7.059684753417969,
+      "packed_scale_regression_percent": 3.8261080315,
+      "packed_min_median_ms": 7.05361811319987,
+      "packed_min_regression_percent": 3.7368865344,
+      "raw_sha256": "3c3e2babb335cde228ed5a68195a5b5ee1fc5da4ec659b50068cf76ae9297d1a"
+    }
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q4-hybrid-planar-trace -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,hybrid-scale-mmq128x32-d8-f32-wavecols-direct-doublebuf,hybrid-min-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-hybrid-planar-trace-child.json",
+    "production": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "packed_scale": {
+      "workgroup_size": 128,
+      "vgpr": 120,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "packed_min": {
+      "workgroup_size": 128,
+      "vgpr": 120,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "821b1bbf8d869b7fac73b503f09bf3ceb59b83d5b9736244dc2f67aab34f35d6",
+    "child_sha256": "f16b3e803bd98da972d6c3aa153ea72db00ac8058ed985637969af4a7d4a8dca"
+  },
+  "decision": {
+    "gate": "BF16 identity plus a positive actual-weight natural-M512 leaf before materialization or runtime integration",
+    "result": "fail",
+    "reason": "one packed coefficient plane still raises VGPR 88 -> 120; scale/min ordering and planar byte records do not recover resources, and the best exact M512 leaf remains 3.74% slower",
+    "removed": [
+      "hybrid host repack and roundtrip oracle",
+      "hybrid HIP body and exports",
+      "Python wrapper selectors",
+      "CPU-reference fixture parameters",
+      "leaf benchmark modes"
+    ],
+    "materializer_changed": false,
+    "runtime_dispatch_changed": false,
+    "production_changed": false,
+    "production_pp512_tok_s": 573.3541789
+  },
+  "repo": {
+    "base_revision": "cf097fb55e658fea11e11caa94900b2b75715620"
+  }
+}

@@ -76,9 +76,11 @@ actual leaf improves **2.67%**, tracing cuts the 115-call Q6 body **1.23%**,
 and clean selector-unset planar-Q6 production reaches
 **573.354/530.351/446.189 tok/s**. Cooperative Q4 row64 and byte-neutral Q4
 qmicro direct-wave consumers are now both exact but decisively rejected.
-Production remains unchanged while the campaign continues with a hybrid
-Q4 metadata layout that trades half of T16's 2.778% metadata growth for only
-one packed 6-bit coefficient extraction.
+Production remains unchanged after a hybrid Q4 metadata layout also fails:
+one packed coefficient plane still raises VGPR 88 -> 120 and loses 3.74%.
+The campaign now moves to Q6 selected-down integer WMMA, where the current
+123.99 GB/s / 56.10%-of-stream result leaves a materially different
+arithmetic/latency opportunity.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -1138,15 +1140,29 @@ Immediate execution queue:
    local128/LDS3072B/scratch0. Every prefill candidate surface is removed;
    no materializer or runtime route was added. Evidence:
    [`2026-07-26-gfx1151-laguna-q4-k-qmicro-direct-wave-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-direct-wave-rejected.json).
-17. **Active next screen:** test a byte/decode midpoint rather than another
+17. **Rejected and removed:** test a byte/decode midpoint rather than another
    fully packed qmicro consumer. Keep one T16 coefficient plane expanded and
    pack only the other as four 6-bit values per three-byte record. The
    resulting 2,336-byte tile saves **32 bytes / 1.351%** versus T16 while
    requiring only one packed coefficient extraction per lane. Screen both
    scale-expanded/min-packed and min-expanded/scale-packed orderings on the
-   production direct-wave body, then retain only if BF16 identity and the
-   actual natural-M512 leaf are positive. Do not materialize or integrate
-   either ordering before that gate.
+   production direct-wave body. Both scale-packed and min-packed orderings
+   round-trip raw Q4_K exactly, pass the 13-case CPU-reference gate, and are
+   BF16-bit identical to production. Interleaved three-byte records regress
+   the actual M512 leaf **3.62%/3.59%**. Reordering the same 96 bytes into
+   three planar byte planes still regresses **3.83%/3.74%**. Final tracing
+   shows both one-plane candidates at local128/VGPR120/LDS3072B/scratch0
+   versus production VGPR88. All candidate surfaces are removed. Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-k-hybrid-metadata-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-hybrid-metadata-rejected.json).
+18. **Active next screen:** build a Q6-only integer-WMMA selected-down leaf
+   around the existing D4 activation cache and byte-neutral planar qmicro
+   weights. This is not a retry of the rejected Q4 D8 integer-WMMA body:
+   Q6 down is measured at only **123.99 GB/s / 56.10%** of the stream anchor
+   and has materially more low/high-bit dot work to amortize matrix-fragment
+   setup. Preserve the current K order, FP32 scale accumulation, BF16 store,
+   64-row route map, and exact fallback. Gate first on the uneven/empty-expert
+   CPU oracle and actual natural-M512 Q6 leaf; remove it if integer WMMA does
+   not beat the planar-qmicro packed-dot body with zero BF16 mismatches.
 
 Post-350 exclusions:
 
