@@ -30,7 +30,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
 )
-from hipengine.quant.gguf_t16 import convert_gguf_q6_k_tile16_to_qmicro
+from hipengine.quant.gguf_t16 import (
+    convert_gguf_q6_k_tile16_to_qmicro,
+    convert_gguf_q6_k_tile16_to_qmicro_planar,
+)
 from scripts.laguna_q4_k_mmq_leaf_bench import (
     DEFAULT_CACHE,
     DEFAULT_ROUTING,
@@ -115,6 +118,9 @@ def main() -> int:
     tracked_before = memory_stats()
     legacy_tiles, cache_entry = _cache_tiles(args.repacked_cache, args.layer)
     qmicro_tiles = convert_gguf_q6_k_tile16_to_qmicro(legacy_tiles).tiles
+    qmicro_planar_tiles = convert_gguf_q6_k_tile16_to_qmicro_planar(
+        legacy_tiles
+    ).tiles
     routing = json.loads(args.routing_json.read_text())
     counts = _load_counts(routing, rows=ROWS, layer=args.layer)
     compact_starts = np.zeros(EXPERTS + 1, dtype=np.int64)
@@ -146,12 +152,15 @@ def main() -> int:
         "prefill_qmicro_half_row_activation": [],
         "prefill_qmicro_skip_padded_activation": [],
         "prefill_qmicro_permute": [],
+        "prefill_qmicro_planar": [],
         "decode_legacy": [],
         "decode_qmicro": [],
+        "decode_qmicro_planar": [],
     }
     try:
         legacy_dev = _upload(runtime, legacy_tiles)
         qmicro_dev = _upload(runtime, qmicro_tiles)
+        qmicro_planar_dev = _upload(runtime, qmicro_planar_tiles)
         prefill_x_dev = _upload(runtime, prefill_x)
         decode_x_dev = _upload(runtime, decode_x)
         compact_starts_dev = _upload(runtime, compact_starts)
@@ -177,12 +186,21 @@ def main() -> int:
             prefill_out_nbytes,
             runtime=runtime,
         )
+        prefill_qmicro_planar_out = malloc(
+            prefill_out_nbytes,
+            runtime=runtime,
+        )
         decode_legacy_out = malloc(decode_out_nbytes, runtime=runtime)
         decode_qmicro_out = malloc(decode_out_nbytes, runtime=runtime)
+        decode_qmicro_planar_out = malloc(
+            decode_out_nbytes,
+            runtime=runtime,
+        )
         buffers.extend(
             (
                 legacy_dev,
                 qmicro_dev,
+                qmicro_planar_dev,
                 prefill_x_dev,
                 decode_x_dev,
                 compact_starts_dev,
@@ -196,8 +214,10 @@ def main() -> int:
                 prefill_qmicro_half_row_activation_out,
                 prefill_qmicro_skip_padded_activation_out,
                 prefill_qmicro_permute_out,
+                prefill_qmicro_planar_out,
                 decode_legacy_out,
                 decode_qmicro_out,
+                decode_qmicro_planar_out,
             )
         )
         gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
@@ -217,15 +237,24 @@ def main() -> int:
             half_row_activation: bool = False,
             skip_padded_activation: bool = False,
             qmicro_permute: bool = False,
+            qmicro_planar: bool = False,
         ) -> None:
             gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
                 q8_dev.ptr,
                 compact_starts_dev.ptr,
                 padded_starts_dev.ptr,
                 tile_expert_dev.ptr,
-                qmicro_dev.ptr if qmicro else legacy_dev.ptr,
                 (
-                    prefill_qmicro_permute_out.ptr
+                    qmicro_planar_dev.ptr
+                    if qmicro_planar
+                    else qmicro_dev.ptr
+                    if qmicro
+                    else legacy_dev.ptr
+                ),
+                (
+                    prefill_qmicro_planar_out.ptr
+                    if qmicro_planar
+                    else prefill_qmicro_permute_out.ptr
                     if qmicro_permute
                     else prefill_qmicro_skip_padded_activation_out.ptr
                     if skip_padded_activation
@@ -250,22 +279,40 @@ def main() -> int:
                 half_row_activation=half_row_activation,
                 skip_padded_activation=skip_padded_activation,
                 qmicro_permute=qmicro_permute,
+                qmicro_planar=qmicro_planar,
                 library=prefill_library,
                 runtime=runtime,
             )
 
-        def decode(qmicro: bool) -> None:
+        def decode(
+            qmicro: bool,
+            *,
+            qmicro_planar: bool = False,
+        ) -> None:
             gguf_q6_k_t16_selected_gemv_bf16_bf16_out(
                 decode_x_dev.ptr,
                 selected_dev.ptr,
-                qmicro_dev.ptr if qmicro else legacy_dev.ptr,
-                decode_qmicro_out.ptr if qmicro else decode_legacy_out.ptr,
+                (
+                    qmicro_planar_dev.ptr
+                    if qmicro_planar
+                    else qmicro_dev.ptr
+                    if qmicro
+                    else legacy_dev.ptr
+                ),
+                (
+                    decode_qmicro_planar_out.ptr
+                    if qmicro_planar
+                    else decode_qmicro_out.ptr
+                    if qmicro
+                    else decode_legacy_out.ptr
+                ),
                 1,
                 TOP_K,
                 EXPERTS,
                 IN_FEATURES,
                 OUT_FEATURES,
                 qmicro=qmicro,
+                qmicro_planar=qmicro_planar,
                 library=decode_library,
                 runtime=runtime,
             )
@@ -304,8 +351,22 @@ def main() -> int:
                 ),
                 args.prefill_burst,
             ),
+            "prefill_qmicro_planar": (
+                lambda: prefill(
+                    True,
+                    compact_activation=True,
+                    half_row_activation=True,
+                    skip_padded_activation=True,
+                    qmicro_planar=True,
+                ),
+                args.prefill_burst,
+            ),
             "decode_legacy": (lambda: decode(False), args.decode_burst),
             "decode_qmicro": (lambda: decode(True), args.decode_burst),
+            "decode_qmicro_planar": (
+                lambda: decode(True, qmicro_planar=True),
+                args.decode_burst,
+            ),
         }
         for _ in range(args.warmups):
             for launch, _ in launches.values():
@@ -337,8 +398,16 @@ def main() -> int:
             skip_padded_activation=True,
             qmicro_permute=True,
         )
+        prefill(
+            True,
+            compact_activation=True,
+            half_row_activation=True,
+            skip_padded_activation=True,
+            qmicro_planar=True,
+        )
         decode(False)
         decode(True)
+        decode(True, qmicro_planar=True)
         runtime.device_synchronize()
         prefill_legacy_host = _read_bf16(
             runtime,
@@ -370,6 +439,11 @@ def main() -> int:
             prefill_qmicro_permute_out,
             (compact_rows, OUT_FEATURES),
         )
+        prefill_qmicro_planar_host = _read_bf16(
+            runtime,
+            prefill_qmicro_planar_out,
+            (compact_rows, OUT_FEATURES),
+        )
         decode_legacy_host = _read_bf16(
             runtime,
             decode_legacy_out,
@@ -378,6 +452,11 @@ def main() -> int:
         decode_qmicro_host = _read_bf16(
             runtime,
             decode_qmicro_out,
+            (TOP_K, OUT_FEATURES),
+        )
+        decode_qmicro_planar_host = _read_bf16(
+            runtime,
+            decode_qmicro_planar_out,
             (TOP_K, OUT_FEATURES),
         )
     finally:
@@ -415,8 +494,19 @@ def main() -> int:
             != prefill_qmicro_skip_padded_activation_host
         )
     )
+    prefill_qmicro_planar_mismatches = int(
+        np.count_nonzero(
+            prefill_qmicro_planar_host
+            != prefill_qmicro_permute_host
+        )
+    )
     decode_mismatches = int(
         np.count_nonzero(decode_qmicro_host != decode_legacy_host)
+    )
+    decode_qmicro_planar_mismatches = int(
+        np.count_nonzero(
+            decode_qmicro_planar_host != decode_qmicro_host
+        )
     )
     payload = {
         "schema_version": 1,
@@ -449,7 +539,7 @@ def main() -> int:
             "warmups": args.warmups,
             "prefill_burst": args.prefill_burst,
             "decode_burst": args.decode_burst,
-            "order": "counter-rotated over eight modes",
+            "order": "counter-rotated over eleven modes",
             "timing": "HIP events; prefill activation pack excluded",
         },
         "samples_ms": samples,
@@ -483,8 +573,20 @@ def main() -> int:
                 - 1.0
             )
             * 100.0,
+            "prefill_qmicro_planar_vs_permute": (
+                medians["prefill_qmicro_planar"]
+                / medians["prefill_qmicro_permute"]
+                - 1.0
+            )
+            * 100.0,
             "decode": (
                 medians["decode_qmicro"] / medians["decode_legacy"] - 1.0
+            )
+            * 100.0,
+            "decode_qmicro_planar_vs_qmicro": (
+                medians["decode_qmicro_planar"]
+                / medians["decode_qmicro"]
+                - 1.0
             )
             * 100.0,
         },
@@ -502,12 +604,24 @@ def main() -> int:
             "prefill_qmicro_permute_bf16_mismatches": (
                 prefill_qmicro_permute_mismatches
             ),
+            "prefill_qmicro_planar_bf16_mismatches": (
+                prefill_qmicro_planar_mismatches
+            ),
             "decode_bf16_mismatches": decode_mismatches,
+            "decode_qmicro_planar_bf16_mismatches": (
+                decode_qmicro_planar_mismatches
+            ),
             "prefill_checksum": int(prefill_qmicro_host.sum(dtype=np.uint64)),
             "prefill_qmicro_permute_checksum": int(
                 prefill_qmicro_permute_host.sum(dtype=np.uint64)
             ),
+            "prefill_qmicro_planar_checksum": int(
+                prefill_qmicro_planar_host.sum(dtype=np.uint64)
+            ),
             "decode_checksum": int(decode_qmicro_host.sum(dtype=np.uint64)),
+            "decode_qmicro_planar_checksum": int(
+                decode_qmicro_planar_host.sum(dtype=np.uint64)
+            ),
         },
         "memory": {
             "tracked_before": tracked_before,
@@ -519,7 +633,9 @@ def main() -> int:
             and prefill_half_row_activation_mismatches == 0
             and prefill_skip_padded_activation_mismatches == 0
             and prefill_qmicro_permute_mismatches == 0
+            and prefill_qmicro_planar_mismatches == 0
             and decode_mismatches == 0
+            and decode_qmicro_planar_mismatches == 0
             and medians["prefill_qmicro"] < medians["prefill_legacy"]
             and medians["prefill_qmicro_compact_activation"]
             < medians["prefill_qmicro"]
@@ -529,6 +645,8 @@ def main() -> int:
             < medians["prefill_qmicro_half_row_activation"]
             and medians["prefill_qmicro_permute"]
             < medians["prefill_qmicro_skip_padded_activation"]
+            and medians["prefill_qmicro_planar"]
+            < medians["prefill_qmicro_permute"]
             and medians["decode_qmicro"] < medians["decode_legacy"]
             and tracked_before["current_allocated_bytes"]
             == tracked_after["current_allocated_bytes"]

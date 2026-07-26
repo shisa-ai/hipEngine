@@ -36,6 +36,9 @@ _Q6_SINGLE_DIRECT_BF16 = "hipengine_gguf_q6_k_t16_selected_gemv_bf16_bf16_out"
 _Q6_QMICRO_SINGLE_DIRECT_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_selected_gemv_bf16_bf16_out"
 )
+_Q6_QMICRO_PLANAR_SINGLE_DIRECT_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_selected_gemv_bf16_bf16_out"
+)
 _Q6_SINGLE_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out"
 _Q6_SINGLE_DIRECT_FP16 = "hipengine_gguf_q6_k_t16_selected_gemv_fp16_fp16_out"
 _Q4_DUAL_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out"
@@ -54,6 +57,9 @@ _Q6_SINGLE_GROUPED_SMALLM_BF16 = (
 )
 _Q6_QMICRO_SINGLE_GROUPED_SMALLM_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_selected_grouped_smallm_bf16_bf16_out"
+)
+_Q6_QMICRO_PLANAR_SINGLE_GROUPED_SMALLM_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_selected_grouped_smallm_bf16_bf16_out"
 )
 _Q4_SINGLE_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out"
 _Q4_SINGLE_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out"
@@ -555,15 +561,20 @@ def gguf_q6_k_t16_selected_gemv_bf16_bf16_out(
     out_features: int,
     *,
     qmicro: bool = False,
+    qmicro_planar: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
     """Launch BF16 selected Q6T16 GEMV preserving selected-row order."""
 
+    if qmicro_planar and not qmicro:
+        raise ValueError("qmicro_planar requires qmicro=True")
     _launch_single_direct(
         (
-            _Q6_QMICRO_SINGLE_DIRECT_BF16
+            _Q6_QMICRO_PLANAR_SINGLE_DIRECT_BF16
+            if qmicro_planar
+            else _Q6_QMICRO_SINGLE_DIRECT_BF16
             if qmicro
             else _Q6_SINGLE_DIRECT_BF16
         ),
@@ -1071,15 +1082,20 @@ def gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out(
     num_experts: int,
     *,
     qmicro: bool = False,
+    qmicro_planar: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
     """Launch exact BF16 Q6T16 down over grouped 1/2/4/8-row buckets."""
 
+    if qmicro_planar and not qmicro:
+        raise ValueError("qmicro_planar requires qmicro=True")
     _launch_grouped_single(
         (
-            _Q6_QMICRO_SINGLE_GROUPED_SMALLM_BF16
+            _Q6_QMICRO_PLANAR_SINGLE_GROUPED_SMALLM_BF16
+            if qmicro_planar
+            else _Q6_QMICRO_SINGLE_GROUPED_SMALLM_BF16
             if qmicro
             else _Q6_SINGLE_GROUPED_SMALLM_BF16
         ),

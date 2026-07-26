@@ -1075,7 +1075,8 @@ Immediate execution queue:
    **1,138.893 -> 1,124.852 ms (-1.23%)** with VGPR **88 -> 80**, unchanged
    LDS, and zero scratch. Clean publication reaches
    **571.415/529.870/445.164 tok/s**.
-14. **Active next screen:** make the same 12-byte qmicro record planar:
+14. **Positive leaf; trace and integration active:** make the same 12-byte
+   qmicro record planar:
    store its four `ql01` bytes in the first dword, four `ql23` bytes in the
    second, and retain the four high-bit bytes in the third. This is
    byte-neutral and lets selected prefill load both low-nibble column words
@@ -1085,7 +1086,13 @@ Immediate execution queue:
    Gate on byte-neutral roundtrip, exact c1/c2/c4/c8 decode, the
    uneven/empty-expert CPU oracle, and a counter-rotated actual-weight
    natural-M512 leaf before any runtime promotion. This is a layout-order
-   screen, not a larger record or a duplicate sidecar.
+   screen, not a larger record or a duplicate sidecar. The byte-neutral
+   roundtrip, uneven/empty-expert oracle, and exact c1/c2/c4/c8 decode are
+   green. On the actual 660.6-MB layer-1 tensor, 21 counter-rotated samples
+   improve current permute prefill **4.7718 -> 4.7568 ms (-0.314%)** and c1
+   decode **0.08564 -> 0.08415 ms (-1.736%)**, with zero BF16 mismatches.
+   Clean cached tracing and complete-state full-model A/B remain mandatory
+   before changing the resident layout.
 
 Post-350 exclusions:
 
@@ -2923,6 +2930,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`

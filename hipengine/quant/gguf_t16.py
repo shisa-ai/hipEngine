@@ -580,6 +580,84 @@ def unpack_gguf_q6_k_tile16_qmicro(
     return unpack_gguf_q6_k_tile16(legacy, out_features=inferred_out)
 
 
+def repack_gguf_q6_k_tile16_qmicro_planar(
+    raw_qweight: Any,
+) -> GGUFQ6KTile16:
+    """Repack Q6T16 into byte-neutral planar qmicro records.
+
+    Each 12-byte record stores four QL01 bytes, then four QL23 bytes, then
+    four QH bytes.  This preserves the qmicro record size while making all
+    three prefill inputs directly loadable as aligned dwords.
+    """
+
+    return convert_gguf_q6_k_tile16_to_qmicro_planar(
+        repack_gguf_q6_k_tile16(raw_qweight)
+    )
+
+
+def convert_gguf_q6_k_tile16_to_qmicro_planar(
+    packed: GGUFQ6KTile16 | np.ndarray,
+) -> GGUFQ6KTile16:
+    """Convert existing Q6T16 tiles to byte-neutral planar qmicro records."""
+
+    interleaved = convert_gguf_q6_k_tile16_to_qmicro(packed)
+    tiles = interleaved.tiles.copy()
+    records = tiles[..., GGUF_Q6_K_T16_QMICRO_OFFSET:].reshape(
+        *tiles.shape[:-1],
+        8,
+        4,
+        8,
+        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+    )
+    ql = records[..., :8].copy()
+    records[..., :4] = ql[..., 0::2]
+    records[..., 4:8] = ql[..., 1::2]
+    return GGUFQ6KTile16(
+        tiles=tiles,
+        experts=interleaved.experts,
+        out_features=interleaved.out_features,
+        in_features=interleaved.in_features,
+    )
+
+
+def unpack_gguf_q6_k_tile16_qmicro_planar(
+    packed: GGUFQ6KTile16 | np.ndarray,
+    *,
+    out_features: int | None = None,
+) -> np.ndarray:
+    """Reconstruct raw GGUF Q6_K bytes from planar qmicro records."""
+
+    if isinstance(packed, GGUFQ6KTile16):
+        planar_tiles = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        planar_tiles = np.asarray(packed, dtype=np.uint8)
+        expected_out = out_features
+    if (
+        planar_tiles.ndim != 4
+        or planar_tiles.shape[-1] != GGUF_Q6_K_T16_BLOCK_BYTES
+    ):
+        raise ValueError(
+            "tiles must have shape [experts, out_tiles16, blocks_per_row, 3360]"
+        )
+    tiles = planar_tiles.copy()
+    records = tiles[..., GGUF_Q6_K_T16_QMICRO_OFFSET:].reshape(
+        *tiles.shape[:-1],
+        8,
+        4,
+        8,
+        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+    )
+    ql01 = records[..., :4].copy()
+    ql23 = records[..., 4:8].copy()
+    records[..., :8:2] = ql01
+    records[..., 1:8:2] = ql23
+    return unpack_gguf_q6_k_tile16_qmicro(
+        tiles,
+        out_features=expected_out,
+    )
+
+
 def repack_gguf_q8_0_tile16(raw_qweight: Any) -> GGUFQ80Tile16:
     """Repack rank-2 raw GGUF Q8_0 weights into bit-lossless Q8T16 tiles."""
 
@@ -655,12 +733,15 @@ __all__ = [
     "GGUFQ80Tile16",
     "GGUFQ80T16Quant",
     "convert_gguf_q6_k_tile16_to_qmicro",
+    "convert_gguf_q6_k_tile16_to_qmicro_planar",
     "repack_gguf_q5_k_tile16",
     "repack_gguf_q6_k_tile16",
     "repack_gguf_q6_k_tile16_qmicro",
+    "repack_gguf_q6_k_tile16_qmicro_planar",
     "repack_gguf_q8_0_tile16",
     "unpack_gguf_q5_k_tile16",
     "unpack_gguf_q6_k_tile16",
     "unpack_gguf_q6_k_tile16_qmicro",
+    "unpack_gguf_q6_k_tile16_qmicro_planar",
     "unpack_gguf_q8_0_tile16",
 ]

@@ -45,7 +45,10 @@ from hipengine.quant.gguf_q4_k import (
     repack_gguf_q4_k_tile16,
 )
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
-from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro
+from hipengine.quant.gguf_t16 import (
+    repack_gguf_q6_k_tile16_qmicro,
+    repack_gguf_q6_k_tile16_qmicro_planar,
+)
 from tests.test_gguf_q4_k_selected_wmma_prefill import (
     _TOLERANCE_BF16,
     _bf16_bits_to_float32,
@@ -1708,13 +1711,14 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
         "half_row_activation",
         "skip_padded_activation",
         "qmicro_permute",
+        "qmicro_planar",
     ),
     [
-        (1, False, 32, False, False, False, False, False),
-        (1, True, 32, False, False, False, False, False),
-        (1, True, 64, False, False, False, False, False),
+        (1, False, 32, False, False, False, False, False, False),
+        (1, True, 32, False, False, False, False, False, False),
+        (1, True, 64, False, False, False, False, False, False),
         pytest.param(
-            1, True, 64, True, False, False, False, False, id="rows64-qmicro"
+            1, True, 64, True, False, False, False, False, False, id="rows64-qmicro"
         ),
         pytest.param(
             1,
@@ -1722,6 +1726,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             64,
             True,
             True,
+            False,
             False,
             False,
             False,
@@ -1736,6 +1741,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             True,
             False,
             False,
+            False,
             id="rows64-qmicro-half-row-activation",
         ),
         pytest.param(
@@ -1746,6 +1752,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             True,
             True,
             True,
+            False,
             False,
             id="rows64-qmicro-skip-padded-activation",
         ),
@@ -1758,10 +1765,23 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             True,
             True,
             True,
+            False,
             id="rows64-qmicro-permute",
         ),
-        (2, False, 32, False, False, False, False, False),
-        (3, False, 32, False, False, False, False, False),
+        pytest.param(
+            1,
+            True,
+            64,
+            True,
+            True,
+            True,
+            True,
+            False,
+            True,
+            id="rows64-qmicro-planar",
+        ),
+        (2, False, 32, False, False, False, False, False, False),
+        (3, False, 32, False, False, False, False, False, False),
     ],
 )
 def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1773,6 +1793,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     half_row_activation: bool,
     skip_padded_activation: bool,
     qmicro_permute: bool,
+    qmicro_planar: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from tests.test_gguf_k_t16_selected_wmma_prefill import (
@@ -1818,7 +1839,9 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         (rowvec and tile_rows == 32) or qmicro
     ) else None
     candidate_tiles = (
-        repack_gguf_q6_k_tile16_qmicro(fixture.qweight).tiles
+        repack_gguf_q6_k_tile16_qmicro_planar(fixture.qweight).tiles
+        if qmicro_planar
+        else repack_gguf_q6_k_tile16_qmicro(fixture.qweight).tiles
         if qmicro
         else fixture.tiles
     )
@@ -1872,6 +1895,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             half_row_activation=half_row_activation,
             skip_padded_activation=skip_padded_activation,
             qmicro_permute=qmicro_permute,
+            qmicro_planar=qmicro_planar,
             library=library,
             runtime=runtime,
         )
@@ -1881,15 +1905,22 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             baseline_dev = malloc(host_out.nbytes, runtime=runtime)
             bufs.append(baseline_dev)
             baseline_tiles_dev = bufs[4]
-            if qmicro and not compact_activation:
+            if qmicro_planar or (qmicro and not compact_activation):
+                baseline_tiles = (
+                    repack_gguf_q6_k_tile16_qmicro(
+                        fixture.qweight
+                    ).tiles
+                    if qmicro_planar
+                    else fixture.tiles
+                )
                 baseline_tiles_dev = malloc(
-                    fixture.tiles.nbytes,
+                    baseline_tiles.nbytes,
                     runtime=runtime,
                 )
                 bufs.append(baseline_tiles_dev)
                 copy_host_to_device(
                     baseline_tiles_dev,
-                    host_array_ptr(fixture.tiles),
+                    host_array_ptr(baseline_tiles),
                     runtime=runtime,
                 )
             gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(

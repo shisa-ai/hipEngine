@@ -182600,3 +182600,27 @@ Vulkan local sizes verbatim will close the measured gap.
   unchanged four high-bit bytes. If exact decode and prefill retain the same
   arithmetic, this removes the two now-proven byte gathers with no resident
   traffic increase or sidecar.
+
+## 2026-07-26 — Implement byte-neutral planar-Q6 candidate
+
+- RED/GREEN adds a second byte-neutral Q6 qmicro ordering:
+  `[ql01(k0..3), ql23(k0..3), qh(k0..3)]` in the existing 12-byte record.
+  The 3,360-byte tile and 660.6-MB layer allocation are unchanged; no sidecar
+  or dispatch-time transpose is introduced.
+- Host roundtrip is raw-byte exact. The production-shape uneven/empty-expert
+  prefill oracle is BF16-byte exact, and direct decode is exact at
+  c1/c2/c4/c8. The planar direct-decode and grouped-small-M consumers are
+  explicit candidate symbols; current interleaved qmicro remains production.
+- On the actual layer-1 Q6 tensor with natural pp512 routing, 21
+  counter-rotated samples improve current permute prefill
+  **4.771811 -> 4.756837 ms (-0.314%)**. Exact top-10 c1 decode improves
+  **0.085641 -> 0.084154 ms (-1.736%)**. Both paths have zero BF16
+  mismatches, identical checksums, and complete allocation recovery.
+- Artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`.
+  Raw SHA-256:
+  `67bad702e540d92e67d138c23dbe779b0efc290bfa9d9ae27c4c6cf6aa63b3b6`.
+- The required lineage check remains environment-blocked because configured
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. Next gate is
+  a clean cached `rocprofv3` specialization trace, followed by complete-state
+  full-model A/B before any resident-layout promotion.

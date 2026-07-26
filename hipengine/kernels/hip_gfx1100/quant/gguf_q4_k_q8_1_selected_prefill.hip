@@ -3472,6 +3472,34 @@ __device__ inline void pack_q6_k_t16_qmicro_u8x4_quartet_permute(
       ((ql23 >> 4) & LOW_MASK) | ((qh & 0xC0C0C0C0u) >> 2);
 }
 
+__device__ inline void pack_q6_k_t16_qmicro_planar_u8x4_quartet(
+    const uint8_t* __restrict__ tile,
+    int subblock,
+    int pack,
+    int col_quartet,
+    uint32_t (&cols)[4]) {
+  const int record_index =
+      (subblock * (Q4_K_TILE16_COLS / 4) + col_quartet) * 8 + pack;
+  const uint8_t* __restrict__ record =
+      tile + Q6_K_T16_QMICRO_OFFSET +
+      record_index * Q6_K_T16_QMICRO_RECORD_BYTES;
+  const uint32_t ql01 =
+      reinterpret_cast<const uint32_t*>(record)[0];
+  const uint32_t ql23 =
+      reinterpret_cast<const uint32_t*>(record)[1];
+  const uint32_t qh =
+      reinterpret_cast<const uint32_t*>(record)[2];
+  constexpr uint32_t LOW_MASK = 0x0F0F0F0Fu;
+  cols[0] =
+      (ql01 & LOW_MASK) | ((qh & 0x03030303u) << 4);
+  cols[1] =
+      ((ql01 >> 4) & LOW_MASK) | ((qh & 0x0C0C0C0Cu) << 2);
+  cols[2] =
+      (ql23 & LOW_MASK) | (qh & 0x30303030u);
+  cols[3] =
+      ((ql23 >> 4) & LOW_MASK) | ((qh & 0xC0C0C0C0u) >> 2);
+}
+
 template <
     int ACTIVATION_PASSES,
     bool IDENTITY_SOURCE = false,
@@ -3560,7 +3588,8 @@ template <
     bool COMPACT_ACTIVATION_CACHE = false,
     bool HALF_ROW_ACTIVATION_STAGE = false,
     bool SKIP_PADDED_ACTIVATION_STAGE = false,
-    bool QMICRO_PERMUTE = false>
+    bool QMICRO_PERMUTE = false,
+    bool QMICRO_PLANAR = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3600,6 +3629,12 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   static_assert(
       !QMICRO_PERMUTE || QMICRO,
       "qmicro permute decode requires qmicro layout");
+  static_assert(
+      !QMICRO_PLANAR || QMICRO,
+      "qmicro planar decode requires qmicro layout");
+  static_assert(
+      !(QMICRO_PLANAR && QMICRO_PERMUTE),
+      "qmicro planar and permute decode are mutually exclusive");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -3739,7 +3774,14 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
               weight_block;
           const uint8_t* __restrict__ tile =
               qweight + tile_index * Q6_K_T16_BLOCK_BYTES;
-          if constexpr (QMICRO_PERMUTE) {
+          if constexpr (QMICRO_PLANAR) {
+            pack_q6_k_t16_qmicro_planar_u8x4_quartet(
+                tile,
+                subblock,
+                pack,
+                col >> 2,
+                packed);
+          } else if constexpr (QMICRO_PERMUTE) {
             pack_q6_k_t16_qmicro_u8x4_quartet_permute(
                 tile,
                 subblock,
@@ -4068,7 +4110,8 @@ template <
     bool COMPACT_ACTIVATION_CACHE = false,
     bool HALF_ROW_ACTIVATION_STAGE = false,
     bool SKIP_PADDED_ACTIVATION_STAGE = false,
-    bool QMICRO_PERMUTE = false>
+    bool QMICRO_PERMUTE = false,
+    bool QMICRO_PLANAR = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -4105,7 +4148,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           COMPACT_ACTIVATION_CACHE,
           HALF_ROW_ACTIVATION_STAGE,
           SKIP_PADDED_ACTIVATION_STAGE,
-          QMICRO_PERMUTE>),
+          QMICRO_PERMUTE,
+          QMICRO_PLANAR>),
       grid,
       block,
       0,
@@ -5259,6 +5303,46 @@ hipengine_gguf_q6_k_t16_qmicro_permute_skip_padded_activation_selected_q8_1_ds4_
       true,
       true,
       true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_skip_padded_activation_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true,
+      true,
+      true,
+      true,
+      false,
       true>(
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
       expert_start_compact,

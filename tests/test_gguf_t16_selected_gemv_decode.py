@@ -56,6 +56,7 @@ from hipengine.quant.gguf_t16 import (
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
     repack_gguf_q6_k_tile16_qmicro,
+    repack_gguf_q6_k_tile16_qmicro_planar,
 )
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_k_weight, make_q6_k_weight
 
@@ -1611,11 +1612,16 @@ def test_p9_h3d_qk_t16_direct_bf16_matches_cpu_oracle(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("x_rows", [1, 2, 4, 8])
 def test_q6_t16_qmicro_direct_decode_matches_production_bits(
+    x_rows: int,
     t16_selected_library,
 ) -> None:
-    x_rows, top_k = 2, 3
-    selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
+    top_k = 3
+    selected = np.resize(
+        np.array([2, 0, 1, 1, 2, 0], dtype=np.int64),
+        x_rows * top_k,
+    )
     in_features, out_features, num_experts = 512, 256, 3
     rng = np.random.default_rng(20260726)
     qweight = _stack_experts(
@@ -1626,7 +1632,7 @@ def test_q6_t16_qmicro_direct_decode_matches_production_bits(
         seed=23,
     )
     legacy = repack_gguf_q6_k_tile16(qweight).tiles
-    qmicro = repack_gguf_q6_k_tile16_qmicro(qweight).tiles
+    qmicro = repack_gguf_q6_k_tile16_qmicro_planar(qweight).tiles
     x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
     x_bf16 = _f32_to_bf16_u16(x)
 
@@ -1644,6 +1650,7 @@ def test_q6_t16_qmicro_direct_decode_matches_production_bits(
         return gguf_q6_k_t16_selected_gemv_bf16_bf16_out(
             *args,
             qmicro=True,
+            qmicro_planar=True,
             **kwargs,
         )
 
