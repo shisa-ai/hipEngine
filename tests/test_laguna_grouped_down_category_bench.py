@@ -10,6 +10,7 @@ import scripts.laguna_grouped_down_category_bench as benchmark
 from scripts.laguna_grouped_down_category_bench import (
     ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
     CUMULATIVE_CONTROL_COMPARISON,
+    D4_DIRECT_WAVE_ABSOLUTE_COMPARISON,
     F16_WMMA_COMP_SWA_COMPARISON,
     GLOBAL_QROW2_ONLINE_COMPARISON,
     GROUPED_COMBINE_COMPARISON,
@@ -75,6 +76,28 @@ def test_attention_hipblaslt_comparison_adds_only_attention_candidate() -> None:
     assert lane.attention_hipblaslt
     assert lane.selected_gate_up_mode == production.selected_gate_up_mode
     assert lane.selected_down_mode == production.selected_down_mode
+    assert lane.f16_projection_mode == production.f16_projection_mode
+    assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
+
+
+def test_d4_direct_wave_comparison_changes_only_gate_up_arithmetic() -> None:
+    assert D4_DIRECT_WAVE_ABSOLUTE_COMPARISON.modes == (
+        "all_exact",
+        "d4_direct_wave_candidate",
+    )
+    assert not D4_DIRECT_WAVE_ABSOLUTE_COMPARISON.require_performance_gate
+    lane = benchmark._PREFILL_LANE_CONFIGURATIONS["d4_direct_wave_candidate"]
+    production = benchmark._PREFILL_LANE_CONFIGURATIONS[
+        "attention_hipblaslt_candidate"
+    ]
+    assert (
+        lane.selected_gate_up_mode
+        == "mmq128x32_d4_f32_wavecols_direct_doublebuf"
+    )
+    assert lane.attention_hipblaslt
+    assert lane.selected_down_mode == production.selected_down_mode
+    assert lane.global_prefill_variant == production.global_prefill_variant
+    assert lane.swa_prefill_variant == production.swa_prefill_variant
     assert lane.f16_projection_mode == production.f16_projection_mode
     assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
 
