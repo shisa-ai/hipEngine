@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T19:48:22.593028+00:00",
+  "kind": "hipengine_laguna_prefill_d4_direct_wave_absolute_category",
+  "status": "rejected_category_gate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "9968555cb3ef54c26d470d39920cd8ee69be6383",
+    "tracked_clean": true,
+    "untracked_artifacts_ignored": 255,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 77132212884
+  },
+  "protocol": {
+    "comparison": "all_exact versus current production stack with only selected gate/up changed from D8 to D4",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompts": 10,
+    "teacher_forced_tokens_per_prompt": 32,
+    "teacher_forced_steps": 320,
+    "repetitions": 3,
+    "output_horizons": [
+      16,
+      32
+    ],
+    "chunk_size": 128,
+    "gpu_max_hw_queues": 2,
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison d4_direct_wave_absolute --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-27-gfx1151-laguna-d4-direct-wave-absolute.raw.json"
+  },
+  "quality": {
+    "finite": true,
+    "top1_matches": 315,
+    "steps": 320,
+    "top1_agreement": 0.984375,
+    "max_kl_divergence": 0.12753601221701263,
+    "kl_limit": 0.05,
+    "top1_minimum": 0.9,
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ],
+    "categories": {
+      "code": {
+        "top1_matches": 127,
+        "steps": 128,
+        "top1_agreement": 0.9921875,
+        "max_kl_divergence": 0.03155820971365186
+      },
+      "general_en": {
+        "top1_matches": 63,
+        "steps": 64,
+        "top1_agreement": 0.984375,
+        "max_kl_divergence": 0.011266112685850762
+      },
+      "general_ja": {
+        "top1_matches": 64,
+        "steps": 64,
+        "top1_agreement": 1.0,
+        "max_kl_divergence": 0.021888841203798016
+      },
+      "mixed_ja_en": {
+        "top1_matches": 61,
+        "steps": 64,
+        "top1_agreement": 0.953125,
+        "max_kl_divergence": 0.12753601221701263
+      }
+    },
+    "failing_prompts": {
+      "mixed_ja_en_translate": {
+        "top1_matches": 30,
+        "steps": 32,
+        "max_kl_divergence": 0.12753601221701263,
+        "worst_step": 13
+      },
+      "mixed_ja_en_review": {
+        "top1_matches": 31,
+        "steps": 32,
+        "max_kl_divergence": 0.050941652726915955,
+        "worst_step": 1
+      }
+    },
+    "passing_prompts": 8,
+    "poolside_oracle": {
+      "pass": true,
+      "top1_agreement": 1.0,
+      "kl_divergence": 0.00006782565977495164
+    }
+  },
+  "timing_diagnostic": {
+    "candidate_prefill_speedup_vs_all_exact": 4.537149139759059,
+    "candidate_prefill_tok_s_over_category_suite": 246.02725421234842,
+    "all_exact_prefill_tok_s_over_category_suite": 54.225075401734195,
+    "h16_e2e_speedup": 1.988373324608747,
+    "h32_e2e_speedup": 1.5548870876382568,
+    "decode_speedup_h16": 0.9998210220898164,
+    "decode_speedup_h32": 0.9999296611966398
+  },
+  "lifecycle": {
+    "tracked_active_allocations_after": 0,
+    "tracked_current_allocated_bytes_after": 0,
+    "tracked_total_allocated_bytes": 109859542160,
+    "tracked_total_freed_bytes": 109859542160
+  },
+  "source_run": {
+    "path": "/tmp/2026-07-27-gfx1151-laguna-d4-direct-wave-absolute.raw.json",
+    "sha256": "bf0f9b0bd0ca39c96d705da90685aa702164f2c27e5d2e3b25880771f85db0f8"
+  },
+  "decision": {
+    "promote": false,
+    "retain_default_off_candidate_temporarily": true,
+    "production_tok_s": 632.6179847224344,
+    "reason": "D4 retains a material wall win and eight of ten prompts pass, but the mixed Japanese-English category violates the absolute KL contract",
+    "next_action": "screen a globally data-dependent per-K32 D4/D8 repair using the existing 160-byte activation block; reject any prompt- or token-specific selection"
+  }
+}
