@@ -1490,17 +1490,24 @@ Immediate execution queue:
    the M512 selector is invisible below its threshold; it does not admit the
    accelerated branch. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-m512-role-split-short-absolute-passed.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-short-absolute-passed.json).
+38. **Rejected M512-wide D4:** the extended-512 gate keeps
+   **313/320 (97.813%)** top-1 but reaches max KL **1.379757**. Nine of ten
+   streams exceed 0.05, spanning every category; category maxima are
+   **1.379757/0.149638/0.878142/0.326543** for
+   code/general-English/general-Japanese/mixed. The candidate is fast and
+   general across streams at **628.591 tok/s**, **10.762x** all-exact, with
+   flat decode and exact lifecycle recovery, but it cannot ship. Production
+   remains D8 at **632.618 tok/s**. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute-rejected.json).
 
 ### Next exact and quality-gated attacks
 
 The projection-role screen cleared its 10-ms economic gate. Its quality gate
 now decides whether repair work is needed:
 
-1. The M512-scoped selector's short no-change gate is complete. Run the clean
-   long lane with full logits on all canonical prompt streams extended to
-   exactly 512 rows. It uses matrix chunk 512 and independently retains
-   attention tiles of 128.
-2. If M512-wide D4 still misses KL <=0.05, retain D8 and prototype a bounded
+1. M512-wide D4 is rejected. Remove its selector and both one-purpose quality
+   lanes while retaining the shared D4/D8 role primitives needed by repair.
+2. Retain D8 and prototype a bounded
    producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
    separately compacted risk-row kernel adds the D8-minus-D4 correction
    before the existing BF16 SiLU boundary, and overflow falls back to D8.

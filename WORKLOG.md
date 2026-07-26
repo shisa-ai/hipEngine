@@ -183642,3 +183642,24 @@ Vulkan local sizes verbatim will close the measured gap.
   verified invisible below its threshold. Promotion remains blocked on the
   extended-512 full-logit gate. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-short-absolute-passed.json`.
+
+## 2026-07-27 — Reject M512-wide D4 gate arithmetic
+
+- The clean `q4_m512_role_split_long_absolute` run at revision `867c5ec14`
+  extends every canonical token stream to exactly 512 rows, uses one 512-row
+  matrix chunk with independent 128-row attention tiles, and covers the same
+  three balanced repetitions plus 320 teacher-forced logits steps.
+- M512 D4-gate/D8-up keeps **313/320 (97.813%)** top-1 but fails at max KL
+  **1.379757**. Nine of ten streams exceed 0.05. Category maxima are
+  code **1.379757**, general-English **0.149638**, general-Japanese
+  **0.878142**, and mixed **0.326543**. Failures are broad and cannot support
+  a prompt/category policy.
+- Economics are strong but non-retainable: aggregate candidate prefill is
+  **628.591 tok/s**, **10.762x** all-exact, with per-category speedups
+  **10.603x–10.812x**, flat decode, Poolside exact top-1, deterministic
+  repeats, and all **138,644,276,368** tracked bytes returned to zero.
+- Production remains same-byte D8 at **632.618 tok/s**. Next remove the
+  rejected selector/lanes, then calibrate an activation-only producer-row
+  classifier for bounded D8-minus-D4 correction before the existing BF16
+  SiLU boundary. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute-rejected.json`.

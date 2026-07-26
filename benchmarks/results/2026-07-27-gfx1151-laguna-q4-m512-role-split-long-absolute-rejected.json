@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T21:42:34.223110+00:00",
+  "kind": "hipengine_laguna_q4_m512_role_split_long_absolute",
+  "status": "rejected_category_gate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "867c5ec148b28181cfb7ef1c461a42e6ec9f1fbe",
+    "tracked_clean": true,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "comparison": "q4_m512_role_split_long_absolute",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison q4_m512_role_split_long_absolute --backend hip_gfx1151 --context-length 4096 --chunk-size 512 --prompt-token-target 512 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute.raw.json",
+    "modes": [
+      "all_exact",
+      "q4_m512_role_split_candidate"
+    ],
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "matrix_chunk_size": 512,
+    "attention_chunk_size": 128,
+    "prompt_token_target": 512,
+    "prompt_extension_policy": "cycle all canonical token streams in suite order from each prompt",
+    "output_horizons": [
+      16,
+      32
+    ],
+    "repetitions": 3,
+    "teacher_forced_steps_per_prompt": 32
+  },
+  "quality": {
+    "teacher_forced_steps": 320,
+    "teacher_forced_top1_matches": 313,
+    "teacher_forced_top1_agreement": 0.978125,
+    "teacher_forced_max_kl_divergence": 1.3797568243119267,
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ],
+    "categories": {
+      "code": {
+        "top1_matches": 125,
+        "steps": 128,
+        "max_kl_divergence": 1.3797568243119267
+      },
+      "general_en": {
+        "top1_matches": 62,
+        "steps": 64,
+        "max_kl_divergence": 0.1496378162148601
+      },
+      "general_ja": {
+        "top1_matches": 62,
+        "steps": 64,
+        "max_kl_divergence": 0.8781421618284716
+      },
+      "mixed_ja_en": {
+        "top1_matches": 64,
+        "steps": 64,
+        "max_kl_divergence": 0.3265427046236712
+      }
+    },
+    "prompt_max_kl": {
+      "code_merge_intervals": 0.09171035622801345,
+      "code_topological_sort": 0.009171882611247746,
+      "code_lru_cache": 1.3797568243119267,
+      "code_markdown_table": 0.053959541490592934,
+      "general_en_plan": 0.06447968360464675,
+      "general_en_explain": 0.1496378162148601,
+      "general_ja_plan": 0.8781421618284716,
+      "general_ja_explain": 0.19304809949358812,
+      "mixed_ja_en_translate": 0.19060503087172728,
+      "mixed_ja_en_review": 0.3265427046236712
+    },
+    "poolside_top1_agreement": 1.0,
+    "poolside_kl_divergence": 0.000017512451201671218,
+    "same_mode_repeat_deterministic": true,
+    "tracked_lifecycle_recovered": true
+  },
+  "diagnostic_performance": {
+    "candidate_prefill_tok_s": 628.5905414342966,
+    "all_exact_prefill_tok_s": 58.4109783434161,
+    "prefill_speedup_vs_all_exact": 10.761513661671948,
+    "category_prefill_speedup_range": [
+      10.603498534555678,
+      10.812203140983234
+    ],
+    "h16_e2e_speedup": 4.7556862032957845,
+    "h32_e2e_speedup": 3.266183154388096,
+    "h16_decode_speedup": 1.0003272626562731,
+    "h32_decode_speedup": 1.0001005638130607
+  },
+  "memory": {
+    "total_allocated_bytes": 138644276368,
+    "total_freed_bytes": 138644276368,
+    "active_allocations_after": 0
+  },
+  "source_run": {
+    "path": "/tmp/2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute.raw.json",
+    "sha256": "a1eb7e4e76fb25d5d2d82fcec144795217748244b380e6e08a46961f39d6c493"
+  },
+  "decision": {
+    "promote": false,
+    "remove_shape_selector": true,
+    "reason": "projection-wide D4 gate at M512 fails nine of ten extended canonical streams and exceeds the KL contract by 27.6x at its worst point despite strong wall economics",
+    "next_action": "remove the rejected M512 selector and quality lanes, retain production D8, and calibrate an activation-only producer-row risk classifier before implementing bounded D8-minus-D4 repair"
+  }
+}
