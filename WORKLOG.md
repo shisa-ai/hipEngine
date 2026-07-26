@@ -182724,3 +182724,37 @@ Vulkan local sizes verbatim will close the measured gap.
   row32 teams in one local256 workgroup share one decoded 128-column weight
   tile, preserving 32 accumulators/lane while targeting the measured 1.3026x
   route-tile reread.
+
+## 2026-07-26 — Reject cooperative Q4 gate/up row64
+
+- RED added an uneven/empty-expert CPU-reference case for the
+  128-column x 64-row/local256 candidate. GREEN used two independent
+  four-wave row32 teams, one shared 5,120-byte decoded weight tile, 3,072
+  bytes of activation LDS, unchanged D8 arithmetic, and 32 FP32 accumulators
+  per lane. It is BF16-bit identical to the current double-buffered
+  production body.
+- On actual layer-1 K3072/N1024 gate/up with natural routing, 21
+  counter-rotated burst-three samples reject fully padded row64:
+  M256 **4.3475 -> 6.0027 ms (+38.07%)** and M512
+  **6.6873 -> 10.2780 ms (+53.69%)**.
+- A no-padding refinement fused only adjacent complete row32 pairs and sent
+  odd expert tails through unchanged production. It remains decisively
+  negative: M256 **4.3414 -> 5.3124 ms (+22.36%)** and M512
+  **6.6809 -> 8.9786 ms (+34.39%)**, with identical BF16 checksums.
+- Cached `rocprofv3 --kernel-trace` names the intended cooperative template at
+  local256/VGPR96/LDS8192B/scratch0. Its 50 M512 paired tiles take
+  **5.510 ms**; production is local128/VGPR88/LDS3072B/scratch0 and all 297
+  tiles take **6.691 ms**. Decoded-weight LDS multicast costs more than the
+  compact-T16 rereads it removes.
+- Candidate kernel, wrappers, fixture, and benchmark modes are removed.
+  Artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-cooperative-row64-rejected.json`.
+  Raw leaf SHA-256:
+  `93aef593ad53618fe62240a22796730f92c60d05b43dc473d99c3d481f84b164` /
+  `e487c650f32a973bf2a73e7f28a77729ecdd1dc3e82bba71ca551f4e64e4e6ba`;
+  trace CSV SHA-256:
+  `84829d8cd9f880f5ae94220eef10b3f5a4c6f3cc94202076305dc7693dfcefd7`.
+- `scripts/check_lineage.py --kind kernel --diff stat` remains mechanically
+  blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+  Production remains **573.354 tok/s**. Next screen combines byte-neutral Q4
+  qmicro metadata with the production direct-wave 128x32 register body.
