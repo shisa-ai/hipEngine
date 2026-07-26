@@ -181263,3 +181263,24 @@ Vulkan local sizes verbatim will close the measured gap.
   mask, and cursor are byte-exact. The full KV/runner/matrix bundle reports
   **32 passed**; `py_compile` and `git diff --check` pass. Package default
   remains M512; rerun the clean M512/M1024/M2048 model screen next.
+
+## 2026-07-26 — Add full-logit quality to the wide matrix screen
+
+- Clean revision `795fb8985` completes two counter-rotated
+  M512/M1024/M2048 repetitions. M512 medians are
+  **547.298/480.663/388.763 tok/s** at 512/1K/4K. M1024 reaches
+  **541.274/509.934/405.164** (**+6.090%/+4.219%** at 1K/4K), while M2048
+  reaches **532.285/504.661/410.297** (**+4.993%/+5.539%** at 1K/4K).
+  Every mode is repeat-deterministic, all next tokens agree, and tracked
+  ownership returns exactly to zero after a **79,501,193,512-byte** peak.
+- The historical exact gate correctly reports wider schedules as non-identical
+  beyond 512 because the already-admitted quantized expert routes depend on
+  matrix grouping. Added a separate full-FP32-logit comparison against M512:
+  every length/repetition now records finite KL and top-1 before discarding
+  host logits from the artifact. The quality lane uses the project thresholds
+  KL <= 0.05 and top-1 >= 90%; exact hashes remain independently reported.
+- RED failed collection on missing `_relative_quality`. GREEN adds the
+  normalized-logit comparison and passes all **4** matrix harness tests plus
+  `py_compile`/diff checks. Commit the harness, then repeat the clean screen
+  specifically because the prior artifact lacks the quality distribution
+  required for a production scheduling decision.

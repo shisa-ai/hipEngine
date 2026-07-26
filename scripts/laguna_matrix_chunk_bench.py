@@ -242,7 +242,88 @@ def _decision(
     }
 
 
-def _device_digest(runtime, buffer, dtype: np.dtype) -> str:
+def _normalized_log_probs(logits: np.ndarray) -> np.ndarray:
+    values = np.asarray(logits, dtype=np.float64)
+    shifted = values - float(np.max(values))
+    return shifted - float(np.log(np.exp(shifted).sum()))
+
+
+def _relative_quality(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    matrix_rows: Sequence[int],
+    lengths: Sequence[int],
+) -> dict[str, Any]:
+    modes = tuple(int(value) for value in matrix_rows)
+    profiled_lengths = tuple(int(value) for value in lengths)
+    baseline_mode = modes[0]
+    grouped: dict[tuple[int, int], dict[int, Mapping[str, Any]]] = defaultdict(dict)
+    for row in rows:
+        grouped[(int(row["length"]), int(row["repetition"]))][
+            int(row["matrix_rows"])
+        ] = row
+    records: dict[int, list[dict[str, Any]]] = {mode: [] for mode in modes}
+    for (length, repetition), paired in sorted(grouped.items()):
+        if length not in profiled_lengths or set(paired) != set(modes):
+            raise ValueError(
+                f"missing quality matrix policy for length={length} rep={repetition}"
+            )
+        reference = np.asarray(paired[baseline_mode]["_logits"], dtype=np.float32)
+        reference_log_probs = _normalized_log_probs(reference)
+        reference_probabilities = np.exp(reference_log_probs)
+        reference_top1 = int(np.argmax(reference))
+        for mode in modes:
+            candidate = np.asarray(paired[mode]["_logits"], dtype=np.float32)
+            candidate_log_probs = _normalized_log_probs(candidate)
+            kl = float(
+                np.sum(
+                    reference_probabilities
+                    * (reference_log_probs - candidate_log_probs)
+                )
+            )
+            candidate_top1 = int(np.argmax(candidate))
+            records[mode].append(
+                {
+                    "length": length,
+                    "repetition": repetition,
+                    "kl_divergence": kl,
+                    "reference_top1": reference_top1,
+                    "candidate_top1": candidate_top1,
+                    "top1_agreement": candidate_top1 == reference_top1,
+                    "finite": bool(
+                        np.isfinite(reference).all()
+                        and np.isfinite(candidate).all()
+                        and math.isfinite(kl)
+                    ),
+                }
+            )
+    by_mode = {}
+    for mode in modes:
+        mode_records = records[mode]
+        max_kl = max(float(record["kl_divergence"]) for record in mode_records)
+        top1_agreement = sum(
+            bool(record["top1_agreement"]) for record in mode_records
+        ) / len(mode_records)
+        finite = all(bool(record["finite"]) for record in mode_records)
+        by_mode[str(mode)] = {
+            "pass": bool(finite and max_kl <= 0.05 and top1_agreement >= 0.9),
+            "max_kl_divergence": max_kl,
+            "top1_agreement": top1_agreement,
+            "finite": finite,
+            "records": mode_records,
+        }
+    return {
+        "pass": all(bool(value["pass"]) for value in by_mode.values()),
+        "baseline_matrix_rows": baseline_mode,
+        "by_matrix_rows": by_mode,
+        "thresholds": {
+            "max_kl_divergence": 0.05,
+            "minimum_top1_agreement": 0.9,
+        },
+    }
+
+
+def _device_values(runtime, buffer, dtype: np.dtype) -> np.ndarray:
     values = np.empty(buffer.nbytes // np.dtype(dtype).itemsize, dtype=dtype)
     runtime.memcpy(
         host_array_ptr(values),
@@ -250,7 +331,11 @@ def _device_digest(runtime, buffer, dtype: np.dtype) -> str:
         values.nbytes,
         HipMemcpyKind.DEVICE_TO_HOST,
     )
-    return hashlib.sha256(values.tobytes()).hexdigest()
+    return values
+
+
+def _device_digest(runtime, buffer, dtype: np.dtype) -> str:
+    return hashlib.sha256(_device_values(runtime, buffer, dtype).tobytes()).hexdigest()
 
 
 def _kv_digest(session: LagunaGGUFResidentSession) -> str:
@@ -345,6 +430,7 @@ def _run_one(
         result = session.prefill(token_ids[:length], use_bulk=True)
         session.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
+        logits = _device_values(session.runtime, result.logits, np.float32)
         row = {
             "matrix_rows": matrix_rows,
             "attention_rows": session.prefill_attention_chunk_size,
@@ -358,7 +444,8 @@ def _run_one(
             "prefill_tok_s": length / elapsed,
             "next_token_id": int(result.next_token_id),
             "next_token_logit_hex": float(result.next_token_logit).hex(),
-            "logits_sha256": _device_digest(session.runtime, result.logits, np.float32),
+            "logits_sha256": hashlib.sha256(logits.tobytes()).hexdigest(),
+            "_logits": logits,
             "final_hidden_sha256": _device_digest(
                 session.runtime, result.final_hidden, np.uint16
             ),
@@ -499,6 +586,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         matrix_rows=matrix_rows,
         lengths=lengths,
     )
+    relative_quality = _relative_quality(
+        rows,
+        matrix_rows=matrix_rows,
+        lengths=lengths,
+    )
     recovered = bool(
         tracked_after["current_allocated_bytes"] == tracked_before["current_allocated_bytes"]
         and tracked_after["active_allocations"] == tracked_before["active_allocations"]
@@ -511,6 +603,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         matrix_rows=matrix_rows,
         lengths=lengths,
     )
+    for row in rows:
+        row.pop("_logits")
     manifest_path = args.repacked_cache / "manifest.json"
     return {
         "schema": 1,
@@ -572,6 +666,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             **correctness,
             "tracked_returned_to_baseline": recovered,
         },
+        "relative_quality": relative_quality,
         "decision": decision,
         "memory": {
             "tracked_before": tracked_before,
