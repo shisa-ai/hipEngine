@@ -181636,3 +181636,22 @@ Vulkan local sizes verbatim will close the measured gap.
   scale/min quartet into an exact three-byte record. Sixty-four work items can
   cooperatively expand its 64 records, directly attacking the serial metadata
   cost that closed T16-lite and X16.
+
+## 2026-07-26 — Add byte-neutral Q4 T16-local qmicro oracle
+
+- `scripts/check_lineage.py --kind kernel --diff stat` remains blocked before
+  the device screen because the configured read-only parent
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external source is
+  copied; the layout and forthcoming consumer are derived from the in-tree
+  T16/T16-lite lineage.
+- RED failed import collection on the missing qmicro layout symbols. GREEN
+  adds a **2,304-byte** Q4_K tile with T16-local d/dmin and Q payload plus 64
+  exact 24-bit metadata records arranged as
+  `[scale_or_min,subblock8,column_quartet4,byte3]`.
+- The CPU oracle round-trips arbitrary raw Q4_K bytes exactly and separately
+  proves that every record decodes into the same four 6-bit scale/min
+  coefficients as `unpack_q4_k_scale_min`; the focused repack file reports
+  **10 passed**.
+- This is host-only foundation. No quant registry key, materializer, device
+  decoder, or runtime route exists until the exact c1-first decoder gate beats
+  resident T16.

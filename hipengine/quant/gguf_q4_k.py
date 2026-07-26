@@ -48,6 +48,27 @@ GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES = (
     * (GGUF_Q4_K_TILE16_COLS // 2)
 )
 
+# Byte-neutral Q4 qmicro replacement-layout prototype. It keeps the same
+# d/dmin and Q payload positions as T16-lite, but stores the 6-bit scale/min
+# coefficients as independently decodable four-column 24-bit records:
+# [scale_or_min, subblock8, column_quartet4, byte3].
+GGUF_Q4_K_TILE16_QMICRO_D_OFFSET = 0
+GGUF_Q4_K_TILE16_QMICRO_DMIN_OFFSET = (
+    GGUF_Q4_K_TILE16_QMICRO_D_OFFSET + GGUF_Q4_K_TILE16_COLS * 2
+)
+GGUF_Q4_K_TILE16_QMICRO_META_OFFSET = (
+    GGUF_Q4_K_TILE16_QMICRO_DMIN_OFFSET + GGUF_Q4_K_TILE16_COLS * 2
+)
+GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET = (
+    GGUF_Q4_K_TILE16_QMICRO_META_OFFSET + 2 * GGUF_Q4_K_SUBBLOCKS * 4 * 3
+)
+GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES = (
+    GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET
+    + GGUF_Q4_K_SUBBLOCKS
+    * GGUF_Q4_K_SUBBLOCK
+    * (GGUF_Q4_K_TILE16_COLS // 2)
+)
+
 
 @dataclass(frozen=True)
 class GGUFQ4KQuant:
@@ -145,6 +166,24 @@ class GGUFQ4KTile16Lite:
     loads. This makes the replacement layout byte-neutral with 16 raw Q4_K
     blocks while retaining T16's Q payload locality.
     """
+
+    tiles: np.ndarray
+    experts: int
+    out_features: int
+    in_features: int
+
+    @property
+    def out_tiles(self) -> int:
+        return self.out_features // GGUF_Q4_K_TILE16_COLS
+
+    @property
+    def blocks_per_row(self) -> int:
+        return self.in_features // QK_K
+
+
+@dataclass(frozen=True)
+class GGUFQ4KTile16QMicro:
+    """Byte-neutral T16-local Q4_K layout with 24-bit metadata quartets."""
 
     tiles: np.ndarray
     experts: int
@@ -613,6 +652,314 @@ def unpack_gguf_q4_k_tile16_lite(
     )
 
 
+def repack_gguf_q4_k_tile16_qmicro(
+    raw_qweight: Any,
+) -> GGUFQ4KTile16QMicro:
+    """Repack Q4_K experts into byte-neutral T16-local qmicro tiles."""
+
+    raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
+    if raw.ndim != 3:
+        raise ValueError(
+            "raw_qweight must have GGUF expert byte shape "
+            "[experts, out_features, bytes_per_row]"
+        )
+    experts, out_features, bytes_per_row = map(int, raw.shape)
+    if experts <= 0:
+        raise ValueError("experts must be positive")
+    if out_features <= 0 or out_features % GGUF_Q4_K_TILE16_COLS != 0:
+        raise ValueError("out_features must be positive and divisible by 16")
+    if bytes_per_row <= 0 or bytes_per_row % GGUF_Q4_K_BLOCK_BYTES != 0:
+        raise ValueError("bytes_per_row must be a positive multiple of 144")
+
+    blocks_per_row = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
+    out_tiles = out_features // GGUF_Q4_K_TILE16_COLS
+    blocks = raw.reshape(
+        experts,
+        out_features,
+        blocks_per_row,
+        GGUF_Q4_K_BLOCK_BYTES,
+    )
+    tiles = np.empty(
+        (
+            experts,
+            out_tiles,
+            blocks_per_row,
+            GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES,
+        ),
+        dtype=np.uint8,
+    )
+
+    for out_tile in range(out_tiles):
+        cols = blocks[
+            :,
+            out_tile
+            * GGUF_Q4_K_TILE16_COLS : (out_tile + 1)
+            * GGUF_Q4_K_TILE16_COLS,
+        ]
+        dst = tiles[:, out_tile]
+        dst[
+            ...,
+            GGUF_Q4_K_TILE16_QMICRO_D_OFFSET:
+            GGUF_Q4_K_TILE16_QMICRO_DMIN_OFFSET,
+        ] = (
+            cols[..., 0:2]
+            .transpose(0, 2, 1, 3)
+            .reshape(
+                experts,
+                blocks_per_row,
+                GGUF_Q4_K_TILE16_COLS * 2,
+            )
+        )
+        dst[
+            ...,
+            GGUF_Q4_K_TILE16_QMICRO_DMIN_OFFSET:
+            GGUF_Q4_K_TILE16_QMICRO_META_OFFSET,
+        ] = (
+            cols[..., 2:4]
+            .transpose(0, 2, 1, 3)
+            .reshape(
+                experts,
+                blocks_per_row,
+                GGUF_Q4_K_TILE16_COLS * 2,
+            )
+        )
+
+        scales, mins = unpack_q4_k_scale_min(
+            cols[..., 4:16].reshape(-1, 12)
+        )
+        scales = scales.reshape(
+            experts,
+            GGUF_Q4_K_TILE16_COLS,
+            blocks_per_row,
+            GGUF_Q4_K_SUBBLOCKS,
+        )
+        mins = mins.reshape(
+            experts,
+            GGUF_Q4_K_TILE16_COLS,
+            blocks_per_row,
+            GGUF_Q4_K_SUBBLOCKS,
+        )
+        coeffs = np.stack((scales, mins), axis=3).transpose(0, 2, 3, 4, 1)
+        quartets = coeffs.reshape(
+            experts,
+            blocks_per_row,
+            2,
+            GGUF_Q4_K_SUBBLOCKS,
+            GGUF_Q4_K_TILE16_COLS // 4,
+            4,
+        ).astype(np.uint32)
+        words = (
+            quartets[..., 0]
+            | (quartets[..., 1] << np.uint32(6))
+            | (quartets[..., 2] << np.uint32(12))
+            | (quartets[..., 3] << np.uint32(18))
+        )
+        records = np.stack(
+            (
+                words.astype(np.uint8),
+                (words >> np.uint32(8)).astype(np.uint8),
+                (words >> np.uint32(16)).astype(np.uint8),
+            ),
+            axis=-1,
+        )
+        dst[
+            ...,
+            GGUF_Q4_K_TILE16_QMICRO_META_OFFSET:
+            GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET,
+        ] = records.reshape(experts, blocks_per_row, -1)
+
+        qs_pairs = cols[..., 16:144].reshape(
+            experts,
+            GGUF_Q4_K_TILE16_COLS,
+            blocks_per_row,
+            4,
+            GGUF_Q4_K_SUBBLOCK,
+        )
+        q = np.empty(
+            (
+                experts,
+                GGUF_Q4_K_TILE16_COLS,
+                blocks_per_row,
+                GGUF_Q4_K_SUBBLOCKS,
+                GGUF_Q4_K_SUBBLOCK,
+            ),
+            dtype=np.uint8,
+        )
+        for sb in range(GGUF_Q4_K_SUBBLOCKS):
+            packed = qs_pairs[..., sb >> 1, :]
+            q[..., sb, :] = (
+                (packed >> np.uint8(4)) if (sb & 1) else packed
+            ) & np.uint8(0x0F)
+        q_tile = q.transpose(0, 2, 3, 4, 1)
+        q_packed_cols = (q_tile[..., 0::2] & np.uint8(0x0F)) | (
+            (q_tile[..., 1::2] & np.uint8(0x0F)) << np.uint8(4)
+        )
+        dst[..., GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET:] = (
+            q_packed_cols.reshape(experts, blocks_per_row, -1)
+        )
+
+    return GGUFQ4KTile16QMicro(
+        tiles=tiles,
+        experts=experts,
+        out_features=out_features,
+        in_features=blocks_per_row * QK_K,
+    )
+
+
+def unpack_gguf_q4_k_tile16_qmicro(
+    packed: GGUFQ4KTile16QMicro | np.ndarray,
+    *,
+    out_features: int | None = None,
+) -> np.ndarray:
+    """Reconstruct raw Q4_K bytes from T16-local qmicro tiles."""
+
+    if isinstance(packed, GGUFQ4KTile16QMicro):
+        tiles = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        tiles = np.asarray(packed, dtype=np.uint8)
+        expected_out = out_features
+    if (
+        tiles.ndim != 4
+        or tiles.shape[-1] != GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES
+    ):
+        raise ValueError(
+            "tiles must have shape "
+            "[experts, out_tiles16, blocks_per_row, 2304]"
+        )
+    experts, out_tiles, blocks_per_row, _ = map(int, tiles.shape)
+    inferred_out = out_tiles * GGUF_Q4_K_TILE16_COLS
+    if expected_out is not None and int(expected_out) != inferred_out:
+        raise ValueError(
+            f"out_features mismatch: expected {expected_out}, "
+            f"tile layout implies {inferred_out}"
+        )
+
+    blocks = np.empty(
+        (
+            experts,
+            inferred_out,
+            blocks_per_row,
+            GGUF_Q4_K_BLOCK_BYTES,
+        ),
+        dtype=np.uint8,
+    )
+    for out_tile in range(out_tiles):
+        src = tiles[:, out_tile]
+        cols = blocks[
+            :,
+            out_tile
+            * GGUF_Q4_K_TILE16_COLS : (out_tile + 1)
+            * GGUF_Q4_K_TILE16_COLS,
+        ]
+        cols[..., 0:2] = (
+            src[
+                ...,
+                GGUF_Q4_K_TILE16_QMICRO_D_OFFSET:
+                GGUF_Q4_K_TILE16_QMICRO_DMIN_OFFSET,
+            ]
+            .reshape(experts, blocks_per_row, GGUF_Q4_K_TILE16_COLS, 2)
+            .transpose(0, 2, 1, 3)
+        )
+        cols[..., 2:4] = (
+            src[
+                ...,
+                GGUF_Q4_K_TILE16_QMICRO_DMIN_OFFSET:
+                GGUF_Q4_K_TILE16_QMICRO_META_OFFSET,
+            ]
+            .reshape(experts, blocks_per_row, GGUF_Q4_K_TILE16_COLS, 2)
+            .transpose(0, 2, 1, 3)
+        )
+
+        records = src[
+            ...,
+            GGUF_Q4_K_TILE16_QMICRO_META_OFFSET:
+            GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET,
+        ].reshape(
+            experts,
+            blocks_per_row,
+            2,
+            GGUF_Q4_K_SUBBLOCKS,
+            GGUF_Q4_K_TILE16_COLS // 4,
+            3,
+        )
+        words = (
+            records[..., 0].astype(np.uint32)
+            | (records[..., 1].astype(np.uint32) << np.uint32(8))
+            | (records[..., 2].astype(np.uint32) << np.uint32(16))
+        )
+        coeffs = np.stack(
+            tuple(
+                (
+                    (words >> np.uint32(6 * lane)) & np.uint32(0x3F)
+                ).astype(np.uint8)
+                for lane in range(4)
+            ),
+            axis=-1,
+        ).reshape(
+            experts,
+            blocks_per_row,
+            2,
+            GGUF_Q4_K_SUBBLOCKS,
+            GGUF_Q4_K_TILE16_COLS,
+        )
+        scales = coeffs[:, :, 0].transpose(0, 3, 1, 2)
+        mins = coeffs[:, :, 1].transpose(0, 3, 1, 2)
+        cols[..., 4:16] = _pack_q4_k_scale_min(scales, mins)
+
+        q_packed_cols = src[
+            ..., GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET:
+        ].reshape(
+            experts,
+            blocks_per_row,
+            GGUF_Q4_K_SUBBLOCKS,
+            GGUF_Q4_K_SUBBLOCK,
+            GGUF_Q4_K_TILE16_COLS // 2,
+        )
+        q = np.empty(
+            (
+                experts,
+                blocks_per_row,
+                GGUF_Q4_K_SUBBLOCKS,
+                GGUF_Q4_K_SUBBLOCK,
+                GGUF_Q4_K_TILE16_COLS,
+            ),
+            dtype=np.uint8,
+        )
+        q[..., 0::2] = q_packed_cols & np.uint8(0x0F)
+        q[..., 1::2] = q_packed_cols >> np.uint8(4)
+        q_by_col = q.transpose(0, 4, 1, 2, 3)
+        qs_pairs = np.empty(
+            (
+                experts,
+                GGUF_Q4_K_TILE16_COLS,
+                blocks_per_row,
+                4,
+                GGUF_Q4_K_SUBBLOCK,
+            ),
+            dtype=np.uint8,
+        )
+        for pair in range(4):
+            qs_pairs[..., pair, :] = (
+                q_by_col[..., 2 * pair, :] & np.uint8(0x0F)
+            ) | (
+                (q_by_col[..., 2 * pair + 1, :] & np.uint8(0x0F))
+                << np.uint8(4)
+            )
+        cols[..., 16:144] = qs_pairs.reshape(
+            experts,
+            GGUF_Q4_K_TILE16_COLS,
+            blocks_per_row,
+            128,
+        )
+
+    return blocks.reshape(
+        experts,
+        inferred_out,
+        blocks_per_row * GGUF_Q4_K_BLOCK_BYTES,
+    )
+
+
 def _bf16_u16_to_f32(arr: object) -> np.ndarray:
     u16 = np.ascontiguousarray(arr, dtype=np.uint16)
     return (u16.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(u16.shape).copy()
@@ -799,6 +1146,9 @@ __all__ = [
     "GGUF_Q4_K_TILE16_BLOCK_BYTES",
     "GGUF_Q4_K_TILE16_COLS",
     "GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES",
+    "GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES",
+    "GGUF_Q4_K_TILE16_QMICRO_META_OFFSET",
+    "GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET",
     "GGUF_Q4_K_SUBBLOCK",
     "GGUF_Q4_K_SUBBLOCKS",
     "GGUF_Q4_K_T16_V1",
@@ -809,6 +1159,7 @@ __all__ = [
     "GGUFQ4KPack8",
     "GGUFQ4KTile16",
     "GGUFQ4KTile16Lite",
+    "GGUFQ4KTile16QMicro",
     "GGUFQ4KQuant",
     "GGUFQ4KT16Quant",
     "awq_pack8_shift_for_lane",
@@ -818,6 +1169,8 @@ __all__ = [
     "repack_gguf_q4_k_pack8",
     "repack_gguf_q4_k_tile16",
     "repack_gguf_q4_k_tile16_lite",
+    "repack_gguf_q4_k_tile16_qmicro",
     "unpack_gguf_q4_k_tile16",
     "unpack_gguf_q4_k_tile16_lite",
+    "unpack_gguf_q4_k_tile16_qmicro",
 ]
