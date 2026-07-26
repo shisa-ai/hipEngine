@@ -1452,16 +1452,26 @@ Immediate execution queue:
    512 B LDS, zero scratch. Production remains D8 at **632.618 tok/s** until
    the clean direct-all-exact 320-step category gate passes. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-role-split-quality-pending.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-split-quality-pending.json).
+34. **Rejected assignment:** D4 gate + D8 up improves the earlier all-D4
+   maximum KL from **0.127536 to 0.061203** and keeps **317/320 (99.063%)**
+   suite top-1, but still violates the absolute contract. The mixed-language
+   prompts peak at **0.061203** and **0.053487**; all other prompts are within
+   budget. Poolside remains exact top-1, category prefill is **4.432x**
+   all-exact, decode is flat, and all tracked allocations return to zero.
+   Production remains D8. The alternate D8-gate/D4-up role assignment has
+   essentially identical wall economics and a different error path through
+   SiLU, so it receives the same complete gate before producer-row repair.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-gate-d4-up-d8-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d4-up-d8-absolute-rejected.json).
 
 ### Next exact and quality-gated attacks
 
 The projection-role screen cleared its 10-ms economic gate. Its quality gate
 now decides whether repair work is needed:
 
-1. Run the clean all-exact versus D4-gate/D8-up 320-step category comparison.
-   Promote only at KL <=0.05 and top-1 >=90%; otherwise remove the unqualified
-   alternate D8-gate/D4-up surface unless its own complete quality gate has a
-   materially different result.
+1. D4-gate/D8-up is rejected at max KL **0.061203**. Run the clean all-exact
+   versus D8-gate/D4-up 320-step category comparison. Promote only at
+   KL <=0.05 and top-1 >=90%.
 2. If the selected role split misses KL <=0.05, retain D8 and prototype a bounded
    producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
    separately compacted risk-row kernel adds the D8-minus-D4 correction
