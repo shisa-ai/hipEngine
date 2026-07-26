@@ -3,25 +3,17 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-m2048-production.json`](results/2026-07-26-gfx1151-laguna-m2048-production.json).
-It raises gfx1151 projection/MoE transactions from M512 to M2048 while keeping
-attention at M128 and each physical KV operation bounded by the 512-token SWA
-ring. Clean selector-unset 512/1K/4K medians are
-**545.015/506.299/410.099 tok/s**. Relative to the preceding matrix512 packet,
-pp512 is flat within **-0.199%** run variance while 1K/4K improve
-**5.120%/5.238%**. The matched policy screen measures
-**+5.420%/+5.752%** at 1K/4K, maximum relative KL **0.000012503**, 100% top-1,
-deterministic repeats, exact multi-wrap KV semantics, and exact lifecycle
-recovery. Absolute maximum KL for the byte-identical <=M512 quality suite
-remains **0.049542582**. The active pp512 stretch target is 700 tok/s.
-
-An exact global-only qrow6 attention policy is now the gfx1151 default pending
-clean selector-unset publication. It applies only to complete preappended M128
-global tiles from position 128; global position 0, all SWA, partial, wrapped,
-verifier, and unmeasured paths retain qrow4. Seven complete-state pp512 pairs
-improve **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** and save
-**4.645 ms** median with identical logits, hidden state, KV, token/logit, and
-cursor.
+[`2026-07-26-gfx1151-laguna-global-qrow6-production.json`](results/2026-07-26-gfx1151-laguna-global-qrow6-production.json).
+It keeps M2048 projection/MoE transactions and M128 physical attention/KV
+slices, while using exact global qrow6 only on complete preappended tiles from
+position 128. Global position 0, all SWA, partial, wrapped, verifier, and
+unmeasured paths retain qrow4. Clean selector-unset 512/1K/4K medians are
+**547.064/513.180/428.628 tok/s**, improving the preceding M2048 packet by
+**0.376%/1.359%/4.518%**. Seven matched pp512 pairs win **7/7** with identical
+logits, hidden state, KV, token/logit, and cursor. Cached tracing observes the
+exact 12 qrow4 / 36 qrow6 / 144 SWA-qrow4 pp512 policy and cuts attention
+**158.702 -> 152.406 ms (-3.97%)**. Absolute maximum KL remains
+**0.049542582**. The active pp512 stretch target is 700 tok/s.
 [`default artifact`](results/2026-07-26-gfx1151-laguna-global-qrow6-default.json) ·
 [`leaf artifact`](results/2026-07-26-gfx1151-laguna-global-qrow6-candidate.json).
 
@@ -40,7 +32,7 @@ existing 2-GiB admission floor. A 640-row pending transaction matches five
 separately committed M128 transactions byte-for-byte across SWA wraps; wide
 transactions require resident row-position views and every physical
 attention/write slice remains bounded.
-[`current production artifact`](results/2026-07-26-gfx1151-laguna-m2048-production.json).
+[`M2048 scheduling artifact`](results/2026-07-26-gfx1151-laguna-m2048-production.json).
 
 The first post-546 selected-down screen is closed and fully removed. An exact
 64-column x 128-row/local256 Q6 qmicro body collapses actual >=65-row expert
@@ -873,7 +865,8 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M M2048 production prefill | 2026-07-26 | clean screen `9f560a764`; promoted/default `dcf29b1d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix2048/attention128; two matched-policy and three selector-unset 512/1K/4K repetitions | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: projection/MoE capacity rises M512 -> M2048 while attention stays M128 and physical KV operations remain bounded. Clean selector-unset 512/1K/4K reaches **545.015/506.299/410.099 tok/s**; pp512 is flat within **-0.199%** variance while 1K/4K improve **5.120%/5.238%** over the preceding packet. Matched M2048 improves 1K/4K **5.420%/5.752%**, has maximum relative KL **0.000012503**, 100% top-1, deterministic repeats, exact multi-wrap KV semantics, and exact lifecycle. Scratch is **1,755,275,296 bytes**, within the existing 2-GiB admission floor. [`artifact`](results/2026-07-26-gfx1151-laguna-m2048-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared scheduling/quality/lifecycle scope | Continue toward 700 through a new selected-expert or attention architecture; rerun after matrix/attention/KV policy, arithmetic/layout, model/quant, compiler/runtime, or device/queue changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact global-qrow6 production prefill | 2026-07-26 | clean measured/default `0f71800dc`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix2048/attention128; seven matched pp512 pairs, three selector-unset 512/1K/4K repetitions, and cached all-family trace | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: global qrow6 owns only complete preappended M128 tiles from position 128, while start 0 and all SWA retain qrow4. Clean selector-unset 512/1K/4K reaches **547.064/513.180/428.628 tok/s**, improving the M2048 packet **0.376%/1.359%/4.518%**. The matched gate is complete-state exact and wins 7/7; cached tracing cuts global+SWA attention **158.702 -> 152.406 ms (-3.97%)**. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, with deterministic repeats, exact KV/cursors, neutral decode, and exact lifecycle. [`artifact`](results/2026-07-26-gfx1151-laguna-global-qrow6-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared exact attention/quality/lifecycle scope | Continue toward 700 through selected-down/expert traffic and a new attention architecture; rerun after matrix/attention/KV policy, arithmetic/layout, model/quant, compiler/runtime, or device/queue changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M M2048 production prefill | 2026-07-26 | clean screen `9f560a764`; promoted/default `dcf29b1d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix2048/attention128; two matched-policy and three selector-unset 512/1K/4K repetitions | **Superseded quality-gated production packet**: projection/MoE capacity rises M512 -> M2048 while attention stays M128 and physical KV operations remain bounded. Clean selector-unset 512/1K/4K reaches **545.015/506.299/410.099 tok/s**; pp512 is flat within **-0.199%** variance while 1K/4K improve **5.120%/5.238%** over the preceding packet. Matched M2048 improves 1K/4K **5.420%/5.752%**, has maximum relative KL **0.000012503**, 100% top-1, deterministic repeats, exact multi-wrap KV semantics, and exact lifecycle. Scratch is **1,755,275,296 bytes**, within the existing 2-GiB admission floor. [`artifact`](results/2026-07-26-gfx1151-laguna-m2048-production.json). | Superseded; exact M2048 scheduling provenance | Use the global-qrow6 production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact fused selected-SiLU pack production prefill | 2026-07-26 | clean measured/default `c0730bb94`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; three selector-unset 512/1K/4K repetitions, seven paired admission runs, and cached all-family trace | **Superseded matrix512 production packet**: reuse selected-down scratch for packed gate/up and fold the standalone sparse SiLU into the range-safe Q8 pack while explicitly preserving its BF16 boundary. Clean selector-unset pp512 improves **543.807 -> 546.100 tok/s (+0.422%)**, with minimum **543.299 tok/s**; 1K/4K improve **480.017 -> 481.640 (+0.338%)** and **388.595 -> 389.686 tok/s (+0.281%)**. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing removes another **47 dispatches**, names 47 fused packs at local128/VGPR16/LDS512B/scratch0, records zero standalone selected-SiLU launches, and reaches **549.845 tok/s**. [`artifact`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json). | Superseded; exact fused-pack and matrix512 trace provenance | Use the M2048 production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M Q6-down heavy 128-row tile | 2026-07-26 | rejected leaf on `8538f4bc4`; TheRock HIP 7.15; exact actual layer-1 Q6 weight and natural pp512 routing; serial 11-sample actual-weight screens plus cached resource trace | **Rejected and fully removed**: the 64-column x 128-row/local256 qmicro body is BF16-byte exact and preserves 32 accumulators/lane. The >=65-row subset collapses **32 -> 17** weight tiles but saves only **0.017 ms** before its required second metadata schedule/launch; the >=129-row tail collapses **14 -> 8** tiles yet regresses **0.673548 -> 0.687981 ms (+2.14%)**. Trace resources are local256/VGPR88/LDS8704B/scratch0. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json). | No; rejected leaf evidence only | Do not retry a larger local256 Q6 row tile without a new occupancy mechanism. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact fused selected-SiLU pack candidate | 2026-07-26 | candidate on `4cbb50632`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions and one cached traced pair | **Superseded exact admission evidence**: reuse selected-down scratch for packed gate/up and fold the standalone sparse SiLU into the range-safe Q8 pack while explicitly preserving its BF16 boundary. All seven complete-state pairs are exact and the candidate wins **7/7**; paired geometric throughput improves **0.651%** and median paired wall falls **4.636 ms**. Tracing removes **47 dispatches**, cuts the target window **10.301 -> 6.377 ms (-38.09%)**, and records local128/VGPR16/LDS512B/scratch0. [`artifact`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json). | Superseded; exact paired/sub-window provenance | Use the fused selected-SiLU pack production row above for current performance and correctness. |

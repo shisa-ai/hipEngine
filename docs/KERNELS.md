@@ -82,8 +82,11 @@ qrow4 **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** with identical
 logits/hidden/KV/token/cursor. gfx1151 therefore defaults only the qualified
 global positions to qrow6, with `prefill_global_qrow6=false` as explicit
 qrow4 rollback; other backends remain unchanged. Clean selector-unset
-publication is still required. Evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-{candidate,default}.json`.
+512/1K/4K reaches **547.064/513.180/428.628 tok/s**, improving the preceding
+M2048 packet by **0.376%/1.359%/4.518%**. Cached tracing observes 12
+global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 calls at pp512 and cuts
+attention **158.702 -> 152.406 ms (-3.97%)**. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-{candidate,default,production}.json`.
 
 ### Laguna gfx1151 exact router token reuse
 

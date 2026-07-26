@@ -181401,3 +181401,27 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-default.json`.
   Commit the integration, then run clean selector-unset 512/1K/4K production
   plus a cached full-family trace before updating the production headline.
+
+## 2026-07-26 — Publish exact global qrow6 production
+
+- Clean selector-unset revision `0f71800dc` measures
+  **547.064/513.180/428.628 tok/s** median at 512/1K/4K, improving the
+  preceding M2048 packet **0.376%/1.359%/4.518%**. The pp512 minimum is
+  **546.934 tok/s**. All next tokens remain **2930/95/7772**, final positions
+  and repeats are deterministic, and **78,777,775,764 tracked bytes** return
+  to zero. Raw SHA-256 is
+  `793e7ae9e844a391c9075e165f76061aeb3783d446aa5f189b7ea20a000cc872`.
+- Cached full-family tracing independently reaches **550.907 tok/s** at
+  pp512 with **914.332 ms** kernel sum and **924.807 ms** span. It observes
+  exactly 12 global-qrow4 start-0, 36 global-qrow6, and 144 SWA-qrow4 calls.
+  Global/SWA attention totals **152.406 ms**, down from the prior
+  **158.702 ms (-3.97%, 6.296 ms saved)**. Qrow6 is
+  local32/VGPR88/SGPR128/LDS0/scratch0. Trace/summary SHA-256 values are
+  `853b2bd79d2e63a29392dc201829160e4bdb35512ae3f3cb07957a9f89de00b5`
+  and `75c4e86e5d40a0508451927de7c8bdcbf212995a7b2999f8509e1ff829e5d379`.
+- Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-production.json`
+  and update the current benchmark/plan packet. The clean pp512 wall is now
+  **935.905 ms**, leaving **204.476 ms** to 700 tok/s. The next iteration
+  returns to selected down (**196.157 ms**) unless a new exact attention
+  architecture can save materially more than another query-row width tweak.
