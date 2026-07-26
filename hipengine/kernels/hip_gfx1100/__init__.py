@@ -41,6 +41,10 @@ LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
 # clean-context, and both complete 18-prompt category orders. Explicit wave4
 # or serial requests and exact-key misses retain the registered unfused chain.
 LAGUNA_IQ3_WAVE10_FUSED = True
+# The exact sign-bit reconstruction sibling remains default-off until its own
+# full-state, clean-context, and complete-category gates pass. Explicit selection
+# falls back to retained wave10 on exact-key miss.
+LAGUNA_IQ3_WAVE10_SIGNBIT_FUSED = False
 # The exact expanded-magnitude IQ2 grid contracts selector reconstruction and
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
@@ -131,6 +135,7 @@ __all__ = [
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_IQ3_WAVE10_FUSED",
+    "LAGUNA_IQ3_WAVE10_SIGNBIT_FUSED",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",

@@ -42,6 +42,9 @@ _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_
 _IQ3_WAVE10_FUSED_VARIANT = (
     "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
 )
+_IQ3_WAVE10_SIGNBIT_FUSED_VARIANT = (
+    "selected_weighted_down_gemv_decode_k1024_wave10_signbit_bf16_bf16_out"
+)
 _IQ3_SELECTED_DOWN_VARIANTS = MappingProxyType(
     {
         1: "selected_gemv_decode_bf16_bf16_out",
@@ -53,6 +56,7 @@ _IQ3_C1_DOWN_VARIANTS = MappingProxyType(
         "serial_weighted": None,
         "wave4_reduce": "selected_gemv_decode_k1024_wave4_bf16_bf16_out",
         "wave10_fused": None,
+        "wave10_signbit_fused": None,
     }
 )
 _IQ3_C1_WEIGHTED_DOWN_VARIANTS = MappingProxyType(
@@ -60,6 +64,13 @@ _IQ3_C1_WEIGHTED_DOWN_VARIANTS = MappingProxyType(
         "serial_weighted": _SELECTED_WEIGHTED_DOWN_VARIANT,
         "wave4_reduce": _SELECTED_WEIGHTED_DOWN_VARIANT,
         "wave10_fused": _IQ3_WAVE10_FUSED_VARIANT,
+        "wave10_signbit_fused": _IQ3_WAVE10_SIGNBIT_FUSED_VARIANT,
+    }
+)
+_IQ3_FUSED_C1_WEIGHTED_DOWN_VARIANTS = MappingProxyType(
+    {
+        "wave10_fused": _IQ3_WAVE10_FUSED_VARIANT,
+        "wave10_signbit_fused": _IQ3_WAVE10_SIGNBIT_FUSED_VARIANT,
     }
 )
 _SILU_VARIANT = "out"
@@ -84,28 +95,60 @@ def resolve_laguna_iq3_c1_down_schedule(
 ) -> str:
     """Resolve the exact c=1 IQ3 producer/reducer schedule or its fallback."""
 
-    selected = (
-        "wave10_fused"
-        if requested is None
-        and bool(
-            backend_package_capability(
-                backend,
-                "LAGUNA_IQ3_WAVE10_FUSED",
-                False,
-            )
+    if requested is None and bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_IQ3_WAVE10_SIGNBIT_FUSED",
+            False,
         )
-        else backend_package_capability(
+    ):
+        selected = "wave10_signbit_fused"
+    elif requested is None and bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_IQ3_WAVE10_FUSED",
+            False,
+        )
+    ):
+        selected = "wave10_fused"
+    elif requested is None:
+        selected = backend_package_capability(
             backend,
             "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
             "serial_weighted",
         )
-        if requested is None
-        else str(requested)
-    )
+    else:
+        selected = str(requested)
     parsed = str(selected)
     if parsed not in _IQ3_C1_DOWN_VARIANTS:
         raise ValueError("unsupported Laguna IQ3 c=1 down schedule")
     return parsed
+
+
+def _laguna_iq3_prior_c1_down_schedule(backend: str, rejected: str) -> str:
+    """Return the retained schedule before a fused candidate, without recursion."""
+
+    if rejected == "wave10_signbit_fused" and bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_IQ3_WAVE10_FUSED",
+            False,
+        )
+    ):
+        return "wave10_fused"
+    prior = str(
+        backend_package_capability(
+            backend,
+            "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
+            "serial_weighted",
+        )
+    )
+    if prior not in _IQ3_C1_DOWN_VARIANTS or prior in (
+        rejected,
+        "wave10_signbit_fused",
+    ):
+        return "serial_weighted"
+    return prior
 
 
 def resolve_laguna_selected_down_mode(
@@ -335,25 +378,26 @@ def resolve_laguna_moe_plan(
         raise ValueError("Laguna shared FFN size must be divisible by GGUF K block size 256")
 
     load_backend_kernel_package(backend)
-    if iq3_c1_schedule == "wave10_fused":
-        candidate_key = KernelKey(
-            backend,
-            "moe_linear",
-            "gguf_iq3_xxs",
-            _IQ3_WAVE10_FUSED_VARIANT,
-        )
-        if not is_registered(candidate_key):
-            iq3_c1_schedule = str(
-                backend_package_capability(
+    if iq3_c1_schedule in _IQ3_FUSED_C1_WEIGHTED_DOWN_VARIANTS:
+        if (
+            config.expert_used_count != 10
+            or config.expert_feed_forward_length != 1024
+        ):
+            iq3_c1_schedule = "serial_weighted"
+        else:
+            while iq3_c1_schedule in _IQ3_FUSED_C1_WEIGHTED_DOWN_VARIANTS:
+                candidate_key = KernelKey(
                     backend,
-                    "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
-                    "serial_weighted",
+                    "moe_linear",
+                    "gguf_iq3_xxs",
+                    _IQ3_FUSED_C1_WEIGHTED_DOWN_VARIANTS[iq3_c1_schedule],
                 )
-            )
-            if iq3_c1_schedule not in _IQ3_C1_DOWN_VARIANTS or (
-                iq3_c1_schedule == "wave10_fused"
-            ):
-                iq3_c1_schedule = "serial_weighted"
+                if is_registered(candidate_key):
+                    break
+                iq3_c1_schedule = _laguna_iq3_prior_c1_down_schedule(
+                    backend,
+                    iq3_c1_schedule,
+                )
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
         "router_select": KernelKey(

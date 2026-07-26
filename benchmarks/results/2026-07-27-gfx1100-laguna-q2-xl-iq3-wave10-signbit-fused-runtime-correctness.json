@@ -1,0 +1,235 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "control_schedule": "wave10_fused",
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "primitive_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-correctness.json",
+    "primitive_artifact_sha256": "93d8780f8aee3dbf1596758d2d9c412b5ae84b78f6a96216f2a85b00be478bf5",
+    "runtime_revision": "55b06ff15"
+  },
+  "builder_sha256": "13faa37468aa1cfd9f090b9dd00d0a7f2028525abb834df41fe1ffde2ced9669",
+  "cached_full_model_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "analyzer_sha256": "e8b3e388687b025f6493ef9e2bf8bd9841724f77e25bff9c3df0c7039bcaef01",
+    "analyzer_stdout_sha256": "718e8fb6066f280ee7076ee4b0e3b9d86728bfaa891a57ccfbae574575a84f7e",
+    "candidate_calls": 90,
+    "candidate_calls_per_token": 45,
+    "candidate_duration_ns": {
+      "max": 32680,
+      "median": 29280.0,
+      "min": 28280
+    },
+    "candidate_prefill_calls": 0,
+    "candidate_resources": {
+      "allocated_lds_bytes": 512,
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 88,
+      "grid_x": 983040,
+      "grid_y": 1,
+      "scratch_bytes": 0,
+      "workgroup_x": 320
+    },
+    "child_output_sha256": "b3a17cef80a1eb2cbad02e7cdcdd0356b78129a5f1bf95c68cdd0f5b8deeaa85",
+    "child_sha256": "183a390976c4f71159fe2e77751b3df24e6a61ada9f896608658016b32a76084",
+    "decode_transitions": 2,
+    "dispatch_id_stride": 683,
+    "finite_final_logits": true,
+    "first_candidate_dispatch_ids": [
+      1462,
+      2145
+    ],
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "model_kernels_per_token": 678,
+    "no_compiler_under_profiler": true,
+    "passed": true,
+    "preflight_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/trace_laguna_iq3_wave10_signbit_fused_model.py",
+    "preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preflight_stdout_sha256": "1d384affb98887901b3331686dfa8b1f257bd434206f99642252776c4a5018cf",
+    "profile_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq3-wave10-signbit-fused-runtime-trace-55b06ff15-a --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_iq3_wave10_signbit_fused_model.py",
+    "profile_stderr_sha256": "bce7aeebba4fa9ae9d99ad25a201efe49d81fde0c470149b3f2d3ee80251f947",
+    "profile_stdout_sha256": "b3a17cef80a1eb2cbad02e7cdcdd0356b78129a5f1bf95c68cdd0f5b8deeaa85",
+    "retained_iq3_prefill_calls": 45,
+    "retained_wave10_decode_calls": 0,
+    "retained_wave4_calls": 0,
+    "runtime_copy_calls_in_stride": 5,
+    "schema": 1,
+    "serial_weighted_calls": 0,
+    "trace_path": "/tmp/laguna-iq3-wave10-signbit-fused-runtime-trace-55b06ff15-a/trace_kernel_trace.csv",
+    "trace_rows": 2801,
+    "trace_sha256": "3b91ed924a6f2f51ad05d092922d6844d597145e76e30b440f3097b51f38e28c",
+    "tracked_returned_to_baseline": true,
+    "weighted_reducer_calls": 4,
+    "weighted_reducer_calls_per_token": 2,
+    "weighted_reducer_resources": {
+      "allocated_lds_bytes": 0,
+      "allocated_vgpr": 8,
+      "grid_x": 3072,
+      "scratch_bytes": 0,
+      "workgroup_x": 256
+    }
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_decode_tok_s_unchanged": 63.27021934907704,
+    "completion_claim": false,
+    "next_gate": "Commit runtime correctness, then run both frozen clean process orders at short/512/1K/near-4K. Every order must improve inclusive IQ3 and complete kernel sum, keep span <=+0.5%, child throughput >=-0.5%, and preserve exact 45/2/678 topology/resources/IDs/lifecycle. Complete categories remain forbidden until all eight rows pass.",
+    "retained_default_unchanged": true,
+    "runtime_admitted_default_off": true
+  },
+  "full_state_gate": {
+    "active_kv_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "candidate": "wave10_signbit_fused",
+    "candidate_borrows_weights": true,
+    "checkpoint_count": 17,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_iq3_wave10_signbit_fused_runtime_correctness.py",
+    "control": "wave10_fused",
+    "control_owns_weights": true,
+    "decode_transitions": 16,
+    "final_kv_sha256": "a62f481c82cb6e079715dba11f133de003bf98d48ca162868b41b3555f8ce2b7",
+    "full_logits_and_ids_bit_exact": true,
+    "generated_token_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "harness_sha256": "5a52da42fb6c946db99d6f8c3527d90ceb64c2363c72cb1155bbd58403ed3128",
+    "live_span_fields_exact": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true,
+    "prefill_kv_sha256": "82488fd827f4c18a4d72fd3a23051201a17e104b570380354ac12a3f17fdcb05",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "09ff88569898bf75dd14b96866168aab3e0c0415dec6690667dd84554180fd64",
+    "reset_and_reprefill_exact": true,
+    "reset_kv_sha256": "388e741cf63a675aa17fc5fa7d391168f0b7d62ba8860c9ab1abc4c6db03521a",
+    "stdout_sha256": "9d16d0d848584d2846a9b2d3991a361ed0e4dfb09a3d0a082a8f7d6efcd05e3f",
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_returned_to_baseline": true,
+    "weights_shared": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_wave10_signbit_fused_runtime_correctness",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "red_green": {
+    "coverage": [
+      "false gfx1100 capability and unchanged no-argument retained wave10 default",
+      "exact candidate weighted route and suppression of producer-only c1 route",
+      "candidate-key miss fallback to retained wave10",
+      "unsupported shape/backend fallback to serial weighted",
+      "rows/prefill selected-down route remains unchanged",
+      "explicit benchmark CLI selection"
+    ],
+    "green_result": "2 passed",
+    "green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "red_command": "PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_gpu.py::test_laguna_iq3_wave10_signbit_fused_schedule_is_default_off_and_fail_closed tests/test_laguna_target_ar_bench.py::test_iq3_wave10_signbit_fused_schedule_cli_is_explicit_default_off",
+    "red_result": "2 failed only because the false capability/runtime route and CLI choice were absent",
+    "red_sha256": "a47596122bd01426a8bcddcdabb727998e087f46065711ae3d09dbae7b3c2588"
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "reason": "default-off runtime correctness admission only; no clean full-model performance claim"
+  },
+  "runtime_selector": {
+    "benchmark_cli": "scripts/laguna_target_ar_bench.py --iq3-c1-down-schedule wave10_signbit_fused",
+    "candidate_key_miss_fallback": "wave10_fused",
+    "candidate_schedule": "wave10_signbit_fused",
+    "candidate_variant": "selected_weighted_down_gemv_decode_k1024_wave10_signbit_bf16_bf16_out",
+    "constructor": "LagunaGGUFResidentSession(..., iq3_c1_down_schedule='wave10_signbit_fused')",
+    "default_enabled": false,
+    "gfx1100_capability": "LAGUNA_IQ3_WAVE10_SIGNBIT_FUSED=False",
+    "gfx1151_candidate_alias_excluded": true,
+    "intended_dispatch_delta_per_token": 0,
+    "no_argument_schedule": "wave10_fused",
+    "persistent_weight_copy_delta_bytes": 0,
+    "production_shape": {
+      "in_features": 1024,
+      "top_k": 10
+    },
+    "rows_and_prefill_unchanged": true,
+    "unsupported_shape_backend_fallback": "serial_weighted",
+    "workspace_delta_bytes": 0
+  },
+  "schema": 1,
+  "source_provenance": {
+    "files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "f107880bc5cf7e6be20006a6ff6fd74396b683e66be57a19e823757f25cb692d"
+      },
+      {
+        "path": "hipengine/runtime/laguna_moe.py",
+        "sha256": "4fa4fd84270631d6cf1f6c517fa1f7d13ce9f4bba1112d621a6be1c4af6edf17"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "41c44b980a0ae7d4f2e90aba49cee32d9202c304f67fd930c67123af3e53b231"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "434d907d5e3f20d96e193b3d422ebe15f3a2150b08b9bd03869230d25b018d01"
+      },
+      {
+        "path": "tests/test_laguna_moe_gpu.py",
+        "sha256": "07c8aeb27381fbd1bbb2e99d843e5021266fce6f67271d0ae20274b996551c8a"
+      },
+      {
+        "path": "tests/test_laguna_target_ar_bench.py",
+        "sha256": "b13a2225c2e1cef95e2e2ab84fe456cb54277326833c4a309f3ef842f53e14e6"
+      }
+    ]
+  },
+  "status": "runtime_admitted_default_off_pending_clean_context",
+  "validation": {
+    "adjacent_result": "97 passed after excluding exactly the unchanged stale gfx1151 resolver test",
+    "adjacent_sha256": "b2cace8d442dfd18f85561da7ba0822d6c7c22d40c04361fb9e32fe98ee722ed",
+    "lineage_note": "Only already-catalogued unrelated Qwen/PARO/smoke parent drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "unfiltered_result": "97 passed plus one unchanged stale resolver failure because it omits three required keyword arguments",
+    "unfiltered_sha256": "f30a3ea33bd2472561ecc43dbc2b4808371adc634dc147b84f5b6cf5ad9b41a1"
+  }
+}
