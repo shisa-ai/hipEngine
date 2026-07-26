@@ -113,7 +113,12 @@ codegen/resource ceilings, and cache-only tracing. Its repeated repository
 window improves **25.78% event / 25.77% wall**. Its temporary default-off c=1
 owner passes full-state and 47+47/723 tracing, but both clean short orders
 reverse the selector/router/kernel/child result. Runtime integration is removed,
-categories are skipped, and the default/topline remain unchanged.
+categories are skipped, and the default/topline remain unchanged. Post-compact
+re-ranking selects a different MoE boundary: compile-time top-10 feature-
+parallel weighted+routed/hidden production followed by the unchanged exact
+RMSNorm. All 47 actual routed/hidden/norm rows are byte-exact and the two-call
+window improves **12.48% event / 12.47% wall** at unchanged launch count; this
+is design evidence pending repository admission.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1415,6 +1420,46 @@ exact primitive and gfx1151 exclusion remain diagnostic. Evidence:
 [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-runtime-correctness.json),
 and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-rejected.json).
 
+Post-compact re-ranking selects the still-live boundary immediately after
+selected down projection. Current c=1 executes 47 feature-parallel top-10
+`weighted_sum` calls and then 47 one-workgroup D9 aggregate+next-RMS calls,
+about **0.531 ms/token** in the immutable post-Q4 short trace. Folding the
+weighted reducer directly into D9 is explicitly rejected: although all 47
+actual hidden/norm rows are exact, serializing ten expert rows inside D9's one
+workgroup regresses the isolated wall **0.541870 -> 0.882913 ms (+62.94%)**.
+
+The selected schedule restores feature ownership instead. One local32 producer
+uses compile-time top-10, performs the same ten ordered BF16/F32 `fmaf`s per
+feature, writes the identical RNE BF16 routed row, then preserves both Laguna
+BF16 adds while writing post-MoE hidden. The already registered local256
+F32-weight RMSNorm consumes that hidden row with its unchanged reduction tree.
+This replaces **47 weighted-sum + 47 D9 calls** with **47 weighted+routed/hidden
+and 47 RMSNorm calls**: total threads, **723 model kernels/token**, buffers, and
+allocation count do not change. Direct-weighted producers, rows, prefill,
+registry misses, and unsupported backends retain the current route.
+
+The all-actual screen captures all 47 expert-down rows, scaled routing weights,
+shared outputs, post-attention inputs, next-norm weights, routed outputs,
+hidden outputs, and normalized outputs from the retained model. Every routed,
+hidden, and norm BF16 bit matches. Under 10 warmups, 15 counterbalanced
+repetitions, and 100 complete windows/sample, selected local32 improves event
+**0.539595 -> 0.472270 ms (-12.477%)** and synchronized wall **0.539897 ->
+0.472548 ms (-12.474%)**. Local64/local128/local256 also improve
+**12.34%/12.46%/12.05%** wall; local32 is frozen. Cache-only tracing reports
+producer grid/local **3072/32**, VGPR24/LDS0/scratch0 followed by the unchanged
+RMS grid/local **256/256**, VGPR16/LDS0/scratch0, with no compiler under the
+profiler.
+
+The isolated **0.06735 ms/token** saving models short kernel sum **12.9212 ->
+12.8539 ms (-0.521%)** and canonical h32 **61.992 -> 62.251 tok/s (+0.419%)**;
+these are ceilings, not throughput claims. Freeze absent wrapper/key RED,
+gfx1151 exclusion, synthetic/CPU/all-actual field identity, repository codegen
+and repeated timing, then a default-off defer-aggregation owner with exact
+16-transition state and cached **47 candidate + 47 RMS / 723-kernel** topology.
+Both clean process orders at every context and both complete category orders
+remain mandatory before promotion. Evidence:
+[`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-design.json).
+
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
@@ -1468,6 +1513,7 @@ and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-s
 | Is the post-router Q4 LM-head local32 design implemented or retained? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json), and [`retained`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json): yes. Production logits and default-vs-rollback state are bit-exact; every clean order improves LM-head and kernel-sum time; both category orders move h32 **61.675 -> 61.992 tok/s (+0.512%)** with all category decode rows positive. gfx1100 defaults local32 at unchanged 723 kernels/token. |
 | Is the post-Q4 Q6 local32 standalone design implemented? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json): primitive only after clean rejection. Exact state/trace and 12.44-13.26% Q6-family wins do not override order-A kernel/span or order-B child failures. Runtime integration is removed; categories are skipped and the topline is unchanged. |
 | What happened to the post-Q6 compact-wave32 selector? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-rejected.json): primitive only. The isolated **25.78%/25.77%** event/wall win reverses under complete clean decode: both short orders regress selector **30.58%/27.60%**, router **16.89%/14.08%**, kernel sum **1.787%/0.591%**, and child throughput **1.587%/1.619%**. Runtime integration is removed and categories are skipped. |
+| What is selected after compact-wave closure? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-design.json): an exact top10-unrolled local32 weighted+routed/hidden producer followed by the registered local256 RMSNorm. All 47 actual routed/hidden/norm rows are bit-exact; the complete two-call boundary improves **12.48% event / 12.47% wall** with unchanged 723 launches/token. Repository admission and full-model gates remain pending. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The retained Q4 category gate measures hipEngine **62.638/61.992 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **2.57%/3.91%** is required. The prior [post-local32 audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) remains the pinned Vulkan source. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1551,4 +1597,9 @@ temporary default-off owner also passes exact 16-transition state, ownership,
 and **47 projection + 47 selector / 723-kernel** tracing, but both clean short
 orders regress selector/router/kernel/child time. Runtime integration is removed
 and categories are skipped. The primitive remains diagnostic; canonical h32
-stays **61.992 tok/s** versus Vulkan **64.418 tok/s**.
+stays **61.992 tok/s** versus Vulkan **64.418 tok/s**. The next selected premise
+moves to an untested MoE boundary: a top10-unrolled local32 weighted+routed/
+hidden producer followed by the unchanged registered RMSNorm. It is exact on
+all 47 actual rows and improves the isolated two-call window **12.48% event /
+12.47% wall** at unchanged launch count, but is only design evidence until
+repository and full-model gates pass.
