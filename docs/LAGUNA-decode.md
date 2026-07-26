@@ -201,6 +201,20 @@ gfx1100 now defaults wave10-fused; explicit wave4 remains rollback. Relative to
 the prior retained row, canonical h32 improves **61.992 -> 63.270 tok/s
 (+2.063%)** and needs another **1.81%** to match Vulkan.
 
+Post-wave10 re-ranking uses both retained short traces at **12.737 ms/token**.
+Mixed Q5/Q6 (**1.930 ms**) and IQ2 (**1.896 ms**) remain mechanically closed
+under their rejected unchanged owners. A fresh exact SWA local32/dim4 screen
+keeps all 72 head workgroups and reduces softmax-state replicas from two to one,
+but **9/12** required layer/live rows regress both event and wall by up to
+**1.24%/1.45%**; reject it out of tree. The next selected owner instead narrows
+the already-admitted Q5 paired-SWAR primitive to only the 47 attention-output
+calls. In the immutable rejected all-owner traces, this role independently
+improves **1.952%/2.046%** in orders A/B, while mixed projection regresses
+**2.278%/1.694%** and shared gate/up regresses **0.902%/0.439%**. The new screen
+will leave both regressors unchanged and must pass fresh full-state, exact
+**47-call/678-kernel** tracing, every clean order, and both complete category
+orders before any default changes.
+
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
 explains the measured gap between llama.cpp Vulkan and hipEngine, audits the
@@ -2128,6 +2142,7 @@ and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-
 | Can a fixed-two-wave DPP reduction accelerate the retained IQ2 grid64 body exactly? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-rejected.json): primitive only after clean rejection. Synthetic/CPU/all-46-layer bytes, exact 16-transition state, and **46-candidate/723-kernel** tracing pass, but both short orders regress IQ2 **0.366%/2.742%**; order A also fails child and order B fails kernel/span guards. Runtime integration is removed and later contexts/categories are skipped. |
 | Can paired-output SWAR contract exact Q5 reconstruction? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-rejected.json): primitive only after clean rejection. Synthetic/CPU/all-actual bytes, exact 16-transition state, and **140-candidate/723-kernel** tracing pass, but both short orders regress the combined Q5 family **0.457%/0.077%**, kernel sum **0.280%/0.075%**, and child throughput **0.723%/0.592%**; order A also fails span. Runtime integration is removed and later contexts/categories are skipped. |
 | What is selected after the Q5 rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-runtime-correctness.json), and [`retained`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json): the exact K1024 local320 composite is the retained gfx1100 default. Focused/exhaustive/CPU and **45/45** actual-output gates pass; full/default-vs-wave4 state is exact; tracing proves **45 candidate + two reducers / 678 model kernels/token**. Every clean order and train/heldout category passes; h32 moves **62.318 -> 63.270 tok/s (+1.528%)** versus matched wave4. |
+| What is selected after wave10 retention? | [`...q5-swar-output-only-design.json`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-output-only-design.json): an output-only owner for the already-admitted exact Q5 paired-SWAR key. Fresh SWA dim4 fails **9/12** rows; current traces rank Q5 output at **1.558 ms/token**. The prior all-owner screen proves output improves **1.952%/2.046%** in both orders while mixed/shared regress, so the new gate changes only 47 output calls and preserves both rejected roles. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -2283,4 +2298,7 @@ inclusive IQ3 **9.71-11.90%**, kernel sum **0.398-1.082%**, and span
 orders pass every train/heldout category at h16/h32 and move matched h32
 **62.318 -> 63.270 tok/s (+1.528%)**. gfx1100 now defaults wave10-fused with
 explicit wave4 rollback; canonical h32 is **63.270 tok/s**, still **1.81%**
-below Vulkan **64.418**.
+below Vulkan **64.418**. Post-wave10 ranking closes SWA local32/dim4 after
+**9/12** event-and-wall regressions and selects only the independently positive
+Q5 attention-output SWAR role for the next default-off gate. The prior mixed and
+shared SWAR regressors remain excluded.
