@@ -213,6 +213,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "laguna_top10_routed_hidden_out",
         ),
+        # Staged unrounded-F32 Laguna add+RMSNorm is W7900-only until an
+        # independent gfx1151 correctness and performance gate.
+        (
+            "add_rmsnorm",
+            "gguf_f32_weight",
+            "bf16_out_staged_f32_local256",
+        ),
         # IQ3 selected-down tiling is gfx1100-only pending independent gfx1151 gates.
         (
             "moe_linear",

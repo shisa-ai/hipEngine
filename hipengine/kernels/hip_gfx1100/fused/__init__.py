@@ -3,6 +3,7 @@
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     build_gguf_ops,
     gguf_add_rmsnorm_bf16_f32_weight,
+    gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256,
     gguf_add_rmsnorm_f32_bf16_f32_weight,
     gguf_add_rmsnorm_f32_f32_f32_weight,
     gguf_bf16_add,
@@ -80,6 +81,7 @@ __all__ = [
     "build_paro_combine",
     "build_paro_silu",
     "gguf_add_rmsnorm_bf16_f32_weight",
+    "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_f32_f32_weight",
     "gguf_bf16_add",
