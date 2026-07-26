@@ -19,6 +19,7 @@ from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_t
 from hipengine.quant.gguf_t16 import (
     repack_gguf_q6_k_tile16,
     repack_gguf_q6_k_tile16_qmicro,
+    repack_gguf_q6_k_tile16_qmicro_planar,
 )
 from tests._laguna_synthetic import laguna_tensors, make_laguna_info, tensor_info
 
@@ -125,6 +126,21 @@ def test_laguna_materialize_spec_copies_dense_and_raw_source_bytes() -> None:
     rng = np.random.default_rng(19)
     raw = rng.integers(0, 256, size=(2, 16, 210), dtype=np.uint8)
     expected_legacy = repack_gguf_q6_k_tile16(raw).tiles
+    expected_planar = repack_gguf_q6_k_tile16_qmicro_planar(raw).tiles
+    runtime = FakeRuntime()
+    weight = _materialize_spec(
+        _spec_for_tensor("layers.1.ffn_down_exps", tensor),
+        _ArrayReader(tensor.name, raw),
+        device=None,
+        runtime=runtime,
+        backend="hip_gfx1151",
+        q6_qmicro=True,
+        q6_qmicro_planar=True,
+    )
+    assert _device_bytes(weight, runtime, "tiles") == expected_planar.tobytes()
+    weight.free(runtime=runtime)
+    assert runtime.buffers == {}
+
     for backend, q6_qmicro in (
         ("hip_gfx1151", False),
         ("hip_gfx1100", None),

@@ -289,6 +289,7 @@ class LagunaMoEKernelPlan:
     q6_half_row_activation: bool
     q6_skip_padded_activation: bool
     q6_qmicro_permute: bool
+    q6_qmicro_planar: bool
     router_logits_key: KernelKey
     router_logits_keys: Mapping[str, KernelKey]
     router_select_key: KernelKey
@@ -488,6 +489,7 @@ def resolve_laguna_moe_plan(
     q6_half_row_activation: bool | None = None,
     q6_skip_padded_activation: bool | None = None,
     q6_qmicro_permute: bool | None = None,
+    q6_qmicro_planar: bool | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -556,8 +558,21 @@ def resolve_laguna_moe_plan(
         raise ValueError(
             "Q6 skipping padded activation rows requires half-row staging"
         )
+    selected_q6_qmicro_planar = bool(
+        selected_q6_qmicro
+        and backend_package_capability(
+            backend,
+            "LAGUNA_Q6_QMICRO_PLANAR",
+            False,
+        )
+        if q6_qmicro_planar is None
+        else q6_qmicro_planar
+    )
+    if selected_q6_qmicro_planar and not selected_q6_qmicro:
+        raise ValueError("Q6 planar layout requires qmicro")
     selected_q6_qmicro_permute = bool(
         selected_q6_skip_padded_activation
+        and not selected_q6_qmicro_planar
         and backend_package_capability(
             backend,
             "LAGUNA_Q6_QMICRO_PERMUTE",
@@ -572,6 +587,10 @@ def resolve_laguna_moe_plan(
     ):
         raise ValueError(
             "Q6 qmicro permute decode requires padded-row skipping"
+        )
+    if selected_q6_qmicro_planar and selected_q6_qmicro_permute:
+        raise ValueError(
+            "Q6 planar and permute decode are mutually exclusive"
         )
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
@@ -855,6 +874,7 @@ def resolve_laguna_moe_plan(
         q6_half_row_activation=selected_q6_half_row_activation,
         q6_skip_padded_activation=selected_q6_skip_padded_activation,
         q6_qmicro_permute=selected_q6_qmicro_permute,
+        q6_qmicro_planar=selected_q6_qmicro_planar,
         router_logits_key=keys["router_logits"],
         router_logits_keys=router_logits_keys,
         router_select_key=keys["router_select"],
@@ -1489,7 +1509,10 @@ def _launch_selected_down_t16(
         plan.expert_ffn_size,
         plan.hidden_size,
         **(
-            {"qmicro": True}
+            {
+                "qmicro": True,
+                "qmicro_planar": plan.q6_qmicro_planar,
+            }
             if plan.q6_qmicro and route.key.quant == "gguf_q6_k_t16_v1"
             else {}
         ),
@@ -1741,6 +1764,11 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
                     and rowvec
                     and tile_rows == _MMQ64_ROWS
                 ),
+                "qmicro_planar": (
+                    plan.q6_qmicro_planar
+                    and rowvec
+                    and tile_rows == _MMQ64_ROWS
+                ),
             }
             if plan.q6_qmicro and weight.spec.quant_key == "gguf_q6_k_t16_v1"
             else {}
@@ -1838,7 +1866,10 @@ def _launch_grouped_smallm_down(
         plan.hidden_size,
         plan.expert_count,
         **(
-            {"qmicro": True}
+            {
+                "qmicro": True,
+                "qmicro_planar": plan.q6_qmicro_planar,
+            }
             if plan.q6_qmicro and weight.spec.quant_key == "gguf_q6_k_t16_v1"
             else {}
         ),

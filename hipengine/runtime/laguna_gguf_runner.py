@@ -1577,6 +1577,7 @@ class LagunaGGUFResidentSession:
         q6_half_row_activation: bool | None = None,
         q6_skip_padded_activation: bool | None = None,
         q6_qmicro_permute: bool | None = None,
+        q6_qmicro_planar: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
@@ -1669,6 +1670,28 @@ class LagunaGGUFResidentSession:
             if q6_qmicro is None
             else q6_qmicro
         )
+        resident_q6_qmicro_planar = (
+            getattr(resident_weights, "q6_qmicro_planar", None)
+            if resident_weights is not None
+            else None
+        )
+        self.q6_qmicro_planar = bool(
+            resident_q6_qmicro_planar
+            if (
+                q6_qmicro_planar is None
+                and resident_q6_qmicro_planar is not None
+            )
+            else self.q6_qmicro
+            and backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_QMICRO_PLANAR",
+                False,
+            )
+            if q6_qmicro_planar is None
+            else q6_qmicro_planar
+        )
+        if self.q6_qmicro_planar and not self.q6_qmicro:
+            raise ValueError("Q6 planar layout requires qmicro")
         self.q6_compact_activation = bool(
             backend_package_capability(
                 self.backend,
@@ -1711,6 +1734,7 @@ class LagunaGGUFResidentSession:
             )
         self.q6_qmicro_permute = bool(
             self.q6_skip_padded_activation
+            and not self.q6_qmicro_planar
             and backend_package_capability(
                 self.backend,
                 "LAGUNA_Q6_QMICRO_PERMUTE",
@@ -1722,6 +1746,10 @@ class LagunaGGUFResidentSession:
         if self.q6_qmicro_permute and not self.q6_skip_padded_activation:
             raise ValueError(
                 "Q6 qmicro permute decode requires padded-row skipping"
+            )
+        if self.q6_qmicro_planar and self.q6_qmicro_permute:
+            raise ValueError(
+                "Q6 planar and permute decode are mutually exclusive"
             )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
@@ -1833,6 +1861,7 @@ class LagunaGGUFResidentSession:
                     self.q6_skip_padded_activation
                 ),
                 q6_qmicro_permute=self.q6_qmicro_permute,
+                q6_qmicro_planar=self.q6_qmicro_planar,
             )
             self.prefill_scratch_plan = LagunaPrefillScratchPlan.build(
                 config,
@@ -1857,6 +1886,7 @@ class LagunaGGUFResidentSession:
                     repacked_cache=repacked_cache,
                     repacked_cache_source_sha256=model_sha256,
                     q6_qmicro=self.q6_qmicro,
+                    q6_qmicro_planar=self.q6_qmicro_planar,
                 )
             else:
                 self.weights = resident_weights
@@ -3575,6 +3605,10 @@ class LagunaGGUFResidentSession:
         if self.weights.q6_qmicro != self.q6_qmicro:
             raise ValueError(
                 "Laguna resident Q6 qmicro layout must match the session kernel plan"
+            )
+        if self.weights.q6_qmicro_planar != self.q6_qmicro_planar:
+            raise ValueError(
+                "Laguna resident Q6 planar layout must match the session kernel plan"
             )
         root_shapes = {
             "token_embedding": (config.vocab_size, config.hidden_size),

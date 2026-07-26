@@ -182644,3 +182644,25 @@ Vulkan local sizes verbatim will close the measured gap.
 - The new-kernel trace gate is satisfied. Next wire the planar conversion and
   consumer selectors through a candidate-only resident session and require a
   complete-state full-model A/B win before enabling the backend capability.
+
+## 2026-07-26 — Wire candidate-only planar-Q6 resident integration
+
+- Added disabled-by-default gfx1151 `LAGUNA_Q6_QMICRO_PLANAR` and explicit
+  `q6_qmicro_planar=True` materializer/session/plan controls. The one-time
+  cache adapter chooses planar records before upload, records the resident
+  layout on the owner, and validates that borrowed sessions use matching
+  bytes and consumers.
+- Q6 prefill, direct decode, and grouped-small-M launchers propagate the
+  planar selector. Plan resolution disables production permute decode when
+  planar is selected and rejects planar-without-qmicro or simultaneous
+  planar-plus-permute requests.
+- RED/GREEN covers backend plan dependencies, exact fake-device planar bytes,
+  resident-session propagation, the byte-neutral roundtrip, exact
+  c1/c2/c4/c8 decode, and the production-shape CPU-reference prefill oracle.
+  Focused result is **9 passed**; the complete materializer and runner files
+  add **8 passed** and **17 passed**.
+- Added `scripts/laguna_q6_planar_ab.py`, which owns one resident allocation
+  at a time, excludes load from timing, resets state between repetitions, and
+  hashes logits, both hidden snapshots, complete KV, next token/logit, and
+  cursor. Production remains interleaved qmicro; the next action is its clean
+  full-model comparison.

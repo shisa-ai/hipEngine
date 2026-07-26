@@ -1093,7 +1093,10 @@ Immediate execution queue:
    decode **0.08564 -> 0.08415 ms (-1.736%)**, with zero BF16 mismatches.
    Clean cached tracing executes the intended planar prefill and decode
    templates at local128/VGPR80/LDS5120B/scratch0; complete-state full-model
-   A/B remains mandatory before changing the resident layout.
+   A/B remains mandatory before changing the resident layout. Candidate-only
+   resident materialization and all Q6 consumer selectors are now wired
+   behind disabled-by-default `LAGUNA_Q6_QMICRO_PLANAR`; the production
+   capability remains interleaved qmicro until that A/B passes.
 
 Post-350 exclusions:
 
