@@ -183227,3 +183227,16 @@ Vulkan local sizes verbatim will close the measured gap.
   **19 tests**. The gfx1151 capability is enabled only to obtain a clean
   selector-unset revision; publication remains required. Candidate artifact:
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json`.
+
+## 2026-07-27 — Classify packed-query BLAS attention traces
+
+- RED added a synthetic packed-query sequence and reproduced the stale
+  classifier's fail-closed `dense-initial BLAS attention trace is truncated`
+  error. GREEN recognizes the new structural sequence
+  **widen + query pack + QK + softmax + PV + output unpack** while retaining
+  the admitted **widen + 8 QK + softmax + 8 PV** rule.
+- The classifier still fails closed on truncation, malformed library calls,
+  missing softmax, or missing unpack, and assigns the whole six-dispatch
+  composite to global/SWA from the cache-widen specialization.
+- Validation: `tests/test_laguna_long_context_profile.py` passes **29 tests**;
+  `git diff --check` passes.
