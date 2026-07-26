@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T15:35:00+00:00",
+  "kind": "hipengine_laguna_q6_wmma_result_metadata_broadcast_screen",
+  "status": "rejected_and_removed",
+  "repo_revision": "8abbcb581a71ab8773309177727c215406380e0e",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M with resident planar-qmicro Q6_K selected down",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "scope": "production Q6 planar-qmicro integer-WMMA selected down; D4 activation; 64 output columns x 64 routed rows; local128",
+    "premise": "load each result row's float scale and packed pair of int16 K16 sums in lanes 0 and 16, then broadcast them within each wave32 instead of issuing the same LDS reads from all 16 column lanes",
+    "invariants": "resident weights, activation quantization, WMMA fragments, -32*sum(x) correction, ordered FP32 K32 accumulation, and BF16 stores remain unchanged",
+    "resident_delta_bytes": 0
+  },
+  "correctness": {
+    "red": "The production-shaped uneven/empty-expert test initially failed because the wrapper had no result-metadata broadcast selector.",
+    "green": "The distinct exact specialization passed the production-shaped CPU-reference fixture.",
+    "actual_weight_bf16_mismatches_vs_production": 0,
+    "actual_weight_checksum": 509500838004,
+    "memory_returned": true,
+    "post_removal_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate' tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151 tests/test_laguna_moe_gpu.py::test_laguna_mmq_selected_down_reuses_exact_grouped_combine",
+    "post_removal_result": "15 passed"
+  },
+  "actual_weight_layer1_leaf": {
+    "shape": {
+      "natural_prompt_rows": 512,
+      "compact_routed_rows": 5120,
+      "padded_rows64": 15808,
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "resident_weight_bytes": 660602880
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-wmma-broadcast-metadata-leaf-21-v2.json",
+    "timing": "HIP events; activation packing excluded; counter-rotated over fourteen modes; burst seven",
+    "production_hoist_median_ms": 4.514944076538086,
+    "broadcast_median_ms": 6.341835566929409,
+    "change_percent": 40.46321414886991,
+    "candidate_wins": 0,
+    "pairs": 21,
+    "production_range_ms": [
+      4.50793102809361,
+      4.5593414306640625
+    ],
+    "candidate_range_ms": [
+      6.337072099958148,
+      6.351785932268415
+    ],
+    "raw_sha256": "fd049f02fbed9dfb4228827c089b5f5b2b44c703160ef8f33e7bced6aa80ebfd"
+  },
+  "decision": {
+    "pass": false,
+    "reason": "Two wave shuffles per result row cost far more than gfx1151 same-address LDS service; the candidate loses every pair and regresses the exact leaf by 40.46%.",
+    "action": "Remove the HIP specialization, export, wrapper selector, CPU-reference parameter, and leaf-harness mode. Preserve direct LDS result-metadata reads in the production activation-hoist kernel.",
+    "production_prefill_tok_s": 577.395613,
+    "next": "Screen a WMMA-specific K64 schedule only if it preserves the existing single K32 LDS footprint and zero scratch; do not repeat the rejected double-stage K64 design."
+  }
+}
