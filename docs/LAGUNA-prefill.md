@@ -919,10 +919,16 @@ Immediate execution queue:
    despite zero BF16 mismatches. Three FP32 writes plus three FP32 reads of the
    full 5,120x3,072 accumulator plane, together with Q8 rereads across 48
    output tiles, cost much more than the removed weight passes. The candidate
-   is fully removed. The next bounded Q4 screen is a no-partial MMQ64x64 body:
-   local128 maps two row32 halves onto one output64 tile and shares decoded
-   weights between them. Retire the pre-admission **78.27 ms/layer versus
-   52.80 ms layer-1** bridge instead of scaling it into new forecasts.
+   is fully removed. The no-partial MMQ64x64 follow-up is also closed. The
+   shared-weight body regresses natural layer 10 **2.948389 -> 5.200135 ms**;
+   restoring per-lane direct decode narrows that to
+   **2.951132 -> 3.790972 ms (+28.46%)**. A fully occupied 64-row control
+   still loses **0.075383 -> 0.081069 ms (+7.54%)**, so padding-free hybrid
+   prefixes cannot recover it. All candidate surfaces are removed.
+   Selected-down scheduling is closed unless a materially new byte model
+   appears; return to the 314.920-ms gate/up family. Retire the pre-admission
+   **78.27 ms/layer versus 52.80 ms layer-1** bridge instead of scaling it
+   into new forecasts.
 5. After down, revisit gate/up only from physical counters or a new
    cross-tile/expert schedule. The corrected requested-byte ledger already
    reaches **73.37%** of the read anchor, so a local body tweak must explain

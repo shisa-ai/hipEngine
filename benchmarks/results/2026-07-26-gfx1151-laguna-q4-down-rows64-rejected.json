@@ -1,0 +1,87 @@
+{
+  "schema": "hipengine.laguna_q4_down_rows64_rejected.v1",
+  "date": "2026-07-26",
+  "status": "rejected_and_removed",
+  "hardware": "AMD Radeon 8060S / gfx1151 / Strix Halo",
+  "model": "Poolside Laguna S 2.1 Q4_K_M",
+  "workload": {
+    "natural_shape": "pp512 layer-10 Q4 selected down",
+    "rows": 512,
+    "top_k": 10,
+    "compact_rows": 5120,
+    "active_experts": 222,
+    "row_tiles_32": 303,
+    "row_tiles_64": 246,
+    "in_features": 1024,
+    "out_features": 3072,
+    "experts": 256
+  },
+  "variants": {
+    "shared_weight_generic": {
+      "description": "local128 MMQ64x64 using the existing pair-cooperative Q4 decoder and LDS weight cache",
+      "production_median_ms": 2.948389434814453,
+      "candidate_median_ms": 5.200135040283203,
+      "regression_percent": 76.3720512692699,
+      "bf16_mismatches": 0
+    },
+    "direct_decode_duplicate_half": {
+      "description": "local128 MMQ64x64 with one output column and 32 rows per lane; both row halves use the production direct T16 decoder in the same workgroup",
+      "production_samples_ms": [
+        2.916896629333496,
+        2.924787139892578,
+        2.951132392883301,
+        2.9318593978881835,
+        2.9550336837768554,
+        2.938017654418945,
+        3.006411552429199,
+        3.0682153701782227,
+        2.958074188232422,
+        2.948929214477539,
+        2.9677167892456056
+      ],
+      "candidate_samples_ms": [
+        3.788190460205078,
+        3.7546527862548826,
+        3.7917335510253904,
+        3.78888053894043,
+        3.805979919433594,
+        3.7754592895507812,
+        4.12785758972168,
+        4.042361450195313,
+        3.7804641723632812,
+        3.790972137451172,
+        3.8165889739990235
+      ],
+      "production_median_ms": 2.951132392883301,
+      "candidate_median_ms": 3.790972137451172,
+      "regression_percent": 28.458219407855708,
+      "bf16_mismatches": 0
+    },
+    "direct_decode_full64_control": {
+      "description": "one active expert with exactly 64 valid rows; two complete production row32 tiles versus one complete candidate row64 tile",
+      "samples": 15,
+      "burst": 50,
+      "production_median_ms": 0.07538291931152344,
+      "candidate_median_ms": 0.08106878280639648,
+      "regression_percent": 7.542631340076651,
+      "bf16_mismatches": 0
+    }
+  },
+  "correctness": {
+    "red": "missing MMQ64x64 Python/HIP symbol",
+    "green": "focused K1024 fixture passes",
+    "natural_layer_bf16_mismatches": 0,
+    "full64_control_bf16_mismatches": 0
+  },
+  "interpretation": {
+    "q4_complete_row64_prefixes_all_24_layers": 609,
+    "q4_row32_weight_passes_all_24_layers": 7088,
+    "maximum_pass_reduction_percent": 8.591986456013545,
+    "conclusion": "The direct-decode row64 body remains slower even with a fully occupied 64-row tile, so a hybrid prefix schedule cannot recover the loss. Q4 row64 and persistent selected-down schedules are closed.",
+    "next": "Return to the 314.920-ms gate/up family and seek a cross-output or cross-expert schedule whose byte model does not require full-output partial traffic."
+  },
+  "production": {
+    "changed": false,
+    "prefill_pp512_tok_s": 559.29
+  }
+}
