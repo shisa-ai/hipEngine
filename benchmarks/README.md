@@ -50,15 +50,17 @@ improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves
 [`production artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json) ·
 [`leaf artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json).
 
-The next exact attention primitive is retained pending runtime integration.
-After preappend, cached-metadata qrow4 removes current-vs-cache source
-bookkeeping while preserving every F32 output bit. Across the four pp512 M128
-positions, SWA improves **1.108–1.128x** at every tile and global improves
-**1.010–1.052x** from position 128 onward; global position 0 remains on the
-existing cached body. The qualified 12-full/36-SWA leaf model improves
-**14.6024 -> 13.3230 ms (1.096x)** and projects **15.353 ms** pp512 saving.
-Production remains **530.447 tok/s** pending matched full-model integration.
-[`artifact`](results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json).
+The next exact attention policy is retained as the gfx1151 default candidate.
+After preappend, cached-metadata qrow4 removes current-vs-cache bookkeeping
+while preserving every F32 output bit. It selects every safe SWA M128 tile and
+global tiles from position 128, retaining the established global position-0
+body. Seven alternating one-owner full-model pairs improve
+**533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)** and save **16.405 ms**, with
+identical logits, hidden states, KV, token/logit, and cursor across all fourteen
+runs. Production remains **530.447 tok/s** until clean selector-unset
+publication.
+[`default artifact`](results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json) ·
+[`leaf artifact`](results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json).
 
 The first post-500 replacement-layout screen is closed. Q4_K T128 improves the
 exact actual layer-1 natural-M512 gate/up leaf **7.015 -> 6.157 ms (-12.23%,

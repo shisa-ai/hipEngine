@@ -700,6 +700,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
 
     weights.layers = tuple(F16Layer() for _ in range(config.block_count))
     materialize_kwargs = {}
+    kv_kwargs = {}
     monkeypatch.setattr(runner_module, "GGUFReader", lambda path: SimpleNamespace(info=object()))
     monkeypatch.setattr(
         runner_module,
@@ -729,11 +730,12 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         "materialize_laguna_rope_tables",
         lambda *args, **kwargs: next(ropes),
     )
-    monkeypatch.setattr(
-        runner_module,
-        "allocate_laguna_kv_cache",
-        lambda *args, **kwargs: Resource("kv"),
-    )
+    def allocate_kv(*args, **kwargs):
+        del args
+        kv_kwargs.update(kwargs)
+        return Resource("kv")
+
+    monkeypatch.setattr(runner_module, "allocate_laguna_kv_cache", allocate_kv)
     monkeypatch.setattr(
         runner_module.LagunaEagerScratch,
         "allocate",
@@ -774,6 +776,8 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.prefill_chunk_size == 512
     assert session.prefill_attention_chunk_size == 128
     assert session.prefill_kv_preappend is True
+    assert session.prefill_cached_meta is True
+    assert kv_kwargs["prefill_cached_meta"] is True
     assert session.prefill_scratch_plan.total_nbytes == 438_824_992
     assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
     assert (

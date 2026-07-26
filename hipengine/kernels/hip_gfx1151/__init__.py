@@ -57,6 +57,12 @@ LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
 # tiles consume one BF16 cache source. Wrapped SWA, residual rows, verifier
 # transactions, and other backends retain attend-then-append.
 LAGUNA_PREFILL_KV_PREAPPEND = True
+# Once a safe tile is pre-appended, complete KVLiveSpans metadata can decide
+# visibility without selecting between current-row and cache sources inside
+# the dot-product loop. Measured admission keeps the slower global start-0
+# slice on the source-qualified cached kernel while enabling metadata-only SWA
+# and global tiles beginning at position 128.
+LAGUNA_PREFILL_CACHED_META = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
@@ -317,6 +323,7 @@ __all__ = [
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
+    "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_Q6_QMICRO",

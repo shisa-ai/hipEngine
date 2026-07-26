@@ -180863,3 +180863,32 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`.
   Retain the primitive; next integrate SWA-all/global-start>=128 behind a
   gfx1151-qualified policy and run matched full-model gates.
+
+## 2026-07-26 — Promote qualified cached-metadata attention default
+
+- Added RED coverage for a missing gfx1151
+  `LAGUNA_PREFILL_CACHED_META` capability, resident-session propagation, the
+  qualified SWA-all/global-start>=128 dispatch policy, and an explicit full
+  rollback. The focused tests failed before integration. Implemented the
+  capability plus `prefill_cached_meta` session/cache rollback; gfx1100 and
+  unmeasured backends default false. The affected backend, runner, and
+  attention bundles pass: **52 passed**.
+- Added `scripts/laguna_attention_cached_meta_ab.py` and ran:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_attention_cached_meta_ab.py
+  --repetitions 7 --require-cached-build
+  --output /tmp/laguna-attention-cached-meta-ab.json`.
+- Seven alternating one-owner pp512 pairs improve source-qualified rollback
+  **533.507 -> 542.785 tok/s (+1.739%)** with **7/7** candidate wins. Median
+  wall falls **959.688 -> 943.283 ms**, saving **16.405 ms** versus the
+  **15.353-ms** leaf projection. Logits, final/post-layer hidden, KV, next
+  token/logit, and final cursor are identical across all fourteen runs. Raw
+  SHA-256 is
+  `4fca2adbfa95ac5435784c48bfc7d0bb6d3c6cdb28e8913d4612408c1f3be90d`.
+- Retained the policy as the gfx1151 default candidate and published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json`.
+  Current clean production remains **530.447 tok/s** until committed
+  selector-unset 512/1K/4K and cached full-family tracing complete.
