@@ -661,7 +661,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **314.378 ms** | **31.77%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. It removes one of two barriers per K32, improves the actual natural-M512 inclusive leaf **6.995 -> 6.907 ms (-1.258%)**, improves clean complete-state pp512 **505.970 -> 507.405 tok/s (+0.284%)**, and cuts traced gate/up **318.559 -> 314.378 ms (-1.313%)** with exact output. T128 fails decode and aligned LDS weight staging regresses **1.05%**. |
+| Selected D8 Q4 gate/up | **314.378 ms** | **31.77%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. It removes one of two barriers per K32, improves the actual natural-M512 inclusive leaf **6.995 -> 6.907 ms (-1.258%)**, improves clean complete-state pp512 **505.970 -> 507.405 tok/s (+0.284%)**, and cuts traced gate/up **318.559 -> 314.378 ms (-1.313%)** with exact output. T128 fails decode, aligned LDS weight staging regresses **1.05%**, and DPP adjacent-pair decode regresses the actual leaf **22.7%**. |
 | Selected D4 Q4/Q6 down | **203.721 ms** | **20.59%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. A Q4-only activation double buffer is exact but regresses matched pp512 **508.788 -> 508.023 tok/s (-0.150%)** and is removed. |
 | Global + SWA attention | **219.709 ms** | **22.20%** | Source-qualified qrow4 is retained. Scalar key splitting, tiled M16/M8 WMMA, single-wave two-head GQA reuse, and a nine-wave/token8 shared-K/V workgroup all lose; the next attention screen must use a materially different async/library premise. |
 | Static-range direct hipBLASLt source-F16 | **125.139 ms** | **12.65%** | All five contractions and direct boundary casts are included. Both scaled-row kernels are absent; source-F16 boundary work is closed. |
@@ -738,7 +738,10 @@ Immediate execution queue:
    split is slower because it serializes weight-cache population.
    Q4-down activation double buffering is also closed: despite removing the
    trailing K32 barrier exactly, it regresses matched pp512 **0.150%** and
-   wins only **2/7** pairs.
+   wins only **2/7** pairs. DPP adjacent-pair decode is closed as well:
+   halving packed-byte load instructions while replacing generic shuffles with
+   row-shift DPP is exact, but regresses the actual gate/up leaf
+   **6.727 -> 8.255 ms (+22.7%)**.
 5. Raise the currently hard-capped matrix capacity and screen **1024/2048**
    chunks for 1K/4K prompts while retaining independent 128-row attention
    slices. Publish scratch/context admission and exact cursor/KV/lifecycle
@@ -1454,6 +1457,23 @@ All candidate code, dispatch, test, and harness surfaces were removed.
 Evidence:
 [`2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json).
 
+Thirty-sixth post-350 screen: **DPP adjacent-pair T16 decode rejected and
+removed before integration**. The candidate revisited the old pair decoder
+with a new lane-transfer mechanism: even lanes decoded both nibbles from each
+packed T16 byte once, and odd lanes received the adjacent column through a
+row-shift-right-one DPP instruction instead of eight generic shuffles. It
+retained production's activation double buffer, resident layout, D8 bytes,
+packed dots, FP32 K order, and BF16 boundary.
+
+The uneven/empty expert oracle is BF16-byte exact, and actual layer-1 natural
+M512 gate/up output has zero BF16 mismatches versus production. Eleven
+counter-rotated burst-five medians nevertheless regress
+**6.727 -> 8.255 ms (+22.7%; 0.815x throughput)**, with no candidate wins.
+The dependent DPP chain costs more than duplicated adjacent packed-byte loads.
+All candidate code, wrapper, test, and harness surfaces were removed.
+Evidence:
+[`2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json)
@@ -2050,6 +2070,8 @@ Do not repeat:
   widening alone, or dynamic X8-to-T16 reconstruction;
 - per-dispatch T16-to-raw/X8 shared transposes. Direct T16 MMQ addressing is
   already implemented and is not part of this closed work;
+- adjacent-column T16 pair decode through row-shift DPP; exact halved packed
+  byte-load instructions regress the natural-M512 gate/up leaf **22.7%**;
 - blanket non-temporal weight loads for rows>1 without a new cache/traffic
   profile; both the prior gfx1151 control and the production-geometry T16
   `slc dlc` screen regress decisively;
@@ -2124,6 +2146,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`
