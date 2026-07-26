@@ -719,8 +719,8 @@ Immediate execution queue:
    Q4/Q6 shape and pursue a counter-directed exact schedule that reduces Q6
    route-tile rereads without the rejected K64 LDS/VGPR growth. Do not repeat
    Q4 activation double buffering, Q6 local64/local256 workgroup changes,
-   duplicate-decode row halves, 64-row Q4 accumulation, paired-scale metadata,
-   or F32 partial spills.
+   Q6 128-column/local256 widening, duplicate-decode row halves, 64-row Q4
+   accumulation, paired-scale metadata, or F32 partial spills.
 2. Keep exact cached-metadata attention in production. Clean selector-unset
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
@@ -1576,6 +1576,22 @@ Python selector, test parameter, and harness mode were removed. Production
 remains local128. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json).
 
+Forty-first post-350 screen: **Q6 128-column barrier amortization rejected and
+removed before integration**. This distinct local256 body kept production's
+64-row ownership and 32 F32 accumulators per lane, but doubled output ownership
+from 64 to 128 columns. It therefore halved output workgroups and reused each
+activation stage across twice the columns while preserving byte-neutral qmicro
+weights, ordered K32 arithmetic, and the BF16 boundary.
+
+The CPU-reference gate passes and actual layer-1 output is BF16-byte identical
+to production. Eleven counter-rotated burst-five samples regress
+**5.0672 -> 5.3894 ms (+6.36%, 0/11 wins)**. Tracing keeps VGPR at 88 and
+scratch at zero, but local256 plus the doubled shared weight tile raises LDS
+**5,632 -> 8,192 B**. The activation/barrier amortization does not repay that
+schedule. All candidate surfaces were removed; the 64-column/local128 body
+remains production. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json)
@@ -2286,6 +2302,7 @@ Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-selected-weight-traffic-ledger.json`
