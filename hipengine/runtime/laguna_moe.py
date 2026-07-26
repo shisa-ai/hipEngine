@@ -51,12 +51,6 @@ _IQ3_C1_DOWN_VARIANTS = MappingProxyType(
         "wave4_reduce": "selected_gemv_decode_k1024_wave4_bf16_bf16_out",
     }
 )
-_IQ2_C1_GRID64_VARIANT = (
-    "selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out"
-)
-_IQ2_C1_LOCAL64_REDUCTION_VARIANT = (
-    "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out"
-)
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
@@ -287,7 +281,6 @@ def resolve_laguna_moe_plan(
     iq3_selected_down_tile: int = 1,
     iq3_c1_down_schedule: str | None = None,
     use_iq2_grid64: bool = False,
-    use_iq2_local64_reduction: bool = False,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -429,29 +422,13 @@ def resolve_laguna_moe_plan(
             for quant, (abi, allocation_name, library_key) in selected_gate_up_route_specs.items()
         }
     )
-    retained_iq2_c1_key = KernelKey(
-        backend,
-        "moe_linear",
-        "gguf_iq2_xs",
-        _IQ2_C1_GRID64_VARIANT,
-    )
-    candidate_iq2_c1_key = KernelKey(
-        backend,
-        "moe_linear",
-        "gguf_iq2_xs",
-        _IQ2_C1_LOCAL64_REDUCTION_VARIANT,
-    )
-    use_candidate_iq2_c1 = (
-        bool(use_iq2_grid64)
-        and bool(use_iq2_local64_reduction)
-        and is_registered(candidate_iq2_c1_key)
-    )
     c1_selected_gate_up_keys = MappingProxyType(
         {
-            "gguf_iq2_xs": (
-                candidate_iq2_c1_key
-                if use_candidate_iq2_c1
-                else retained_iq2_c1_key
+            "gguf_iq2_xs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq2_xs",
+                "selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out",
             )
         }
         if use_iq2_grid64
