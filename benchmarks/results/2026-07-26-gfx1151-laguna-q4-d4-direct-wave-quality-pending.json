@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T19:40:00+00:00",
+  "kind": "hipengine_laguna_q4_d4_direct_wave_gate_up_candidate",
+  "status": "quality_pending_candidate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "70b904c0132c477d12c9daa438556f81ff95dd3d",
+    "candidate_tracked_dirty": true,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "runtime_mode": "mmq128x32_d4_f32_wavecols_direct_doublebuf",
+    "geometry": "128 output columns x 32 routed rows, local128",
+    "activation": "one FP32 scale and sum per 32 activation values in the existing 160-byte block",
+    "weights": "resident T16 direct per-column decode",
+    "scheduling": "four wave32 column groups, row-vector activation stage, one-barrier activation double buffer",
+    "resident_sidecar_bytes": 0,
+    "production_rollback": "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+  },
+  "correctness": {
+    "red": "the new D4 direct-wave matrix case failed because the wrapper required split16",
+    "green": "the complete 12-case Q4 CPU-reference matrix passes, including counts [0,7,18,33]",
+    "cpu_reference_kl_limit": 0.05,
+    "cpu_reference_top1_minimum": 0.9,
+    "full_model_state_deterministic_per_mode": true,
+    "direct_wave_d4_matches_old_d4_full_model_state": true,
+    "absolute_320_step_quality": "pending clean revision",
+    "historical_d4_warning": "the prior production-geometry-independent D4 arithmetic failed its earlier relative quality lane at max KL 0.07670558136540165"
+  },
+  "leaf_protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 128,256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d4-f32-wavecols-direct-doublebuf --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-d4-direct-wave-actual.json",
+    "timing": "counter-rotated HIP events; each sample is the mean of a three-launch burst",
+    "activation_pack_included": true,
+    "actual_weights": true,
+    "natural_routing": true
+  },
+  "leaf_results": {
+    "m128": {
+      "production_d8_median_ms": 3.7150793075561523,
+      "candidate_d4_median_ms": 3.7106453577677407,
+      "latency_change_percent": -0.11935007092294114
+    },
+    "m256": {
+      "production_d8_median_ms": 4.405511538187663,
+      "candidate_d4_median_ms": 4.225226720174153,
+      "latency_change_percent": -4.092256176173247
+    },
+    "m512": {
+      "production_d8_median_ms": 6.854938507080078,
+      "candidate_d4_median_ms": 6.007721583048503,
+      "latency_change_percent": -12.359219899004682
+    }
+  },
+  "full_model_protocol": {
+    "timing": "one resident owner, mode warmup, five counterbalanced synchronized pp512 repetitions, GPU_MAX_HW_QUEUES=2",
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "quality_scope": "diagnostic next-token and complete-state digest only; not the canonical category gate"
+  },
+  "full_model_results": {
+    "production_d8_samples_tok_s": [
+      606.5247467760345,
+      632.9859640302512,
+      628.7400099396197,
+      634.9452831141095,
+      631.250764222337
+    ],
+    "candidate_d4_samples_tok_s": [
+      664.7325597878812,
+      665.0200510526199,
+      666.5963302973901,
+      668.5844707189522,
+      663.1431196178837
+    ],
+    "production_d8_median_tok_s": 631.250764222337,
+    "candidate_d4_median_tok_s": 665.0200510526199,
+    "throughput_change_percent": 5.349583516446854,
+    "median_wall_saved_ms": 41.18652897886921,
+    "next_token_id": 2930
+  },
+  "obsolete_geometry_control": {
+    "old_d4_mode": "mmq64x32_d4_f32",
+    "production_d8_median_tok_s": 609.4239518060486,
+    "old_d4_median_tok_s": 469.29286706403957,
+    "conclusion": "D4 arithmetic was not the cause of the old route's loss; obsolete shared-weight/64-column geometry was"
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --stats --output-format csv --output-directory /tmp/laguna-d4-direct-wave-rocprof -- env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 512 --layer 1 --modes t16-mmq128x32-d4-f32-wavecols-direct-doublebuf --warmups 1 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-d4-direct-wave-rocprof-leaf.json",
+    "kernel_template": "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,false,false,128,true,true,128,true,true>",
+    "workgroup_size": 128,
+    "grid_workgroups": 4752,
+    "observed_body_duration_ms": 6.153627,
+    "trace_sha256": "e624658e6e70ef710c63ed3d3c901c13e386d7ec561a8b2a9f0c9ed4cc21d7df"
+  },
+  "source_runs": [
+    {
+      "path": "/tmp/laguna-q4-d4-direct-wave-actual.json",
+      "sha256": "469fbf196c8e130591f96126f0d7129d266f1bf7e8dc4052bee73af0b552fbbc"
+    },
+    {
+      "path": "/tmp/laguna-d4-direct-wave-full-ab.json",
+      "sha256": "38cd8ad819b9c073bf60b25f3e75e8b650cd01d0de30eaf659d530c7c2e34447"
+    },
+    {
+      "path": "/tmp/laguna-d4-gate-current-ab.json",
+      "sha256": "59827eaceac666fe5fcad6a0df0309ab2aec006b7f425a6d932adb5e4569d228"
+    }
+  ],
+  "decision": {
+    "retain_candidate_surface": true,
+    "promote": false,
+    "reason": "the production geometry transfers a material 41.19-ms pp512 win, but changed D4 arithmetic must pass the clean direct all-exact 320-step category gate before promotion",
+    "next_action": "commit the default-off candidate, run attention_hipblaslt_absolute with this gate/up mode on the clean revision, then either repair selectively or remove the candidate"
+  }
+}
