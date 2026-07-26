@@ -741,7 +741,13 @@ Immediate execution queue:
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
    36-global-metadata, and 144-SWA-metadata policy. The prior scalar-split,
-   tiled-WMMA, head-pair, qhead3, and nine-wave GQA bodies remain closed.
+   tiled-WMMA, head-pair, qhead3, and nine-wave GQA bodies remain closed. The
+   new exact global-only qrow6 primitive is the active bounded screen:
+   qrow4 -> qrow6 improves **1.202x/1.262x/1.278x** at global starts
+   128/256/384, is neutral at start 0, and models **6.083 ms** pp512 saving.
+   Its SWA sibling lost **10.9–18.4%** and is removed. Integrate only the
+   qualified global positions, then require repeated complete-state pp512 A/B
+   before making it the gfx1151 default.
 3. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
    The schedule-correct requested-byte ledger is published: gate/up is
    **162.15 GB/s (73.37%)** and down **137.16 GB/s (62.06%)** against the

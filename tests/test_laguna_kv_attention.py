@@ -90,6 +90,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_global_attention_prefill_qrow4_cached_online_bf16_spans,
         laguna_global_attention_prefill_qrow4_m128_online_bf16_spans,
         laguna_global_attention_prefill_qrow4_online_bf16_spans,
+        laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans,
         laguna_global_write_kv_rows_f32_spans,
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
@@ -193,6 +194,15 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             variant="global_context_rows_qrow4_cached_meta_online_spans",
         )
         is laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="global_context_rows_qrow6_cached_meta_online_spans",
+        )
+        is laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans
     )
     assert (
         resolve(
@@ -1050,6 +1060,7 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
         laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans,
         laguna_global_attention_prefill_qrow4_cached_online_bf16_spans,
         laguna_global_attention_prefill_qrow4_online_bf16_spans,
+        laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans,
@@ -1097,6 +1108,7 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
         global_baseline_out = malloc(query_global.nbytes, runtime=runtime)
         global_cached_out = malloc(query_global.nbytes, runtime=runtime)
         global_cached_meta_out = malloc(query_global.nbytes, runtime=runtime)
+        global_qrow6_cached_meta_out = malloc(query_global.nbytes, runtime=runtime)
         swa_baseline_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_cached_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_cached_meta_out = malloc(query_swa.nbytes, runtime=runtime)
@@ -1109,6 +1121,7 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
                 global_baseline_out,
                 global_cached_out,
                 global_cached_meta_out,
+                global_qrow6_cached_meta_out,
                 swa_baseline_out,
                 swa_cached_out,
                 swa_cached_meta_out,
@@ -1243,10 +1256,28 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
             library=library,
             runtime=runtime,
         )
+        laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans(
+            global_query_rows.ptr,
+            key_rows.ptr,
+            value_rows.ptr,
+            global_layer.key_cache.ptr,
+            global_layer.value_cache.ptr,
+            global_qrow6_cached_meta_out.ptr,
+            global_layer.spans,
+            rows,
+            global_layer.capacity,
+            global_layer.q_heads,
+            config.head_count_kv,
+            config.key_length,
+            config.key_length**-0.5,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
 
         actual_global = np.empty_like(query_global)
         actual_global_meta = np.empty_like(query_global)
+        actual_global_qrow6_meta = np.empty_like(query_global)
         expected_global = np.empty_like(query_global)
         actual_swa = np.empty_like(query_swa)
         actual_swa_meta = np.empty_like(query_swa)
@@ -1255,6 +1286,7 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
             (expected_global, global_baseline_out),
             (actual_global, global_cached_out),
             (actual_global_meta, global_cached_meta_out),
+            (actual_global_qrow6_meta, global_qrow6_cached_meta_out),
             (expected_swa, swa_baseline_out),
             (actual_swa, swa_cached_out),
             (actual_swa_meta, swa_cached_meta_out),
@@ -1267,6 +1299,7 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
             )
         np.testing.assert_array_equal(actual_global, expected_global)
         np.testing.assert_array_equal(actual_global_meta, expected_global)
+        np.testing.assert_array_equal(actual_global_qrow6_meta, expected_global)
         np.testing.assert_array_equal(actual_swa, expected_swa)
         np.testing.assert_array_equal(actual_swa_meta, expected_swa)
     finally:

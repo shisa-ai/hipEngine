@@ -68,6 +68,20 @@ metadata-only, and 144 SWA metadata-only calls while cutting attention
 unchanged. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-{candidate,default,production}.json`.
 
+The next exact global-only candidate extends that metadata-only body from four
+to six adjacent query rows. It is F32 byte-identical on the production M128
+preappend fixture. Eleven-sample leaf timing is neutral at global start 0 and
+improves qrow4 by **1.202x/1.262x/1.278x** at starts 128/256/384. Keeping
+qrow4 at start 0 and for every SWA call models **13.3281 -> 12.8211 ms
+(1.0395x)** across one global plus three SWA layer slots, or **6.083 ms**
+across the 12/36 production layer split. Cached tracing names global
+`<6,true,true>` at local32/VGPR88/SGPR128/LDS0/scratch0 versus qrow4 VGPR64.
+The analogous SWA qrow6 body lost **10.9–18.4%** at all four positions and was
+removed completely. The global primitive remains separately registered
+pending a repeated complete-state production A/B; it is not yet a default.
+Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-candidate.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers
