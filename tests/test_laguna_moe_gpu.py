@@ -171,6 +171,12 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.selected_dual_silu_key == KernelKey(
         "hip_gfx1151", "silu_mul_dual", "bf16", "out"
     )
+    assert plan.fused_selected_silu_pack_key == KernelKey(
+        "hip_gfx1151",
+        "silu_mul_dual+activation_quant",
+        "q8_1_ds4x3_f32",
+        "bf16",
+    )
     assert set(plan.selected_gate_up_keys) == {
         "gguf_q4_k_t16_v1",
         "gguf_iq2_xs",
@@ -245,6 +251,35 @@ def test_laguna_mmq_selected_down_reuses_exact_grouped_combine() -> None:
         selected_down_mode="direct",
         tokens=512,
         use_mmq_down=False,
+    )
+
+
+def test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified() -> None:
+    should_fuse = laguna_moe_module._should_fuse_selected_silu_pack
+    production = {
+        "selected_gate_up_mode": (
+            "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        ),
+        "selected_down_mode": (
+            "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+        ),
+    }
+    assert should_fuse(requested=True, **production)
+    assert not should_fuse(requested=False, **production)
+    assert not should_fuse(
+        requested=True,
+        selected_gate_up_mode="direct",
+        selected_down_mode=production["selected_down_mode"],
+    )
+    assert not should_fuse(
+        requested=True,
+        selected_gate_up_mode=production["selected_gate_up_mode"],
+        selected_down_mode="direct",
+    )
+    assert not should_fuse(
+        requested=True,
+        selected_gate_up_mode="mmq64x32_d4x3_f32",
+        selected_down_mode="mmq64x32_d4x3_f32",
     )
 
 
@@ -769,6 +804,27 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         np.testing.assert_array_equal(
             _f32_to_bf16_u16(down_q6_rows64_actual),
             _f32_to_bf16_u16(down_wavecols_direct_actual),
+        )
+        fused_silu_pack_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            down_rowvec_scratch,
+            rows=3,
+            selected_gate_up_mode=(
+                "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+            ),
+            selected_down_mode=(
+                "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+            ),
+            fuse_selected_silu_pack=True,
+        )
+        fused_silu_pack_actual = _read_bf16(
+            fused_silu_pack_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(fused_silu_pack_actual),
+            _f32_to_bf16_u16(down_q6_rows64_actual),
         )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):

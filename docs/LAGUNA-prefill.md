@@ -726,7 +726,10 @@ Immediate execution queue:
    Q6 128-column/local256 widening, Q4-down 128-column widening,
    static-upper sentinel grids, launch-bounds occupancy hints, duplicate-decode
    row halves, 64-row Q4 accumulation, paired-scale metadata, or F32 partial
-   spills.
+   spills. The exact fused selected-SiLU pack is now the default candidate:
+   seven complete-state pairs are exact, all seven win, and tracing removes
+   47 launches while cutting SiLU plus pack **10.301 -> 6.377 ms (-38.09%)**.
+   Clean selector-unset publication is next.
 2. Keep exact cached-metadata attention in production. Clean selector-unset
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
@@ -1667,6 +1670,24 @@ independent trace reaches **544.994 tok/s**. Production is now
 **543.807 tok/s**, leaving **210.081 ms** to the 700 wall. Evidence:
 [`2026-07-26-gfx1151-laguna-mmq-combine-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json).
 
+The next exact data-movement candidate removes the standalone selected SiLU
+materialization without changing its numerical boundary. Gate/up writes its
+packed **62.9-MB** BF16 tensor into the larger **73.4-MB** selected-down
+allocation; the fused pack reads it there, evaluates the same SiLU expression,
+rounds to BF16, converts that rounded value back to FP32, and runs the unchanged
+range-safe D4 pack into the existing gate/up allocation. The registered
+standalone SiLU plus ordinary pack remain the unfused fallback. Production
+Q4_K and Q6_K MoE fixtures are BF16-byte exact, as are all seven
+token/logit/hidden/KV/cursor pp512 pairs. The candidate wins **7/7**; median
+paired wall improves **4.636 ms**, mean paired wall **6.098 ms**, and paired
+geometric throughput **0.651%**. Cached tracing removes exactly 47 dispatches
+(**1,840 -> 1,793**) and replaces **5.346 ms** of standalone SiLU plus
+**4.954 ms** of ordinary pack with **6.377 ms** of fused pack, a
+**3.924-ms / 38.09%** target-window reduction. It is retained as the gfx1151
+default candidate; the production headline remains **543.807 tok/s** until
+clean selector-unset publication. Evidence:
+[`2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-mmq-combine-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json)
@@ -2387,6 +2408,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`

@@ -1196,3 +1196,21 @@ should be boring.
   by other backends, and the host legacy-to-qmicro cache adapter. If clean
   publication regresses, disable the capability and remove the qmicro runtime
   default before starting another selected-down premise.
+
+## Laguna fused selected-SiLU pack rollback
+
+- Added 2026-07-26 with the gfx1151
+  `LAGUNA_FUSED_SELECTED_SILU_PACK` capability and session-local
+  `set_fused_selected_silu_pack(...)` rollback. The exact composite preserves
+  the standalone SiLU BF16 boundary, reuses selected-down scratch, and leaves
+  the required standalone SiLU plus activation-quant primitive fallback
+  registered.
+- Primitive and production Q4_K/Q6_K MoE equality pass. Seven complete-state
+  pp512 pairs are exact and win **7/7**, paired geometric throughput improves
+  **0.651%**, and tracing removes 47 launches while cutting the target window
+  **10.301 -> 6.377 ms (-38.09%)**. Keep the session rollback through clean
+  selector-unset publication and one later selected-down checkpoint.
+- After both triggers pass, remove the public setter while retaining the
+  backend capability/default and registered unfused numerical fallback. If
+  clean publication regresses, disable the capability before another
+  selected-down experiment.

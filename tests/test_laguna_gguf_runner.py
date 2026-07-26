@@ -796,6 +796,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         session.selected_down_mode
         == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
     )
+    assert session.fuse_selected_silu_pack is True
+    session.set_fused_selected_silu_pack(False)
+    assert session.fuse_selected_silu_pack is False
     assert session.dense_q4_prefill_mode == "wmma_pack8"
     assert session.f16_prefill_mode == "hipblaslt_range_direct"
     assert session.group_compact_mode == "parallel"

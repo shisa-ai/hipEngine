@@ -1587,6 +1587,13 @@ class LagunaGGUFResidentSession:
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
+        self.fuse_selected_silu_pack = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_FUSED_SELECTED_SILU_PACK",
+                False,
+            )
+        )
         self.router_logits_mode = resolve_laguna_router_logits_mode(self.backend)
         self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(self.backend)
         self.group_compact_mode = resolve_laguna_group_compact_mode(self.backend)
@@ -1748,6 +1755,11 @@ class LagunaGGUFResidentSession:
             self.backend,
             mode,
         )
+
+    def set_fused_selected_silu_pack(self, enabled: bool) -> None:
+        """Select exact dual-SiLU packing or its registered primitive fallback."""
+
+        self.fuse_selected_silu_pack = bool(enabled)
 
     def set_router_logits_mode(self, mode: str) -> None:
         """Select the exact rows>1 router-logit token-reuse schedule."""
@@ -2872,6 +2884,7 @@ class LagunaGGUFResidentSession:
             router_logits_mode=self.router_logits_mode,
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             group_compact_mode=self.group_compact_mode,
+            fuse_selected_silu_pack=self.fuse_selected_silu_pack,
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,

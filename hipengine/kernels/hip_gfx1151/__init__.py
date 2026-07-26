@@ -81,6 +81,11 @@ LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"
 # Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
 # scalar-staged, and exact routes remain rollbacks.
 LAGUNA_SELECTED_DOWN_MODE = "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+# Exact scratch reuse writes packed gate/up into the larger selected-down
+# output allocation, then folds the standalone BF16 SiLU boundary into the
+# range-safe down pack. Seven paired pp512 runs are exact and win 7/7; the
+# standalone SiLU plus ordinary pack remain the explicit rollback chain.
+LAGUNA_FUSED_SELECTED_SILU_PACK = True
 # Byte-neutral Q6 qmicro keeps the resident T16 metadata but groups each
 # four-column K4 quant quartet into one aligned 12-byte record. Exact c1 and
 # selected-prefill gates both improve on gfx1151; peer backends retain legacy
