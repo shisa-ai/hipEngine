@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_attention_dense_initial_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 78777775764
+  },
+  "repo": {
+    "revision": "227398af9973f891f969c8f0cd0f6d21e5ef7a02",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_PREFILL_DENSE_INITIAL=true",
+    "policy": "complete initial no-wrap preappended M128 tiles use qrow4 global at start 0, qrow6 global at later starts, and qrow4 SWA",
+    "fallback": "explicit prefill_dense_initial=false session rollback",
+    "automatic_fallbacks": [
+      "partial tiles",
+      "wrapped SWA",
+      "explicitly evicted metadata",
+      "staged verifier transactions",
+      "gfx1100 and unmeasured backends"
+    ],
+    "arithmetic": "identical ordered QK reduction, online softmax, PV accumulation, F32 output, physical base-offset mapping, and complete KVLiveSpans ABI"
+  },
+  "matched_ab": {
+    "cached_metadata_median_tok_s": 552.1443817180201,
+    "dense_initial_median_tok_s": 559.5393047763565,
+    "change_percent": 1.3393096630498702,
+    "median_wall_savings_ms": 12.255198904313147,
+    "candidate_wins": "5/7",
+    "complete_state_exact": true,
+    "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json"
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/2026-07-26-gfx1151-laguna-attention-dense-initial-production-clean.json",
+    "pp512_samples_tok_s": [
+      572.1705560115037,
+      558.9349517079736,
+      559.2903240770585
+    ],
+    "pp512_median_tok_s": 559.2903240770585,
+    "pp1024_samples_tok_s": [
+      527.7804466804295,
+      520.9177103390365,
+      523.0902244247085
+    ],
+    "pp1024_median_tok_s": 523.0902244247085,
+    "pp4096_samples_tok_s": [
+      446.995602045564,
+      439.0436077181147,
+      437.66662323723455
+    ],
+    "pp4096_median_tok_s": 439.0436077181147,
+    "previous_production": {
+      "pp512_tok_s": 551.4585214831062,
+      "pp1024_tok_s": 517.3065983516335,
+      "pp4096_tok_s": 432.0994247795686
+    },
+    "change_percent": {
+      "pp512": 1.4201979457835636,
+      "pp1024": 1.118026735305566,
+      "pp4096": 1.6070798849339152
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "973208a7a43b0cacad1530e837631435d67041d6b7c7d698ea986424f0f0e339"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file dense-initial-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/child.json",
+    "pp512_tok_s": 559.2251997093277,
+    "pp512_dispatches": 1792,
+    "pp512_synchronized_wall_ms": 915.5524469679222,
+    "pp512_kernel_span_ms": 911.663788,
+    "pp512_kernel_sum_ms": 901.178017,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 314.920272,
+      "selected_q4_q6_down": 191.097568,
+      "global_attention": 23.118681,
+      "swa_attention": 118.727338,
+      "source_f16_projection": 125.250467,
+      "dense_shared_quant_projection": 53.270612,
+      "router": 23.554217,
+      "remainder": 51.238862
+    },
+    "attention": {
+      "total_ms": 141.846019,
+      "previous_total_ms": 153.226158,
+      "change_percent": -7.427021044278592,
+      "launches": {
+        "global_qrow4_dense_initial": 12,
+        "global_qrow6_dense_initial": 36,
+        "swa_qrow4_dense_initial": 144
+      },
+      "resources": {
+        "global_qrow4": "local32/VGPR64/SGPR128/LDS0/scratch0",
+        "global_qrow6": "local32/VGPR88/SGPR128/LDS0/scratch0",
+        "swa_qrow4": "local32/VGPR64/SGPR128/LDS0/scratch0"
+      }
+    },
+    "child_sha256": "f39f75a9272efa40ef76fe893f370f03e35569669361e343765796dc776e1673",
+    "trace_sha256": "434ef64784d903f038c2edfda86ac44f52e0030b2981d9dc84521bad13e33f84",
+    "summary_sha256": "bb58b87198656b0a23b7e1abbe7194b387cb94588903ecd4c1d311a2d90118a2"
+  },
+  "correctness": {
+    "transfer_basis": "Every dense-initial primitive output is F32-bit exact and fourteen matched full-model runs preserve logits, hidden state, KV, next token/logit, and cursor.",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 559.2903240770585,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 184.0172676263112,
+    "next_measured_bottlenecks": [
+      "selected Q4 gate/up: 314.920 ms",
+      "selected Q4/Q6 down: 191.098 ms",
+      "global plus SWA attention: 141.846 ms",
+      "source-F16 projection: 125.250 ms"
+    ],
+    "next_premise": "reduce selected-down route-tile weight rereads or find another exact attention query-reuse point; local interpolation without physical reuse remains closed"
+  }
+}

@@ -115,6 +115,14 @@ the capability with `prefill_dense_initial=false` as explicit rollback;
 gfx1100 and all unsafe shapes retain the prior exact paths. Clean
 selector-unset publication remains the next gate. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json`.
+Clean selector-unset publication reaches **559.290/523.090/439.044 tok/s** at
+512/1K/4K, improving the previous production **1.420%/1.118%/1.607%**.
+Cached tracing independently reaches **559.225 tok/s**, observes exactly
+12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 dense-initial launches, and
+cuts attention **153.226 -> 141.846 ms (-7.43%)**. The global qrow4/qrow6 and
+SWA qrow4 resources remain local32, zero LDS/scratch, and VGPR64/88/64.
+Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-production.json`.
 
 ### Laguna gfx1151 exact router token reuse
 
