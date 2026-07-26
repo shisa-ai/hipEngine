@@ -183546,3 +183546,14 @@ Vulkan local sizes verbatim will close the measured gap.
   `cb509912...a46d`. Production remains D8 at **632.618 tok/s**; the clean
   direct-all-exact 320-step category gate is next. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-split-quality-pending.json`.
+
+## 2026-07-27 — Add absolute Q4 projection-role quality lane
+
+- RED failed collection because the category harness had no
+  `q4_role_split_absolute` comparison. GREEN adds all-exact versus the complete
+  current attention-hipBLASLt production stack with only selected gate/up
+  changed to global D4-gate/D8-up.
+- The lane deliberately disables the relative performance gate so the clean
+  ten-prompt, four-category, 320-step run reports the absolute KL/top-1
+  decision. Its focused configuration test passes; `py_compile` and
+  `git diff --check` are clean.

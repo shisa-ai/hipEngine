@@ -200,6 +200,20 @@ ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON = CategoryComparison(
     require_shape_screen=False,
     require_performance_gate=False,
 )
+Q4_ROLE_SPLIT_ABSOLUTE_COMPARISON = CategoryComparison(
+    name="q4_role_split_absolute",
+    modes=("all_exact", "q4_role_split_candidate"),
+    aggregate_key="q4_role_split_candidate_vs_all_exact",
+    screen_kind="not_applicable",
+    screen_status="not_applicable",
+    screen_decision_key="not_applicable",
+    require_positive_wall=False,
+    execution_mode="cumulative_prefill",
+    require_exact_free_running=False,
+    screen_requires_model=False,
+    require_shape_screen=False,
+    require_performance_gate=False,
+)
 _GLOBAL_PREFILL_VARIANTS = {
     "global_exact": "global_context_rows_spans",
     "global_qrow2_online": "global_context_rows_qrow2_online_spans",
@@ -254,6 +268,16 @@ _PREFILL_LANE_CONFIGURATIONS = {
         dense_q4_prefill_mode="wmma_pack8",
         attention_hipblaslt=True,
     ),
+    "q4_role_split_candidate": PrefillLaneConfiguration(
+        f16_prefill_mode="wmma_comp_swa",
+        global_prefill_variant="global_context_rows_qrow4_m128_online_spans",
+        swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
+        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
+        selected_gate_up_mode="mmq128x32_role_gate_d4_up_d8",
+        f16_projection_mode="hipblaslt_range_direct",
+        dense_q4_prefill_mode="wmma_pack8",
+        attention_hipblaslt=True,
+    ),
 }
 _COMPARISONS = {
     comparison.name: comparison
@@ -268,6 +292,7 @@ _COMPARISONS = {
         PREFILL_350_COMPARISON,
         PRODUCTION_ABSOLUTE_COMPARISON,
         ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
+        Q4_ROLE_SPLIT_ABSOLUTE_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
