@@ -200,7 +200,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `atten
 | `full_attn_prefill` variants `qwen35_causal_gqa_gate_fp16`, `qwen35_varlen_causal_gqa_gate_fp16` | `w4_paro` append-then-attend causal GQA prefill, BF16 KV cache, FP16 gate/output | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(...)`, `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` → tiny paged causal-GQA fixture vs CPU `full_attn_prefill` oracle after prompt KV append, `prefill_gate_fp16_max_abs=0`, `prefill_gate_fp16_mismatch=0`; `python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` → two packed request segments with row-shaped block tables, `varlen_prefill_gate_fp16_max_abs=0`, mismatch `0`; `rocprofv3` shows prompt KV writer (`DurationNs=6880`) and `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel` (`21520`) on W7900; all-layer 512 prefill after the shared-query cache/vector key-dot update, fixed `block_size=256` address fast path, and split short-row template shows `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>` ran 10 times (`26.362 ms` total, avg `2636.2 us`) on W7900. Full single-request fixture gate accepted in `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json` (`max_kl=0.0168`, top-1 100%), and active multiloop fixture gate remains green (`max_kl=0.03406`, top-1 100%), but no throughput row promoted. |
 | `moe_ffn_selected` variants `fused_dual_silu_down_{bf16,f32}_out` (M16.3 B1) | `gguf_q4_k` raw rank-3 expert weights, fused selected-expert MoE FFN megakernel | `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_moe_ffn_fused.hip` | `gguf_q4_k_selected_ffn_fused_{bf16_bf16,f32_f32}_out(...)` | First M16.3 megakernel (MEGAKERNEL.md B1). One block per selected `(token, expert)` row computes the whole expert FFN — `gate_up GEMV -> silu*mul -> down GEMV` — keeping the `ffn_len`-wide intermediate on-chip (dynamic LDS `hidden + ffn_len` f32), so the gate_up-output HBM write + down-input HBM read vanish and 3 big-grid GEMV launches collapse to 1. Thread-owns-output (no cross-thread reduction) -> **row-invariant by construction**. Q4_K dequant + selected-expert addressing forked from `gguf_q4_k_gemv.hip`. Output is per-selected-row down `[rows, hidden]`; routing-weighted combine stays a separate kernel. Grid `(rows,)`, `__launch_bounds__(256, 2)`. Constraints: `hidden % 256 == 0`, `ffn_len % 256 == 0`. Inactive/out-of-range expert lanes emit zeros. Unfused fallback = existing primitive chain (`gguf_q4_k_selected_dual_gemv` -> `silu_mul` -> `gguf_q4_k_selected_gemv`). Gated vs B0 CPU oracle `cpu_reference.gguf_moe_selected_ffn` (`tests/test_gguf_q4_k_moe_ffn_fused.py`, 5 pass): f32 `kl_mean=9.3e-12`, top-1 `1.0`, `max_rel=6.9e-6`; bf16 `kl_mean=2.5e-4`, `kl_max=8.5e-4`, top-1 `1.0` (clears KL<=0.05/top-1>=90%); GPU row-invariance bit-exact (rows=1 == in-batch per row). `rocprofv3 --kernel-trace` (W7900, hidden=2048, ffn_len=512, E=256, rows=8): `gguf_q4_k_selected_ffn_fused_kernel<unsigned short, unsigned short>` 1 dispatch, `SGPR=128`, `Workgroup=256`. B1.x block-structured Q4_K decode hoist (decode d/dmin/scale once per 256-K block) took the single-shot from `3.61 ms` -> `0.815 ms` (VGPR `24` -> `104`); hot A/B microbench `0.266 ms/call` vs unfused raw chain `0.420 ms` (**1.58x**). The bf16 variant rounds gate/up + silu(gate)*up to bf16 (`round_intermediate<out_t>`, `expf`) to match the deployed bf16 pipeline it replaces; the f32 variant stays full-fp32 (reference). **B2 wiring:** `HIPENGINE_GGUF_FUSED_MOE_FFN` (default off) routes the rows==1 raw-Q4_K decode FFN through this kernel via `runtime/qwen35_gguf_runner.py::_try_run_post_attention_moe_c1_fused_ffn` (transparent fallback for T16/non-raw). E2E raw-path decode `9.859 -> 11.343 tok/s` (+15.1%, 512/128), launches/layer 3 -> 1. Kernel certified correct: oracle-exact on real layer-0 weights (`max_rel 1.2e-8`) and fused-vs-unfused `moe_down_out` matches in situ to ~1 bf16 ULP (`max_abs 1.22e-4`); passes `KL<=0.05` vs cpu_reference. Whole-model teacher-forced KL is large (`1.09`/32 tok, `scripts/gguf_fused_moe_ffn_teacher_forced_kl.py`) purely as 40-layer + KV-drift accumulation of the ~1-ULP bf16 reduction-order difference (any kernel swap shifts the exact E2E token stream). **Not promoted:** does not apply to the deployed T16 path (raw only), and occupancy-bound at single-token decode (only `rows` blocks). Kept gated off (`...b2-fused-moe-ffn-decode-diagnostic.json`). Best megakernel targets: batched c>1 GGUF decode (`c*8` blocks) and the verify/C_B regime. |
 
-### Laguna global single-page decode (**primitive retained; runtime rejected**)
+### Laguna global single-page decode (**base runtime rejected; gated primitive retained**)
 
 The exact gfx1100 primitive is registered under
 `laguna_attention_decode/bf16/global_context_single_page_spans`; the existing
@@ -233,20 +233,29 @@ Canonical **63.270 tok/s / 678 kernels** is unchanged. Evidence:
 [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json),
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json).
 
-Post-rejection ranking selects a new composite, not a retry of either removed
-owner: `laguna_attention_decode+attention_gate/bf16/
-global_single_page_softplus_bf16_spans`. It will preserve the admitted page-zero
-body and append only D15's previously exact F32 softplus/multiply/RNE-BF16
-epilogue inside the same local256 workgroup, writing both unchanged F32 context
-and BF16 gated context. It is global-only and live<=126; head/KV, SWA, and
-live>=127 split-exact ownership remain untouched. The required unfused fallback
-is the admitted one-page primitive plus the registered standalone softplus gate.
+Post-rejection ranking selected and primitive-admitted a new composite, not a
+retry of either removed owner: `laguna_attention_decode+attention_gate/bf16/
+global_single_page_softplus_bf16_spans`. Its mechanically checked body preserves
+the admitted page-zero attention function and appends only D15's exact F32
+softplus/multiply/RNE-BF16 epilogue inside the same local256 workgroup, writing
+both unchanged F32 context and BF16 gated context. The required unfused fallback
+is the admitted one-page primitive plus the registered standalone softplus gate;
+gfx1151, CUDA, and CPU do not alias the composite.
+
+Synthetic live 1/70/126/256 plus live257 sentinel and all **24** actual layer/live
+rows preserve both output types. Layer0/44 inclusive event/wall improves every
+live70/126 row by **9.53-14.57%**. Integrated Clang-22 codegen is **1,181
+instructions / 5,756 B**, logical VGPR32/SGPR54, private/spills0, five barriers,
+and dynamic LDS16,928. Cache-only tracing names the distinct local256 composite
+at allocated VGPR32/scratch0 with no compiler. Runtime ownership is still absent:
+head/KV, SWA, scalar-global, and live>=127 split-exact owners remain untouched.
 Current two-order traces put scalar+gate at **0.5558/0.5664 ms/token** and
 one-page+separate-gate at **0.5008/0.5029 ms/token**. A zero-increment epilogue
 ceiling removes 12 more launches (**678 -> 666 kernels/token**) and models only
-**63.653 tok/s (+0.605%)**, still below Vulkan. This is design evidence, not an
-implemented body or throughput claim:
-[`gated design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json).
+**63.653 tok/s (+0.605%)**, still below Vulkan; this remains planning arithmetic,
+not a decode claim. Evidence:
+[`gated design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json),
+[`gated primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-correctness.json).
 
 ### SOL-G2 exact GGUF GDN split evidence
 
