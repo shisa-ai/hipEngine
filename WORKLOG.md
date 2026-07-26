@@ -181130,3 +181130,32 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; no external tree was modified.
   Runtime scratch reuse, complete MoE CPU-reference equality, and pp512
   performance remain the next logical unit.
+
+## 2026-07-26 — Retain exact fused selected-SiLU pack candidate
+
+- Added a shape-qualified runtime plan entry for the registered composite.
+  One-plane MMQ gate/down pairs may write packed gate/up into selected-down
+  scratch, skip the standalone selected SiLU launch/materialization, and pack
+  directly into the existing gate/up allocation. D4x2/D4x3, decode,
+  grouped-small-M, gfx1100, and unmeasured routes retain the primitive chain.
+  The gfx1151 package capability now selects the candidate by default and an
+  explicit session rollback remains.
+- RED required the missing four-axis plan key and fusion policy. GREEN passes
+  policy/plan checks plus production-shape Q4_K and Q6_K complete MoE
+  CPU-oracle fixtures; fused and unfused outputs are BF16-byte identical.
+  Seven counter-rotated one-owner pp512 pairs preserve token, token logit, full
+  logits, final/post-layer hidden, KV, and cursor. The candidate wins **7/7**;
+  median paired wall changes by **-4.636 ms**, mean by **-6.098 ms**, and
+  paired geometric throughput improves **0.651%**. Raw SHA-256 is
+  `d193e740cb8b2b4766a763f6a08a1639fe56cd3ecef5286f36a95e5eaed12250`.
+- Cached fixed-order tracing proves the physical change. pp512 dispatches fall
+  **1,840 -> 1,793** and kernel span **938.588 -> 933.956 ms (-4.632 ms)**.
+  Forty-seven ordinary packs (**4.954 ms**) plus 47 standalone SiLUs
+  (**5.346 ms**) become 47 fused packs (**6.377 ms**), saving
+  **3.924 ms / 38.09%** in the target window. The fused body is
+  local128/VGPR16/LDS512B/scratch0. Trace/child SHA-256 values are
+  `bcce2233...1cfd62` and `54d4b6a4...0755`.
+- Retained the exact candidate as the gfx1151 default. Clean selector-unset
+  512/1K/4K timing and an all-family trace remain the next publication unit,
+  so current production stays **543.807 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`.

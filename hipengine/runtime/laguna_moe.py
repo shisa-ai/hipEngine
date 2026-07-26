@@ -121,6 +121,42 @@ def _should_fuse_grouped_weighted_sum(
     )
 
 
+_FUSED_SELECTED_SILU_PACK_GATE_UP_MODES = frozenset(
+    {
+        "mmq64x32_d4_f32",
+        "mmq128x32_d8_f32",
+        "mmq128x32_d8_f32_rowvec",
+        "mmq128x32_d8_f32_wavecols",
+        "mmq128x32_d8_f32_wavecols_direct",
+        "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+    }
+)
+_FUSED_SELECTED_SILU_PACK_DOWN_MODES = frozenset(
+    {
+        "mmq64x32_d4_f32",
+        "mmq64x32_d4_f32_rowvec",
+        "mmq64x32_d4_f32_wavecols_q4",
+        "mmq64x32_d4_f32_wavecols_direct_q4",
+        "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+    }
+)
+
+
+def _should_fuse_selected_silu_pack(
+    *,
+    requested: bool,
+    selected_gate_up_mode: str,
+    selected_down_mode: str,
+) -> bool:
+    """Fuse only one-plane MMQ routes with an exact BF16-boundary primitive."""
+
+    return (
+        bool(requested)
+        and selected_gate_up_mode in _FUSED_SELECTED_SILU_PACK_GATE_UP_MODES
+        and selected_down_mode in _FUSED_SELECTED_SILU_PACK_DOWN_MODES
+    )
+
+
 def resolve_laguna_selected_gate_up_mode(
     backend: str,
     requested: str | None = None,
@@ -260,6 +296,7 @@ class LagunaMoEKernelPlan:
     selected_down_prefill_key: KernelKey
     selected_down_prefill_q4_key: KernelKey
     down_activation_quant_key: KernelKey
+    fused_selected_silu_pack_key: KernelKey
     selected_gate_up_keys: Mapping[str, KernelKey]
     selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
@@ -297,6 +334,7 @@ class LagunaMoEKernelPlan:
     selected_down_prefill: Callable
     selected_down_prefill_q4: Callable
     down_activation_quant: Callable
+    fused_selected_silu_pack: Callable
     selected_dual_silu_key: KernelKey
     selected_dual_silu: Callable
     selected_down: Callable
@@ -333,6 +371,7 @@ class LagunaMoEKernelPlan:
             self.selected_down_prefill_key,
             self.selected_down_prefill_q4_key,
             self.down_activation_quant_key,
+            self.fused_selected_silu_pack_key,
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -522,6 +561,12 @@ def resolve_laguna_moe_plan(
         "down_activation_quant": KernelKey(
             backend,
             "activation_quant",
+            "q8_1_ds4x3_f32",
+            "bf16",
+        ),
+        "fused_selected_silu_pack": KernelKey(
+            backend,
+            "silu_mul_dual+activation_quant",
             "q8_1_ds4x3_f32",
             "bf16",
         ),
@@ -754,6 +799,7 @@ def resolve_laguna_moe_plan(
         selected_down_prefill_key=keys["selected_down_prefill"],
         selected_down_prefill_q4_key=keys["selected_down_prefill_q4"],
         down_activation_quant_key=keys["down_activation_quant"],
+        fused_selected_silu_pack_key=keys["fused_selected_silu_pack"],
         selected_gate_up_keys=selected_gate_up_keys,
         selected_gate_up_routes=selected_gate_up_routes,
         selected_silu_key=keys["selected_silu"],
@@ -780,6 +826,7 @@ def resolve_laguna_moe_plan(
         selected_down_prefill=functions["selected_down_prefill"],
         selected_down_prefill_q4=functions["selected_down_prefill_q4"],
         down_activation_quant=functions["down_activation_quant"],
+        fused_selected_silu_pack=functions["fused_selected_silu_pack"],
         selected_silu=functions["selected_silu"],
         selected_dual_silu=functions["selected_dual_silu"],
         selected_down=functions["selected_down"],
@@ -1222,6 +1269,7 @@ def _launch_selected_gate_up_mmq32_d4x3(
     direct_wave_decode: bool = False,
     double_buffer_activation: bool = False,
     group_compact_mode: str = "serial",
+    defer_silu_pack: bool = False,
 ) -> bool:
     """Run Q4T16 selected gate/up in compact order and retain its down metadata."""
 
@@ -1305,7 +1353,11 @@ def _launch_selected_gate_up_mmq32_d4x3(
         scratch.grouped_sorted_experts.ptr,
         gate.allocation("tiles").tensor.ptr,
         up.allocation("tiles").tensor.ptr,
-        scratch.expert_gate_up.ptr,
+        (
+            scratch.expert_down.ptr
+            if defer_silu_pack
+            else scratch.expert_gate_up.ptr
+        ),
         lanes,
         x_rows,
         plan.hidden_size,
@@ -1330,15 +1382,19 @@ def _launch_selected_gate_up_mmq32_d4x3(
             runtime=active_runtime,
         ),
     )
-    plan.selected_dual_silu(
-        scratch.expert_gate_up.ptr,
-        scratch.expert_intermediate.ptr,
-        lanes,
-        plan.expert_ffn_size,
-        **_stage_kwargs(
-            "selected_silu", libraries, stream=stream, runtime=active_runtime
-        ),
-    )
+    if not defer_silu_pack:
+        plan.selected_dual_silu(
+            scratch.expert_gate_up.ptr,
+            scratch.expert_intermediate.ptr,
+            lanes,
+            plan.expert_ffn_size,
+            **_stage_kwargs(
+                "selected_silu",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
     return True
 
 
@@ -1509,6 +1565,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
     wave_cols_q4: bool = False,
     direct_wave_decode_q4: bool = False,
     q6_tile_rows: int = _MMQ32_ROWS,
+    fused_silu_pack: bool = False,
 ) -> bool:
     """Quantize compact post-SiLU rows and run range-safe Q6T16 MMQ down."""
 
@@ -1556,8 +1613,17 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
                 runtime=active_runtime,
             ),
         )
-    plan.down_activation_quant(
-        scratch.expert_intermediate.ptr,
+    activation_quant = (
+        plan.fused_selected_silu_pack
+        if fused_silu_pack
+        else plan.down_activation_quant
+    )
+    activation_quant(
+        (
+            scratch.expert_down.ptr
+            if fused_silu_pack
+            else scratch.expert_intermediate.ptr
+        ),
         scratch.expert_gate_up.ptr,
         lanes,
         plan.expert_ffn_size,
@@ -1885,6 +1951,7 @@ def run_laguna_moe_rows(
     router_logits_mode: str = _BASELINE_ROUTER_LOGITS_MODE,
     dense_q4_prefill_mode: str = "retained",
     group_compact_mode: str = "serial",
+    fuse_selected_silu_pack: bool = False,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
@@ -1950,6 +2017,11 @@ def run_laguna_moe_rows(
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
     compact_gate_up = False
+    use_fused_selected_silu_pack = _should_fuse_selected_silu_pack(
+        requested=fuse_selected_silu_pack,
+        selected_gate_up_mode=selected_gate_up_mode,
+        selected_down_mode=selected_down_mode,
+    ) and scratch.expert_down.nbytes >= scratch.expert_gate_up.nbytes
     gate_up_f32_config = {
         "mmq64x32_d4_f32": (1, False, False, False, False, False),
         "mmq128x32_d8_f32": (1, True, False, False, False, False),
@@ -2014,8 +2086,10 @@ def run_laguna_moe_rows(
             direct_wave_decode=gate_up_direct_wave_decode,
             double_buffer_activation=gate_up_double_buffer_activation,
             group_compact_mode=group_compact_mode,
+            defer_silu_pack=use_fused_selected_silu_pack,
         )
     if not compact_gate_up:
+        use_fused_selected_silu_pack = False
         _launch_selected_gate_up(
             hidden_bf16_ptr,
             layer,
@@ -2075,6 +2149,7 @@ def run_laguna_moe_rows(
             wave_cols_q4=mmq_down_wave_cols_q4,
             direct_wave_decode_q4=mmq_down_direct_wave_decode_q4,
             q6_tile_rows=mmq_down_q6_tile_rows,
+            fused_silu_pack=use_fused_selected_silu_pack,
         )
     )
     use_grouped_fused_combine = _should_fuse_grouped_weighted_sum(

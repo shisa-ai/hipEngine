@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T03:39:24+00:00",
+  "kind": "hipengine_laguna_fused_silu_pack_candidate",
+  "status": "retained_default_pending_clean_publication",
+  "repo_revision": "4cbb50632e3afa211b1a0b7eedd8e14d37504d53",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "shape": {
+    "rows": 512,
+    "top_k": 10,
+    "hidden_size": 3072,
+    "expert_ffn_size": 3072,
+    "sparse_layers": 47,
+    "matrix_chunk": 512,
+    "attention_chunk": 128
+  },
+  "candidate": {
+    "baseline": "packed BF16 selected gate/up -> standalone BF16 dual SiLU -> range-safe one-plane Q8 pack -> MMQ selected down",
+    "candidate": "packed BF16 selected gate/up in selected-down scratch -> exact BF16-boundary dual-SiLU range-safe Q8 pack -> MMQ selected down",
+    "math": "Evaluate the same gate * sigmoid(gate) * up expression, explicitly round it to BF16, convert the rounded value back to FP32, then execute the unchanged D4 FP32-metadata pack.",
+    "physical_change": "Reuse the 73.4 MB selected-down output allocation for the 62.9 MB packed gate/up tensor, remove the 31.5 MB materialized selected intermediate, and remove one launch per sparse layer without adding scratch.",
+    "fallback": "The registered silu_mul_dual/bf16/out and activation_quant/q8_1_ds4x3_f32/bf16 primitives remain the numerically equivalent unfused chain.",
+    "scope": "one-plane MMQ gate/up and down mode pairs only; D4x2/D4x3, decode, grouped-small-M, gfx1100, and unmeasured routes remain unchanged"
+  },
+  "correctness": {
+    "red": "The runtime plan lacked a fused-selected-SiLU-pack registry key and a shape-qualified decision.",
+    "green": "The one-plane and three-plane primitive fixtures are byte-identical to the unfused GPU chain; production-shape Q4_K and Q6_K complete MoE outputs are BF16-byte identical with runtime scratch reuse enabled.",
+    "full_model_exact_pairs": 7,
+    "full_model_total_pairs": 7,
+    "state_fields": [
+      "next_token",
+      "next_token_logit",
+      "full logits",
+      "final hidden",
+      "post-layer hidden",
+      "KV cache",
+      "cursor"
+    ],
+    "tests": {
+      "primitive_registry_and_exactness": "3 passed",
+      "production_shape_q4_q6_moe": "2 passed",
+      "policy_and_plan": "2 passed"
+    }
+  },
+  "matched_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_fused_silu_pack_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-fused-silu-pack-ab.json",
+    "protocol": "seven counter-rotated one-owner pp512 pairs after one 128-row warmup per mode; model load excluded",
+    "unfused_median_tok_s": 543.9921979865983,
+    "fused_median_tok_s": 546.2552347906852,
+    "unfused_median_wall_ms": 941.1899690749124,
+    "fused_median_wall_ms": 937.2907889774069,
+    "candidate_wins": 7,
+    "median_paired_wall_change_ms": -4.635591176338494,
+    "mean_paired_wall_change_ms": -6.0981270258447955,
+    "paired_geometric_throughput_ratio": 1.0065100478043756,
+    "paired_geometric_throughput_change_percent": 0.6510047804375585,
+    "raw_sha256": "d193e740cb8b2b4766a763f6a08a1639fe56cd3ecef5286f36a95e5eaed12250"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-fused-silu-pack-rocprof -- .venv/bin/python3 -u scripts/laguna_fused_silu_pack_ab.py --repetitions 1 --require-cached-build --output /tmp/laguna-fused-silu-pack-rocprof-child.json",
+    "unfused_pp512": {
+      "tok_s": 542.915502974713,
+      "dispatches": 1840,
+      "kernel_span_ms": 938.58786,
+      "kernel_sum_ms": 925.815964,
+      "ordinary_down_pack_calls": 47,
+      "ordinary_down_pack_ms": 4.954372,
+      "standalone_dual_silu_calls": 47,
+      "standalone_dual_silu_ms": 5.346148,
+      "combined_target_window_ms": 10.30052
+    },
+    "fused_pp512": {
+      "tok_s": 545.0694716585956,
+      "dispatches": 1793,
+      "kernel_span_ms": 933.955825,
+      "kernel_sum_ms": 922.570107,
+      "fused_dual_silu_pack_calls": 47,
+      "fused_dual_silu_pack_ms": 6.376763,
+      "resources": {
+        "workgroup_size": 128,
+        "vgpr": 16,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    },
+    "dispatches_removed": 47,
+    "kernel_span_change_ms": -4.632035,
+    "kernel_span_change_percent": -0.49351107098274394,
+    "kernel_sum_change_ms": -3.245857,
+    "kernel_sum_change_percent": -0.3505941921735922,
+    "target_window_change_ms": -3.923757,
+    "target_window_change_percent": -38.09280502343571,
+    "trace_pair_throughput_change_percent": 0.3967410530884896,
+    "trace_sha256": "bcce2233b721741ac80a1746f51a0c6a5a68ed2b4554346a98ee6578031cfd62",
+    "trace_child_sha256": "54d4b6a4c4db482de574832d6248880bce3904d15ef9d0a10c408bde05ed0755"
+  },
+  "decision": {
+    "retained": true,
+    "default_changed": true,
+    "reason": "Every primitive, production-shape MoE, and complete-state pair is exact; the candidate wins all seven matched pairs; tracing proves the intended 47-launch and 3.924 ms target-window reduction.",
+    "production_prefill_before_tok_s": 543.8073200104417,
+    "headline_changed": false,
+    "next_gate": "Run clean selector-unset 512/1K/4K production timing and a cached all-family trace from the committed candidate before changing the 543.807 tok/s headline."
+  }
+}
