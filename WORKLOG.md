@@ -181885,3 +181885,25 @@ Vulkan local sizes verbatim will close the measured gap.
   another **184.017 ms** from the clean pp512 wall; selected down is the first
   expert-family target at **191.098 ms**, followed by gate/up and any further
   exact attention reuse.
+
+## 2026-07-26 — Reject transposed Q6 selected-down tile
+
+- Built the open cross-row reuse premise as a **32-column x 128-row/local128**
+  Q6 qmicro kernel. It retains the production 32 F32 accumulators/lane and
+  compact Q8_1 cache, while sharing each 32-column resident weight slice
+  across twice as many routed rows as the production 64x64 body.
+- Followed RED/GREEN: the focused GPU parameter first failed because the
+  128-row route did not exist, then passed the CPU quality gate. The actual
+  layer-1 natural-M512 output is BF16-bit exact to production with checksum
+  `509500838004`, and tracked allocations return to zero.
+- Natural all-Q6 routing would reduce route tiles only
+  **5,671 -> 5,253 (-7.37%)**. At layer 1 the wider row quantum nearly doubles
+  scheduled padded rows **15,808 -> 29,696**. Eleven counter-rotated
+  burst-five actual-weight medians reject the candidate:
+  **4.849229 -> 6.754525 ms (+39.2907%)**, with zero candidate wins.
+- Removed the HIP specialization/export, Python selector, test
+  parameterization, and harness mode; the four production files are
+  byte-identical to `3cf2adcca`. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols32-rows128-rejected.json`.
+  Production remains **559.290 tok/s**. Do not retry tile transposition without
+  a scheduler that avoids per-expert padding amplification.

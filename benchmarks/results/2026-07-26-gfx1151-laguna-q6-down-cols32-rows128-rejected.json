@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T09:09:22.016764+00:00",
+  "kind": "hipengine_laguna_q6_down_cols32_rows128_screen",
+  "status": "rejected",
+  "performance_claim": false,
+  "repo_revision": "3cf2adcca66ec646158ba7b88eb114282a9dace5",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "weight_layout": "gguf_q6_k_t16_qmicro",
+    "weight_shape": [256, 192, 4, 3360],
+    "weight_nbytes": 660602880
+  },
+  "workload": {
+    "natural_prompt_rows": 512,
+    "compact_routed_rows": 5120,
+    "in_features": 1024,
+    "out_features": 3072,
+    "experts": 256,
+    "production_padded_rows64": 15808,
+    "candidate_padded_rows128": 29696,
+    "all_q6_layers_production_tiles64": 5671,
+    "all_q6_layers_candidate_tiles128": 5253,
+    "all_q6_layers_tile_reduction_percent": 7.370834068065597
+  },
+  "candidate": {
+    "tile": "32 output columns x 128 routed rows",
+    "workgroup_threads": 128,
+    "accumulators_per_lane": 32,
+    "activation_cache": "compact Q8_1",
+    "resident_weight": "byte-neutral Q6 T16 qmicro",
+    "premise": "Keep the production accumulator count while sharing each 32-column weight slice across 128 routed rows."
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 11 --warmups 2 --prefill-burst 5 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-cols32-rows128.json",
+    "samples": 11,
+    "warmups": 2,
+    "burst": 5,
+    "order": "counter-rotated",
+    "timing": "HIP events; activation pack excluded"
+  },
+  "results": {
+    "production_qmicro_skip_padded_ms": 4.849229049682617,
+    "candidate_cols32_rows128_ms": 6.754524993896484,
+    "candidate_regression_percent": 39.29069806134582,
+    "candidate_speed_ratio": 0.7179275580250099,
+    "candidate_wins": 0,
+    "bf16_mismatches": 0,
+    "output_checksum": 509500838004,
+    "tracked_allocations_returned": true
+  },
+  "decision": {
+    "retain": false,
+    "reason": "The narrower tile nearly doubles scheduled padded rows and workgroup overhead; the 7.37% all-layer Q6 route-tile reduction cannot offset it.",
+    "cleanup": "Candidate HIP export/body specialization, Python selector, test parameter, and harness mode removed; production sources restored byte-for-byte."
+  }
+}
