@@ -850,7 +850,11 @@ heuristic 4 everywhere else—passes at **0.049542582**, leaving only
 showed that another approximate shortcut can hold 355+ tok/s while failing
 quality at KL **0.0767056**. New approximate paths are closed unless they first
 buy back absolute quality budget; prefer exact data-movement/scheduling wins
-and preserve K accumulation order.
+and preserve K accumulation order. The production-absolute harness is now
+repaired to follow the current qrow4, double-buffered gate/up, 64-row Q6-down,
+and range-direct F16 selectors instead of the superseded pre-350 lane. Its
+320-step revalidation reproduces the published **0.049542582** / **316 of
+320** result.
 
 Immediate execution queue:
 
@@ -1237,6 +1241,24 @@ Immediate execution queue:
    candidate kernel, wrapper, registry, runtime-mode, and test surface is
    removed. Evidence:
    [`2026-07-26-gfx1151-laguna-shared-pack8-dual-silu-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-shared-pack8-dual-silu-rejected.json).
+23. **Candidate default; clean publication pending:** use the complete
+   dense-initial `KVLiveSpans` contract to widen resident BF16 K/V exactly,
+   then run zero-workspace F32 hipBLASLt QK/PV around a causal F32 softmax.
+   Start 0 remains on qrow4; partial, wrapped, explicitly evicted, verifier,
+   decode, unsupported-head, and context-above-512 paths retain established
+   fallbacks. Twenty-one samples at every qualified context improve global
+   **0.3785/0.5869/0.8003 -> 0.2823/0.3453/0.4365 ms** and SWA
+   **0.6195/1.0079/1.4014 -> 0.3626/0.4634/0.6015 ms**, all 21/21.
+   Seven complete pp512 diagnostics improve **576.076 -> 602.518 tok/s**
+   median with 6/7 wins and deterministic state per mode. The association
+   change passes the long-shape distribution gate: pp512 all-exact KL
+   improves **0.003246 -> 0.002214**, while top-1 remains 2930. The route
+   owns **23,068,672 bytes** of scratch, uses no hipBLASLt workspace, and
+   retains complete memory recovery. The gfx1151 capability is enabled only
+   to obtain a clean selector-unset revision; it is not a retained
+   performance claim until that clean 512/1K/4K publication and trace pass.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json).
 
 Post-350 exclusions:
 

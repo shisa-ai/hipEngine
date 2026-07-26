@@ -183090,3 +183090,44 @@ Vulkan local sizes verbatim will close the measured gap.
   selected-down physical bytes, or another measured critical-path mechanism.
 - The required lineage check remains unavailable because the configured
   read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+
+## 2026-07-27 — Admit dense-initial F32 hipBLASLt attention candidate
+
+- The refreshed caller-stream trace left **143.669 ms** in global/SWA
+  attention. A bounded gfx1151 screen keeps the start-0 qrow4 tile, widens
+  resident BF16 K/V exactly for dense-initial starts 128/256/384, applies
+  causal F32 softmax, and uses zero-workspace strided-batch F32 hipBLASLt for
+  QK/PV. Partial, wrapped, explicitly evicted, verifier, decode, unsupported
+  head, and context-above-512 paths retain the established `KVLiveSpans`
+  kernels.
+- Twenty-one paired samples per qualified shape improve global context
+  256/384/512 **0.378482/0.586902/0.800322 ->
+  0.282314/0.345348/0.436523 ms** and SWA
+  **0.619543/1.007935/1.401378 -> 0.362621/0.463362/0.601493 ms**, all
+  **21/21**. Output differs by at most **4.47e-8** with RMS below
+  **3.77e-9**. Scratch is **23,068,672 bytes** and complete allocation
+  recovery passes.
+- Seven counter-rotated complete pp512 diagnostics improve
+  **576.0755 -> 602.5182 tok/s** median, win **6/7**, remove
+  **51.491 ms** at the paired median, preserve token **2930**, and are
+  deterministic per mode. Full pp512 logits against all-exact pass at KL
+  **0.00221391** versus **0.00324559** for production rollback; all three
+  lanes keep top-1 **2930**.
+- RED/GREEN added the cache-widen/causal-softmax/full-route CPU fixture.
+  Focused cached validation passes **6 tests**. Cached `rocprofv3` tracing
+  names the widen kernel at local256/VGPR24/SGPR128/LDS0/scratch0 and
+  **23.264 us**, and softmax at local256/VGPR16/SGPR128/LDS32/scratch0 and
+  **378.630 us**, followed by eight QK and eight PV library contractions.
+- The first category diagnostic reported KL **0.771081**, but the BLAS path
+  cannot run for its sub-M128 prompts. The cause was a stale
+  `production_absolute_candidate` lane still freezing pre-350 qrow2,
+  32-row-down, and scaled-F16 selectors. Repairing the harness to current
+  qrow4, double-buffered gate/up, 64-row Q6-down, and range-direct F16
+  selectors reproduces the retained **0.049542582**, **316/320** result.
+- gfx1151 now carries a capability-scoped default so the next run can be
+  selector-unset from a clean revision. This candidate commit is not yet a
+  retained performance claim; it requires clean 512/1K/4K publication and a
+  cached production trace. Candidate artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json`.
+- The required lineage check remains unavailable because the configured
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.

@@ -484,6 +484,31 @@ class LagunaKVCache:
             == tuple(range(start_position, start_position + count))
         )
 
+    def dense_initial_prefill_view(
+        self,
+        layer_id: int,
+        rows: int,
+        *,
+        row_offset: int = 0,
+        row_positions_ptr: int | None = None,
+    ) -> tuple[LagunaKVLayerState, KVLiveSpans, int]:
+        """Return the qualified state/span/start tuple for a composite route."""
+
+        if not self.can_dense_initial_prefill(
+            layer_id,
+            rows,
+            row_offset=row_offset,
+        ):
+            raise ValueError("Laguna dense-initial prefill view is not qualified")
+        state = self.layer(layer_id)
+        spans = self._bulk_slice_spans(
+            state.spans,
+            row_offset=row_offset,
+            rows=rows,
+            row_positions_ptr=row_positions_ptr,
+        )
+        return state, spans, int(self._pending_positions[int(row_offset)])
+
     def attend_prefill_cached(
         self,
         layer_id: int,

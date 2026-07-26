@@ -78,6 +78,7 @@ class PrefillLaneConfiguration:
     selected_gate_up_mode: str = "direct"
     f16_projection_mode: str = "retained"
     dense_q4_prefill_mode: str = "retained"
+    attention_hipblaslt: bool = False
 
 
 GROUPED_DOWN_COMPARISON = CategoryComparison(
@@ -185,6 +186,20 @@ PRODUCTION_ABSOLUTE_COMPARISON = CategoryComparison(
     require_shape_screen=False,
     require_performance_gate=False,
 )
+ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON = CategoryComparison(
+    name="attention_hipblaslt_absolute",
+    modes=("all_exact", "attention_hipblaslt_candidate"),
+    aggregate_key="attention_hipblaslt_candidate_vs_all_exact",
+    screen_kind="not_applicable",
+    screen_status="not_applicable",
+    screen_decision_key="not_applicable",
+    require_positive_wall=False,
+    execution_mode="cumulative_prefill",
+    require_exact_free_running=False,
+    screen_requires_model=False,
+    require_shape_screen=False,
+    require_performance_gate=False,
+)
 _GLOBAL_PREFILL_VARIANTS = {
     "global_exact": "global_context_rows_spans",
     "global_qrow2_online": "global_context_rows_qrow2_online_spans",
@@ -218,12 +233,26 @@ _PREFILL_LANE_CONFIGURATIONS = {
     ),
     "production_absolute_candidate": PrefillLaneConfiguration(
         f16_prefill_mode="wmma_comp_swa",
-        global_prefill_variant="global_context_rows_qrow2_online_spans",
-        swa_prefill_variant="swa_context_rows_qrow2_online_spans",
-        selected_down_mode="mmq64x32_d4_f32_wavecols_direct_q4",
-        selected_gate_up_mode="mmq128x32_d8_f32_wavecols_direct",
-        f16_projection_mode="hipblaslt_scaled",
+        global_prefill_variant="global_context_rows_qrow4_m128_online_spans",
+        swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
+        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
+        selected_gate_up_mode=(
+            "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        ),
+        f16_projection_mode="hipblaslt_range_direct",
         dense_q4_prefill_mode="wmma_pack8",
+    ),
+    "attention_hipblaslt_candidate": PrefillLaneConfiguration(
+        f16_prefill_mode="wmma_comp_swa",
+        global_prefill_variant="global_context_rows_qrow4_m128_online_spans",
+        swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
+        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
+        selected_gate_up_mode=(
+            "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        ),
+        f16_projection_mode="hipblaslt_range_direct",
+        dense_q4_prefill_mode="wmma_pack8",
+        attention_hipblaslt=True,
     ),
 }
 _COMPARISONS = {
@@ -238,6 +267,7 @@ _COMPARISONS = {
         CUMULATIVE_CONTROL_COMPARISON,
         PREFILL_350_COMPARISON,
         PRODUCTION_ABSOLUTE_COMPARISON,
+        ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -363,6 +393,7 @@ def _session_for_mode(
         session.set_selected_down_mode(lane.selected_down_mode)
         session.set_f16_prefill_mode(lane.f16_projection_mode)
         session.set_dense_q4_prefill_mode(lane.dense_q4_prefill_mode)
+        session.set_prefill_attention_hipblaslt(lane.attention_hipblaslt)
         return session
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
@@ -406,6 +437,9 @@ def _oracle_for_candidate(
             session.set_selected_down_mode(lane.selected_down_mode)
             session.set_f16_prefill_mode(lane.f16_projection_mode)
             session.set_dense_q4_prefill_mode(lane.dense_q4_prefill_mode)
+            session.set_prefill_attention_hipblaslt(
+                lane.attention_hipblaslt
+            )
 
         with _f16_prefill_mode(lane.f16_prefill_mode):
             return _oracle_gate(
@@ -1176,6 +1210,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "dense_q4_prefill_mode": _PREFILL_LANE_CONFIGURATIONS[
                             mode
                         ].dense_q4_prefill_mode,
+                        "attention_hipblaslt": _PREFILL_LANE_CONFIGURATIONS[
+                            mode
+                        ].attention_hipblaslt,
                     }
                     for mode in comparison.modes
                 }

@@ -124,6 +124,28 @@ SWA qrow4 resources remain local32, zero LDS/scratch, and VGPR64/88/64.
 Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-production.json`.
 
+The next bounded composite keeps that same dense-initial/KVLiveSpans
+qualification but replaces positions 128/256/384 with exact BF16-to-F32 cache
+widening, zero-workspace strided-batch F32 hipBLASLt QK/PV contractions, and a
+causal F32 softmax. Start 0 remains on qrow4 because the BLAS route loses
+there; partial, wrapped, explicitly evicted, verifier, decode, unsupported
+head, and context-above-512 paths retain the established kernels. The CPU
+fixture proves BF16 widening exactly, softmax against NumPy, and complete
+attention within `rtol=2e-3, atol=2e-4`. Across 21 samples per qualified shape,
+global context 256/384/512 improves **0.3785/0.5869/0.8003 ->
+0.2823/0.3453/0.4365 ms**, and SWA improves
+**0.6195/1.0079/1.4014 -> 0.3626/0.4634/0.6015 ms**, winning every pair.
+Seven complete pp512 diagnostics improve **576.076 -> 602.518 tok/s** median
+with 6/7 wins and deterministic state per mode. The changed F32 association is
+quality-gated: pp512 all-exact KL improves **0.003246 -> 0.002214** and top-1
+stays 2930. Cached tracing names the widen kernel at local256/VGPR24/LDS0 and
+the causal-softmax kernel at local256/VGPR16/LDS32; both use SGPR128 and zero
+scratch, followed by eight QK and eight PV library contractions. The route
+owns **23,068,672 bytes** of scratch and no library workspace. gfx1151 now
+selects it by capability with an explicit session rollback; clean
+selector-unset publication remains the retained-performance gate. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers

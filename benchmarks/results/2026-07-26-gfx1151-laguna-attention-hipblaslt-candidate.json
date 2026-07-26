@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_attention_hipblaslt_candidate",
+  "status": "screen_passed_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "created_at": "2026-07-26T16:55:00+00:00",
+  "repo": {
+    "base_revision": "fafb8172753427f5ab29e48ed9cf35b19c2e4817",
+    "tracked_clean": false,
+    "reason": "candidate implementation and tests were intentionally uncommitted"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "candidate": {
+    "scope": "dense-initial M128 global/SWA attention tiles beginning at position 128",
+    "arithmetic": "exact BF16 cache widening; F32 hipBLASLt QK/PV; F32 causal softmax",
+    "scratch_nbytes": 23068672,
+    "zero_workspace_algorithms": true,
+    "fallbacks": [
+      "start position 0",
+      "partial rows",
+      "wrapped or explicitly evicted KV",
+      "verifier transactions",
+      "decode",
+      "unsupported heads or context"
+    ],
+    "complete_kv_live_spans_consumed": true
+  },
+  "leaf": {
+    "rows": 128,
+    "repetitions": 21,
+    "qualified_contexts": [
+      256,
+      384,
+      512
+    ],
+    "global_ms": {
+      "256": {
+        "rollback": 0.37848219871520994,
+        "candidate": 0.28231379985809324
+      },
+      "384": {
+        "rollback": 0.5869015216827392,
+        "candidate": 0.3453481912612915
+      },
+      "512": {
+        "rollback": 0.800322151184082,
+        "candidate": 0.4365233898162842
+      }
+    },
+    "swa_ms": {
+      "256": {
+        "rollback": 0.6195425987243652,
+        "candidate": 0.36262059211730957
+      },
+      "384": {
+        "rollback": 1.0079346656799317,
+        "candidate": 0.4633617877960205
+      },
+      "512": {
+        "rollback": 1.4013784408569336,
+        "candidate": 0.601492977142334
+      }
+    },
+    "candidate_wins_per_shape": 21,
+    "maximum_absolute_output_error": 4.470348358154297e-08,
+    "maximum_rms_output_error": 3.765142864153859e-09,
+    "finite": true,
+    "modeled_48_layer_ms": {
+      "rollback": 141.11553368568423,
+      "candidate": 75.94967107772827
+    }
+  },
+  "pp512_diagnostic": {
+    "rows": 512,
+    "repetitions": 7,
+    "timed_order": "counter-rotated one resident owner",
+    "rollback_samples_tok_s": [
+      576.1207087122496,
+      579.861151788526,
+      581.7692860246809,
+      564.922586807297,
+      556.3518836407973,
+      576.0755011960679,
+      572.6775389830333
+    ],
+    "candidate_samples_tok_s": [
+      602.4177287159845,
+      625.0127115808709,
+      602.5182154713689,
+      598.9509981429509,
+      549.8658018947556,
+      615.7471668548469,
+      618.5646861433506
+    ],
+    "rollback_median_tok_s": 576.0755011960679,
+    "candidate_median_tok_s": 602.5182154713689,
+    "rollback_median_wall_ms": 888.7723899679258,
+    "candidate_median_wall_ms": 849.7668399941176,
+    "candidate_wins": 6,
+    "paired_median_wall_delta_ms": -51.49100907146931,
+    "paired_mean_wall_delta_ms": -42.4441368751494,
+    "paired_geometric_speedup": 1.050535792491744,
+    "next_token_id": 2930,
+    "candidate_deterministic": true
+  },
+  "correctness": {
+    "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+    "cache_widening_bf16_value_exact": true,
+    "causal_softmax_cpu_rtol": 2e-06,
+    "causal_softmax_cpu_atol": 2e-07,
+    "attention_route_rtol": 0.002,
+    "attention_route_atol": 0.0002,
+    "pp512_full_logit": {
+      "all_exact_vs_production_kl": 0.0032455946776020254,
+      "all_exact_vs_candidate_kl": 0.0022139096557675457,
+      "production_vs_candidate_kl": 0.00024572899641180275,
+      "all_exact_top1": 2930,
+      "production_top1": 2930,
+      "candidate_top1": 2930
+    },
+    "current_production_category_revalidation": {
+      "max_kl_divergence": 0.04954258196634279,
+      "top1_matches": 316,
+      "top1_total": 320,
+      "note": "Canonical prompts are shorter than one complete M128 tile, so this revalidates the repaired production lane but does not execute the BLAS route."
+    }
+  },
+  "trace": {
+    "database": "/tmp/laguna-attention-hipblaslt-trace.sfpT5J/gfx1151/1999535_results.db",
+    "sha256": "d36b2f8fd52330b190e85d7fa6a9a44a0be3df5f870cf2534c3649c14ce4d176",
+    "cache_widen_kernel": {
+      "name_contains": "laguna_dense_initial_cache_bf16_to_f32_kernel<false>",
+      "workgroup": 256,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "duration_us": 23.2635
+    },
+    "softmax_kernel": {
+      "name_contains": "laguna_dense_initial_causal_softmax_f32_kernel",
+      "workgroup": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 32,
+      "scratch_bytes": 0,
+      "duration_us": 378.63
+    },
+    "hipblaslt_qk_calls": 8,
+    "hipblaslt_pv_calls": 8
+  },
+  "source_runs": {
+    "leaf": {
+      "path": "/tmp/laguna-attention-hipblaslt-leaf.jsonlog",
+      "sha256": "5665c78fb26d206c7b6d3bd07957e94c410b515fa40427c6a2a48ec02bfc4c6f",
+      "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -u /tmp/laguna_attention_hipblaslt_leaf.py"
+    },
+    "pp512": {
+      "path": "/tmp/laguna-attention-hipblaslt-ab-7.json",
+      "sha256": "fab863a4ec9b436a1865d6d6da31b6072d72c50177bd38b4b68e0e28fcb15703",
+      "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u /tmp/laguna_attention_hipblaslt_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-attention-hipblaslt-ab-7.json"
+    },
+    "trace": {
+      "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-directory /tmp/laguna-attention-hipblaslt-trace.sfpT5J -- .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu"
+    }
+  },
+  "decision": {
+    "pass": true,
+    "reason": "The candidate is faster at every qualified leaf shape, wins the seven-pair complete pp512 diagnostic, passes the CPU-reference/KVLiveSpans fixture, lowers pp512 all-exact KL, preserves top-1, and has a plausible cached kernel trace. Commit the default, then require clean selector-unset publication before a retained performance claim."
+  }
+}

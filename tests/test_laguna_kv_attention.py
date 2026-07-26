@@ -2198,6 +2198,241 @@ def test_laguna_swa_resident_attention_slices_match_chunks_across_ring_wrap() ->
         baseline.free()
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
+    """Cache widening and causal softmax must honor the complete span ABI."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+        laguna_dense_initial_cache_bf16_to_f32_spans,
+        laguna_dense_initial_causal_softmax_f32_spans,
+        laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans,
+    )
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+    from hipengine.quant.gguf import bf16_to_float32
+    from hipengine.runtime.laguna_attention_hipblaslt import (
+        LagunaAttentionHipblasLt,
+    )
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    context = 128
+    rows = 128
+    query_heads = 72
+    kv_heads = 8
+    head_dim = 128
+    start_position = context - rows
+    config = SimpleNamespace(
+        block_count=1,
+        layer_types=(SLIDING_ATTENTION,),
+        head_counts=(query_heads,),
+        head_count_kv=kv_heads,
+        key_length=head_dim,
+        value_length=head_dim,
+        sliding_window=512,
+    )
+    cache = allocate_laguna_kv_cache(
+        config,
+        context_length=512,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    state = cache.layer(0)
+    rng = np.random.default_rng(20260727)
+    key_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(context, kv_heads, head_dim)).astype(
+            np.float32
+        )
+    )
+    value_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(context, kv_heads, head_dim)).astype(
+            np.float32
+        )
+    )
+    scores = rng.normal(
+        0.0,
+        0.4,
+        size=(query_heads, rows, context),
+    ).astype(np.float32)
+    key_f32 = np.empty(key_bits.shape, dtype=np.float32)
+    value_f32 = np.empty(value_bits.shape, dtype=np.float32)
+    actual_scores = np.empty_like(scores)
+    expected_scores = np.zeros_like(scores)
+    query = rng.normal(
+        0.0,
+        0.2,
+        size=(rows, query_heads, head_dim),
+    ).astype(np.float32)
+    current_attention = np.empty_like(query)
+    blas_attention = np.empty_like(query)
+    scale = 0.5
+    for head in range(query_heads):
+        for row in range(rows):
+            visible = start_position + row + 1
+            logits = scores[head, row, :visible] * scale
+            logits -= np.max(logits)
+            weights = np.exp(logits)
+            expected_scores[head, row, :visible] = weights / np.sum(weights)
+
+    route = LagunaAttentionHipblasLt(runtime=runtime)
+    allocations = []
+    try:
+        key_out = malloc(key_f32.nbytes, runtime=runtime)
+        value_out = malloc(value_f32.nbytes, runtime=runtime)
+        score_device = malloc(scores.nbytes, runtime=runtime)
+        query_device = malloc(query.nbytes, runtime=runtime)
+        current_out = malloc(current_attention.nbytes, runtime=runtime)
+        blas_out = malloc(blas_attention.nbytes, runtime=runtime)
+        allocations.extend(
+            (
+                key_out,
+                value_out,
+                score_device,
+                query_device,
+                current_out,
+                blas_out,
+            )
+        )
+        copy_host_to_device(
+            state.key_cache,
+            host_array_ptr(key_bits),
+            key_bits.nbytes,
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            state.value_cache,
+            host_array_ptr(value_bits),
+            value_bits.nbytes,
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            score_device,
+            host_array_ptr(scores),
+            scores.nbytes,
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            query_device,
+            host_array_ptr(query),
+            query.nbytes,
+            runtime=runtime,
+        )
+        live_count = np.asarray([context], dtype=np.int64)
+        token_positions = np.full(512, -1, dtype=np.int64)
+        token_positions[:context] = np.arange(context, dtype=np.int64)
+        evict_mask = np.ones(512, dtype=np.bool_)
+        evict_mask[:context] = False
+        row_position = np.asarray([start_position], dtype=np.int64)
+        for tensor, host in (
+            (state.spans.live_counts, live_count),
+            (state.spans.token_positions, token_positions),
+            (state.spans.evict_mask, evict_mask),
+            (state.spans.row_positions, row_position),
+        ):
+            runtime.memcpy(
+                tensor.ptr,
+                host_array_ptr(host),
+                host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+            )
+        laguna_dense_initial_cache_bf16_to_f32_spans(
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            key_out.ptr,
+            value_out.ptr,
+            state.spans,
+            context,
+            kv_heads,
+            head_dim,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_dense_initial_causal_softmax_f32_spans(
+            score_device.ptr,
+            state.spans,
+            rows,
+            context,
+            query_heads,
+            start_position,
+            scale,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans(
+            query_device.ptr,
+            key_out.ptr,
+            value_out.ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            current_out.ptr,
+            state.spans,
+            rows,
+            query_heads,
+            kv_heads,
+            head_dim,
+            head_dim**-0.5,
+            sliding_window=512,
+            start_position=start_position,
+            library=library,
+            runtime=runtime,
+        )
+        route.launch(
+            query_device.ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            blas_out.ptr,
+            state.spans,
+            rows=rows,
+            start_position=start_position,
+            num_q_heads=query_heads,
+            num_kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim**-0.5,
+            kv_library=library,
+        )
+        runtime.device_synchronize()
+        for host, device in (
+            (key_f32, key_out),
+            (value_f32, value_out),
+            (actual_scores, score_device),
+            (current_attention, current_out),
+            (blas_attention, blas_out),
+        ):
+            copy_device_to_host(
+                host_array_ptr(host),
+                device,
+                host.nbytes,
+                runtime=runtime,
+            )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        route.close()
+        cache.free()
+
+    np.testing.assert_array_equal(key_f32, bf16_to_float32(key_bits))
+    np.testing.assert_array_equal(value_f32, bf16_to_float32(value_bits))
+    np.testing.assert_allclose(actual_scores, expected_scores, rtol=2e-6, atol=2e-7)
+    np.testing.assert_allclose(
+        blas_attention,
+        current_attention,
+        rtol=2e-3,
+        atol=2e-4,
+    )
+
+
 def _attention_reference(
     query: np.ndarray,
     keys: np.ndarray,

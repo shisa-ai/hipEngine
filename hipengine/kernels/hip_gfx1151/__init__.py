@@ -75,6 +75,14 @@ LAGUNA_PREFILL_GLOBAL_QROW6 = True
 # Partial, wrapped, explicitly evicted, and verifier routes retain exact
 # cached-metadata/current-source fallbacks.
 LAGUNA_PREFILL_DENSE_INITIAL = True
+# Dense-initial M128 tiles beginning at position 128 widen the resident BF16
+# K/V prefix exactly once, then use zero-workspace F32 hipBLASLt QK/PV
+# contractions around a KVLiveSpans-qualified causal softmax. The complete
+# pp512 route wins 6/7 paired runs (602.52 versus 576.08 tok/s median), keeps
+# top-1 2930, and lowers all-exact full-logit KL from 0.003246 to 0.002214.
+# Start-0, partial, wrapped, evicted, verifier, and decode routes stay on the
+# established attention kernels.
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
@@ -383,6 +391,7 @@ __all__ = [
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",
+    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
