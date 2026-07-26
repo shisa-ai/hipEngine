@@ -251,6 +251,144 @@ __device__ void laguna_select_from_logits_wave_top10_persistent(
   }
 }
 
+template <int THREADS>
+__global__ __launch_bounds__(THREADS, 2)
+void laguna_sigmoid_correction_topk_compact_wave_kernel(
+    const float* __restrict__ logits,
+    const float* __restrict__ correction_bias,
+    float* __restrict__ routing_scores,
+    float* __restrict__ selection_scores,
+    int64_t* __restrict__ selected,
+    float* __restrict__ routing,
+    float* __restrict__ scaled_routing,
+    float routed_scaling_factor) {
+  constexpr int32_t kExperts = 256;
+  constexpr int32_t kTopK = 10;
+  constexpr int32_t kWaves = THREADS / 32;
+  constexpr int32_t kItems = kExperts / THREADS;
+  constexpr int32_t kCandidates = kWaves * kTopK;
+  constexpr int32_t kMergeItems = (kCandidates + 31) / 32;
+  __shared__ float wave_values[kCandidates];
+  __shared__ int32_t wave_indices[kCandidates];
+
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  const int32_t lane = tid & 31;
+  const int32_t wave = tid >> 5;
+  float local_values[kItems];
+#pragma unroll
+  for (int32_t item = 0; item < kItems; ++item) {
+    const int32_t expert = tid + THREADS * item;
+    const float probability = stable_sigmoid_f32(logits[expert]);
+    const float selection = probability + correction_bias[expert];
+    routing_scores[expert] = probability;
+    selection_scores[expert] = selection;
+    local_values[item] = selection;
+  }
+
+#pragma unroll
+  for (int32_t position = 0; position < kTopK; ++position) {
+    float best_value = local_values[0];
+    int32_t best_index = tid;
+#pragma unroll
+    for (int32_t item = 1; item < kItems; ++item) {
+      const int32_t item_index = tid + THREADS * item;
+      if (better_route(local_values[item], item_index, best_value, best_index)) {
+        best_value = local_values[item];
+        best_index = item_index;
+      }
+    }
+#pragma unroll
+    for (int32_t offset = 16; offset > 0; offset >>= 1) {
+      const float other_value = __shfl_down(best_value, offset);
+      const int32_t other_index = __shfl_down(best_index, offset);
+      if (better_route(other_value, other_index, best_value, best_index)) {
+        best_value = other_value;
+        best_index = other_index;
+      }
+    }
+    const int32_t winner_index = __shfl(best_index, 0);
+    if constexpr (kWaves == 1) {
+      if (lane == 0) {
+        selected[position] = static_cast<int64_t>(best_index);
+        routing[position] = routing_scores[best_index];
+      }
+    } else if (lane == 0) {
+      const int32_t slot = wave * kTopK + position;
+      wave_values[slot] = best_value;
+      wave_indices[slot] = best_index;
+    }
+#pragma unroll
+    for (int32_t item = 0; item < kItems; ++item) {
+      if (tid + THREADS * item == winner_index) {
+        local_values[item] = -FLT_MAX;
+      }
+    }
+  }
+
+  if constexpr (kWaves > 1) {
+    __syncthreads();
+    if (wave == 0) {
+      float merge_values[kMergeItems];
+      int32_t merge_indices[kMergeItems];
+#pragma unroll
+      for (int32_t item = 0; item < kMergeItems; ++item) {
+        const int32_t slot = lane + 32 * item;
+        merge_values[item] = slot < kCandidates ? wave_values[slot] : -FLT_MAX;
+        merge_indices[item] = slot < kCandidates ? wave_indices[slot] : -1;
+      }
+#pragma unroll
+      for (int32_t position = 0; position < kTopK; ++position) {
+        float best_value = merge_values[0];
+        int32_t best_index = merge_indices[0];
+#pragma unroll
+        for (int32_t item = 1; item < kMergeItems; ++item) {
+          if (better_route(
+                  merge_values[item], merge_indices[item], best_value, best_index)) {
+            best_value = merge_values[item];
+            best_index = merge_indices[item];
+          }
+        }
+#pragma unroll
+        for (int32_t offset = 16; offset > 0; offset >>= 1) {
+          const float other_value = __shfl_down(best_value, offset);
+          const int32_t other_index = __shfl_down(best_index, offset);
+          if (better_route(other_value, other_index, best_value, best_index)) {
+            best_value = other_value;
+            best_index = other_index;
+          }
+        }
+        const int32_t winner_index = __shfl(best_index, 0);
+        if (lane == 0) {
+          selected[position] = static_cast<int64_t>(best_index);
+          routing[position] = routing_scores[best_index];
+        }
+#pragma unroll
+        for (int32_t item = 0; item < kMergeItems; ++item) {
+          if (merge_indices[item] == winner_index) {
+            merge_values[item] = -FLT_MAX;
+            merge_indices[item] = -1;
+          }
+        }
+      }
+    }
+  }
+
+  if (tid == 0) {
+    float denominator = 0.0f;
+#pragma unroll
+    for (int32_t position = 0; position < kTopK; ++position) {
+      denominator += routing[position];
+    }
+    denominator = fmaxf(denominator, FLT_MIN);
+#pragma unroll
+    for (int32_t position = 0; position < kTopK; ++position) {
+      const float normalized = routing[position] / denominator;
+      routing[position] = normalized;
+      scaled_routing[position] = normalized * routed_scaling_factor;
+    }
+  }
+}
+
 __global__ void laguna_router_topk_bf16_f32w_persistent_wave_top10_kernel(
     const uint16_t* __restrict__ hidden,
     const float* __restrict__ weight,
@@ -379,6 +517,41 @@ extern "C" int hipengine_laguna_sigmoid_correction_topk_f32(
       scaled_routing,
       num_experts,
       top_k,
+      routed_scaling_factor);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_sigmoid_correction_topk_compact_wave32_f32(
+    const float* logits,
+    const float* correction_bias,
+    float* routing_scores,
+    float* selection_scores,
+    int64_t* selected,
+    float* routing,
+    float* scaled_routing,
+    int64_t tokens,
+    int64_t num_experts,
+    int64_t top_k,
+    float routed_scaling_factor,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens != 1 || num_experts != 256 || top_k != 10 ||
+      routed_scaling_factor <= 0.0f || threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(laguna_sigmoid_correction_topk_compact_wave_kernel<32>),
+      dim3(1),
+      dim3(32),
+      0,
+      stream,
+      logits,
+      correction_bias,
+      routing_scores,
+      selection_scores,
+      selected,
+      routing,
+      scaled_routing,
       routed_scaling_factor);
   return static_cast<int>(hipGetLastError());
 }
