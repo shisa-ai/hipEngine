@@ -183725,3 +183725,13 @@ Vulkan local sizes verbatim will close the measured gap.
   absmax classifier, bounded risk-row compaction, and sparse D8 gate repair.
   Compact evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json`.
+
+## 2026-07-27 — Add the missing sparse-repair tile economics
+
+- A 20% source-row repair rate does not imply 20% expert-weight traffic:
+  top-10 routing can touch nearly all 256 experts, while MMQ32 pads every
+  touched expert independently. A repair kernel that restreams every gate
+  expert cannot preserve the measured 14–15 ms role-split saving.
+- Extended the off-path diagnostic to retain each layer's real compact route
+  map and report active-expert plus padded-MMQ32-row fractions for the fixed
+  absmax rule. This is a read-only economics gate; no runtime dispatch changed.

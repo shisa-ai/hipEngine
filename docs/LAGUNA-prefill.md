@@ -1535,7 +1535,10 @@ now decides whether repair work is needed:
    quantiles. Proceed to a GPU repair candidate only if one activation-only
    threshold captures useful error at no more than **25%** repaired producer
    rows. That gate has passed with the fixed `row_abs_max >= 2.0` rule;
-   implement the bounded GPU compaction and sparse D8 gate correction next.
+   first quantify per-layer active-expert and MMQ32 padded-tile coverage. Only
+   implement GPU compaction if row sparsity also preserves enough physical
+   weight/tile sparsity to keep a positive share of the measured role-split
+   wall saving.
 3. Remeasure a clean production trace after candidate cleanup. Reopen another
    exact family only if the trace gives it at least a **5% perfect-removal
    ceiling** or a newly supported hipBLASLt/grouped-contraction algorithm

@@ -8,6 +8,7 @@ from scripts.laguna_q4_role_risk_calibration import (
     _activation_risk_features,
     _aggregate_role_error,
     _bf16_bits_to_f32,
+    _repair_economics,
     _select_prompts,
     _threshold_sweep,
 )
@@ -75,6 +76,27 @@ def test_calibration_thresholds_are_fixed_and_transferable() -> None:
         tuple(sorted(thresholds)) == tuple(thresholds)
         for thresholds in _FEATURE_THRESHOLDS.values()
     )
+
+
+def test_repair_economics_counts_experts_and_mmq_padding() -> None:
+    economics = _repair_economics(
+        np.asarray([False, True, False, True]),
+        np.asarray([0, 1, 2, 3, 1, 3], dtype=np.int64),
+        np.asarray([0, 0, 1, 1, 2, 2], dtype=np.int64),
+        expert_count=3,
+        tile_rows=2,
+    )
+
+    assert economics == {
+        "repair_source_rows": 2,
+        "repair_route_rows": 4,
+        "repair_active_experts": 3,
+        "full_active_experts": 3,
+        "repair_padded_rows": 6,
+        "full_padded_rows": 6,
+        "active_expert_fraction": 1.0,
+        "padded_row_fraction": 1.0,
+    }
 
 
 def test_select_prompts_declares_calibration_subset() -> None:
