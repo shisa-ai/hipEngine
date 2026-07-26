@@ -183488,3 +183488,34 @@ Vulkan local sizes verbatim will close the measured gap.
   choice in the existing 160-byte activation block; prompt-, token-, and
   arbitrary-layer-specific selection are forbidden. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json`.
+
+## 2026-07-27 — Reject and remove D4/D8 selective repair
+
+- Screened a globally activation-dependent per-K32 selector using only the
+  ratio of the two 16-value scales. At natural M512, thresholds
+  **1.25/1.5/2.0** choose D4 for **50.58%/78.68%/96.40%** of blocks, yet all
+  three regress the 21-sample pack-inclusive leaf from **6.8269 ms** D8 to
+  **7.6757/7.6628/7.6677 ms (+12.24% to +12.43%)**. A uniform workgroup still
+  pays the selector and both arithmetic forms, so no threshold has a viable
+  speed operating point. Every temporary hybrid surface was removed.
+- Also screened an exact control that precomputes D8's eight int8 half-block
+  sums in a 192-byte temporary activation block. It is BF16-bit identical and
+  improves the actual leaf **0.38%/0.94%/0.83%** at M128/M256/M512, but the
+  complete pp512 medians are only **620.085 -> 620.278 tok/s (+0.031%)**.
+  Excluding the first cold pair it wins **3/6** and saves a noise-level
+  **0.339 ms** paired median, only **0.44%** of the 77.907-ms gap to 700.
+  The pack, consumer, runtime selector, and tests were removed.
+- Closed the `docs/REFACTOR.md` trigger by removing the committed D4
+  direct-wave HIP export, Python symbol, runtime mode, actual-weight leaf
+  mode, absolute category lane, and their added tests. Production remains
+  same-byte D8 at **632.618 tok/s / 809.335 ms**.
+- The next bounded plan splits gate and up by uniform projection role:
+  D4-gate/D8-up and D8-gate/D4-up, with separate once-per-source-row packs and
+  no inner-loop selector. Require at least a modeled 10-ms pp512 saving before
+  the clean direct-all-exact 320-step gate; no prompt, token, or arbitrary
+  layer policy is allowed.
+- Cleanup validation: the Q4 CPU-reference matrix reports **11 passed**; the
+  focused comparison/resolver bundle reports **3 passed**; `py_compile`,
+  `jq empty`, `git diff --check`, and a source-tree search for every removed
+  selector pass. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-selective-repair-rejected.json`.

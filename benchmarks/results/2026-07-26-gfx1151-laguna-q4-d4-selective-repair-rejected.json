@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T20:25:00+00:00",
+  "kind": "hipengine_laguna_q4_d4_selective_repair_rejection",
+  "status": "rejected",
+  "decision": "Remove the D4 direct-wave production candidate and every selective-repair surface. Keep D8 direct-wave double-buffer gate/up as production.",
+  "platform": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "model": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M with resident T16 expert weights"
+  },
+  "quality_context": {
+    "unqualified_d4_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json",
+    "top1": "315/320",
+    "max_kl": 0.127536,
+    "limit": 0.05
+  },
+  "selective_d4_d8_screen": {
+    "scope": "Actual layer-1 K3072/N1024 dual gate/up, frozen natural M512 routing, producer-row pack included",
+    "protocol": "21 counter-rotated samples, burst 3, 3 warmups",
+    "selection": "Global per-K32 choice from only the ratio of the two 16-value activation scales; no prompt, token, layer, or output-conditioned branch",
+    "baseline_d8_ms": 6.826886494954427,
+    "pure_d4_ms": 6.0273482004801435,
+    "thresholds": [
+      {
+        "max_scale_ratio": 1.25,
+        "d4_fraction": 0.5058390299479166,
+        "median_ms": 7.675742467244466,
+        "regression_vs_d8_pct": 12.434002927872496
+      },
+      {
+        "max_scale_ratio": 1.5,
+        "d4_fraction": 0.7868448893229166,
+        "median_ms": 7.662815093994141,
+        "regression_vs_d8_pct": 12.244684250466863
+      },
+      {
+        "max_scale_ratio": 2.0,
+        "d4_fraction": 0.9640096028645834,
+        "median_ms": 7.667652130126953,
+        "regression_vs_d8_pct": 12.315544387236915
+      }
+    ],
+    "raw_result": "/tmp/laguna-q4-hybrid-ratio-screen-v4.json"
+  },
+  "exact_precomputed_sum_control": {
+    "premise": "Move the eight D8 int8 half-block sums from each routed-row consumer into the once-per-source-row pack; temporary block grows 160 to 192 bytes.",
+    "leaf_medians_ms": {
+      "128": {
+        "d8": 3.7165489196777344,
+        "precomputed": 3.7023226420084634,
+        "delta_pct": -0.3827876601927636
+      },
+      "256": {
+        "d8": 4.410562833150228,
+        "precomputed": 4.369261423746745,
+        "delta_pct": -0.9364169916310249
+      },
+      "512": {
+        "d8": 6.810761133829753,
+        "precomputed": 6.7539621988932295,
+        "delta_pct": -0.8341510718242255
+      }
+    },
+    "bf16_output": "bit-identical to production D8 at every tested shape",
+    "full_pp512": {
+      "baseline_median_tok_s": 620.0847324255086,
+      "candidate_median_tok_s": 620.2784844117945,
+      "headline_delta_pct": 0.031245890078796635,
+      "warm_pairs_won": "3/6",
+      "warm_paired_median_wall_delta_ms": -0.3391120699234862,
+      "decision": "Below full-wall noise and only 0.44% of the 77.907-ms gap to 700; remove instead of retaining a production selector."
+    },
+    "raw_leaf_sha256": "cf52357b3d6d0b4ab62cad10578ed282340292333abec6c9ad2986530da9350b",
+    "raw_pp512_sha256": "2bd8863c29f3728d2d860cd7345463b5ae5ac54384a1a233ff118ad5811440ca"
+  },
+  "commands": {
+    "hybrid_leaf": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d4-f32-wavecols-direct-doublebuf,t16-mmq128x32-hybrid-r1p25-f32-wavecols-direct-doublebuf,t16-mmq128x32-hybrid-r1p5-f32-wavecols-direct-doublebuf,t16-mmq128x32-hybrid-r2-f32-wavecols-direct-doublebuf --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-q4-hybrid-ratio-screen-v4.json",
+    "exact_leaf": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 128,256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d8-sums-f32-wavecols-direct-doublebuf --warmups 2 --samples 7 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-q4-d8-precomputed-sums-screen-clean.json",
+    "cleanup_validation": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py tests/test_laguna_grouped_down_category_bench.py tests/test_laguna_moe_gpu.py -k 'q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate or selected_gate_up_default_is_backend_qualified or comparison'"
+  },
+  "production": {
+    "selected_gate_up_mode": "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+    "pp512_tok_s": 632.6179847,
+    "pp512_wall_ms": 809.335,
+    "gap_to_700_ms": 77.906624
+  }
+}

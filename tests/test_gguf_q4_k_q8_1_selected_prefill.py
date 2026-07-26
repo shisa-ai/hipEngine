@@ -2046,7 +2046,6 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         (1, True, True, True, False, False, False, False),
         (1, True, True, True, False, True, False, False),
         (1, True, True, True, False, True, True, False),
-        (1, False, True, True, False, True, True, False),
     ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(

@@ -167,10 +167,6 @@ _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
     "mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out"
 )
-_SYMBOL_Q4_T16_DS4_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = (
-    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_"
-    "mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out"
-)
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -636,18 +632,12 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         raise ValueError(
             "double_buffer_activation requires direct_wave_decode"
         )
-    if wave_cols and not split16 and not double_buffer_activation:
-        raise ValueError(
-            "D4 wave_cols requires direct double-buffer activation"
-        )
+    if wave_cols and not split16:
+        raise ValueError("wave_cols requires split16 D8")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        (
-            _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16
-            if split16
-            else _SYMBOL_Q4_T16_DS4_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16
-        )
+        _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16
         if double_buffer_activation
         else _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_BF16
         if direct_wave_decode

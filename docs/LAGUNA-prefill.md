@@ -747,7 +747,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | Clean runtime revision `dd3ad6847` and category revision `e89957333` retain the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Dense-initial F32 hipBLASLt attention plus planar-Q6 integer WMMA and after-router least-priority shared/routed concurrency publish **623.050/563.399/462.430 tok/s** at 512/1K/4K. Selector-unset returns all **78,800,844,436** tracked bytes. |
+| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query hipBLASLt attention plus wave-per-row causal softmax publish **632.618/568.845/464.606 tok/s** at 512/1K/4K. pp512 wall is **809.335 ms**, leaving **77.907 ms** to 700. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -1401,8 +1401,7 @@ Immediate execution queue:
    64x64 contraction.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json).
-31. **Rejected as an unqualified production route; selective repair
-   pending:** transfer one-scale-per-32 D4 arithmetic
+31. **Rejected and removed:** transfer one-scale-per-32 D4 arithmetic
    into production's proven 128-column x 32-row/local128 direct-wave,
    row-vector, activation-double-buffer body. This changes no resident bytes
    and keeps D8 production as rollback. The complete 12-case CPU-reference
@@ -1416,14 +1415,57 @@ Immediate execution queue:
    not production. The clean direct-all-exact 320-step gate keeps strong
    **315/320 (98.438%)** top-1, and eight of ten prompts pass, but maximum KL
    reaches **0.127536** on `mixed_ja_en_translate`; the mixed category fails
-   the 0.05 contract. Unqualified D4 therefore cannot ship. Keep the
-   default-off surface only for one globally data-dependent per-K32 D4/D8
-   repair screen using the existing 160-byte activation block; no prompt,
-   token, or arbitrary-layer selection is admissible. Remove it if that
-   repair does not preserve a positive complete wall.
+   the 0.05 contract. Unqualified D4 therefore cannot ship. The allowed
+   globally data-dependent per-K32 repair is also closed. A scale-ratio
+   policy selecting D4 for **50.58%/78.68%/96.40%** of M512 K32 blocks
+   regresses the pack-inclusive leaf from **6.8269 ms** D8 to
+   **7.6757/7.6628/7.6677 ms (+12.24% to +12.43%)**. The uniform workgroup
+   pays the selection and dual-arithmetic cost even when almost every block
+   is D4. Every hybrid pack/consumer/test/harness surface was removed. The
+   committed D4 export, runtime mode, leaf mode, absolute-quality lane, and
+   focused tests were then removed as required by the refactor trigger.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json),
-   [`2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json).
+   [`2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json),
+   [`2026-07-26-gfx1151-laguna-q4-d4-selective-repair-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-selective-repair-rejected.json).
+32. **Rejected and removed:** precompute D8's eight int8 half-block sums in
+   the once-per-source-row pack instead of rebuilding them for every routed
+   row tile. The exact 192-byte temporary block is BF16-bit identical to the
+   160-byte production block. It improves the actual leaf only
+   **0.38%/0.94%/0.83%** at M128/M256/M512. In the complete pp512 gate,
+   production/candidate medians are **620.085/620.278 tok/s (+0.031%)**;
+   after the first cold pair the candidate wins only **3/6** and saves a
+   noise-level **0.339 ms** at the paired median. That is **0.44%** of the
+   **77.907-ms** gap to 700, so no production selector or wider scratch ABI
+   survives.
+
+### Next exact and quality-gated attacks
+
+The next gate/up screen changes projection ownership instead of inserting a
+branch into every K32 interval:
+
+1. Split the dual projection by role and screen **D4 gate + D8 up** and
+   **D8 gate + D4 up**. Each role gets a uniform kernel and its own
+   once-per-source-row pack, so no inner-loop D4/D8 selector survives. This is
+   a global projection-role policy, never a prompt, token, or layer policy.
+   First require an actual-weight leaf/full-wall saving large enough to model
+   at least **10 ms** pp512; then run the direct all-exact 320-step gate.
+2. If neither role split meets KL <=0.05, retain D8 and prototype a bounded
+   producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
+   separately compacted risk-row kernel adds the D8-minus-D4 correction
+   before the existing BF16 SiLU boundary, and overflow falls back to D8.
+   Risk classification may use activation statistics only. No per-K32 branch,
+   output-conditioned policy, global partial spill, or resident weight
+   sidecar is allowed.
+3. Remeasure a clean production trace after candidate cleanup. Reopen another
+   exact family only if the trace gives it at least a **5% perfect-removal
+   ceiling** or a newly supported hipBLASLt/grouped-contraction algorithm
+   changes the prior premise.
+
+The stretch target remains **>=700 tok/s**, i.e. **<=731.429 ms** for pp512.
+Current production is **632.618 tok/s / 809.335 ms**, leaving **77.907 ms**.
+The D4 role split can recover only part of that gap; reaching 700 still
+requires a second retained physical-byte or cross-tile win.
 
 Post-350 exclusions:
 
@@ -3108,7 +3150,7 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**577.396 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+**632.618 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
 active targets.
 
 All headline rows also report canonical category-weighted prefill and
@@ -3277,6 +3319,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-selective-repair-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-production.json`
