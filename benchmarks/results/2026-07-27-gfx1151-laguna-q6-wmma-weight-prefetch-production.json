@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T08:54:51+09:00",
+  "kind": "hipengine_laguna_q6_wmma_weight_prefetch_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Poolside Laguna S 2.1 Q4_K_M pp512 prefill on gfx1151; 1K/4K are reported as flat diagnostic continuity rows",
+  "repo": {
+    "runtime_revision": "b58461a5e97877723276ae4fde35722232690fd5",
+    "previous_production_revision": "7470bd3a70671805cbd27f147102fcf31c2babac",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "planar-qmicro Q6 selected-down integer-WMMA row64 specialization",
+    "mechanism": "prefetch the next K32 qmicro record plus d/scale metadata into registers during current-K32 fragment compute, then refill the existing shared tile from those registers",
+    "resident_delta_bytes": 0,
+    "lds_delta_bytes": 0,
+    "scratch_bytes_per_thread": 0,
+    "previous_512_1024_4096_tok_s": [
+      632.6179846953831,
+      568.8452935147972,
+      464.60573327519813
+    ],
+    "new_512_1024_4096_tok_s": [
+      636.073231300461,
+      568.7651638155037,
+      464.0614633158379
+    ],
+    "change_percent": [
+      0.5461821650140974,
+      -0.01408637817821301,
+      -0.11714663000894632
+    ],
+    "continuity_interpretation": "pp512 is the retained target and improves; 1K/4K move by less than 0.12% and are flat within run variance",
+    "pp512_wall_ms": 804.9387630308047,
+    "pp512_wall_to_700_ms": 73.51019160223326
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-wmma-weight-prefetch-production.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "tracked_worktree_clean": true,
+    "selector_unset": true
+  },
+  "samples": {
+    "512_tok_s": [
+      609.6636910671268,
+      639.8287786343294,
+      636.073231300461
+    ],
+    "1024_tok_s": [
+      575.5930840552737,
+      565.7940913966106,
+      568.7651638155037
+    ],
+    "4096_tok_s": [
+      466.84422378146115,
+      464.0614633158379,
+      462.82899268676664
+    ]
+  },
+  "correctness": {
+    "primitive_cpu_reference_cases_passed": 14,
+    "actual_weight_bf16_mismatches": 0,
+    "complete_model_ab_runs": 14,
+    "complete_model_state_exact": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "quality_transfer": "The new body is BF16-bit exact to the preceding production Q6 consumer, so the existing absolute category and pp512 route-quality gates transfer unchanged."
+  },
+  "memory": {
+    "resident_nbytes": 78805563028,
+    "peak_allocated_bytes": 78805563028,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0
+  },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q6-prefetch-production-rocprof-b58461a5e --output-file q6-prefetch-production -- env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-prefetch-production-rocprof-b58461a5e/child.json",
+    "pp512": {
+      "dispatches": 2417,
+      "kernel_sum_ms": 1127.658242,
+      "kernel_span_ms": 862.495679,
+      "selected_q4_gate_up_ms": 341.101197,
+      "selected_q4_q6_down_ms": 175.325936,
+      "source_f16_projection_ms": 125.897938,
+      "dense_shared_quant_projection_ms": 93.705241,
+      "attention_ms": 68.042541,
+      "router_ms": 22.694712,
+      "q6_prefetch_calls": 23,
+      "q6_prefetch_ms": 101.96253,
+      "previous_q6_ms": 112.745839,
+      "q6_change_percent": -9.564263387139283
+    },
+    "kernel": {
+      "template_tail": "true,true,true,true",
+      "workgroup": 128,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "child_sha256": "a96cd24cf1a8af983dd50085c3507125cc73aec1553a2b3bc65ee5038432637e",
+    "raw_trace_sha256": "8ef13fda2bd4307183c3d0d60d2b64f039d85095ab120a33a3b5d9889302912c",
+    "summary_sha256": "a9e8b8b67594417c1e5d57917af4bad6ebc944fb9c174aa6b870cd1145dcccbd",
+    "previous_trace_sha256": "85182de4d80ee3e4f6dc5ff8f0f2954d000f174ec44c9595fdfb7778af90d00c"
+  },
+  "source_runs": {
+    "production_sha256": "6e8d0b1cbda0170ce87d06475c231309ce2bb19892ce0c6fd486012d4cbc6076",
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-candidate.json",
+    "candidate_artifact_sha256": "8ed441952011ae9124a6299340427a51da40210300d2878bcb527110f1f70d08",
+    "previous_production": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 636.073231300461,
+    "target_700_reached": false,
+    "next_action": "rebuild the critical-path table from this trace and attack the largest exact family with a new physical-byte, cross-tile-reuse, or latency-overlap mechanism"
+  }
+}

@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-27
+
+- [retained exact gfx1151 Laguna Q6 WMMA-prefetch production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / overlap the next planar-qmicro K32 record plus `d`/scale fetch with current integer-WMMA compute; clean selector-unset pp512 improves **632.618 -> 636.073 tok/s (+0.546%)**, while 1K/4K are flat within **0.014%/0.117%**; the exact actual-weight leaf improves **4.518 -> 4.104 ms (-9.156%)** and cached tracing cuts the 23-call pp512 Q6 body **112.746 -> 101.963 ms (-9.564%)** with no resident/LDS/scratch growth; `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-production.json`.
+
 ## 2026-07-26
 
 - [rejected and removed exact gfx1151 Laguna Q4 row64/local256 gate/up] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / eight waves preserve production's 32 accumulators/lane, but natural row64 padding cuts M256/M512 tiles only **5.44%/16.84%**; shared-weight reconstruction regresses the actual layer-1 leaf **116.98%/103.34%**, and direct per-column decode still regresses **28.31%/19.29%**; all candidate surfaces are removed and production remains **632.618 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json`.

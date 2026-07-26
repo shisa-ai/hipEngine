@@ -1511,11 +1511,13 @@ should be boring.
   improves **4.518 -> 4.104 ms (-9.156%)**; seven complete-state pairs
   improve **618.294 -> 623.900 tok/s (+0.907%)**. The resource cost is
   VGPR **96 -> 104** with LDS fixed at 5,120 bytes.
-- Keep explicit `False` rollback through clean selector-unset publication and
-  one subsequent retained Q6 body or all-family trace. Then collapse the
-  prefetch and already-satisfied activation-hoist selectors into the
-  unconditional gfx1151 production specialization; retain the non-prefetch
-  template only for unmeasured backends and non-production geometries.
+- Clean selector-unset publication is satisfied at **636.073 tok/s** pp512,
+  and the subsequent all-family trace cuts the exact 23-call Q6 body
+  **112.746 -> 101.963 ms (-9.564%)**. Collapse the prefetch and
+  already-satisfied activation-hoist selectors into the unconditional
+  gfx1151 production specialization with the next retained Q6 body or
+  post-campaign cleanup; retain the non-prefetch template only for unmeasured
+  backends and non-production geometries.
 
 ## Laguna Q4 projection-role quality candidate
 

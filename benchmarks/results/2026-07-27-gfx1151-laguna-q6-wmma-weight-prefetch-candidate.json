@@ -2,7 +2,7 @@
   "schema_version": 1,
   "created_at": "2026-07-27T08:47:20+09:00",
   "kind": "hipengine_laguna_q6_wmma_weight_prefetch_candidate",
-  "status": "admitted_gfx1151_default_pending_clean_publication",
+  "status": "superseded_by_clean_gfx1151_production_publication",
   "repo": {
     "base_revision": "3b62ebda8d13a828122bb93759c9a7419370325c",
     "tracked_changes": true,
@@ -111,7 +111,8 @@
     "leaf_admitted": true,
     "complete_model_admitted": true,
     "gfx1151_default_enabled": true,
-    "clean_selector_unset_publication_pending": true,
+    "clean_selector_unset_publication_pending": false,
+    "production_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-production.json",
     "production_headline_before_publication_tok_s": 632.6179846953831,
     "target_700_reached": false
   }

@@ -1007,8 +1007,12 @@ seven complete-state pp512 pairs improve
 **618.294 -> 623.900 tok/s (+0.907%)** with identical full state. Cached
 tracing reports local128/VGPR104/SGPR128/LDS5120B/scratch0, so the overlap
 costs eight VGPRs but no LDS, scratch, or resident bytes. gfx1151 enables the
-candidate behind an explicit rollback pending clean selector-unset publication
-(`benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-candidate.json`).
+candidate behind an explicit rollback. Clean selector-unset pp512 improves
+**632.618 -> 636.073 tok/s (+0.546%)**; 1K/4K remain flat within 0.12% at
+**568.765/464.061 tok/s**. Cached two-queue tracing cuts the exact 23-call
+pp512 Q6 body **112.746 -> 101.963 ms (-9.564%)** while retaining
+2,417 dispatches
+(`benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-production.json`).
 
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate
