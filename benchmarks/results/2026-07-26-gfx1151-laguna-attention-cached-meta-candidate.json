@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_attention_cached_meta_candidate",
+  "status": "retained_primitive_pending_runtime_integration",
+  "pass": true,
+  "performance_claim": "production-shape attention leaf only; production remains 530.447 tok/s",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "attention_shape": {
+      "rows": 128,
+      "global_query_heads": 48,
+      "swa_query_heads": 72,
+      "kv_heads": 8,
+      "head_dim": 128,
+      "swa_capacity": 512
+    }
+  },
+  "candidate": {
+    "premise": "After exact preappend, derive visibility solely from complete KVLiveSpans metadata and remove current-vs-cache source selection from the token loop.",
+    "arithmetic": "unchanged qrow4 ordered dot, wave32 reduction, online softmax, PV update order, and F32 output",
+    "global_policy": "candidate only for complete M128 tiles at start_position >=128; retain cached production at start 0",
+    "swa_policy": "candidate for every complete pre-wrap M128 tile",
+    "fallbacks": [
+      "global start_position 0",
+      "partial tiles",
+      "wrapped SWA",
+      "staged verifier transactions",
+      "gfx1100 and unmeasured backends"
+    ]
+  },
+  "lineage": {
+    "kind": "in-tree Laguna kernel evolution, not an external port",
+    "audit": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "audit_result": "blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "validation": {
+    "red": "Registry/import coverage failed before cached-meta global/SWA wrappers existed.",
+    "green": "The full Laguna KV attention test file passes; source-qualified, cached, and cached-meta M128 outputs are F32-byte identical.",
+    "tests": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py -q",
+    "test_result": "11 passed",
+    "global_f32_bit_mismatches": 0,
+    "swa_f32_bit_mismatches": 0,
+    "tracked_active_allocations_after": 0
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_cached_meta_leaf.py --samples 11 --warmups 2 --burst 25 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-attention-cached-meta-leaf.json",
+    "protocol": "four pp512 M128 positions, 11 samples, burst 25, four-mode counter-rotation, HIP events",
+    "positions": {
+      "0": {
+        "global_cached_ms": 0.18606603622436524,
+        "global_cached_meta_ms": 0.20736839294433593,
+        "global_speedup": 0.8972728851417154,
+        "swa_cached_ms": 0.31513683319091795,
+        "swa_cached_meta_ms": 0.27945892333984373,
+        "swa_speedup": 1.1276678140196192
+      },
+      "128": {
+        "global_cached_ms": 0.5213771820068359,
+        "global_cached_meta_ms": 0.5161611557006835,
+        "global_speedup": 1.0101054220150907,
+        "swa_cached_ms": 0.7551747131347656,
+        "swa_cached_meta_ms": 0.6786678314208985,
+        "swa_speedup": 1.1127309681876152
+      },
+      "256": {
+        "global_cached_ms": 0.8620572662353516,
+        "global_cached_meta_ms": 0.8292066955566406,
+        "global_speedup": 1.0396168661622525,
+        "swa_cached_ms": 1.2040762329101562,
+        "swa_cached_meta_ms": 1.0851225280761718,
+        "swa_speedup": 1.109622371443047
+      },
+      "384": {
+        "global_cached_ms": 1.1977388763427734,
+        "global_cached_meta_ms": 1.1388587188720702,
+        "global_speedup": 1.0517010200606958,
+        "swa_cached_ms": 1.670670166015625,
+        "swa_cached_meta_ms": 1.50764892578125,
+        "swa_speedup": 1.1081294440944855
+      }
+    },
+    "all_candidate_weighted_ms": {
+      "baseline": 14.60241319656372,
+      "candidate": 13.344289588928223,
+      "speedup": 1.0942817974123826
+    },
+    "qualified_policy_weighted_ms": {
+      "baseline": 14.60241319656372,
+      "candidate": 13.322987232208254,
+      "speedup": 1.0960314636692334,
+      "projected_pp512_saved_ms": 15.353111572265597
+    },
+    "raw_sha256": "7fc9e328aee21cfa0647b1e4e6f8c23c7d96ab4e6463f6b48c996d681a5b3956"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-cached-meta-test-rocprof -- .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_preappend_cached_qrow4_matches_current_source_qrow4 -q",
+    "global_candidate_template": "laguna_global_attention_prefill_qrows_online_bf16_kernel<4,true,true>",
+    "swa_candidate_template": "laguna_swa_attention_prefill_qrows_online_bf16_kernel<4,true,true,true>",
+    "candidate_resources": {
+      "workgroup_size": 32,
+      "vgpr": 64,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "308064520c7badb0a88bd7975dc8f8898d9cc3fcf051e0c2b1016d2bef355ba3"
+  },
+  "decision": {
+    "action": "Retain the exact primitive and integrate the qualified gfx1151 preappend policy.",
+    "reason": "SWA wins every natural pp512 tile by 10.8-12.8%; global wins from start 128 onward; the conservative mixed policy projects 15.35 ms pp512 attention savings with no arithmetic or state change.",
+    "production": "unchanged at 530.447 tok/s pending matched full-model and clean publication gates"
+  }
+}

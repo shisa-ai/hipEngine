@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna cached-metadata attention primitive] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / deriving qrow4 visibility solely from preappended `KVLiveSpans` preserves every F32 output bit; SWA improves **1.108–1.128x** at all four pp512 tiles, global improves **1.010–1.052x** from position 128 onward, and the qualified 12-full/36-SWA leaf model improves **14.6024 -> 13.3230 ms (1.096x, projected 15.353 ms pp512 saving)**; retained pending runtime integration while production remains **530.447 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`.
+
 - [retained exact gfx1151 Laguna Q6 qmicro production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral qmicro records preserve the 3,360-byte T16 tile and every BF16 result; clean selector-unset pp512 improves **526.451 -> 530.447 tok/s (+0.759%, minimum 525.864)**, 1K/4K improve **1.127%/0.918%**, and cached tracing cuts Q6 selected down **126.594 -> 123.473 ms (-2.465%)** plus total selected down **203.923 -> 200.510 ms (-1.673%)** with local128/VGPR88/LDS5,632B/scratch0; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json`.
 
 - [retained exact gfx1151 Laguna Q6 qmicro candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 output while actual layer-1 natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**; gfx1151 expert-down defaults to qmicro pending clean production publication, while the headline remains **526.451 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json`.

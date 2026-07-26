@@ -644,7 +644,7 @@ Current progress:
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
-| LAP-7–LAP-8 | Exact cached-only scheduling admitted | Complete M128 tiles append before cached-only qrow4 while partial, wrapped SWA, verifier, and unmeasured paths retain attend-then-append. Attention falls **219.709 -> 176.580 ms (-19.63%)** with F32-byte-exact primitives and exact full-model state. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, single-wave qhead3, and nine-wave GQA tile sharing remain closed. |
+| LAP-7–LAP-8 | Exact cached-only scheduling admitted; cached-metadata primitive retained | Complete M128 tiles append before cached-only qrow4 while partial, wrapped SWA, verifier, and unmeasured paths retain attend-then-append. Attention falls **219.709 -> 176.580 ms (-19.63%)** with F32-byte-exact primitives and exact full-model state. The next exact cached-metadata leaf improves the qualified 12-full/36-SWA model **14.6024 -> 13.3230 ms (1.096x)** and is pending runtime integration. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, head2, qhead3, and nine-wave GQA sharing remain closed. |
 
 ## Post-500 campaign — 700 production stretch
 
@@ -713,12 +713,11 @@ Immediate execution queue:
 1. Keep exact cached-only M128 attention scheduling in production. Clean
    selector-unset 512/1K/4K improve **4.230%/3.218%/5.701%** and every matched
    full-model state is exact. The trace cuts attention **219.709 -> 176.580
-   ms (-19.63%)**. The next exact screen is a middle GQA geometry: three
-   wave32s per KV head, each owning three query heads while cooperatively
-   staging one K/V tile. It must preserve qrow4 arithmetic and beat the
-   one-wave-per-head production primitive before runtime integration. The
-   prior scalar-split, tiled-WMMA, head-pair, and nine-wave GQA bodies remain
-   closed.
+   ms (-19.63%)**. Integrate the retained cached-metadata primitive: SWA wins
+   **1.108–1.128x** at all four pp512 tiles, while global selects it only from
+   position 128 because position 0 regresses. The qualified leaf projects
+   **15.353 ms** pp512 saving with every F32 bit exact. The prior scalar-split,
+   tiled-WMMA, head-pair, qhead3, and nine-wave GQA bodies remain closed.
 2. Keep byte-neutral Q6 qmicro in production. Clean selector-unset
    512/1K/4K improves **0.759%/1.127%/0.918%**; Q6 falls
    **126.594 -> 123.473 ms (-2.465%)**, total selected down falls
@@ -1527,6 +1526,27 @@ the prior production packet by **0.759%/1.127%/0.918%**. Full tracing cuts Q6
 Evidence:
 [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json) ·
 [`leaf`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json).
+
+Thirty-ninth post-350 screen: **exact cached-metadata qrow4 primitive
+retained pending runtime integration**. The planned three-wave GQA follow-up
+was closed during source audit rather than implemented: it would combine the
+already-rejected serial multi-head register growth with already-rejected
+cross-wave synchronous sharing. The distinct retained premise starts after
+preappend, when current K/V and visibility metadata are already complete.
+Global and SWA candidates derive visibility only from `KVLiveSpans`, removing
+current-vs-cache source bookkeeping while preserving the ordered qrow4 dot,
+wave32 reduction, online-softmax/PV order, and every F32 output bit.
+
+Eleven-sample, burst-25, four-mode counter-rotated leaf timing covers pp512
+positions 0/128/256/384. SWA improves **1.128/1.113/1.110/1.108x**. Global
+regresses **0.897x** at position 0 but improves
+**1.010/1.040/1.052x** thereafter, so the integration policy keeps position 0
+on the existing cached body. The qualified 12-full/36-SWA leaf model improves
+**14.6024 -> 13.3230 ms (1.096x)**, projecting **15.353 ms** pp512 saving.
+Cached tracing names global `<4,true,true>` and SWA `<4,true,true,true>` at
+local32/VGPR64/SGPR128/LDS0/scratch0. The full attention test file reports
+**11 passed** and tracked allocations recover to zero. Evidence:
+[`2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json).
 
 Production evidence:
 

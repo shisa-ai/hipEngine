@@ -43,8 +43,22 @@ screen improves global **1.305x** and SWA **1.142–1.186x** across pp512 tile
 positions. Seven paired full-model runs improve **507.391 -> 528.771 tok/s
 (1.042x)** with every pair positive and complete output/state exactness; 1K
 and 4K diagnostics remain exact at **1.103x/1.047x**. Clean selector-unset
-publication remains the production-claim gate. Evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`.
+publication completed at **526.451 tok/s** before the later exact Q6 qmicro
+production checkpoint raised the topline to **530.447 tok/s**. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-{candidate,production}.json`.
+
+The separately registered cached-metadata qrow4 candidate exploits the same
+preappend contract but derives visibility solely from complete
+`KVLiveSpans`, removing current-vs-cache source selection while preserving the
+ordered dot, wave32 reduction, online softmax, PV order, and every F32 output
+bit. Eleven-sample four-position leaf timing improves SWA **1.108–1.128x** at
+every tile and global **1.010–1.052x** from position 128 onward; global
+position 0 retains the established cached body. The qualified 12-full/36-SWA
+model improves **14.6024 -> 13.3230 ms (1.096x)** and projects **15.353 ms**
+pp512 saving. Cached tracing names global `<4,true,true>` and SWA
+`<4,true,true,true>` at local32/VGPR64/SGPR128/LDS0/scratch0. Retained as an
+explicit primitive pending runtime integration and full-model gates:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`.
 
 ### Laguna gfx1151 exact router token reuse
 
