@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna dense-initial attention default candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / strict complete-initial/no-wrap/no-eviction qualification moves cached-metadata rollback **552.144 -> 559.539 tok/s (+1.339%, 5/7 pair wins)** and saves **12.255 ms** at the medians with complete output/state exactness; gfx1151 now defaults the capability with explicit rollback pending clean selector-unset publication; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json`.
+
 - [retained exact gfx1151 Laguna dense-initial attention candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / complete initial no-wrap M128 tiles remove per-token position/eviction reads while preserving the full `KVLiveSpans` ABI and every F32 bit; the qualified global-qrow4/qrow6 plus SWA-qrow4 leaf moves **12.8348 -> 11.8695 ms (1.0813x)** and models **11.584 ms** pp512 saving, with production unchanged pending runtime/full-model gates; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`.
 
 - [rejected and removed exact gfx1151 Laguna source-F16 QKV grouping] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / one row-major combined contraction is F32-bit exact but models only **2.891 ms** pp512 saving before mandatory output restride, while layout-preserving hipBLASLt `GroupedGemm` exposes zero algorithms at zero or 64-MiB workspace; all candidate surfaces are removed and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json`.

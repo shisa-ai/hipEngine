@@ -844,6 +844,13 @@ Immediate execution queue:
    models **11.584 ms** pp512 saving. Integrate only for runtime-proven
    complete initial no-wrap tiles; partial, wrapped, verifier, gfx1100, and
    unmeasured routes remain on their exact fallbacks.
+   Integration now passes: the runtime additionally invalidates the fast path
+   after any explicit eviction. Seven matched complete-state pairs improve
+   cached-metadata rollback **552.144 -> 559.539 tok/s (+1.339%)**, saving
+   **12.255 ms** at the medians with identical logits, hidden states, KV,
+   token/logit, and cursor. The gfx1151 capability is the default with
+   `prefill_dense_initial=false` rollback; run clean selector-unset
+   512/1K/4K and trace next.
 3. Freeze source-F16 grouping. One combined row-major QKV contraction is
    F32-bit exact but saves only **2.891 ms** across the 12 full and 36 SWA
    layers before splitting `[M,Q+K+V]` back into the three contiguous
@@ -1926,6 +1933,14 @@ Cached tracing reports local32, zero LDS/scratch, and VGPR64/88/64 for global
 qrow4/global qrow6/SWA qrow4. Runtime/default promotion remains open behind a
 strict complete-initial-tile gate. Evidence:
 [`2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json).
+The strict runtime gate now requires consecutive complete M128 positions,
+capacity/no-wrap safety, untouched eviction metadata, and the existing
+non-verifier preappend schedule. Seven matched full-model pairs improve
+cached-metadata rollback **552.144 -> 559.539 tok/s (+1.339%, 5/7 wins)** and
+save **12.255 ms** at the medians, while every compared output/state digest is
+exact. gfx1151 defaults the capability with an explicit session rollback;
+clean selector-unset publication remains open. Evidence:
+[`2026-07-26-gfx1151-laguna-attention-dense-initial-default.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json).
 
 Production evidence:
 

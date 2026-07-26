@@ -181836,3 +181836,27 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`.
   Production remains **551.459 tok/s** until strict runtime qualification,
   complete-state matched A/B, and clean selector-unset publication pass.
+
+## 2026-07-26 — Promote exact dense-initial attention default candidate
+
+- RED runtime tests failed on the missing `prefill_dense_initial` allocation
+  and package plumbing. GREEN adds the gfx1151
+  `LAGUNA_PREFILL_DENSE_INITIAL` capability with explicit session/cache
+  rollback. Qualification requires consecutive complete M128 positions, the
+  existing capacity/no-wrap preappend gate, untouched eviction metadata, and
+  the non-verifier schedule. Any explicit eviction permanently returns that
+  request to cached-metadata/current-source fallbacks until reset.
+- The three-file backend/attention/runtime bundle reports **53 passed**,
+  including the exact fallback after explicit eviction.
+- Seven alternating one-owner real-model pairs measure cached-metadata
+  rollback/dense-initial candidate medians **552.144382/559.539305 tok/s
+  (+1.339310%)**, a **12.255199-ms** saving. Candidate wins **5/7** pairs;
+  two candidate samples contain system-noise outliers, but the observed median
+  matches the independently modeled **11.584-ms** leaf saving.
+- All fourteen runs return token 2930 and identical next-token logit, logits,
+  final/post-layer hidden, KV, and cursor digests. Raw SHA-256 is
+  `15e48212709c06cc9494366588d7739983663e1b33ecab21f8a3682d4c1c8d5f`.
+- Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json`.
+  The gfx1151 package now defaults the exact capability; clean selector-unset
+  512/1K/4K publication and cached full-family tracing are next.

@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_attention_dense_initial_default",
+  "status": "retained_default_candidate",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "prompt_tokens": 512,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "base_revision": "6cc9fd51d",
+    "tracked_clean": false,
+    "reason": "Matched A/B validated the runtime integration before its atomic commit."
+  },
+  "candidate": {
+    "capability": "LAGUNA_PREFILL_DENSE_INITIAL=true on gfx1151",
+    "policy": "dense-initial global qrow4 at start 0, global qrow6 at later initial positions, and SWA qrow4 before its first wrap",
+    "fallbacks": [
+      "explicit prefill_dense_initial=false",
+      "partial tiles",
+      "wrapped SWA",
+      "explicitly evicted metadata",
+      "staged verifier transactions",
+      "gfx1100 and unmeasured backends"
+    ]
+  },
+  "protocol": {
+    "repetitions": 7,
+    "order": "alternating cached-metadata/dense-initial pairs on one borrowed resident-weight owner",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_dense_initial_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-attention-dense-initial-ab.json"
+  },
+  "performance": {
+    "cached_metadata_rollback_samples_tok_s": [
+      554.0382141045391,
+      551.682512653604,
+      551.7954426274839,
+      553.4054217865441,
+      552.1443817180201,
+      547.9132002875036,
+      558.1778004384399
+    ],
+    "dense_initial_candidate_samples_tok_s": [
+      561.0645003511788,
+      561.3554716513091,
+      558.9272343176998,
+      559.5393047763565,
+      543.8663544783145,
+      530.498995507458,
+      566.2846903433839
+    ],
+    "cached_metadata_rollback_median_tok_s": 552.1443817180201,
+    "dense_initial_candidate_median_tok_s": 559.5393047763565,
+    "throughput_change_percent": 1.3393096630498702,
+    "median_wall_savings_ms": 12.255198904313147,
+    "candidate_pair_wins": 5,
+    "pair_count": 7
+  },
+  "correctness": {
+    "complete_state_exact": true,
+    "next_token": 2930,
+    "next_token_logit_hex": "0x1.a856da0000000p+4",
+    "logits_sha256": "0014c1cbbf2aa19f24e4a354f0ef1593f818840677c000eb0423584a233446cb",
+    "final_hidden_sha256": "7f45e9925b176db56e5efad6fc49d5a399924f62f17c8678f59dfb485d9c2b7c",
+    "post_layer_hidden_sha256": "f7d73ad00f630ca6a55d1b004809e84088515ff2772f51b33180450d09fff2f8",
+    "kv_sha256": "aaa785452719e996b27e6929c83c0089f89d45f466a077da2336edc2c133748a",
+    "final_position": 511,
+    "quality_transfer": {
+      "max_kl_divergence": 0.04954258196634279,
+      "top1_agreement": "316/320",
+      "minimum_category_top1": 0.96875,
+      "basis": "The candidate preserves every F32 attention output bit and all compared full-model output/state digests."
+    }
+  },
+  "validation": {
+    "red": "Dense-initial allocation, package propagation, and qualified variant-selection tests failed before runtime integration.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_laguna_gguf_runner.py tests/test_laguna_kv_attention.py --tb=short",
+    "green_result": "53 passed",
+    "primitive_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json"
+  },
+  "provenance": {
+    "raw_sha256": "15e48212709c06cc9494366588d7739983663e1b33ecab21f8a3682d4c1c8d5f"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_package_default_changed": true,
+    "rollback": "LagunaGGUFResidentSession(..., prefill_dense_initial=false)",
+    "next_gate": "Commit, then run clean selector-unset 512/1K/4K production and cached full-family trace."
+  }
+}

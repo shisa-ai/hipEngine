@@ -105,6 +105,16 @@ global qrow6 `<6,true,true,true>` at local32/VGPR88, and SWA qrow4
 Runtime promotion still requires strict complete-initial-tile qualification
 and a full-model complete-state gate. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`.
+That gate is now satisfied. The runtime requires one consecutive complete
+M128 tile, capacity/no-wrap safety, untouched eviction metadata, and the
+existing non-verifier preappend schedule. Seven matched complete-model pairs
+move cached-metadata rollback **552.144 -> 559.539 tok/s (+1.339%)**, save
+**12.255 ms** at the medians, and preserve logits, hidden states, KV bytes,
+token/logit, cursor, and allocation lifecycle exactly. gfx1151 now defaults
+the capability with `prefill_dense_initial=false` as explicit rollback;
+gfx1100 and all unsafe shapes retain the prior exact paths. Clean
+selector-unset publication remains the next gate. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json`.
 
 ### Laguna gfx1151 exact router token reuse
 

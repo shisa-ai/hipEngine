@@ -69,6 +69,12 @@ LAGUNA_PREFILL_CACHED_META = True
 # queries. Leaf admission is limited to complete preappended global M128 tiles
 # beginning at position 128; global start 0 and every SWA tile retain qrow4.
 LAGUNA_PREFILL_GLOBAL_QROW6 = True
+# Complete initial no-wrap preappended tiles have identity token positions and
+# no eviction. The separately registered dense-initial attention variants
+# preserve the full KVLiveSpans ABI while skipping per-token metadata loads.
+# Partial, wrapped, explicitly evicted, and verifier routes retain exact
+# cached-metadata/current-source fallbacks.
+LAGUNA_PREFILL_DENSE_INITIAL = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps

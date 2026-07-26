@@ -1188,6 +1188,14 @@ should be boring.
   first trigger is satisfied at **547.064/513.180/428.628 tok/s**, with traced
   attention **158.702 -> 152.406 ms (-3.97%)**. Keep automatic qrow4
   fallbacks and do not reintroduce the rejected SWA qrow6 surface.
+- The next exact checkpoint adds `LAGUNA_PREFILL_DENSE_INITIAL` and optional
+  `prefill_dense_initial` session/cache rollback. It selects only consecutive
+  complete M128 initial tiles with no wrap or explicit eviction, preserving
+  cached-metadata/current-source fallbacks everywhere else. Seven matched
+  complete-state pairs improve **552.144 -> 559.539 tok/s (+1.339%, 5/7
+  wins)** with identical logits/hidden/KV/token/cursor. Remove the public
+  positive selector after clean selector-unset publication plus one later
+  attention checkpoint; keep the automatic safety fallbacks permanently.
 
 ## Laguna Q6 qmicro resident-layout rollback
 
