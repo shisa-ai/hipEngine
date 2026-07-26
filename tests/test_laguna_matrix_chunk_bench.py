@@ -46,6 +46,9 @@ def test_laguna_matrix_chunk_order_rotates_all_policies() -> None:
     assert _mode_order(0, 0) == MATRIX_ROWS
     assert _mode_order(0, 1) == (256, 512, 128)
     assert _mode_order(1, 0) == (256, 512, 128)
+    wide = (512, 1024, 2048)
+    assert _mode_order(0, 0, matrix_rows=wide) == wide
+    assert _mode_order(0, 1, matrix_rows=wide) == (1024, 2048, 512)
 
 
 def test_laguna_matrix_chunk_gate_selects_fastest_exact_policy() -> None:

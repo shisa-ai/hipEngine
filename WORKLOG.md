@@ -181222,3 +181222,23 @@ Vulkan local sizes verbatim will close the measured gap.
   wrapper, test, and leaf-harness surface; production remains
   **546.100 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json`.
+
+## 2026-07-26 — Add the bounded M1024/M2048 matrix-chunk screen
+
+- Began the next structural long-context screen from production
+  **546.100/481.640/389.686 tok/s** at matrix512/attention128. RED required a
+  2048-row policy and failed on the former hard 512-row runtime cap. GREEN
+  raises only the explicit policy ceiling to 2048; the gfx1151 package default
+  remains 512 until measured admission, and attention remains independently
+  capped at 128.
+- The exact planned row/MoE scratch is **877,641,760 bytes** at M1024 and
+  **1,755,275,296 bytes** at M2048. The long-context profiler accepts both
+  capacities, and the existing same-load full-state matrix harness now
+  generalizes its rotating order, aggregation, exactness, and decision logic
+  to an explicit ascending capacity set while preserving the historical
+  M128/M256/M512 default.
+- Validation: runner, matrix-screen, and long-context-profile files report
+  **46 passed**; `py_compile` and `git diff --check` pass. No kernel body or
+  package default changed. Commit this bounded substrate, then run the clean
+  two-repeat M512/M1024/M2048 screen at exact 512/1K/4K lengths before any
+  default promotion.
