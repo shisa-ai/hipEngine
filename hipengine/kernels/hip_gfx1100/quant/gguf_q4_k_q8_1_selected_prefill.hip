@@ -620,6 +620,64 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel(
   }
 }
 
+template <int residual_passes>
+__launch_bounds__(128, 1)
+__global__ void gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_kernel(
+    const uint16_t* __restrict__ gate,
+    const uint16_t* __restrict__ up,
+    block_q8_1_mmq_ds4_f32* __restrict__ out,
+    int64_t rows,
+    int64_t hidden) {
+  const int64_t q8_block = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int ds4_idx = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  if (row >= rows || q8_block >= blocks_per_row) return;
+
+  const int64_t col = q8_block * Q8_1_MMQ_BLOCK + tid;
+  const int64_t row_base = row * hidden;
+  const float gate_value = bf16_bits_to_float(gate[row_base + col]);
+  const float up_value = bf16_bits_to_float(up[row_base + col]);
+  const float sig = 1.0f / (1.0f + expf(-gate_value));
+  float residual = bf16_bits_to_float(
+      float_to_bf16_bits(gate_value * sig * up_value));
+
+  __shared__ float scale_shared[4];
+  __shared__ float sum_shared[4];
+#pragma unroll
+  for (int pass = 0; pass < residual_passes; ++pass) {
+    const float sum = wave32_sum(residual);
+    const float max_abs = wave32_max(fabsf(residual));
+    if (lane == 0) {
+      scale_shared[ds4_idx] = max_abs / 127.0f;
+      sum_shared[ds4_idx] = sum;
+    }
+    __syncthreads();
+
+    const float scale = scale_shared[ds4_idx];
+    int q = 0;
+    if (scale > 0.0f) {
+      const float qf =
+          fminf(127.0f, fmaxf(-127.0f, rintf(residual / scale)));
+      q = static_cast<int>(qf);
+    }
+
+    const int64_t plane_blocks = rows * blocks_per_row;
+    block_q8_1_mmq_ds4_f32* __restrict__ out_block =
+        out + static_cast<int64_t>(pass) * plane_blocks +
+        row * blocks_per_row + q8_block;
+    out_block->qs[tid] = static_cast<int8_t>(q);
+    if (lane == 0) {
+      out_block->ds4[2 * ds4_idx + 0] = scale;
+      out_block->ds4[2 * ds4_idx + 1] = sum_shared[ds4_idx];
+    }
+    residual = fmaf(-static_cast<float>(q), scale, residual);
+    __syncthreads();
+  }
+}
+
 __launch_bounds__(128, 1)
 __global__ void gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -2457,6 +2515,36 @@ int launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16(
       0,
       stream,
       gate_up,
+      out,
+      rows,
+      hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <int residual_passes>
+int launch_q8_1_mmq_ds4_f32_pack_separate_silu_bf16(
+    const uint16_t* gate,
+    const uint16_t* up,
+    block_q8_1_mmq_ds4_f32* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (!valid_q8_1_mmq_ds4_pack(gate, out, rows, hidden) ||
+      up == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  hipLaunchKernelGGL(
+      (gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_kernel<
+          residual_passes>),
+      dim3(
+          static_cast<unsigned int>(blocks_per_row),
+          static_cast<unsigned int>(rows)),
+      dim3(128),
+      0,
+      stream,
+      gate,
+      up,
       out,
       rows,
       hidden);
@@ -4570,6 +4658,22 @@ extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
       stream);
 }
 
+extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4(
+    const uint16_t* gate,
+    const uint16_t* up,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_f32_pack_separate_silu_bf16<1>(
+      gate,
+      up,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4(
     const uint16_t* gate_up,
     void* out,
@@ -4931,6 +5035,94 @@ hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_dou
       in_features,
       out_features_a,
       out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      true,
+      128,
+      true,
+      true,
+      128,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      qweight,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features,
+      0,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      false,
+      128,
+      true,
+      true,
+      128,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      qweight,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features,
+      0,
       num_experts,
       mmq_total_rows,
       stream);

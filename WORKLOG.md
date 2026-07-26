@@ -183519,3 +183519,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `jq empty`, `git diff --check`, and a source-tree search for every removed
   selector pass. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-selective-repair-rejected.json`.
+
+## 2026-07-27 — Add quality-pending Q4 projection-role split
+
+- RED exposed the missing single-role registry route. GREEN adds uniform
+  local128 direct-wave/double-buffer consumers for D4 or D8 and packs one
+  plane of each format once per source row. Gate and up are split only by
+  global projection role; there is no K-block, prompt, token, or layer policy.
+- Twenty-one counter-rotated actual layer-1 samples show D4-gate/D8-up at
+  **3.8124/4.4262/6.6175 ms** and D8-gate/D4-up at
+  **3.8149/4.4158/6.6065 ms** for M128/M256/M512, versus retained D8
+  **3.7297/4.4114/6.8616 ms**. Both M512 results model more than 11 ms pp512.
+- The first complete nonfused screen selected D4-gate/D8-up. An attempted
+  reuse of the dual-layout fused pack immediately changed token 2930 to 72362
+  because separate row-major matrices are not dual-row-interleaved; that
+  invalid route was not retained. A new separate-input fused kernel is
+  byte-exact to standalone BF16 SiLU plus D4 packing.
+- Seven corrected paired pp512 runs improve the median
+  **617.519 -> 629.151 tok/s (+1.884%)**, saving **15.329 ms**. Every run
+  selects token 2930, and fused candidate logits/hidden/KV hashes exactly
+  reproduce the earlier unfused candidate hashes.
+- The **11-case** Q4 CPU-reference matrix plus two fused-pack cases pass.
+  Cached `rocprofv3 --kernel-trace` records the role specialization at
+  local128/VGPR88/SGPR128/scratch0 and the separate fused pack at
+  local128/VGPR16/LDS512B/scratch0. Trace SHA-256 is
+  `cb509912...a46d`. Production remains D8 at **632.618 tok/s**; the clean
+  direct-all-exact 320-step category gate is next. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-split-quality-pending.json`.

@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T05:55:00+09:00",
+  "kind": "hipengine_laguna_q4_projection_role_split_candidate",
+  "status": "quality_pending_candidate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "669203426",
+    "candidate_tracked_dirty": true,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "selected_runtime_mode": "mmq128x32_role_gate_d4_up_d8",
+    "alternate_runtime_mode": "mmq128x32_role_gate_d8_up_d4",
+    "production_rollback": "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+    "geometry": "two uniform 128-output-column x 32-routed-row local128 kernels",
+    "activation": "one D8 and one D4 FP32-scale/sum plane packed once per source row",
+    "scheduling": "branchless projection-role split; D4 gate and D8 up",
+    "down_boundary": "separate-input fused BF16 SiLU plus range-safe D4 pack",
+    "resident_sidecar_bytes": 0,
+    "policy_scope": "global projection role only; no prompt, token, layer, or K-block selection"
+  },
+  "correctness": {
+    "red": "the role wrapper was absent from the Q4 kernel module and registry",
+    "green": "the 11-case Q4 CPU-reference matrix plus two fused-pack cases pass",
+    "single_role_d8_matches_production_bits": true,
+    "single_role_d4_matches_existing_d4_bits": true,
+    "separate_input_fused_silu_pack_matches_unfused_bits": true,
+    "full_model_fused_and_unfused_candidate_state_sha256_equal": true,
+    "full_model_next_token_id": 2930,
+    "absolute_320_step_quality": "pending clean revision"
+  },
+  "leaf_protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 128,256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-role-gate-d4-up-d8,t16-mmq128x32-role-gate-d8-up-d4 --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-q4-role-split-screen.json",
+    "timing": "counter-rotated HIP events; each sample is the mean of a three-launch burst",
+    "activation_pack_included": true,
+    "actual_weights": true,
+    "natural_routing": true
+  },
+  "leaf_results": {
+    "m128": {
+      "production_d8_median_ms": 3.7297303676605225,
+      "gate_d4_up_d8_median_ms": 3.8124262491861978,
+      "gate_d8_up_d4_median_ms": 3.8149026234944663
+    },
+    "m256": {
+      "production_d8_median_ms": 4.411424954732259,
+      "gate_d4_up_d8_median_ms": 4.426186243693034,
+      "gate_d8_up_d4_median_ms": 4.415793100992839
+    },
+    "m512": {
+      "production_d8_median_ms": 6.861583709716797,
+      "gate_d4_up_d8_median_ms": 6.617525736490886,
+      "gate_d8_up_d4_median_ms": 6.606491724650065,
+      "gate_d4_up_d8_modeled_pp512_saving_ms": 11.47072474161784,
+      "gate_d8_up_d4_modeled_pp512_saving_ms": 11.989323299134403
+    }
+  },
+  "full_model_protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --require-cached-build --mode retained=mmq128x32_d8_f32_wavecols_direct_doublebuf --mode gate_d4_up_d8=mmq128x32_role_gate_d4_up_d8 --output /tmp/laguna-q4-role-split-separate-fused-production-ab.json",
+    "timing": "one resident owner, mode warmup, seven alternating synchronized pp512 repetitions",
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "quality_scope": "diagnostic next-token and complete-state digest only; not the canonical category gate"
+  },
+  "full_model_results": {
+    "production_d8_samples_tok_s": [
+      598.5329000409599,
+      620.4499305497376,
+      623.0756106472309,
+      621.552073389178,
+      617.5186813483332,
+      610.538804107837,
+      616.8986946691975
+    ],
+    "gate_d4_up_d8_samples_tok_s": [
+      629.4923616368258,
+      633.3428681921931,
+      629.0518850514741,
+      629.4078464765349,
+      629.1506802410217,
+      618.9085407310332,
+      625.0316880614495
+    ],
+    "production_d8_median_tok_s": 617.5186813483332,
+    "gate_d4_up_d8_median_tok_s": 629.1506802410217,
+    "throughput_change_percent": 1.8836675300722083,
+    "production_d8_median_wall_ms": 829.1247138986364,
+    "gate_d4_up_d8_median_wall_ms": 813.7955120764673,
+    "median_wall_saved_ms": 15.329201822169125,
+    "next_token_id": 2930
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-role-split-trace-20260727 --output-file role-split -- .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_q8_1_selected_prefill.py -k 'q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate or q8_1_mmq_dual_silu_pack_is_byte_exact_to_unfused'",
+    "role_kernel_local_size": 128,
+    "role_kernel_vgpr": 88,
+    "role_kernel_sgpr": 128,
+    "role_kernel_scratch_bytes": 0,
+    "separate_silu_pack_local_size": 128,
+    "separate_silu_pack_vgpr": 16,
+    "separate_silu_pack_lds_bytes": 512,
+    "separate_silu_pack_scratch_bytes": 0,
+    "trace_sha256": "cb509912d815cfb159f0512cdcd327e368037318151b4ae1440fdac08474a46d"
+  },
+  "source_runs": [
+    {
+      "path": "/tmp/laguna-q4-role-split-screen.json",
+      "sha256": "72584d89261abc6279b58cd975acb7fa29ccf8e4a4843a62ccd9818bef54d575"
+    },
+    {
+      "path": "/tmp/laguna-q4-role-split-production-ab.json",
+      "sha256": "29a52debdfd73d099cdf8085889a223d449850d81ea2d2a447d9036adde20f42"
+    },
+    {
+      "path": "/tmp/laguna-q4-role-split-separate-fused-production-ab.json",
+      "sha256": "6d7292abf373a580a11fa2225f62c832fa73a086628a661aebd165a08bd67182"
+    }
+  ],
+  "decision": {
+    "retain_candidate_surface": true,
+    "promote": false,
+    "reason": "the global D4-gate/D8-up role split saves 15.33 ms in the paired complete pp512 gate, but changed D4 arithmetic must pass the clean direct-all-exact 320-step category gate",
+    "next_action": "commit the default-off candidate, run a clean all-exact versus role-split 320-step quality lane, then promote or remove it"
+  }
+}
