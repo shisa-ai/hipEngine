@@ -119,6 +119,16 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert (plan.hidden_size, plan.expert_count, plan.top_k) == (3_072, 256, 10)
     assert (plan.expert_ffn_size, plan.shared_ffn_size) == (1_024, 1_024)
     assert plan.routed_scaling_factor == pytest.approx(2.5)
+    assert plan.q6_qmicro
+    assert not resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1151",
+        q6_qmicro=False,
+    ).q6_qmicro
+    assert not resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+    ).q6_qmicro
     assert plan.router_select_key.layer == "laguna_sigmoid_router_topk"
     assert set(plan.router_logits_keys) == {
         "token_tile_4",

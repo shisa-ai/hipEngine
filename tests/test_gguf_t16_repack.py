@@ -13,6 +13,7 @@ from hipengine.quant.gguf_t16 import (
     GGUF_Q8_0_BLOCK_BYTES,
     GGUF_Q8_0_T16_BLOCK_BYTES,
     GGUF_T16_COLS,
+    convert_gguf_q6_k_tile16_to_qmicro,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
     repack_gguf_q6_k_tile16_qmicro,
@@ -125,10 +126,14 @@ def test_q6_k_tile16_qmicro_is_byte_neutral_and_roundtrips() -> None:
     raw = _raw_q6_k_bytes(experts=2, out_features=32, blocks_per_row=2)
 
     packed = repack_gguf_q6_k_tile16_qmicro(raw)
+    converted = convert_gguf_q6_k_tile16_to_qmicro(
+        repack_gguf_q6_k_tile16(raw)
+    )
     restored = unpack_gguf_q6_k_tile16_qmicro(packed)
 
     assert packed.tiles.shape == (2, 2, 2, GGUF_Q6_K_T16_BLOCK_BYTES)
     assert packed.tiles.nbytes == raw.nbytes
+    np.testing.assert_array_equal(converted.tiles, packed.tiles)
     np.testing.assert_array_equal(restored, raw)
 
 

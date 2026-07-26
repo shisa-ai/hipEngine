@@ -1512,6 +1512,7 @@ class LagunaGGUFResidentSession:
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
         prefill_kv_preappend: bool | None = None,
+        q6_qmicro: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1557,6 +1558,22 @@ class LagunaGGUFResidentSession:
             )
             if prefill_kv_preappend is None
             else prefill_kv_preappend
+        )
+        resident_q6_qmicro = (
+            getattr(resident_weights, "q6_qmicro", None)
+            if resident_weights is not None
+            else None
+        )
+        self.q6_qmicro = bool(
+            resident_q6_qmicro
+            if q6_qmicro is None and resident_q6_qmicro is not None
+            else backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_QMICRO",
+                False,
+            )
+            if q6_qmicro is None
+            else q6_qmicro
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
@@ -1618,7 +1635,11 @@ class LagunaGGUFResidentSession:
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
             )
-            self.moe_plan = resolve_laguna_moe_plan(config, backend=self.backend)
+            self.moe_plan = resolve_laguna_moe_plan(
+                config,
+                backend=self.backend,
+                q6_qmicro=self.q6_qmicro,
+            )
             self.prefill_scratch_plan = LagunaPrefillScratchPlan.build(
                 config,
                 self.moe_plan,
@@ -1641,6 +1662,7 @@ class LagunaGGUFResidentSession:
                     progress=progress,
                     repacked_cache=repacked_cache,
                     repacked_cache_source_sha256=model_sha256,
+                    q6_qmicro=self.q6_qmicro,
                 )
             else:
                 self.weights = resident_weights
@@ -3270,6 +3292,10 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         if self.weights.backend != self.backend:
             raise ValueError("Laguna resident weights must share the session backend")
+        if self.weights.q6_qmicro != self.q6_qmicro:
+            raise ValueError(
+                "Laguna resident Q6 qmicro layout must match the session kernel plan"
+            )
         root_shapes = {
             "token_embedding": (config.vocab_size, config.hidden_size),
             "output_norm": (config.hidden_size,),

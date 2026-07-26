@@ -44,6 +44,7 @@ from hipengine.quant.gguf_q4_k import (
     repack_gguf_q4_k_tile16,
 )
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
+from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro
 from tests.test_gguf_q4_k_selected_wmma_prefill import (
     _TOLERANCE_BF16,
     _bf16_bits_to_float32,
@@ -1589,19 +1590,21 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("residual_passes", "rowvec", "tile_rows"),
+    ("residual_passes", "rowvec", "tile_rows", "qmicro"),
     [
-        (1, False, 32),
-        (1, True, 32),
-        (1, True, 64),
-        (2, False, 32),
-        (3, False, 32),
+        (1, False, 32, False),
+        (1, True, 32, False),
+        (1, True, 64, False),
+        pytest.param(1, True, 64, True, id="rows64-qmicro"),
+        (2, False, 32, False),
+        (3, False, 32, False),
     ],
 )
 def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     residual_passes: int,
     rowvec: bool,
     tile_rows: int,
+    qmicro: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from tests.test_gguf_k_t16_selected_wmma_prefill import (
@@ -1643,10 +1646,13 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     host_out = np.zeros(
         (fixture.compact_rows, fixture.out_features), dtype=np.uint16
     )
-    host_baseline = (
-        np.zeros_like(host_out)
-        if rowvec and tile_rows == 32
-        else None
+    host_baseline = np.zeros_like(host_out) if (
+        (rowvec and tile_rows == 32) or qmicro
+    ) else None
+    candidate_tiles = (
+        repack_gguf_q6_k_tile16_qmicro(fixture.qweight).tiles
+        if qmicro
+        else fixture.tiles
     )
     bufs = []
     try:
@@ -1655,7 +1661,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             expert_start_mmq32,
             fixture.expert_start_compact,
             tile_expert,
-            fixture.tiles,
+            candidate_tiles,
         )
         for arr in arrays:
             dev = malloc(arr.nbytes, runtime=runtime)
@@ -1693,6 +1699,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             residual_passes=residual_passes,
             rowvec=rowvec,
             tile_rows=tile_rows,
+            qmicro=qmicro,
             library=library,
             runtime=runtime,
         )
@@ -1701,12 +1708,24 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         if host_baseline is not None:
             baseline_dev = malloc(host_out.nbytes, runtime=runtime)
             bufs.append(baseline_dev)
+            baseline_tiles_dev = bufs[4]
+            if qmicro:
+                baseline_tiles_dev = malloc(
+                    fixture.tiles.nbytes,
+                    runtime=runtime,
+                )
+                bufs.append(baseline_tiles_dev)
+                copy_host_to_device(
+                    baseline_tiles_dev,
+                    host_array_ptr(fixture.tiles),
+                    runtime=runtime,
+                )
             gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
                 q8_dev.ptr,
                 bufs[2].ptr,
                 bufs[1].ptr,
                 bufs[3].ptr,
-                bufs[4].ptr,
+                baseline_tiles_dev.ptr,
                 baseline_dev.ptr,
                 fixture.compact_rows,
                 fixture.in_features,
@@ -1714,6 +1733,8 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
                 fixture.num_experts,
                 mmq_total_rows,
                 residual_passes=residual_passes,
+                rowvec=rowvec if qmicro else False,
+                tile_rows=tile_rows if qmicro else 32,
                 library=library,
                 runtime=runtime,
             )

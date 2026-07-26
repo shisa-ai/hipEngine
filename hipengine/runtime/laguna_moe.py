@@ -230,6 +230,7 @@ class LagunaMoEKernelPlan:
     expert_ffn_size: int
     shared_ffn_size: int
     routed_scaling_factor: float
+    q6_qmicro: bool
     router_logits_key: KernelKey
     router_logits_keys: Mapping[str, KernelKey]
     router_select_key: KernelKey
@@ -421,6 +422,7 @@ def resolve_laguna_moe_plan(
     config: LagunaGGUFConfig,
     *,
     backend: str,
+    q6_qmicro: bool | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -444,6 +446,11 @@ def resolve_laguna_moe_plan(
         raise ValueError("Laguna shared FFN size must be divisible by GGUF K block size 256")
 
     load_backend_kernel_package(backend)
+    selected_q6_qmicro = bool(
+        backend_package_capability(backend, "LAGUNA_Q6_QMICRO", False)
+        if q6_qmicro is None
+        else q6_qmicro
+    )
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
         "router_select": KernelKey(
@@ -715,6 +722,7 @@ def resolve_laguna_moe_plan(
         expert_ffn_size=config.expert_feed_forward_length,
         shared_ffn_size=config.expert_shared_feed_forward_length,
         routed_scaling_factor=config.expert_weights_scale,
+        q6_qmicro=selected_q6_qmicro,
         router_logits_key=keys["router_logits"],
         router_logits_keys=router_logits_keys,
         router_select_key=keys["router_select"],
@@ -1337,6 +1345,11 @@ def _launch_selected_down_t16(
         plan.expert_count,
         plan.expert_ffn_size,
         plan.hidden_size,
+        **(
+            {"qmicro": True}
+            if plan.q6_qmicro and route.key.quant == "gguf_q6_k_t16_v1"
+            else {}
+        ),
         **_stage_kwargs(route.library_key, libraries, stream=stream, runtime=runtime),
     )
 
@@ -1554,8 +1567,9 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
             {
                 "residual_passes": residual_passes,
                 "tile_rows": tile_rows,
+                "qmicro": plan.q6_qmicro,
             }
-            if weight.spec.quant_key == "gguf_q6_k_t16_v1"
+            if plan.q6_qmicro and weight.spec.quant_key == "gguf_q6_k_t16_v1"
             else {}
         ),
         rowvec=rowvec,
@@ -1650,6 +1664,11 @@ def _launch_grouped_smallm_down(
         plan.expert_ffn_size,
         plan.hidden_size,
         plan.expert_count,
+        **(
+            {"qmicro": True}
+            if plan.q6_qmicro and weight.spec.quant_key == "gguf_q6_k_t16_v1"
+            else {}
+        ),
         **_stage_kwargs(
             "grouped_down", libraries, stream=stream, runtime=active_runtime
         ),

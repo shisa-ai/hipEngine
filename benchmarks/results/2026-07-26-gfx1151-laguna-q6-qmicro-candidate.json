@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_t16_qmicro_candidate",
+  "status": "retained_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": "actual-weight selected-down leaf only; production headline remains 526.451 tok/s pending clean selector-unset publication",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "weight": "blk.1.ffn_down_exps.weight",
+    "weight_shape": [256, 192, 4, 3360],
+    "weight_nbytes": 660602880
+  },
+  "candidate": {
+    "scope": "Q6 selected-down expert tensors only; root Q6 lm_head and other backends retain legacy T16",
+    "layout": "unchanged 288-byte d/scales metadata plus byte-neutral [K32][col4][K4][QL8,QH4] 12-byte records",
+    "tile_bytes": 3360,
+    "cache_policy": "existing legacy repacked-cache fingerprint remains valid; Q6 expert-down tensors convert once on host before upload",
+    "runtime_policy": "gfx1151 backend capability selects qmicro; explicit session false is the rollback"
+  },
+  "validation": {
+    "red": "Direct decode, selected-prefill, grouped-small-M, and materialization tests first failed on absent qmicro consumers/policy.",
+    "green": "Focused qmicro/repack/selected-prefill/decode/materialization/production-shape MoE gates pass; Q6 qmicro direct, grouped, and MMQ outputs match legacy BF16 bits.",
+    "tests": [
+      "tests/test_gguf_t16_repack.py",
+      "tests/test_gguf_t16_selected_gemv_decode.py",
+      "tests/test_gguf_q4_k_q8_1_selected_prefill.py",
+      "tests/test_laguna_gguf_materialize_device.py",
+      "tests/test_laguna_gguf_materialize_gpu.py",
+      "tests/test_laguna_moe_gpu.py"
+    ],
+    "prefill_bf16_mismatches": 0,
+    "decode_bf16_mismatches": 0,
+    "prefill_checksum": 509500838004,
+    "decode_checksum": 991324999,
+    "tracked_allocations_after": 0
+  },
+  "leaf": {
+    "prebuild_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -c \"from pathlib import Path; from scripts.laguna_target_ar_bench import _compiler_version; from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import build_gguf_q4_k_q8_1_selected_prefill as a; from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv as b; v=_compiler_version(Path('/tmp/laguna_hipcc_version.txt')); a(compiler_version=v, require_cached=False); b(compiler_version=v, require_cached=False)\"",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 11 --warmups 2 --prefill-burst 5 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-qmicro-leaf.json",
+    "protocol": "actual layer-1 660.6 MB Q6 weights; natural M512 routing with 5120 compact and 15808 padded64 rows; top-10 decode experts; HIP events; four-mode counter-rotation",
+    "prefill_legacy_samples_ms": [5.154326, 5.141136, 5.150529, 5.147746, 5.160313, 5.150792, 5.156390, 5.164148, 5.422257, 5.203727, 5.218828],
+    "prefill_qmicro_samples_ms": [5.073252, 5.061486, 5.047513, 5.074166, 5.070169, 5.052360, 5.067879, 5.094145, 5.379861, 5.195921, 5.071448],
+    "prefill_medians_ms": {
+      "legacy": 5.156389617919922,
+      "qmicro": 5.071448135375976,
+      "change_percent": -1.6473053597181653
+    },
+    "decode_legacy_samples_ms": [0.090850, 0.091036, 0.090121, 0.091890, 0.089889, 0.090710, 0.090736, 0.094541, 0.093037, 0.090989, 0.092475],
+    "decode_qmicro_samples_ms": [0.084651, 0.084632, 0.084941, 0.083963, 0.084859, 0.084394, 0.084579, 0.084518, 0.085508, 0.084432, 0.085841],
+    "decode_medians_ms": {
+      "legacy": 0.09098864793777466,
+      "qmicro": 0.08463249802589416,
+      "change_percent": -6.985651568564178
+    },
+    "raw_sha256": "b43d1911d1d0dfa8d0ac3c8bffd64a5336bc792f23fa5b8b8a7b07535ccdc48e"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-qmicro-rocprof-20260726 -- .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 1 --warmups 1 --prefill-burst 2 --decode-burst 4 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-qmicro-rocprof-child.json",
+    "note": "The one-sample profiled child is attribution-only and exited nonzero because profiler overhead made its prefill sample 0.34% slower; performance retention uses the independent 11-sample run.",
+    "prefill_candidate_template": "gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,true,false,128,64,true>",
+    "prefill_resources": {"workgroup_size": 128, "vgpr": 88, "sgpr": 128, "lds_bytes": 5632, "scratch_bytes": 0},
+    "decode_candidate_template": "qk_t16_selected_direct_gemv_kernel<unsigned short,6,true>",
+    "decode_resources": {"workgroup_size": 128, "vgpr": 88, "sgpr": 128, "lds_bytes": 512, "scratch_bytes": 0},
+    "decode_legacy_vgpr": 96,
+    "trace_sha256": "cf3f0a6036fd596d61467f73f25e0bec913c8764dfd900529269a2be91abdf90"
+  },
+  "decision": {
+    "action": "Promote qmicro as the gfx1151 Laguna expert-Q6 resident payload and keep the explicit legacy selector through clean publication.",
+    "reason": "The layout is byte-neutral, every consuming path is BF16-bit exact, actual selected-prefill improves 1.65%, and exact decode improves 6.99%.",
+    "production": "not yet republished; remains 526.451 tok/s until a clean committed selector-unset run",
+    "next": "Run clean selector-unset 512/1K/4K, trace the full Q6 family, then reprofile the production bottleneck table."
+  }
+}

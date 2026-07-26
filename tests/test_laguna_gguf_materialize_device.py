@@ -16,7 +16,10 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
-from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16
+from hipengine.quant.gguf_t16 import (
+    repack_gguf_q6_k_tile16,
+    repack_gguf_q6_k_tile16_qmicro,
+)
 from tests._laguna_synthetic import laguna_tensors, make_laguna_info, tensor_info
 
 
@@ -114,6 +117,31 @@ def test_laguna_materialize_spec_copies_dense_and_raw_source_bytes() -> None:
         weight.free(runtime=runtime)
         assert runtime.buffers == {}
 
+    tensor = tensor_info(
+        "q6_t16_rollback",
+        (2, 16, 256),
+        GGMLQuantizationType.Q6_K,
+    )
+    rng = np.random.default_rng(19)
+    raw = rng.integers(0, 256, size=(2, 16, 210), dtype=np.uint8)
+    expected_legacy = repack_gguf_q6_k_tile16(raw).tiles
+    for backend, q6_qmicro in (
+        ("hip_gfx1151", False),
+        ("hip_gfx1100", None),
+    ):
+        runtime = FakeRuntime()
+        weight = _materialize_spec(
+            _spec_for_tensor("layers.1.ffn_down_exps", tensor),
+            _ArrayReader(tensor.name, raw),
+            device=None,
+            runtime=runtime,
+            backend=backend,
+            q6_qmicro=q6_qmicro,
+        )
+        assert _device_bytes(weight, runtime, "tiles") == expected_legacy.tobytes()
+        weight.free(runtime=runtime)
+        assert runtime.buffers == {}
+
 
 def test_laguna_materialize_spec_matches_pack8_and_t16_repack_payloads() -> None:
     rng = np.random.default_rng(17)
@@ -136,7 +164,7 @@ def test_laguna_materialize_spec_matches_pack8_and_t16_repack_payloads() -> None
             "layers.1.ffn_down_exps",
             tensor_info("q6_t16", (2, 16, 256), GGMLQuantizationType.Q6_K),
             rng.integers(0, 256, size=(2, 16, 210), dtype=np.uint8),
-            repack_gguf_q6_k_tile16,
+            repack_gguf_q6_k_tile16_qmicro,
             ("tiles",),
         ),
     )

@@ -642,6 +642,7 @@ Current progress:
 | Production publication | Complete/current | Clean revision `7b4f2ef82` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle. Cached-only M128 qrow4 scheduling reaches **526.451 tok/s** median with every clean sample **526.288–531.230 tok/s**; matched seven-pair A/B isolates **507.391 -> 528.771 tok/s (+4.214%, 7/7 wins)**. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
+| Q6 qmicro resident payload | Retained gfx1151 candidate; clean publication pending | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
 | LAP-7–LAP-8 | Exact cached-only scheduling admitted | Complete M128 tiles append before cached-only qrow4 while partial, wrapped SWA, verifier, and unmeasured paths retain attend-then-append. Attention falls **219.709 -> 176.580 ms (-19.63%)** with F32-byte-exact primitives and exact full-model state. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, single-wave qhead3, and nine-wave GQA tile sharing remain closed. |
 
 ## Post-500 campaign — 700 production stretch
@@ -714,16 +715,19 @@ Immediate execution queue:
    ms (-19.63%)**. Reopen attention only for an async-copy, supported-library,
    or materially fused-softmax premise; the prior scalar-split, tiled-WMMA,
    head-pair, and nine-wave GQA bodies remain closed.
-2. Attack selected down next. At **203.923 ms** it is the largest mapped
+2. Finish the retained Q6 qmicro production gate. At **203.923 ms**, selected
+   down is the largest mapped
    family below the interim bandwidth floor and sustains only about
    **135.0 GB/s / 61.1%** of the existing read anchor. First split current Q4
    versus Q6 time and requested bytes from the clean trace: Q6 is
    **126.594 ms**, Q4 **72.358 ms**, and packing **4.970 ms**. Q6 K64 staging
    is rejected because VGPR **88 -> 128** and LDS **5,632 -> 11,264 B** move
    the traced Q6 family **126.254 -> 144.607 ms (+14.54%)** and three-pair
-   pp512 **528.123 -> 518.568 tok/s (-1.81%)**. Gate the next distinct exact
-   traffic premise on actual natural routing, BF16 output equality, cached
-   symbol/resource evidence, and matched full-model wall.
+   pp512 **528.123 -> 518.568 tok/s (-1.81%)**. The distinct byte-neutral
+   qmicro premise now passes its actual-weight leaf gate: selected prefill is
+   **1.65%** faster and exact decode is **6.99%** faster with zero BF16
+   mismatches. Run clean selector-unset 512/1K/4K, trace the complete Q6
+   family, and rebuild this table before another down-body change.
    Do not repeat Q4 activation double buffering, Q6 local64, duplicate-decode
    row halves, 64-row Q4 accumulation, or F32 partial spills.
 3. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
@@ -1501,14 +1505,26 @@ scattered packed-quant loads per work item with a byte-neutral contiguous
 resident micro-layout. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json).
 
-Q6 qmicro implementation checkpoint: the CPU materializer/inverse now stores
+Q6 qmicro implementation checkpoint: **retained as the gfx1151 expert-Q6
+candidate pending clean publication**. The CPU materializer/inverse stores
 the unchanged 288-byte `d/scales` metadata followed by records ordered
 `[K32][col4][K4][QL8,QH4]`. Each selected-prefill work item therefore owns one
 aligned 12-byte record instead of twelve scattered byte addresses. The
 transform is bit-lossless and remains exactly **3,360 bytes** per
-16-column/K256 tile, equal to current T16 and raw Q6_K. This is not a
-performance claim or resident promotion; exact decode and prefill consumers
-must pass their independent gates first.
+16-column/K256 tile, equal to legacy T16 and raw Q6_K.
+
+The direct, grouped-small-M, and MMQ consumers are BF16-byte exact. An
+11-sample, counter-rotated actual-weight gate on layer 1 measures natural-M512
+selected prefill **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode
+**0.0910 -> 0.0846 ms (-6.99%)**. Cached tracing observes the intended
+`QMICRO=true` prefill body at local128/VGPR88/LDS5,632B/scratch0 and reduces
+direct-decode VGPR **96 -> 88**. gfx1151 converts only sparse
+`ffn_down_exps` payloads after reading the existing legacy cache, so there is
+no cache rebuild, byte growth, duplicate sidecar, or root-lm-head change.
+gfx1100 and unmeasured backends remain legacy. The clean committed
+selector-unset 512/1K/4K publication and full Q6 family trace are next.
+Evidence:
+[`2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json).
 
 Production evidence:
 

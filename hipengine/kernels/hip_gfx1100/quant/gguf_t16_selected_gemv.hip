@@ -56,6 +56,8 @@ constexpr int Q6_T16_SCALE_OFFSET = Q6_T16_D_OFFSET + T16_COLS * 2;
 constexpr int Q6_T16_QL_OFFSET = Q6_T16_SCALE_OFFSET + Q6_GROUPS16 * T16_COLS;
 constexpr int Q6_T16_QH_OFFSET = Q6_T16_QL_OFFSET + QK_K * (T16_COLS / 2);
 constexpr int Q6_T16_BLOCK_BYTES = Q6_T16_QH_OFFSET + QK_K * (T16_COLS / 4);
+constexpr int Q6_T16_QMICRO_OFFSET = Q6_T16_QL_OFFSET;
+constexpr int Q6_T16_QMICRO_RECORD_BYTES = 12;
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
@@ -232,6 +234,29 @@ __device__ inline uint8_t t16_q6_quant_unsigned(const uint8_t* __restrict__ tile
 
 __device__ inline int t16_q6_quant(const uint8_t* __restrict__ tile, int k_in_block, int col) {
   return static_cast<int>(t16_q6_quant_unsigned(tile, k_in_block, col)) - 32;
+}
+
+__device__ inline int t16_q6_qmicro_quant(
+    const uint8_t* __restrict__ tile,
+    int k_in_block,
+    int col) {
+  const int subblock = k_in_block >> 5;
+  const int pack = (k_in_block & 31) >> 2;
+  const int k4 = k_in_block & 3;
+  const int col_quartet = col >> 2;
+  const int col4 = col & 3;
+  const int record_index =
+      (subblock * (T16_COLS / 4) + col_quartet) * 8 + pack;
+  const uint8_t* __restrict__ record =
+      tile + Q6_T16_QMICRO_OFFSET +
+      record_index * Q6_T16_QMICRO_RECORD_BYTES;
+  const uint8_t low_packed = record[k4 * 2 + (col4 >> 1)];
+  const uint8_t low =
+      (col4 & 1) ? (low_packed >> 4) : (low_packed & 0x0Fu);
+  const uint8_t high_packed = record[8 + k4];
+  const uint8_t high =
+      (high_packed >> (2 * col4)) & 0x03u;
+  return static_cast<int>(low | (high << 4)) - 32;
 }
 
 template <typename scalar_t>
@@ -792,7 +817,7 @@ __global__ __launch_bounds__(128, 2) void q4_k_t16_selected_dual_grouped_smallm_
 // Exact grouped Q4/Q6 single projection used by Laguna's down path. Four-row
 // buckets share each decoded 16-column T16 weight tile while preserving the
 // direct kernel's per-row accumulation/reduction association.
-template <typename scalar_t, int qtype>
+template <typename scalar_t, int qtype, bool qmicro = false>
 __global__ __launch_bounds__(128, 2) void qk_t16_selected_grouped_smallm_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,
@@ -865,8 +890,10 @@ __global__ __launch_bounds__(128, 2) void qk_t16_selected_grouped_smallm_kernel(
                 reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
             const float scale =
                 d * static_cast<float>(scales[g16 * T16_COLS + col]);
-            const float q =
-                static_cast<float>(t16_q6_quant(tile, k_in_block, col));
+            const float q = static_cast<float>(
+                qmicro
+                    ? t16_q6_qmicro_quant(tile, k_in_block, col)
+                    : t16_q6_quant(tile, k_in_block, col));
             wv = scale * q;
           }
 #pragma unroll
@@ -1445,7 +1472,7 @@ __global__ __launch_bounds__(128, 4) void q4_k_t16_selected_dual_q8_1_dp4a_direc
   }
 }
 
-template <typename scalar_t, int qtype>
+template <typename scalar_t, int qtype, bool qmicro = false>
 __global__ __launch_bounds__(128, 2) void qk_t16_selected_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ selected,
@@ -1505,13 +1532,59 @@ __global__ __launch_bounds__(128, 2) void qk_t16_selected_direct_gemv_kernel(
         }
       } else {
         const int g16 = k_in_block >> 4;
+        const int8_t* __restrict__ scales =
+            reinterpret_cast<const int8_t*>(
+                tile + Q6_T16_SCALE_OFFSET);
+        if constexpr (qmicro) {
+          const int subblock = k_in_block >> 5;
+          const int pack = (k_in_block & 31) >> 2;
+          const int k4 = k_in_block & 3;
 #pragma unroll
-        for (int col = 0; col < T16_COLS; ++col) {
-          const float d = fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
-          const int8_t* __restrict__ scales = reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
-          const float scale = d * static_cast<float>(scales[g16 * T16_COLS + col]);
-          const float q = static_cast<float>(t16_q6_quant(tile, k_in_block, col));
-          acc[col] += xv * (scale * q);
+          for (int col_quartet = 0;
+               col_quartet < T16_COLS / 4;
+               ++col_quartet) {
+            const int record_index =
+                (subblock * (T16_COLS / 4) + col_quartet) * 8 +
+                pack;
+            const uint8_t* __restrict__ record =
+                tile + Q6_T16_QMICRO_OFFSET +
+                record_index * Q6_T16_QMICRO_RECORD_BYTES;
+            const uint16_t low_pair =
+                reinterpret_cast<const uint16_t*>(record)[k4];
+            const uint8_t high_packed = record[8 + k4];
+#pragma unroll
+            for (int col4 = 0; col4 < 4; ++col4) {
+              const int col = col_quartet * 4 + col4;
+              const uint8_t low_byte =
+                  static_cast<uint8_t>(
+                      low_pair >> (8 * (col4 >> 1)));
+              const uint8_t low =
+                  (col4 & 1) ? (low_byte >> 4)
+                             : (low_byte & 0x0Fu);
+              const uint8_t high =
+                  (high_packed >> (2 * col4)) & 0x03u;
+              const int q =
+                  static_cast<int>(low | (high << 4)) - 32;
+              const float d = fp16_bytes_to_float(
+                  tile + Q6_T16_D_OFFSET + col * 2);
+              const float scale =
+                  d * static_cast<float>(
+                          scales[g16 * T16_COLS + col]);
+              acc[col] += xv * (scale * static_cast<float>(q));
+            }
+          }
+        } else {
+#pragma unroll
+          for (int col = 0; col < T16_COLS; ++col) {
+            const float d = fp16_bytes_to_float(
+                tile + Q6_T16_D_OFFSET + col * 2);
+            const float scale =
+                d * static_cast<float>(
+                        scales[g16 * T16_COLS + col]);
+            const float q = static_cast<float>(
+                t16_q6_quant(tile, k_in_block, col));
+            acc[col] += xv * (scale * q);
+          }
         }
       }
     }
@@ -2028,7 +2101,7 @@ int launch_q4_dual_grouped_smallm(const void* x,
   return hipGetLastError();
 }
 
-template <typename scalar_t, int qtype>
+template <typename scalar_t, int qtype, bool qmicro = false>
 int launch_qk_grouped_smallm(const void* x,
                              const void* expert_start_compact,
                              const void* active_experts,
@@ -2055,8 +2128,8 @@ int launch_qk_grouped_smallm(const void* x,
   const dim3 block(128);
   const dim3 grid(static_cast<unsigned int>(grid_blocks));
   hipLaunchKernelGGL(
-      (qk_t16_selected_grouped_smallm_kernel<scalar_t, qtype>), grid, block, 0,
-      stream, reinterpret_cast<const scalar_t*>(x),
+      (qk_t16_selected_grouped_smallm_kernel<scalar_t, qtype, qmicro>), grid,
+      block, 0, stream, reinterpret_cast<const scalar_t*>(x),
       reinterpret_cast<const int64_t*>(expert_start_compact),
       reinterpret_cast<const int64_t*>(active_experts),
       reinterpret_cast<const int64_t*>(active_count),
@@ -2191,7 +2264,7 @@ int launch_q4_dual_q8_1_dp4a_direct(const void* xq,
 }
 
 
-template <typename scalar_t, int qtype>
+template <typename scalar_t, int qtype, bool qmicro = false>
 int launch_qk_direct(const void* x,
                      const void* selected,
                      const void* tiles,
@@ -2209,7 +2282,7 @@ int launch_qk_direct(const void* x,
   }
   const dim3 block(128);
   const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
-  hipLaunchKernelGGL((qk_t16_selected_direct_gemv_kernel<scalar_t, qtype>), grid, block, 0, stream,
+  hipLaunchKernelGGL((qk_t16_selected_direct_gemv_kernel<scalar_t, qtype, qmicro>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const int64_t*>(selected),
                      reinterpret_cast<const uint8_t*>(tiles), reinterpret_cast<scalar_t*>(out),
                      x_rows, rows, in_features, out_features, num_experts);
@@ -2425,6 +2498,15 @@ extern "C" int hipengine_gguf_q6_k_t16_selected_gemv_bf16_bf16_out(
                                       stream);
 }
 
+extern "C" int hipengine_gguf_q6_k_t16_qmicro_selected_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_direct<uint16_t, 6, true>(
+      x, selected, tiles, out, x_rows, rows, in_features, out_features,
+      num_experts, stream);
+}
+
 extern "C" int hipengine_gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out(
     const void* x, const void* selected, const void* tiles, void* out,
     int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
@@ -2471,6 +2553,16 @@ extern "C" int hipengine_gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out(
     void* out, int64_t compact_rows, int64_t in_features,
     int64_t out_features, int64_t num_experts, hipStream_t stream) {
   return launch_qk_grouped_smallm<uint16_t, 6>(
+      x, expert_start_compact, active_experts, active_count, tiles, out,
+      compact_rows, in_features, out_features, num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_t16_qmicro_selected_grouped_smallm_bf16_bf16_out(
+    const void* x, const void* expert_start_compact,
+    const void* active_experts, const void* active_count, const void* tiles,
+    void* out, int64_t compact_rows, int64_t in_features,
+    int64_t out_features, int64_t num_experts, hipStream_t stream) {
+  return launch_qk_grouped_smallm<uint16_t, 6, true>(
       x, expert_start_compact, active_experts, active_count, tiles, out,
       compact_rows, in_features, out_features, num_experts, stream);
 }
