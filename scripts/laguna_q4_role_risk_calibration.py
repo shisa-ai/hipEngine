@@ -59,6 +59,70 @@ _DEFAULT_THRESHOLDS = (
     48.0,
     64.0,
 )
+_FEATURE_THRESHOLDS = {
+    "half_scale_ratio_max": _DEFAULT_THRESHOLDS,
+    "half_scale_ratio_p95": _DEFAULT_THRESHOLDS,
+    "half_scale_ratio_mean_log2": (
+        0.25,
+        0.3,
+        0.35,
+        0.4,
+        0.45,
+        0.5,
+        0.75,
+        1.0,
+    ),
+    "half_scale_ratio_fraction_gt2": (
+        0.0,
+        1.0 / 96.0,
+        2.0 / 96.0,
+        4.0 / 96.0,
+        8.0 / 96.0,
+        16.0 / 96.0,
+        32.0 / 96.0,
+    ),
+    "activation_abs_max": (
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0,
+        3.0,
+        4.0,
+        6.0,
+        8.0,
+        12.0,
+        16.0,
+        24.0,
+        32.0,
+        64.0,
+    ),
+    "d4_vs_d8_delta_relative_l2": (
+        0.004,
+        0.00425,
+        0.0045,
+        0.00475,
+        0.005,
+        0.00525,
+        0.0055,
+        0.006,
+        0.007,
+        0.008,
+    ),
+    "d4_vs_d8_delta_max_abs": (
+        0.0025,
+        0.005,
+        0.0075,
+        0.01,
+        0.0125,
+        0.015,
+        0.02,
+        0.03,
+        0.05,
+        0.1,
+        0.2,
+    ),
+}
 
 
 def _bf16_bits_to_f32(values: np.ndarray) -> np.ndarray:
@@ -429,35 +493,21 @@ def _summarize(
         "half_scale_ratio_p95",
         "half_scale_ratio_mean_log2",
         "half_scale_ratio_fraction_gt2",
+        "activation_abs_max",
         "d4_vs_d8_delta_relative_l2",
         "d4_vs_d8_delta_max_abs",
     )
-    threshold_sets = {
-        "half_scale_ratio_max": _DEFAULT_THRESHOLDS,
-        "half_scale_ratio_p95": _DEFAULT_THRESHOLDS,
-    }
-    for feature in features:
-        if feature not in threshold_sets:
-            threshold_sets[feature] = tuple(
-                float(value)
-                for value in np.unique(
-                    np.quantile(
-                        combined[feature],
-                        (0.5, 0.75, 0.9, 0.95, 0.975, 0.99),
-                    )
-                )
-            )
     sweeps = {
         feature: _threshold_sweep(
             combined[feature],
             combined[error_key],
-            thresholds=threshold_sets[feature],
+            thresholds=_FEATURE_THRESHOLDS[feature],
         )
         for feature in features
     }
     best_bounded = {}
     for feature, rows in sweeps.items():
-        eligible = [row for row in rows if row["repair_fraction"] <= 0.25]
+        eligible = [row for row in rows if row["repair_fraction"] <= 0.251]
         best_bounded[feature] = (
             max(eligible, key=lambda row: row["error_mass_coverage"])
             if eligible

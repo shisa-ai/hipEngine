@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from scripts.laguna_q4_role_risk_calibration import (
+    _FEATURE_THRESHOLDS,
     _activation_risk_features,
     _aggregate_role_error,
     _bf16_bits_to_f32,
@@ -65,6 +66,15 @@ def test_threshold_sweep_reports_repair_and_error_coverage() -> None:
     assert rows[1]["repair_fraction"] == 0.25
     assert rows[1]["error_mass_coverage"] == pytest.approx(0.8)
     assert rows[1]["severe_row_coverage"] == 1.0
+
+
+def test_calibration_thresholds_are_fixed_and_transferable() -> None:
+    assert 0.01 in _FEATURE_THRESHOLDS["d4_vs_d8_delta_max_abs"]
+    assert 1.0 in _FEATURE_THRESHOLDS["activation_abs_max"]
+    assert all(
+        tuple(sorted(thresholds)) == tuple(thresholds)
+        for thresholds in _FEATURE_THRESHOLDS.values()
+    )
 
 
 def test_select_prompts_declares_calibration_subset() -> None:

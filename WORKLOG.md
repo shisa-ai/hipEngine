@@ -183694,3 +183694,18 @@ Vulkan local sizes verbatim will close the measured gap.
   RED/GREEN tests cover BF16 conversion, half-scale risk, compact aggregation,
   threshold coverage, and declared calibration subsets. `py_compile` and
   `git diff --check` pass. No production dispatch changed.
+
+## 2026-07-27 — Establish a transferable Q4 row-risk signal
+
+- The first clean stress calibration uses all **47 x 512 = 24,064** real
+  producer rows from the extended `code_lru_cache` stream, the worst prior
+  M512 quality failure. Production D8 state remains authoritative throughout.
+- Maximum D4-vs-D8 activation reconstruction delta is the first useful
+  signal: repairing **10.007%** of rows captures **56.208%** of route-weighted
+  SiLU error and **80.913%** of the worst 1% rows; the ~25% point captures
+  **91.666%/97.925%**. Half-scale ratio alone is much weaker.
+- Corrected the next calibration report to use fixed, transferable thresholds
+  rather than prompt-local quantiles and added raw activation max as the
+  cheaper producer-side alternative. The prompt is calibration data only;
+  the candidate policy remains global and activation-only. Raw diagnostic:
+  `/tmp/2026-07-27-gfx1151-laguna-q4-role-risk-code-lru.raw.json`.

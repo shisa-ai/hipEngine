@@ -1521,9 +1521,11 @@ now decides whether repair work is needed:
    calibration harness: production D8 preserves every hidden state, then D4
    and D8 role projections are compared on the real 512-row layer inputs.
    It reports global threshold sweeps in repair-row fraction, weighted SiLU
-   error-mass coverage, and severe-row coverage. Proceed to a GPU repair
-   candidate only if one activation-only threshold captures useful error at
-   no more than **25%** repaired producer rows.
+   error-mass coverage, and severe-row coverage. Thresholds are fixed across
+   calibration and heldout prompts; they are not derived from each prompt's
+   quantiles. Proceed to a GPU repair candidate only if one activation-only
+   threshold captures useful error at no more than **25%** repaired producer
+   rows.
 3. Remeasure a clean production trace after candidate cleanup. Reopen another
    exact family only if the trace gives it at least a **5% perfect-removal
    ceiling** or a newly supported hipBLASLt/grouped-contraction algorithm
