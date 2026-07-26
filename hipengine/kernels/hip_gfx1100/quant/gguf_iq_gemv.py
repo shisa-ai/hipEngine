@@ -15,6 +15,7 @@ _QK_K = 256
 _ALLOWED_THREADS = frozenset({64, 128, 256})
 _IQ2_LOCAL64_THREADS = frozenset({64})
 _IQ3_WAVE4_THREADS = frozenset({32})
+_IQ3_WAVE10_THREADS = 320
 _SYMBOL_IQ2_SELECTED_TILE1 = "hipengine_gguf_iq2_xs_selected_gemv_bf16_bf16_out"
 _SYMBOL_IQ2_SELECTED = (
     "hipengine_gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out"
@@ -40,6 +41,9 @@ _SYMBOL_IQ3_SELECTED_K1024_WAVE4 = (
 )
 _SYMBOL_IQ3_SELECTED_K1024_WAVE4_SIGNBIT = (
     "hipengine_gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out"
+)
+_SYMBOL_IQ3_WEIGHTED_DOWN_K1024_WAVE10 = (
+    "hipengine_gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out"
 )
 _SYMBOL_IQ3_SELECTED_TILE4 = (
     "hipengine_gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out"
@@ -316,6 +320,79 @@ def gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out(
         runtime=runtime,
         allowed_threads=_IQ3_WAVE4_THREADS,
     )
+
+
+def gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    routing_weights_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    tokens: int,
+    top_k: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    threads: int = _IQ3_WAVE10_THREADS,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    for name, pointer in (
+        ("x_ptr", x_ptr),
+        ("selected_ptr", selected_ptr),
+        ("routing_weights_ptr", routing_weights_ptr),
+        ("qweight_ptr", qweight_ptr),
+        ("out_ptr", out_ptr),
+    ):
+        if not pointer:
+            raise ValueError(f"{name} must be non-zero")
+    if tokens != 1:
+        raise ValueError("tokens must be exactly 1")
+    if top_k != 10:
+        raise ValueError("top_k must be exactly 10")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    if in_features != 1024:
+        raise ValueError("in_features must be exactly 1024")
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if threads != _IQ3_WAVE10_THREADS:
+        raise ValueError("threads must be exactly 320")
+    library = library or build_gguf_iq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_IQ3_WEIGHTED_DOWN_K1024_WAVE10)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(routing_weights_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def _gguf_iq3_xxs_selected_gemv_output_tile_bf16_bf16_out(
@@ -1031,6 +1108,11 @@ def register_gguf_iq_gemv_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq3_xxs",
+            "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out",
+            gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq3_xxs",
             "selected_weighted_down_gemv_decode_bf16_bf16_out",
             gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
         ),
@@ -1071,6 +1153,7 @@ __all__ = [
     "gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out",
     "gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out",
+    "gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out",
     "gguf_iq4_xs_selected_gemv_bf16_bf16_out",
     "gguf_iq4_xs_weighted_selected_down_bf16_bf16_out",
     "iq3_selected_default_threads",
