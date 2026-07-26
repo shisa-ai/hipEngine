@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_down_paired_scales_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "scope": "Q6 selected down only; Q4 direct wave-column down held constant",
+    "geometry": "64 output columns x 64 routed rows, local128",
+    "production": "two threads per output column independently load the FP16 block multiplier and one adjacent int8 scale",
+    "candidate": "one thread per output column loads the FP16 block multiplier once and computes both adjacent int8 scales",
+    "arithmetic_intent": "preserve all packed weights, dots, FP32 K order, and BF16 stores while removing 64 redundant FP16 multiplier loads per K32"
+  },
+  "validation": {
+    "red": "The new rows64-paired-scales primitive failed because the wrapper had no paired_scales contract.",
+    "green": "The candidate passed the uneven/empty-expert CPU-reference quality gate and is BF16-byte exact versus production.",
+    "full_model_next_token": 2930,
+    "complete_state_gate": "not run because neither the traced family nor aggregate performance improved",
+    "production_restored_byte_for_byte": true
+  },
+  "full_model": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_rows64_ab.py --repetitions 5 --require-cached-build --output /tmp/laguna-q6-paired-scales-screen.json",
+    "protocol": "one resident owner; both modes warmed; five counter-rotated synchronized pp512 pairs; model load excluded",
+    "production_samples_tok_s": [
+      529.2098492,
+      530.9926348,
+      530.0778366,
+      527.1219653,
+      528.4809468
+    ],
+    "production_median_tok_s": 529.2098492,
+    "candidate_samples_tok_s": [
+      528.7928338,
+      530.8208609,
+      529.3339495,
+      527.9584904,
+      534.0427975
+    ],
+    "candidate_median_tok_s": 529.3339495,
+    "change_percent": 0.023450111555489705,
+    "candidate_pair_wins": 3,
+    "pairs": 5,
+    "raw_sha256": "3bf727686f508c278235ae72176b8daa549bfbbe24f319c4ac632c7f27c3641f"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-paired-scales-rocprof -- .venv/bin/python3 -u scripts/laguna_q6_rows64_ab.py --repetitions 1 --require-cached-build --output /tmp/laguna-q6-paired-scales-rocprof-child.json",
+    "production_q6_ms": 126.899108,
+    "candidate_q6_ms": 126.947163,
+    "change_percent": 0.0378686665000183,
+    "production_median_call_us": 5501.924,
+    "candidate_median_call_us": 5506.452,
+    "production_resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "candidate_resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "445895adb5321a24f8bfb1d46a9f4d8ac150a3d5142d9fa4ea2d50ac01c3c144"
+  },
+  "decision": {
+    "action": "Reject and remove the paired-scale kernel specialization, wrapper option, runtime mode, test parameter, and benchmark mode.",
+    "reason": "The aggregate median is noise at +0.023%, while the traced Q6 family is 0.038% slower with unchanged resources; scale metadata loads are not the limiter.",
+    "production": "unchanged at the clean 526.451 tok/s selector-unset baseline",
+    "next": "Keep Q6 rows64/local128/K32 and attack the twelve scattered packed-quant loads per work item with a byte-neutral contiguous resident micro-layout."
+  }
+}

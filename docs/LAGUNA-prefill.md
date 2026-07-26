@@ -1484,6 +1484,23 @@ decisively negative: VGPR rises **88 -> 128**, LDS doubles
 test, and harness candidate surfaces were removed. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json).
 
+Thirty-eighth post-350 screen: **Q6 paired-scale metadata decode neutral and
+removed**. Production uses two threads per output column to load the same FP16
+block multiplier and one adjacent int8 scale each. The candidate used one
+thread per column to load the multiplier once and compute both scales. It kept
+the resident bytes, quant decode, packed dots, FP32 K order, and BF16 boundary
+unchanged.
+
+The uneven/empty-expert oracle is BF16-byte exact. Five counter-rotated pp512
+pairs are noise at **529.210 -> 529.334 tok/s (+0.023%, 3/5 wins)**, and cached
+tracing moves Q6 slightly backward **126.899 -> 126.947 ms (+0.038%)** while
+both bodies remain local128/VGPR88/LDS5632B/scratch0. Therefore scale metadata
+traffic is not the limiter. All kernel, wrapper, runtime, test, and harness
+candidate surfaces were removed. The next Q6 premise attacks its twelve
+scattered packed-quant loads per work item with a byte-neutral contiguous
+resident micro-layout. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-attention-preappend-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json)
@@ -2104,6 +2121,8 @@ Do not repeat:
   `slc dlc` screen regress decisively;
 - Q6 K64 multi-stage synchronization: doubling live stages raises VGPR
   **88 -> 128**, doubles LDS, and regresses the traced family **14.54%**;
+- Q6 paired-scale metadata decode: removing the duplicate FP16 multiplier load
+  leaves the traced family flat/slower, so metadata traffic is not the limiter;
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - single-wave qrow4 two-head GQA fusion; exact K/V reuse regresses all measured
   512/1K/4K diagnostic lengths;

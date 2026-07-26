@@ -180692,3 +180692,29 @@ Vulkan local sizes verbatim will close the measured gap.
   are byte-identical to `46dcd697e`. Production remains **526.451 tok/s**.
   Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`.
+
+## 2026-07-26 — Reject Q6 selected-down paired-scale metadata decode
+
+- Screened a Q6-only rows64/local128 specialization in which one thread per
+  output column loaded the FP16 block multiplier once and computed both
+  adjacent int8 scales. Production uses two threads per column and reloads the
+  multiplier. All packed weights, dots, FP32 K order, and BF16 stores remain
+  unchanged. RED first failed because the wrapper had no `paired_scales`
+  contract; GREEN passed the uneven/empty-expert oracle with BF16-byte parity.
+- One-owner five-pair pp512 production samples are
+  **529.210/530.993/530.078/527.122/528.481 tok/s**; candidate samples are
+  **528.793/530.821/529.334/527.958/534.043 tok/s**. Medians are
+  **529.210 -> 529.334 tok/s (+0.023%, 3/5 wins)**, always token 2930.
+  Raw SHA-256 is
+  `3bf727686f508c278235ae72176b8daa549bfbbe24f319c4ac632c7f27c3641f`.
+- Cached tracing records production Q6 **126.899108 ms** and candidate
+  **126.947163 ms (+0.038%)**. Both are local128/VGPR88/LDS5632B/scratch0,
+  so removing the redundant metadata load does not improve the actual family.
+  Trace SHA-256 is
+  `445895adb5321a24f8bfb1d46a9f4d8ac150a3d5142d9fa4ea2d50ac01c3c144`.
+- Removed the candidate HIP specialization, wrapper option, runtime mode, test
+  parameter, and harness mode; production code/tests are byte-identical to
+  `51dd900f6`. Production remains **526.451 tok/s**. The next Q6 screen will
+  target the twelve scattered packed-quant loads per work item with a
+  byte-neutral contiguous resident micro-layout. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json`.
