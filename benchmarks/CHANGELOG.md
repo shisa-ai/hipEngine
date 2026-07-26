@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna planar-Q6 production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / selector-unset byte-neutral planar qmicro publishes **571.415/529.870/445.164 -> 573.354/530.351/446.189 tok/s (+0.339%/+0.091%/+0.230%)**, with planar=true, permute=false, deterministic tokens/positions, and full allocation recovery; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`.
+
 - [retained exact gfx1151 Laguna planar-Q6 candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / direct qmicro dwords improve the actual Q6 leaf **4.7718 -> 4.7568 ms (-0.314%)** and c1 decode **1.736%**; two opposite resident-owner-order pp512 blocks are aggregate-neutral at **+0.013% mean/+0.139% median** with complete state exact, satisfying the verified-subwindow retention rule; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-candidate.json`.
 
 - [positive exact gfx1151 Laguna planar-Q6 leaf] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral qmicro record reordering removes two prefill byte gathers while preserving exact c1/c2/c4/c8 decode; the actual 660.6-MB layer improves **4.7718 -> 4.7568 ms (-0.314%)**, c1 decode improves **0.08564 -> 0.08415 ms (-1.736%)**, and clean tracing confirms local128/VGPR80/LDS5120B/scratch0; full-model integration remains; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`.

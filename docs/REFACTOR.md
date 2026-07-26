@@ -1404,6 +1404,9 @@ should be boring.
   one later selected-down checkpoint, then remove the constructor/profile
   override and obsolete production permute selector. Preserve legacy and
   interleaved qmicro fallbacks for unmeasured backends and rollback caches.
+- Clean selector-unset publication is satisfied at
+  **573.354/530.351/446.189 tok/s**, improving every preceding production
+  length. The one-later-selected-down checkpoint remains open.
 
 ## Laguna source-F16 boundary-fusion rollback
 

@@ -73,10 +73,11 @@ screen is now rejected at **-0.198%, 1/7 wins**. Scheduling is frozen at the
 after-router, least-priority boundary. Two byte permutes now replace scalar
 Q6 qmicro quartet unpack without changing resident bytes or arithmetic: the
 actual leaf improves **2.67%**, tracing cuts the 115-call Q6 body **1.23%**,
-and clean selector-unset production reaches
-**571.415/529.870/445.164 tok/s**. The next bounded screen keeps the same
-12-byte record but stores its low nibbles as planar `ql01`/`ql23` dwords so
-the consumer can remove even those two gathers.
+and clean selector-unset planar-Q6 production reaches
+**573.354/530.351/446.189 tok/s**. The next bounded screen attacks Q4
+gate/up route-tile rereads with two 128-thread row32 teams in one local256
+workgroup, sharing one decoded weight tile while keeping 32 accumulators per
+lane.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -90,8 +91,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **571.415 tok/s**
-selector-unset, **7.496x** the old row and **65.839%** above the Vulkan
+The quality-admitted production default now measures **573.354 tok/s**
+selector-unset, **7.522x** the old row and **66.402%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -732,7 +733,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | Clean revision `5316d924e` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Exact Q6 qmicro permute decode plus after-router least-priority shared/routed concurrency publishes **571.415/529.870/445.164 tok/s** at 512/1K/4K. Seven queue-matched pairs preserve complete state; cached tracing reaches **573.434 tok/s**, observes the intended **115** permute-body calls, and records **1,696** pp512 dispatches. |
+| Production publication | Complete/current | Clean revision `8c5315a9e` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Byte-neutral planar Q6 plus after-router least-priority shared/routed concurrency publishes **573.354/530.351/446.189 tok/s** at 512/1K/4K. Opposite owner-order integration blocks preserve complete state; selector-unset resolves planar=true/permute=false and returns all allocations. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -746,7 +747,8 @@ Current progress:
 
 The 350 and 500 tok/s milestones prove the compounded production package, but
 they are not roofline results. Current clean production measures **0.896021
-seconds** synchronized pp512 wall. The cached attribution run measures
+seconds** synchronized pp512 wall in the prior permute trace; current planar
+publication measures **0.892991 seconds**. The cached attribution run measures
 **0.892866 seconds** wall, **0.891540 seconds** kernel span, and **1.215058
 seconds** inclusive kernel sum. The sum now exceeds span because two streams
 overlap; inclusive family durations are no longer additive Amdahl savings.
@@ -772,12 +774,12 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
-- The clean production median is **571.415 tok/s**, and cached attribution
+- The clean production median is **573.354 tok/s**, and cached attribution
   independently measures **573.434 tok/s**. The declared 500 gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
-- The clean wall must fall from **896.021 ms** to **731.429 ms** for 700 tok/s,
-  a further **164.592 ms**. Attention-only tuning cannot supply that result;
+- The clean wall must fall from **892.991 ms** to **731.429 ms** for 700 tok/s,
+  a further **161.562 ms**. Attention-only tuning cannot supply that result;
   selected-down traffic, then a new gate/up architecture, must compound with
   any additional attention win. The measured source-F16 grouping ceiling
   cannot materially close the gap.
@@ -1075,7 +1077,7 @@ Immediate execution queue:
    **1,138.893 -> 1,124.852 ms (-1.23%)** with VGPR **88 -> 80**, unchanged
    LDS, and zero scratch. Clean publication reaches
    **571.415/529.870/445.164 tok/s**.
-14. **Retained candidate; publication active:** make the same 12-byte
+14. **Retained production:** make the same 12-byte
    qmicro record planar:
    store its four `ql01` bytes in the first dword, four `ql23` bytes in the
    second, and retain the four high-bit bytes in the third. This is
@@ -1098,8 +1100,19 @@ Immediate execution queue:
    **+0.013% by mean / +0.139% by median**, and the order-adjusted median
    delta is **+0.010 tok/s**: aggregate-neutral, with complete state exact.
    The verified leaf/decode sub-window wins therefore retain and enable
-   `LAGUNA_Q6_QMICRO_PLANAR`; clean selector-unset 512/1K/4K publication is
-   now mandatory.
+   `LAGUNA_Q6_QMICRO_PLANAR`. Clean selector-unset publication reaches
+   **573.354/530.351/446.189 tok/s**, improving all lengths
+   **0.339%/0.091%/0.230%** with deterministic tokens, exact positions, and
+   full allocation recovery.
+15. **Active next screen:** build a cooperative Q4 gate/up
+   **128-column x 64-row/local256** body as two independent 128-thread row32
+   teams. Decode and stage each T16 weight tile once for both teams, but keep
+   each lane at the production 32 FP32 accumulators. This directly targets the
+   measured **1.3026x** Q4 route-tile reread without repeating the rejected
+   local128 row64 body (64 accumulators/lane), 64-column row64 body (duplicate
+   activation loads), or 256-column row32 body (10,240-byte weight tile).
+   Gate on the uneven/empty-expert CPU oracle, actual layer-1 natural routing,
+   and physical requested bytes before full-model integration.
 
 Post-350 exclusions:
 
@@ -2166,11 +2179,13 @@ qualified 12/36/144 dense-initial launch mix. Evidence:
 
 Production evidence:
 
-- [`2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json)
+- [`2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json)
   is current production: clean selector-unset medians are
-  **571.415/529.870/445.164 tok/s** at 512/1K/4K. Two byte gathers preserve
-  the 12-byte record and every output/state digest; the actual leaf improves
-  **2.67%** and tracing cuts the intended 115-call Q6 body **1.23%**.
+  **573.354/530.351/446.189 tok/s** at 512/1K/4K. Planar dwords preserve the
+  12-byte record and every output/state digest; the exact actual leaf improves
+  **0.314%** and c1 decode improves **1.736%**.
+- [`2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json)
+  is the superseded interleaved-qmicro production packet.
 - [`2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json)
   is the superseded scheduling packet: clean selector-unset medians are
   **568.849/527.113/444.508 tok/s** at 512/1K/4K. Seven matched pairs
@@ -2779,7 +2794,7 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**571.415 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+**573.354 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
 active targets.
 
 All headline rows also report canonical category-weighted prefill and
@@ -2937,6 +2952,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`
