@@ -273,18 +273,20 @@ while the primitive and retained **63.270 tok/s / 678-kernel** default remain.
 
 Post-IQ4 re-ranking selects global attention, the largest independent open short
 surface at **0.523579 ms/token / 12 calls**. The exact source-identical sibling
-is now a separately registered gfx1100 primitive: only the two physical-slot
-translations become `base_offsets[0] * 256 + token`, guarded at one page.
-Synthetic/CPU gates pass, all **24/24** actual global-layer outputs at live
-70/126 are F32 byte-exact, and the frozen layer-0/44 event/wall screen improves
-**15.45-17.45%**. Integrated codegen remains **1,008 instructions / 4,864 B**,
-logical VGPR32/SGPR49, private/spills0, and five barriers; cache-only tracing
-names one grid/local **12,288/256** call at **18.360 us**. The
-[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json)
-and [`primitive admission`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json)
-do **not** add a runtime selector or throughput claim. The retained scalar path
-below live 127, split-exact path at live >=127, and canonical **63.270 tok/s /
-678-kernel** default remain unchanged.
+is separately registered on gfx1100 and now has a false/default-off runtime
+screen limited to full-attention c=1 at live<=126. Synthetic/CPU and **24/24**
+actual-layer primitive gates pass; shared-weight bulk prefill, all **48 hidden /
+47 routed** boundaries, 16 transitions crossing live 127, active K/V plus all
+span fields, reset/re-prefill, and lifecycle are exact at KL0/top-1 100%.
+Cache-only tracing records **12 candidate calls/token**, zero scalar-global,
+unchanged **36+36 SWA split calls/token**, and **678 model kernels/token** at
+local256/VGPR32/dynamic-LDS16928/scratch0. The
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json),
+[`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json),
+and [`default-off runtime admission`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json)
+are correctness evidence, not a throughput claim. Default/disable/key miss,
+live>=127, rows/prefill, gfx1151, and unsupported backends retain controls;
+canonical **63.270 tok/s / 678 kernels** remains unchanged.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -2289,12 +2291,20 @@ added. Evidence:
 [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json),
 [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json).
 
-The next separate unit may add only a false/default-off live<=126 owner, then
-must prove exact shared-weight full state, **12-candidate/zero-scalar-global/
-678-kernel** tracing, live>=127 split-exact fallback, both short process orders,
-and both complete 18-prompt natural-completion orders. Any family/kernel/span/
-child/category failure removes runtime ownership; no third order or pooled
-waiver is allowed.
+Default-off runtime admission is now complete. The exact-key fail-closed selector
+runs only for full-attention c=1 at live<=126 after split selection is false.
+Shared-weight full state through 16 transitions, the live-127 split fallback,
+**12-candidate/zero-scalar-global/678-kernel** tracing, unchanged SWA owners,
+exact IDs/resources/lifecycle, and no-compiler gates pass. It adds no allocation,
+workspace, launch, threshold, or default change. Evidence:
+[`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json).
+
+The next unit must freeze both clean process orders at short/512/1K/3968.
+Every order must improve inclusive global attention and complete kernel sum,
+keep span <=+0.5%, child throughput >=-0.5%, and preserve exact **12/678**
+topology/resources/IDs/lifecycle/no-compiler. Only after all eight rows pass may
+both complete 18-prompt natural-completion orders run. Any failure removes the
+runtime owner; no third order or pooled waiver is allowed.
 
 ## 9. Do not chase without new evidence
 
@@ -2356,7 +2366,7 @@ waiver is allowed.
 | What happened after wave10 retention? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-output-only-design.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-output-only-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-output-only-rejected.json): primitive only. Output-family and kernel-sum time improve in both short orders, but profiled-child throughput regresses **1.061%/1.035%**, beyond the frozen -0.5% guard. Runtime integration is removed; long contexts/categories are skipped. |
 | What happened after closing SWAR ownership? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-rejected.json): primitive only after clean rejection. Exhaustive/CPU/**45/45** production/full-state/**45/2/678** trace gates pass. Both short and 512 orders improve IQ3 and kernel sum, but 512 order-B span regresses **0.862%**, beyond +0.5%; pooled span **-0.736%** cannot waive it. Runtime integration is removed; 1K/3968/categories are skipped and canonical **63.270 tok/s** remains unchanged. |
 | What happened after sign-bit ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-design.json), [`certification`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-rejected.json): primitive only after clean rejection. Package/key/backend, edge, CPU, actual-layer, codegen, full-state, and exact **2-IQ4/45-wave10/676-kernel** trace gates pass. Both short orders nevertheless regress inclusive IQ4 **25.515%/25.191%**, kernel sum **0.202%/0.303%**, and span **0.681%/2.198%**. Runtime integration is removed before long contexts/categories; canonical **63.270 tok/s / 678 kernels** remains. |
-| What is selected after IQ4 ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json) and [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json): the exact one-page scalar global-attention sibling is now separately registered on gfx1100. Synthetic/CPU, **24/24** actual-layer, codegen, and cache-only trace gates pass; endpoint event/wall improves **15.45-17.45%**. Runtime ownership is still absent, so canonical **63.270 tok/s / 678 kernels** remains unchanged. |
+| What is selected after IQ4 ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json), and [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json): the exact one-page scalar global-attention sibling is separately registered with a false/default-off gfx1100 live<=126 owner. Primitive/all-layer/full-state and **12-candidate/zero-scalar/678-kernel** trace gates pass; live>=127 remains split-exact. Clean performance is unmeasured, so canonical **63.270 tok/s / 678 kernels** remains unchanged. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
