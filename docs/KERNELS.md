@@ -881,6 +881,22 @@ traces **493.509 tok/s**; absolute quality transfers unchanged at maximum KL
 **0.049542582** and **316/320** top-1
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`).
 
+The production-shaped planar-qmicro Q6 selected-down leaf now has an admitted
+integer-WMMA consumer pending clean selector-unset publication. Four wave32
+groups own independent 16-row bands and issue two signed-int8 x unsigned-Q6
+16x16x16 fragments per K32 from the existing shared weight and compact D4
+activation caches. The body preserves the two K16 scales, `-32*sum(x)`
+correction, ordered FP32 K32 accumulation, BF16 store, resident bytes, and
+row64 metadata. The uneven/empty-expert CPU-reference case and actual
+layer-1 leaf are BF16-byte exact. Twenty-one counter-rotated natural-M512
+pairs improve **4.7654 -> 4.5655 ms (-4.20%, 21/21 wins)**. Cached tracing
+names template `<1,true,false,128,64,true,true,true,true,false,true,true>` at
+local128/VGPR96/SGPR128/LDS5120B/scratch0 versus the retained planar body's
+VGPR80. The wrapper selects it by default only when the already-constrained
+planar-qmicro row64 contract is active; other shapes retain packed-dot
+fallbacks
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`).
+
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate
 halves workgroups and activation staging without the rejected two-columns-per-

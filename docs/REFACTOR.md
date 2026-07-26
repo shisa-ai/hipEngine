@@ -1427,3 +1427,18 @@ should be boring.
 - After promotion and one later source-F16 checkpoint, remove the public
   setter and one-purpose A/B harness while retaining the backend capability,
   fused registered kernels, and registered unfused numerical fallback.
+
+## Laguna Q6 selected-down integer-WMMA leaf selector
+
+- Added 2026-07-26 as the optional `integer_wmma` wrapper argument and matching
+  actual-weight leaf A/B mode. An unspecified value selects integer WMMA only
+  for the already-constrained planar-qmicro/compact/half-row/skip-padded
+  row64 path; `False` preserves the packed-dot comparator.
+- The CPU-reference gate and actual layer-1 leaf are BF16-byte exact. Twenty-one
+  counter-rotated natural-M512 pairs improve **4.7654 -> 4.5655 ms (-4.20%,
+  21/21 wins)** with zero resident-byte change.
+- Keep the explicit comparator through clean selector-unset publication and
+  one refreshed selected-down family trace. Then remove the one-purpose leaf
+  A/B mode and make the admitted production specialization unconditional
+  inside the planar-row64 wrapper while retaining packed-dot bodies for all
+  other template shapes and unmeasured backends.
