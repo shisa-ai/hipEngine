@@ -166,11 +166,14 @@ instruction contraction. Paired-output SWAR reconstruction preserves every Q5
 value and FP32 boundary while sharing nibble/high-bit operations across the two
 rows already owned by one wave. The separately registered repository primitive
 now passes RED/GREEN, CPU-reference, every actual Q5 production boundary,
-codegen, repeated endpoint, and cache-only trace gates. A separate explicit/
-default-off all-or-none owner now also passes exact 16-transition state and
+codegen, repeated endpoint, and cache-only trace gates. A temporary explicit/
+default-off all-or-none owner also passes exact 16-transition state and
 cache-only **47 mixed + 47 output + 46 shared = 140 candidate calls/token / 723
-model kernels/token** admission. Clean-context adjudication has not started;
-defaults/topline remain unchanged.
+model kernels/token** admission, but the frozen short clean gate rejects it.
+Both orders regress the combined Q5 family **0.457%/0.077%**, kernel sum
+**0.280%/0.075%**, and child throughput **0.723%/0.592%**; order A also regresses
+span **0.883%**. Runtime integration is removed, later contexts/categories are
+skipped, and defaults/topline remain unchanged.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -2008,7 +2011,7 @@ allocates VGPR80, all at local32, SGPR128, LDS0, scratch0, finite, with no
 compiler under profiling. The adjacent filtered bundle passes **101/101** after
 excluding only two documented collection-order-sensitive old gfx1151 absence
 assertions and the unchanged stale resolver call; CPU registry/build passes
-**25/25**. Retain the exact primitive. A separate gfx1100 capability now exposes one
+**25/25**. Retain the exact primitive. A temporary gfx1100 capability exposes one
 explicit/default-off all-or-none owner: it selects the direct-output,
 shared-pair, and mixed-projection keys only when all three keys and every
 retained prerequisite are present. Default/no opt-in, any prerequisite disable,
@@ -2024,12 +2027,23 @@ calls**, zero candidate prefill calls, one unchanged layer-47 mixed call, five
 runtime copies, and **723 model kernels**. Mixed runs local32/VGPR80 and direct/
 shared run local32/VGPR72; all use SGPR128, LDS0, scratch0. The layer-47 mixed
 fallback stays local128/VGPR48/LDS1024/scratch0, IDs are finite/exact, teardown
-passes, and no compiler runs under profiling. No allocation, workspace, launch,
-code-object, default, scoreboard, changelog, or canonical topline changes.
-Clean short/512/1K/near-4K process orders are now allowed; stop on the first
-family/kernel/span/child guard failure before categories, with no third order or
-pooled waiver. Evidence: [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-correctness.json)
-and [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-runtime-correctness.json).
+passes, and no compiler runs under profiling.
+
+The frozen clean gate stops at short context without rerun. Combined Q5 time
+regresses **0.457%/0.077%** and complete kernel sum regresses **0.280%/0.075%**
+in orders A/B. The isolated attention-output benefit survives
+(**-1.952%/-2.046%**), but mixed projection reverses **+2.278%/+1.694%** and
+shared gate/up reverses **+0.902%/+0.439%**. Order A additionally fails span at
+**+0.883%** and child throughput at **-0.723%**; order B fails child throughput
+at **-0.592%**. Exact IDs, finite logits, resources, 140/723 topology,
+layer-47 fallback, lifecycle, and no-compiler checks pass, but no pooled metric
+can waive the per-order failures. Stop before 512/1K/near-4K and both complete
+category orders. Remove capability/resolver/session/CLI ownership while keeping
+the exact primitive; production backend/runner/benchmark files again match
+primitive commit `f75fe94b0`. No default, scoreboard, changelog, or canonical
+topline changes. Evidence: [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-correctness.json),
+[`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-runtime-correctness.json),
+and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-rejected.json).
 
 ## 9. Do not chase without new evidence
 
@@ -2086,7 +2100,7 @@ and [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pa
 | Can one local32 wave reuse an activation register across exact Q5 and Q6 output pairs? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-rejected.json): primitive only after clean rejection. Exact 16-transition state and **47+1/723** tracing do not override order-A span **+1.265%** and order-B child throughput **-0.681%** failures. Runtime integration is removed; remaining contexts/categories are skipped and defaults/topline are unchanged. |
 | Can LDS-staged unrounded F32 sums accelerate Laguna add+RMSNorm exactly? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-rejected.json): primitive only after clean rejection. Actual 48-boundary, CPU, 16-transition state, and 48/723 trace gates pass; the family improves **2.549%/2.501%**, but order A kernel sum regresses **0.340%** and order B span regresses **0.528%**. Runtime integration is removed; remaining contexts/categories are skipped and defaults/topline are unchanged. |
 | Can a fixed-two-wave DPP reduction accelerate the retained IQ2 grid64 body exactly? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-rejected.json): primitive only after clean rejection. Synthetic/CPU/all-46-layer bytes, exact 16-transition state, and **46-candidate/723-kernel** tracing pass, but both short orders regress IQ2 **0.366%/2.742%**; order A also fails child and order B fails kernel/span guards. Runtime integration is removed and later contexts/categories are skipped. |
-| Can paired-output SWAR contract exact Q5 reconstruction? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-correctness.json), and [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-runtime-correctness.json): primitive plus default-off all-or-none owner admitted. Synthetic/CPU, all **47 output + 47 mixed + 46 shared** actual boundaries, exact 16-transition full state, and cache-only **140-candidate/723-kernel** tracing pass. The conservative isolated ceiling remains **0.268 ms/token**; defaults/topline are unchanged pending clean-context and complete-category gates. |
+| Can paired-output SWAR contract exact Q5 reconstruction? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-rejected.json): primitive only after clean rejection. Synthetic/CPU/all-actual bytes, exact 16-transition state, and **140-candidate/723-kernel** tracing pass, but both short orders regress the combined Q5 family **0.457%/0.077%**, kernel sum **0.280%/0.075%**, and child throughput **0.723%/0.592%**; order A also fails span. Runtime integration is removed and later contexts/categories are skipped. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -2218,8 +2232,10 @@ remains diagnostic and canonical h32 stays **61.992 tok/s** versus Vulkan
 nibble/high-bit integer work across the two rows already owned by each local32
 wave. Its separately registered repository primitive now passes RED/GREEN,
 independent CPU, all **47 output + 47 mixed + 46 shared** actual-boundary,
-repeated-endpoint, codegen, and cache-only sibling-trace gates. Its separate
-explicit/default-off all-or-none owner now also passes exact 16-transition full
-state and cache-only **140-candidate/723-kernel** tracing. The default/topline
-remain unchanged until the frozen clean-context and complete-category gates
-pass.
+repeated-endpoint, codegen, and cache-only sibling-trace gates. Its temporary
+explicit/default-off all-or-none owner also passes exact 16-transition full
+state and cache-only **140-candidate/723-kernel** tracing, but both frozen short
+orders regress the combined Q5 family, kernel sum, and child throughput; order A
+also fails span. Runtime integration is removed, later contexts/categories are
+skipped, the primitive remains diagnostic, and canonical h32 stays **61.992
+tok/s** versus Vulkan **64.418 tok/s**.
