@@ -815,6 +815,14 @@ Immediate execution queue:
    required extra metadata schedule/launch, while the >=129-row tail regresses
    **2.14%**. Pursue a different cross-tile/expert schedule rather than another
    larger local256 row tile.
+   A transposed **32-column x 128-row/local128** Q6 qmicro body is also
+   closed. It held the production **32 F32 accumulators/lane** and reduced
+   the natural all-Q6 route grid **5,671 -> 5,253 tiles (-7.37%)**, but
+   per-expert padding expanded the layer-1 scheduled rows
+   **15,808 -> 29,696**. The exact actual-weight leaf regressed
+   **4.8492 -> 6.7545 ms (+39.29%)** with zero BF16 mismatches. Do not retry
+   a narrower-column/wider-row rectangle unless its scheduler avoids padding
+   amplification rather than merely changing the tile aspect ratio.
 2. Keep exact cached-metadata attention in production. Clean selector-unset
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
