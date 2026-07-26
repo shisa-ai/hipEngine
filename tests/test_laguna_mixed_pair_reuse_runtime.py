@@ -6,41 +6,42 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.registry import KernelKey, is_registered
 from hipengine.runtime import laguna_gguf_runner as runner_module
 from scripts import laguna_target_ar_bench as benchmark
 
 _CANDIDATE = "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
 _LOCAL32 = "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
 _LOCAL128 = "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+_QUANT = "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k"
 
 
-def test_pair_reuse_runtime_capability_is_default_off_and_gfx1100_only() -> None:
+def _key(backend: str) -> KernelKey:
+    return KernelKey(backend, "attention_projection_quad", _QUANT, _CANDIDATE)
+
+
+def test_pair_reuse_runtime_selection_is_removed_but_primitive_remains() -> None:
     assert backend_package_capability(
         "hip_gfx1100",
         "LAGUNA_MIXED_PAIR_REUSE",
         None,
-    ) is False
-    assert backend_package_capability(
-        "hip_gfx1151",
-        "LAGUNA_MIXED_PAIR_REUSE",
-        None,
     ) is None
-    resolver = getattr(runner_module, "resolve_laguna_mixed_pair_reuse_attention", None)
-    assert callable(resolver)
-    assert not resolver("hip_gfx1100")
-    assert resolver("hip_gfx1100", True)
-    assert not resolver("hip_gfx1100", False)
-    assert not resolver("hip_gfx1151", True)
-    assert "use_mixed_pair_reuse_attention" in inspect.signature(
+    assert not hasattr(runner_module, "resolve_laguna_mixed_pair_reuse_attention")
+    assert "use_mixed_pair_reuse_attention" not in inspect.signature(
         runner_module.LagunaGGUFResidentSession
     ).parameters
+    assert "use_mixed_pair_reuse_attention" not in inspect.signature(
+        runner_module.launch_laguna_attention_projections
+    ).parameters
+    assert is_registered(_key("hip_gfx1100"))
+    assert not is_registered(_key("hip_gfx1151"))
 
 
-def test_pair_reuse_runtime_owner_is_candidate_first_and_fail_closed(
+def test_pair_reuse_rejection_restores_retained_projection_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     variants: list[str] = []
-    accepted = [_CANDIDATE]
+    accepted = [_LOCAL32]
 
     def mixed(*args, **kwargs):
         del args
@@ -51,7 +52,7 @@ def test_pair_reuse_runtime_owner_is_candidate_first_and_fail_closed(
     monkeypatch.setattr(runner_module, "launch_laguna_mixed_attention_projections", mixed)
     weight = SimpleNamespace(spec=SimpleNamespace(layout="gguf_raw"))
 
-    def launch(*, enabled: bool) -> bool:
+    def launch() -> bool:
         return runner_module.launch_laguna_attention_projections(
             weight,
             weight,
@@ -75,35 +76,25 @@ def test_pair_reuse_runtime_owner_is_candidate_first_and_fail_closed(
             use_mixed_q5_q6_attention=True,
             use_mixed_q6_fixed_meta_attention=True,
             use_mixed_local32_fixed_meta_attention=True,
-            use_mixed_pair_reuse_attention=enabled,
         )
 
-    assert launch(enabled=True)
-    assert variants == [_CANDIDATE]
-
-    variants.clear()
-    accepted[0] = _LOCAL32
-    assert launch(enabled=True)
-    assert variants == [_CANDIDATE, _LOCAL32]
+    assert launch()
+    assert variants == [_LOCAL32]
 
     variants.clear()
     accepted[0] = _LOCAL128
-    assert launch(enabled=True)
-    assert variants == [_CANDIDATE, _LOCAL32, _LOCAL128]
-
-    variants.clear()
-    accepted[0] = _LOCAL32
-    assert launch(enabled=False)
-    assert variants == [_LOCAL32]
+    assert launch()
+    assert variants == [_LOCAL32, _LOCAL128]
+    assert _CANDIDATE not in variants
 
 
-def test_pair_reuse_runtime_cli_is_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
-    assert not benchmark._parse_args().enable_mixed_pair_reuse_attention
-
+def test_pair_reuse_cli_is_removed_after_clean_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         benchmark.sys,
         "argv",
         ["laguna_target_ar_bench.py", "--enable-mixed-pair-reuse-attention"],
     )
-    assert benchmark._parse_args().enable_mixed_pair_reuse_attention
+    with pytest.raises(SystemExit):
+        benchmark._parse_args()

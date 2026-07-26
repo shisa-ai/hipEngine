@@ -1,0 +1,568 @@
+{
+  "date": "2026-07-26",
+  "decision": {
+    "action": "remove runtime integration and retain exact primitive diagnostic only",
+    "additional_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "category_orders_run": 0,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank immutable retained traces with mixed-pair runtime selection mechanically closed; do not retry the unchanged pair-reuse schedule.",
+    "performance_claim": false
+  },
+  "frozen_clean_gate": {
+    "candidate_pooled": {
+      "kernel_sum_ms": 12.793232321428574,
+      "layer47_ms": 0.05306192857142857,
+      "profiled_child_tok_s": 57.141551177157844,
+      "projection_ms": 1.84462475,
+      "span_median_ms": 15.7483205,
+      "stable_samples": 28
+    },
+    "category_orders_run": 0,
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_child_inside_0_5pct": false,
+      "all_order_kernel_sum_improve": true,
+      "all_order_projection_improve": true,
+      "all_order_span_inside_0_5pct": false,
+      "all_resources_calls_dispatches_compiler_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "compiler_spawned_under_profiler": false,
+    "contract": {
+      "category_gate": {
+        "allowed_only_after_all_clean_orders_pass": true,
+        "complete_prompt_count": 18,
+        "process_orders": 2,
+        "requires": "pooled h16/h32 and every train/heldout category decode improvement plus E2E/prefill/TTFT/state/lifecycle guards"
+      },
+      "clean_gate": {
+        "contexts": [
+          "short",
+          512,
+          1024,
+          3968
+        ],
+        "each_order_requires": {
+          "candidate_or_control_calls_per_token": 47,
+          "compiler_spawned_under_profiler": false,
+          "complete_kernel_sum_pct": "< 0",
+          "dispatch_span_pct": "< 0.5",
+          "finite_logits": true,
+          "generated_ids_equal": true,
+          "lifecycle_clean": true,
+          "model_kernels_per_token": 723,
+          "profiled_child_tok_s_pct": "> -0.5",
+          "q5_q6_projection_family_pct": "< 0",
+          "resource_contract_exact": true,
+          "unchanged_layer47_calls_per_token": 1
+        },
+        "guard_waiver_allowed": false,
+        "process_orders": [
+          "control_then_candidate",
+          "candidate_then_control"
+        ],
+        "rerun_allowed": false,
+        "stable_profiled_steps_per_process": {
+          "1024": 6,
+          "3968": 6,
+          "512": 6,
+          "short": 14
+        },
+        "stop_on_first_failed_context": true
+      },
+      "frozen_before_launch": true,
+      "harnesses": {
+        "analyzer": {
+          "path": "/tmp/analyze_laguna_mixed_pair_reuse_clean_profiles.py",
+          "sha256": "dc36e828e52a3101d7b43f6e5d05c9f460ed16a52e4022c6369a9eaee7034012"
+        },
+        "child": {
+          "path": "/tmp/laguna_mixed_pair_reuse_profile_child.py",
+          "sha256": "e099eb3ae096eb014750c3281d7c7d99e58dd248be617b91fcabc42513fb97a9"
+        },
+        "runner": {
+          "path": "/tmp/run_laguna_mixed_pair_reuse_clean_profiles.sh",
+          "sha256": "db49beaa5b0a4a79580b6bc60190931288c630855ba48c29c8100197805162b9"
+        }
+      },
+      "revision": "bcebd6a543df32ad84acb6eafdbadb0c01660f5a",
+      "runtime_artifact": {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-runtime-correctness.json",
+        "sha256": "ac946a8a6fc133a4322d8abbf3d757a133e244793d4f737835ba731a06ba97ec"
+      },
+      "schema": 1
+    },
+    "contract_sha256": "a25b822cc06838ef78b1d3f9790bbcd517ff0befbec7c0649ffc5ebf474a2511",
+    "control_pooled": {
+      "kernel_sum_ms": 12.913686464285712,
+      "layer47_ms": 0.053126178571428574,
+      "profiled_child_tok_s": 57.20056436544181,
+      "projection_ms": 1.9535658571428571,
+      "span_median_ms": 15.882970499999999,
+      "stable_samples": 28
+    },
+    "idle_vram_bytes_after": 27959296,
+    "orders": [
+      {
+        "candidate": {
+          "candidate_or_control_calls_per_token": 47,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.85364657142857,
+          "layer47_mean_ms": 0.05328042857142857,
+          "layer47_resources": [
+            [
+              "void (anonymous namespace)::gguf_q6_q8_mixed_q6_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              181376,
+              1,
+              128,
+              48,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.44607551003726,
+          "projection_mean_ms": 1.849931,
+          "raw_sha256": {
+            "bench.json": "0c555b38a089a4f979dfb99bf64ebe3562475f62ce4467098f4ee4c81dc9b71c",
+            "stderr.log": "3657618c7954f2c87dc47237f5e53a7330656d76959e2d86269058dd7dd4e3bc",
+            "stdout.log": "0c555b38a089a4f979dfb99bf64ebe3562475f62ce4467098f4ee4c81dc9b71c",
+            "trace_kernel_trace.csv": "ea66ce5a962b9fd528ace680c4515aefa0c27dd05eb86c356ccbaac143c3d0cb"
+          },
+          "retained_layer47_calls_per_token": 1,
+          "selected_resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              99072,
+              1,
+              32,
+              96,
+              128,
+              0,
+              0
+            ],
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              148608,
+              1,
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 16.1342585,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": -0.42316614520324647,
+          "profiled_child_tok_s_pct": 0.6126366318329746,
+          "projection_pct": -5.305734763316372,
+          "span_pct": 1.2653827600990208
+        },
+        "control": {
+          "candidate_or_control_calls_per_token": 47,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.908269999999996,
+          "layer47_mean_ms": 0.05309478571428571,
+          "layer47_resources": [
+            [
+              "void (anonymous namespace)::gguf_q6_q8_mixed_q6_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              181376,
+              1,
+              128,
+              48,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.09628276639539,
+          "projection_mean_ms": 1.9535829285714283,
+          "raw_sha256": {
+            "bench.json": "ec2fdba903e6dec2c3d36575cc5c8b9fa43c1b02dafcc5231c7b583be70a3810",
+            "stderr.log": "5dc6f66902054efe3355869cbe9d794a2f5d98bd394b26f263165359d2565af6",
+            "stdout.log": "ec2fdba903e6dec2c3d36575cc5c8b9fa43c1b02dafcc5231c7b583be70a3810",
+            "trace_kernel_trace.csv": "4db77cf8e17e99fc62cc212a6a6e51ac3127f2a4c5bbfe35b8fd8d70c91d3a31"
+          },
+          "retained_layer47_calls_per_token": 1,
+          "selected_resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              131840,
+              1,
+              32,
+              80,
+              128,
+              0,
+              0
+            ],
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              181376,
+              1,
+              32,
+              80,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.9326495,
+          "stable_steps": 14
+        },
+        "order": "a",
+        "pass": false
+      },
+      {
+        "candidate": {
+          "candidate_or_control_calls_per_token": 47,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.732818071428579,
+          "layer47_mean_ms": 0.05284342857142857,
+          "layer47_resources": [
+            [
+              "void (anonymous namespace)::gguf_q6_q8_mixed_q6_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              181376,
+              1,
+              128,
+              48,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 56.93160485809103,
+          "projection_mean_ms": 1.8393185,
+          "raw_sha256": {
+            "bench.json": "3477dca68ccda87b53bba3040e5e039904f7df11dcd590d6996f742b0440c0eb",
+            "stderr.log": "bcdc6abb150025ddda669a0f085bbb1dc9573b3c30f4fe18d8a1844d64b8e5b0",
+            "stdout.log": "3477dca68ccda87b53bba3040e5e039904f7df11dcd590d6996f742b0440c0eb",
+            "trace_kernel_trace.csv": "2333fb4c51ffc6b4beba7a568d6f4fe65938369550d4b163bd52d85bb12d5c4e"
+          },
+          "retained_layer47_calls_per_token": 1,
+          "selected_resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              99072,
+              1,
+              32,
+              96,
+              128,
+              0,
+              0
+            ],
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              148608,
+              1,
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.595913,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": -1.4419333770525844,
+          "profiled_child_tok_s_pct": -0.681135834859492,
+          "projection_pct": -5.847321886692425,
+          "span_pct": -1.6391588827190495
+        },
+        "control": {
+          "candidate_or_control_calls_per_token": 47,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.919102928571428,
+          "layer47_mean_ms": 0.05315757142857143,
+          "layer47_resources": [
+            [
+              "void (anonymous namespace)::gguf_q6_q8_mixed_q6_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              181376,
+              1,
+              128,
+              48,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 57.322045853675,
+          "projection_mean_ms": 1.9535487857142857,
+          "raw_sha256": {
+            "bench.json": "48ae976e295c1b3454e95aa2b25df206cfe393091f39692a806bc6ca3e8c3045",
+            "stderr.log": "b61a6055eaf2712738a0e08cb4d3731db2e90034e404dfad3fd261b0560e4267",
+            "stdout.log": "48ae976e295c1b3454e95aa2b25df206cfe393091f39692a806bc6ca3e8c3045",
+            "trace_kernel_trace.csv": "deee3bd73cabf8e0fad7d9bd02ca99fdfd6be005ed4090462d29a7e2e2c098da"
+          },
+          "retained_layer47_calls_per_token": 1,
+          "selected_resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              131840,
+              1,
+              32,
+              80,
+              128,
+              0,
+              0
+            ],
+            [
+              "void (anonymous namespace)::gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+              181376,
+              1,
+              32,
+              80,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.855815,
+          "stable_steps": 14
+        },
+        "order": "b",
+        "pass": false
+      }
+    ],
+    "pooled_delta_pct": {
+      "kernel_sum_ms": -0.9327634149262298,
+      "layer47_ms": -0.12093849346536123,
+      "profiled_child_tok_s": -0.10316889166851473,
+      "projection_ms": -5.576525958648071,
+      "span_median_ms": -0.8477633324320499
+    },
+    "report_sha256": "31827462f453b435207846be94ac7466cf5ea00d09b3f5565275952d14c41398",
+    "runner_stdout_sha256": "31827462f453b435207846be94ac7466cf5ea00d09b3f5565275952d14c41398",
+    "stopped_before": [
+      "512",
+      "1024",
+      "3968",
+      "complete_18_prompt_categories"
+    ],
+    "summary_sha256": "666e82970413cfbf3d9ebb9486871358364bb70583bc789d19077b8998ea4da5",
+    "third_order_or_guard_waiver": false,
+    "through": "short"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "interpretation": {
+    "complete_kernel_sum_improves_both_orders": true,
+    "decisive_failures": [
+      "order A dispatch span regresses 1.265%, above the 0.5% guard",
+      "order B profiled-child throughput regresses 0.681%, below the -0.5% guard"
+    ],
+    "ids_resources_calls_dispatches_and_lifecycle_exact": true,
+    "isolated_primitive_event_improvement_range_pct": [
+      2.858,
+      7.162
+    ],
+    "isolated_primitive_wall_improvement_range_pct": [
+      2.45,
+      5.425
+    ],
+    "no_benchmark_gaming_or_prompt_conditioning": true,
+    "pooled_wins_do_not_waive_every_order_contract": true,
+    "target_projection_improves_both_orders": true
+  },
+  "kind": "hipengine_laguna_q2_xl_mixed_pair_reuse_rejection",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-design.json",
+      "sha256": "dc75799e280b7bf794925f2b5678f7697cf541748ad4299dc371782a23bc8270"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-correctness.json",
+      "sha256": "d644cda2222d95710f4530711311923f281db00f82f65e96b17f00644475925a"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-runtime-correctness.json",
+      "sha256": "ac946a8a6fc133a4322d8abbf3d757a133e244793d4f737835ba731a06ba97ec"
+    }
+  ],
+  "provenance": {
+    "builder_sha256": "09afa0f1024cbcc8439024c66dcbe7ee21e06b2cfd8260aece402c5a3a123230",
+    "primitive_commit": "0de4f45d82723d0fc16f467a0171d6a4e0c14020",
+    "runtime_commit": "bcebd6a543df32ad84acb6eafdbadb0c01660f5a",
+    "source_sha256": {
+      "docs/KERNELS.md": "55dae521b4383499019febe5c897c6b2050454f256455c0fe33dacc07cda4fa9",
+      "docs/LAGUNA-decode.md": "89c0ed3f69a340d86aed63d5e9779205085ce8d39aa9e65c0a9ce83546a14138",
+      "docs/REFACTOR.md": "1f25d2be4cdab6cbaa6e5fb706f22d172ab26557815048fcca8ef5b47780690b",
+      "tests/test_laguna_mixed_pair_reuse_runtime.py": "95778c1a70cc9d797cef7cd69285c3d894e9a0b4591bc2185b55301b9ecd5691"
+    }
+  },
+  "regression_validation": {
+    "adjacent_deselected": 2,
+    "adjacent_exclusions": [
+      "unchanged stale gfx1151 test_gguf_fused_linear_matching_uses_resident_backend call",
+      "unchanged order-sensitive generic-mixed gfx1151 absence assertion"
+    ],
+    "adjacent_passed": 128,
+    "adjacent_sha256": "6d7a4d6e87d58fbec58eb7170f211edbca205f8c33e2f6919c90669275ac3660",
+    "adjacent_warning": "one unrelated Starlette httpx deprecation warning",
+    "compileall_sha256": "71adaaade5aad0fd73f72619ce50c5c694c188823a3821459311b78ea7bf7846",
+    "focused_passed": 10,
+    "focused_sha256": "7040371af15613c02e821ec0eecc1d1330f691ace4cef93a41bfa358822c4103",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "removal": {
+    "backend_capability_removed": true,
+    "benchmark_cli_and_telemetry_removed": true,
+    "category_work_skipped": true,
+    "dispatch_candidate_order_removed": true,
+    "permanent_rejection_test": {
+      "path": "tests/test_laguna_mixed_pair_reuse_runtime.py",
+      "sha256": "95778c1a70cc9d797cef7cd69285c3d894e9a0b4591bc2185b55301b9ecd5691"
+    },
+    "production_byte_identical_to_primitive_commit": true,
+    "production_files": [
+      {
+        "current_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7",
+        "matches_primitive_commit": true,
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "primitive_commit_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7"
+      },
+      {
+        "current_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "primitive_commit_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616"
+      },
+      {
+        "current_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7",
+        "matches_primitive_commit": true,
+        "path": "scripts/laguna_target_ar_bench.py",
+        "primitive_commit_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7"
+      }
+    ],
+    "refactor_debt_removed": true,
+    "resolver_and_session_selection_removed": true,
+    "retained_primitive": {
+      "gfx1151_excluded": true,
+      "key": [
+        "hip_gfx1100",
+        "attention_projection_quad",
+        "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+        "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+      ],
+      "runtime_selected": false
+    }
+  },
+  "schema": 1,
+  "status": "clean_rejected_runtime_removed_primitive_retained"
+}

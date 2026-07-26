@@ -101,9 +101,6 @@ _MIXED_ATTENTION_Q6_FIXED_META_VARIANT = (
 _MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT = (
     "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
 )
-_MIXED_ATTENTION_PAIR_REUSE_VARIANT = (
-    "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
-)
 _Q5_WAVE32X2_OUTPUT_VARIANT = "wave32x2_gemv_decode_bf16_bf16_out"
 _Q5_WAVE32X2_QUERY_GATE_VARIANT = "wave32x2_gemv_decode_bf16_f32_out"
 _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT = (
@@ -1018,7 +1015,6 @@ def launch_laguna_attention_projections(
     use_mixed_q5_q6_attention: bool = False,
     use_mixed_q6_fixed_meta_attention: bool = False,
     use_mixed_local32_fixed_meta_attention: bool = False,
-    use_mixed_pair_reuse_attention: bool = False,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
@@ -1034,13 +1030,9 @@ def launch_laguna_attention_projections(
         else _MIXED_ATTENTION_VARIANT
     )
     mixed_variants = (
-        ((_MIXED_ATTENTION_PAIR_REUSE_VARIANT,) if use_mixed_pair_reuse_attention else ())
-        + (
-            (_MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT,)
-            if use_mixed_local32_fixed_meta_attention
-            else ()
-        )
-        + (retained_mixed_variant,)
+        (_MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT, retained_mixed_variant)
+        if use_mixed_local32_fixed_meta_attention
+        else (retained_mixed_variant,)
     )
     if use_mixed_q5_q6_attention:
         for variant in mixed_variants:
@@ -1309,22 +1301,6 @@ def resolve_laguna_mixed_local32_fixed_meta_attention(
             False,
         )
     )
-
-
-def resolve_laguna_mixed_pair_reuse_attention(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve explicit heterogeneous Q5/Q6 pair reuse on admitted backends."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_MIXED_PAIR_REUSE",
-        None,
-    )
-    if capability is None:
-        return False
-    return bool(capability) if requested is None else bool(requested)
 
 
 def resolve_laguna_mixed_q6_fixed_meta_attention(
@@ -1834,7 +1810,6 @@ class LagunaGGUFResidentSession:
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
-        use_mixed_pair_reuse_attention: bool | None = None,
         use_q4_lm_head_local32_fixed_meta: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
@@ -1904,12 +1879,6 @@ class LagunaGGUFResidentSession:
             resolve_laguna_mixed_local32_fixed_meta_attention(
                 self.backend,
                 use_mixed_local32_fixed_meta_attention,
-            )
-        )
-        self.use_mixed_pair_reuse_attention = (
-            resolve_laguna_mixed_pair_reuse_attention(
-                self.backend,
-                use_mixed_pair_reuse_attention,
             )
         )
         self.use_q4_lm_head_local32_fixed_meta = (
@@ -2746,7 +2715,6 @@ class LagunaGGUFResidentSession:
             use_mixed_local32_fixed_meta_attention=(
                 self.use_mixed_local32_fixed_meta_attention
             ),
-            use_mixed_pair_reuse_attention=self.use_mixed_pair_reuse_attention,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -3141,7 +3109,6 @@ class LagunaGGUFResidentSession:
             use_mixed_local32_fixed_meta_attention=(
                 self.use_mixed_local32_fixed_meta_attention
             ),
-            use_mixed_pair_reuse_attention=self.use_mixed_pair_reuse_attention,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         head_kv = (
@@ -3821,7 +3788,6 @@ __all__ = [
     "resolve_laguna_iq2_grid64",
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
-    "resolve_laguna_mixed_pair_reuse_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
