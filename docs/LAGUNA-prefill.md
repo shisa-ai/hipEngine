@@ -42,9 +42,11 @@ then raises clean selector-unset 512/1K/4K production to
 The campaign remains active toward the 700 stretch.
 The latest exact Q6 padded-activation specialization publishes clean
 selector-unset **551.459/517.307/432.099 tok/s** at 512/1K/4K. Its small
-gain closes activation-stage padding as a useful local lever; the next screen
-returns to a sole-resident Q4 layout/schedule premise capable of changing
-route-tile traffic.
+gain closes activation-stage padding as a useful local lever. The byte-neutral
+Q4 qmicro subsequently passed exact decode but failed its actual-weight M512
+prefill gate; all prefill candidate surfaces were removed. The next screen
+therefore returns to an expert schedule that reduces selected-weight
+route-tile rereads without another resident view.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -587,9 +589,28 @@ the gate/up records cooperatively. Balanced c1/c2/c4/c8 timing improves T16
 **4.929%/0.781%/3.691%/4.633%**, with zero BF16 mismatches, no sidecar, and
 **25,165,824 fewer bytes** for the actual layer-1 gate/up pair. The exact
 decoder runs at local128/VGPR192/SGPR128/LDS1536B/scratch0. It is retained as
-a primitive; materialization and runtime remain unchanged until the
-actual-weight natural-M512 selected-prefill consumer passes. Evidence:
+a primitive; materialization and runtime were held unchanged pending the
+actual-weight natural-M512 selected-prefill result below. Decode evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-exact-decode-retained.json`.
+
+That selected-prefill gate is now **closed and rejected**. Three BF16-bit-exact
+MMQ32 consumers were measured on the actual layer-1 K3072/N1024 gate/up pair
+with natural M512 routing:
+
+| Q4 qmicro metadata consumer | Resident T16 | Qmicro | Delta |
+| --- | ---: | ---: | ---: |
+| Direct per-column packed record | **9.402044 ms** | **9.570781 ms** | **+1.795%** |
+| Wave-broadcast packed record | **9.385769 ms** | **10.281055 ms** | **+9.539%** |
+| Quartet-owned LDS `dm` writer | **9.411384 ms** | **9.934902 ms** | **+5.563%** |
+
+The direct body is the relevant bound: the 2.778% byte reduction does not pay
+for packed scale/min extraction in the MMQ inner loop. Wave shuffles and
+concentrating four FP16 scale products on one lane make it worse. The Q4
+qmicro MMQ body, wrappers, fixtures, and benchmark mode are removed; only the
+host byte-lossless oracle and already-retained exact decode primitive remain.
+No materializer, quant key, resident allocation, or runtime route was added,
+and production remains **551.459 tok/s**. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-prefill-rejected.json`.
 
 ## Quality strategy
 
@@ -750,12 +771,14 @@ Immediate execution queue:
    missing route-tile architecture. Freeze the current **190.363-ms**
    selected-down body. X16 is now closed after exact c1 regressed **7.654%**
    despite c4/c8 wins. The sole-resident byte-neutral
-   **T16-local-Q + four-column/three-byte metadata** microtile has now passed
-   exact c1/c2/c4/c8 by **4.929%/0.781%/3.691%/4.633%**. Build its direct
-   selected-prefill consumer next and require positive actual-weight
-   natural-M512 GB/s before materialization/runtime integration, with zero
-   sidecar bytes. If it fails, return to an expert schedule that reduces Q4
-   route-tile rereads without larger accumulator state or F32 partial spills.
+   **T16-local-Q + four-column/three-byte metadata** microtile passed exact
+   c1/c2/c4/c8 by **4.929%/0.781%/3.691%/4.633%**, but its best exact
+   actual-weight M512 selected-prefill consumer regresses T16
+   **9.402044 -> 9.570781 ms (+1.795%)**. Wave broadcast and quartet-owned
+   LDS expansion regress **9.539%/5.563%**. The prefill consumer is removed;
+   do not materialize or integrate qmicro for Q4. Return now to an expert
+   schedule that reduces Q4 route-tile rereads without larger accumulator
+   state or F32 partial spills.
    Keep byte-neutral Q6
    qmicro and direct Q4 decode. The exact MMQ
    grouped-combine reuse is now clean production: it removes 47 launches and
@@ -805,9 +828,9 @@ Immediate execution queue:
 6. Do not retry T16-lite: its best exact byte-plane/LDS decoder loses
    **11.22–17.63%** at c1/c2/c4/c8. X16 is also closed: its exact one-pack
    consumer loses **7.654%** at c1 even though it wins at c4/c8. T16-local Q
-   with cooperatively decoded four-column/three-byte metadata supersedes both:
-   exact decode is positive at every shape and its selected-prefill consumer
-   is now active. T128 is also closed:
+   with four-column/three-byte metadata also closes at prefill: exact decode
+   is positive at every shape, but all three exact MMQ consumers lose at
+   natural M512. T128 is also closed:
    column-major payload locality bought **12.23%** at the M512 leaf but the
    best exact virtual-thread decoder still lost **6.10–6.86%**. Do not retain
    a second resident view or pay a prefill-to-decode transpose.
@@ -2408,7 +2431,7 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**546.100 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+**551.459 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
 active targets.
 
 All headline rows also report canonical category-weighted prefill and
