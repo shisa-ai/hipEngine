@@ -126,6 +126,11 @@ LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
 # restores. Attention output retains power-of-two row scaling; decode is
 # unchanged.
 LAGUNA_F16_PREFILL_MODE = "hipblaslt_range_direct"
+# Exact producer-boundary variants write FP16(BF16(value)) directly from the
+# attention RMSNorm and softplus-gate kernels. This removes the two standalone
+# BF16-to-FP16 casts per layer while preserving the established source-F16
+# input bits; the runtime setter remains the explicit rollback.
+LAGUNA_F16_BOUNDARY_FUSION = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -347,6 +352,7 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
+    "LAGUNA_F16_BOUNDARY_FUSION",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",

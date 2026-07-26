@@ -182075,3 +182075,16 @@ Vulkan local sizes verbatim will close the measured gap.
   `014680b444668007c340e28d06a73b782538128eff1931145cc50f2ce57c872b`.
   Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-candidate.json`.
+
+## 2026-07-26 — Enable exact source-F16 boundary fusion on gfx1151
+
+- Added the architecture-scoped `LAGUNA_F16_BOUNDARY_FUSION` capability and
+  made the Laguna resident session consume it during initialization. Other
+  backends retain the separate-cast route; the session-local setter remains
+  the explicit rollback.
+- RED was the missing capability import in `tests/test_gfx1151_backend.py`.
+  GREEN passes the gfx1151 capability, resident-session default/rollback, F16
+  composition, and hipBLASLt mode bundle: **44 passed**.
+- This commit changes the default selector but makes no new production
+  throughput claim. Clean selector-unset 512/1K/4K, full-state quality/
+  lifecycle, and refreshed production tracing are the next publication gate.

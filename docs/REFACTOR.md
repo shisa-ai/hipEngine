@@ -1304,8 +1304,9 @@ should be boring.
 - Primitive composition is exact and improves the two production M512
   boundaries by **1.877x/1.425x**. Seven matched pp512 pairs improve
   **554.909 -> 559.320 tok/s (+0.795%, 6/7 wins)** with identical token and
-  logit. Keep the candidate default-off until clean selector-unset
-  512/1K/4K, full state/quality/lifecycle, and refreshed trace gates pass.
+  logit. The gfx1151 package capability now enables the exact path by default;
+  clean selector-unset 512/1K/4K, full state/quality/lifecycle, and refreshed
+  trace publication remain the immediate gate.
 - After promotion and one later source-F16 checkpoint, remove the public
   setter and one-purpose A/B harness while retaining the backend capability,
   fused registered kernels, and registered unfused numerical fallback.

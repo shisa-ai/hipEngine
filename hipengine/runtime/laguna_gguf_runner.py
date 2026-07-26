@@ -1689,7 +1689,13 @@ class LagunaGGUFResidentSession:
         self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(self.backend)
         self.group_compact_mode = resolve_laguna_group_compact_mode(self.backend)
         self.f16_prefill_mode = resolve_laguna_f16_prefill_mode(self.backend)
-        self.fuse_f16_boundaries = False
+        self.fuse_f16_boundaries = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_F16_BOUNDARY_FUSION",
+                False,
+            )
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
