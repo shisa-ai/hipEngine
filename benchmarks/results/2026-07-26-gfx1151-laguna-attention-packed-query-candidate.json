@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T17:42:18+00:00",
+  "kind": "hipengine_laguna_attention_packed_query_candidate",
+  "status": "screen_passed_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "9be4249c113ce5de786e5aec3072a83e8113a0de",
+    "tracked_clean": false,
+    "reason": "candidate implementation and tests were intentionally uncommitted"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "scope": "qualified dense-initial F32 hipBLASLt attention tiles",
+    "mechanism": "transpose the row-major F32 query tile to head-major scratch, run one eight-way wide QK and one eight-way wide PV batch over unreplicated K/V, then transpose the output back",
+    "qk_calls_per_tile": 1,
+    "pv_calls_per_tile": 1,
+    "production_qk_calls_per_tile": 8,
+    "production_pv_calls_per_tile": 8,
+    "scratch_nbytes": 27787264,
+    "production_scratch_nbytes": 23068672,
+    "hipblaslt_workspace_nbytes": 0,
+    "fallbacks_unchanged": true
+  },
+  "leaf": {
+    "rows": 128,
+    "repetitions": 21,
+    "burst": 10,
+    "zero_workspace_algorithms_swept_per_contraction": 32,
+    "qualified_shapes": {
+      "global_context_256": {
+        "production_ms": 0.2843055009841919,
+        "candidate_ms": 0.25350370407104494,
+        "candidate_wins": 21,
+        "qk_algorithm_index": 0,
+        "pv_algorithm_index": 0
+      },
+      "swa_context_256": {
+        "production_ms": 0.3629251003265381,
+        "candidate_ms": 0.34448249340057374,
+        "candidate_wins": 21,
+        "qk_algorithm_index": 0,
+        "pv_algorithm_index": 3
+      },
+      "global_context_384": {
+        "production_ms": 0.3440576076507568,
+        "candidate_ms": 0.3168466091156006,
+        "candidate_wins": 21,
+        "qk_algorithm_index": 31,
+        "pv_algorithm_index": 0
+      },
+      "swa_context_384": {
+        "production_ms": 0.4546492099761963,
+        "candidate_ms": 0.44081921577453614,
+        "candidate_wins": 21,
+        "qk_algorithm_index": 30,
+        "pv_algorithm_index": 18
+      },
+      "global_context_512": {
+        "production_ms": 0.43424391746520996,
+        "candidate_ms": 0.39649600982666017,
+        "candidate_wins": 21,
+        "qk_algorithm_index": 1,
+        "pv_algorithm_index": 22
+      },
+      "swa_context_512": {
+        "production_ms": 0.582557201385498,
+        "candidate_ms": 0.5569491863250733,
+        "candidate_wins": 21,
+        "qk_algorithm_index": 1,
+        "pv_algorithm_index": 3
+      }
+    },
+    "modeled_48_layer_ms": {
+      "production": 74.97568359375,
+      "candidate": 71.1686571121216,
+      "change_percent": -5.0776815884153725
+    },
+    "maximum_absolute_output_error": 4.0978193283081055e-08,
+    "finite": true
+  },
+  "pp512": {
+    "repetitions": 7,
+    "timed_order": "counter-rotated one resident owner",
+    "production_samples_tok_s": [
+      598.129445706949,
+      623.0210912003533,
+      620.5947748245153,
+      623.0711566636309,
+      619.6011298574509,
+      621.9692649334517,
+      621.8056110866418
+    ],
+    "candidate_samples_tok_s": [
+      629.0651067096808,
+      611.8411907966156,
+      628.1792533495193,
+      628.7453930484138,
+      626.8737610499056,
+      627.2165067099111,
+      626.2380723167752
+    ],
+    "production_median_tok_s": 621.8056110866418,
+    "candidate_median_tok_s": 627.2165067099111,
+    "change_percent": 0.8701908646037149,
+    "candidate_wins": 6,
+    "paired_median_wall_delta_ms": -7.41591805126518,
+    "paired_mean_wall_delta_ms": -9.536825286756669,
+    "paired_geometric_speedup": 1.0115961900206876,
+    "next_token_id": 2930,
+    "each_mode_deterministic": true,
+    "association_note": "The wider GEMM changes F32 association, so full state is deterministic per mode but not bit-identical across modes; admission uses the explicit distribution gate."
+  },
+  "correctness": {
+    "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+    "maximum_absolute_output_error": 4.0978193283081055e-08,
+    "pp512_full_logits": {
+      "all_exact_vs_production_kl": 0.0022139096557674716,
+      "all_exact_vs_candidate_kl": 0.0020966178467309326,
+      "production_vs_candidate_kl": 0.00011904538286574792,
+      "all_exact_top1": 2930,
+      "production_top1": 2930,
+      "candidate_top1": 2930,
+      "finite": true
+    },
+    "focused_tests": {
+      "passed": 19,
+      "nodes": [
+        "tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+        "tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys",
+        "tests/test_laguna_gguf_runner.py"
+      ]
+    }
+  },
+  "rocprof": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-attention-packed-query-trace.1jf6vP --output-file packed-query -- .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+    "query_pack": {
+      "workgroup": 256,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes_per_thread": 0,
+      "duration_us": 119.223
+    },
+    "output_unpack": {
+      "workgroup": 256,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes_per_thread": 0,
+      "duration_us": 26.209
+    },
+    "packed_qk_calls": 1,
+    "packed_pv_calls": 1,
+    "raw_trace_sha256": "c889af93f4ed1a6e3534f41cc0cc5c56e99654d557609f14aa18351e8223ba08"
+  },
+  "source_runs": {
+    "leaf": {
+      "path": "/tmp/laguna-attention-hipblaslt-packed-query-algorithm-sweep.jsonlog",
+      "sha256": "8357d761ea840db070aab96f1629cdc09886c870d19fb2738e3eb2c45c21335c"
+    },
+    "pp512": {
+      "path": "/tmp/laguna-attention-hipblaslt-packed-query-ab-7.json",
+      "sha256": "b2bf8a8373a6472bf5fecff933f3812572008d423b9c6e8b315c16b1b99c51c5"
+    },
+    "quality": {
+      "path": "/tmp/laguna-attention-packed-query-kl.json",
+      "sha256": "2efe0b2bf553ae1f11301a1c6e7e14b5e9c05067b1c03de5454dbeb0640d2416"
+    }
+  },
+  "decision": {
+    "pass": true,
+    "reason": "The candidate wins every qualified leaf shape after exhaustive zero-workspace tuning, wins 6/7 full-model pairs, saves 7.416 ms at the paired median, remains deterministic per mode, and improves pp512 all-exact KL with unchanged top-1.",
+    "default_pending_clean_publication": true
+  }
+}

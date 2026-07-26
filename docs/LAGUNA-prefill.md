@@ -1279,6 +1279,21 @@ Immediate execution queue:
    packs only the 4.7-MB query/output tiles and leaves K/V unreplicated.
    Evidence:
    [`2026-07-26-gfx1151-laguna-attention-replicated-heads-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-replicated-heads-rejected.json).
+25. **Candidate default; clean publication pending:** transpose only the
+   4.7-MB F32 query/output tile into head-major order, leaving K/V
+   unreplicated, so one eight-way wide QK and one wide PV batch replace
+   sixteen calls. All 32 zero-workspace algorithms were screened per
+   contraction. The qualified 48-layer leaf model improves **74.976 ->
+   71.169 ms (-5.08%)**, with **21/21 wins** at every global/SWA context
+   256/384/512 and at most **4.10e-8** absolute output error. Seven
+   counter-rotated pp512 pairs improve **621.806 -> 627.217 tok/s (+0.870%,
+   6/7 wins)** and save **7.416 ms** at the paired median. The wider F32
+   association is quality-gated: all-exact KL improves **0.002214 ->
+   0.002097**, production-vs-candidate KL is **0.000119**, and all top-1 IDs
+   remain 2930. Scratch grows only **23.1 -> 27.8 MB**. gfx1151 now enables
+   the capability for a clean selector-unset publication.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json).
 
 Post-350 exclusions:
 

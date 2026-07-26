@@ -83,6 +83,11 @@ LAGUNA_PREFILL_DENSE_INITIAL = True
 # Start-0, partial, wrapped, evicted, verifier, and decode routes stay on the
 # established attention kernels.
 LAGUNA_PREFILL_ATTENTION_HIPBLASLT = True
+# Packing the 4.7-MB query/output tile into head-major order allows one
+# eight-way wide QK and one wide PV batch without replicating K/V. It improves
+# the qualified 48-layer leaf model 5.08% and the seven-pair pp512 median
+# 0.87%, while all-exact KL improves from 0.002214 to 0.002097.
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
@@ -392,6 +397,7 @@ __all__ = [
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT",
+    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
     "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",

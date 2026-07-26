@@ -21,6 +21,7 @@ from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_dense_initial_cache_bf16_to_f32_spans,
     laguna_dense_initial_causal_softmax_f32_spans,
+    laguna_dense_initial_query_head_transpose_f32,
 )
 from hipengine.kvcache import KVLiveSpans
 
@@ -52,6 +53,25 @@ _ALGORITHM_INDEX = {
     (72, 384, "pv"): 9,
     (72, 512, "qk"): 14,
     (72, 512, "pv"): 21,
+}
+
+_PACKED_ALGORITHM_INDEX = {
+    (48, 128, "qk"): 0,
+    (48, 128, "pv"): 5,
+    (48, 256, "qk"): 0,
+    (48, 256, "pv"): 0,
+    (48, 384, "qk"): 31,
+    (48, 384, "pv"): 0,
+    (48, 512, "qk"): 1,
+    (48, 512, "pv"): 22,
+    (72, 128, "qk"): 0,
+    (72, 128, "pv"): 3,
+    (72, 256, "qk"): 0,
+    (72, 256, "pv"): 3,
+    (72, 384, "qk"): 30,
+    (72, 384, "pv"): 18,
+    (72, 512, "qk"): 1,
+    (72, 512, "pv"): 3,
 }
 
 
@@ -252,9 +272,11 @@ class LagunaAttentionHipblasLt:
         *,
         library_path: str = "libhipblaslt.so",
         runtime: HipRuntime | None = None,
+        packed_queries: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.owner = HipblasLt(library_path)
+        self.packed_queries = bool(packed_queries)
         self._problems: dict[tuple[int, int], _ProblemPair] = {}
         self._buffers: list[DeviceBuffer] = []
         self._closed = False
@@ -267,6 +289,11 @@ class LagunaAttentionHipblasLt:
             )
             self.scores_f32 = self._allocate(
                 _MAX_Q_HEADS * _ROWS * _MAX_CONTEXT * 4
+            )
+            self.head_major_f32 = (
+                self._allocate(_MAX_Q_HEADS * _ROWS * _HEAD_DIM * 4)
+                if self.packed_queries
+                else None
             )
         except Exception:
             self.close()
@@ -302,6 +329,13 @@ class LagunaAttentionHipblasLt:
             return cached
         q_heads, parsed_context = key
         q_group = q_heads // _KV_HEADS
+        batch_count = _KV_HEADS if self.packed_queries else q_group
+        wide_rows = _ROWS * q_group if self.packed_queries else _ROWS
+        query_leading = _HEAD_DIM if self.packed_queries else q_heads * _HEAD_DIM
+        query_batch_stride = (
+            wide_rows * _HEAD_DIM if self.packed_queries else _HEAD_DIM
+        )
+        score_batch_stride = parsed_context * wide_rows
         qk = _BatchedProblem(
             self.owner,
             transa=HIPBLAS_OP_T,
@@ -310,32 +344,36 @@ class LagunaAttentionHipblasLt:
                     _HEAD_DIM,
                     parsed_context,
                     _KV_HEADS * _HEAD_DIM,
-                    q_group,
-                    0,
+                    batch_count,
+                    _HEAD_DIM if self.packed_queries else 0,
                 ),
                 _Layout(
                     _HEAD_DIM,
-                    _ROWS,
-                    q_heads * _HEAD_DIM,
-                    q_group,
-                    _HEAD_DIM,
+                    wide_rows,
+                    query_leading,
+                    batch_count,
+                    query_batch_stride,
                 ),
                 _Layout(
                     parsed_context,
-                    _ROWS,
+                    wide_rows,
                     parsed_context,
-                    q_group,
-                    parsed_context * _ROWS,
+                    batch_count,
+                    score_batch_stride,
                 ),
                 _Layout(
                     parsed_context,
-                    _ROWS,
+                    wide_rows,
                     parsed_context,
-                    q_group,
-                    parsed_context * _ROWS,
+                    batch_count,
+                    score_batch_stride,
                 ),
             ),
-            preferred_index=_ALGORITHM_INDEX[(q_heads, parsed_context, "qk")],
+            preferred_index=(
+                _PACKED_ALGORITHM_INDEX[(q_heads, parsed_context, "qk")]
+                if self.packed_queries
+                else _ALGORITHM_INDEX[(q_heads, parsed_context, "qk")]
+            ),
         )
         try:
             pv = _BatchedProblem(
@@ -346,34 +384,36 @@ class LagunaAttentionHipblasLt:
                         _HEAD_DIM,
                         parsed_context,
                         _KV_HEADS * _HEAD_DIM,
-                        q_group,
-                        0,
+                        batch_count,
+                        _HEAD_DIM if self.packed_queries else 0,
                     ),
                     _Layout(
                         parsed_context,
-                        _ROWS,
+                        wide_rows,
                         parsed_context,
-                        q_group,
-                        parsed_context * _ROWS,
+                        batch_count,
+                        score_batch_stride,
                     ),
                     _Layout(
                         _HEAD_DIM,
-                        _ROWS,
-                        q_heads * _HEAD_DIM,
-                        q_group,
-                        _HEAD_DIM,
+                        wide_rows,
+                        query_leading,
+                        batch_count,
+                        query_batch_stride,
                     ),
                     _Layout(
                         _HEAD_DIM,
-                        _ROWS,
-                        q_heads * _HEAD_DIM,
-                        q_group,
-                        _HEAD_DIM,
+                        wide_rows,
+                        query_leading,
+                        batch_count,
+                        query_batch_stride,
                     ),
                 ),
-                preferred_index=_ALGORITHM_INDEX[
-                    (q_heads, parsed_context, "pv")
-                ],
+                preferred_index=(
+                    _PACKED_ALGORITHM_INDEX[(q_heads, parsed_context, "pv")]
+                    if self.packed_queries
+                    else _ALGORITHM_INDEX[(q_heads, parsed_context, "pv")]
+                ),
             )
         except Exception:
             qk.close()
@@ -426,15 +466,35 @@ class LagunaAttentionHipblasLt:
             library=kv_library,
             runtime=self.runtime,
         )
-        for kv_head in range(_KV_HEADS):
+        if self.packed_queries:
+            assert self.head_major_f32 is not None
+            laguna_dense_initial_query_head_transpose_f32(
+                query_ptr,
+                self.head_major_f32.ptr,
+                rows,
+                q_heads,
+                head_dim,
+                to_head_major=True,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
             problems.qk.launch(
-                self.key_f32.ptr + kv_head * _HEAD_DIM * 4,
-                int(query_ptr)
-                + kv_head * q_group * _HEAD_DIM * 4,
-                self.scores_f32.ptr
-                + kv_head * q_group * _ROWS * context * 4,
+                self.key_f32.ptr,
+                self.head_major_f32.ptr,
+                self.scores_f32.ptr,
                 stream=stream,
             )
+        else:
+            for kv_head in range(_KV_HEADS):
+                problems.qk.launch(
+                    self.key_f32.ptr + kv_head * _HEAD_DIM * 4,
+                    int(query_ptr)
+                    + kv_head * q_group * _HEAD_DIM * 4,
+                    self.scores_f32.ptr
+                    + kv_head * q_group * _ROWS * context * 4,
+                    stream=stream,
+                )
         laguna_dense_initial_causal_softmax_f32_spans(
             self.scores_f32.ptr,
             spans,
@@ -447,15 +507,35 @@ class LagunaAttentionHipblasLt:
             library=kv_library,
             runtime=self.runtime,
         )
-        for kv_head in range(_KV_HEADS):
+        if self.packed_queries:
+            assert self.head_major_f32 is not None
             problems.pv.launch(
-                self.value_f32.ptr + kv_head * _HEAD_DIM * 4,
-                self.scores_f32.ptr
-                + kv_head * q_group * _ROWS * context * 4,
-                int(out_ptr)
-                + kv_head * q_group * _HEAD_DIM * 4,
+                self.value_f32.ptr,
+                self.scores_f32.ptr,
+                self.head_major_f32.ptr,
                 stream=stream,
             )
+            laguna_dense_initial_query_head_transpose_f32(
+                self.head_major_f32.ptr,
+                out_ptr,
+                rows,
+                q_heads,
+                head_dim,
+                to_head_major=False,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+        else:
+            for kv_head in range(_KV_HEADS):
+                problems.pv.launch(
+                    self.value_f32.ptr + kv_head * _HEAD_DIM * 4,
+                    self.scores_f32.ptr
+                    + kv_head * q_group * _ROWS * context * 4,
+                    int(out_ptr)
+                    + kv_head * q_group * _HEAD_DIM * 4,
+                    stream=stream,
+                )
 
     @property
     def scratch_nbytes(self) -> int:

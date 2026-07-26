@@ -1576,6 +1576,7 @@ class LagunaGGUFResidentSession:
         prefill_global_qrow6: bool | None = None,
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
+        prefill_attention_hipblaslt_packed_queries: bool | None = None,
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
@@ -1666,6 +1667,15 @@ class LagunaGGUFResidentSession:
             )
             if prefill_attention_hipblaslt is None
             else prefill_attention_hipblaslt
+        )
+        self.prefill_attention_hipblaslt_packed_queries = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
+                False,
+            )
+            if prefill_attention_hipblaslt_packed_queries is None
+            else prefill_attention_hipblaslt_packed_queries
         )
         resident_q6_qmicro = (
             getattr(resident_weights, "q6_qmicro", None)
@@ -2080,6 +2090,21 @@ class LagunaGGUFResidentSession:
         """Select the bounded dense-initial BLAS attention candidate."""
 
         self.prefill_attention_hipblaslt = bool(enabled)
+
+    def set_prefill_attention_hipblaslt_packed_queries(
+        self,
+        enabled: bool,
+    ) -> None:
+        """Pack query/output heads around the two-call BLAS candidate."""
+
+        selected = bool(enabled)
+        if selected == self.prefill_attention_hipblaslt_packed_queries:
+            return
+        self.prefill_attention_hipblaslt_packed_queries = selected
+        if self.attention_hipblaslt is not None:
+            route = self.attention_hipblaslt
+            self.attention_hipblaslt = None
+            route.close()
 
     def set_dense_q4_prefill_mode(self, mode: str) -> None:
         """Select the explicit dense/shared Q4 rows>1 projection route."""
@@ -2695,7 +2720,12 @@ class LagunaGGUFResidentSession:
     def _ensure_attention_hipblaslt(self) -> LagunaAttentionHipblasLt:
         route = self.attention_hipblaslt
         if route is None:
-            route = LagunaAttentionHipblasLt(runtime=self.runtime)
+            route = LagunaAttentionHipblasLt(
+                runtime=self.runtime,
+                packed_queries=(
+                    self.prefill_attention_hipblaslt_packed_queries
+                ),
+            )
             self.attention_hipblaslt = route
         return route
 

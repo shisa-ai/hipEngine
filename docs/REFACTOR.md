@@ -142,6 +142,22 @@ should be removed or collapsed.
   keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
   one-release rollback window, then collapse both selectors.
 
+## Laguna packed-query F32 hipBLASLt attention selector
+
+- Added 2026-07-27 for the quality-gated two-call dense-initial attention
+  candidate. `prefill_attention_hipblaslt_packed_queries=false` restores the
+  admitted eight-QK/eight-PV route; unsafe attention shapes retain their
+  established `KVLiveSpans` fallbacks independently.
+- The candidate passes the tuned leaf, seven-pair pp512, CPU-reference,
+  pp512-all-exact KL, and cached trace gates. gfx1151 now advertises the
+  positive capability so clean selector-unset 512/1K/4K timing is the
+  remaining promotion gate.
+- If clean publication regresses, remove the constructor/session selector,
+  capability, transpose kernels, head-major scratch, packed descriptors, and
+  candidate fixture lane. If it passes, retain explicit false only through
+  the next attention checkpoint, then collapse redundant positive selection
+  while retaining the whole-BLAS-route rollback and unsafe-shape fallbacks.
+
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
 - Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16

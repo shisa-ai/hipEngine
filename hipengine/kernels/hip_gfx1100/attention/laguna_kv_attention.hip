@@ -1764,6 +1764,33 @@ __global__ void laguna_dense_initial_cache_bf16_to_f32_kernel(
   }
 }
 
+template <bool kToHeadMajor>
+__global__ void laguna_dense_initial_query_head_transpose_f32_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    int64_t rows,
+    int64_t num_q_heads,
+    int64_t head_dim) {
+  const int64_t row_stride = num_q_heads * head_dim;
+  const int64_t total = rows * row_stride;
+  for (int64_t index =
+           static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < total;
+       index += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t row = index / row_stride;
+    const int64_t within_row = index - row * row_stride;
+    const int64_t q_head = within_row / head_dim;
+    const int64_t element = within_row - q_head * head_dim;
+    const int64_t head_major =
+        (q_head * rows + row) * head_dim + element;
+    if constexpr (kToHeadMajor) {
+      output[head_major] = input[index];
+    } else {
+      output[index] = input[head_major];
+    }
+  }
+}
+
 __device__ __forceinline__ float laguna_block_max_256(
     float value,
     float* shared) {
@@ -1942,6 +1969,50 @@ extern "C" int hipengine_laguna_dense_initial_cache_bf16_to_f32_spans(
         capacity,
         block_size,
         num_kv_heads,
+        head_dim);
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_dense_initial_query_head_transpose_f32(
+    const float* input,
+    float* output,
+    int64_t rows,
+    int64_t num_q_heads,
+    int64_t head_dim,
+    int to_head_major,
+    hipStream_t stream) {
+  if (input == nullptr || output == nullptr || rows <= 0 || rows > 128 ||
+      (num_q_heads != 48 && num_q_heads != 72) || head_dim != 128 ||
+      (to_head_major != 0 && to_head_major != 1)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * num_q_heads * head_dim;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  if (to_head_major != 0) {
+    hipLaunchKernelGGL(
+        (laguna_dense_initial_query_head_transpose_f32_kernel<true>),
+        dim3(static_cast<unsigned int>(blocks)),
+        dim3(threads),
+        0,
+        stream,
+        input,
+        output,
+        rows,
+        num_q_heads,
+        head_dim);
+  } else {
+    hipLaunchKernelGGL(
+        (laguna_dense_initial_query_head_transpose_f32_kernel<false>),
+        dim3(static_cast<unsigned int>(blocks)),
+        dim3(threads),
+        0,
+        stream,
+        input,
+        output,
+        rows,
+        num_q_heads,
         head_dim);
   }
   return static_cast<int>(hipGetLastError());
