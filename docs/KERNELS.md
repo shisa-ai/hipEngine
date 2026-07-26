@@ -896,7 +896,10 @@ VGPR80. The wrapper selects it by default only when the already-constrained
 planar-qmicro row64 contract is active; other shapes retain packed-dot
 fallbacks. Clean selector-unset 512/1K/4K improves
 **573.354/530.351/446.189 -> 576.137/543.213/459.054 tok/s** with
-deterministic tokens, exact positions, and complete allocation return
+deterministic tokens, exact positions, and complete allocation return.
+Refreshed cached tracing cuts the combined pp512 selected-down family
+**189.049 -> 181.583 ms (-3.95%)** and the 115-call 512/1K/4K Q6 body
+**1,124.852 -> 792.625 ms (-29.54%)**; pp512 Q6 itself is **109.290 ms**
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-production.json`).
 
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight

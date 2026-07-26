@@ -182886,3 +182886,31 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next action is a cached pp512 trace to refresh the Q6 selected-down family
   window and critical-path overlap before selecting another fragment/staging
   candidate.
+
+## 2026-07-26 — Refresh integer-WMMA all-family attribution
+
+- Cached `rocprofv3 --kernel-trace` at clean revision `1c4f1e4cf` covers the
+  required 512/1K/4K matrix2048/attention128 sequence under the production
+  two-queue policy. The traced rates are
+  **579.534/547.173/460.331 tok/s** with tokens **2930/95/7772** and full
+  allocation return.
+- At pp512, **1,696** dispatches have **1,217.231 ms** inclusive kernel sum,
+  **882.726 ms** kernel span, and **883.469 ms** synchronized wall. Only
+  **0.743 ms** lies outside the kernel span. Gate/up is **339.302 ms**,
+  selected Q4/Q6 down **181.583 ms**, attention **143.092 ms**, source-F16
+  **124.420 ms**, dense/shared **93.845 ms**, and router **23.306 ms**.
+- Compared with the preceding current-production trace, combined pp512
+  selected down falls **189.049 -> 181.583 ms (-3.95%, -7.466 ms)**.
+  The Q6 integer-WMMA body alone is **109.290 ms / 23 calls** at pp512.
+  Across 512/1K/4K, all **115** Q6 calls fall
+  **1,124.852 -> 792.625 ms (-29.54%)**. This confirms the WMMA body scales
+  materially better as routed rows grow.
+- Trace/summary SHA-256:
+  `9587bb7cc8b69c465e0be88dfe9da76f3cc4909a7cd4db1fca4535cbf2181271` /
+  `a0ebb241d9b9e759cd988a031060992367745f18e4e41019bb23a032c7fb32ac`.
+  The compact trace fields are attached to
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-production.json`.
+- Next bounded screen hoists each wave's invariant two K16 activation
+  fragments outside the four-column-fragment loop. It is source-exact and
+  targets repeated LDS reads; remove it if the compiler already performs the
+  hoist or the actual-weight leaf is not faster.
