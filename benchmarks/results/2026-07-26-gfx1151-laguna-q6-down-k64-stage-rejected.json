@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_down_k64_stage_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "baseline_split": {
+    "trace": "clean cached-only attention production pp512 trace",
+    "selected_down_total_ms": 203.922621,
+    "q6_projection_ms": 126.593722,
+    "q4_projection_ms": 72.358449,
+    "activation_pack_ms": 4.97045,
+    "q6_calls": 23,
+    "q4_calls": 24
+  },
+  "candidate": {
+    "scope": "Q6 selected down only; Q4 direct wave-column down held constant",
+    "geometry": "64 output columns x 64 routed rows, local128",
+    "production": "one K32 weight/activation stage and two workgroup barriers per K32",
+    "candidate": "two ordered K32 weight/activation stages and two workgroup barriers per K64",
+    "arithmetic_intent": "preserve the established K32 dot and FP32 accumulation order while halving synchronization intervals",
+    "distinction": "does not change row tile, duplicate Q6 weight decode, use local64, or spill F32 partials"
+  },
+  "validation": {
+    "red": "The new rows64-k64-stage parameterized primitive failed because the wrapper had no k_stages contract.",
+    "green": "The K64 candidate passed the uneven/empty-expert CPU-reference quality gate.",
+    "full_model_next_token": 2930,
+    "complete_state_gate": "not run because the performance screen rejected the candidate",
+    "production_restored_byte_for_byte": true
+  },
+  "full_model": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_rows64_ab.py --repetitions 3 --require-cached-build --output /tmp/laguna-q6-k64-screen.json",
+    "protocol": "one resident owner; both modes warmed; three counter-rotated synchronized pp512 pairs; model load excluded",
+    "production_samples_tok_s": [
+      529.8735115888782,
+      527.3734583876545,
+      528.1225745747234
+    ],
+    "production_median_tok_s": 528.1225745747234,
+    "candidate_samples_tok_s": [
+      521.5092220831928,
+      518.5682571097947,
+      518.5000519790216
+    ],
+    "candidate_median_tok_s": 518.5682571097947,
+    "change_percent": -1.809109840196188,
+    "candidate_pair_wins": 0,
+    "pairs": 3,
+    "raw_sha256": "fa01c4c0f25666b2f8cbae6552314ec53fb7f7c3a0d7652ce37c864fe3789794"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-k64-rocprof -- .venv/bin/python3 -u scripts/laguna_q6_rows64_ab.py --repetitions 1 --require-cached-build --output /tmp/laguna-q6-k64-rocprof-child.json",
+    "production_q6_ms": 126.254237,
+    "candidate_q6_ms": 144.606548,
+    "production_median_call_us": 5486.853,
+    "candidate_median_call_us": 6282.946,
+    "production_resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "candidate_resources": {
+      "workgroup_size": 128,
+      "vgpr": 128,
+      "lds_bytes": 11264,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "a86296a72913e7af4d04b70310225c446177d82bc8000e09340debf99adf4f93"
+  },
+  "decision": {
+    "action": "Reject and remove the K64 kernel specialization, wrapper option, runtime mode, test parameter, and benchmark mode.",
+    "reason": "Halving barrier intervals doubles LDS and raises VGPR 88 -> 128; the Q6 family regresses 14.53% and full pp512 regresses 1.81%.",
+    "production": "unchanged at the clean 526.451 tok/s selector-unset baseline",
+    "next": "Keep Q6 rows64/local128/K32 and test a traffic-reduction premise that does not increase live staged state."
+  }
+}

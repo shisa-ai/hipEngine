@@ -664,7 +664,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **314.555 ms** | **33.20%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default and the corrected route-tile ledger puts it at **162.37 GB/s / 73.47%** of the existing read anchor. It clears the interim requested-byte floor; reopen only from counters or a new schedule. |
-| Selected D4 Q4/Q6 down | **203.923 ms** | **21.52%** | Direct Q4 decode and 64-row Q6 row-vector are retained, but the corrected ledger is only **135.11 GB/s / 61.13%** of the anchor. This is now the largest mapped family below the interim floor. Split Q4/Q6 attribution, then test a new traffic premise; local64, duplicate-decode halves, and activation double buffering remain closed. |
+| Selected D4 Q4/Q6 down | **203.923 ms** | **21.52%** | Direct Q4 decode and 64-row Q6 row-vector are retained, but the corrected ledger is only **135.11 GB/s / 61.13%** of the anchor. The fresh split is Q6 **126.594 ms**, Q4 **72.358 ms**, and packing **4.970 ms**. Q6 K64 staging is closed after VGPR/LDS growth regresses the family **14.54%** and pp512 **1.81%**. |
 | Global + SWA attention | **176.580 ms** | **18.64%** | Exact cached-only M128 scheduling saves **43.129 ms / 19.63%**. Source-qualified qrow4 remains fallback for partial tiles, wrapped SWA, and verifier transactions. Scalar key splitting, tiled M16/M8 WMMA, single-wave two-head GQA reuse, and nine-wave/token8 shared-K/V remain closed. |
 | Static-range direct hipBLASLt source-F16 | **124.792 ms** | **13.17%** | All five contractions and direct boundary casts are included. Both scaled-row kernels are absent; source-F16 boundary work is closed. |
 | Q4/Q6 WMMA dense/shared | **53.272 ms** | **5.62%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
@@ -717,9 +717,13 @@ Immediate execution queue:
 2. Attack selected down next. At **203.923 ms** it is the largest mapped
    family below the interim bandwidth floor and sustains only about
    **135.0 GB/s / 61.1%** of the existing read anchor. First split current Q4
-   versus Q6 time and requested bytes from the clean trace. Then gate one
-   distinct exact traffic premise on actual natural routing, BF16 output
-   equality, cached symbol/resource evidence, and matched full-model wall.
+   versus Q6 time and requested bytes from the clean trace: Q6 is
+   **126.594 ms**, Q4 **72.358 ms**, and packing **4.970 ms**. Q6 K64 staging
+   is rejected because VGPR **88 -> 128** and LDS **5,632 -> 11,264 B** move
+   the traced Q6 family **126.254 -> 144.607 ms (+14.54%)** and three-pair
+   pp512 **528.123 -> 518.568 tok/s (-1.81%)**. Gate the next distinct exact
+   traffic premise on actual natural routing, BF16 output equality, cached
+   symbol/resource evidence, and matched full-model wall.
    Do not repeat Q4 activation double buffering, Q6 local64, duplicate-decode
    row halves, 64-row Q4 accumulation, or F32 partial spills.
 3. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
@@ -1463,6 +1467,23 @@ All candidate code, wrapper, test, and harness surfaces were removed.
 Evidence:
 [`2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json).
 
+Thirty-seventh post-350 screen: **Q6 K64 synchronization staging rejected and
+removed**. The clean cached-attention trace splits selected down into Q6
+**126.594 ms**, Q4 **72.358 ms**, and activation packing **4.970 ms**. Q6 is
+therefore the larger remaining down target.
+
+The candidate kept production's 64-column/64-row/local128 geometry and staged
+two ordered K32 weight/activation slices before each barrier, preserving the
+established K32 dot and FP32 accumulation sequence while halving
+synchronization intervals. The uneven/empty-expert CPU-reference quality gate
+passes, and every full-model run selects token 2930. The larger live stage is
+decisively negative: VGPR rises **88 -> 128**, LDS doubles
+**5,632 -> 11,264 B**, and traced Q6 regresses
+**126.254 -> 144.607 ms (+14.54%)**. Three counter-rotated pp512 pairs regress
+**528.123 -> 518.568 tok/s (-1.81%, 0/3 wins)**. All kernel, wrapper, runtime,
+test, and harness candidate surfaces were removed. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-attention-preappend-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json)
@@ -2081,6 +2102,8 @@ Do not repeat:
 - blanket non-temporal weight loads for rows>1 without a new cache/traffic
   profile; both the prior gfx1151 control and the production-geometry T16
   `slc dlc` screen regress decisively;
+- Q6 K64 multi-stage synchronization: doubling live stages raises VGPR
+  **88 -> 128**, doubles LDS, and regresses the traced family **14.54%**;
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - single-wave qrow4 two-head GQA fusion; exact K/V reuse regresses all measured
   512/1K/4K diagnostic lengths;
@@ -2154,6 +2177,7 @@ Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-selected-weight-traffic-ledger.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`

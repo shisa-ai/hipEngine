@@ -180657,3 +180657,38 @@ Vulkan local sizes verbatim will close the measured gap.
   `docs/LAGUNA-prefill.md`. Current production is **526.451 tok/s**; selected
   down at **203.923 ms** and about **61.1%** of the requested-byte read anchor
   is the next measured optimization target.
+
+## 2026-07-26 — Reject Q6 selected-down K64 synchronization staging
+
+- Split the clean cached-attention pp512 trace by exact symbol. Selected down
+  is Q6 **126.593722 ms / 23 calls**, Q4 **72.358449 ms / 24 calls**, and
+  D4 activation packing **4.970450 ms / 47 calls**, totaling the published
+  **203.922621 ms**. Q6 is the larger remaining down target.
+- Screened a Q6-only 64-column/64-row/local128 K64 stage. It loaded two
+  ordered K32 weight/activation slices before synchronization, then performed
+  the existing dot and FP32 accumulation sequence in K32 order. It does not
+  change the row tile, use local64, duplicate weight decode, or spill partials.
+  RED first failed because the wrapper had no `k_stages` contract; GREEN
+  passed the uneven/empty-expert CPU-reference quality gate.
+- One-owner, three-pair command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_q6_rows64_ab.py --repetitions 3
+  --require-cached-build --output /tmp/laguna-q6-k64-screen.json`.
+  Production samples are **529.874/527.373/528.123 tok/s**; candidate samples
+  are **521.509/518.568/518.500 tok/s**. The median regresses
+  **528.123 -> 518.568 tok/s (-1.81%, 0/3 wins)**, always token 2930.
+  Raw SHA-256 is
+  `fa01c4c0f25666b2f8cbae6552314ec53fb7f7c3a0d7652ce37c864fe3789794`.
+- A cached `rocprofv3 --kernel-trace` over one pair records production Q6
+  **126.254237 ms** at local128/VGPR88/LDS5632B/scratch0 and candidate Q6
+  **144.606548 ms** at local128/VGPR128/LDS11264B/scratch0. Halving barrier
+  intervals raises live state enough to regress the family **14.54%**. Trace
+  SHA-256 is
+  `a86296a72913e7af4d04b70310225c446177d82bc8000e09340debf99adf4f93`.
+- Removed the candidate HIP specialization, wrapper option, runtime mode, test
+  parameter, and harness mode; `git diff` confirms production code and tests
+  are byte-identical to `46dcd697e`. Production remains **526.451 tok/s**.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`.
