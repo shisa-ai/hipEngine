@@ -45,9 +45,6 @@ LAGUNA_IQ3_WAVE10_FUSED = True
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
 LAGUNA_IQ2_GRID64 = True
-# Exact gated page-zero global attention is admitted only as a default-off
-# runtime screen until clean and complete-category gates pass.
-LAGUNA_GLOBAL_SINGLE_PAGE_GATED_ATTENTION = False
 # Clean P2.1 exact split profiles and the complete category/heldout gate admit
 # independent global/SWA crossovers. Registered single-block readers remain the
 # below-threshold and explicit-disable fallback on gfx1100; other backends do
@@ -129,7 +126,6 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
-    "LAGUNA_GLOBAL_SINGLE_PAGE_GATED_ATTENTION",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ2_GRID64",
