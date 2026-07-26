@@ -1,0 +1,66 @@
+{
+  "created_at": "2026-07-26T00:15:00+00:00",
+  "kind": "hipengine_laguna_selected_weight_traffic_ledger",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "hardware": {
+    "architecture": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "read_anchor_gb_s": 221.0,
+    "anchor_qualification": "Existing same-host large-read anchor; fresh locked-clock counter validation remains open."
+  },
+  "inputs": {
+    "routing": "/tmp/laguna-lap0-routing-8d26a9562.json",
+    "routing_shape": "natural M512, top_k=10, sparse layers 1..47",
+    "resident_manifest": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1/manifest.json",
+    "trace_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json"
+  },
+  "routing": {
+    "active_expert_groups": 10237,
+    "gate_up_row32_tiles": 14034,
+    "gate_up_tile_inflation_over_active": 1.370909446126795,
+    "down_route_tiles": 12759,
+    "q4_down_layers_row32": 24,
+    "q6_down_layers_row64": 23
+  },
+  "families": {
+    "selected_q4_gate_up": {
+      "trace_ms": 314.378011,
+      "source_active_once_gb": 36.228169728,
+      "resident_active_once_gb": 37.234507776,
+      "source_per_row_tile_gb": 49.665540096,
+      "resident_per_row_tile_gb": 51.045138432,
+      "active_once_source_gb_s": 115.23760714931171,
+      "row_tile_source_gb_s": 157.9803241900401,
+      "row_tile_resident_gb_s": 162.36866652865234,
+      "percent_of_read_anchor": 73.46998485459382,
+      "seventy_percent_target_met": true
+    },
+    "selected_q4_q6_down": {
+      "trace_ms": 203.720523,
+      "source_active_once_gb": 22.244548608,
+      "resident_active_once_gb": 22.497386496,
+      "source_per_route_tile_gb": 27.175919616,
+      "resident_per_route_tile_gb": 27.524308992,
+      "active_once_source_gb_s": 109.19149568450696,
+      "route_tile_source_gb_s": 133.39804559602473,
+      "route_tile_resident_gb_s": 135.1081795131657,
+      "percent_of_read_anchor": 61.13492285663607,
+      "seventy_percent_target_met": false
+    }
+  },
+  "modeled_bounds": {
+    "down_ms_at_70_percent_anchor": 177.90966410310357,
+    "down_ms_saved_to_70_percent_anchor": 25.81085889689643,
+    "gate_up_ms_at_full_anchor": 230.9734770678733,
+    "gate_up_ms_saved_to_full_anchor": 83.4045339321267,
+    "down_ms_at_full_anchor": 124.54438457918552,
+    "down_ms_saved_to_full_anchor": 79.17613842081448
+  },
+  "method": {
+    "active_once": "Sum per-expert source/resident bytes for every expert with at least one routed row.",
+    "row_tile_requested": "Multiply per-expert gate/up bytes by ceil(rows/32); multiply Q4 down by ceil(rows/32) and Q6 down by ceil(rows/64), matching production grids.",
+    "rate": "Requested resident bytes divided by the retained pp512 family duration.",
+    "qualification": "Requested-byte rates are schedule-correct lower bounds for global load traffic, not memory-controller counter measurements; cache-line fetches, replay, metadata, activation, and output traffic are excluded."
+  }
+}
