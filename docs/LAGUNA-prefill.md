@@ -34,7 +34,10 @@ routed-output round trip and launch per sparse layer; clean selector-unset
 publication reaches **543.807 tok/s** median. Exact selected-down scratch reuse
 and an explicit-BF16-boundary dual-SiLU pack remove another launch and
 intermediate per sparse layer; clean selector-unset publication reaches
-**546.100 tok/s** median. The campaign remains active toward the 700 stretch.
+**546.100 tok/s** median. The subsequent M2048 matrix policy does not claim a
+pp512 win, but raises clean production 1K/4K to **506.299/410.099 tok/s**
+while pp512 remains **545.015 tok/s** within run variance. The campaign remains
+active toward the 700 stretch.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -48,8 +51,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **546.100 tok/s**
-selector-unset, **7.164x** the old row and **58.492%** above the Vulkan
+The quality-admitted production default now measures **545.015 tok/s**
+selector-unset, **7.151x** the old row and **58.175%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -647,7 +650,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | Clean revision `c0730bb94` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle. Exact fused selected-SiLU pack production reaches **546.100 tok/s** median with clean samples **543.299–559.472 tok/s**; 1K/4K reach **481.640/389.686 tok/s**. |
+| Production publication | Complete/current | Clean revision `dcf29b1d5` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle. M2048 production reaches **545.015 tok/s** pp512 with clean samples **544.501–557.846 tok/s**; 1K/4K improve to **506.299/410.099 tok/s**. The matched M512/M2048 screen measures maximum relative KL **0.000012503** and 100% top-1. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -656,7 +659,7 @@ Current progress:
 ## Post-500 campaign — 700 production stretch
 
 The 350 and 500 tok/s milestones prove the compounded production package, but
-they are not roofline results. Current clean production measures **0.937558
+they are not roofline results. Current clean production measures **0.939424
 seconds** synchronized pp512 wall. The cached attribution run measures
 **0.931172 seconds** wall, **0.927831 seconds** kernel span, and **0.917420
 seconds** kernel sum. Only **13.752 ms / 1.48%** of the traced wall lies
@@ -682,14 +685,14 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
-- The clean production median is **546.100 tok/s**, all three samples are at
-  least **543.299 tok/s**, and cached attribution independently measures
+- The clean production median is **545.015 tok/s**, all three samples are at
+  least **544.501 tok/s**, and cached matrix512 attribution independently measures
   **549.845 tok/s**. The declared 500 gate is closed.
 - Reducing the remaining global+SWA attention from **158.702 ms** toward
   **100 ms** models to roughly **580 tok/s** with every other family
   unchanged.
-- The clean wall must fall from **937.558 ms** to **731.429 ms** for 700 tok/s,
-  a further **206.129 ms**. Attention-only tuning cannot supply that result;
+- The clean wall must fall from **939.424 ms** to **731.429 ms** for 700 tok/s,
+  a further **207.995 ms**. Attention-only tuning cannot supply that result;
   selected-down traffic, then a new gate/up or source-F16 architecture, must
   compound with any additional attention win.
 - The old active-expert-once lower bound made gate/up appear to sustain only
@@ -748,10 +751,13 @@ Immediate execution queue:
    cross-tile/expert schedule. The corrected requested-byte ledger already
    reaches **73.37%** of the read anchor, so a local body tweak must explain
    how it reduces route-tile rereads or raises measured bandwidth.
-5. Raise the currently hard-capped matrix capacity and screen **1024/2048**
-   chunks for 1K/4K prompts while retaining independent 128-row attention
-   slices. Publish scratch/context admission and exact cursor/KV/lifecycle
-   evidence. This receives no pp512 credit.
+5. **Complete:** M2048 is the gfx1151 default while attention remains M128.
+   Matched M512 -> M2048 improves 1K/4K **5.420%/5.752%**, keeps pp512 within
+   **-0.358%**, and passes full-logit quality at max relative KL
+   **0.000012503** with 100% top-1. Clean selector-unset production reaches
+   **506.299/410.099 tok/s** at 1K/4K. Exact cursor, multi-wrap KV, deterministic
+   repeats, 1.755-GB scratch, and lifecycle recovery are published. This
+   receives no pp512 credit.
 6. Do not retry T16-lite: its best exact byte-plane/LDS decoder loses
    **11.22–17.63%** at c1/c2/c4/c8. Any future X16 or genuinely different
    microtiled replacement must run the same exact screen before an integrated
@@ -1718,10 +1724,36 @@ test, and harness surface was removed and production remains
 excluded from the evidence. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json).
 
+The first post-546 structural screen is retained for long prompts. Projection
+and MoE capacity rises from M512 to M2048 while every attention and KV
+operation remains independently sliced at M128. A wide pending KV transaction
+may span the physical 512-token SWA ring, but no physical operation may do so;
+the 640-row oracle is byte-identical to five separately committed M128
+transactions across repeated wraps.
+
+Two clean counter-rotated repetitions measure M512 -> M2048 at
+512/1K/4K as **547.663/483.675/388.760 ->
+545.703/509.891/411.121 tok/s**. That is **-0.358%/+5.420%/+5.752%**;
+aggregate wall improves **5.256%**. M2048 uses **1,755,275,296 bytes** of
+row/MoE scratch, remains within the existing 2-GiB admission floor, is
+repeat-deterministic, and returns every tracked allocation. Full final-logit
+comparison against M512 has maximum KL **0.000012503**, 100% top-1, and finite
+outputs. Clean selector-unset publication on the promoted revision measures
+**545.015/506.299/410.099 tok/s** at 512/1K/4K. The pp512 path receives no
+speed credit because the actual transaction still contains 512 rows; the win
+is retained for 1K/4K production. Evidence:
+[`2026-07-26-gfx1151-laguna-m2048-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-m2048-production.json).
+
 Production evidence:
 
+- [`2026-07-26-gfx1151-laguna-m2048-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-m2048-production.json)
+  is current production: clean selector-unset median **545.015 tok/s**,
+  minimum **544.501 tok/s**, and 1K/4K **506.299/410.099 tok/s**. The matched
+  policy screen improves long-prompt throughput **5.420%/5.752%** with maximum
+  relative KL **0.000012503**, 100% top-1, deterministic repeats, an exact
+  multi-wrap KV oracle, and exact lifecycle recovery.
 - [`2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json)
-  is current production: clean selector-unset median **546.100 tok/s**,
+  is the superseded matrix512 production packet: clean selector-unset median **546.100 tok/s**,
   minimum **543.299 tok/s**, 1K/4K **481.640/389.686 tok/s**, and unchanged
   maximum KL **0.049542582**. Cached tracing removes 47 launches, records no
   standalone selected-SiLU calls, and observes the fused pack at

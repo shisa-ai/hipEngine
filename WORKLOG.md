@@ -181307,3 +181307,23 @@ Vulkan local sizes verbatim will close the measured gap.
   Gfx1151/runner/matrix tests report **43 passed** with compile/diff checks.
   Commit this promotion, then capture a clean selector-unset production run
   before publishing the retained artifact and benchmark rollups.
+
+## 2026-07-26 — Publish M2048 long-prefill production
+
+- Clean promoted revision `dcf29b1d5` ran
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/2026-07-26-gfx1151-laguna-m2048-production-clean.json`.
+  Selector-unset medians are **545.015/506.299/410.099 tok/s** at
+  512/1K/4K. Against the preceding M512 packet, pp512 is flat within
+  **-0.199%** variance and receives no speed credit; 1K/4K improve
+  **5.120%/5.238%**. All next tokens are **2930/95/7772**, positions and
+  repeats are deterministic, and **78,777,775,764 tracked bytes** return to
+  zero. Raw SHA-256 is `3009e6fb...5d903`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-m2048-production.json`,
+  updated the benchmark README/changelog and the active plan table, and closed
+  the 1024/2048 queue item. The artifact binds the selector-unset run to the
+  two-repeat matched screen, its **1.25e-5** maximum relative KL / 100% top-1,
+  the 640-row exact multi-wrap KV oracle, **1,755,275,296-byte** row/MoE
+  scratch, and the unchanged absolute quality gate. Production pp512 remains
+  roughly **545 tok/s**; the next work must remove about **208 ms** from pp512
+  through a genuinely new selected-expert or attention architecture.
