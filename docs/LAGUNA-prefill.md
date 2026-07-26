@@ -744,6 +744,7 @@ Current progress:
 | Q6 compact activation cache | Admitted gfx1151 production default | Q6 never consumes Q8_1 sum metadata. Dropping that field and storing each bounded K16 quant sum as `int16` reduces activation staging **48 -> 40 bytes/row** and kernel LDS **5,632 -> 5,120 B** without changing dots or accumulation. The actual leaf improves **5.082 -> 4.911 ms (-3.36%)**; 15 complete-state pp512 pairs improve **550.584 -> 552.807 tok/s (+0.404%, 15/15 wins)**. Clean 512/1K/4K reaches **550.625/517.017/431.789 tok/s**. |
 | Q6 half-row activation staging | Admitted gfx1151 production default | Each of 128 threads stages one 16-byte activation half and one K16 sum instead of leaving half the workgroup idle while 64 threads stage complete rows. Resources stay local128/VGPR88/SGPR128/LDS5120B/scratch0. The actual layer-1 leaf improves **4.902 -> 4.885 ms (-0.351%, 16/21 wins)**; the all-Q6 screen improves **21/23** layers and **111.798 -> 111.490 ms (-0.276%)** with zero BF16 mismatches. Complete pp512 A/B is exact and positive at **552.562 -> 553.018 tok/s (+0.083%)**; clean headline publication is neutral. |
 | Q6 padded-activation elision | Admitted gfx1151 production default | Natural M512 has **117,760 useful** versus **362,944 padded** Q6 row slots. Padded slots are never consumed by the guarded dot/store loops, so production skips their zero LDS stores and K16 sum work. It improves **19/23** actual layers and **112.008 -> 111.806 ms (-0.180%)**, with zero BF16 mismatches and unchanged local128/VGPR88/SGPR128/LDS5120B/scratch0. Complete pp512 A/B is exact and positive at **552.983 -> 553.559 tok/s (+0.104%, 7/11 wins)**; clean publication reaches **551.459/517.307/432.099 tok/s**. |
+| Q6 selected-down integer WMMA | Admitted gfx1151 default pending clean publication | Four wave32 groups consume the existing planar-qmicro/D4 caches as 16x16x16 signed-int8 x unsigned-Q6 fragments while preserving the two K16 scales, `-32*sum(x)` correction, ordered FP32 K32 accumulation, and BF16 store. The actual layer-1 natural-M512 leaf is BF16-byte exact and improves **4.7654 -> 4.5655 ms (-4.20%, 21/21 wins)**. The new body is local128/VGPR96/SGPR128/LDS5120B/scratch0 versus retained VGPR80. Clean selector-unset publication is the next gate. |
 | LAP-7–LAP-8 | Exact cached-only, cached-metadata, qrow6, and dense-initial policies admitted | Complete M128 tiles append before cached-only attention while partial, wrapped SWA, verifier, explicitly evicted, and unmeasured paths retain exact fallbacks. The final initial-fill policy uses global qrow4/qrow6 and SWA qrow4 without per-token position/eviction reads. Matched pp512 improves **552.144 -> 559.539 tok/s (+1.339%)**; clean publication reaches **559.290 tok/s**, and tracing cuts attention **153.226 -> 141.846 ms (-7.43%)**. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, head2, qhead3, and nine-wave GQA sharing remain closed. |
 
 ## Post-500 campaign — 700 production stretch
@@ -1154,15 +1155,22 @@ Immediate execution queue:
    shows both one-plane candidates at local128/VGPR120/LDS3072B/scratch0
    versus production VGPR88. All candidate surfaces are removed. Evidence:
    [`2026-07-26-gfx1151-laguna-q4-k-hybrid-metadata-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-hybrid-metadata-rejected.json).
-18. **Active next screen:** build a Q6-only integer-WMMA selected-down leaf
-   around the existing D4 activation cache and byte-neutral planar qmicro
-   weights. This is not a retry of the rejected Q4 D8 integer-WMMA body:
-   Q6 down is measured at only **123.99 GB/s / 56.10%** of the stream anchor
-   and has materially more low/high-bit dot work to amortize matrix-fragment
-   setup. Preserve the current K order, FP32 scale accumulation, BF16 store,
-   64-row route map, and exact fallback. Gate first on the uneven/empty-expert
-   CPU oracle and actual natural-M512 Q6 leaf; remove it if integer WMMA does
-   not beat the planar-qmicro packed-dot body with zero BF16 mismatches.
+18. **Leaf admitted; clean publication pending:** the Q6-only integer-WMMA
+   selected-down body consumes the existing D4 activation cache and
+   byte-neutral planar qmicro weights without a sidecar. Four wave32 groups
+   own independent 16-row bands and each issue two signed-int8 x unsigned-Q6
+   16x16x16 fragments per K32. The two integer results retain the existing
+   per-half Q6 scales, `-32*sum(x)` correction, FP32 K32 accumulation order,
+   BF16 store, 64-row route map, and exact fallback. The uneven/empty-expert
+   CPU oracle is BF16-byte exact. On actual layer-1 natural-M512 weights, 21
+   counter-rotated burst-seven pairs improve **4.7654 -> 4.5655 ms
+   (-4.20%, 21/21 wins)** with zero BF16 mismatches and complete memory return.
+   Cached tracing names the intended template at
+   local128/VGPR96/SGPR128/LDS5120B/scratch0 versus retained VGPR80. Promote
+   only after the clean selector-unset 512/1K/4K gate; then refresh the Q6
+   family attribution before deciding whether another fragment geometry is
+   justified. Evidence:
+   [`2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json).
 
 Post-350 exclusions:
 
@@ -3003,6 +3011,7 @@ hipEngine's stricter correctness contract.
 Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`

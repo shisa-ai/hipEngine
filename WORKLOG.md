@@ -182823,3 +182823,39 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next screen moves to Q6 selected-down integer WMMA. Unlike the rejected Q4
   D8 body, Q6 is only **123.99 GB/s / 56.10%** of the stream anchor and has
   additional low/high-bit dot work that may amortize fragment setup.
+
+## 2026-07-26 — Admit Q6 selected-down integer-WMMA leaf
+
+- RED extended the production-shaped uneven/empty-expert Q6 fixture with an
+  integer-WMMA selector; it initially failed because the wrapper contract did
+  not exist. GREEN adds a planar-qmicro row64 specialization in the existing
+  selected-prefill kernel. Four wave32 groups own 16 rows each and issue two
+  signed-int8 x unsigned-Q6 16x16x16 fragments per K32 while preserving the
+  two K16 scales, `-32*sum(x)` correction, ordered FP32 K32 accumulation, and
+  BF16 store.
+- The 12-case Q6 CPU-reference/quality gate plus two Laguna MoE runtime cases
+  pass. The candidate is BF16-byte identical to the retained planar body on
+  the fixture and actual layer-1 weights. The lifecycle node also passes when
+  run with the production two-queue policy; its initial one-queue run correctly
+  failed only the unrelated branch-concurrency expectation.
+- On actual layer-1 K1024/N3072 weights and natural M512 routing, 21
+  counter-rotated burst-seven pairs improve **4.7654 -> 4.5655 ms (-4.20%,
+  21/21 wins)**. Ranges are **4.7304–4.9276 ms** versus
+  **4.5602–4.6570 ms**, BF16 mismatches are zero, checksum is
+  `509500838004`, and all **2,263,805,976** tracked bytes return.
+- Cached `rocprofv3 --kernel-trace` names template
+  `<1,true,false,128,64,true,true,true,true,false,true,true>` at
+  local128/VGPR96/SGPR128/LDS5120B/scratch0 versus the retained planar body's
+  VGPR80. Trace CSV SHA-256:
+  `ef7f28b76d433fa1076a2efe1b9dec8392d418307eb0320a4f56a9cb94793430`;
+  raw 21-pair leaf SHA-256:
+  `1c3efa7165c9026a76ddecc1829d7e8aa9ae11628c1fdab2862215f5f4d4ff7b`.
+- An unspecified wrapper selector promotes integer WMMA only for the existing
+  production planar-qmicro row64 contract. Explicit `False` remains for the
+  A/B comparator; all other Q6 geometries keep their packed-dot fallback.
+  Clean selector-unset publication is pending because the retained profiler
+  refuses a dirty tracked worktree. Artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains
+  mechanically blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is
+  absent.

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T14:45:30+00:00",
+  "kind": "hipengine_laguna_q6_selected_down_integer_wmma_candidate",
+  "status": "admitted_gfx1151_default_pending_clean_publication",
+  "repo_revision": "d516276ce81aa7caf53de511c353394330ce6a5b",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M with resident planar-qmicro Q6_K selected down",
+    "model_sha256": "7da520ed3e0ac4e56a774f44177461567dfd5237f2791cf16a6bea8745753f"
+  },
+  "implementation": {
+    "scope": "Q6 planar-qmicro selected down; one D4 activation plane; 64 output columns x 64 routed rows; local128",
+    "mapping": "four wave32 groups own independent 16-row bands and each issue two signed-int8 x unsigned-Q6 16x16x16 WMMA fragments per K32",
+    "arithmetic": "the two K16 integer results retain the existing per-half Q6 scale, -32*sum(x) correction, ordered FP32 K32 accumulation, and BF16 store",
+    "resident_delta_bytes": 0,
+    "runtime_policy": "unspecified integer_wmma selects the new body only for the already-constrained gfx1151 planar-qmicro row64 path; integer_wmma=false preserves the leaf A/B baseline"
+  },
+  "correctness": {
+    "red": "The production-shape uneven/empty-expert case failed because the integer_wmma wrapper selector did not exist.",
+    "focused_gate": "12 Q6 geometry/quality cases plus two Laguna MoE runtime cases pass; the candidate is BF16-byte identical to the retained planar body and passes KL <= 0.05, top-1 >= 90%, and relative-L2 <= 5e-3.",
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate' tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151 tests/test_laguna_moe_gpu.py::test_laguna_mmq_selected_down_reuses_exact_grouped_combine",
+    "focused_result": "14 passed",
+    "lifecycle_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_gguf_runner.py::test_laguna_owned_session_close_frees_weights_and_is_idempotent",
+    "lifecycle_result": "1 passed",
+    "actual_weight_bf16_mismatches": 0,
+    "actual_weight_checksum": 509500838004,
+    "memory_returned": true
+  },
+  "actual_weight_layer1_leaf": {
+    "shape": {
+      "natural_prompt_rows": 512,
+      "compact_routed_rows": 5120,
+      "padded_rows64": 15808,
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "resident_weight_bytes": 660602880
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-integer-wmma-leaf-21.json",
+    "timing": "HIP events; activation packing excluded; 21 counter-rotated burst-seven pairs",
+    "retained_planar_median_ms": 4.765449523925781,
+    "integer_wmma_median_ms": 4.56545284816197,
+    "change_percent": -4.196806088485316,
+    "candidate_wins": 21,
+    "pairs": 21,
+    "retained_range_ms": [
+      4.730436597551618,
+      4.927600860595703
+    ],
+    "integer_wmma_range_ms": [
+      4.560219628470285,
+      4.657001495361328
+    ],
+    "raw_sha256": "1c3efa7165c9026a76ddecc1829d7e8aa9ae11628c1fdab2862215f5f4d4ff7b"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file q6-int-wmma-leaf -- env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 1 --warmups 0 --prefill-burst 1 --decode-burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-int-wmma-trace-child.json",
+    "retained": {
+      "local_size": 128,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "integer_wmma": {
+      "local_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "csv_sha256": "ef7f28b76d433fa1076a2efe1b9dec8392d418307eb0320a4f56a9cb94793430"
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "mechanically blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "gate": {
+    "leaf_admitted": true,
+    "production_publication_pending": true,
+    "headline_tok_s_claimed": false
+  }
+}
