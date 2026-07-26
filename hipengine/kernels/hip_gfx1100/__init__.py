@@ -29,6 +29,10 @@ LAGUNA_MIXED_Q6_FIXED_METADATA = True
 # clean context orders, and both complete category orders. Explicit disable
 # restores the retained local128 fixed-Q6 mixed projection; layer 47 stays there.
 LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
+# The exact Q4_K c=1 BF16-to-F32 LM-head sibling is primitive-admitted but
+# remains explicit-only until full-state, trace, clean-context, and category
+# gates pass. False is an architecture-support sentinel as well as the default.
+LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = False
 # Clean P0 leaf/full-state/context/category evidence admits one exact local32
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
@@ -125,6 +129,7 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
+    "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",

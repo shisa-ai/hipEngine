@@ -159,6 +159,20 @@ def test_persistent_wave_top10_router_cli_is_removed_after_clean_rejection(
         benchmark._parse_args()
 
 
+def test_q4_lm_head_local32_fixed_metadata_cli_is_explicit_opt_in(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().enable_q4_lm_head_local32_fixed_meta
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--enable-q4-lm-head-local32-fixed-meta"],
+    )
+    assert benchmark._parse_args().enable_q4_lm_head_local32_fixed_meta
+
+
 def test_iq2_grid64_cli_is_defaults_on_with_explicit_disable(monkeypatch) -> None:
     monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
     assert not benchmark._parse_args().disable_iq2_grid64
