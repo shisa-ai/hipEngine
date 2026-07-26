@@ -81,9 +81,11 @@ per-wave top-10 plus a register-resident wave-0 merge. Repository primitive
 admission is now exact across hidden-17/3072 synthetic cases and every actual
 router, and the fresh all-layer event/wall window improves split
 **23.26%/23.23%** while beating rejected D11 **4.83%/4.84%**. The separately
-registered primitive now has a default-off runtime owner. Shared-weight full
-state and cached 47-call/**676-kernel** tracing pass; both clean context orders
-and both complete category orders remain mandatory before any promotion.
+registered primitive passed default-off full-state and cached 47-call/
+**676-kernel** admission, but failed both frozen short clean orders: the complete
+router family regresses **14.42%/13.69%** and kernel sum regresses
+**0.736%/1.422%**. Runtime selection/counter ownership is removed and categories
+are skipped; the primitive remains diagnostic.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1166,19 +1168,26 @@ are **0.82081 / 0.66186 / 0.62991 ms** for split / old D11 / wave-top10; wall is
 **0.82102 / 0.66243 / 0.63034 ms**. Every actual field and counter replay is
 exact. A cache-only trace names the candidate at local256/VGPR64/scratch0.
 
-The separately committed default-off runtime owner now passes. It allocates one
-four-byte scalar counter and no rows counter; 16-transition full logits/IDs, all
-48 hidden/47 routed boundaries, active K/V and every `KVLiveSpans` field,
-reset/re-prefill, and 20 self-reset checks are exact. Cache-only tracing records
-**47 composite calls/token**, zero split decode-router calls, local256, VGPR64,
-scratch0, and **723 -> 676 model kernels/token**. The process has one
-construction-time fill and no fill in either decode window. The split route
-remains default. Next run both clean short/512/1K/near-4K orders; only a complete
-pass permits both 18-prompt orders. Any failed router/kernel/span/child/category
-guard removes runtime selection/counter ownership while keeping the exact
-primitive. Evidence: [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json),
+The separately committed default-off runtime owner passed admission. It owned
+one four-byte scalar counter and no rows counter; 16-transition full logits/IDs,
+all 48 hidden/47 routed boundaries, active K/V and every `KVLiveSpans` field,
+reset/re-prefill, and 20 self-reset checks were exact. Cache-only tracing
+recorded **47 composite calls/token**, zero split decode-router calls, local256,
+VGPR64, scratch0, and **723 -> 676 model kernels/token**, with one construction-
+time fill and no fill in either decode window.
+
+The frozen full-model gate rejects that owner. In two counterbalanced short
+orders the candidate router family regresses **14.421%/13.689%** despite its
+isolated actual-weight win; complete kernel sum regresses **0.736%/1.422%** and
+order-B median dispatch span regresses **1.370%**. Profiled child remains inside
+the 0.5% guard and all IDs/resources/counter/lifecycle checks pass, but no guard
+can waive the target-family and kernel-sum failures. 512/1K/near-4K and both
+18-prompt orders are therefore skipped. Runtime selector/counter integration is
+removed, the split chain is again the only route, and the exact primitive stays
+diagnostic. Evidence: [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json),
 [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json),
-and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json).
+[`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json),
+and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json).
 
 ## 9. Do not chase without new evidence
 
@@ -1229,7 +1238,7 @@ and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wav
 | Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
-| Is the post-sign-bit wave-top10 router runtime-admitted? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json): yes, default-off. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**; full state is exact and tracing shows 47 candidate calls plus **676 model kernels/token**. Clean/category gates remain pending. |
+| Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-local32 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) measures hipEngine **62.354/61.732 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **3.03%/4.35%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1290,7 +1299,8 @@ D11 wave-top10 composition is now repository primitive-admitted. Hidden-17/3072
 synthetic cases and every actual router are byte-exact, codegen meets the frozen
 VGPR/SGPR/LDS/spill limits, and fresh all-layer event/wall improves
 **23.26%/23.23%** versus split and **4.83%/4.84%** versus old D11. Its
-explicit default-off runtime owner also passes full state and a 47-call/
-676-model-kernel trace with exactly one self-resetting counter allocation. The
-split route remains default and this is not a topline claim; all clean/category
-gates remain.
+explicit default-off runtime owner also passed full state and a 47-call/
+676-model-kernel trace, but both frozen short clean orders regress the complete
+router family **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime
+selection/counter ownership is removed, categories are skipped, and the split
+route plus canonical **61.732 tok/s** topline remain unchanged.

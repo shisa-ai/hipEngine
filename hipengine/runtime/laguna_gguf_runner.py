@@ -700,7 +700,6 @@ class LagunaEagerLibraries:
             **self.linear,
             "router_logits": self.router_logits,
             "router_select": self.router_select,
-            "router_topk": self.router_select,
             "selected_gate_up": self.selected_experts,
             "selected_gate_up_iq": self.iq_selected_experts,
             "selected_silu": self.dense_silu,
@@ -1792,7 +1791,6 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
-        use_persistent_router_wave_top10: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1868,10 +1866,6 @@ class LagunaGGUFResidentSession:
         self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
             self.backend,
             use_iq2_grid64,
-        )
-        self.use_persistent_router_wave_top10 = False
-        requested_persistent_router_wave_top10 = bool(
-            use_persistent_router_wave_top10
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -1957,12 +1951,6 @@ class LagunaGGUFResidentSession:
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
                 use_iq2_grid64=self.use_iq2_grid64,
-                use_persistent_router_wave_top10=(
-                    requested_persistent_router_wave_top10
-                ),
-            )
-            self.use_persistent_router_wave_top10 = (
-                self.moe_plan.router_topk is not None
             )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
@@ -2014,7 +2002,6 @@ class LagunaGGUFResidentSession:
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
-                allocate_router_counter=self.use_persistent_router_wave_top10,
                 runtime=self.runtime,
             )
             self.rows_scratch = LagunaRowsScratch.allocate(
