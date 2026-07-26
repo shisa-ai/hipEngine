@@ -1202,6 +1202,15 @@ policy is therefore actively harmful for this resident-T16 access pattern.
 All diagnostic HIP, wrapper, harness, and test surfaces were removed. Evidence:
 [`2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-wavecols-nontemporal-rejected.json).
 
+A Q6-specific follow-up reaches the same decision on the current dominant
+selected-down leaf. Applying the hint only to the three aligned qmicro quant
+record loads remains BF16-byte exact, but actual layer-1 natural-M512 timing
+regresses **5.066 -> 5.173 ms (+2.121%)** across eleven counter-rotated
+burst-five samples. The candidate is fully removed. This closes non-temporal
+loads for both selected Q4 gate/up and selected Q6 down unless a future
+counter trace first demonstrates a new cache-pollution limiter. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-qmicro-nontemporal-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-nontemporal-rejected.json).
+
 Twenty-third post-350 screen: **Q6 local128 row-half wave mappings rejected
 and removed**. Four wave32s retained the production 16 accumulators per lane:
 waves 0/1 covered columns 0-31/32-63 for rows 0-15, and waves 2/3 repeated
@@ -2429,7 +2438,8 @@ Do not repeat:
   byte-load instructions regress the natural-M512 gate/up leaf **22.7%**;
 - blanket non-temporal weight loads for rows>1 without a new cache/traffic
   profile; both the prior gfx1151 control and the production-geometry T16
-  `slc dlc` screen regress decisively;
+  Q4 `slc dlc` screen regress decisively, and the Q6-specific qmicro screen
+  also regresses **2.121%**;
 - Q6 K64 multi-stage synchronization: doubling live stages raises VGPR
   **88 -> 128**, doubles LDS, and regresses the traced family **14.54%**;
 - direct-wave Q4 register weight prefetch: the second decoded K32 record raises
