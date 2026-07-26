@@ -1,0 +1,1241 @@
+{
+  "actual_weight_transfer": {
+    "all_timed_rows_improve_event_and_wall": true,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 uv run python /tmp/bench_laguna_q5_swar_integrated_actual.py",
+    "exact_counts": {
+      "attention_output": 47,
+      "mixed_q5_q6_layers": 47,
+      "mixed_q5_q6_outputs": 188,
+      "shared_q5_layers": 46,
+      "shared_q5_outputs": 92
+    },
+    "harness_sha256": "2a34946d3852fd32ca4b2ee45325954c4594512ae073413d15e807f0952c4a2b",
+    "improvement_ranges": {
+      "attention_output": {
+        "event_improvement_range_pct": [
+          7.921558131639827,
+          10.113158072329353
+        ],
+        "wall_improvement_range_pct": [
+          7.634035943322215,
+          9.520947313333416
+        ]
+      },
+      "mixed_q5_q6": {
+        "event_improvement_range_pct": [
+          5.911891084658594,
+          7.521895329598394
+        ],
+        "wall_improvement_range_pct": [
+          5.193907383504371,
+          7.011383034127638
+        ]
+      },
+      "shared_q5": {
+        "event_improvement_range_pct": [
+          5.6975527541683775,
+          5.993797308161253
+        ],
+        "wall_improvement_range_pct": [
+          5.7516197220657155,
+          6.012365025791555
+        ]
+      }
+    },
+    "interpretation": "This is the mandatory isolated repository transfer precondition, not full-model/default throughput evidence.",
+    "library_sha256": "7275cf3261e8cd62d042041bfc322ff533d3842fb469a9546b779da0fe92d899",
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "reruns": 0,
+      "timed_mixed_layers": [
+        0,
+        1,
+        44,
+        46
+      ],
+      "timed_output_layers": [
+        0,
+        1,
+        44,
+        46
+      ],
+      "timed_shared_layers": [
+        1,
+        46
+      ],
+      "warmups": 50
+    },
+    "raw_sha256": "13a2e762fd16e0612ce667bded2b4487cd7efd9bbca4c8866d6a9bd95ea0197e",
+    "reruns": 0,
+    "timed_rows": [
+      {
+        "event_delta_pct": -8.53220882305713,
+        "event_samples_us": {
+          "candidate": [
+            21.10100507736206,
+            21.044209003448486,
+            22.177460193634033,
+            21.974260807037354,
+            21.781470775604248,
+            22.28647470474243,
+            21.68450117111206,
+            21.571900844573975,
+            21.770706176757812,
+            21.417105197906494,
+            20.870115756988525,
+            21.35251522064209,
+            20.801515579223633,
+            20.573909282684326,
+            20.59391498565674
+          ],
+          "control": [
+            20.741045475006104,
+            22.949419021606445,
+            23.68161916732788,
+            24.337470531463623,
+            23.908674716949463,
+            23.888304233551025,
+            24.05130386352539,
+            23.887715339660645,
+            23.73251438140869,
+            23.41491460800171,
+            23.138725757598877,
+            23.150124549865723,
+            22.92292594909668,
+            22.805919647216797,
+            22.58971929550171
+          ]
+        },
+        "event_us": {
+          "candidate": 21.417105197906494,
+          "control": 23.41491460800171
+        },
+        "family": "attention_output",
+        "layer_id": 0,
+        "wall_delta_pct": -8.435627092282783,
+        "wall_samples_us": {
+          "candidate": [
+            20.374279702082276,
+            20.653634564951062,
+            21.992699475958943,
+            22.628509905189276,
+            22.280605044215918,
+            22.065304219722748,
+            21.766094723716378,
+            22.0493006054312,
+            21.64854551665485,
+            21.6408958658576,
+            21.031135693192482,
+            21.514840191230178,
+            21.03348495438695,
+            21.019589621573687,
+            20.563730504363775
+          ],
+          "control": [
+            25.05324431695044,
+            23.631069343537092,
+            23.790274281054735,
+            24.302784586325288,
+            24.12592526525259,
+            24.06983054243028,
+            23.905275156721473,
+            23.7141246907413,
+            23.634624667465687,
+            23.543925490230322,
+            23.00151507370174,
+            22.947514662519097,
+            22.86586561240256,
+            22.808314533904195,
+            22.356105037033558
+          ]
+        },
+        "wall_us": {
+          "candidate": 21.6408958658576,
+          "control": 23.634624667465687
+        }
+      },
+      {
+        "event_delta_pct": -9.628205844830195,
+        "event_samples_us": {
+          "candidate": [
+            29.70478057861328,
+            30.607988834381104,
+            31.221210956573486,
+            31.42220973968506,
+            31.631596088409424,
+            31.683194637298584,
+            31.492595672607422,
+            31.458799839019775,
+            31.519994735717773,
+            32.96501398086548,
+            31.514205932617188,
+            31.645405292510986,
+            31.27000093460083,
+            31.676805019378662,
+            31.416800022125244
+          ],
+          "control": [
+            31.889793872833252,
+            33.702025413513184,
+            33.57022523880005,
+            34.816434383392334,
+            34.44421052932739,
+            34.84781503677368,
+            34.864070415496826,
+            34.77781534194946,
+            34.52861547470093,
+            35.16163110733032,
+            34.859230518341064,
+            35.37782430648804,
+            35.733230113983154,
+            34.89182472229004,
+            34.85121965408325
+          ]
+        },
+        "event_us": {
+          "candidate": 31.492595672607422,
+          "control": 34.84781503677368
+        },
+        "family": "attention_output",
+        "layer_id": 1,
+        "wall_delta_pct": -8.299248701582284,
+        "wall_samples_us": {
+          "candidate": [
+            31.69918549247086,
+            37.377410335466266,
+            34.29332049563527,
+            31.553179724141955,
+            32.23224077373743,
+            33.95800944417715,
+            34.231365425512195,
+            31.831234227865934,
+            31.829284271225333,
+            31.856235582381487,
+            31.755334930494428,
+            31.823435565456748,
+            31.717484816908836,
+            32.02099003829062,
+            31.632980098947883
+          ],
+          "control": [
+            34.69572518952191,
+            34.916974836960435,
+            33.926565665751696,
+            34.73102580755949,
+            34.664775012061,
+            34.83772510662675,
+            34.595519537106156,
+            34.7120757214725,
+            34.45511916652322,
+            34.93512514978647,
+            34.67177506536245,
+            34.97037454508245,
+            34.84298009425402,
+            34.896129509434104,
+            34.286919981241226
+          ]
+        },
+        "wall_us": {
+          "candidate": 31.831234227865934,
+          "control": 34.7120757214725
+        }
+      },
+      {
+        "event_delta_pct": -7.921558131639827,
+        "event_samples_us": {
+          "candidate": [
+            22.58554458618164,
+            23.203349113464355,
+            24.05235528945923,
+            23.884155750274658,
+            23.12274932861328,
+            23.277149200439453,
+            23.10575008392334,
+            22.91755437850952,
+            24.234354496002197,
+            22.39454984664917,
+            22.31454610824585,
+            22.300550937652588,
+            22.021145820617676,
+            21.936345100402832,
+            21.574740409851074
+          ],
+          "control": [
+            21.6361403465271,
+            26.161963939666748,
+            26.172571182250977,
+            25.27717113494873,
+            25.68777084350586,
+            25.756564140319824,
+            25.234365463256836,
+            25.12836456298828,
+            24.889163970947266,
+            24.56496000289917,
+            24.417154788970947,
+            24.276959896087646,
+            23.873159885406494,
+            23.895955085754395,
+            23.64875555038452
+          ]
+        },
+        "event_us": {
+          "candidate": 22.91755437850952,
+          "control": 24.889163970947266
+        },
+        "family": "attention_output",
+        "layer_id": 44,
+        "wall_delta_pct": -7.634035943322215,
+        "wall_samples_us": {
+          "candidate": [
+            22.835859563201666,
+            23.784874938428402,
+            24.084975011646748,
+            26.653014356270432,
+            23.619020357728004,
+            23.426114348694682,
+            23.25472072698176,
+            22.908415412530303,
+            22.595810005441308,
+            22.31195569038391,
+            22.098354529589415,
+            22.308655316010118,
+            22.15830492787063,
+            21.846095332875848,
+            21.492245141416788
+          ],
+          "control": [
+            24.156230501830578,
+            26.316610164940357,
+            26.278559817001224,
+            25.429599918425083,
+            25.664049899205565,
+            25.76805534772575,
+            25.187545688822865,
+            25.285794399678707,
+            24.72324064001441,
+            24.51543463394046,
+            24.54263507388532,
+            24.236735189333558,
+            24.067630292847753,
+            24.132680846378207,
+            23.66352011449635
+          ]
+        },
+        "wall_us": {
+          "candidate": 22.835859563201666,
+          "control": 24.72324064001441
+        }
+      },
+      {
+        "event_delta_pct": -10.113158072329353,
+        "event_samples_us": {
+          "candidate": [
+            31.670005321502686,
+            32.24461078643799,
+            31.57160520553589,
+            32.296013832092285,
+            30.905404090881348,
+            31.164405345916748,
+            30.787603855133057,
+            32.23701000213623,
+            33.24361562728882,
+            32.67521381378174,
+            32.86501884460449,
+            33.21761608123779,
+            33.5894250869751,
+            33.25161933898926,
+            32.329814434051514
+          ],
+          "control": [
+            35.03542900085449,
+            37.291646003723145,
+            34.47683095932007,
+            35.093629360198975,
+            33.97242546081543,
+            34.61503028869629,
+            33.3774209022522,
+            36.00483417510986,
+            37.21484422683716,
+            35.956435203552246,
+            36.338438987731934,
+            36.8084454536438,
+            35.92963457107544,
+            36.21033430099487,
+            35.85503578186035
+          ]
+        },
+        "event_us": {
+          "candidate": 32.296013832092285,
+          "control": 35.92963457107544
+        },
+        "family": "attention_output",
+        "layer_id": 46,
+        "wall_delta_pct": -9.520947313333416,
+        "wall_samples_us": {
+          "candidate": [
+            32.29678957723081,
+            32.4473949149251,
+            31.694085337221622,
+            31.733635114505887,
+            32.32983988709748,
+            31.28123003989458,
+            32.11279050447047,
+            35.676584811881185,
+            32.62999467551708,
+            32.89790009148419,
+            32.993449131026864,
+            32.70015004090965,
+            32.71254478022456,
+            33.05885009467602,
+            32.671199878677726
+          ],
+          "control": [
+            34.27252057008445,
+            35.87419050745666,
+            35.37753480486572,
+            36.840804386883974,
+            34.48717063292861,
+            35.025374963879585,
+            33.777059288695455,
+            36.063590086996555,
+            36.63624986074865,
+            36.23134572990239,
+            36.17644542828202,
+            36.069139605388045,
+            35.986489383503795,
+            36.085740430280566,
+            36.2273957580328
+          ]
+        },
+        "wall_us": {
+          "candidate": 32.62999467551708,
+          "control": 36.063590086996555
+        }
+      },
+      {
+        "event_delta_pct": -6.769337172110291,
+        "event_samples_us": {
+          "candidate": [
+            26.791739463806152,
+            26.570744514465332,
+            27.544150352478027,
+            27.464148998260498,
+            27.101163864135742,
+            27.55596399307251,
+            27.316560745239258,
+            26.881959438323975,
+            28.611819744110107,
+            28.57996940612793,
+            29.453375339508057,
+            29.0533709526062,
+            29.103174209594727,
+            29.040374755859375,
+            29.0413761138916
+          ],
+          "control": [
+            28.46275568008423,
+            29.482364654541016,
+            29.556760787963867,
+            29.57087516784668,
+            29.50897455215454,
+            28.9351749420166,
+            29.142374992370605,
+            29.377775192260742,
+            29.54277515411377,
+            31.232585906982422,
+            30.930185317993164,
+            32.04939603805542,
+            30.99038600921631,
+            31.104590892791748,
+            30.954785346984863
+          ]
+        },
+        "event_us": {
+          "candidate": 27.55596399307251,
+          "control": 29.556760787963867
+        },
+        "family": "mixed_q5_q6",
+        "layer_id": 0,
+        "wall_delta_pct": -5.193907383504371,
+        "wall_samples_us": {
+          "candidate": [
+            29.48975539766252,
+            28.695689979940653,
+            28.025079518556595,
+            27.7818797621876,
+            27.23966958001256,
+            27.819680981338024,
+            27.33412547968328,
+            27.796030044555664,
+            28.491340344771743,
+            28.497634921222925,
+            29.541405383497477,
+            29.04284978285432,
+            29.350800905376673,
+            29.212699737399817,
+            29.19499995186925
+          ],
+          "control": [
+            31.64503490552306,
+            29.260050505399704,
+            29.751055408269167,
+            29.557954985648394,
+            29.461850645020604,
+            29.623504960909486,
+            28.69089017622173,
+            29.59665027447045,
+            30.058864504098892,
+            31.30282973870635,
+            31.01992537267506,
+            31.437480356544256,
+            30.91327496804297,
+            31.298375688493252,
+            31.74123470671475
+          ]
+        },
+        "wall_us": {
+          "candidate": 28.497634921222925,
+          "control": 30.058864504098892
+        }
+      },
+      {
+        "event_delta_pct": -7.521895329598394,
+        "event_samples_us": {
+          "candidate": [
+            38.20204019546509,
+            37.30003595352173,
+            35.06762504577637,
+            34.75251913070679,
+            38.074140548706055,
+            37.53443956375122,
+            38.79584550857544,
+            37.378835678100586,
+            38.30024003982544,
+            38.4024453163147,
+            38.47014904022217,
+            37.97844409942627,
+            37.84339427947998,
+            37.83612012863159,
+            37.49032020568848
+          ],
+          "control": [
+            41.20676040649414,
+            40.39266109466553,
+            38.52174520492554,
+            39.19039964675903,
+            40.896711349487305,
+            42.84287452697754,
+            40.92146396636963,
+            42.589216232299805,
+            39.93084907531738,
+            41.88926696777344,
+            40.76766490936279,
+            41.403470039367676,
+            40.77526092529297,
+            42.19995975494385,
+            41.46555423736572
+          ]
+        },
+        "event_us": {
+          "candidate": 37.84339427947998,
+          "control": 40.92146396636963
+        },
+        "family": "mixed_q5_q6",
+        "layer_id": 1,
+        "wall_delta_pct": -7.011383034127638,
+        "wall_samples_us": {
+          "candidate": [
+            37.267960142344236,
+            35.585134755820036,
+            35.90653999708593,
+            35.77019087970257,
+            38.198725087568164,
+            38.846880197525024,
+            38.333425763994455,
+            38.6455247644335,
+            38.38787437416613,
+            39.72549457103014,
+            37.305360892787576,
+            38.331724936142564,
+            37.932664854452014,
+            38.32922549918294,
+            38.376625161617994
+          ],
+          "control": [
+            38.83657976984978,
+            38.69607928209007,
+            38.581230910494924,
+            40.205849800258875,
+            42.76688443496823,
+            41.63701552897692,
+            41.21926613152027,
+            42.968784691765904,
+            41.90086969174445,
+            39.53034058213234,
+            40.92865972779691,
+            41.435565799474716,
+            41.279614670202136,
+            41.934020118787885,
+            40.48769944347441
+          ]
+        },
+        "wall_us": {
+          "candidate": 38.32922549918294,
+          "control": 41.21926613152027
+        }
+      },
+      {
+        "event_delta_pct": -5.911891084658594,
+        "event_samples_us": {
+          "candidate": [
+            26.998724937438965,
+            27.144975662231445,
+            26.99272394180298,
+            27.66037940979004,
+            27.545979022979736,
+            28.395190238952637,
+            29.997193813323975,
+            30.209200382232666,
+            30.203850269317627,
+            30.1431941986084,
+            29.96424913406372,
+            30.100998878479004,
+            29.987800121307373,
+            30.211594104766846,
+            29.765396118164062
+          ],
+          "control": [
+            27.21398115158081,
+            29.233388900756836,
+            29.113190174102783,
+            30.638000965118408,
+            30.283794403076172,
+            31.773409843444824,
+            31.847009658813477,
+            32.13796615600586,
+            32.117815017700195,
+            32.730815410614014,
+            31.785809993743896,
+            31.967010498046875,
+            31.997408866882324,
+            32.065815925598145,
+            32.272114753723145
+          ]
+        },
+        "event_us": {
+          "candidate": 29.96424913406372,
+          "control": 31.847009658813477
+        },
+        "family": "mixed_q5_q6",
+        "layer_id": 44,
+        "wall_delta_pct": -6.636295406446768,
+        "wall_samples_us": {
+          "candidate": [
+            29.050795128569007,
+            28.40568427927792,
+            29.17544450610876,
+            27.92433020658791,
+            28.387134661898017,
+            28.980744536966085,
+            30.084409518167377,
+            30.3558143787086,
+            30.089709907770157,
+            30.155860586091876,
+            29.927960131317377,
+            30.189009848982096,
+            30.159259913489223,
+            30.025860760360956,
+            29.903355753049254
+          ],
+          "control": [
+            31.636880012229085,
+            30.01795499585569,
+            31.103374203667045,
+            28.922895435243845,
+            29.510100139304996,
+            31.89523587934673,
+            32.75794442743063,
+            33.65946002304554,
+            32.00883977115154,
+            32.86025021225214,
+            32.05524059012532,
+            32.164889853447676,
+            32.063135877251625,
+            32.068040454760194,
+            32.08438982255757
+          ]
+        },
+        "wall_us": {
+          "candidate": 29.927960131317377,
+          "control": 32.05524059012532
+        }
+      },
+      {
+        "event_delta_pct": -7.335056445901422,
+        "event_samples_us": {
+          "candidate": [
+            36.970040798187256,
+            36.74504041671753,
+            38.242549896240234,
+            40.02286434173584,
+            39.413859844207764,
+            38.84465932846069,
+            39.175004959106445,
+            39.10706043243408,
+            39.59805965423584,
+            40.53816795349121,
+            39.39305543899536,
+            40.013365745544434,
+            40.04046440124512,
+            39.654459953308105,
+            39.08730506896973
+          ],
+          "control": [
+            36.4686393737793,
+            42.06387519836426,
+            42.807679176330566,
+            41.86587333679199,
+            42.23927974700928,
+            42.68918514251709,
+            42.65028476715088,
+            42.511281967163086,
+            42.12468147277832,
+            42.56332874298096,
+            42.52128601074219,
+            42.85428524017334,
+            41.676273345947266,
+            41.53102397918701,
+            42.84238338470459
+          ]
+        },
+        "event_us": {
+          "candidate": 39.39305543899536,
+          "control": 42.511281967163086
+        },
+        "family": "mixed_q5_q6",
+        "layer_id": 46,
+        "wall_delta_pct": -6.910462947154072,
+        "wall_samples_us": {
+          "candidate": [
+            36.34364460594952,
+            39.16803514584899,
+            40.492850821465254,
+            39.27839105017483,
+            39.050334598869085,
+            39.41008937545121,
+            39.8041948210448,
+            39.69884477555752,
+            40.86541011929512,
+            39.98239524662495,
+            39.18428439646959,
+            40.139349875971675,
+            39.11293460987508,
+            39.34319014661014,
+            41.00476042367518
+          ],
+          "control": [
+            40.48655042424798,
+            42.514135129749775,
+            42.67338546924293,
+            42.4215302336961,
+            42.52512939274311,
+            42.07022488117218,
+            42.27997502312064,
+            42.39037982188165,
+            42.88823460228741,
+            42.20157512463629,
+            42.37387445755303,
+            42.33568091876805,
+            41.68296931311488,
+            42.06457524560392,
+            41.93397588096559
+          ]
+        },
+        "wall_us": {
+          "candidate": 39.41008937545121,
+          "control": 42.33568091876805
+        }
+      },
+      {
+        "event_delta_pct": -5.6975527541683775,
+        "event_samples_us": {
+          "candidate": [
+            11.562274694442749,
+            11.239869594573975,
+            11.191070079803467,
+            11.193269491195679,
+            11.10846996307373,
+            11.009069681167603,
+            11.100670099258423,
+            11.014469861984253,
+            11.03147029876709,
+            11.018470525741577,
+            11.075470447540283,
+            11.034270524978638,
+            11.069669723510742,
+            11.005070209503174,
+            11.029075384140015
+          ],
+          "control": [
+            12.747479677200317,
+            11.745469570159912,
+            11.7722749710083,
+            11.742470264434814,
+            11.721874475479126,
+            11.698470115661621,
+            11.709070205688477,
+            11.762280464172363,
+            11.692874431610107,
+            11.759674549102783,
+            12.156280279159546,
+            11.738475561141968,
+            11.73567533493042,
+            11.732280254364014,
+            11.699875593185425
+          ]
+        },
+        "event_us": {
+          "candidate": 11.069669723510742,
+          "control": 11.738475561141968
+        },
+        "family": "shared_q5",
+        "layer_id": 1,
+        "wall_delta_pct": -5.7516197220657155,
+        "wall_samples_us": {
+          "candidate": [
+            11.528210015967488,
+            11.217354331165552,
+            11.232750257477164,
+            11.211205273866653,
+            11.170799843966961,
+            11.123450240120292,
+            11.167599586769938,
+            11.14125014282763,
+            11.131050996482372,
+            11.172599624842405,
+            11.150300269946456,
+            11.124949669465423,
+            11.083700228482485,
+            11.125955497846007,
+            11.13495440222323
+          ],
+          "control": [
+            12.515770504251122,
+            11.85721019282937,
+            12.001465074717999,
+            11.802359949797392,
+            11.842460371553898,
+            11.951364576816559,
+            11.823009699583054,
+            11.894364142790437,
+            11.830760631710291,
+            11.82236010208726,
+            11.854009935632348,
+            11.746060336008668,
+            11.764810187742114,
+            11.789065320044756,
+            11.784059461206198
+          ]
+        },
+        "wall_us": {
+          "candidate": 11.150300269946456,
+          "control": 11.830760631710291
+        }
+      },
+      {
+        "event_delta_pct": -5.993797308161253,
+        "event_samples_us": {
+          "candidate": [
+            11.766480207443237,
+            11.44647479057312,
+            11.169874668121338,
+            11.194674968719482,
+            11.178474426269531,
+            11.134275197982788,
+            11.08127474784851,
+            10.98847508430481,
+            11.00527048110962,
+            10.989874601364136,
+            10.99887490272522,
+            10.989869832992554,
+            11.041475534439087,
+            10.980069637298584,
+            10.977669954299927
+          ],
+          "control": [
+            12.898684740066528,
+            11.959079504013062,
+            11.822079420089722,
+            11.894479990005493,
+            11.824874877929688,
+            11.924279928207397,
+            11.799479722976685,
+            11.74547553062439,
+            11.676679849624634,
+            11.71347975730896,
+            11.724474430084229,
+            11.68828010559082,
+            11.642074584960938,
+            11.648679971694946,
+            11.653280258178711
+          ]
+        },
+        "event_us": {
+          "candidate": 11.041475534439087,
+          "control": 11.74547553062439
+        },
+        "family": "shared_q5",
+        "layer_id": 46,
+        "wall_delta_pct": -6.012365025791555,
+        "wall_samples_us": {
+          "candidate": [
+            11.672109831124544,
+            11.381955118849874,
+            11.380654759705067,
+            11.292605195194483,
+            11.225850321352482,
+            11.322854552417994,
+            11.097604874521494,
+            11.088999453932047,
+            11.073449859395623,
+            11.07729971408844,
+            11.067650048062205,
+            11.078704847022891,
+            11.060349643230438,
+            11.084204306825995,
+            11.06730429455638
+          ],
+          "control": [
+            12.715370394289494,
+            11.840915540233254,
+            11.93736563436687,
+            11.977814137935638,
+            11.911015026271343,
+            11.865865672007203,
+            11.8550646584481,
+            11.791610158979893,
+            11.763760121539235,
+            11.782660149037838,
+            11.777409818023443,
+            11.764159426093102,
+            11.720260372385383,
+            11.798359919339418,
+            11.732910061255097
+          ]
+        },
+        "wall_us": {
+          "candidate": 11.088999453932047,
+          "control": 11.798359919339418
+        }
+      }
+    ]
+  },
+  "cache_only_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "candidate_calls": 10,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED=1 rocprofv3 --kernel-trace --output-directory /tmp/laguna-q5-swar-integrated-trace --output-file laguna_q5_swar_integrated --output-format csv -- uv run python /tmp/trace_laguna_q5_swar_integrated.py",
+    "compiler_allowed_under_profiler": false,
+    "harness_sha256": "1bef12e402940ad5b03aa2e5009eb44932b8e649af6a881dec87f03623c34827",
+    "no_compiler_under_profiler": true,
+    "preflight_required": true,
+    "rows": [
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 34000,
+        "grid_x": 49152,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 28880,
+        "grid_x": 49152,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 27800,
+        "grid_x": 49152,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 29080,
+        "grid_x": 49152,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 34240,
+        "grid_x": 148608,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 11680,
+        "grid_x": 32768,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 13480,
+        "grid_x": 32768,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "duration_ns": 30960,
+        "grid_x": 148608,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_swar_pair_fixed_meta_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 80,
+        "duration_ns": 43640,
+        "grid_x": 181376,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_q6_mixed_local32_q5_swar_pair_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_lds_bytes": 0,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 80,
+        "duration_ns": 39200,
+        "grid_x": 181376,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_q6_mixed_local32_q5_swar_pair_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      }
+    ],
+    "stderr_sha256": "83f2187da1fe535c7d23e91867d3f76be65ba4db084ac999644f426b4ad761d8",
+    "stdout_sha256": "e9f05d56673eb964c7232b8454a49b2edf4857dd311b8bd622a4a511d248a02e",
+    "trace_sha256": "0817cf1928ca999e5d15ba68755c0592f697e5e89ddb497792ca078a265f046c"
+  },
+  "codegen": {
+    "common": {
+      "barriers": 0,
+      "fixed_lds_bytes": 0,
+      "private_bytes": 0,
+      "sgpr_spills": 0,
+      "vgpr_spills": 0,
+      "wavefront_size": 32,
+      "workgroup_x": 32
+    },
+    "frozen_ceilings_passed": true,
+    "hsaco_sha256": "7d22e57a3c5f2c77cea68c42d03ab309985f27308b59fb4ab1b013740661c6b9",
+    "instruction_summary_sha256": "d2028259820e83a136f0c5e8986f15da77261a3dc4c7c03e948725f020d82f56",
+    "library_path": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-61fc1efe4b706143/gguf_k_gemv.so",
+    "library_sha256": "7275cf3261e8cd62d042041bfc322ff533d3842fb469a9546b779da0fe92d899",
+    "objdump_sha256": "b5636832c4ffe36539634f3441a1e4011d63d83ded34c623447dbf2366ac86cd",
+    "readobj_sha256": "3108c676fb50f904ca3d65008344245dd62f7c9991b5f9f8b706ff6af5727060",
+    "symbols": {
+      "mixed_f32": {
+        "ds_bpermute": 96,
+        "global_loads": 40,
+        "instructions": 923,
+        "logical_sgpr": 61,
+        "logical_vgpr": 75,
+        "text_bytes": 5388,
+        "waits": 62
+      },
+      "output_bf16": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 470,
+        "logical_sgpr": 69,
+        "logical_vgpr": 71,
+        "text_bytes": 2688,
+        "waits": 28
+      },
+      "output_f32": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 454,
+        "logical_sgpr": 59,
+        "logical_vgpr": 71,
+        "text_bytes": 2600,
+        "waits": 29
+      },
+      "pair_bf16": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 478,
+        "logical_sgpr": 70,
+        "logical_vgpr": 71,
+        "text_bytes": 2724,
+        "waits": 31
+      },
+      "pair_f32": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 461,
+        "logical_sgpr": 60,
+        "logical_vgpr": 71,
+        "text_bytes": 2640,
+        "waits": 32
+      }
+    }
+  },
+  "cpu_reference_gate": {
+    "candidate_control_bf16_bit_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED=1 PYTHONPATH=. uv run python /tmp/check_laguna_q5_swar_cpu.py",
+    "harness_sha256": "a665f7080ebdce765a73b3d0bae7e6f325c61ba523d9dc82a229ff08ee07bf66",
+    "kl_max": 8.932707017868234e-06,
+    "kl_mean": 8.932707017832523e-07,
+    "passed": true,
+    "raw_sha256": "4248dc35841795bb2e6797b9d556d41b1ab242f74e3fb64fe9e067111c6890e0",
+    "schema": 1,
+    "shape": [
+      10,
+      1024,
+      20
+    ],
+    "top1_agreement": 1.0
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "retain exact primitive and keep runtime ownership absent",
+    "benchmark_changelog_update": false,
+    "benchmark_scoreboard_update": false,
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Commit this primitive admission, then add a separate explicit/default-off all-or-none runtime owner and prove exact 16-transition state plus 140-candidate/723-model-kernel tracing before clean measurement."
+  },
+  "design": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-design.json",
+    "artifact_sha256": "3598020b7c6edd0091361209727f9a5a5a8048790bb4f4c0d8ff62e941e3a100",
+    "commit": "618f94196"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation": {
+    "allocation_or_workspace_changed": false,
+    "default_changed": false,
+    "description": "Candidate-specific local32 paired-output SWAR Q5 helper plus direct BF16/F32, unequal-pair BF16/F32, and mixed-Q5/Q6 F32 sibling symbols.",
+    "dispatch_count_changed": false,
+    "gfx1151_exclusion": "hipengine/kernels/hip_gfx1151/__init__.py",
+    "package_export": "hipengine/kernels/hip_gfx1100/quant/__init__.py",
+    "registered_keys": [
+      [
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out"
+      ],
+      [
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out"
+      ],
+      [
+        "hip_gfx1100",
+        "attention_projection_quad",
+        "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+        "mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out"
+      ]
+    ],
+    "retained_controls_mutated": false,
+    "runtime_capability_added": false,
+    "runtime_selector_added": false,
+    "session_or_cli_added": false,
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip",
+    "test": "tests/test_laguna_q5_swar_pair.py",
+    "wrapper": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py"
+  },
+  "kind": "hipengine_laguna_q2_xl_q5_swar_pair_correctness",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "c48d9a5183e3b3a355b202a9267f60c3a1cb883bccb94c4bbc94a95e4249fcf4",
+    "gfx1151_exclusion_sha256": "2938419444b879bc91e519866c9283e07032692d75c3f8e07c143f18dc09eca6",
+    "kernel_source_sha256": "766b084c5ed19a2d2c45308da189c2dc2a4367133417503e9ed80ea30d66485a",
+    "kernel_wrapper_sha256": "2de2a0d680e3a58e3c424493de79a06856daa973ecb8adba77d8053ff6b3fe6b",
+    "package_export_sha256": "caae233da076eeb2362753eba52e18a5c40c15407029b001251bbee2d10b6ea7"
+  },
+  "red_green": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_q5_swar_pair.py",
+    "coverage": [
+      "five wrappers and three exact four-axis keys with retained-key identity",
+      "strict non-null, rows==1, K256, positive even output, local32 validation before library load",
+      "explicit gfx1151/cuda_sm86/cpu_reference exact-key exclusion",
+      "retained helper source preservation and 0x0F0F/0x0101 SWAR integer contract",
+      "K256/512/1024/3072/6144/9216 BF16/F32 singleton, unequal-pair, and mixed bit identity",
+      "Q5 qh/qs/scale/min extremes and BF16 signed-zero/subnormal/finite edges",
+      "independent CPU KL/top-1 gate"
+    ],
+    "green_result": "19 passed",
+    "green_stdout_sha256": "0caf379acbcb845c31b98bf4efeffb865a66d527d27d5bb4f34018bea0099078",
+    "red_result": "19 failed solely on absent helper/symbols/wrappers/keys/exclusions",
+    "red_stdout_sha256": "12c3d4c181210a79f32e13496ec057fe666ea4ba675c12d8e815e7f9afae99d3",
+    "test_sha256": "1fa5c3b2a4852216a2be13fdcf9e744369b5a78f6b04b9a01809e454e0cc9def"
+  },
+  "schema": 1,
+  "status": "primitive_admitted_runtime_unselected",
+  "validation": {
+    "adjacent_filtered_result": "101 passed",
+    "adjacent_filtered_stdout_sha256": "6674452e653bfb530342ae4a12971ba9538f6465c6ef2a5c3b8904713e1c32c9",
+    "adjacent_unfiltered_result": "101 passed, 3 documented unrelated/order-sensitive failures",
+    "adjacent_unfiltered_stdout_sha256": "3bb42416afd6f117b5ccd7d34ceabe49fc51d364b96b9daad702983d1680dcc5",
+    "cpu_bundle_command": "PYTHONPATH=. uv run pytest -q tests/test_cpu_reference.py tests/test_kernel_registry.py tests/test_build.py",
+    "cpu_bundle_result": "25 passed",
+    "cpu_bundle_stdout_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "exact_deselections": [
+      "tests/test_gguf_q5_k_pack8_gemv_decode.py::test_q5_k_pack8_decode_registry_keys_resolve (old gfx1151 absence assertion is collection-order-sensitive)",
+      "tests/test_gguf_q5_q6_mixed_attention_decode.py::test_mixed_q5_q6_attention_registry_is_role_specific_and_gfx1100_only (old gfx1151 absence assertion is collection-order-sensitive)",
+      "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend (stale call omits activation_dtype/output_dtype/registered_decode_variant)"
+    ],
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_and_compile_result": "pass",
+    "ruff_stdout_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}
