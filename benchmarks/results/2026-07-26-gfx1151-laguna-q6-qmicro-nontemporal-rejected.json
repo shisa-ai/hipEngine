@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T05:22:52.234050+00:00",
+  "kind": "hipengine_laguna_q6_qmicro_nontemporal_screen",
+  "status": "rejected_and_removed",
+  "repo_revision": "0c1345190db54a6f24b323f43dd2b5a0df5dcf79",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M with resident Q6_K qmicro selected down",
+  "shape": {
+    "layer": 1,
+    "natural_prompt_rows": 512,
+    "compact_routed_rows": 5120,
+    "padded_rows64": 15808,
+    "experts": 256,
+    "in_features": 1024,
+    "out_features": 3072,
+    "resident_weight_bytes": 660602880
+  },
+  "premise": {
+    "candidate": "Apply __builtin_nontemporal_load only to the three aligned uint32 quant-record loads in the production Q6 qmicro 64-column x 64-row body.",
+    "invariants": "Identical byte-neutral qmicro weights, scale loads, activation layout, output ownership, ordered K32 dot/F32 accumulation, and BF16 stores."
+  },
+  "correctness": {
+    "red": "The production wrapper rejected the missing nontemporal specialization.",
+    "green": "The production-geometry uneven/empty-expert CPU-reference case passed after adding the distinct specialization.",
+    "actual_layer_bf16_mismatches_vs_production": 0,
+    "actual_layer_checksum": 509500838004,
+    "post_removal_test_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate[rows64-qmicro]'",
+    "post_removal_result": "1 passed"
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 11 --warmups 3 --prefill-burst 5 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-qmicro-nontemporal-leaf.json",
+    "timing": "HIP events; counter-rotated over five modes; activation packing excluded",
+    "samples": 11,
+    "burst": 5,
+    "production_median_ms": 5.065786743164063,
+    "candidate_median_ms": 5.173227691650391,
+    "candidate_change_percent": 2.1209133730572427,
+    "production_samples_ms": [
+      5.065548706054687,
+      5.073536682128906,
+      5.079367065429688,
+      5.069038009643554,
+      5.064286422729492,
+      5.061537933349609,
+      5.071910095214844,
+      5.065786743164063,
+      5.060160827636719,
+      5.299322509765625,
+      5.058991241455078
+    ],
+    "candidate_samples_ms": [
+      5.190752029418945,
+      5.1638744354248045,
+      5.1711071014404295,
+      5.166316223144531,
+      5.156595230102539,
+      5.173227691650391,
+      5.182421493530273,
+      5.197065353393555,
+      5.187295150756836,
+      5.2880207061767575,
+      5.169350433349609
+    ],
+    "raw_sha256": "1f3f0b47b6f4acfbb0556b842edac9bf5f80d4fa3d33b5aeea520a7df61675f0"
+  },
+  "decision": {
+    "gate": "The cache-policy-only candidate must be exact and repeatably faster on actual weights and natural routing.",
+    "pass": false,
+    "interpretation": "The quant records are not sufficiently cache-polluting to offset the gfx1151 slc/dlc penalty. The prior production-geometry Q4 screen and this Q6-specific screen both reject blanket non-temporal expert-weight loads.",
+    "action": "Remove the candidate HIP export, wrapper selector, test parameter, and harness mode. Preserve the ordinary cached qmicro loads.",
+    "production_prefill_tok_s": 547.064355
+  }
+}

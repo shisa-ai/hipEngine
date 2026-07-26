@@ -181425,3 +181425,25 @@ Vulkan local sizes verbatim will close the measured gap.
   **935.905 ms**, leaving **204.476 ms** to 700 tok/s. The next iteration
   returns to selected down (**196.157 ms**) unless a new exact attention
   architecture can save materially more than another query-row width tweak.
+
+## 2026-07-26 — Reject Q6 qmicro non-temporal weight loads
+
+- The fresh pp512 trace splits selected down into **124.254 ms** of Q6 qmicro
+  across 23 calls and **71.903 ms** of Q4 across 24 calls, so the next bounded
+  screen targeted only the dominant Q6 quant-record traffic. Production Q6 is
+  local128/VGPR88/LDS5632B/scratch0.
+- RED added a production-geometry qmicro/non-temporal correctness case and
+  failed because no such wrapper specialization existed. GREEN applied
+  `__builtin_nontemporal_load` only to the three aligned `uint32` qmicro
+  record loads. The uneven/empty-expert CPU-reference case passes, and actual
+  layer-1 output is BF16-byte exact with checksum **509500838004**.
+- Eleven counter-rotated burst-five actual-weight/natural-M512 samples measure
+  production **5.065787 ms** and non-temporal **5.173228 ms**, a
+  **2.121% regression**. Raw output SHA-256 is
+  `1f3f0b47b6f4acfbb0556b842edac9bf5f80d4fa3d33b5aeea520a7df61675f0`.
+  This agrees with the much larger prior Q4 regression: gfx1151 expert MMQ
+  benefits from ordinary caching despite its streaming-looking weight path.
+- Removed every candidate kernel, wrapper, test, and harness surface.
+  Production code/tests are byte-identical to `0c1345190`; the post-removal
+  production qmicro oracle passes. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-nontemporal-rejected.json`.
