@@ -15,6 +15,11 @@ Q6 **125.380 -> 119.566 ms (-4.64%)** and total selected down
 **196.157 -> 191.025 ms (-2.62%)**. Absolute maximum KL remains
 **0.049542582**. The active pp512 stretch target is 700 tok/s.
 [`candidate artifact`](results/2026-07-26-gfx1151-laguna-q6-compact-activation-candidate.json).
+The next exact gfx1151 default splits each compact Q6 activation row across
+two threads. Its 23-layer actual-weight screen improves **21/23** layers and
+cuts the sum of layer medians **111.798 -> 111.490 ms (-0.276%)** with exact
+BF16 output; clean selector-unset publication is pending.
+[`half-row candidate`](results/2026-07-26-gfx1151-laguna-q6-half-row-activation-candidate.json).
 
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into

@@ -94,6 +94,10 @@ _SYMBOL_Q6_T16_QMICRO_COMPACT_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_compact_activation_selected_q8_1_ds4_f32_"
     "mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
 )
+_SYMBOL_Q6_T16_QMICRO_HALF_ROW_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_half_row_activation_selected_q8_1_ds4_f32_"
+    "mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
+)
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
         "hipengine_gguf_q4_k_t16_selected_dual_q8_1_"
@@ -409,6 +413,7 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     tile_rows: int = 32,
     qmicro: bool = False,
     compact_activation: bool = False,
+    half_row_activation: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -438,12 +443,18 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
         raise ValueError(
             "compact_activation requires qmicro=True, rowvec=True, tile_rows=64"
         )
+    if half_row_activation and not compact_activation:
+        raise ValueError(
+            "half_row_activation requires compact_activation=True"
+        )
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
         (
-            _SYMBOL_Q6_T16_QMICRO_COMPACT_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
+            _SYMBOL_Q6_T16_QMICRO_HALF_ROW_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
+            if half_row_activation
+            else _SYMBOL_Q6_T16_QMICRO_COMPACT_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
             if compact_activation
             else _SYMBOL_Q6_T16_QMICRO_DS4_F32_MMQ64X64_ROWVEC_BF16
             if qmicro and tile_rows == 64

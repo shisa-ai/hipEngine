@@ -181507,3 +181507,28 @@ Vulkan local sizes verbatim will close the measured gap.
   leaving **198.424 ms** to 700. The next bounded exact Q6 screen splits the
   current 64-row activation load across all 128 workgroup threads to attack
   its half-workgroup staging phase without changing bytes or arithmetic.
+
+## 2026-07-26 — Admit exact Q6 half-row activation staging
+
+- RED: the new Q6 CPU-quality case failed because the wrapper did not accept
+  `half_row_activation`. GREEN: the specialization is constrained to
+  qmicro + compact activation + 64 rows + local128; all eight Q6 geometry
+  cases plus plan/session seams pass. Each thread owns one 16-byte activation
+  half and one K16 sum, while weights, dots, accumulation, ownership, and BF16
+  stores remain unchanged.
+- The 21-sample actual layer-1 leaf improves compact production
+  **4.902418 -> 4.885198 ms (-0.351%, 16/21 wins)** with zero BF16 mismatches
+  and checksum **509500838004**. Cached tracing records both bodies at
+  local128/VGPR88/SGPR128/LDS5120B/scratch0.
+- The decisive all-Q6 actual-weight/natural-routing screen improves
+  **21/23** layers and the sum of layer medians
+  **111.798289 -> 111.489605 ms (-0.276%)**; median layer delta is
+  **-0.277%** and every layer is BF16 exact. Complete-state 11-pair pp512 A/B
+  is exact and positive at **552.562 -> 553.018 tok/s (+0.083%, 7/11 wins)**.
+  A single full-model trace is neutral within **0.06 ms**, so the retained
+  performance basis is the repeated 23-layer event screen, consistent with
+  the policy that verified exact sub-window wins survive aggregate variance.
+- Promote `LAGUNA_Q6_HALF_ROW_ACTIVATION` as the gfx1151 default with explicit
+  session rollback and publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-half-row-activation-candidate.json`.
+  Run clean selector-unset 512/1K/4K next.

@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T06:15:00+00:00",
+  "kind": "hipengine_laguna_q6_half_row_activation_candidate",
+  "status": "admitted_gfx1151_default_pending_clean_publication",
+  "repo_revision": "cc46ec02eaddf56623307b7700b80e19a3f68925",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M with resident Q6_K qmicro selected down",
+  "implementation": {
+    "production": "one thread stages one 32-byte Q8 row plus two K16 sums; 64 of 128 workgroup threads participate",
+    "candidate": "two adjacent threads stage one 16-byte half and one K16 sum each; all 128 threads participate",
+    "scope": "Q6 qmicro, compact activation cache, 64-row tile, 128-thread workgroup only",
+    "invariants": "Identical activation bytes/scales, weight bytes, ordered K32 integer dots, F32 accumulation, output ownership, and BF16 stores",
+    "resident_delta_bytes": 0
+  },
+  "correctness": {
+    "red": "The new CPU-quality fixture failed because the half_row_activation wrapper specialization did not exist.",
+    "green": "Eight Q6 geometry/quality cases pass, the actual layer-1 leaf has zero BF16 mismatches, all 23 Q6 layer screens have zero mismatches, and the complete pp512 A/B state is exact.",
+    "actual_layer_checksum": 509500838004,
+    "all_layer_bf16_mismatches": 0,
+    "complete_pp512_state_exact": true,
+    "state_surfaces": [
+      "next token and next-token logit",
+      "full logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV",
+      "final cursor"
+    ],
+    "absolute_quality_transfer_max_kl": 0.04954258196634279,
+    "absolute_quality_transfer_top1": "316/320"
+  },
+  "actual_weight_layer1_leaf": {
+    "shape": {
+      "layer": 1,
+      "natural_prompt_rows": 512,
+      "compact_routed_rows": 5120,
+      "padded_rows64": 15808,
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "resident_weight_bytes": 660602880
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-half-row-leaf-21.json",
+    "timing": "HIP events; 21 counter-rotated burst-seven samples; activation packing excluded",
+    "production_median_ms": 4.902417864118304,
+    "candidate_median_ms": 4.88519777570452,
+    "change_percent": -0.35125705093033144,
+    "candidate_wins": 16,
+    "pairs": 21,
+    "bf16_mismatches": 0,
+    "raw_sha256": "6551b1dfe5ab5f1527b676159887dfa0a0236382c942c736465321096d5e9663"
+  },
+  "all_q6_layer_leaf_screen": {
+    "layers": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      8,
+      11,
+      14,
+      17,
+      20,
+      23,
+      26,
+      29,
+      32,
+      35,
+      38,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "protocol": "nine counter-rotated burst-five samples per layer with each layer's actual 660.6-MB weights and natural M512 routing",
+    "layer_wins": 21,
+    "layer_count": 23,
+    "production_sum_of_layer_medians_ms": 111.79828872680663,
+    "candidate_sum_of_layer_medians_ms": 111.48960494995117,
+    "change_percent": -0.27610778337562314,
+    "median_layer_change_percent": -0.27723672409031286,
+    "bf16_mismatches": 0,
+    "combined_raw_sha256": "5ea6d1fb7e187a5fa74a3784bc3aab095a2f7f09f6b7285f13d8c02984a1b078"
+  },
+  "complete_pp512_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_half_row_activation_ab.py --repetitions 11 --require-cached-build --output /tmp/laguna-q6-half-row-ab.json",
+    "production_median_tok_s": 552.5617530681874,
+    "candidate_median_tok_s": 553.0178277724733,
+    "change_percent": 0.08253823246966441,
+    "candidate_wins": 7,
+    "pairs": 11,
+    "complete_state_exact": true,
+    "raw_sha256": "9335551065aab4bf13ba93193e23b169799cf14508a22dd2ba04e2135fb962cb"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-half-row-ab-rocprof2 -- .venv/bin/python3 -u scripts/laguna_q6_half_row_activation_ab.py --repetitions 1 --require-cached-build --output /tmp/laguna-q6-half-row-ab-rocprof-child.json",
+    "production_q6_ms": 118.464338,
+    "candidate_q6_ms": 118.523204,
+    "interpretation": "single traced full-model pair is neutral within 0.06 ms; the 23-layer event screen is the retained sub-window evidence",
+    "resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "c5d7f52370add27ac65159f5828aab0ecf7c7d43739174d5fba11e8e71f495a1"
+  },
+  "validation": {
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate' tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151 tests/test_laguna_moe_gpu.py::test_laguna_mmq_selected_down_reuses_exact_grouped_combine tests/test_laguna_gguf_runner.py::test_laguna_owned_session_close_frees_weights_and_is_idempotent",
+    "result": "11 passed"
+  },
+  "decision": {
+    "pass": true,
+    "basis": "Exact verified sub-window win across 21/23 actual layers with positive complete-model median; aggregate variance does not erase the measured family improvement.",
+    "action": "Promote half-row Q6 activation staging as the gfx1151 package default, retain q6_half_row_activation=false as explicit session rollback, and run clean selector-unset production.",
+    "production_prefill_before_clean_publication_tok_s": 550.6246318991352,
+    "target_tok_s": 700
+  }
+}

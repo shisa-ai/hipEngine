@@ -1247,3 +1247,16 @@ should be boring.
 - After both triggers pass, remove the public constructor override and the
   one-purpose A/B harness. Retain the ordinary 48-byte activation cache only
   where other Q4/Q6 template instantiations or unmeasured backends require it.
+
+## Laguna Q6 half-row activation rollback
+
+- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_HALF_ROW_ACTIVATION` and optional
+  `q6_half_row_activation=False` session rollback. It is constrained to the
+  qmicro/compact-cache/64-row/local128 Q6 body and changes only activation
+  staging ownership.
+- The actual 23-layer screen improves **21/23** layers and
+  **111.798 -> 111.490 ms (-0.276%)** with exact BF16 output. Complete pp512
+  A/B is exact and positive at **552.562 -> 553.018 tok/s (+0.083%)**.
+- Keep the rollback through clean selector-unset publication and one later
+  selected-down checkpoint. Then remove the public constructor override and
+  the one-purpose A/B harness while retaining the backend capability/default.
