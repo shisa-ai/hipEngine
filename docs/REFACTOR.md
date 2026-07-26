@@ -1496,22 +1496,3 @@ should be boring.
   **792.625 -> 779.709 ms (-1.63%)** with unchanged resources. Selector
   collapse is unblocked and should accompany the next accepted Q6 body or the
   post-campaign cleanup, whichever comes first.
-
-## Laguna Q4 D4 direct-wave quality candidate
-
-- Added 2026-07-27 as the explicit
-  `mmq128x32_d4_f32_wavecols_direct_doublebuf` gate/up session mode and
-  matching actual-weight leaf harness mode. It keeps the production D8 mode
-  as the gfx1151 default and adds no resident allocation or sidecar.
-- The complete 12-case CPU-reference matrix passes. Actual M512 leaf timing
-  improves **6.855 -> 6.008 ms (-12.36%)**; five counterbalanced complete
-  pp512 diagnostics improve **631.251 -> 665.020 tok/s (+5.350%)**.
-- The clean direct all-exact 320-step/category gate rejected unqualified D4:
-  top-1 remains **315/320**, but maximum KL is **0.127536** in the mixed
-  Japanese-English category. Keep this surface only through one globally
-  data-dependent per-K32 D4/D8 repair screen using the existing activation
-  block. If that screen fails quality or loses the complete wall win, remove
-  the HIP export, Python symbol/selector, runtime mode, leaf harness mode,
-  category comparison, and added test cases. If a repair passes, promote
-  through the normal clean production protocol and retain D8 as the numerical
-  rollback until one later quality checkpoint.

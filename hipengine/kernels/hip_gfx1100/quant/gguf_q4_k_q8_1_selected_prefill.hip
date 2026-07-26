@@ -4937,52 +4937,6 @@ hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_dou
 }
 
 extern "C" int
-hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
-    const void* x_q8,
-    const int64_t* compact_to_source,
-    const int64_t* expert_start_compact,
-    const int64_t* expert_start_mmq32,
-    const int64_t* tile_expert,
-    const uint8_t* qweight_a,
-    const uint8_t* qweight_b,
-    uint16_t* out,
-    int64_t compact_rows,
-    int64_t source_rows,
-    int64_t in_features,
-    int64_t out_features_a,
-    int64_t out_features_b,
-    int64_t num_experts,
-    int64_t mmq_total_rows,
-    hipStream_t stream) {
-  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
-      1,
-      false,
-      false,
-      128,
-      true,
-      true,
-      128,
-      true,
-      true>(
-      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
-      compact_to_source,
-      expert_start_compact,
-      expert_start_mmq32,
-      tile_expert,
-      qweight_a,
-      qweight_b,
-      out,
-      compact_rows,
-      source_rows,
-      in_features,
-      out_features_a,
-      out_features_b,
-      num_experts,
-      mmq_total_rows,
-      stream);
-}
-
-extern "C" int
 hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x2_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
     const void* x_q8,
     const int64_t* compact_to_source,

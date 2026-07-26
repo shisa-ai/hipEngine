@@ -73,7 +73,6 @@ MODES = (
     "t16-mmq128x32-d8-f32-wavecols",
     "t16-mmq128x32-d8-f32-wavecols-direct",
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf",
-    "t16-mmq128x32-d4-f32-wavecols-direct-doublebuf",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -739,14 +738,6 @@ def main() -> None:
                             wave_cols=True,
                             direct_wave_decode=True,
                             double_buffer_activation=True,
-                        )
-                    ),
-                    "t16-mmq128x32-d4-f32-wavecols-direct-doublebuf": (
-                        lambda: t16_mmq128_d8_f32(
-                            wave_cols=True,
-                            direct_wave_decode=True,
-                            double_buffer_activation=True,
-                            split16=False,
                         )
                     ),
                 }

@@ -82,7 +82,6 @@ _SELECTED_GATE_UP_MODES = frozenset(
         "mmq128x32_d8_f32_wavecols",
         "mmq128x32_d8_f32_wavecols_direct",
         "mmq128x32_d8_f32_wavecols_direct_doublebuf",
-        "mmq128x32_d4_f32_wavecols_direct_doublebuf",
         "mmq64x32_d4x2_f32",
         "mmq64x32_d4x3_f32",
     }
@@ -130,7 +129,6 @@ _FUSED_SELECTED_SILU_PACK_GATE_UP_MODES = frozenset(
         "mmq128x32_d8_f32_wavecols",
         "mmq128x32_d8_f32_wavecols_direct",
         "mmq128x32_d8_f32_wavecols_direct_doublebuf",
-        "mmq128x32_d4_f32_wavecols_direct_doublebuf",
     }
 )
 _FUSED_SELECTED_SILU_PACK_DOWN_MODES = frozenset(
@@ -2301,14 +2299,6 @@ def run_laguna_moe_rows(
         "mmq128x32_d8_f32_wavecols_direct_doublebuf": (
             1,
             True,
-            True,
-            True,
-            True,
-            True,
-        ),
-        "mmq128x32_d4_f32_wavecols_direct_doublebuf": (
-            1,
-            False,
             True,
             True,
             True,
