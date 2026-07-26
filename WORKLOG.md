@@ -182701,3 +182701,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `55d309e673b680123dee84164e9c9f1e465c31d7aec807785eea113f49dcff0c` /
   `107884af6536ece042d3cde0732eb164b414ec72e9dff15434fe2e77059b0564`.
   Next gate is clean selector-unset 512/1K/4K publication.
+
+## 2026-07-26 — Publish planar-Q6 production
+
+- Clean tracked revision `8c5315a9e`, with no planar selector supplied,
+  resolves `q6_qmicro_planar=true`, `q6_qmicro_permute=false`, automatic two
+  queues, after-router shared release, priority +1, matrix2048, and
+  attention128.
+- Three alternating repetitions publish
+  **573.354/530.351/446.189 tok/s** at 512/1K/4K versus prior production
+  **571.415/529.870/445.164**, improving
+  **+0.339%/+0.091%/+0.230%**. Every length retains deterministic tokens
+  2930/95/7772, exact final positions, and complete allocation recovery.
+- The clean pp512 median wall is **892.991 ms**. Reaching 700 now requires
+  another **161.562 ms**. Current production is **7.522x** the original
+  76.226 row and **66.402%** above the qualified 344.56 Vulkan control.
+- Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`.
+  Raw SHA-256:
+  `24732977a20d1e54a7160ec69ca0ad9b3b9ed30c99fe0a6dabef47a0c851e9a3`.
+- Next screen is a materially new Q4 gate/up row64 geometry: two independent
+  row32 teams in one local256 workgroup share one decoded 128-column weight
+  tile, preserving 32 accumulators/lane while targeting the measured 1.3026x
+  route-tile reread.

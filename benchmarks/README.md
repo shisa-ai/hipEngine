@@ -3,21 +3,8 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`](results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json).
-Two gfx11 byte-permute gathers replace the scalar four-column unpack of the
-existing byte-neutral Q6 qmicro record. The actual-weight leaf improves
-**4.872 -> 4.741 ms (-2.67%)**, seven queue-matched complete-state pairs
-improve **567.998 -> 569.563 tok/s (+0.276%, 5/7 wins)**, and cached tracing
-cuts the intended 115-call Q6 body
-**1,138.893 -> 1,124.852 ms (-1.23%)** across 512/1K/4K.
-Clean selector-unset medians publish
-**571.415/529.870/445.164 tok/s**, improving all three production lengths
-**0.451%/0.523%/0.147%**, with deterministic next tokens, exact positions,
-and full allocation recovery. Absolute maximum KL remains **0.049542582**;
-decode stays sequential and unchanged. The active pp512 stretch target is
-700 tok/s, requiring another **164.592 ms** from the clean median wall.
-
-The byte-neutral planar-Q6 candidate passes its first gate. Reordering each
+[`2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`](results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json).
+Reordering each
 existing 12-byte qmicro record into direct `ql01`/`ql23`/`qh` dwords preserves
 every byte of resident capacity and every tested BF16 result. On the actual
 660.6-MB layer-1 tensor, 21 counter-rotated samples improve the current
@@ -27,7 +14,11 @@ planar templates at local128/VGPR80/LDS5120B/scratch0. Two opposite
 resident-owner-order pp512 blocks are aggregate-neutral at **+0.013% mean /
 +0.139% median**, with exact logits, both hidden snapshots, complete KV,
 token/logit, and cursor. The exact sub-window win is retained; clean
-selector-unset 512/1K/4K publication remains.
+selector-unset publication reaches **573.354/530.351/446.189 tok/s**,
+improving the preceding production **0.339%/0.091%/0.230%**, with
+deterministic tokens 2930/95/7772, exact positions, and full allocation
+recovery. Absolute maximum KL remains **0.049542582**. The 700 target now
+requires another **161.562 ms** from the clean pp512 median wall.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json).
 [`integration`](results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-candidate.json).
 
@@ -956,7 +947,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact Q6 qmicro-permute production prefill | 2026-07-26 | candidate `d5651a86f`, capability/measurement `5316d924e`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues, HIP priority range `[+1,-1]`; matrix2048/attention128; actual-weight leaf, seven queue-matched complete-state pairs, cached trace, and three selector-unset repetitions | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: two byte gathers replace scalar quartet unpack without changing the 12-byte Q6 qmicro record, resident bytes, arithmetic, or BF16 boundary. Clean selector-unset reaches **571.415/529.870/445.164 tok/s**, improving the preceding production **0.451%/0.523%/0.147%**. The actual leaf improves **2.67%**, seven full-model pairs are complete-state exact and positive **5/7**, and tracing cuts the intended 115-call Q6 body **1.23%** with local128/VGPR80/LDS5120B/scratch0. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, deterministic, decode-neutral, and lifecycle-exact through 4K; repeated 128K remains blocked. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared exact arithmetic/scheduling/quality/lifecycle scope | Screen the byte-neutral planar-qmicro record; rerun after arithmetic/layout, scheduling, source-F16 mode, model/quant, compiler/runtime, or device/queue changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact planar-Q6 qmicro production prefill | 2026-07-26 | kernel `48079041e`, integration `52139cf84`, capability/publication `8c5315a9e`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues, HIP priority range `[+1,-1]`; matrix2048/attention128; actual-weight leaf, two opposite owner-order complete-state blocks, cached trace, and three selector-unset repetitions | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: planar low-nibble dwords remove two gathers without changing the 12-byte Q6 record, resident bytes, arithmetic, or BF16 boundary. Clean selector-unset reaches **573.354/530.351/446.189 tok/s**, improving preceding production **0.339%/0.091%/0.230%**. The exact actual leaf improves **0.314%**, c1 decode improves **1.736%**, and complete state is exact. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, deterministic, and lifecycle-exact through 4K; repeated 128K remains blocked. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared exact arithmetic/scheduling/quality/lifecycle scope | Screen cooperative two-team Q4 gate/up row64/local256; rerun after arithmetic/layout, scheduling, source-F16 mode, model/quant, compiler/runtime, or device/queue changes. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact low-priority shared-MoE production prefill | 2026-07-26 | capability/measurement `a63a503b3`, matched/trace `d2426ede2`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues, HIP priority range `[+1,-1]`; matrix2048/attention128 | **Superseded retained quality-gated production**: after-router least-priority overlap publishes **568.849/527.113/444.508 tok/s** and exact complete state. Cached tracing reaches **574.011 tok/s** and cuts kernel span **7.255 ms**. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json). | Superseded; exact scheduling provenance | Use the Q6 qmicro-permute row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact after-router shared-MoE production prefill | 2026-07-26 | capability/measurement `764de3fc4`, matched/trace `a9883e6fa`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven queue-matched complete-state pairs, and cached two-stream trace | **Superseded retained quality-gated production**: router selection completes before the priority-0 shared expert is released. Clean selector-unset reaches **566.839/527.381/444.447 tok/s**. Seven pairs preserve complete state and cached tracing cuts kernel span **898.334 -> 898.024 ms**. Absolute quality remains max KL **0.049542582**. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json). | Superseded; exact after-router provenance | Use the low-priority shared-MoE production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact eager shared/routed MoE concurrency production prefill | 2026-07-26 | capability `6e58950e3`, measured/trace `0cfe25bb7`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven queue-matched complete-state pairs, and cached two-stream trace | **Superseded retained quality-gated production**: clean selector-unset reaches **565.447/526.711/443.444 tok/s**. Seven pairs preserve complete state and cached tracing cuts the former single-stream kernel span **909.598 -> 898.334 ms**. Absolute quality remains max KL **0.049542582**. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json). | Superseded; exact eager concurrency provenance | Use the low-priority shared-MoE production row above for current performance and correctness. |

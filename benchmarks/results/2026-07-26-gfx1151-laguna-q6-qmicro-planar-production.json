@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_qmicro_planar_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset exact Poolside Laguna S 2.1 Q4_K_M matrix2048/attention128 prefill at 512/1K/4K on gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 78777775764,
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "revision": "8c5315a9e8bbd96382aefd4d11b413121bee6ee7",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_Q6_QMICRO_PLANAR=true",
+    "resolved_q6_qmicro_planar": true,
+    "resolved_q6_qmicro_permute": false,
+    "resident_layout": "[ql01(k0..3), ql23(k0..3), qh(k0..3)] per unchanged 12-byte qmicro record",
+    "resident_growth_bytes": 0,
+    "arithmetic": "unchanged",
+    "fallback": "--no-q6-qmicro-planar restores interleaved qmicro and the retained permute consumer"
+  },
+  "selector_unset": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-planar-production-clean.json",
+    "pp512_samples_tok_s": [
+      576.9007617009502,
+      572.6954523740338,
+      573.3541788920637
+    ],
+    "pp512_median_tok_s": 573.3541788920637,
+    "pp1024_samples_tok_s": [
+      536.7737230302531,
+      530.1455367486094,
+      530.3510236924844
+    ],
+    "pp1024_median_tok_s": 530.3510236924844,
+    "pp4096_samples_tok_s": [
+      448.6772773715893,
+      446.1894090166811,
+      444.8633165671511
+    ],
+    "pp4096_median_tok_s": 446.1894090166811,
+    "previous_production": {
+      "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json",
+      "pp512_tok_s": 571.4151462978637,
+      "pp1024_tok_s": 529.8695887885233,
+      "pp4096_tok_s": 445.1635570482686
+    },
+    "change_percent": {
+      "pp512": 0.33933867640065785,
+      "pp1024": 0.09085913102917509,
+      "pp4096": 0.23044383399544177
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "pp512_median_wall_ms": 892.9907879792154,
+    "pp512_wall_gap_to_700_ms": 161.56221655064396,
+    "raw_sha256": "24732977a20d1e54a7160ec69ca0ad9b3b9ed30c99fe0a6dabef47a0c851e9a3"
+  },
+  "correctness_transfer": {
+    "max_kl": 0.049542582,
+    "top1": "316/320",
+    "min_category_top1_percent": 96.875,
+    "decode_shapes_exact": [1, 2, 4, 8],
+    "complete_state_exact": true,
+    "lifecycle_exact_through": 4096,
+    "repeated_128k_status": "blocked"
+  },
+  "relative": {
+    "vs_precampaign_76_226_x": 7.521766574293072,
+    "vs_llamacpp_vulkan_344_56_percent": 66.40183970631057
+  },
+  "next_gate": "cooperative two-team Q4 gate/up row64/local256 screen, then refresh the complete family trace if retained"
+}
