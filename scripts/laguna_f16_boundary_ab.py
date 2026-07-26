@@ -9,10 +9,13 @@ from pathlib import Path
 import statistics
 import time
 
+import numpy as np
+
 from hipengine.core.hip import get_hip_runtime
 from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
+from scripts.laguna_matrix_chunk_bench import _device_digest, _kv_digest
 from scripts.laguna_prefill_profile import _profile_token_stream
 from scripts.laguna_target_ar_bench import (
     DEFAULT_CACHE,
@@ -28,6 +31,15 @@ _MODES = {
     "separate_cast_rollback": False,
     "fused_boundary_candidate": True,
 }
+_STATE_KEYS = (
+    "next_token",
+    "next_token_logit_hex",
+    "logits_sha256",
+    "final_hidden_sha256",
+    "post_layer_hidden_sha256",
+    "kv_sha256",
+    "final_position",
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -60,7 +72,7 @@ def _run(
     owner: LagunaGGUFResidentSession,
     mode: str,
     tokens: list[int],
-) -> tuple[float, int, float]:
+) -> dict[str, float | int | str]:
     child = _child_session(owner)
     try:
         child.set_f16_boundary_fusion(_MODES[mode])
@@ -68,11 +80,29 @@ def _run(
         result = child.prefill(tokens, use_bulk=True)
         child.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
-        return (
-            512.0 / elapsed,
-            int(result.next_token_id),
-            float(result.next_token_logit),
-        )
+        return {
+            "tok_s": 512.0 / elapsed,
+            "elapsed_s": elapsed,
+            "next_token": int(result.next_token_id),
+            "next_token_logit_hex": float(result.next_token_logit).hex(),
+            "logits_sha256": _device_digest(
+                child.runtime,
+                result.logits,
+                np.float32,
+            ),
+            "final_hidden_sha256": _device_digest(
+                child.runtime,
+                result.final_hidden,
+                np.uint16,
+            ),
+            "post_layer_hidden_sha256": _device_digest(
+                child.runtime,
+                result.post_layer_hidden,
+                np.uint16,
+            ),
+            "kv_sha256": _kv_digest(child),
+            "final_position": int(child.position),
+        }
     finally:
         child.close()
 
@@ -88,8 +118,7 @@ def main() -> int:
     tokens = list(token_stream)
     runtime = get_hip_runtime()
     samples = {mode: [] for mode in _MODES}
-    next_tokens = {mode: [] for mode in _MODES}
-    next_logits = {mode: [] for mode in _MODES}
+    records = {mode: [] for mode in _MODES}
     owner = LagunaGGUFResidentSession(
         DEFAULT_MODEL,
         context_length=512,
@@ -121,16 +150,15 @@ def main() -> int:
                 else tuple(reversed(tuple(_MODES)))
             )
             for mode in order:
-                tok_s, next_token, next_logit = _run(owner, mode, tokens)
-                samples[mode].append(tok_s)
-                next_tokens[mode].append(next_token)
-                next_logits[mode].append(next_logit)
+                record = _run(owner, mode, tokens)
+                samples[mode].append(float(record["tok_s"]))
+                records[mode].append(record)
                 print(
                     mode,
                     repetition,
-                    f"{tok_s:.6f}",
-                    next_token,
-                    f"{next_logit:.9f}",
+                    f"{float(record['tok_s']):.6f}",
+                    int(record["next_token"]),
+                    record["next_token_logit_hex"],
                     flush=True,
                 )
     finally:
@@ -139,11 +167,33 @@ def main() -> int:
         mode: {
             "samples_tok_s": values,
             "median_tok_s": statistics.median(values),
-            "next_tokens": next_tokens[mode],
-            "next_logits": next_logits[mode],
+            "records": records[mode],
             "f16_boundary_fusion": _MODES[mode],
         }
         for mode, values in samples.items()
+    }
+    rollback = float(result["separate_cast_rollback"]["median_tok_s"])
+    candidate = float(result["fused_boundary_candidate"]["median_tok_s"])
+    result["comparison"] = {
+        "speedup": candidate / rollback,
+        "delta_percent": (candidate / rollback - 1.0) * 100.0,
+        "candidate_wins": sum(
+            candidate_value > rollback_value
+            for candidate_value, rollback_value in zip(
+                samples["fused_boundary_candidate"],
+                samples["separate_cast_rollback"],
+                strict=True,
+            )
+        ),
+        "complete_state_exact": all(
+            {key: candidate_record[key] for key in _STATE_KEYS}
+            == {key: rollback_record[key] for key in _STATE_KEYS}
+            for candidate_record, rollback_record in zip(
+                records["fused_boundary_candidate"],
+                records["separate_cast_rollback"],
+                strict=True,
+            )
+        ),
     }
     rendered = json.dumps(result, indent=2)
     print(rendered)
