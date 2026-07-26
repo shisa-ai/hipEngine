@@ -886,9 +886,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.fuse_f16_boundaries is False
     assert session.group_compact_mode == "parallel"
     assert session.moe_branch_concurrency is True
-    assert session.moe_shared_after_router is False
-    session.set_moe_shared_after_router(True)
     assert session.moe_shared_after_router is True
+    session.set_moe_shared_after_router(False)
+    assert session.moe_shared_after_router is False
     assert session.verifier_scratch is None
     session.close()
     session.close()

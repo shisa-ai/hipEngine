@@ -123,6 +123,10 @@ LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
 # two dependency events overlaps 99.16% of its measured pp512 kernel time;
 # complete-state A/B is exact and wins all seven queue-matched pairs.
 LAGUNA_MOE_BRANCH_CONCURRENCY = True
+# Protect router logits/selection before releasing the concurrent shared
+# branch. Matched complete-state pp512 is +0.073% with 5/7 wins, and cached
+# tracing verifies a 0.310-ms kernel-span reduction.
+LAGUNA_MOE_SHARED_AFTER_ROUTER = True
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
@@ -364,6 +368,7 @@ __all__ = [
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
+    "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",

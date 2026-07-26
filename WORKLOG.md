@@ -182375,3 +182375,17 @@ Vulkan local sizes verbatim will close the measured gap.
   require a clean selector-unset 512/1K/4K publication.
 - Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json`.
+
+## 2026-07-26 — Promote gfx1151 after-router shared schedule
+
+- RED failed collection on the missing gfx1151 package capability. GREEN adds
+  `LAGUNA_MOE_SHARED_AFTER_ROUTER=true` and makes the resident session resolve
+  it through backend capability lookup; peer backends remain unchanged.
+- The long-context CLI is now an optional boolean selector. Unqualified runs
+  measure the package default, while `--no-moe-shared-after-router` and an
+  explicit constructor false remain exact rollback.
+- Focused GREEN passes **67** gfx1151 backend/session/profile tests plus the
+  production Q4_K GPU BF16 equality parameter. Python compilation and diff
+  checks pass.
+- This commit promotes policy only. A clean selector-unset 512/1K/4K
+  three-repetition run is required before changing the production headline.
