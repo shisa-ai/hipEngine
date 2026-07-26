@@ -181783,3 +181783,29 @@ Vulkan local sizes verbatim will close the measured gap.
   production remains **551.459 tok/s**. The next bounded architecture measures
   the Q/K/V grouped-contraction ceiling inside the traced 126.084-ms
   source-F16 family before proposing any runtime or resident-layout change.
+
+## 2026-07-26 — Reject source-F16 QKV grouping
+
+- RED/GREEN built a temporary deterministic nonzero M512 ceiling harness for
+  the full and SWA Q/K/V production shapes. The fastest zero-workspace
+  F32-bit-exact combined contraction measures **0.990355 -> 0.972265 ms** for
+  full layers and **1.338168 -> 1.263892 ms** for SWA layers. Across 12 full
+  and 36 SWA layers this models only **2.890995 ms** pp512 saving. Raw
+  SHA-256 is
+  `82156c6c9615e9ada5be87b8ebe91acad260960863dba6f1ef9a0661025c4c57`.
+- The concatenated result is row-major `[M,Q+K+V]`, whereas production
+  consumers require three independently contiguous matrices. Its mandatory
+  split/restride and concatenated resident-weight representation are not
+  justified by the sub-3-ms ceiling.
+- A temporary `hipblaslt_ext::GroupedGemm` shim followed the official AMD
+  `ROCm/rocm-examples@2f6d997cc33890f8a19856123327cab372cc5520`
+  `Libraries/hipBLASLt/groupedgemm_ext/main.cpp` contract so separate weights
+  and outputs could be preserved. The installed gfx1151 library returns
+  **zero algorithms** for the full QKV problem with both zero and 64-MiB
+  maximum workspace (`status=-2`).
+- Reject and remove the C++/Python shim, benchmark harness, and RED fixture.
+  Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json`.
+  Production remains **551.459 tok/s**. Source-F16 is frozen until a genuinely
+  layout-preserving grouped capability exists; continue with exact attention
+  data movement or a selected-expert schedule that changes physical reuse.

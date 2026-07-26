@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26",
+  "kind": "hipengine_laguna_f16_qkv_grouping_rejected",
+  "status": "rejected",
+  "hardware": {
+    "gpu": "AMD Radeon Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "scope": {
+    "rows": 512,
+    "in_features": 3072,
+    "full_qkv_outputs": [
+      6144,
+      1024,
+      1024
+    ],
+    "swa_qkv_outputs": [
+      9216,
+      1024,
+      1024
+    ],
+    "full_layers": 12,
+    "swa_layers": 36,
+    "production_family_ms": 126.084
+  },
+  "concatenated_ceiling": {
+    "protocol": "deterministic nonzero FP16 data; production heuristic 4 separate Q/K/V versus fastest zero-workspace F32-bit-exact combined contraction; nine counter-rotated samples with five launches per sample",
+    "full": {
+      "separate_ms": 0.9903546333312988,
+      "combined_ms": 0.972264575958252,
+      "speedup": 1.0186061012612857,
+      "modeled_family_saving_ms": 0.21708068847656188
+    },
+    "swa": {
+      "separate_ms": 1.3381677627563477,
+      "combined_ms": 1.263892364501953,
+      "speedup": 1.0587669906002792,
+      "modeled_family_saving_ms": 2.673914337158202
+    },
+    "modeled_pp512_saving_ms": 2.890995025634764,
+    "f32_bit_exact": true,
+    "raw_sha256": "82156c6c9615e9ada5be87b8ebe91acad260960863dba6f1ef9a0661025c4c57"
+  },
+  "grouped_gemm_screen": {
+    "api": "hipblaslt_ext::GroupedGemm",
+    "full_qkv_algorithm_count": {
+      "workspace_0_bytes": 0,
+      "workspace_67108864_bytes": 0
+    },
+    "status": -2,
+    "result": "unsupported on the installed gfx1151 hipBLASLt library",
+    "upstream_reference": {
+      "repository": "ROCm/rocm-examples",
+      "commit": "2f6d997cc33890f8a19856123327cab372cc5520",
+      "path": "Libraries/hipBLASLt/groupedgemm_ext/main.cpp"
+    }
+  },
+  "decision": {
+    "outcome": "reject_and_remove",
+    "reason": "The concatenated contraction saves only 2.891 ms per pp512 pass and produces one row-major [M,Q+K+V] output, while production consumers require three independently contiguous matrices. The mandatory split/restride and concatenated resident weights are not justified by that ceiling. GroupedGemm would preserve the layouts but exposes no algorithm for the full QKV problem on gfx1151.",
+    "candidate_surfaces_removed": true,
+    "production_unchanged_tok_s": 551.459,
+    "performance_claim": false
+  }
+}

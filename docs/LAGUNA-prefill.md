@@ -51,10 +51,14 @@ lost **3.22%** to qrow4 on the weighted mix and **7.31%** to the qualified
 production policy; every candidate surface was removed. The active bounded
 screen then swapped the Q4 gate/up grid axes to run routed-row tiles fastest.
 That path was BF16-bit exact but regressed the natural-M512 leaf **0.18%** and
-was removed. Axis order alone is therefore closed. The active bounded screen
-now returns to the traced **126.084-ms source-F16 family**, first measuring a
-Q/K/V grouped-contraction ceiling before changing resident layout or runtime
-numerics.
+was removed. Axis order alone is therefore closed. The subsequent
+source-F16 Q/K/V grouping screen is also closed: a row-major concatenated
+contraction is F32-bit exact but models only **2.891 ms** pp512 saving before
+the mandatory output restride, while hipBLASLt `GroupedGemm` exposes zero
+algorithms for the full QKV problem on gfx1151 at both zero and 64-MiB
+workspace. All candidate surfaces were removed. The active bounded screen now
+returns to exact attention data movement or a selected-expert schedule that
+changes physical reuse rather than tile interpolation.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -732,7 +736,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Selected D8 Q4 gate/up | **314.655 ms** | **34.48%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default; the corrected **51.045-GB** route-tile ledger yields about **162.23 GB/s / 73.41%** of the existing read anchor. It clears the interim requested-byte floor; reopen only from counters or a new schedule. |
 | Selected D4 Q4/Q6 down | **190.363 ms** | **20.86%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. Padded activation staging leaves the clean trace at **118.802 ms Q6 + 71.561 ms Q4**; the one Q6 trace is noisy against the repeated layer screen. The **27.524-GB** requested rate is **144.59 GB/s / 65.42%** of the anchor. |
 | Global + SWA attention | **153.226 ms** | **16.79%** | Cached metadata removes current/cache bookkeeping; exact qrow6 owns qualified nonzero global tiles. Qrow4 remains fallback for global position 0, all SWA, partial tiles, wrapped SWA, verifier transactions, and unmeasured backends. |
-| Static-range direct hipBLASLt source-F16 | **126.084 ms** | **13.82%** | All five contractions and direct boundary casts are included. Both scaled-row kernels are absent; source-F16 boundary work is closed. |
+| Static-range direct hipBLASLt source-F16 | **126.084 ms** | **13.82%** | All five contractions and direct boundary casts are included. Concatenated QKV has only a **2.891-ms** modeled ceiling before restride; layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. Freeze this family pending a different library/runtime capability. |
 | Q4/Q6 WMMA dense/shared | **53.313 ms** | **5.84%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
 | Router | **23.489 ms** | **2.57%** | Eight-token reuse is production and cuts the prior **30.658 ms** family. Tile 4 remains rollback; tile 16 is slower at every stable leaf shape. |
 | Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **51.439 ms** | **5.64%** | MMQ grouped-combine reuse and the fused selected-SiLU pack each remove 47 launches and a routed intermediate. The one-block prefix and parallel compaction remain retained. Touch a residual family only with a named exact fusion/data-movement premise. |
@@ -746,8 +750,9 @@ The current trace gives concrete Amdahl checkpoints, not performance claims:
   unchanged.
 - The clean wall must fall from **928.447 ms** to **731.429 ms** for 700 tok/s,
   a further **197.018 ms**. Attention-only tuning cannot supply that result;
-  selected-down traffic, then a new gate/up or source-F16 architecture, must
-  compound with any additional attention win.
+  selected-down traffic, then a new gate/up architecture, must compound with
+  any additional attention win. The measured source-F16 grouping ceiling
+  cannot materially close the gap.
 - The old active-expert-once lower bound made gate/up appear to sustain only
   **115.24 GB/s**. Production rereads a full expert weight for every 32-row
   route tile: **10,237 active groups become 14,034 row tiles**, so the
@@ -829,23 +834,31 @@ Immediate execution queue:
    **13.3577 ms** for weighted qrow4 and **12.8481 ms** for the qualified
    production policy. Its global-start0 result merely ties the actual
    non-metadata production body (**0.18634 vs 0.18580 ms**).
-3. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
+3. Freeze source-F16 grouping. One combined row-major QKV contraction is
+   F32-bit exact but saves only **2.891 ms** across the 12 full and 36 SWA
+   layers before splitting `[M,Q+K+V]` back into the three contiguous
+   production outputs. The layout-preserving hipBLASLt `GroupedGemm` route
+   returns zero algorithms for the full QKV problem with either zero or
+   64-MiB workspace on gfx1151. Do not add concatenated resident weights or a
+   restride kernel for this ceiling; reopen only if the installed library
+   gains a viable grouped algorithm or consumers accept the combined stride.
+4. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
    The schedule-correct requested-byte ledger is published: gate/up is
    **162.15 GB/s (73.37%)** and down **137.16 GB/s (62.06%)** against the
    existing 221 GB/s anchor. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
-4. After down, revisit gate/up only from physical counters or a new
+5. After down, revisit gate/up only from physical counters or a new
    cross-tile/expert schedule. The corrected requested-byte ledger already
    reaches **73.37%** of the read anchor, so a local body tweak must explain
    how it reduces route-tile rereads or raises measured bandwidth.
-5. **Complete:** M2048 is the gfx1151 default while attention remains M128.
+6. **Complete:** M2048 is the gfx1151 default while attention remains M128.
    Matched M512 -> M2048 improves 1K/4K **5.420%/5.752%**, keeps pp512 within
    **-0.358%**, and passes full-logit quality at max relative KL
    **0.000012503** with 100% top-1. Clean selector-unset production reaches
    **506.299/410.099 tok/s** at 1K/4K. Exact cursor, multi-wrap KV, deterministic
    repeats, 1.755-GB scratch, and lifecycle recovery are published. This
    receives no pp512 credit.
-6. Do not retry T16-lite: its best exact byte-plane/LDS decoder loses
+7. Do not retry T16-lite: its best exact byte-plane/LDS decoder loses
    **11.22–17.63%** at c1/c2/c4/c8. X16 is also closed: its exact one-pack
    consumer loses **7.654%** at c1 even though it wins at c4/c8. T16-local Q
    with four-column/three-byte metadata also closes at prefill: exact decode
@@ -858,7 +871,8 @@ Immediate execution queue:
 Post-350 exclusions:
 
 - do not spend a campaign round on source-F16, dense/shared, graphs,
-  submission, router, norm/RoPE, or tails without a new trace reopening them;
+  submission, router, norm/RoPE, or tails without a new trace or a newly
+  supported grouped-contraction capability reopening them;
 - do not retry the rejected raw-sum D8 or D4-gate quality shortcuts;
 - do not add a duplicate resident expert-weight sidecar or weaken c=1 exact
   decode to buy prefill;
@@ -1875,6 +1889,19 @@ useful cross-workgroup weight reuse on this schedule. Production remains
 **551.459 tok/s**. Evidence:
 [`2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json).
 
+The following source-F16 grouping screen is also rejected and fully removed.
+At M512, one F32-bit-exact row-major QKV contraction improves the 12-full /
+36-SWA synthetic family by only **2.891 ms** before any layout repair. The
+combined output is `[M,Q+K+V]`, while the current attention path requires
+three independently contiguous Q/K/V matrices; splitting or restriding that
+output and maintaining concatenated resident weights would consume the small
+ceiling. The layout-preserving alternative was screened through
+`hipblaslt_ext::GroupedGemm`, but the installed gfx1151 library returns zero
+algorithms for the full QKV problem with either zero or 64-MiB workspace. The
+temporary C++/Python shim, harness, and RED fixture were removed. Production
+remains **551.459 tok/s**. Evidence:
+[`2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-q6-skip-padded-activation-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-production.json)
@@ -2628,6 +2655,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`
