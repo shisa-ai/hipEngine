@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_shared_before_down",
+  "status": "rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "queue-matched exact Poolside Laguna S 2.1 Q4_K_M pp512 scheduling screen on gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 in both arms",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "candidate_revision": "fba5bece7",
+    "production_revision": "1687995cc",
+    "tracked_clean_during_measurement": true,
+    "candidate_surfaces_removed": true
+  },
+  "candidate": {
+    "baseline_schedule": "launch shared branch eagerly before router selection",
+    "candidate_schedule": "record the caller-to-secondary dependency after selected gate/up, then overlap shared work with selected down",
+    "arithmetic": "unchanged",
+    "buffers": "unchanged",
+    "dependency_contract": "same input-ready and output-ready events; caller joins only before exact final combine"
+  },
+  "protocol": {
+    "command": "env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_moe_branch_ab.py --repetitions 7 --output <tmp>/result.json",
+    "resident_weight_owners": 1,
+    "child_session_per_arm": true,
+    "order": "counterbalanced eager/before_down by repetition",
+    "rows": 512,
+    "repetitions": 7,
+    "complete_state_fields": [
+      "logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV cache",
+      "next token",
+      "next-token logit",
+      "cursor"
+    ],
+    "raw_sha256": "f950dc7a10076877f275672ee589c6b88923bdc8a5a88f0d4dd0c58c45fe8473"
+  },
+  "results": {
+    "eager_samples_tok_s": [
+      566.3943547052227,
+      565.0806496653091,
+      566.6907684398462,
+      565.6726146018308,
+      565.279086316917,
+      567.3467314058307,
+      567.205338416736
+    ],
+    "eager_median_tok_s": 566.3943547052227,
+    "before_down_samples_tok_s": [
+      566.6313589925851,
+      565.0112007055993,
+      535.4652223203071,
+      565.4062209072538,
+      562.6585971684196,
+      559.8801295601316,
+      569.9494844734561
+    ],
+    "before_down_median_tok_s": 565.0112007055993,
+    "change_percent": -0.24420335198136467,
+    "candidate_wins": "2/7",
+    "candidate_min_tok_s": 535.4652223203071,
+    "complete_state_exact": true
+  },
+  "validation": {
+    "red_first": "missing explicit launch-phase resolver",
+    "host_session_profile_tests": 45,
+    "focused_q4_gpu_bf16_exact": true,
+    "python_compile": true
+  },
+  "decision": {
+    "retained": false,
+    "trace_run": false,
+    "reason": "the robust matched throughput gate failed, only two pairs won, and the candidate introduced a severe low tail",
+    "production_unchanged_tok_s": 565.4470035777194,
+    "candidate_code_removed": true,
+    "do_not_retry_without": "a schedule that preserves the full gate/up-plus-down overlap window while removing router contention"
+  }
+}

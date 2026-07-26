@@ -24,7 +24,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_routing_rows,
     resolve_laguna_eager_kernel_plan,
     resolve_laguna_moe_branch_concurrency,
-    resolve_laguna_moe_shared_launch_phase,
 )
 from tests._laguna_synthetic import make_laguna_info
 
@@ -83,17 +82,6 @@ def test_laguna_moe_branch_concurrency_requires_two_automatic_queues() -> None:
         True,
         environ={"GPU_MAX_HW_QUEUES": "1"},
     )
-
-
-def test_laguna_moe_shared_launch_phase_is_explicit_and_fail_closed() -> None:
-    assert resolve_laguna_moe_shared_launch_phase(None) == "eager"
-    assert resolve_laguna_moe_shared_launch_phase("eager") == "eager"
-    assert (
-        resolve_laguna_moe_shared_launch_phase("before_down")
-        == "before_down"
-    )
-    with pytest.raises(ValueError, match="shared launch phase"):
-        resolve_laguna_moe_shared_launch_phase("after_down")
 
 
 def _config():
@@ -898,9 +886,6 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.fuse_f16_boundaries is False
     assert session.group_compact_mode == "parallel"
     assert session.moe_branch_concurrency is True
-    assert session.moe_shared_launch_phase == "eager"
-    session.set_moe_shared_launch_phase("before_down")
-    assert session.moe_shared_launch_phase == "before_down"
     assert session.verifier_scratch is None
     session.close()
     session.close()
