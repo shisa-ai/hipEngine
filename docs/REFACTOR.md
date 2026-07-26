@@ -1534,3 +1534,14 @@ should be boring.
   primitives, separate fused boundary, extension helper, and calibration
   harness if its global activation-only sweep has no economically viable
   operating point at no more than **25%** repaired producer rows.
+- The fixed absmax rule passes calibration/heldout transfer, but sparse route
+  expansion rejects a second weight pass. A default-off
+  `mmq128x32_absmax2_layer_gate_d4_up_d8` mode therefore keeps only the
+  layer-uniform case: safe layers run specialized D4-gate/D8-up and risky
+  layers run production dual D8. Its seven-pair pp512 median saves
+  **3.426 ms (+0.416%)**. Keep the risk pack, risky/safe conditional exports,
+  conditional-layout fused pack, runtime mode, and `q4_layer_risk_absolute`
+  lane only through the clean extended-512 quality gate. On rejection remove
+  all of them plus the now-exhausted role primitives and calibration harness;
+  on admission collapse the mode into the gfx1151 capability after clean
+  selector-unset publication.

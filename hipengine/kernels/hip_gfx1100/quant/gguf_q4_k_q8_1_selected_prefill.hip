@@ -678,12 +678,80 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_kernel(
   }
 }
 
+template <int residual_passes>
+__launch_bounds__(128, 1)
+__global__ void gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_kernel(
+    const uint16_t* __restrict__ gate_up,
+    const uint16_t* __restrict__ gate,
+    const uint16_t* __restrict__ up,
+    const int32_t* __restrict__ any_risk,
+    block_q8_1_mmq_ds4_f32* __restrict__ out,
+    int64_t rows,
+    int64_t hidden) {
+  const int64_t q8_block = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int ds4_idx = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  if (row >= rows || q8_block >= blocks_per_row) return;
+
+  const int64_t col = q8_block * Q8_1_MMQ_BLOCK + tid;
+  const bool use_dual = any_risk[0] != 0;
+  const int64_t separate_base = row * hidden;
+  const int64_t dual_base = separate_base * 2;
+  const float gate_value = bf16_bits_to_float(
+      use_dual ? gate_up[dual_base + col] : gate[separate_base + col]);
+  const float up_value = bf16_bits_to_float(
+      use_dual ? gate_up[dual_base + hidden + col]
+               : up[separate_base + col]);
+  const float sig = 1.0f / (1.0f + expf(-gate_value));
+  float residual = bf16_bits_to_float(
+      float_to_bf16_bits(gate_value * sig * up_value));
+
+  __shared__ float scale_shared[4];
+  __shared__ float sum_shared[4];
+#pragma unroll
+  for (int pass = 0; pass < residual_passes; ++pass) {
+    const float sum = wave32_sum(residual);
+    const float max_abs = wave32_max(fabsf(residual));
+    if (lane == 0) {
+      scale_shared[ds4_idx] = max_abs / 127.0f;
+      sum_shared[ds4_idx] = sum;
+    }
+    __syncthreads();
+
+    const float scale = scale_shared[ds4_idx];
+    int q = 0;
+    if (scale > 0.0f) {
+      const float qf =
+          fminf(127.0f, fmaxf(-127.0f, rintf(residual / scale)));
+      q = static_cast<int>(qf);
+    }
+
+    const int64_t plane_blocks = rows * blocks_per_row;
+    block_q8_1_mmq_ds4_f32* __restrict__ out_block =
+        out + static_cast<int64_t>(pass) * plane_blocks +
+        row * blocks_per_row + q8_block;
+    out_block->qs[tid] = static_cast<int8_t>(q);
+    if (lane == 0) {
+      out_block->ds4[2 * ds4_idx + 0] = scale;
+      out_block->ds4[2 * ds4_idx + 1] = sum_shared[ds4_idx];
+    }
+    residual = fmaf(-static_cast<float>(q), scale, residual);
+    __syncthreads();
+  }
+}
+
+template <bool COLLECT_ABSMAX_RISK = false>
 __launch_bounds__(128, 1)
 __global__ void gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel(
     const uint16_t* __restrict__ x,
     block_q8_1_mmq_ds4_f32* __restrict__ out,
+    int32_t* __restrict__ any_risk,
     int64_t rows,
-    int64_t hidden) {
+    int64_t hidden,
+    float risk_threshold) {
   const int64_t q8_block = blockIdx.x;
   const int64_t row = blockIdx.y;
   const int tid = threadIdx.x;
@@ -702,6 +770,18 @@ __global__ void gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel(
     scale_shared[ds8_idx] = max_abs / 127.0f;
   }
   __syncthreads();
+  if constexpr (COLLECT_ABSMAX_RISK) {
+    if (tid == 0) {
+      float block_max = 0.0f;
+#pragma unroll
+      for (int group = 0; group < 8; ++group) {
+        block_max = fmaxf(block_max, scale_shared[group] * 127.0f);
+      }
+      if (block_max >= risk_threshold) {
+        atomicExch(any_risk, 1);
+      }
+    }
+  }
 
   const float scale = scale_shared[ds8_idx];
   int q = 0;
@@ -2551,18 +2631,59 @@ int launch_q8_1_mmq_ds4_f32_pack_separate_silu_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-int launch_q8_1_mmq_ds8_f32_pack_bf16(
-    const uint16_t* x,
+template <int residual_passes>
+int launch_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16(
+    const uint16_t* gate_up,
+    const uint16_t* gate,
+    const uint16_t* up,
+    const int32_t* any_risk,
     block_q8_1_mmq_ds4_f32* out,
     int64_t rows,
     int64_t hidden,
     hipStream_t stream) {
-  if (!valid_q8_1_mmq_ds4_pack(x, out, rows, hidden)) {
+  if (gate_up == nullptr || gate == nullptr || up == nullptr ||
+      any_risk == nullptr ||
+      !valid_q8_1_mmq_ds4_pack(gate, out, rows, hidden)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
   hipLaunchKernelGGL(
-      gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel,
+      (gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_kernel<
+          residual_passes>),
+      dim3(
+          static_cast<unsigned int>(blocks_per_row),
+          static_cast<unsigned int>(rows)),
+      dim3(Q8_1_MMQ_BLOCK),
+      0,
+      stream,
+      gate_up,
+      gate,
+      up,
+      any_risk,
+      out,
+      rows,
+      hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <bool COLLECT_ABSMAX_RISK = false>
+int launch_q8_1_mmq_ds8_f32_pack_bf16(
+    const uint16_t* x,
+    block_q8_1_mmq_ds4_f32* out,
+    int32_t* any_risk,
+    int64_t rows,
+    int64_t hidden,
+    float risk_threshold,
+    hipStream_t stream) {
+  if (!valid_q8_1_mmq_ds4_pack(x, out, rows, hidden) ||
+      (COLLECT_ABSMAX_RISK &&
+       (any_risk == nullptr || !(risk_threshold >= 0.0f)))) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  hipLaunchKernelGGL(
+      (gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel<
+          COLLECT_ABSMAX_RISK>),
       dim3(
           static_cast<unsigned int>(blocks_per_row),
           static_cast<unsigned int>(rows)),
@@ -2571,8 +2692,10 @@ int launch_q8_1_mmq_ds8_f32_pack_bf16(
       stream,
       x,
       out,
+      any_risk,
       rows,
-      hidden);
+      hidden,
+      risk_threshold);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -3070,7 +3193,8 @@ template <
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
     bool DIRECT_WAVE_DECODE = false,
-    bool DOUBLE_BUFFER_ACTIVATION = false>
+    bool DOUBLE_BUFFER_ACTIVATION = false,
+    int RISK_CONDITION = 0>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3088,7 +3212,8 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
     int64_t out_features_a,
     int64_t out_features_b,
     int64_t num_experts,
-    int64_t mmq_total_rows) {
+    int64_t mmq_total_rows,
+    const int32_t* __restrict__ any_risk) {
   constexpr int MMQ_N = 32;
   constexpr int MMQ_K = 32;
   constexpr int WNITER = 8;
@@ -3103,8 +3228,18 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
       !DOUBLE_BUFFER_ACTIVATION ||
           (WAVE_COLUMNS && DIRECT_WAVE_DECODE),
       "activation double buffer requires direct wave-column decode");
+  static_assert(
+      RISK_CONDITION >= 0 && RISK_CONDITION <= 2,
+      "risk condition must be always, risky-only, or safe-only");
 
   const int tid = static_cast<int>(threadIdx.x);
+  if constexpr (RISK_CONDITION != 0) {
+    const bool layer_is_risky = any_risk[0] != 0;
+    if ((RISK_CONDITION == 1 && !layer_is_risky) ||
+        (RISK_CONDITION == 2 && layer_is_risky)) {
+      return;
+    }
+  }
   const int tile_col = static_cast<int>(blockIdx.x);
   const int tile_row = static_cast<int>(blockIdx.y);
   const int64_t expert_id = tile_expert[tile_row];
@@ -3597,7 +3732,8 @@ template <
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
     bool DIRECT_WAVE_DECODE = false,
-    bool DOUBLE_BUFFER_ACTIVATION = false>
+    bool DOUBLE_BUFFER_ACTIVATION = false,
+    int RISK_CONDITION = 0>
 int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* compact_to_source,
@@ -3614,7 +3750,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t mmq_total_rows,
-    hipStream_t stream) {
+    hipStream_t stream,
+    const int32_t* any_risk = nullptr) {
   if (x_q8 == nullptr ||
       (!IDENTITY_SOURCE && compact_to_source == nullptr) ||
       expert_start_compact == nullptr ||
@@ -3625,7 +3762,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
       mmq_total_rows <= 0 || (in_features % QK_K) != 0 ||
       (out_features_a % MMQ_M) != 0 ||
       (out_features_b % MMQ_M) != 0 ||
-      (mmq_total_rows % 32) != 0) {
+      (mmq_total_rows % 32) != 0 ||
+      (RISK_CONDITION != 0 && any_risk == nullptr)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const dim3 block(THREADS);
@@ -3643,7 +3781,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
           WAVE_COLUMNS,
           THREADS,
           DIRECT_WAVE_DECODE,
-          DOUBLE_BUFFER_ACTIVATION>),
+          DOUBLE_BUFFER_ACTIVATION,
+          RISK_CONDITION>),
       grid,
       block,
       0,
@@ -3662,7 +3801,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
       out_features_a,
       out_features_b,
       num_experts,
-      mmq_total_rows);
+      mmq_total_rows,
+      any_risk);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -4674,6 +4814,26 @@ extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4(
       stream);
 }
 
+extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_d4(
+    const uint16_t* gate_up,
+    const uint16_t* gate,
+    const uint16_t* up,
+    const int32_t* any_risk,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16<1>(
+      gate_up,
+      gate,
+      up,
+      any_risk,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4(
     const uint16_t* gate_up,
     void* out,
@@ -4722,11 +4882,31 @@ extern "C" int hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16(
     int64_t rows,
     int64_t hidden,
     hipStream_t stream) {
-  return launch_q8_1_mmq_ds8_f32_pack_bf16(
+  return launch_q8_1_mmq_ds8_f32_pack_bf16<false>(
       x,
       reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      nullptr,
       rows,
       hidden,
+      0.0f,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16_absmax_risk(
+    const uint16_t* x,
+    void* out,
+    int32_t* any_risk,
+    int64_t rows,
+    int64_t hidden,
+    float risk_threshold,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds8_f32_pack_bf16<true>(
+      x,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      any_risk,
+      rows,
+      hidden,
+      risk_threshold,
       stream);
 }
 
@@ -5123,6 +5303,172 @@ hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebu
       in_features,
       out_features,
       0,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_risky_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int32_t* any_risk,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      true,
+      128,
+      true,
+      true,
+      128,
+      true,
+      true,
+      1>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream,
+      any_risk);
+}
+
+template <bool SPLIT16>
+int launch_q4_k_t16_selected_q8_1_mmq128x32_safe(
+    const void* x_q8,
+    const int32_t* any_risk,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      SPLIT16,
+      128,
+      true,
+      true,
+      128,
+      true,
+      true,
+      2>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      qweight,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features,
+      0,
+      num_experts,
+      mmq_total_rows,
+      stream,
+      any_risk);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_safe_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int32_t* any_risk,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_q8_1_mmq128x32_safe<false>(
+      x_q8,
+      any_risk,
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_safe_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int32_t* any_risk,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_q8_1_mmq128x32_safe<true>(
+      x_q8,
+      any_risk,
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features,
       num_experts,
       mmq_total_rows,
       stream);
