@@ -168,6 +168,16 @@ def _attention_family(name: str) -> str | None:
     return family if family in {"global_attention", "swa_attention"} else None
 
 
+def _is_dense_initial_causal_softmax(name: str) -> bool:
+    return any(
+        marker in name
+        for marker in (
+            "laguna_dense_initial_causal_softmax_f32_kernel",
+            "laguna_dense_initial_causal_softmax_wave_rows_f32_kernel",
+        )
+    )
+
+
 def _dense_initial_blas_attention_families(
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[int, str]:
@@ -200,8 +210,7 @@ def _dense_initial_blas_attention_families(
             unpack_name = str(rows[index + 5]["Kernel_Name"])
             if (
                 not qk_name.startswith("Cijk_")
-                or "laguna_dense_initial_causal_softmax_f32_kernel"
-                not in softmax_name
+                or not _is_dense_initial_causal_softmax(softmax_name)
                 or not pv_name.startswith("Cijk_")
                 or "laguna_dense_initial_query_head_transpose_f32_kernel<false>"
                 not in unpack_name
@@ -235,7 +244,7 @@ def _dense_initial_blas_attention_families(
             len(qk_names) != 8
             or len(pv_names) != 8
             or not all(name.startswith("Cijk_") for name in (*qk_names, *pv_names))
-            or "laguna_dense_initial_causal_softmax_f32_kernel" not in softmax_name
+            or not _is_dense_initial_causal_softmax(softmax_name)
         ):
             raise ValueError(
                 "dense-initial BLAS attention trace does not match "

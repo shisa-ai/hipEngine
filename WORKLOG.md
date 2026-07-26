@@ -183321,3 +183321,19 @@ Vulkan local sizes verbatim will close the measured gap.
   selector-unset publication is still required before advancing the
   **629.101 tok/s** production topline. Candidate artifact:
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json`.
+
+## 2026-07-27 — Classify production wave-softmax traces
+
+- The cached selector-unset production trace completed, but the trace summary
+  correctly failed closed because its packed-BLAS composite matcher only knew
+  the retired block256 softmax kernel name.
+- RED reproduced the missing attribution with a synthetic packed-query
+  composite containing
+  `laguna_dense_initial_causal_softmax_wave_rows_f32_kernel`. GREEN accepts
+  either exact production softmax name while preserving the surrounding
+  QK/softmax/PV/unpack sequence checks.
+- `PYTHONPATH=. .venv/bin/pytest -q
+  tests/test_laguna_long_context_profile.py` passes **30 tests**. Reprocessing
+  the existing trace now attributes pp512 attention **69.983 ms**, with
+  selected gate/up **357.087 ms** and selected down **189.556 ms**; no
+  runtime or kernel change was required.
