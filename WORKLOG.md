@@ -182316,3 +182316,24 @@ Vulkan local sizes verbatim will close the measured gap.
 - This is default-off diagnostic surface only. Next run one resident,
   queue-matched, counterbalanced seven-pair pp512 A/B with complete-state
   digests, then trace only if the delayed phase wins materially.
+
+## 2026-07-26 — Reject and remove delayed shared-before-down schedule
+
+- One resident owner and fresh child sessions ran seven counterbalanced pp512
+  pairs with `GPU_MAX_HW_QUEUES=2` fixed in both arms. Eager production
+  measures **566.394 tok/s** median; `before_down` measures **565.011 tok/s**,
+  a **-0.244%** regression with only **2/7** wins and a **535.465 tok/s** low
+  tail.
+- Every pair preserves logits, final hidden, post-layer hidden, the complete KV
+  cache, next token/logit, and cursor exactly. Correctness passes, but the
+  robust throughput gate does not; no profiler run is warranted.
+- Removed the launch-phase resolver and every row-launcher/session/CLI/test
+  selection surface. Production stays on the exact eager schedule at clean
+  selector-unset **565.447 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-before-down-rejected.json`.
+  Raw result SHA-256:
+  `f950dc7a10076877f275672ee589c6b88923bdc8a5a88f0d4dd0c58c45fe8473`.
+- Next bounded schedule screen: record the secondary dependency after router
+  selection, retaining the full gate/up-plus-down overlap window while
+  protecting the router prefix from the eager trace's contention.

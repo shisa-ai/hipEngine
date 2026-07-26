@@ -64,9 +64,9 @@ preserving complete state exactly. Selected-down persistence and row64
 screens are closed. Exact shared/routed MoE branch concurrency now supersedes
 that packet at **565.447/526.711/443.444 tok/s**. The automatic two-queue
 policy overlaps **98.87%** of secondary kernel time and cuts pp512 kernel span
-**909.598 -> 898.334 ms**. The next bounded screen phase-shifts that shared
-launch after gate/up so it overlaps selected down without contending with the
-controller-bound gate/up family.
+**909.598 -> 898.334 ms**. Moving shared work after gate/up is rejected; the
+next bounded screen protects router selection while retaining the full
+gate/up-plus-down overlap window.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -751,7 +751,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | Inclusive pp512 kernel time | Inclusive-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **322.200 ms** | **33.34%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters measure **1.326 GB/layer**, **195.88 GB/s / 88.64%** of the stream anchor. The concurrent shared branch adds contention here; phase-shift it after gate/up before reopening this body. |
+| Selected D8 Q4 gate/up | **322.200 ms** | **33.34%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters measure **1.326 GB/layer**, **195.88 GB/s / 88.64%** of the stream anchor. Moving shared work after this family regressed; first protect the router prefix while preserving the longer overlap window. |
 | Selected D4 Q4/Q6 down | **189.713 ms** | **19.63%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. Q4 physically fetches **13.405 GB / 72.195 ms (185.68 GB/s)**; Q6 reaches only **123.99 GB/s**. This long window is the next overlap target, not another already-rejected persistence tile. |
 | Global + SWA attention | **143.608 ms** | **14.86%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
 | Static-range direct hipBLASLt source-F16 | **124.818 ms** | **12.92%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
@@ -1009,15 +1009,18 @@ Immediate execution queue:
    reaches **565.447/526.711/443.444 tok/s**; production tracing observes two
    queues/two streams and overlaps **76.883/77.763 ms (98.87%)** while cutting
    kernel span **909.598 -> 898.334 ms**.
-9. **Active next screen:** delay secondary-stream shared work until routed
-   gate/up has completed, then overlap it with selected down. The current eager
-   launch raises inclusive gate/up **314.560 -> 322.200 ms** and router
-   **23.438 -> 44.075 ms** under contention while hiding only about **11 ms**
-   of wall. Down is a longer **189.713-ms** window and Q6 reaches only
-   **56.10%** of the stream anchor, so it is the better concurrency partner.
-   Preserve the same input-ready/final-combine events and arithmetic; require a
-   queue-matched complete-state A/B against current production plus a trace
-   showing gate/up/router recover without a larger down critical path.
+9. **Rejected and removed:** delaying secondary-stream shared work until
+   routed gate/up completed preserved complete state but regressed the
+   queue-matched pp512 median **566.394 -> 565.011 tok/s (-0.244%)**, won only
+   **2/7** pairs, and produced a **535.465 tok/s** low tail. No trace was
+   warranted and every launch-phase selector was removed. Do not retry this
+   short overlap window.
+10. **Active next screen:** preserve the long gate/up-plus-down overlap window
+   but place the dependency event after router selection. The eager production
+   trace raises inclusive router **23.438 -> 44.075 ms** under shared-branch
+   contention. An after-router boundary can protect that serial prefix while
+   retaining more than **500 ms** of routed work in which to hide the shared
+   branch. Require the same seven-pair complete-state gate before tracing.
 
 Post-350 exclusions:
 

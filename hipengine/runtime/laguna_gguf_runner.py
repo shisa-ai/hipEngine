@@ -89,7 +89,6 @@ from hipengine.runtime.laguna_moe import (
     resolve_laguna_dense_q4_prefill_mode,
     resolve_laguna_group_compact_mode,
     resolve_laguna_moe_plan,
-    resolve_laguna_moe_shared_launch_phase,
     resolve_laguna_router_logits_mode,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
@@ -1578,7 +1577,6 @@ class LagunaGGUFResidentSession:
         q6_half_row_activation: bool | None = None,
         q6_skip_padded_activation: bool | None = None,
         moe_branch_concurrency: bool | None = None,
-        moe_shared_launch_phase: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1731,9 +1729,6 @@ class LagunaGGUFResidentSession:
         self.moe_branch_concurrency = resolve_laguna_moe_branch_concurrency(
             self.backend,
             moe_branch_concurrency,
-        )
-        self.moe_shared_launch_phase = resolve_laguna_moe_shared_launch_phase(
-            moe_shared_launch_phase
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -1917,13 +1912,6 @@ class LagunaGGUFResidentSession:
         """Select exact dual-SiLU packing or its registered primitive fallback."""
 
         self.fuse_selected_silu_pack = bool(enabled)
-
-    def set_moe_shared_launch_phase(self, phase: str) -> None:
-        """Select the exact secondary-stream shared-expert launch boundary."""
-
-        self.moe_shared_launch_phase = resolve_laguna_moe_shared_launch_phase(
-            phase
-        )
 
     def set_router_logits_mode(self, mode: str) -> None:
         """Select the exact rows>1 router-logit token-reuse schedule."""
@@ -3082,7 +3070,6 @@ class LagunaGGUFResidentSession:
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             group_compact_mode=self.group_compact_mode,
             fuse_selected_silu_pack=self.fuse_selected_silu_pack,
-            shared_launch_phase=self.moe_shared_launch_phase,
             shared_stream=(
                 self._moe_shared_stream
                 if self.moe_branch_concurrency and rows > 1

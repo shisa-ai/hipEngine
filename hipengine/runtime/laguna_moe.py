@@ -96,8 +96,6 @@ _DENSE_Q4_PREFILL_MODES = frozenset({"retained", "wmma_pack8"})
 _BASELINE_DENSE_Q4_PREFILL_MODE = "retained"
 _GROUP_COMPACT_MODES = frozenset({"serial", "parallel"})
 _BASELINE_GROUP_COMPACT_MODE = "serial"
-_SHARED_LAUNCH_PHASES = frozenset({"eager", "before_down"})
-_BASELINE_SHARED_LAUNCH_PHASE = "eager"
 _Q8_1_DS4_BLOCK_BYTES = 144
 _Q8_1_DS4_F32_BLOCK_BYTES = 160
 _Q8_1_DS4_RESIDUAL_PLANES = 3
@@ -219,24 +217,6 @@ def resolve_laguna_selected_down_mode(
     parsed = str(selected)
     if parsed not in _SELECTED_DOWN_MODES:
         raise ValueError("unsupported Laguna selected-down mode")
-    return parsed
-
-
-def resolve_laguna_moe_shared_launch_phase(
-    requested: str | None = None,
-) -> str:
-    """Resolve the explicit secondary-stream shared-expert launch boundary."""
-
-    parsed = (
-        _BASELINE_SHARED_LAUNCH_PHASE
-        if requested is None
-        else str(requested)
-    )
-    if parsed not in _SHARED_LAUNCH_PHASES:
-        raise ValueError(
-            "unsupported Laguna MoE shared launch phase; expected one of "
-            f"{tuple(sorted(_SHARED_LAUNCH_PHASES))}"
-        )
     return parsed
 
 
@@ -2105,7 +2085,6 @@ def run_laguna_moe_rows(
     dense_q4_prefill_mode: str = "retained",
     group_compact_mode: str = "serial",
     fuse_selected_silu_pack: bool = False,
-    shared_launch_phase: str = _BASELINE_SHARED_LAUNCH_PHASE,
     shared_stream: int = 0,
     shared_input_ready_event: int = 0,
     shared_output_ready_event: int = 0,
@@ -2136,9 +2115,6 @@ def run_laguna_moe_rows(
         raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
     if group_compact_mode not in _GROUP_COMPACT_MODES:
         raise ValueError("unsupported Laguna MoE group compact mode")
-    shared_launch_phase = resolve_laguna_moe_shared_launch_phase(
-        shared_launch_phase
-    )
     shared_concurrent = bool(shared_stream)
     shared_events = (
         bool(shared_input_ready_event),
@@ -2168,9 +2144,7 @@ def run_laguna_moe_rows(
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
     active_runtime = (runtime or get_hip_runtime()) if shared_concurrent else None
 
-    def launch_concurrent_shared() -> None:
-        """Launch shared work after its selected caller-stream boundary."""
-
+    if shared_concurrent:
         assert active_runtime is not None
         active_runtime.event_record(shared_input_ready_event, stream)
         active_runtime.stream_wait_event(
@@ -2191,9 +2165,6 @@ def run_laguna_moe_rows(
             shared_output_ready_event,
             shared_stream,
         )
-
-    if shared_concurrent and shared_launch_phase == "eager":
-        launch_concurrent_shared()
 
     plan.router_logits_functions[router_logits_mode](
         hidden_bf16_ptr,
@@ -2302,8 +2273,6 @@ def run_laguna_moe_rows(
             runtime=runtime,
             libraries=libraries,
         )
-    if shared_concurrent and shared_launch_phase == "before_down":
-        launch_concurrent_shared()
     mmq_down_config = {
         "mmq64x32_d4_f32": (1, False, False, False, _MMQ32_ROWS),
         "mmq64x32_d4_f32_rowvec": (1, True, False, False, _MMQ32_ROWS),
@@ -2496,7 +2465,6 @@ __all__ = [
     "laguna_moe_scratch_nbytes",
     "resolve_laguna_moe_plan",
     "resolve_laguna_group_compact_mode",
-    "resolve_laguna_moe_shared_launch_phase",
     "resolve_laguna_router_logits_mode",
     "resolve_laguna_selected_down_mode",
     "resolve_laguna_dense_q4_prefill_mode",
