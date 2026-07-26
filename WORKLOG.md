@@ -182791,3 +182791,35 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next screen keeps only one 6-bit coefficient plane packed, targeting a
   2,336-byte hybrid tile with half the qmicro byte saving and half the packed
   coefficient extraction.
+
+## 2026-07-26 — Reject hybrid Q4 metadata packing
+
+- RED added exact raw roundtrip cases and production-shape CPU-reference
+  selected-prefill cases for two 2,336-byte layouts: packed-scale/expanded-min
+  and expanded-scale/packed-min. GREEN passes both host cases and all 13
+  focused Q4 GPU cases; actual outputs are BF16-bit identical to production.
+- Each hybrid gate/up pair is **918,552,576 bytes**, saving
+  **12,582,912 bytes / 1.351%** versus T16 without a sidecar.
+- Twenty-one counter-rotated burst-three M512 samples reject interleaved
+  three-byte records: production **6.819 ms**, packed scale **7.066
+  (+3.62%)**, and packed min **7.064 (+3.59%)**.
+- Because packing one plane still traced at the same VGPR120 as fully packed
+  qmicro, a bounded layout-order correction stored the 96 packed bytes as
+  three 32-byte planes. It remains negative: production **6.800 ms**, packed
+  scale **7.060 (+3.83%)**, and packed min **7.054 (+3.74%)**.
+- Final cached tracing shows both hybrid kernels at
+  local128/VGPR120/SGPR128/LDS3072B/scratch0 versus production
+  local128/VGPR88/SGPR128/LDS3072B/scratch0. One packed 6-bit coefficient
+  extraction is sufficient to cross the same register threshold; coefficient
+  ordering and byte-planar metadata do not recover it.
+- All hybrid host, HIP, wrapper, fixture, and harness surfaces are removed.
+  Production remains **573.354 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-hybrid-metadata-rejected.json`.
+  Raw interleaved/planar SHA-256:
+  `14f1e4e583f0985f1d1a74b8b14e8499a6e5353a139176ed06ba8a2037e9ee98` /
+  `3c3e2babb335cde228ed5a68195a5b5ee1fc5da4ec659b50068cf76ae9297d1a`;
+  final trace SHA-256:
+  `821b1bbf8d869b7fac73b503f09bf3ceb59b83d5b9736244dc2f67aab34f35d6`.
+- Next screen moves to Q6 selected-down integer WMMA. Unlike the rejected Q4
+  D8 body, Q6 is only **123.99 GB/s / 56.10%** of the stream anchor and has
+  additional low/high-bit dot work that may amortize fragment setup.
