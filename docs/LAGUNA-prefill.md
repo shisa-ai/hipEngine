@@ -86,8 +86,12 @@ attention then cuts traced pp512 attention **143.669 -> 82.763 ms (-42.39%)**
 and publishes selector-unset **623.050/563.399/462.430 tok/s**. The complete
 category gate remains max KL **0.049542582**, **316/320** top-1, and the
 route-specific pp512 all-exact KL improves **0.003246 -> 0.002214**. The
-campaign now collapses the route's eight QK and eight PV contractions per tile
-before returning to physical-byte reductions in the selected expert families.
+successor packs query heads so one wide QK and one PV replace sixteen calls,
+then assigns each causal-score row to one local32 wave without LDS/barriers.
+Clean selector-unset production is now
+**632.618/568.845/464.606 tok/s** at 512/1K/4K. Attention falls to
+**69.983 ms** in the refreshed trace; selected expert physical-byte and
+cross-tile reductions are again the active campaign.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -101,8 +105,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **623.050 tok/s**
-selector-unset, **8.175x** the old row and **80.824%** above the Vulkan
+The quality-admitted production default now measures **632.618 tok/s**
+selector-unset, **8.299x** the old row and **83.605%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -757,10 +761,10 @@ Current progress:
 ## Post-500 campaign — 700 production stretch
 
 The 350 and 500 tok/s milestones prove the compounded production package, but
-they are not roofline results. Current clean production measures **0.813860
+they are not roofline results. Current clean production measures **0.809335
 seconds** synchronized pp512 wall. The refreshed cached packed-query
-F32-attention attribution measures **0.889546 seconds** kernel span and
-**1.140942 seconds** inclusive kernel sum. The profiler perturbs this
+wave-softmax attribution measures **0.917782 seconds** kernel span and
+**1.182150 seconds** inclusive kernel sum. The profiler perturbs this
 library-heavy route, so the
 unprofiled wall is the production claim and the cached trace supplies family
 attribution only. The sum exceeds span because two streams overlap; inclusive
@@ -775,29 +779,30 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | Inclusive pp512 kernel time | Inclusive-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **339.336 ms** | **29.74%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters already reach **195.88 GB/s / 88.64%** of the read anchor; this remains the largest inclusive family but needs a physical-byte architecture, not another local decode tweak. |
-| Selected D4 Q4/Q6 down | **181.211 ms** | **15.88%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Activation-fragment reuse cuts pp512 Q6 **109.290 -> 108.233 ms (-0.97%)** and the 115-call 512/1K/4K Q6 window **792.625 -> 779.709 ms (-1.63%)**. Result-metadata broadcast and compact shared weight metadata both regress decisively; Q6-local metadata work is frozen. The remaining down opportunity requires fewer physical weight bytes or a different cross-tile schedule. |
-| Global + SWA attention | **73.330 ms** | **6.43%** | Qualified positions 128/256/384 use exact BF16 cache widening, packed F32 query/output tiles, one wide QK and one wide PV hipBLASLt contraction, and causal F32 softmax. Partial, wrapped, explicitly evicted, verifier, decode, and unmeasured routes retain exact fallbacks. Attention is now fifth and is no longer the immediate campaign leader. |
-| Static-range direct hipBLASLt source-F16 | **123.832 ms** | **10.85%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
-| Q4/Q6 WMMA dense/shared | **93.049 ms** | **8.16%** | This inclusive family overlaps routed work. The secondary shared branch remains hidden. An exact shared gate/up+SiLU leaf improved **14.56%** yet regressed production **0.52%**; this family is closed until a trace shows spill or caller-stream relief. |
-| Router | **22.629 ms** | **1.98%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
-| Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **307.554 ms** | **26.96%** | This includes slowed secondary shared work and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
+| Selected D8 Q4 gate/up | **357.087 ms** | **30.21%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters already reach **195.88 GB/s / 88.64%** of the read anchor; this remains the largest inclusive family but needs a physical-byte architecture, not another local decode tweak. |
+| Selected D4 Q4/Q6 down | **189.556 ms** | **16.03%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Activation-fragment reuse cuts pp512 Q6 **109.290 -> 108.233 ms (-0.97%)** and the 115-call 512/1K/4K Q6 window **792.625 -> 779.709 ms (-1.63%)**. Result-metadata broadcast and compact shared weight metadata both regress decisively; Q6-local metadata work is frozen. The remaining down opportunity requires fewer physical weight bytes or a different cross-tile schedule. |
+| Global + SWA attention | **69.983 ms** | **5.92%** | Qualified positions 128/256/384 use exact BF16 cache widening, packed F32 query/output tiles, one wide QK and one wide PV hipBLASLt contraction, and one wave32 per causal-score row. Partial, wrapped, explicitly evicted, verifier, decode, and unmeasured routes retain exact fallbacks. Attention is now sixth and is no longer the immediate campaign leader. |
+| Static-range direct hipBLASLt source-F16 | **127.906 ms** | **10.82%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
+| Q4/Q6 WMMA dense/shared | **95.414 ms** | **8.07%** | This inclusive family overlaps routed work. The secondary shared branch remains hidden. An exact shared gate/up+SiLU leaf improved **14.56%** yet regressed production **0.52%**; this family is closed until a trace shows spill or caller-stream relief. |
+| Router | **23.629 ms** | **2.00%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
+| Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **318.574 ms** | **26.95%** | This includes slowed secondary shared work and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
 
 The current trace gives concrete Amdahl checkpoints; the clean publication
 below is a retained performance claim:
 
-- The clean production median is now **629.101 tok/s**. The selector-unset
-  1K/4K medians are **566.858/463.903 tok/s**. Refreshed cached attribution
-  measures **73.330 ms** total pp512 attention and confirms the composite
-  widen/query-pack/QK/softmax/PV/output-unpack route. The declared 500 gate is
-  closed.
+- The clean production median is now **632.618 tok/s**. The selector-unset
+  1K/4K medians are **568.845/464.606 tok/s**. Refreshed cached attribution
+  measures **69.983 ms** total pp512 attention and confirms the composite
+  widen/query-pack/QK/wave-softmax/PV/output-unpack route. The declared 500
+  gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
-- The clean wall must fall from **813.860 ms** to **731.429 ms** for 700 tok/s,
-  a further **82.431 ms**. Attention contraction collapse is complete and
-  saved **9.433 ms** in the cached family trace. The next material screen must
-  change selected projection physical bytes or cross-tile scheduling; local
-  attention and source-F16 polish cannot close the gap.
+- The clean wall must fall from **809.335 ms** to **731.429 ms** for 700 tok/s,
+  a further **77.907 ms**. Query packing plus wave softmax cut cached attention
+  **82.763 -> 69.983 ms** while dispatches remain **2,417** after the packing
+  collapse. The next material screen must change selected projection physical
+  bytes or cross-tile scheduling; local attention and source-F16 polish cannot
+  close the gap.
 - Queue-exclusive attribution closes the apparent shared-expert ceiling.
   The caller stream spans **884.129 ms** with **874.975 ms** of kernels and
   only **9.154 ms** of gaps. The secondary shared stream contains
@@ -1319,7 +1324,7 @@ Immediate execution queue:
    accumulator lifetime.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json).
-27. **Admitted gfx1151 candidate; clean publication pending:** replace the
+27. **Admitted gfx1151 production default:** replace the
    dense-initial causal-softmax block reduction with one wave32 per score row.
    The established body launches local256 for each row, merges eight wave
    partials through LDS, and crosses four workgroup barriers. The candidate
@@ -1334,11 +1339,16 @@ Immediate execution queue:
    improves **0.002097 -> 0.001796**, production-to-candidate KL is
    **0.0000971**, and all top-1 IDs remain 2930. Cached tracing names the
    retained kernel at local32/VGPR24/SGPR128/LDS0/scratch0. gfx1151 enables
-   the capability with an explicit block256 rollback. Do not advance the
-   production topline from **629.101 tok/s** until a clean selector-unset
-   512/1K/4K publication passes.
+   the capability with an explicit block256 rollback. Clean selector-unset
+   512/1K/4K publication improves
+   **629.101/566.858/463.903 -> 632.618/568.845/464.606 tok/s
+   (+0.559%/+0.351%/+0.152%)** with deterministic tokens, exact positions,
+   and complete allocation recovery. The refreshed trace keeps **2,417**
+   dispatches and cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)**.
+   The 700 wall gap is now **77.907 ms**.
    Evidence:
-   [`2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json).
+   [`candidate`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json) ·
+   [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json).
 
 Post-350 exclusions:
 

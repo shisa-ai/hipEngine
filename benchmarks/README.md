@@ -3,34 +3,25 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-attention-packed-query-production.json`](results/2026-07-26-gfx1151-laguna-attention-packed-query-production.json).
+[`2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json`](results/2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json).
 Complete dense-initial M128 tiles beginning at positions 128/256/384 now widen
 the resident BF16 K/V cache exactly, pack only the F32 query/output tile, run
-one zero-workspace eight-way QK and one PV hipBLASLt contraction, and apply
-causal F32 softmax. Start 0, partial, wrapped, explicitly evicted, verifier,
-decode, unsupported-head, and context-above-512 paths retain the established
+one zero-workspace eight-way QK and one PV hipBLASLt contraction, then assign
+each causal F32 score row to one local32 wave with no LDS or workgroup
+barriers. Start 0, partial, wrapped, explicitly evicted, verifier, decode,
+unsupported-head, and context-above-512 paths retain the established
 `KVLiveSpans` kernels. Clean selector-unset publication improves
-**623.050/563.399/462.430 -> 629.101/566.858/463.903 tok/s
-(+0.971%/+0.614%/+0.318%)**, with deterministic tokens 2930/95/7772, exact
-positions, and full allocation recovery. The
-absolute category gate remains **0.049542582** maximum KL and **316/320**
-top-1; the route-specific pp512 all-exact KL improves again **0.002214 ->
-0.002097** with unchanged top-1 2930. Corrected cached attribution measures
-**73.330 ms** total pp512 attention versus **82.763 ms (-11.40%)** before the
-packing change and removes 1,728 pp512 dispatches. The clean 700 target now
-requires another **82.431 ms** from the **813.860-ms** pp512 median wall.
-[`candidate`](results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json).
-
-The gfx1151 wave-per-row causal-softmax candidate is admitted pending clean
-selector-unset publication. One local32 wave replaces one local256 block,
-eight LDS partials, and four barriers per score row. The qualified packed
-48-layer attention model improves **72.738 -> 62.755 ms (-13.73%)**; seven
-complete pp512 pairs improve **614.668 -> 620.032 tok/s (+0.873%, 6/7
-wins)** and save **7.206 ms** at the median wall. All-exact pp512 KL improves
-again **0.002097 -> 0.001796**, with top-1 2930 unchanged. Tracing names
-local32/VGPR24/SGPR128/LDS0/scratch0. The clean production topline remains
-**629.101 tok/s** until publication.
-[`artifact`](results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json).
+**629.101/566.858/463.903 -> 632.618/568.845/464.606 tok/s
+(+0.559%/+0.351%/+0.152%)**, with deterministic tokens 2930/95/7772, exact
+positions, and full allocation recovery. The absolute category gate remains
+**0.049542582** maximum KL and **316/320** top-1; route-specific pp512
+all-exact KL improves again **0.002097 -> 0.001796** with unchanged top-1
+2930. Corrected cached attribution measures **69.983 ms** total pp512
+attention versus **73.330 ms (-4.56%)**, retains **2,417** dispatches, and
+names the softmax at local32/VGPR24/SGPR128/LDS0/scratch0. The clean 700
+target now requires another **77.907 ms** from the **809.335-ms** pp512
+median wall.
+[`candidate`](results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json).
 
 The mixed short-tail Q4 gate/up schedule is rejected and fully removed.
 Replacing only eligible final `32 + remainder` pairs with 40/48-row tiles
@@ -967,7 +958,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M packed-query F32 hipBLASLt-attention production prefill | 2026-07-26 | runtime/default/clean measurement `b988eb75a`, trace attribution `f28932f52`, category revalidation `e89957333`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues, HIP priority range `[+1,-1]`; matrix2048/attention128; CPU-reference gate, route-specific all-exact KL, complete category gate, cached all-family trace, and three clean selector-unset repetitions | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: qualified dense-initial tiles keep unreplicated exact widened K/V, pack only F32 query/output, and replace eight QK plus eight PV calls with one wide call each. Clean selector-unset improves **623.050/563.399/462.430 -> 629.101/566.858/463.903 tok/s (+0.971%/+0.614%/+0.318%)**. Corrected tracing cuts pp512 attention **82.763 -> 73.330 ms (-11.40%)** and dispatches **4,145 -> 2,417**. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, deterministic, and lifecycle-exact through 4K; pp512 all-exact KL improves **0.002214 -> 0.002097** with top-1 2930. [`artifact`](results/2026-07-26-gfx1151-laguna-attention-packed-query-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared route/category/lifecycle scope | Rerun after attention arithmetic/layout, selected projection scheduling/layout, source-F16 mode, model/quant, compiler/runtime, or device/queue changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M packed-query F32 hipBLASLt attention with wave-per-row softmax | 2026-07-26 | runtime/default/clean measurement `7470bd3a7`, corrected trace attribution `3a8972b89`, category revalidation `e89957333`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues, HIP priority range `[+1,-1]`; matrix2048/attention128; CPU-reference gate, route-specific all-exact KL, complete category gate, cached all-family trace, and three clean selector-unset repetitions | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: qualified dense-initial tiles keep unreplicated exact widened K/V, pack only F32 query/output, replace eight QK plus eight PV calls with one wide call each, and map each F32 causal-score row to one local32 wave without LDS/barriers. Clean selector-unset improves **629.101/566.858/463.903 -> 632.618/568.845/464.606 tok/s (+0.559%/+0.351%/+0.152%)**. Corrected tracing cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)** at unchanged **2,417** dispatches. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, deterministic, and lifecycle-exact through 4K; pp512 all-exact KL improves **0.002097 -> 0.001796** with top-1 2930. [`artifact`](results/2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared route/category/lifecycle scope | Rerun after attention arithmetic/layout, selected projection scheduling/layout, source-F16 mode, model/quant, compiler/runtime, or device/queue changes. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact planar-Q6 integer-WMMA production prefill | 2026-07-26 | hoist/default `acbb72215`, publication/trace `76c963f2a`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues, HIP priority range `[+1,-1]`; matrix2048/attention128; actual-weight leaf, CPU-reference gate, cached all-family trace, and three clean selector-unset repetitions | **Superseded retained quality-gated production**: each wave reuses its exact K16 activation vectors across four output fragments without changing resident bytes, arithmetic, BF16 output, or kernel resources. Clean selector-unset improves **576.137/543.213/459.054 -> 577.396/545.366/459.716 tok/s (+0.218%/+0.396%/+0.144%)**. The exact actual leaf improves **1.136% (20/21 wins)** at unchanged local128/VGPR96/LDS5120B/scratch0; tracing cuts the 115-call Q6 window another **1.63%**. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, deterministic, and lifecycle-exact through 4K. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-production.json). | Superseded; exact Q6 arithmetic provenance | Use the dense-initial F32 hipBLASLt-attention row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact low-priority shared-MoE production prefill | 2026-07-26 | capability/measurement `a63a503b3`, matched/trace `d2426ede2`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues, HIP priority range `[+1,-1]`; matrix2048/attention128 | **Superseded retained quality-gated production**: after-router least-priority overlap publishes **568.849/527.113/444.508 tok/s** and exact complete state. Cached tracing reaches **574.011 tok/s** and cuts kernel span **7.255 ms**. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json). | Superseded; exact scheduling provenance | Use the Q6 qmicro-permute row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact after-router shared-MoE production prefill | 2026-07-26 | capability/measurement `764de3fc4`, matched/trace `a9883e6fa`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven queue-matched complete-state pairs, and cached two-stream trace | **Superseded retained quality-gated production**: router selection completes before the priority-0 shared expert is released. Clean selector-unset reaches **566.839/527.381/444.447 tok/s**. Seven pairs preserve complete state and cached tracing cuts kernel span **898.334 -> 898.024 ms**. Absolute quality remains max KL **0.049542582**. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json). | Superseded; exact after-router provenance | Use the low-priority shared-MoE production row above for current performance and correctness. |
