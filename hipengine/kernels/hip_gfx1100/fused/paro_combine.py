@@ -55,6 +55,19 @@ _ARGTYPES_SHARED_BATCH_4 = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGTYPES_LAGUNA_WEIGHTED_TOP10_ROUTED_HIDDEN = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGTYPES_LAGUNA_AGGREGATE_TAIL_RMS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -89,6 +102,9 @@ _SYMBOL_WEIGHTED_LANES_SHARED_ADD = (
     "hipengine_weighted_lanes_sum_shared_add_out_bf16_f32w"
 )
 _SYMBOL_WEIGHTED_SUM = "hipengine_weighted_sum_out_bf16_f32w"
+_SYMBOL_LAGUNA_WEIGHTED_TOP10_ROUTED_HIDDEN = (
+    "hipengine_laguna_weighted_top10_routed_hidden_bf16_out"
+)
 _SYMBOL_WEIGHTED_SUM_FP16 = "hipengine_weighted_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL = "hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL_FP16 = "hipengine_weighted_sum_shared_gate_combine_residual_out_fp16_f32w"
@@ -315,6 +331,64 @@ def weighted_sum_out_bf16_f32w(
         ctypes.c_int64(features),
         ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_weighted_top10_routed_hidden_bf16_out(
+    expert_down_ptr: int,
+    routing_weights_ptr: int,
+    shared_ptr: int,
+    post_attention_ptr: int,
+    routed_out_ptr: int,
+    hidden_out_ptr: int,
+    rows: int,
+    top_k: int,
+    features: int,
+    *,
+    threads: int = 32,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Write exact Laguna top-10 routed and post-MoE BF16 rows."""
+
+    if rows != 1:
+        raise ValueError("rows must be exactly 1")
+    if top_k != 10:
+        raise ValueError("top_k must be exactly 10")
+    if features != 3_072:
+        raise ValueError("features must be exactly 3072")
+    if threads != 32:
+        raise ValueError("threads must be 32")
+    _check_nonzero_pointers(
+        expert_down_ptr=expert_down_ptr,
+        routing_weights_ptr=routing_weights_ptr,
+        shared_ptr=shared_ptr,
+        post_attention_ptr=post_attention_ptr,
+        routed_out_ptr=routed_out_ptr,
+        hidden_out_ptr=hidden_out_ptr,
+    )
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_LAGUNA_WEIGHTED_TOP10_ROUTED_HIDDEN,
+        _ARGTYPES_LAGUNA_WEIGHTED_TOP10_ROUTED_HIDDEN,
+        ctypes.c_int,
+    )
+    err = fn(
+        expert_down_ptr,
+        routing_weights_ptr,
+        shared_ptr,
+        post_attention_ptr,
+        routed_out_ptr,
+        hidden_out_ptr,
+        rows,
+        top_k,
+        features,
+        threads,
+        stream,
     )
     _check_launch(runtime, err)
 
@@ -1553,6 +1627,16 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "weighted_sum+moe_tail",
+            "bf16",
+            "laguna_top10_routed_hidden_out",
+        ),
+        laguna_weighted_top10_routed_hidden_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "moe_tail+next_rmsnorm",
             "bf16",
             "laguna_aggregate_gguf_f32_weight_out",
@@ -1855,6 +1939,12 @@ def _check_vector_shape(features: int, threads: int) -> None:
 def _check_positive(value: int, name: str) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be positive")
+
+
+def _check_nonzero_pointers(**pointers: int) -> None:
+    for name, pointer in pointers.items():
+        if pointer == 0:
+            raise ValueError(f"{name} must be non-zero")
 
 
 def _check_launch(runtime: HipRuntime, err: int) -> None:

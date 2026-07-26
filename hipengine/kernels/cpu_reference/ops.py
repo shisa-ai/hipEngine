@@ -134,6 +134,43 @@ def laguna_aggregate_moe_tail_next_rmsnorm(
     return hidden, norm
 
 
+def laguna_weighted_top10_routed_hidden(
+    expert_down: ArrayLike,
+    routing_weights: ArrayLike,
+    shared: ArrayLike,
+    post_attention: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reference Laguna top-10 weighted sum and two rounded BF16 adds.
+
+    Returns ``(routed, hidden)`` as float32 arrays containing BF16-rounded
+    values. The HIP sibling uses fused multiply-adds; this independent NumPy
+    oracle intentionally provides the product-level KL/top-1 gate while the
+    registered unfused HIP chain provides the bit-exact arithmetic oracle.
+    """
+
+    expert_arr = np.asarray(expert_down, dtype=np.float32)
+    routing_arr = np.asarray(routing_weights, dtype=np.float32)
+    shared_arr = np.asarray(shared, dtype=np.float32)
+    post_arr = np.asarray(post_attention, dtype=np.float32)
+    if expert_arr.ndim != 2 or expert_arr.shape[0] != 10:
+        raise ValueError("expert_down must have shape [10, hidden]")
+    hidden = expert_arr.shape[1]
+    if routing_arr.shape != (10,):
+        raise ValueError("routing_weights must have shape [10]")
+    if shared_arr.shape != (hidden,) or post_arr.shape != (hidden,):
+        raise ValueError("shared and post_attention must have shape [hidden]")
+
+    selected = np.zeros(hidden, dtype=np.float32)
+    for row in range(10):
+        selected = (
+            selected + expert_arr[row] * routing_arr[row]
+        ).astype(np.float32)
+    routed = _round_to_bf16_float(selected)
+    moe = _round_to_bf16_float((routed + shared_arr).astype(np.float32))
+    hidden_out = _round_to_bf16_float((post_arr + moe).astype(np.float32))
+    return routed, hidden_out
+
+
 def linear(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     x_arr = np.asarray(x, dtype=np.float32)
     weight_arr = np.asarray(weight, dtype=np.float32)
