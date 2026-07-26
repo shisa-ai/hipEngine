@@ -183603,3 +183603,26 @@ Vulkan local sizes verbatim will close the measured gap.
   on all canonical prompt streams extended to 512 rows; do not infer quality
   from the unchanged short-prompt route. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d8-up-d4-absolute-rejected.json`.
+
+## 2026-07-27 — Add quality-pending M512 Q4 role split
+
+- RED proved the selected gate/up resolver lacked a shape-scoped mode. GREEN
+  adds `mmq128x32_m512_role_gate_d4_up_d8`: rows below 512 use production D8
+  plus the dual fused pack, while rows 512+ use D4-gate/D8-up plus the exact
+  separate-input fused pack. This is one global matrix-row bucket with no
+  prompt, token, layer, output, or K-block policy and no resident sidecar.
+- Seven alternating complete pp512 pairs improve the median
+  **619.782 -> 630.215 tok/s (+1.683%)**, saving **13.676 ms**. Every sample
+  selects token 2930. This selector reuses the already traced local128 role
+  body and separate-input fused boundary.
+- Added two absolute lanes. The short lane uses the unchanged canonical
+  prompts at matrix chunk 128; the long lane deterministically extends each
+  canonical stream to exactly 512 tokens by cycling all ten streams from that
+  prompt, uses matrix chunk 512, and leaves attention independently at 128.
+- All **27** focused harness/resolver/fusion/Q4 production-shape tests pass;
+  the short-row fallback is BF16-bit exact. The broader Q6 parameter still
+  fails at its existing Q6-vs-Q4 selected-down equality assertion before the
+  new fallback check, so it is recorded but not conflated with this Q4
+  selector. `py_compile` and `git diff --check` pass. Production remains
+  **632.618 tok/s** pending both clean quality gates. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-quality-pending.json`.
