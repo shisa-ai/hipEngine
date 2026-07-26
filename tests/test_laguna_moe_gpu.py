@@ -8,6 +8,7 @@ from types import MappingProxyType
 import numpy as np
 import pytest
 
+import hipengine.runtime.laguna_moe as laguna_moe_module
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -145,6 +146,85 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "selected_expert_mlp" in sparse_sequence
     assert "laguna_shared_expert" in sparse_sequence
     assert "laguna_routed_shared_combine" in sparse_sequence
+
+
+def test_laguna_persistent_wave_top10_router_plan_is_default_off_and_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    key = KernelKey(
+        "hip_gfx1100",
+        "laguna_router_topk",
+        "f32",
+        "bf16_hidden_correction_bias_persistent_wave_top10",
+    )
+
+    default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert default.router_topk is None
+    assert default.router_topk_key == key
+    assert key not in default.kernel_keys
+
+    candidate = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        use_persistent_router_wave_top10=True,
+    )
+    assert candidate.router_topk is not None
+    assert candidate.router_topk_key == key
+    assert key in candidate.kernel_keys
+
+    unsupported = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1151",
+        use_persistent_router_wave_top10=True,
+    )
+    assert unsupported.router_topk is None
+    assert unsupported.router_topk_key not in unsupported.kernel_keys
+
+    real_is_registered = laguna_moe_module.is_registered
+    monkeypatch.setattr(
+        laguna_moe_module,
+        "is_registered",
+        lambda candidate_key: False if candidate_key == key else real_is_registered(candidate_key),
+    )
+    missing = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        use_persistent_router_wave_top10=True,
+    )
+    assert missing.router_topk is None
+    assert missing.router_topk_key not in missing.kernel_keys
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_laguna_persistent_router_scratch_owns_exactly_one_opt_in_counter() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    default_plan = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    candidate_plan = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        use_persistent_router_wave_top10=True,
+    )
+    default_scratch = allocate_laguna_moe_scratch(default_plan)
+    candidate_scratch = allocate_laguna_moe_scratch(
+        candidate_plan,
+        allocate_router_counter=True,
+    )
+    rows_scratch = allocate_laguna_moe_scratch(candidate_plan, max_rows=3)
+    try:
+        assert default_scratch.router_counter is None
+        assert rows_scratch.router_counter is None
+        assert candidate_scratch.router_counter is not None
+        assert candidate_scratch.router_counter.nbytes == 4
+        assert candidate_scratch.nbytes == default_scratch.nbytes + 4
+        np.testing.assert_array_equal(
+            _read_array(candidate_scratch.router_counter, np.int32, (1,)),
+            np.asarray([0], dtype=np.int32),
+        )
+    finally:
+        rows_scratch.free()
+        candidate_scratch.free()
+        default_scratch.free()
 
 
 def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
