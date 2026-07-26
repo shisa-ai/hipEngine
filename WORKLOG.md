@@ -180513,3 +180513,23 @@ Vulkan local sizes verbatim will close the measured gap.
   selector, tests, and temporary harness. Production is byte-identical to the
   prior revision and remains **505.084 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`.
+
+## 2026-07-26 — Reject DPP adjacent-pair T16 decode
+
+- Reopened packed-byte pair decode with a genuinely different wave primitive.
+  Even lanes decoded both adjacent T16 nibbles once; odd lanes received the
+  high column through row-shift-right-one DPP instead of the old eight generic
+  shuffles. The candidate retained production's activation double buffer,
+  D8 bytes, resident T16 layout, packed-dot/K order, and BF16 store boundary.
+- Followed RED/GREEN. The new uneven/empty expert parameterization first
+  failed on the absent wrapper option, then passed BF16-byte exactly. Actual
+  layer-1 natural-M512 output also has zero BF16 mismatches against production
+  and the same checksum **1114.1769413301445**.
+- The actual K3072/N1024 dual gate/up leaf rejects the premise. Eleven
+  counter-rotated burst-five medians regress direct double-buffer production
+  **6.727185 -> 8.254711 ms (+22.7%; 0.814947x throughput)**; the candidate
+  wins no samples. Tracked peak is **1,915,713,088 bytes** and returns to zero.
+- Removed the HIP export/template parameter, Python option/symbol, test
+  parameterization, and harness mode. Production remains **505.084 tok/s**.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`.

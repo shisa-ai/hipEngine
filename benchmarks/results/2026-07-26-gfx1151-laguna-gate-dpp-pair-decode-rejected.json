@@ -1,0 +1,63 @@
+{
+  "created_at": "2026-07-26T00:09:41.391383+00:00",
+  "hardware": {
+    "architecture": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 1
+  },
+  "kind": "hipengine_laguna_gate_dpp_pair_decode_actual_leaf",
+  "status": "rejected",
+  "performance_claim": false,
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "quant": "Q4_K_M"
+  },
+  "shape": {
+    "source_rows": 512,
+    "compact_rows": 5120,
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "in_features": 3072,
+    "gate_features": 1024,
+    "up_features": 1024,
+    "mmq32_rows": 9504
+  },
+  "protocol": {
+    "warmups": 2,
+    "samples": 11,
+    "burst": 5,
+    "timing": "counter-rotated HIP-event elapsed time",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-grouped-exact,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d8-f32-wavecols-dpp-pair-doublebuf --warmups 2 --samples 11 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-gate-dpp-pair-leaf.json"
+  },
+  "candidate": {
+    "premise": "Decode each packed T16 Q4 byte once in even lanes and move the adjacent high-nibble column with row-shift-right-one DPP.",
+    "resident_weight_change": false,
+    "activation_change": false,
+    "accumulation_order_change": false,
+    "activation_double_buffer": true
+  },
+  "results": {
+    "production_direct_double_buffer_ms": 6.72718505859375,
+    "dpp_pair_double_buffer_ms": 8.254711151123047,
+    "candidate_over_production": 1.227074,
+    "throughput_ratio": 0.814947,
+    "candidate_wins": 0,
+    "samples": 11,
+    "production_checksum_f64": 1114.1769413301445,
+    "candidate_checksum_f64": 1114.1769413301445,
+    "bf16_mismatches_candidate_vs_production": 0
+  },
+  "memory": {
+    "tracked_peak_bytes": 1915713088,
+    "tracked_after_bytes": 0
+  },
+  "gate": {
+    "exact": true,
+    "lifecycle": true,
+    "positive": false,
+    "passed": false
+  },
+  "disposition": "All candidate HIP, wrapper, test, and harness surfaces removed; production unchanged."
+}
