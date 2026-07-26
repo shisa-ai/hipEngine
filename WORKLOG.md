@@ -181159,3 +181159,34 @@ Vulkan local sizes verbatim will close the measured gap.
   512/1K/4K timing and an all-family trace remain the next publication unit,
   so current production stays **543.807 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`.
+
+## 2026-07-26 — Publish fused selected-SiLU pack at 546.100 tok/s
+
+- Clean committed revision `c0730bb944bc979e1ff99932fd964a1c8f5a5636`
+  ran the canonical selector-unset matrix512/attention128 packet with cached
+  builds and one queue. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-fused-silu-pack-production-clean.json`.
+  Three 512/1K/4K repetitions improve the preceding production medians
+  **543.807320 -> 546.099814 tok/s (+0.422%)**,
+  **480.017298 -> 481.639578 (+0.338%)**, and
+  **388.594585 -> 389.685613 tok/s (+0.281%)**. pp512 samples are
+  **559.471802/543.299108/546.099814 tok/s**. All lengths keep their expected
+  next tokens and final positions; repeats are deterministic and tracked
+  ownership returns to zero. Raw SHA-256 is
+  `d68643f2f9c4f1915e57fa8a8ddc406063b77dfd07a0a832ee882e6754fd7e15`.
+- The clean cached all-family trace independently reaches
+  **549.845 tok/s**. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-fused-silu-pack-production-rocprof -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-fused-silu-pack-production-rocprof.json`.
+  Against the grouped-combine production trace, pp512 dispatches fall
+  **1,839 -> 1,792**, kernel span **935.415 -> 927.831 ms**, and kernel sum
+  **924.796 -> 917.420 ms**. The trace names exactly 47
+  `gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel<1>` calls at
+  local128/VGPR16/LDS512B/scratch0 and zero standalone selected-SiLU calls.
+  Trace/child/summary SHA-256 values are `4d3dade1...f617d2`,
+  `e9ebc3dc...3d5c2`, and `e02c61d0...d3b31`.
+- The path is exact, so the established absolute gate transfers unchanged:
+  maximum KL **0.049542582**, **316/320** top-1, every category at least
+  **96.875%**, Poolside exact top-1, neutral decode, deterministic execution,
+  and exact lifecycle. Current production is **546.100 tok/s**; the clean wall
+  is **937.558 ms**, leaving **206.129 ms** to 700. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`.

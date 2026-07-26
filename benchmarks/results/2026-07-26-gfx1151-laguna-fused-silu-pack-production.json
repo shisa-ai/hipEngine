@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_fused_silu_pack_production",
+  "status": "retained_production",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 77461325460
+  },
+  "repo": {
+    "revision": "c0730bb944bc979e1ff99932fd964a1c8f5a5636",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "route": "one-plane MMQ selected gate/up and down",
+    "scratch_reuse": "gate/up BF16 output temporarily occupies the larger selected-down allocation; packed Q8 reuses the existing gate/up allocation",
+    "composite": "explicit-BF16-boundary dual-SiLU plus range-safe Q8_1 D4 pack",
+    "arithmetic": "evaluate the established SiLU expression, BF16-round, convert that rounded value to F32, then run the established FP32-metadata residual pack",
+    "physical_change": "remove one 512x10240 selected-SiLU BF16 materialization and one launch per sparse layer",
+    "fallback": "registered standalone selected SiLU plus ordinary Q8 pack primitive chain"
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-fused-silu-pack-production-clean.json",
+    "pp512_samples_tok_s": [
+      559.4718023375061,
+      543.299107865987,
+      546.0998135944506
+    ],
+    "pp512_median_tok_s": 546.0998135944506,
+    "pp512_min_tok_s": 543.299107865987,
+    "pp1024_samples_tok_s": [
+      492.8797577111217,
+      480.44264833482515,
+      481.6395775681231
+    ],
+    "pp1024_median_tok_s": 481.6395775681231,
+    "pp4096_samples_tok_s": [
+      396.9612871245865,
+      389.68561260348173,
+      388.5685528783529
+    ],
+    "pp4096_median_tok_s": 389.68561260348173,
+    "previous_production": {
+      "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json",
+      "pp512_tok_s": 543.8073200104417,
+      "pp1024_tok_s": 480.01729846872183,
+      "pp4096_tok_s": 388.5945851750391
+    },
+    "change_percent": {
+      "pp512": 0.4215635758571423,
+      "pp1024": 0.33796263271685945,
+      "pp4096": 0.280762385804012
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "load_seconds_excluded": 79.8806256960379,
+    "raw_sha256": "d68643f2f9c4f1915e57fa8a8ddc406063b77dfd07a0a832ee882e6754fd7e15"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-fused-silu-pack-production-rocprof -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-fused-silu-pack-production-rocprof.json",
+    "pp512_tok_s": 549.8446557255547,
+    "pp512_dispatches": 1792,
+    "pp512_synchronized_wall_ms": 931.1720950063318,
+    "pp512_kernel_span_ms": 927.831298,
+    "pp512_kernel_sum_ms": 917.419672,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 313.027365,
+      "selected_q4_q6_down": 194.963,
+      "global_attention": 32.282892,
+      "swa_attention": 126.419591,
+      "source_f16_projection": 123.550163,
+      "dense_shared_quant_projection": 52.740196,
+      "router": 23.388524,
+      "activation_reduce_residual": 18.23098,
+      "norm_rope_gate": 24.758325,
+      "other": 5.234539,
+      "prefill_kv_write": 1.630617,
+      "lm_head_argmax": 1.156491,
+      "embedding": 0.036989
+    },
+    "fused_pack": {
+      "calls": 47,
+      "kernel": "gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel<1>",
+      "workgroup_size": 128,
+      "vgpr": 16,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "standalone_selected_silu_calls": 0
+    },
+    "previous_production": {
+      "dispatches": 1839,
+      "kernel_span_ms": 935.414868,
+      "kernel_sum_ms": 924.795917
+    },
+    "change": {
+      "dispatches": -47,
+      "kernel_span_ms": -7.58357,
+      "kernel_span_percent": -0.8107064756412112,
+      "kernel_sum_ms": -7.376245,
+      "kernel_sum_percent": -0.7976057618384067
+    },
+    "child_sha256": "e9ebc3dc71ed095a59ea928431a5a862fbf06335cffb6b72b8918fcfa733d5c2",
+    "trace_sha256": "4d3dade1f70d43c3101c4623fd81f1dff07ad6980557e5a9ea36fd2385f617d2",
+    "summary_sha256": "e02c61d0822cb0a3447a0c5e40ec3e9ae9595304b410b953a2bf7417a6ad3b31"
+  },
+  "correctness": {
+    "transfer_basis": "The fused body explicitly preserves the standalone SiLU BF16 boundary. Production-shape Q4_K and Q6_K complete MoE outputs are byte-identical, and seven complete-state A/B pairs preserve token, token logit, full logits, final and post-layer hidden, KV, and cursor.",
+    "candidate_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json",
+    "absolute_max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 546.0998135944506,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 206.1289725485923,
+    "next_measured_bottlenecks": [
+      "selected Q4 gate/up: 313.027 ms",
+      "selected Q4/Q6 down: 194.963 ms",
+      "global plus SWA attention: 158.702 ms",
+      "source-F16 projection: 123.550 ms"
+    ]
+  }
+}

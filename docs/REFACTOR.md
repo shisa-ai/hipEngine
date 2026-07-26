@@ -1208,9 +1208,11 @@ should be boring.
 - Primitive and production Q4_K/Q6_K MoE equality pass. Seven complete-state
   pp512 pairs are exact and win **7/7**, paired geometric throughput improves
   **0.651%**, and tracing removes 47 launches while cutting the target window
-  **10.301 -> 6.377 ms (-38.09%)**. Keep the session rollback through clean
-  selector-unset publication and one later selected-down checkpoint.
-- After both triggers pass, remove the public setter while retaining the
+  **10.301 -> 6.377 ms (-38.09%)**. Clean selector-unset publication then
+  improves **543.807 -> 546.100 tok/s (+0.422%)** and records the intended 47
+  fused/zero standalone calls. Keep the session rollback through one later
+  selected-down checkpoint.
+- After that trigger passes, remove the public setter while retaining the
   backend capability/default and registered unfused numerical fallback. If
-  clean publication regresses, disable the capability before another
+  a later checkpoint regresses, disable the capability before another
   selected-down experiment.
