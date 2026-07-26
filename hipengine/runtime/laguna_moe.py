@@ -108,6 +108,23 @@ def resolve_laguna_iq3_c1_down_schedule(
     return parsed
 
 
+def resolve_laguna_iq4_weighted_composite(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the architecture-qualified IQ4 weighted decode screen."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_IQ4_WEIGHTED_COMPOSITE",
+            False,
+        )
+    )
+
+
 def resolve_laguna_selected_down_mode(
     backend: str,
     requested: str | None = None,
@@ -146,6 +163,7 @@ class LagunaMoEKernelPlan:
 
     backend: str
     iq3_c1_down_schedule: str
+    use_iq4_weighted_composite: bool
     hidden_size: int
     expert_count: int
     top_k: int
@@ -302,6 +320,7 @@ def resolve_laguna_moe_plan(
     iq3_selected_down_tile: int = 1,
     iq3_c1_down_schedule: str | None = None,
     use_iq2_grid64: bool = False,
+    use_iq4_weighted_composite: bool | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -314,6 +333,10 @@ def resolve_laguna_moe_plan(
     iq3_c1_schedule = resolve_laguna_iq3_c1_down_schedule(
         backend,
         iq3_c1_down_schedule,
+    )
+    use_iq4_weighted_composite = resolve_laguna_iq4_weighted_composite(
+        backend,
+        use_iq4_weighted_composite,
     )
     if config.expert_gating_func != "sigmoid":
         raise ValueError("Laguna MoE plan requires sigmoid expert gating")
@@ -354,6 +377,20 @@ def resolve_laguna_moe_plan(
                 iq3_c1_schedule == "wave10_fused"
             ):
                 iq3_c1_schedule = "serial_weighted"
+    iq4_weighted_key = KernelKey(
+        backend,
+        "moe_linear",
+        "gguf_iq4_xs",
+        _SELECTED_WEIGHTED_DOWN_VARIANT,
+    )
+    use_iq4_weighted_composite = bool(
+        use_iq4_weighted_composite
+        and config.expert_count == 256
+        and config.expert_used_count == 10
+        and config.expert_feed_forward_length == 1024
+        and config.hidden_size == 3072
+        and is_registered(iq4_weighted_key)
+    )
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
         "router_select": KernelKey(
@@ -546,16 +583,17 @@ def resolve_laguna_moe_plan(
             for quant, key in c1_selected_down_keys.items()
         }
     )
-    selected_weighted_down_keys = MappingProxyType(
-        {
-            "gguf_iq3_xxs": KernelKey(
-                backend,
-                "moe_linear",
-                "gguf_iq3_xxs",
-                _IQ3_C1_WEIGHTED_DOWN_VARIANTS[iq3_c1_schedule],
-            )
-        }
-    )
+    selected_weighted_down_key_values = {
+        "gguf_iq3_xxs": KernelKey(
+            backend,
+            "moe_linear",
+            "gguf_iq3_xxs",
+            _IQ3_C1_WEIGHTED_DOWN_VARIANTS[iq3_c1_schedule],
+        )
+    }
+    if use_iq4_weighted_composite:
+        selected_weighted_down_key_values["gguf_iq4_xs"] = iq4_weighted_key
+    selected_weighted_down_keys = MappingProxyType(selected_weighted_down_key_values)
     selected_weighted_down_routes = MappingProxyType(
         {
             quant: LagunaMoESelectedRoute(
@@ -571,6 +609,7 @@ def resolve_laguna_moe_plan(
     return LagunaMoEKernelPlan(
         backend=backend,
         iq3_c1_down_schedule=iq3_c1_schedule,
+        use_iq4_weighted_composite=use_iq4_weighted_composite,
         hidden_size=config.hidden_size,
         expert_count=config.expert_count,
         top_k=config.expert_used_count,
