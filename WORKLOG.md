@@ -183709,3 +183709,19 @@ Vulkan local sizes verbatim will close the measured gap.
   cheaper producer-side alternative. The prompt is calibration data only;
   the candidate policy remains global and activation-only. Raw diagnostic:
   `/tmp/2026-07-27-gfx1151-laguna-q4-role-risk-code-lru.raw.json`.
+
+## 2026-07-27 — Pass Q4 producer-row calibration and heldout screen
+
+- The declared calibration split spans all four categories and covers
+  **120,320** real layer-token producer rows. The fixed
+  `activation_abs_max >= 2.0` rule repairs **19.685%** of rows while covering
+  **99.764%** of route-weighted SiLU error and **96.429%** of the worst 1%.
+- The disjoint five-prompt heldout split also covers **120,320** rows and
+  reproduces **19.724% repaired / 99.758% error / 97.010% severe**. The rule
+  is global, layer-independent, prompt-independent, and cheaper than the
+  slightly stronger reconstruction-delta classifier.
+- Both runs keep production D8 authoritative and launch D4/D8 comparisons
+  off-path. The **<=25%** producer-row gate passes. Next implement the GPU
+  absmax classifier, bounded risk-row compaction, and sparse D8 gate repair.
+  Compact evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json`.

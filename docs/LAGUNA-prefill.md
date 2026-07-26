@@ -1504,6 +1504,15 @@ Immediate execution queue:
    gone. The generic deterministic 512-token extension helper remains for the
    repair gate, and the shared D4/D8 role kernels remain only because bounded
    producer-row repair reuses them. Production dispatch is unchanged.
+40. **Producer-row risk screen passed:** one fixed activation-only rule,
+   `row_abs_max >= 2.0`, transfers from five category-balanced calibration
+   prompts to five disjoint heldouts. It repairs **19.685%/19.724%** of
+   layer-token rows while covering **99.764%/99.758%** of route-weighted SiLU
+   error and **96.429%/97.010%** of the worst 1% rows. Each split covers
+   **120,320** real producer rows; production D8 remains the authoritative
+   model path and the comparisons run off-path. This clears the **<=25%**
+   economic gate for a GPU sparse-repair candidate. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1525,7 +1534,8 @@ now decides whether repair work is needed:
    calibration and heldout prompts; they are not derived from each prompt's
    quantiles. Proceed to a GPU repair candidate only if one activation-only
    threshold captures useful error at no more than **25%** repaired producer
-   rows.
+   rows. That gate has passed with the fixed `row_abs_max >= 2.0` rule;
+   implement the bounded GPU compaction and sparse D8 gate correction next.
 3. Remeasure a clean production trace after candidate cleanup. Reopen another
    exact family only if the trace gives it at least a **5% perfect-removal
    ceiling** or a newly supported hipBLASLt/grouped-contraction algorithm
