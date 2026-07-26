@@ -301,6 +301,55 @@ def _threshold_sweep(
     return result
 
 
+def _repair_economics(
+    risk_rows: np.ndarray,
+    lane_to_row: np.ndarray,
+    route_experts: np.ndarray,
+    *,
+    expert_count: int,
+    tile_rows: int = 32,
+) -> dict[str, int | float]:
+    risk = np.asarray(risk_rows, dtype=np.bool_)
+    mapping = np.asarray(lane_to_row, dtype=np.int64)
+    experts = np.asarray(route_experts, dtype=np.int64)
+    if mapping.shape != experts.shape or mapping.ndim != 1:
+        raise ValueError("route mapping and expert IDs must be matching vectors")
+    if np.any(mapping < 0) or np.any(mapping >= risk.size):
+        raise ValueError("route mapping contains an out-of-range source row")
+    if np.any(experts < 0) or np.any(experts >= int(expert_count)):
+        raise ValueError("route expert ID is out of range")
+    if tile_rows <= 0:
+        raise ValueError("tile_rows must be positive")
+    full_counts = np.bincount(experts, minlength=expert_count)
+    selected = risk[mapping]
+    repair_counts = np.bincount(
+        experts[selected],
+        minlength=expert_count,
+    )
+    full_padded = int(
+        (np.ceil(full_counts / tile_rows) * tile_rows).sum()
+    )
+    repair_padded = int(
+        (np.ceil(repair_counts / tile_rows) * tile_rows).sum()
+    )
+    return {
+        "repair_source_rows": int(risk.sum()),
+        "repair_route_rows": int(selected.sum()),
+        "repair_active_experts": int(np.count_nonzero(repair_counts)),
+        "full_active_experts": int(np.count_nonzero(full_counts)),
+        "repair_padded_rows": repair_padded,
+        "full_padded_rows": full_padded,
+        "active_expert_fraction": (
+            float(np.count_nonzero(repair_counts) / np.count_nonzero(full_counts))
+            if np.count_nonzero(full_counts)
+            else 0.0
+        ),
+        "padded_row_fraction": (
+            float(repair_padded / full_padded) if full_padded else 0.0
+        ),
+    }
+
+
 def _copy_device_array(
     runtime,
     pointer: int,
@@ -388,6 +437,19 @@ class _RoleRiskCollector:
             (lanes,),
             np.int64,
         )
+        expert_start = _copy_device_array(
+            self.runtime,
+            scratch.grouped_expert_start.ptr,
+            (plan.expert_count + 1,),
+            np.int64,
+        )
+        expert_counts = np.diff(expert_start)
+        if np.any(expert_counts < 0) or int(expert_counts.sum()) != lanes:
+            raise RuntimeError("invalid full compact expert prefix")
+        route_experts = np.repeat(
+            np.arange(plan.expert_count, dtype=np.int64),
+            expert_counts,
+        )
         route_weights = _copy_device_array(
             self.runtime,
             scratch.grouped_sorted_weights.ptr,
@@ -422,6 +484,9 @@ class _RoleRiskCollector:
             {
                 "prompt_id": self.prompt_id,
                 "layer_id": int(layer.layer_id),
+                "_lane_to_row": lane_to_row,
+                "_route_experts": route_experts,
+                "_expert_count": int(plan.expert_count),
                 **_activation_risk_features(hidden),
                 **error,
             }
@@ -479,7 +544,7 @@ def _summarize(
     vector_keys = tuple(
         key
         for key in captured[0]
-        if key not in {"prompt_id", "layer_id"}
+        if key not in {"prompt_id", "layer_id"} and not key.startswith("_")
     )
     combined = {
         key: np.concatenate(
@@ -513,6 +578,33 @@ def _summarize(
             if eligible
             else None
         )
+    selected_rule_layers = []
+    for row in captured:
+        layer_economics = _repair_economics(
+            np.asarray(row["activation_abs_max"]) >= 2.0,
+            np.asarray(row["_lane_to_row"]),
+            np.asarray(row["_route_experts"]),
+            expert_count=int(row["_expert_count"]),
+        )
+        selected_rule_layers.append(
+            {
+                "prompt_id": str(row["prompt_id"]),
+                "layer_id": int(row["layer_id"]),
+                **layer_economics,
+            }
+        )
+    repair_active_experts = sum(
+        int(row["repair_active_experts"]) for row in selected_rule_layers
+    )
+    full_active_experts = sum(
+        int(row["full_active_experts"]) for row in selected_rule_layers
+    )
+    repair_padded_rows = sum(
+        int(row["repair_padded_rows"]) for row in selected_rule_layers
+    )
+    full_padded_rows = sum(
+        int(row["full_padded_rows"]) for row in selected_rule_layers
+    )
     return {
         "schema_version": 1,
         "kind": "hipengine_laguna_q4_role_risk_calibration",
@@ -562,6 +654,27 @@ def _summarize(
         },
         "threshold_sweeps": sweeps,
         "best_at_or_below_25_percent_repair": best_bounded,
+        "selected_absmax_2_repair_economics": {
+            "layers": selected_rule_layers,
+            "layers_with_no_repair": sum(
+                int(row["repair_source_rows"]) == 0
+                for row in selected_rule_layers
+            ),
+            "layers_with_all_rows_repaired": sum(
+                int(row["repair_source_rows"]) == _ROWS
+                for row in selected_rule_layers
+            ),
+            "aggregate_active_expert_fraction": (
+                repair_active_experts / full_active_experts
+                if full_active_experts
+                else 0.0
+            ),
+            "aggregate_padded_row_fraction": (
+                repair_padded_rows / full_padded_rows
+                if full_padded_rows
+                else 0.0
+            ),
+        },
     }
 
 
