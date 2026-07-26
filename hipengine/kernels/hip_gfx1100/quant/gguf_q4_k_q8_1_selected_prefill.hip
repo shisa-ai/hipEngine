@@ -2946,6 +2946,25 @@ static_assert(
     sizeof(q8_1_mmq32_f32_cache) == 48,
     "unexpected FP32-DS Q8_1 cache size");
 
+struct alignas(4) q8_1_q6_mmq32_f32_compact_cache {
+  int32_t qs[8];
+  int16_t sums[2];
+  float d;
+};
+static_assert(
+    sizeof(q8_1_q6_mmq32_f32_compact_cache) == 40,
+    "unexpected compact Q6 FP32-DS Q8_1 cache size");
+
+template <bool COMPACT>
+struct q6_activation_cache_selector {
+  using type = q8_1_mmq32_f32_cache;
+};
+
+template <>
+struct q6_activation_cache_selector<true> {
+  using type = q8_1_q6_mmq32_f32_compact_cache;
+};
+
 struct alignas(4) q4_k_mmq64_f32_cache {
   uint32_t qs[8];
   float dm[2];
@@ -3499,7 +3518,8 @@ template <
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
     int MMQ_N = 32,
-    bool QMICRO = false>
+    bool QMICRO = false,
+    bool COMPACT_ACTIVATION_CACHE = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3521,6 +3541,9 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   constexpr int ROW_ITERS = WAVE_COLUMNS ? MMQ_N : WNITER;
   typedef int mmq_i32x4_t
       __attribute__((__vector_size__(4 * sizeof(int))));
+  using q6_activation_cache_t =
+      typename q6_activation_cache_selector<
+          COMPACT_ACTIVATION_CACHE>::type;
   static_assert(ACTIVATION_PASSES > 0, "at least one activation plane required");
   static_assert(MMQ_N == 32 || MMQ_N == 64, "unsupported row tile");
   static_assert(THREADS % 32 == 0, "thread count must contain whole waves");
@@ -3565,7 +3588,7 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
 
   __shared__ q6_k_mmq64_cache
       weight_tile[WAVE_COLUMNS ? 1 : MMQ_M];
-  __shared__ q8_1_mmq32_f32_cache
+  __shared__ q6_activation_cache_t
       activation_tile[ACTIVATION_PASSES][MMQ_N];
 
   const int k32_iters = static_cast<int>(in_features / MMQ_K);
@@ -3737,7 +3760,9 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                 compact_row * q8_blocks_per_row + (k32 >> 2);
             const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
             d = xb.ds4[2 * (k32 & 3)];
-            s = xb.ds4[2 * (k32 & 3) + 1];
+            if constexpr (!COMPACT_ACTIVATION_CACHE) {
+              s = xb.ds4[2 * (k32 & 3) + 1];
+            }
             const int8_t* __restrict__ qs =
                 xb.qs + (k32 & 3) * Q8_1_BLOCK;
             packed0 =
@@ -3764,9 +3789,16 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                 sum1);
           }
           activation_tile[pass][row_offset].d = d;
-          activation_tile[pass][row_offset].s = s;
-          activation_tile[pass][row_offset].sums[0] = sum0;
-          activation_tile[pass][row_offset].sums[1] = sum1;
+          if constexpr (COMPACT_ACTIVATION_CACHE) {
+            activation_tile[pass][row_offset].sums[0] =
+                static_cast<int16_t>(sum0);
+            activation_tile[pass][row_offset].sums[1] =
+                static_cast<int16_t>(sum1);
+          } else {
+            activation_tile[pass][row_offset].s = s;
+            activation_tile[pass][row_offset].sums[0] = sum0;
+            activation_tile[pass][row_offset].sums[1] = sum1;
+          }
         }
       }
     } else {
@@ -3814,7 +3846,9 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
             const int8_t* __restrict__ qs =
                 xb.qs + (k32 & 3) * Q8_1_BLOCK;
             d = xb.ds4[2 * (k32 & 3)];
-            s = xb.ds4[2 * (k32 & 3) + 1];
+            if constexpr (!COMPACT_ACTIVATION_CACHE) {
+              s = xb.ds4[2 * (k32 & 3) + 1];
+            }
 #pragma unroll
             for (int pack = 0; pack < 4; ++pack) {
               sum0 = gguf_q4_k_mmq_dp4a(
@@ -3833,9 +3867,16 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
             }
           }
           activation_tile[pass][row_offset].d = d;
-          activation_tile[pass][row_offset].s = s;
-          activation_tile[pass][row_offset].sums[0] = sum0;
-          activation_tile[pass][row_offset].sums[1] = sum1;
+          if constexpr (COMPACT_ACTIVATION_CACHE) {
+            activation_tile[pass][row_offset].sums[0] =
+                static_cast<int16_t>(sum0);
+            activation_tile[pass][row_offset].sums[1] =
+                static_cast<int16_t>(sum1);
+          } else {
+            activation_tile[pass][row_offset].s = s;
+            activation_tile[pass][row_offset].sums[0] = sum0;
+            activation_tile[pass][row_offset].sums[1] = sum1;
+          }
         }
       }
     }
@@ -3859,7 +3900,7 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
         if (row_offset >= valid_rows) continue;
 #pragma unroll
         for (int pass = 0; pass < ACTIVATION_PASSES; ++pass) {
-          const q8_1_mmq32_f32_cache& xb =
+          const q6_activation_cache_t& xb =
               activation_tile[pass][row_offset];
           int dot0 = 0;
           int dot1 = 0;
@@ -3918,7 +3959,8 @@ template <
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
     int MMQ_N = 32,
-    bool QMICRO = false>
+    bool QMICRO = false,
+    bool COMPACT_ACTIVATION_CACHE = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -3951,7 +3993,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           WAVE_COLUMNS,
           THREADS,
           MMQ_N,
-          QMICRO>),
+          QMICRO,
+          COMPACT_ACTIVATION_CACHE>),
       grid,
       block,
       0,
@@ -4955,6 +4998,42 @@ hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_com
       false,
       128,
       64,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_compact_activation_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true,
       true>(
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
       expert_start_compact,

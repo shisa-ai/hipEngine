@@ -1227,3 +1227,19 @@ should be boring.
   backend capability/default and registered unfused numerical fallback. If
   a later checkpoint regresses, disable the capability before another
   selected-down experiment.
+
+## Laguna Q6 compact-activation rollback
+
+- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_COMPACT_ACTIVATION` and the optional
+  `q6_compact_activation=False` resident-session rollback. The Q6-specific
+  activation cache omits unused Q8 sum metadata and stores its bounded K16
+  quant sums as int16, reducing LDS **5,632 -> 5,120 B** without changing
+  arithmetic or resident bytes.
+- The actual leaf improves **3.36%**, fifteen complete-state pp512 pairs
+  improve **550.584 -> 552.807 tok/s (+0.404%, 15/15 wins)**, and tracing
+  cuts Q6 **125.380 -> 119.566 ms (-4.64%)**. Keep the explicit rollback
+  through clean selector-unset publication and one later selected-down
+  checkpoint.
+- After both triggers pass, remove the public constructor override and the
+  one-purpose A/B harness. Retain the ordinary 48-byte activation cache only
+  where other Q4/Q6 template instantiations or unmeasured backends require it.

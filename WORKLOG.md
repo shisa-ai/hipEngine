@@ -181447,3 +181447,36 @@ Vulkan local sizes verbatim will close the measured gap.
   Production code/tests are byte-identical to `0c1345190`; the post-removal
   production qmicro oracle passes. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-nontemporal-rejected.json`.
+
+## 2026-07-26 — Admit compact Q6 activation staging
+
+- Source audit found that the Q6 consumer stages the 48-byte Q8 activation
+  cache used by Q4 even though Q6 has no minimum term and never consumes the
+  raw sum metadata. The two K16 quant sums are each bounded to
+  `[-2032, 2032]`, so the Q6-only cache safely omits the unused FP32 sum and
+  stores those sums as int16. This reduces each staged row **48 -> 40 bytes**
+  and production-kernel LDS **5,632 -> 5,120 B** without changing Q8 bytes,
+  scales, dot/K order, F32 accumulation, or BF16 output.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  by the absent read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
+  This is an in-tree cache/schedule change and copies no external kernel.
+  RED failed on the missing production-geometry specialization. GREEN plus
+  integration report **10 passed** across the Q6 CPU-reference matrix, MoE
+  plan/dispatch, and resident-session lifecycle.
+- The actual layer-1 E256/K1024/N3072 natural-M512 leaf is BF16-byte exact and
+  improves **5.081606 -> 4.911112 ms (-3.355%)** over eleven counter-rotated
+  burst-five samples. Raw SHA-256 is
+  `9efce997719672f863d1317091b7f1e9dce9ccd7311a512496c7e4f7726c4865`.
+- Fifteen counterbalanced complete-state pp512 pairs improve
+  **550.584 -> 552.807 tok/s (+0.404%)** with **15/15 wins**. Next token,
+  next logit, full logits, final/post-layer hidden, complete KV, and cursor
+  are identical. Raw SHA-256 is
+  `2b43eee396efa459641a8ab427c1b55a5ca8aea94d82081f75056f9824d37c25`.
+- Cached full-model A/B tracing cuts the 23 Q6 calls
+  **125.380 -> 119.566 ms (-4.636%)** and median call
+  **5.410 -> 5.139 ms**, with VGPR88/SGPR128/scratch0 unchanged and the
+  intended LDS reduction. Trace SHA-256 is
+  `2facabb3321ad0693e1b2814c04332fecc61a400badec2bbb626642236171c7a`.
+  Promote `LAGUNA_Q6_COMPACT_ACTIVATION` as the gfx1151 package default with
+  explicit session rollback, commit the logical unit, then run clean
+  selector-unset 512/1K/4K publication.
