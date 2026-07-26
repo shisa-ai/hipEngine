@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T15:14:06+00:00",
+  "kind": "hipengine_laguna_q6_integer_wmma_hoist_activation_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "repo_revision": "acbb72215768f52fee7390579ec9dbaa9222d0db",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "selector-unset planar-qmicro Q6 selected-down integer-WMMA constructs each wave's two activation fragments once per K32",
+    "resident_delta_bytes": 0,
+    "previous_revision": "4404f57204afb2d385ce8611c23580f0c2fcdb97",
+    "previous_512_1024_4096_tok_s": [
+      576.1371111044512,
+      543.2126795265896,
+      459.05356601874894
+    ],
+    "new_512_1024_4096_tok_s": [
+      577.3956129018674,
+      545.3661665895867,
+      459.7155182569606
+    ],
+    "change_percent": [
+      0.21843789840299,
+      0.39643534552136206,
+      0.14419934561289427
+    ],
+    "pp512_wall_ms": 886.7403710028157,
+    "pp512_wall_to_700_ms": 155.31179957424425
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-wmma-hoist-production.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "load_seconds_excluded": 89.87396456603892,
+    "tracked_worktree_clean": true,
+    "unrelated_untracked_artifacts_excluded": 255
+  },
+  "samples": {
+    "512_tok_s": [
+      581.1663153196661,
+      574.6772791935324,
+      577.3956129018674
+    ],
+    "1024_tok_s": [
+      550.1097294923445,
+      545.3661665895867,
+      544.9372336125838
+    ],
+    "4096_tok_s": [
+      462.1047767038941,
+      459.7155182569606,
+      457.488782382443
+    ]
+  },
+  "correctness": {
+    "primitive": "The 13-case Q6 CPU-reference/quality gate passes; the hoisted leaf is BF16-byte identical to the retained integer-WMMA body.",
+    "actual_weight_layer1_bf16_mismatches": 0,
+    "absolute_quality_transfer_max_kl": 0.04954258196634279,
+    "absolute_quality_transfer_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "repeat_next_token_deterministic": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "tracked_allocations_returned": true,
+    "tracked_resident_bytes": 78777775764,
+    "lifecycle_scope": "exact through 4K; repeated 128K remains blocked"
+  },
+  "leaf_evidence": "benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json",
+  "raw": {
+    "path": "/tmp/laguna-q6-wmma-hoist-production.json",
+    "sha256": "fec8b67bbb87b504cf439ca2c587a5bbd15ed493dd3db8c9f5f13dbecd62290c"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 577.3956129018674,
+    "target_700_reached": false,
+    "next_action": "refresh cached all-family trace, then screen result-metadata prefetch or a WMMA-specific zero-scratch K64 schedule"
+  }
+}

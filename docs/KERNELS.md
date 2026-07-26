@@ -906,8 +906,11 @@ four-column-fragment loop. The 21-pair actual layer-1 leaf improves
 **4.5645 -> 4.5126 ms (-1.136%, 20/21 wins)** with zero BF16 mismatches.
 `rocprofv3` reports unchanged local128/VGPR96/SGPR128/LDS5120B/scratch0
 resources. The selector-unset gfx1151 production route enables the hoist;
-clean 512/1K/4K publication remains pending
-(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json`).
+clean 512/1K/4K publication improves
+**576.137/543.213/459.054 -> 577.396/545.366/459.716 tok/s
+(+0.218%/+0.396%/+0.144%)**, with deterministic tokens, exact positions, and
+complete allocation return
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-production.json`).
 
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate
