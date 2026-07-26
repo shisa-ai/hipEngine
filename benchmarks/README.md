@@ -2,32 +2,22 @@
 
 Last updated: **2026-07-26**
 
-An exact after-router shared-branch schedule is retained for production
-promotion. Seven queue-matched complete-state pairs improve
-**567.767 -> 568.181 tok/s (+0.073%, 5/7 wins)**. Cached tracing confirms the
-mechanism: router recovers **44.075 -> 23.356 ms**, but contention moves into
-gate/up, so total kernel span improves only **0.310 ms**. This is a verified
-micro-win, not a material step toward 700; current selector-unset production
-remains the packet below until capability promotion and clean publication.
-[`candidate artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json).
-
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json`](results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json).
-gfx1151 now defaults to two HIP hardware queues and overlaps the independent
-shared expert with routed MoE on a nonblocking secondary stream. Seven
-queue-matched complete-state pairs improve **560.837 -> 567.577 tok/s
-(+1.202%, 7/7 wins)** with every compared output/state digest exact.
+[`2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json).
+gfx1151 now completes router selection before releasing the independent shared
+expert on its secondary stream. Seven queue-matched complete-state pairs
+improve **567.767 -> 568.181 tok/s (+0.073%, 5/7 wins)** with every compared
+output/state digest exact.
 Clean selector-unset 512/1K/4K medians are
-**565.447/526.711/443.444 tok/s**, improving the preceding boundary-fusion
-packet **1.053%/0.534%/0.598%**, with deterministic next tokens, exact
-positions, and full allocation recovery. Cached tracing reaches
-**569.556 tok/s**, observes two queues/two streams, overlaps
-**76.883/77.763 ms (98.87%)** of secondary-stream kernel time, and cuts kernel
-span **909.598 -> 898.334 ms (-11.265 ms)**. Absolute maximum KL remains
+**566.839/527.381/444.447 tok/s**, improving the preceding production
+**0.246%/0.127%/0.226%**, with deterministic next tokens, exact positions, and
+full allocation recovery. Cached tracing reaches **569.763 tok/s**, recovers
+router **44.075 -> 23.356 ms**, and cuts kernel span
+**898.334 -> 898.024 ms (-0.310 ms)**. Absolute maximum KL remains
 **0.049542582**; decode stays sequential and unchanged. The active pp512
-stretch target is 700 tok/s, requiring another **174.050 ms** from the clean
-median wall.
-[`branch-concurrency candidate artifact`](results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-candidate.json).
+stretch target is 700 tok/s, requiring another **171.827 ms** from the clean
+median wall. This verified micro-win is not a material step toward 700.
+[`candidate artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json).
 
 The byte-neutral Q4 qmicro passes exact c1/c2/c4/c8 decode, but its
 actual-weight natural-M512 selected-prefill gate is rejected and fully
@@ -954,7 +944,8 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact shared/routed MoE concurrency production prefill | 2026-07-26 | capability `6e58950e3`, measured/trace `0cfe25bb7`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven queue-matched complete-state pairs, and cached two-stream trace | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: the always-on shared expert runs beside routed MoE until the exact final combine. Clean selector-unset reaches **565.447/526.711/443.444 tok/s**, improving the prior production **1.053%/0.534%/0.598%**. Seven pairs preserve logits, both hidden snapshots, complete KV, token/logit, and cursor exactly. Cached tracing reaches **569.556 tok/s**, records **1,696** pp512 dispatches, observes two queues/two streams, overlaps **76.883/77.763 ms (98.87%)** of secondary kernel time, and cuts kernel span **909.598 -> 898.334 ms**. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, deterministic, decode-neutral, and lifecycle-exact through 4K; repeated 128K remains blocked. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared exact concurrency/quality/lifecycle scope | Protect router selection while retaining gate/up-plus-down overlap; rerun after arithmetic/layout, scheduling, source-F16 mode, model/quant, compiler/runtime, or device/queue changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact after-router shared-MoE production prefill | 2026-07-26 | capability/measurement `764de3fc4`, matched/trace `a9883e6fa`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven queue-matched complete-state pairs, and cached two-stream trace | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: router selection completes before the shared expert is released, then shared overlaps routed gate/up/down until the exact final combine. Clean selector-unset reaches **566.839/527.381/444.447 tok/s**, improving the prior production **0.246%/0.127%/0.226%**. Seven pairs preserve logits, both hidden snapshots, complete KV, token/logit, and cursor exactly. Cached tracing reaches **569.763 tok/s**, records **1,696** pp512 dispatches, recovers router **44.075 -> 23.356 ms**, and cuts kernel span **898.334 -> 898.024 ms**. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, deterministic, decode-neutral, and lifecycle-exact through 4K; repeated 128K remains blocked. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared exact scheduling/quality/lifecycle scope | Screen lower-priority shared scheduling; rerun after arithmetic/layout, scheduling, source-F16 mode, model/quant, compiler/runtime, or device/queue changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact eager shared/routed MoE concurrency production prefill | 2026-07-26 | capability `6e58950e3`, measured/trace `0cfe25bb7`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; automatic two HIP queues; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven queue-matched complete-state pairs, and cached two-stream trace | **Superseded retained quality-gated production**: clean selector-unset reaches **565.447/526.711/443.444 tok/s**. Seven pairs preserve complete state and cached tracing cuts the former single-stream kernel span **909.598 -> 898.334 ms**. Absolute quality remains max KL **0.049542582**. [`artifact`](results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json). | Superseded; exact eager concurrency provenance | Use the after-router shared-MoE production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 boundary production prefill | 2026-07-26 | default `893b39197`, complete-state/trace `6f7cea1c0`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven matched complete-state pairs, and cached all-family trace | **Superseded retained quality-gated production**: RMSNorm and softplus-gate producers write exact `FP16(BF16(value))`, eliminating 96 standalone casts. Clean selector-unset reaches **559.554/523.912/440.809 tok/s**. Seven pairs preserve logits, both hidden snapshots, complete KV, token/logit, and cursor exactly. Cached tracing reaches **561.019 tok/s** and records **1,696** pp512 dispatches. Absolute quality remains max KL **0.049542582**. [`artifact`](results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json). | Superseded; exact source-F16 boundary provenance | Use the MoE branch-concurrency production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact dense-initial attention production prefill | 2026-07-26 | clean measured/default `227398af9`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, seven matched complete-state pairs, and cached all-family trace | **Superseded retained quality-gated production**: complete initial no-wrap tiles preserve the full `KVLiveSpans` ABI while removing per-token position/eviction reads. Clean selector-unset reaches **559.290/523.090/439.044 tok/s**. Matched A/B is complete-state exact at **552.144 -> 559.539 tok/s (+1.339%)**. Cached tracing reaches **559.225 tok/s**, observes 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 calls, and cuts attention **153.226 -> 141.846 ms (-7.43%)**. [`artifact`](results/2026-07-26-gfx1151-laguna-attention-dense-initial-production.json). | Superseded; exact dense-initial attention provenance | Use the source-F16 boundary row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact padded-Q6 production prefill | 2026-07-26 | clean measured/default `fe105632c`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix2048/attention128; three selector-unset 512/1K/4K repetitions, eleven complete-state pairs, repeated actual-weight 23-layer timing, and cached all-family trace | **Superseded retained quality-gated production**: never-read padded Q6 slots skip zero activation-cache writes and K16 sums with unchanged useful arithmetic and resources. Clean selector-unset 512/1K/4K reaches **551.459/517.307/432.099 tok/s**, improving the preceding packet **0.420%/0.456%/0.418%**. The repeated exact Q6 window improves **112.008 -> 111.806 ms (-0.180%, 19/23 layers)** and complete-state A/B is exact and positive. Cached tracing reaches **552.796 tok/s** at local128/VGPR88/SGPR128/LDS5120B/scratch0; its one Q6 slice is noisy and not used as promotion evidence. Absolute quality remains max KL **0.049542582**, 316/320 top-1, every category >=96.875%, with deterministic repeats, exact KV/cursors, neutral decode, and exact lifecycle. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-production.json). | Superseded; exact Q6 staging provenance | Use the dense-initial attention production row above for current performance and correctness. |

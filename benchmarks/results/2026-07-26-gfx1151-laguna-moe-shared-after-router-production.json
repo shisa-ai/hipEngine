@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_shared_after_router_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset exact Poolside Laguna S 2.1 Q4_K_M matrix2048/attention128 prefill at 512/1K/4K on gfx1151 with automatic two-queue after-router shared scheduling",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "candidate_revision": "a9883e6fafcef173d33375dc856c8f424275cd47",
+    "capability_and_measurement_revision": "764de3fc4338902f7569423dab0eb4c271a7ae38",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_MOE_SHARED_AFTER_ROUTER=true",
+    "scope": "gfx1151 Laguna rows greater than one when exact MoE branch concurrency is active",
+    "schedule": "router logits and selection complete on the caller stream before the independent shared branch is released on the secondary stream; gate/up and down remain overlapped",
+    "arithmetic": "unchanged",
+    "fallback": "--no-moe-shared-after-router and the constructor false restore eager shared launch; one queue still restores fully sequential MoE",
+    "peer_backends": "unchanged"
+  },
+  "selector_unset": {
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/result.json",
+    "resolved_queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "resolved_moe_branch_concurrency": true,
+    "resolved_moe_shared_after_router": true,
+    "pp512_samples_tok_s": [
+      570.591041262371,
+      566.8289261754894,
+      566.838551353783
+    ],
+    "pp512_median_tok_s": 566.838551353783,
+    "pp1024_samples_tok_s": [
+      532.9829555994717,
+      527.1122638233144,
+      527.3808119074912
+    ],
+    "pp1024_median_tok_s": 527.3808119074912,
+    "pp4096_samples_tok_s": [
+      447.5067931575233,
+      444.44661536765545,
+      442.994690675185
+    ],
+    "pp4096_median_tok_s": 444.44661536765545,
+    "previous_production": {
+      "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json",
+      "pp512_tok_s": 565.4470035777194,
+      "pp1024_tok_s": 526.7106792638224,
+      "pp4096_tok_s": 443.4440131490211
+    },
+    "change_percent": {
+      "pp512": 0.24609694051942466,
+      "pp1024": 0.127229743016688,
+      "pp4096": 0.22609443106800242
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "77b9f53c9f308edd0d6fc1aaf4b5111b657b2c05e5bdd0620c0c7956389e4d11"
+  },
+  "matched_ab": {
+    "eager_median_tok_s": 567.7672488994715,
+    "after_router_median_tok_s": 568.1811170020119,
+    "change_percent": 0.07289397254641727,
+    "candidate_wins": "5/7",
+    "complete_state_exact": true,
+    "source_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json"
+  },
+  "rocprof": {
+    "source": "benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json",
+    "pp512_tok_s": 569.762992660539,
+    "pp512_dispatches": 1696,
+    "pp512_kernel_span_ms": 898.023983,
+    "pp512_kernel_sum_ms": 1157.789872,
+    "previous_eager_kernel_span_ms": 898.333573,
+    "kernel_span_change_ms": -0.30959,
+    "router_ms": 23.355791,
+    "previous_eager_router_ms": 44.075382,
+    "selected_gate_up_ms": 344.618575,
+    "previous_eager_selected_gate_up_ms": 322.200212,
+    "secondary_stream_kernel_sum_ms": 269.084439,
+    "secondary_stream_overlap_ms": 268.439389,
+    "secondary_stream_overlap_percent": 99.76027970907676,
+    "contention_note": "the protected router prefix is real, but shifted gate/up contention limits the total span win to 0.310 ms"
+  },
+  "correctness": {
+    "transfer_basis": "the production-style primitive is BF16-byte exact, seven full-model pairs preserve every output/state digest, and decode remains on the sequential rows=1 path",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true,
+    "repeated_128k_admission": false
+  },
+  "validation": {
+    "backend_session_profile_tests": 67,
+    "focused_q4_gpu_equality": true,
+    "python_compile": true,
+    "selector_unset_publication_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 566.838551353783,
+    "clean_pp512_wall_ms": 903.255430981517,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 171.8268595529455,
+    "next_premise": "screen a lower-priority secondary shared stream so routed gate/up retains bandwidth while shared work uses the longer routed window"
+  }
+}
