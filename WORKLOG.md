@@ -183147,3 +183147,31 @@ Vulkan local sizes verbatim will close the measured gap.
   reports **82.763 ms** total attention versus the prior **143.669 ms**,
   with 660 global and 1,980 SWA calls. The clean profiled request has
   **895.668 ms** kernel span and **1,141.607 ms** inclusive kernel sum.
+
+## 2026-07-27 — Publish dense-initial F32 BLAS attention
+
+- Clean selector-unset runtime revision `dd3ad6847` retains dense-initial F32
+  hipBLASLt attention and measures **623.050/563.399/462.430 tok/s** at
+  512/1K/4K versus the previous **577.396/545.366/459.716**
+  (**+7.907%/+3.307%/+0.590%**). The three pp512 samples are
+  **586.897/624.684/623.050 tok/s**; median wall is **821.764 ms**, leaving
+  **90.336 ms** to the 700-tok/s wall.
+- Tokens **2930/95/7772**, final positions, deterministic repeats, and
+  allocation recovery are exact. Peak tracked residency is
+  **78,800,844,436 bytes**. The clean category revision `e89957333` passes
+  maximum KL **0.049542582**, **316/320** top-1, every category at least
+  **96.875%**, Poolside KL **0.0000175125** with exact top-1, and exact
+  lifecycle through 4K. Route-specific pp512 all-exact KL improves
+  **0.003246 -> 0.002214** with top-1 **2930**.
+- Corrected cached attribution measures **82.763 ms** total pp512 attention
+  versus **143.669 ms (-42.39%)** before the route. The inclusive pp512
+  family ledger is gate/up **337.494 ms**, down **180.037 ms**, source-F16
+  **124.492 ms**, dense/shared **93.086 ms**, attention **82.763 ms**, router
+  **22.417 ms**, and remaining **301.317 ms** over a **1,141.607-ms** sum.
+  Because profiler overhead perturbs this library-heavy route, only the clean
+  unprofiled wall is the performance claim.
+- Retained artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-production.json`.
+  The next bounded screen replicates KV heads into query-head-major scratch so
+  one QK and one PV strided-batch contraction replace the current eight plus
+  eight library calls per qualified tile.
