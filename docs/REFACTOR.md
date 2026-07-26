@@ -1260,3 +1260,7 @@ should be boring.
 - Keep the rollback through clean selector-unset publication and one later
   selected-down checkpoint. Then remove the public constructor override and
   the one-purpose A/B harness while retaining the backend capability/default.
+- Clean selector-unset publication is satisfied at
+  **549.150/514.956/430.300 tok/s**; it is headline-neutral, while the clean
+  trace preserves the Q6 sub-window win at **119.384 -> 118.568 ms (-0.684%)**.
+  The one-later-selected-down checkpoint remains open.
