@@ -182518,3 +182518,26 @@ Vulkan local sizes verbatim will close the measured gap.
   to gather the existing 12-byte quartet record before exact mask/shift
   expansion. Resident bytes, row64 geometry, activation staging, FP32 order,
   and BF16 output remain unchanged.
+
+## 2026-07-26 — Implement Q6 qmicro permute-decode candidate
+
+- RED: the new production-shape `rows64-qmicro-permute` oracle failed on the
+  missing wrapper selector. The first compiled intrinsic mapping then failed
+  BF16 identity; swapping the intrinsic operands to gfx11's actual source
+  numbering repaired the implementation.
+- GREEN: two `v_perm_b32` gathers replace the scalar four-value unpack loop
+  over the existing byte-neutral 12-byte qmicro record. The candidate keeps
+  row64/local128, 5,120 B LDS, zero scratch, resident bytes, activation
+  staging, FP32 accumulation order, and the BF16 boundary unchanged.
+- The uneven/empty-expert fixture is BF16-byte exact. On the actual layer-1
+  660.6-MB Q6 tensor, 21 counter-rotated samples improve
+  **4.872 -> 4.741 ms (-2.671%)** with zero mismatches and identical checksum.
+  Extracted gfx1151 ISA contains exactly two `v_perm_b32`; metadata reports
+  **86 -> 73 VGPR**, SGPR45, LDS5120B, and scratch0.
+- Seven one-owner, queue2 complete-state pp512 pairs improve
+  **567.998 -> 569.563 tok/s (+0.276%, 5/7 wins)**. Logits, both hidden
+  snapshots, complete KV, next token/logit, and cursor are exact.
+- Raw leaf SHA-256:
+  `162a38c635298f3df818372ec68196c2956e3a1fd5d79ba8d3c6fa4cd68c16b2`.
+  A clean cached `rocprofv3` trace remains required before promotion; the
+  retained profiler intentionally refuses this dirty candidate tree.
