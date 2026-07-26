@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T09:30:00+09:00",
+  "kind": "hipengine_laguna_q4_layer_risk_absolute_gate",
+  "status": "rejected_category_gate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "fbc1c8e6d",
+    "tracked_clean": true,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "selected_runtime_mode": "mmq128x32_absmax2_layer_gate_d4_up_d8",
+    "classifier": "one GPU scalar: any producer-row BF16 absmax >= 2.0",
+    "safe_layer": "specialized D4 gate plus specialized D8 up",
+    "risky_layer": "production dual D8 gate/up",
+    "resident_sidecar_bytes": 0
+  },
+  "protocol": {
+    "matrix_chunk_size": 512,
+    "attention_chunk_size": 128,
+    "prompt_token_target": 512,
+    "prompts": 10,
+    "repetitions": 3,
+    "teacher_forced_steps": 320,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py --comparison q4_layer_risk_absolute --chunk-size 512 --prompt-token-target 512 --repetitions 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-layer-risk-absolute.json"
+  },
+  "quality": {
+    "thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_suite_top1_agreement": 0.9,
+      "minimum_each_category_top1_agreement": 0.9
+    },
+    "teacher_forced": {
+      "pass": false,
+      "steps": 320,
+      "top1_matches": 314,
+      "top1_agreement": 0.98125,
+      "max_kl_divergence": 1.2654918631848922,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 126,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 1.2654918631848922
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.21200435554908575
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.6550267567493473
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 64,
+          "top1_agreement": 1.0,
+          "max_kl_divergence": 0.2933927830644535
+        }
+      }
+    },
+    "poolside_first_token_oracle": {
+      "pass": true,
+      "top1_agreement": 1.0,
+      "kl_divergence": 0.000010176732693412075
+    },
+    "free_running_all_pairs_exact": false
+  },
+  "performance": {
+    "all_exact_prefill_tok_s": 57.86433890258553,
+    "candidate_prefill_tok_s": 617.4228172545554,
+    "candidate_vs_all_exact": 10.67017836830358,
+    "production_reference_tok_s": 632.6179847
+  },
+  "lifecycle": {
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0,
+    "active_bytes_after": 0,
+    "total_allocated_bytes": 138644276368,
+    "total_freed_bytes": 138644276368
+  },
+  "source_run": {
+    "path": "/tmp/laguna-q4-layer-risk-absolute.json",
+    "sha256": "0e00cfd3cb767e1bce856d699938ba8681ff18f36918d3404b0d4edc3e01496b"
+  },
+  "decision": {
+    "promote": false,
+    "retain_candidate_surface": false,
+    "reason": "all four categories violate the absolute KL threshold; activation-only projection-role repair is exhausted",
+    "cleanup": "remove the layer-risk selector, role-split kernels and packers, category lanes, calibration harness, and focused tests; retain only the generic multi-arm A/B harness",
+    "production": "unchanged at 632.6179847 tok/s"
+  }
+}

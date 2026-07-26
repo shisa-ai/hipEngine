@@ -55,17 +55,8 @@ _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16 = {
     2: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x2",
     3: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3",
 }
-_SYMBOL_DS4_F32_PACK_SEPARATE_SILU_BF16_D4 = (
-    "hipengine_gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4"
-)
-_SYMBOL_DS4_F32_PACK_CONDITIONAL_SILU_BF16_D4 = (
-    "hipengine_gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_d4"
-)
 _SYMBOL_DS8_F32_PACK_BF16 = (
     "hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16"
-)
-_SYMBOL_DS8_F32_PACK_ABSMAX_RISK_BF16 = (
-    "hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16_absmax_risk"
 )
 _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
@@ -176,33 +167,6 @@ _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
     "mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out"
 )
-_SYMBOL_Q4_T16_SINGLE_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = {
-    False: (
-        "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
-        "mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out"
-    ),
-    True: (
-        "hipengine_gguf_q4_k_t16_selected_q8_1_ds8_f32_"
-        "mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out"
-    ),
-}
-_SYMBOL_Q4_T16_DUAL_D8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_RISKY_BF16 = (
-    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
-    "mmq128x32_wavecols_direct_doublebuf_risky_"
-    "prefill_compact32_bf16_bf16_out"
-)
-_SYMBOL_Q4_T16_SINGLE_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_SAFE_BF16 = {
-    False: (
-        "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
-        "mmq128x32_wavecols_direct_doublebuf_safe_"
-        "prefill_compact32_bf16_bf16_out"
-    ),
-    True: (
-        "hipengine_gguf_q4_k_t16_selected_q8_1_ds8_f32_"
-        "mmq128x32_wavecols_direct_doublebuf_safe_"
-        "prefill_compact32_bf16_bf16_out"
-    ),
-}
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -452,150 +416,6 @@ def gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
         runtime.check(int(err))
 
 
-def gguf_q8_1_mmq_ds8_f32_pack_bf16_absmax_risk(
-    x_bf16_ptr: int,
-    out_q8_ptr: int,
-    any_risk_ptr: int,
-    rows: int,
-    hidden: int,
-    *,
-    threshold: float,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Pack D8 activations and mark if any BF16 row crosses an absmax bound."""
-
-    _check_positive(rows, "rows")
-    _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS8 Q8_1 MMQ block size 128")
-    if any_risk_ptr <= 0:
-        raise ValueError("any_risk_ptr must be positive")
-    if threshold < 0.0:
-        raise ValueError("threshold must be nonnegative")
-    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_DS8_F32_PACK_ABSMAX_RISK_BF16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_bf16_ptr),
-        ctypes.c_void_p(out_q8_ptr),
-        ctypes.c_void_p(any_risk_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden),
-        ctypes.c_float(threshold),
-        ctypes.c_void_p(stream),
-    )
-    if int(err) != HIP_SUCCESS:
-        runtime.check(int(err))
-
-
-def gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4(
-    gate_bf16_ptr: int,
-    up_bf16_ptr: int,
-    out_q8_ptr: int,
-    rows: int,
-    hidden: int,
-    *,
-    residual_passes: int = 1,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Preserve BF16 SiLU semantics while packing separate gate/up rows."""
-
-    _check_positive(rows, "rows")
-    _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
-    if residual_passes != 1:
-        raise ValueError("separate SiLU packing requires residual_passes=1")
-    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_DS4_F32_PACK_SEPARATE_SILU_BF16_D4)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(gate_bf16_ptr),
-        ctypes.c_void_p(up_bf16_ptr),
-        ctypes.c_void_p(out_q8_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden),
-        ctypes.c_void_p(stream),
-    )
-    if int(err) != HIP_SUCCESS:
-        runtime.check(int(err))
-
-
-def gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_d4(
-    gate_up_bf16_ptr: int,
-    gate_bf16_ptr: int,
-    up_bf16_ptr: int,
-    any_risk_ptr: int,
-    out_q8_ptr: int,
-    rows: int,
-    hidden: int,
-    *,
-    residual_passes: int = 1,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Pack SiLU rows from dual risky or separate safe projection layouts."""
-
-    _check_positive(rows, "rows")
-    _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
-    if residual_passes != 1:
-        raise ValueError("conditional SiLU packing requires residual_passes=1")
-    if any_risk_ptr <= 0:
-        raise ValueError("any_risk_ptr must be positive")
-    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_DS4_F32_PACK_CONDITIONAL_SILU_BF16_D4)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(gate_up_bf16_ptr),
-        ctypes.c_void_p(gate_bf16_ptr),
-        ctypes.c_void_p(up_bf16_ptr),
-        ctypes.c_void_p(any_risk_ptr),
-        ctypes.c_void_p(out_q8_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden),
-        ctypes.c_void_p(stream),
-    )
-    if int(err) != HIP_SUCCESS:
-        runtime.check(int(err))
-
-
 def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
     x_q8_ptr: int,
     expert_start_compact_ptr: int,
@@ -781,8 +601,6 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
     wave_cols: bool = False,
     direct_wave_decode: bool = False,
     double_buffer_activation: bool = False,
-    run_if_risky: bool = False,
-    any_risk_ptr: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -816,24 +634,9 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         )
     if wave_cols and not split16:
         raise ValueError("wave_cols requires split16 D8")
-    if run_if_risky and not (
-        residual_passes == 1
-        and split16
-        and rowvec
-        and wave_cols
-        and direct_wave_decode
-        and double_buffer_activation
-        and any_risk_ptr > 0
-    ):
-        raise ValueError(
-            "risky-only dual launch requires production D8 and any_risk_ptr"
-        )
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        _SYMBOL_Q4_T16_DUAL_D8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_RISKY_BF16
-        if run_if_risky
-        else
         _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16
         if double_buffer_activation
         else _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_BF16
@@ -853,7 +656,6 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
     fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
-        *([ctypes.c_void_p] if run_if_risky else []),
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -873,7 +675,6 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
     fn.restype = ctypes.c_int
     err = fn(
         ctypes.c_void_p(x_q8_ptr),
-        *([ctypes.c_void_p(any_risk_ptr)] if run_if_risky else []),
         ctypes.c_void_p(compact_to_source_ptr),
         ctypes.c_void_p(expert_start_compact_ptr),
         ctypes.c_void_p(expert_start_mmq32_ptr),
@@ -968,97 +769,6 @@ def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out
         ctypes.c_void_p(qweight_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(compact_rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(mmq_total_rows),
-        ctypes.c_void_p(stream),
-    )
-    if int(err) != HIP_SUCCESS:
-        runtime.check(int(err))
-
-
-def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
-    x_q8_ptr: int,
-    compact_to_source_ptr: int,
-    expert_start_compact_ptr: int,
-    expert_start_mmq32_ptr: int,
-    mmq_tile_expert_ptr: int,
-    qweight_ptr: int,
-    out_ptr: int,
-    compact_rows: int,
-    source_rows: int,
-    in_features: int,
-    out_features: int,
-    num_experts: int,
-    mmq_total_rows: int,
-    *,
-    split16: bool,
-    run_if_safe: bool = False,
-    any_risk_ptr: int = 0,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Launch one direct-wave Q4T16 role with D4 or D8 activations."""
-
-    _check_positive(compact_rows, "compact_rows")
-    _check_positive(source_rows, "source_rows")
-    _check_positive(in_features, "in_features")
-    _check_positive(out_features, "out_features")
-    _check_positive(num_experts, "num_experts")
-    _check_positive(mmq_total_rows, "mmq_total_rows")
-    if in_features % _Q4_K_BLOCK != 0:
-        raise ValueError("in_features must be divisible by GGUF K block size 256")
-    if out_features % 128 != 0:
-        raise ValueError("out_features must be a multiple of 128")
-    if mmq_total_rows % 32 != 0:
-        raise ValueError("mmq_total_rows must be a multiple of 32")
-    if run_if_safe and any_risk_ptr <= 0:
-        raise ValueError("safe-only role launch requires any_risk_ptr")
-    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(
-        library,
-        (
-            _SYMBOL_Q4_T16_SINGLE_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_SAFE_BF16[
-                split16
-            ]
-            if run_if_safe
-            else _SYMBOL_Q4_T16_SINGLE_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16[
-                split16
-            ]
-        ),
-    )
-    fn.argtypes = [
-        ctypes.c_void_p,
-        *([ctypes.c_void_p] if run_if_safe else []),
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_q8_ptr),
-        *([ctypes.c_void_p(any_risk_ptr)] if run_if_safe else []),
-        ctypes.c_void_p(compact_to_source_ptr),
-        ctypes.c_void_p(expert_start_compact_ptr),
-        ctypes.c_void_p(expert_start_mmq32_ptr),
-        ctypes.c_void_p(mmq_tile_expert_ptr),
-        ctypes.c_void_p(qweight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(compact_rows),
-        ctypes.c_int64(source_rows),
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features),
         ctypes.c_int64(num_experts),
@@ -2120,41 +1830,11 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
     register(
         KernelKey(
             backend="hip_gfx1100",
-            layer="activation_quant",
-            quant="q8_1_ds8_f32_absmax_risk",
-            variant="bf16",
-        ),
-        gguf_q8_1_mmq_ds8_f32_pack_bf16_absmax_risk,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            backend="hip_gfx1100",
             layer="silu_mul_dual+activation_quant",
             quant="q8_1_ds4x3_f32",
             variant="bf16",
         ),
         gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            backend="hip_gfx1100",
-            layer="silu_mul_separate+activation_quant",
-            quant="q8_1_ds4x3_f32",
-            variant="bf16",
-        ),
-        gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            backend="hip_gfx1100",
-            layer="silu_mul_conditional_layout+activation_quant",
-            quant="q8_1_ds4x3_f32",
-            variant="bf16",
-        ),
-        gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_d4,
         replace=replace,
     )
     register(
@@ -2228,19 +1908,6 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
             ),
         ),
         gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            backend="hip_gfx1100",
-            layer="moe_linear",
-            quant="gguf_q4_k_t16_v1",
-            variant=(
-                "selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_"
-                "doublebuf_prefill_compact32_bf16_bf16_out"
-            ),
-        ),
-        gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
         replace=replace,
     )
     register(

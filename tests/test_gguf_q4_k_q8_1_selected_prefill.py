@@ -13,16 +13,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q8_1_mmq_ds4_pack_bf16,
     gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3,
-    gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_d4,
     gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3,
-    gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4,
-    gguf_q8_1_mmq_ds8_f32_pack_bf16_absmax_risk,
     gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
-    gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
@@ -159,15 +155,6 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="bf16",
         )
         is gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3
-    )
-    assert (
-        resolve(
-            backend="hip_gfx1100",
-            layer="silu_mul_separate+activation_quant",
-            quant="q8_1_ds4x3_f32",
-            variant="bf16",
-        )
-        is gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4
     )
     assert (
         resolve(
@@ -687,7 +674,6 @@ def test_q8_1_mmq_dual_silu_pack_is_byte_exact_to_unfused(
     )
     reference = np.zeros(packed_nbytes, dtype=np.uint8)
     candidate = np.zeros_like(reference)
-    separate_candidate = np.zeros_like(reference)
     runtime = get_hip_runtime()
     pack_library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
     silu_library = build_paro_silu(load=True)
@@ -698,22 +684,8 @@ def test_q8_1_mmq_dual_silu_pack_is_byte_exact_to_unfused(
         intermediate_dev = malloc(rows * hidden * 2, runtime=runtime)
         reference_dev = malloc(reference.nbytes, runtime=runtime)
         candidate_dev = malloc(candidate.nbytes, runtime=runtime)
-        gate_dev = malloc(gate_up_bf16[:, :hidden].nbytes, runtime=runtime)
-        up_dev = malloc(gate_up_bf16[:, hidden:].nbytes, runtime=runtime)
-        separate_candidate_dev = malloc(
-            separate_candidate.nbytes,
-            runtime=runtime,
-        )
         bufs.extend(
-            (
-                gate_up_dev,
-                intermediate_dev,
-                reference_dev,
-                candidate_dev,
-                gate_dev,
-                up_dev,
-                separate_candidate_dev,
-            )
+            (gate_up_dev, intermediate_dev, reference_dev, candidate_dev)
         )
         copy_host_to_device(
             gate_up_dev,
@@ -746,29 +718,6 @@ def test_q8_1_mmq_dual_silu_pack_is_byte_exact_to_unfused(
             library=pack_library,
             runtime=runtime,
         )
-        if residual_passes == 1:
-            gate_bf16 = np.ascontiguousarray(gate_up_bf16[:, :hidden])
-            up_bf16 = np.ascontiguousarray(gate_up_bf16[:, hidden:])
-            copy_host_to_device(
-                gate_dev,
-                host_array_ptr(gate_bf16),
-                runtime=runtime,
-            )
-            copy_host_to_device(
-                up_dev,
-                host_array_ptr(up_bf16),
-                runtime=runtime,
-            )
-            gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4(
-                gate_dev.ptr,
-                up_dev.ptr,
-                separate_candidate_dev.ptr,
-                rows,
-                hidden,
-                residual_passes=residual_passes,
-                library=pack_library,
-                runtime=runtime,
-            )
         runtime.device_synchronize()
         copy_device_to_host(
             host_array_ptr(reference),
@@ -780,105 +729,11 @@ def test_q8_1_mmq_dual_silu_pack_is_byte_exact_to_unfused(
             candidate_dev,
             runtime=runtime,
         )
-        if residual_passes == 1:
-            copy_device_to_host(
-                host_array_ptr(separate_candidate),
-                separate_candidate_dev,
-                runtime=runtime,
-            )
     finally:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
 
     np.testing.assert_array_equal(candidate, reference)
-    if residual_passes == 1:
-        np.testing.assert_array_equal(separate_candidate, reference)
-
-
-@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_conditional_silu_pack_selects_exact_layout_bits() -> None:
-    from hipengine.core.hip import get_hip_runtime
-
-    rows, hidden = 3, 256
-    rng = np.random.default_rng(89)
-    def to_bf16(values: np.ndarray) -> np.ndarray:
-        bits = np.ascontiguousarray(values, dtype=np.float32).view(np.uint32)
-        return np.ascontiguousarray(
-            (
-                bits
-                + np.uint32(0x7FFF)
-                + ((bits >> 16) & np.uint32(1))
-            )
-            >> 16,
-            dtype=np.uint16,
-        )
-
-    dual = to_bf16(rng.normal(size=(rows, hidden * 2)))
-    gate = to_bf16(rng.normal(size=(rows, hidden)))
-    up = to_bf16(rng.normal(size=(rows, hidden)))
-    packed_nbytes = rows * (hidden // 128) * 160
-    host_dual = np.empty(packed_nbytes, dtype=np.uint8)
-    host_separate = np.empty_like(host_dual)
-    host_conditional = np.empty_like(host_dual)
-    risk = np.zeros(1, dtype=np.int32)
-    runtime = get_hip_runtime()
-    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
-    bufs = []
-    try:
-        for array in (dual, gate, up, risk):
-            dev = malloc(array.nbytes, runtime=runtime)
-            copy_host_to_device(dev, host_array_ptr(array), runtime=runtime)
-            bufs.append(dev)
-        dual_ref = malloc(packed_nbytes, runtime=runtime)
-        separate_ref = malloc(packed_nbytes, runtime=runtime)
-        conditional = malloc(packed_nbytes, runtime=runtime)
-        bufs.extend((dual_ref, separate_ref, conditional))
-        gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
-            bufs[0].ptr,
-            dual_ref.ptr,
-            rows,
-            hidden,
-            residual_passes=1,
-            library=library,
-            runtime=runtime,
-        )
-        gguf_q8_1_mmq_ds4_f32_pack_separate_silu_bf16_d4(
-            bufs[1].ptr,
-            bufs[2].ptr,
-            separate_ref.ptr,
-            rows,
-            hidden,
-            library=library,
-            runtime=runtime,
-        )
-        for risk_value, reference_dev, host_reference in (
-            (0, separate_ref, host_separate),
-            (1, dual_ref, host_dual),
-        ):
-            risk[0] = risk_value
-            copy_host_to_device(bufs[3], host_array_ptr(risk), runtime=runtime)
-            gguf_q8_1_mmq_ds4_f32_pack_conditional_silu_bf16_d4(
-                bufs[0].ptr,
-                bufs[1].ptr,
-                bufs[2].ptr,
-                bufs[3].ptr,
-                conditional.ptr,
-                rows,
-                hidden,
-                library=library,
-                runtime=runtime,
-            )
-            runtime.device_synchronize()
-            copy_device_to_host(
-                host_array_ptr(host_reference), reference_dev, runtime=runtime
-            )
-            copy_device_to_host(
-                host_array_ptr(host_conditional), conditional, runtime=runtime
-            )
-            np.testing.assert_array_equal(host_conditional, host_reference)
-    finally:
-        for buf in reversed(bufs):
-            free(buf, runtime=runtime)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -2168,180 +2023,6 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_q4_k_t16_layer_risk_gate_selects_exact_specialized_bits() -> None:
-    from hipengine.core.hip import get_hip_runtime
-
-    fixture = _build_compact_fixture(
-        counts=[7, 18, 33],
-        in_features=512,
-        out_features_a=128,
-        out_features_b=128,
-        dtype="bf16",
-        seed=83,
-    )
-    counts = np.diff(fixture.expert_start_compact)
-    padded = ((counts + 31) // 32) * 32
-    expert_start_mmq32 = np.zeros(
-        fixture.num_experts + 1, dtype=np.int64
-    )
-    expert_start_mmq32[1:] = np.cumsum(padded, dtype=np.int64)
-    mmq_total_rows = int(expert_start_mmq32[-1])
-    tile_expert = np.asarray(
-        [
-            expert
-            for expert, padded_rows in enumerate(padded)
-            for _ in range(int(padded_rows) // 32)
-        ],
-        dtype=np.int64,
-    )
-    compact_to_source = np.arange(fixture.compact_rows, dtype=np.int64)
-    tiles = np.ascontiguousarray(
-        repack_gguf_q4_k_tile16(fixture.qweight_a).tiles
-    )
-    source_f32 = _bf16_bits_to_float32(fixture.x_host)
-    source_absmax = np.max(np.abs(source_f32), axis=1)
-    threshold = float(np.max(source_absmax))
-    expected_pack_risk = np.asarray(
-        [int(np.any(source_absmax >= threshold))], dtype=np.int32
-    )
-    expected_risk = np.zeros(1, dtype=np.int32)
-
-    runtime = get_hip_runtime()
-    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
-    plane_bytes = (
-        fixture.compact_rows * (fixture.in_features // 128) * 160
-    )
-    host_safe = np.empty(
-        (fixture.compact_rows, fixture.out_features_a),
-        dtype=np.uint16,
-    )
-    host_d8 = np.empty_like(host_safe)
-    host_d4 = np.empty_like(host_safe)
-    host_risk = np.empty(1, dtype=np.int32)
-    host_pack_risk = np.empty_like(host_risk)
-    bufs = []
-    try:
-        for array in (
-            fixture.x_host,
-            compact_to_source,
-            fixture.expert_start_compact,
-            expert_start_mmq32,
-            tile_expert,
-            tiles,
-        ):
-            dev = malloc(array.nbytes, runtime=runtime)
-            copy_host_to_device(
-                dev,
-                host_array_ptr(np.ascontiguousarray(array)),
-                runtime=runtime,
-            )
-            bufs.append(dev)
-        q8_dev = malloc(plane_bytes * 2, runtime=runtime)
-        risk_dev = malloc(host_risk.nbytes, runtime=runtime)
-        safe_dev = malloc(host_safe.nbytes, runtime=runtime)
-        d8_dev = malloc(host_d8.nbytes, runtime=runtime)
-        d4_dev = malloc(host_d4.nbytes, runtime=runtime)
-        bufs.extend((q8_dev, risk_dev, safe_dev, d8_dev, d4_dev))
-        runtime.memset(risk_dev.ptr, 0, risk_dev.nbytes)
-
-        gguf_q8_1_mmq_ds8_f32_pack_bf16_absmax_risk(
-            bufs[0].ptr,
-            q8_dev.ptr,
-            risk_dev.ptr,
-            fixture.compact_rows,
-            fixture.in_features,
-            threshold=threshold,
-            library=library,
-            runtime=runtime,
-        )
-        copy_device_to_host(
-            host_array_ptr(host_pack_risk),
-            risk_dev,
-            runtime=runtime,
-        )
-        copy_host_to_device(
-            risk_dev,
-            host_array_ptr(expected_risk),
-            runtime=runtime,
-        )
-        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
-            bufs[0].ptr,
-            q8_dev.ptr + plane_bytes,
-            fixture.compact_rows,
-            fixture.in_features,
-            residual_passes=1,
-            split16=False,
-            library=library,
-            runtime=runtime,
-        )
-        common = (
-            bufs[1].ptr,
-            bufs[2].ptr,
-            bufs[3].ptr,
-            bufs[4].ptr,
-            bufs[5].ptr,
-        )
-        gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
-            q8_dev.ptr + plane_bytes,
-            *common,
-            safe_dev.ptr,
-            fixture.compact_rows,
-            fixture.compact_rows,
-            fixture.in_features,
-            fixture.out_features_a,
-            fixture.num_experts,
-            mmq_total_rows,
-            split16=False,
-            run_if_safe=True,
-            any_risk_ptr=risk_dev.ptr,
-            library=library,
-            runtime=runtime,
-        )
-        gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
-            q8_dev.ptr,
-            *common,
-            d8_dev.ptr,
-            fixture.compact_rows,
-            fixture.compact_rows,
-            fixture.in_features,
-            fixture.out_features_a,
-            fixture.num_experts,
-            mmq_total_rows,
-            split16=True,
-            library=library,
-            runtime=runtime,
-        )
-        gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
-            q8_dev.ptr + plane_bytes,
-            *common,
-            d4_dev.ptr,
-            fixture.compact_rows,
-            fixture.compact_rows,
-            fixture.in_features,
-            fixture.out_features_a,
-            fixture.num_experts,
-            mmq_total_rows,
-            split16=False,
-            library=library,
-            runtime=runtime,
-        )
-        runtime.device_synchronize()
-        for host, dev in (
-            (host_safe, safe_dev),
-            (host_d8, d8_dev),
-            (host_d4, d4_dev),
-            (host_risk, risk_dev),
-        ):
-            copy_device_to_host(host_array_ptr(host), dev, runtime=runtime)
-    finally:
-        for buf in reversed(bufs):
-            free(buf, runtime=runtime)
-
-    assert np.array_equal(host_pack_risk, expected_pack_risk)
-    assert np.array_equal(host_safe, host_d4)
-
-
-@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
     (
         "residual_passes",
@@ -2434,9 +2115,6 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
         if rowvec and not split16
         else None
     )
-    host_role_d8 = None
-    host_role_d4 = None
-    host_role_d4_baseline = None
     bufs = []
     try:
         arrays = (
@@ -2558,107 +2236,6 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
                 single_dev,
                 runtime=runtime,
             )
-        if split16 and direct_wave_decode and double_buffer_activation:
-            role_shape = (
-                fixture.compact_rows,
-                fixture.out_features_a,
-            )
-            host_role_d8 = np.empty(role_shape, dtype=np.uint16)
-            host_role_d4 = np.empty(role_shape, dtype=np.uint16)
-            host_role_d4_baseline = np.empty(role_shape, dtype=np.uint16)
-            role_d8_dev = malloc(host_role_d8.nbytes, runtime=runtime)
-            role_d4_dev = malloc(host_role_d4.nbytes, runtime=runtime)
-            role_d4_baseline_dev = malloc(
-                host_role_d4_baseline.nbytes,
-                runtime=runtime,
-            )
-            q8_d4_dev = malloc(q8_bytes, runtime=runtime)
-            bufs.extend(
-                (
-                    role_d8_dev,
-                    role_d4_dev,
-                    role_d4_baseline_dev,
-                    q8_d4_dev,
-                )
-            )
-            gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
-                q8_dev.ptr,
-                bufs[1].ptr,
-                bufs[2].ptr,
-                bufs[3].ptr,
-                bufs[4].ptr,
-                bufs[5].ptr,
-                role_d8_dev.ptr,
-                fixture.compact_rows,
-                fixture.compact_rows,
-                fixture.in_features,
-                fixture.out_features_a,
-                fixture.num_experts,
-                mmq_total_rows,
-                split16=True,
-                library=library,
-                runtime=runtime,
-            )
-            gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
-                bufs[0].ptr,
-                q8_d4_dev.ptr,
-                fixture.compact_rows,
-                fixture.in_features,
-                residual_passes=1,
-                split16=False,
-                library=library,
-                runtime=runtime,
-            )
-            gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
-                q8_d4_dev.ptr,
-                bufs[1].ptr,
-                bufs[2].ptr,
-                bufs[3].ptr,
-                bufs[4].ptr,
-                bufs[5].ptr,
-                role_d4_dev.ptr,
-                fixture.compact_rows,
-                fixture.compact_rows,
-                fixture.in_features,
-                fixture.out_features_a,
-                fixture.num_experts,
-                mmq_total_rows,
-                split16=False,
-                library=library,
-                runtime=runtime,
-            )
-            gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
-                q8_d4_dev.ptr,
-                bufs[2].ptr,
-                bufs[3].ptr,
-                bufs[4].ptr,
-                bufs[5].ptr,
-                role_d4_baseline_dev.ptr,
-                fixture.compact_rows,
-                fixture.in_features,
-                fixture.out_features_a,
-                fixture.num_experts,
-                mmq_total_rows,
-                rowvec=True,
-                library=library,
-                runtime=runtime,
-            )
-            runtime.device_synchronize()
-            copy_device_to_host(
-                host_array_ptr(host_role_d8),
-                role_d8_dev,
-                runtime=runtime,
-            )
-            copy_device_to_host(
-                host_array_ptr(host_role_d4),
-                role_d4_dev,
-                runtime=runtime,
-            )
-            copy_device_to_host(
-                host_array_ptr(host_role_d4_baseline),
-                role_d4_baseline_dev,
-                runtime=runtime,
-            )
     finally:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
@@ -2671,12 +2248,6 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             host_single,
             host_out[:, : fixture.out_features_a],
         )
-    if host_role_d8 is not None:
-        assert np.array_equal(
-            host_role_d8,
-            host_out[:, : fixture.out_features_a],
-        )
-        assert np.array_equal(host_role_d4, host_role_d4_baseline)
     assert np.isfinite(actual).all()
     assert _max_softmax_kl(fixture.reference, actual) <= 0.05
     assert np.mean(

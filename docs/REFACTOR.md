@@ -1545,3 +1545,10 @@ should be boring.
   all of them plus the now-exhausted role primitives and calibration harness;
   on admission collapse the mode into the gfx1151 capability after clean
   selector-unset publication.
+- The clean extended-512 gate rejects the layer candidate at max KL
+  **1.265492** despite **314/320** top-1. The removal trigger is satisfied:
+  the layer-risk pack/selector/conditional exports, both role-split modes and
+  single-role exports, separate-input fused pack, category lanes and extension
+  helper, calibration harness, and focused tests are removed. The reusable
+  multi-arm pp512 harness remains. This cleanup closes the Q4
+  projection-role candidate; no temporary runtime selector survives.
