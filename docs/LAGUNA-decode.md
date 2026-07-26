@@ -77,11 +77,12 @@ span regresses **0.571%/1.931%**, and order-A profiled-child throughput regresse
 primitive remains diagnostic. Post-sign-bit re-ranking selects one materially
 new exact router composite: retain D11's exact projection and self-resetting
 last-block election, but replace its ten block-wide selector rounds with
-per-wave top-10 plus a register-resident wave-0 merge. An out-of-tree all-layer
-probe is byte-exact and improves the current split router event/wall window
-**22.45%/22.43%**, while beating rejected D11 by **4.81%/4.82%**. This is design
-and selection evidence only; repository RED/GREEN, full state, trace, both clean
-context orders, and both complete category orders remain mandatory.
+per-wave top-10 plus a register-resident wave-0 merge. Repository primitive
+admission is now exact across hidden-17/3072 synthetic cases and every actual
+router, and the fresh all-layer event/wall window improves split
+**23.26%/23.23%** while beating rejected D11 **4.83%/4.84%**. The separately
+registered primitive is not runtime-selected; default-off full state/trace, both
+clean context orders, and both complete category orders remain mandatory.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1154,19 +1155,24 @@ logical-VGPR26 nounrolled form regresses old D11 **29.43%**, while an LDS-reload
 merge regresses it **0.98%**. The isolated **0.180-ms** saving is only 26.6% of
 the current **0.675-ms** Vulkan wall gap and is not a completion projection.
 
-Freeze repository admission before runtime measurement: RED must add a separate
-gfx1100 four-axis key and preserve the registered split fallback; synthetic
-random/tied/extreme plus every actual layer must be exact; codegen may not exceed
-logical VGPR64/SGPR42 or add private/spill/scratch; the 10-warmup,
-15-counterbalanced-repetition, 100-window actual gate must improve event and wall
-against both split and old D11; and a cached trace must show **47 composite
-calls, zero split router calls, 723 -> 676 model kernels/token**, no counter
-memset/fill, and a clean self-reset. Only then may a separately committed
-default-off selector enter 16-transition full-state, two-order
-short/512/1K/near-4K, and two-order complete 18-prompt gates. Any failed
+Repository primitive admission now passes. RED fails only on the absent wrapper;
+hidden-17/3072 random, all-tie, finite-extreme, and cross-wave-tie cases match
+the registered split path byte-for-byte across all six outputs and consecutive
+self-reset calls. Codegen is wave32, logical VGPR64/SGPR42, static LDS680 plus
+1,024-byte dynamic projection scratch, and private/spill/scratch0. The fresh
+10-warmup, 15-counterbalanced-repetition, 100-window all-47-layer event medians
+are **0.82081 / 0.66186 / 0.62991 ms** for split / old D11 / wave-top10; wall is
+**0.82102 / 0.66243 / 0.63034 ms**. Every actual field and counter replay is
+exact. A cache-only trace names the candidate at local256/VGPR64/scratch0.
+
+The primitive remains unselected. A separately committed default-off runtime
+owner must pass 16-transition full-state and then a cached trace with **47
+composite calls, zero split router calls, 723 -> 676 model kernels/token**, no
+counter memset/fill, and a clean self-reset. Only then may it enter both clean
+short/512/1K/near-4K orders and both complete 18-prompt orders. Any failed
 router/kernel/span/child/category guard removes runtime selection while keeping
-independently useful exact primitives. Evidence:
-[`...router-wave-top10-design.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json).
+the exact primitive. Evidence: [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json)
+and [`correctness`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json).
 
 ## 9. Do not chase without new evidence
 
@@ -1217,7 +1223,7 @@ independently useful exact primitives. Evidence:
 | Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
-| What is selected after sign-bit closure? | [`...router-wave-top10-design.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json): an exact persistent router with per-wave top-10 and register-resident wave-0 merge. All 47 actual layers are byte-exact; event/wall improve **22.45%/22.43%** versus split and **4.81%/4.82%** versus rejected D11. This is selection evidence only pending repository admission and full gates. |
+| Is the post-sign-bit wave-top10 router primitive admitted? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json) and [`correctness`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json): yes, as a separately registered diagnostic primitive. Hidden-17/3072 and all 47 actual layers are byte-exact; fresh event/wall improve **23.26%/23.23%** versus split and **4.83%/4.84%** versus rejected D11. Runtime state/trace and clean/category gates remain pending. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-local32 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) measures hipEngine **62.354/61.732 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **3.03%/4.35%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1273,10 +1279,10 @@ and kernel sum, but dispatch span regresses **0.571%/1.931%** and order-A
 profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Per the
 predeclared any-failure rule, remaining profiles and categories are skipped;
 the runtime schedule/CLI route is removed, the primitive remains diagnostic,
-and retained wave4 stays canonical at **61.732 tok/s**. The next selected exact
-mechanism is a materially revised D11 composition: per-wave local top-10 plus a
-register-resident wave-0 merge removes repeated selector block barriers inside
-the self-resetting persistent router. Its out-of-tree all-47-layer event/wall
-window improves **22.45%/22.43%** versus the split route and **4.81%/4.82%**
-versus old D11 with byte-exact outputs. This is not yet repository code, a
-default, or a topline claim; all frozen admission/context/category gates remain.
+and retained wave4 stays canonical at **61.732 tok/s**. The materially revised
+D11 wave-top10 composition is now repository primitive-admitted. Hidden-17/3072
+synthetic cases and every actual router are byte-exact, codegen meets the frozen
+VGPR/SGPR/LDS/spill limits, and fresh all-layer event/wall improves
+**23.26%/23.23%** versus split and **4.83%/4.84%** versus old D11. It is not a
+runtime route, default, or topline claim; default-off full-state/676-kernel trace
+and all clean/category gates remain.

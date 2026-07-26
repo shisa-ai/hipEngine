@@ -218,6 +218,12 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_iq3_xxs",
             "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
         ),
+        # Persistent Laguna routing is W7900-only pending an independent gate.
+        (
+            "laguna_router_topk",
+            "f32",
+            "bf16_hidden_correction_bias_persistent_wave_top10",
+        ),
         (
             "speculative_cycle",
             "w4_gguf",
