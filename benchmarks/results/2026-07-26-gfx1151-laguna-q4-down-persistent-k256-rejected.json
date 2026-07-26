@@ -1,0 +1,63 @@
+{
+  "schema": "hipengine.laguna_q4_down_persistent_k256_rejected.v1",
+  "date": "2026-07-26",
+  "status": "rejected_and_removed",
+  "hardware": "AMD Radeon 8060S / gfx1151 / Strix Halo",
+  "model": "Poolside Laguna S 2.1 Q4_K_M",
+  "workload": {
+    "shape": "natural pp512 layer-10 Q4 selected down",
+    "rows": 512,
+    "top_k": 10,
+    "compact_rows": 5120,
+    "experts": 256,
+    "active_experts": 222,
+    "row_tiles_32": 303,
+    "in_features": 1024,
+    "out_features": 3072,
+    "samples": 7,
+    "warmups": 2,
+    "burst": 3,
+    "seed": 20260726
+  },
+  "command": "PYTHONPATH=. python3 scripts/laguna_q4_down_persistent_leaf.py --layers 10 --samples 7 --warmups 2 --burst 3 --output /tmp/laguna-q4-down-persistent-layer10.json",
+  "candidate": {
+    "description": "one local64 workgroup per active expert/output64 tile; stage each K256 weight slab once in 20 KiB LDS; carry each row tile between four slabs through an FP32 compact_rows x out_features plane",
+    "production_median_ms": 2.872974077860514,
+    "persistent_median_ms": 18.455974578857422,
+    "speedup": 0.15566634346970232,
+    "regression_percent": 542.398038199942,
+    "production_samples_ms": [
+      2.8623393376668296,
+      2.8300790786743164,
+      2.8928229014078775,
+      2.8324705759684243,
+      2.905353864034017,
+      2.872974077860514,
+      2.9127286275227866
+    ],
+    "persistent_samples_ms": [
+      18.46462885538737,
+      18.465802510579426,
+      18.455974578857422,
+      18.406402587890625,
+      18.48021189371745,
+      18.441888173421223,
+      18.42484410603841
+    ]
+  },
+  "correctness": {
+    "focused_gpu_fixture": "pass",
+    "bf16_mismatches_fixture": 0,
+    "bf16_mismatches_actual_layer": 0
+  },
+  "interpretation": {
+    "row_tile_reread_ratio": 1.364864864864865,
+    "cause": "The candidate removes duplicate weight slabs but materializes three FP32 writes and three FP32 reads for the full 5120x3072 accumulator plane and rereads Q8 activations independently across 48 output tiles. Those replacement bytes exceed the removed weight traffic.",
+    "gate": "Failed the required positive actual-layer timing by 6.424x.",
+    "next": "Screen a no-partial Q4 MMQ64x64 down body: local128 maps two row32 halves onto the same output64 tile and shares each decoded weight record across both halves. This attacks the same reread without a global accumulator plane."
+  },
+  "production": {
+    "changed": false,
+    "prefill_pp512_tok_s": 559.29
+  }
+}
