@@ -182389,3 +182389,29 @@ Vulkan local sizes verbatim will close the measured gap.
   checks pass.
 - This commit promotes policy only. A clean selector-unset 512/1K/4K
   three-repetition run is required before changing the production headline.
+
+## 2026-07-26 — Publish after-router shared MoE production
+
+- Clean selector-unset revision `764de3fc4` resolves automatic two queues,
+  branch concurrency, and the after-router capability. Three repetitions
+  publish **566.839/527.381/444.447 tok/s** at 512/1K/4K versus
+  **565.447/526.711/443.444**, improving
+  **0.246%/0.127%/0.226%**. Every pp512 sample exceeds the old production
+  median.
+- Tokens remain 2930/95/7772, final positions are exact, repeats are
+  deterministic, and tracked allocations return to zero. Complete-state
+  equality and the production BF16 fixture transfer max KL
+  **0.049542582**, **316/320** top-1, decode neutrality, and admitted lifecycle
+  through 4K unchanged; repeated 128K remains unadmitted.
+- The retained cached trace reaches **569.763 tok/s** and verifies
+  **898.334 -> 898.024 ms (-0.310 ms)** kernel span. Router recovers
+  **20.720 ms**, but gate/up grows **22.418 ms** under shifted contention.
+- Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json`.
+  Raw selector-unset SHA-256:
+  `77b9f53c9f308edd0d6fc1aaf4b5111b657b2c05e5bdd0620c0c7956389e4d11`.
+  Clean pp512 wall is **903.255 ms**; 700 requires another **171.827 ms**.
+- Next bounded scheduling screen: query the gfx1151 stream-priority range and,
+  if meaningful, run the shared branch at lower priority after router. The
+  objective is to recover the **22.418-ms** gate/up contention without letting
+  the shared branch spill past the final combine.

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna after-router shared schedule production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the selector-unset gfx1151 capability publishes **566.839/527.381/444.447 tok/s** versus **565.447/526.711/443.444 (+0.246%/+0.127%/+0.226%)**; all pp512 samples exceed the old median, complete state is exact, and tracing verifies the retained **0.310-ms** kernel-span reduction; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json`.
+
 - [retained exact gfx1151 Laguna after-router shared schedule candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / protecting router selection while retaining gate/up-plus-down overlap improves matched pp512 **567.767 -> 568.181 tok/s (+0.073%, 5/7 wins)** with complete state exact; tracing recovers router **44.075 -> 23.356 ms** but shifts contention into gate/up, yielding a real **0.310-ms** kernel-span reduction; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json`.
 
 - [rejected and removed exact gfx1151 Laguna shared-before-down schedule] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / moving the secondary shared branch after selected gate/up preserves complete state but regresses seven-pair pp512 **566.394 -> 565.011 tok/s (-0.244%, 2/7 wins)** with a **535.465 tok/s** low tail; no trace was warranted, all phase-selection surfaces are removed, and production remains **565.447 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-before-down-rejected.json`.
