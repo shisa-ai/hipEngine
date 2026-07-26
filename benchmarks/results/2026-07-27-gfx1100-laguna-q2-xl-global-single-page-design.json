@@ -1,0 +1,353 @@
+{
+  "admission_plan": {
+    "clean_and_category_adjudication": [
+      "Freeze two counterbalanced short process orders. Every order must improve the inclusive global-attention family and complete kernel sum, keep median span <=+0.5%, keep profiled-child throughput >=-0.5%, and pass exact 12/678 topology/resources/ID/finite/lifecycle/no-compiler checks. No third order or pooled waiver.",
+      "Only after both short orders pass, run both complete 18-prompt category/heldout orders with natural greedy h16/h32. Require every train/heldout category decode row positive and aggregate decode positive, E2E/prefill/TTFT within frozen guards, exact IDs/state/lifecycle, and no prompt-conditioned policy.",
+      "Promote as the gfx1100 scalar-global default only if every gate passes; otherwise remove runtime ownership while retaining the exact separately registered primitive."
+    ],
+    "codegen_and_trace": {
+      "compiler": "same AMD Clang 22 gfx1100 decode profile",
+      "required": {
+        "barriers": 5,
+        "dynamic_lds_bytes_at_capacity_4096": 16928,
+        "logical_sgpr_max": 49,
+        "logical_vgpr_max": 32,
+        "private_segment_fixed_size": 0,
+        "scratch_bytes": 0,
+        "sgpr_spills": 0,
+        "static_instructions_max": 1008,
+        "text_bytes_max": 4864,
+        "vgpr_spills": 0,
+        "wavefront_size": 32,
+        "workgroup_x": 256
+      },
+      "trace": "After non-profiled exact-key prebuild, cache-only rocprofv3 must name the distinct candidate at grid/workgroup 12288/256 for a 48-head layer, plausible duration, finite exact output, expected VGPR/LDS/scratch resources, and no compiler under profiling."
+    },
+    "commit_boundaries": [
+      "Commit this design before repository implementation.",
+      "Commit primitive correctness before runtime ownership.",
+      "Commit default-off runtime correctness before clean measurement.",
+      "Commit retained default or rejection immediately after final adjudication."
+    ],
+    "correctness": [
+      "Synthetic live 1/70/126/256 cases cover nonzero page-zero offsets, unused permuted later pages, causal/future token positions, explicit evictions, signed-zero/subnormal/finite BF16 K/V/query values, and F32 output byte identity to global_context_spans.",
+      "An independent CPU attention oracle must pass KL<=0.05 and top-1>=90%; candidate versus registered scalar control remains F32 byte-exact.",
+      "All 12 actual global-layer outputs at live 70 and 126 must be F32 bit-exact. Repeat the frozen layer-0/44 50-warmup/15-counterbalanced/500-launch gate once and require event and wall wins in all four rows."
+    ],
+    "primitive_red_green": [
+      "Add one candidate-specific HIP body/C export, strict Python wrapper/package export, and exact four-axis key; do not mutate global_context_spans or any split/global/SWA primitive.",
+      "Validate non-null pointers, Laguna 48/8/128 shape, page-256 spans, and one-page eligibility before or in the launch; live_count>256 must leave a sentinel output untouched.",
+      "Register only on hip_gfx1100 and prove gfx1151/cuda/cpu absence. The registered scalar global body is the mandatory primitive fallback.",
+      "Primitive admission adds no backend capability, session/runner/CLI selector, allocation, workspace, sidecar, threshold, launch, or default change."
+    ],
+    "runtime_owner_after_primitive_commit": [
+      "Only after primitive admission, add a separate false gfx1100 capability and explicit session/CLI opt-in at the global scalar-attention seam. Select only full-attention c=1 with live<=126; default, key miss, explicit disable, live>=127, rows/prefill, gfx1151, and unsupported backends retain registered controls.",
+      "Shared-weight mixed_ja_en_review must compare bulk prefill, one captured all-layer decode, 15 further transitions, reset, and eight-token re-prefill. Require full logits/IDs, all 48 hidden and 47 routed boundaries, active K/V and all KVLiveSpans fields, positions, ownership, lifecycle, KL=0, and top-1 100%.",
+      "A cache-only short trace must record exactly 12 candidate calls/token, zero scalar-control global calls, unchanged retained split/SWA owners, and exactly 678 model kernels/token. A live>=127 fallback trace/test must record zero candidate calls and unchanged split-exact ownership."
+    ]
+  },
+  "baseline": {
+    "additional_h32_speedup_required_pct": 1.8144711534139324,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "canonical_wall_ms_per_token": 15.805224168463194,
+    "commit": "faaeb8d00fb42bfde572d961cf7d2c1217e5d18e",
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "residual_analyzer_sha256": "5ee8b1c08b4c8c847ecc4687810adfd84390880960c102a2dc1a432ca6acecf5",
+    "residual_path": "/tmp/laguna-post-wave10-residual.json",
+    "residual_sha256": "123481869b6f173fd0121e6cd9b71543a13257c33f39c83eec7ded82b95a87a2",
+    "retained_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json",
+    "retained_artifact_sha256": "f1fd3c7d9f8d881d5699e1a77bfdf6fcbedb0322f2186b54d27642bf61a96ee2",
+    "short_global_attention_ms_per_token": 0.5235786785714286,
+    "short_kernel_sum_ms_per_token": 12.736967071428571
+  },
+  "builder_sha256": "89594681bcedf399cbcb359b006d5c115f3abbb6dcca405a8e0166db20028b55",
+  "closed_before_selection": [
+    "Do not restore P2 online reassociation: its removed tile32 partial merge failed complete quality at KL up to 1.77384.",
+    "Do not restore D15/D17 attention-boundary bundles: their complete category gates rejected the owners despite mechanical wins.",
+    "Do not retry adjacent-head K/V sharing: the LPF-5 production global leaf regressed 45.00% after halving per-head token parallelism.",
+    "Do not alter the retained split-exact producer/reducer, wave-local SWA reducer, head+KV fusion, gate fusion, or live>=127 crossover in this candidate.",
+    "Do not add prompt IDs, token IDs, prompt-conditioned branches, or any fixed-suite reranking; eligibility is derived only from span geometry and retained dispatch thresholds."
+  ],
+  "codegen": {
+    "baseline": {
+      "global_load_b32": 2,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 5,
+      "s_mul_hi_u32": 105,
+      "s_mul_i32": 141,
+      "sgpr_count": 57,
+      "sgpr_spill_count": 0,
+      "static_instructions": 1705,
+      "text_bytes": 7896,
+      "vgpr_count": 35,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate": {
+      "global_load_b32": 1,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 5,
+      "s_mul_hi_u32": 44,
+      "s_mul_i32": 71,
+      "sgpr_count": 49,
+      "sgpr_spill_count": 0,
+      "static_instructions": 1008,
+      "text_bytes": 4864,
+      "vgpr_count": 32,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "counts_sha256": "2d19a74f68bf22ee058c08e053b81205cce02722355675a93a51c3339818aced",
+    "delta": {
+      "logical_sgpr": -8,
+      "logical_vgpr": -3,
+      "static_instructions": -697,
+      "static_instructions_pct": -40.87976539589443,
+      "text_bytes": -3032
+    },
+    "disasm_sha256": "cfebdcbca1a09a9a1bd723c13c8165e2abba43b891eee768e64f8bb8c2db2657",
+    "dynamic_lds_bytes_at_capacity_4096": 16928,
+    "hsaco_sha256": "a16ec908e909be9dbd2ec0f9e57a350de950eb3a9a9c273395040e6c96adfe11",
+    "interpretation": "Removing repeated page division/modulo and base-table lookup contracts scalar address code without changing FP arithmetic or barriers. Runtime allocation/trace evidence is deferred to repository admission.",
+    "measured_and_post_rewrite_fatbin_sha256": "4b6cbbd385bee368e7feb3d3a1fafa90a29f205cc1fd18d66e6069e16cdb4c17",
+    "readobj_sha256": "6373d5775aef8441aac0410ba0f8a63d100d59e72de21b9b81732133029bccb5"
+  },
+  "date": "2026-07-27",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation_status": {
+    "benchmark_changelog_update": false,
+    "benchmark_scoreboard_update": false,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "default": "unchanged global_context_spans below live 127 and retained split-exact at live >=127",
+    "repository_primitive": "not implemented",
+    "runtime_owner": "not implemented"
+  },
+  "kind": "hipengine_laguna_q2_xl_global_single_page_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "path": "/tmp/laguna-global-single-page-lineage.txt",
+    "result": "Only already-catalogued unrelated external drift; no parent change affects this in-tree scalar global-attention address specialization.",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "context_length": 4096,
+    "global_block_size": 256,
+    "global_layers": 12,
+    "global_query_heads": 48,
+    "head_dim": 128,
+    "id": "Poolside Laguna S 2.1",
+    "kv_heads": 8,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling": {
+    "canonical_h32_tok_s_before": 63.27021934907704,
+    "conservative_ratio": 0.15515639683044213,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "method": "Apply only the smallest actual layer/live improvement across HIP-event and synchronized-wall medians to the immutable retained short global-attention family; leave every other kernel and host interval unchanged.",
+    "model_kernels_per_token_after": 678,
+    "model_kernels_per_token_before": 678,
+    "modeled_h32_delta_pct": 0.516641092303538,
+    "modeled_h32_tok_s_after": 63.59709930142496,
+    "modeled_saving_ms_per_token": 0.08123658122438708,
+    "note": "The modeled short row is planning evidence only. Full-suite prompts cross live 127 at different natural positions, so no canonical throughput gain is claimed before complete category adjudication.",
+    "performance_claim": false,
+    "remaining_gap_pct": 1.2911594010772687,
+    "short_global_attention_ms_per_token_before": 0.5235786785714286,
+    "short_kernel_sum_ms_per_token_after": 12.655730490204185,
+    "short_kernel_sum_ms_per_token_before": 12.736967071428571
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "selected_design": {
+    "description": "For live_count within one 256-token global page, replace only the two physical-slot page-table translations with base_offsets[0] * 256 + token. Keep score/value token traversal, FMA order, max/sum reduction order, BF16 loads, causal/eviction tests, barriers, local256 geometry, dynamic LDS sizing, and F32 stores unchanged.",
+    "fallbacks": [
+      "global_context_spans for explicit disable, key miss, live_count outside runtime eligibility, rows/prefill, gfx1151, and unsupported backends",
+      "retained global_context_split_exact_gated_spans at live>=127",
+      "the registered unfused attention plus gate chain remains available below split threshold"
+    ],
+    "name": "exact single-page scalar global-attention decode",
+    "ownership_invariants": [
+      "Consume the complete KVLiveSpans ABI: base_offsets[0], live_counts, token_positions, evict_mask, and row_positions; no dense context_len/block-table shortcut is introduced.",
+      "One workgroup still owns one query head, with 256 threads/eight wave32 waves, unchanged dynamic score/query storage, and unchanged five barriers.",
+      "All score FMAs, shuffle trees, max/denominator ordering, exponentiation, normalized value FMAs, and final F32 stores remain source-identical.",
+      "No allocation, workspace, sidecar, weight copy, launch contraction, gate/head-KV change, split-threshold change, or prompt-conditioned policy is introduced.",
+      "All 12 global calls remain one-for-one, so intended short topology stays 678 model kernels/token."
+    ],
+    "planned_four_axis_key": [
+      "hip_gfx1100",
+      "laguna_attention_decode",
+      "bf16",
+      "global_context_single_page_spans"
+    ],
+    "planned_wrapper": "laguna_global_attention_decode_single_page_bf16_spans",
+    "primitive_validity": "live_count <= block_size == 256; the device body returns without writing when live_count exceeds one page",
+    "runtime_eligibility": "gfx1100 full-attention c=1 scalar path only, live_count <= 126; live>=127 keeps retained split-exact ownership",
+    "why_distinct": "The retained scalar global path is selected only below global_split_min_live=127, so every visible logical slot is necessarily in physical page zero. Prior rejected attention candidates changed head ownership, softmax association, or fused boundaries; this candidate changes only exact address translation under a mechanically provable one-page predicate."
+  },
+  "selection_probe": {
+    "candidate_library_path": "/tmp/hipengine-laguna-global-single-page-cache/laguna_global_single_page_probe-462b51406894e67d/laguna_global_single_page_probe.so",
+    "candidate_source_path": "/tmp/laguna_kv_attention_single_page_probe.hip",
+    "candidate_source_sha256": "c2fa94ac9ba0e2c4a2f9731c2b8b0f9f041bc546b3018a5d5a85bbcd9832cb46",
+    "checks": {
+      "all_event_and_wall_positive": true,
+      "all_f32_bit_exact": true,
+      "tracked_returned_to_baseline": true
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_global_single_page_actual.py",
+    "container_rewrite_interpretation": "After the measured process, llvm-objcopy --dump-section without an output ELF rewrote only the host container. The extracted pre-rewrite fatbin and a safely re-extracted post-rewrite fatbin are byte-identical; measured timing remains pinned to the JSON's pre-rewrite library hash.",
+    "harness_path": "/tmp/bench_laguna_global_single_page_actual.py",
+    "harness_sha256": "480726d96898cb12d88ad383adb379022379f1fd2f790c17eeb615a9abf6a1b1",
+    "measured_candidate_library_sha256": "ca7b9e581e8ee0370bff34d09ad518ad491fe5c961b8f224711c66ac68ddb17b",
+    "post_codegen_extraction_library_sha256": "b96069bf1e237be767df12e31a48a0f8adaf0e0d4c6870f58f2a8010a8189351",
+    "precondition_only_failures": [
+      {
+        "candidate_or_timing_rows": 0,
+        "log_sha256": "df1d35a0bca7e88fa7b0dcb281d2b01901b585b7c1f0749d294cc4e8151408a5",
+        "reason": "nonexistent config.head_dim allocation expression"
+      },
+      {
+        "candidate_or_timing_rows": 0,
+        "log_sha256": "f5f105b961f79518a70e3c8eb36d21c119c084715f3088b819998493f8b19caa",
+        "reason": "interception shim rejected current gate_ptr ABI before entering its body"
+      }
+    ],
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 500,
+      "layers": [
+        0,
+        44
+      ],
+      "live_counts": [
+        70,
+        126
+      ],
+      "prompt_id": "code_merge_intervals",
+      "prompt_tokens": 69,
+      "timers": [
+        "HIP event",
+        "device-synchronized wall"
+      ],
+      "warmups_per_mode": 50
+    },
+    "raw_path": "/tmp/laguna-global-single-page-actual.json",
+    "raw_sha256": "fd221971624ee120be1de292729068b20e0c0d5d758cb7f53a76aad1c8dace85",
+    "rerun_interpretation": "The two disclosed processes stopped before interception and produced zero candidate/timing rows. The successful ABI-complete process is the only measured screen and was not favorably rerun.",
+    "rows": [
+      {
+        "event_delta_pct": -15.634193950507381,
+        "event_us": {
+          "baseline": 24.06500244140625,
+          "single_page": 20.30263328552246
+        },
+        "f32_bit_exact": true,
+        "layer": 0,
+        "live_count": 70,
+        "max_abs": 0.0,
+        "q_heads": 48,
+        "wall_delta_pct": -15.515639683044213,
+        "wall_us": {
+          "baseline": 24.127088021486998,
+          "single_page": 20.383615978062153
+        }
+      },
+      {
+        "event_delta_pct": -15.751975408902652,
+        "event_us": {
+          "baseline": 24.20262336730957,
+          "single_page": 20.39023208618164
+        },
+        "f32_bit_exact": true,
+        "layer": 44,
+        "live_count": 70,
+        "max_abs": 0.0,
+        "q_heads": 48,
+        "wall_delta_pct": -15.616739264920575,
+        "wall_us": {
+          "baseline": 24.259548168629408,
+          "single_page": 20.470997784286737
+        }
+      },
+      {
+        "event_delta_pct": -17.74835889462125,
+        "event_us": {
+          "baseline": 39.06733703613281,
+          "single_page": 32.13352584838867
+        },
+        "f32_bit_exact": true,
+        "layer": 0,
+        "live_count": 126,
+        "max_abs": 0.0,
+        "q_heads": 48,
+        "wall_delta_pct": -17.556661708394707,
+        "wall_us": {
+          "baseline": 39.1332502476871,
+          "single_page": 32.26275788620114
+        }
+      },
+      {
+        "event_delta_pct": -17.39286405348015,
+        "event_us": {
+          "baseline": 39.547203063964844,
+          "single_page": 32.6688117980957
+        },
+        "f32_bit_exact": true,
+        "layer": 44,
+        "live_count": 126,
+        "max_abs": 0.0,
+        "q_heads": 48,
+        "wall_delta_pct": -17.23968022047654,
+        "wall_us": {
+          "baseline": 39.62981794029474,
+          "single_page": 32.79776405543089
+        }
+      }
+    ],
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "383beda8e19d7c6a7139e883d3a6525d38da7dc2090063a8b3cf266f4a289f99",
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40070027316,
+      "peak_allocations": 1159,
+      "total_allocated_bytes": 40070027316,
+      "total_freed_bytes": 40070027316
+    },
+    "tracked_peak": {
+      "active_allocations": 1159,
+      "current_allocated_bytes": 40070027316,
+      "peak_allocated_bytes": 40070027316,
+      "peak_allocations": 1159,
+      "total_allocated_bytes": 40070027316,
+      "total_freed_bytes": 0
+    }
+  },
+  "source_diff": {
+    "one_page_device_guard": true,
+    "only_added_blocks": [
+      "laguna_global_attention_decode_single_page_bf16_kernel",
+      "hipengine_laguna_global_attention_decode_single_page_bf16_spans"
+    ],
+    "physical_slot_replacements": 2,
+    "probe_builder_path": "/tmp/build_laguna_global_single_page_probe.py",
+    "probe_builder_sha256": "2875e6a0c64e7c28d8a437122ae5f4e341e2f5389f043538699f5d4f3929c568",
+    "probe_manifest_sha256": "8b91f4f27631da9b557bd49c3de18d2064205be3cfe31275572324e9dc3697f5",
+    "production_recovered_exactly_after_removing_two_blocks": true,
+    "production_source": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "production_source_sha256": "03a0f1029e7cf9e2e4f6e747b46415c25bddd0f6099e1f587f608c2037c853a9"
+  },
+  "status": "candidate_selected"
+}
