@@ -3,19 +3,18 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-global-qrow6-production.json`](results/2026-07-26-gfx1151-laguna-global-qrow6-production.json).
-It keeps M2048 projection/MoE transactions and M128 physical attention/KV
-slices, while using exact global qrow6 only on complete preappended tiles from
-position 128. Global position 0, all SWA, partial, wrapped, verifier, and
-unmeasured paths retain qrow4. Clean selector-unset 512/1K/4K medians are
-**547.064/513.180/428.628 tok/s**, improving the preceding M2048 packet by
-**0.376%/1.359%/4.518%**. Seven matched pp512 pairs win **7/7** with identical
-logits, hidden state, KV, token/logit, and cursor. Cached tracing observes the
-exact 12 qrow4 / 36 qrow6 / 144 SWA-qrow4 pp512 policy and cuts attention
-**158.702 -> 152.406 ms (-3.97%)**. Absolute maximum KL remains
+[`2026-07-26-gfx1151-laguna-q6-compact-activation-production.json`](results/2026-07-26-gfx1151-laguna-q6-compact-activation-production.json).
+Q6 selected down now omits unused Q8 sum metadata and stores its bounded K16
+quant sums as int16, reducing activation staging **48 -> 40 bytes/row** and
+kernel LDS **5,632 -> 5,120 B** without changing arithmetic or resident bytes.
+Clean selector-unset 512/1K/4K medians are
+**550.625/517.017/431.789 tok/s**, improving the preceding global-qrow6 packet
+by **0.651%/0.748%/0.737%**. Fifteen matched pp512 pairs win **15/15** with
+identical logits, hidden state, KV, token/logit, and cursor. Cached tracing cuts
+Q6 **125.380 -> 119.566 ms (-4.64%)** and total selected down
+**196.157 -> 191.025 ms (-2.62%)**. Absolute maximum KL remains
 **0.049542582**. The active pp512 stretch target is 700 tok/s.
-[`default artifact`](results/2026-07-26-gfx1151-laguna-global-qrow6-default.json) ·
-[`leaf artifact`](results/2026-07-26-gfx1151-laguna-global-qrow6-candidate.json).
+[`candidate artifact`](results/2026-07-26-gfx1151-laguna-q6-compact-activation-candidate.json).
 
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
