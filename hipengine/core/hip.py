@@ -139,10 +139,42 @@ class HipRuntime:
         self.check(self.library.hipMemGetInfo(ctypes.byref(free_bytes), ctypes.byref(total_bytes)))
         return int(free_bytes.value), int(total_bytes.value)
 
-    def stream_create(self, *, nonblocking: bool = True) -> int:
+    def stream_priority_range(self) -> tuple[int, int]:
+        """Return HIP's ``(least, greatest)`` stream scheduling priorities."""
+
+        least = ctypes.c_int()
+        greatest = ctypes.c_int()
+        self.check(
+            self.library.hipDeviceGetStreamPriorityRange(
+                ctypes.byref(least),
+                ctypes.byref(greatest),
+            )
+        )
+        return int(least.value), int(greatest.value)
+
+    def stream_create(
+        self,
+        *,
+        nonblocking: bool = True,
+        priority: int | None = None,
+    ) -> int:
         stream = ctypes.c_void_p()
         flags = 0x01 if nonblocking else 0x00
-        self.check(self.library.hipStreamCreateWithFlags(ctypes.byref(stream), ctypes.c_uint(flags)))
+        if priority is None:
+            self.check(
+                self.library.hipStreamCreateWithFlags(
+                    ctypes.byref(stream),
+                    ctypes.c_uint(flags),
+                )
+            )
+        else:
+            self.check(
+                self.library.hipStreamCreateWithPriority(
+                    ctypes.byref(stream),
+                    ctypes.c_uint(flags),
+                    ctypes.c_int(priority),
+                )
+            )
         return 0 if stream.value is None else int(stream.value)
 
     def stream_destroy(self, stream: int) -> None:
@@ -266,8 +298,19 @@ class HipRuntime:
         self.library.hipMemsetAsync.restype = ctypes.c_int
         self.library.hipMemGetInfo.argtypes = [ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_size_t)]
         self.library.hipMemGetInfo.restype = ctypes.c_int
+        self.library.hipDeviceGetStreamPriorityRange.argtypes = [
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        self.library.hipDeviceGetStreamPriorityRange.restype = ctypes.c_int
         self.library.hipStreamCreateWithFlags.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint]
         self.library.hipStreamCreateWithFlags.restype = ctypes.c_int
+        self.library.hipStreamCreateWithPriority.argtypes = [
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.c_uint,
+            ctypes.c_int,
+        ]
+        self.library.hipStreamCreateWithPriority.restype = ctypes.c_int
         self.library.hipStreamDestroy.argtypes = [ctypes.c_void_p]
         self.library.hipStreamDestroy.restype = ctypes.c_int
         self.library.hipStreamSynchronize.argtypes = [ctypes.c_void_p]

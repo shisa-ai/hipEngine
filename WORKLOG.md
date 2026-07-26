@@ -182415,3 +182415,24 @@ Vulkan local sizes verbatim will close the measured gap.
   if meaningful, run the shared branch at lower priority after router. The
   objective is to recover the **22.418-ms** gate/up contention without letting
   the shared branch spill past the final combine.
+
+## 2026-07-26 — Add low-priority shared-stream candidate
+
+- Direct `hipDeviceGetStreamPriorityRange` on Radeon 8060S/gfx1151 returns
+  `(least=+1, greatest=-1)`, so the priority range is non-degenerate and the
+  screen is valid.
+- RED failed on the missing typed priority-range/runtime API. GREEN adds
+  `HipRuntime.stream_priority_range()` and optional priority creation through
+  `hipStreamCreateWithPriority`, plus a default-off
+  `moe_shared_low_priority` session/profile selector. Candidate sessions fail
+  closed on a degenerate range.
+- The session creates the existing nonblocking shared stream at the device's
+  least priority and records the resolved range in benchmark protocol.
+  Kernels, events, arithmetic, buffers, and the after-router production default
+  are unchanged.
+- **49** HIP runtime/session/profile tests pass. The production Q4_K GPU fixture
+  now uses the actual low-priority stream and remains BF16-byte exact against
+  sequential output; Python compilation and diff checks pass.
+- Next gate: priority 0 versus +1 under fixed two-queue after-router scheduling,
+  one resident owner, seven counterbalanced pp512 pairs, and complete-state
+  digests. Trace only if the robust gate is positive.

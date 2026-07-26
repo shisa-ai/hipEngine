@@ -71,6 +71,12 @@ should be removed or collapsed.
   **566.839/527.381/444.447 tok/s**. Collapse redundant positive selection
   during the next MoE scheduling cleanup; retain the explicit false rollback
   while lower-priority secondary-stream scheduling is screened.
+- The lower-priority checkpoint adds general HIP priority-range/query and
+  priority-stream creation helpers plus a temporary
+  `moe_shared_low_priority` session/CLI selector. gfx1151 reports
+  `(least=+1, greatest=-1)`. Remove the Laguna selector if the complete-state
+  gate fails; the general HIP helpers may remain because they are exact,
+  tested runtime primitives.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 

@@ -85,6 +85,7 @@ def _parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=None,
     )
+    parser.add_argument("--moe-shared-low-priority", action="store_true")
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -171,6 +172,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     owner: LagunaGGUFResidentSession | None = None
     active_moe_branch_concurrency = False
     active_moe_shared_after_router = False
+    active_moe_shared_low_priority = False
+    active_moe_shared_priority_range: tuple[int, int] | None = None
     rows: list[dict[str, Any]] = []
     load_started = time.perf_counter()
     try:
@@ -187,9 +190,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.chunk_size,
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
+            moe_shared_low_priority=args.moe_shared_low_priority,
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_moe_shared_after_router = owner.moe_shared_after_router
+        active_moe_shared_low_priority = owner.moe_shared_low_priority
+        active_moe_shared_priority_range = owner.moe_shared_priority_range
         load_seconds = time.perf_counter() - load_started
         owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
         runtime.device_synchronize()
@@ -279,6 +285,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "warmup_rows": args.warmup_rows,
             "moe_branch_concurrency": active_moe_branch_concurrency,
             "moe_shared_after_router": active_moe_shared_after_router,
+            "moe_shared_low_priority": active_moe_shared_low_priority,
+            "moe_shared_priority_range": active_moe_shared_priority_range,
             "timed_order": "ascending then alternating direction by repetition",
             "timing_scope": "reset complete through synchronized first-token projection; load excluded",
             "prompt_suite": str(args.prompts.resolve()),

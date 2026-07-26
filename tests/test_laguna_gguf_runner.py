@@ -718,8 +718,17 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         def __init__(self) -> None:
             self.next_event = 102
 
-        def stream_create(self, *, nonblocking: bool = False) -> int:
+        def stream_priority_range(self) -> tuple[int, int]:
+            return 1, -1
+
+        def stream_create(
+            self,
+            *,
+            nonblocking: bool = False,
+            priority: int | None = None,
+        ) -> int:
             assert nonblocking is True
+            assert priority == 1
             return 101
 
         def event_create(self, *, flags: int = 0) -> int:
@@ -845,6 +854,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         model_sha256="synthetic-sha256",
         safety_reserve_nbytes=4 * 2**30,
         global_prefill_variant="global_context_rows_qrow2_online_spans",
+        moe_shared_low_priority=True,
     )
     assert session.prefill_chunk_size == 2_048
     assert session.prefill_attention_chunk_size == 128
@@ -889,6 +899,8 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.moe_shared_after_router is True
     session.set_moe_shared_after_router(False)
     assert session.moe_shared_after_router is False
+    assert session.moe_shared_low_priority is True
+    assert session.moe_shared_priority_range == (1, -1)
     assert session.verifier_scratch is None
     session.close()
     session.close()

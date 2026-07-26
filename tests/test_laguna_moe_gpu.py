@@ -905,7 +905,15 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             plan,
             max_rows=3,
         )
-        concurrent_stream = runtime.stream_create(nonblocking=True)
+        least_priority, greatest_priority = runtime.stream_priority_range()
+        concurrent_stream = runtime.stream_create(
+            nonblocking=True,
+            priority=(
+                least_priority
+                if least_priority != greatest_priority
+                else None
+            ),
+        )
         concurrent_input_ready = runtime.event_create(flags=0x2)
         concurrent_output_ready = runtime.event_create(flags=0x2)
         concurrent_output = run_laguna_moe_rows(
