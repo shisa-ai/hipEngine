@@ -119,10 +119,11 @@ parallel weighted+routed/hidden production followed by the unchanged exact
 RMSNorm. The separately registered repository primitive now passes RED/GREEN,
 synthetic/CPU/all-47-layer exactness, frozen codegen/resources, and cache-only
 tracing. Its repeated repository two-call window improves **12.664% event /
-12.664% wall** at unchanged launch count. Its explicit/default-off gfx1100
-runtime owner now passes exact 16-transition state and cache-only **47 producer
-+ 47 registered RMS / 723-model-kernel** tracing; clean decode adjudication is
-next, while defaults and the canonical topline remain unchanged.
+12.664% wall** at unchanged launch count. A temporary default-off owner passes
+exact 16-transition state and cache-only **47 producer + 47 registered RMS /
+723-model-kernel** tracing, but the frozen clean short gate fails order B on
+kernel-sum and span guards. Runtime integration is removed, remaining contexts
+and categories are skipped, and the default/topline remain unchanged.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1469,8 +1470,8 @@ compiler under profiling.
 
 The isolated **0.06841 ms/token** repository saving models short kernel sum
 about **12.9212 -> 12.8528 ms (-0.529%)** and remains a ceiling, not a throughput
-claim. A gfx1100 false capability sentinel and explicit session/CLI opt-in now
-admit a separate default-off owner. It defers only the c=1 routed reducer after
+claim. A temporary gfx1100 false capability sentinel and explicit session/CLI
+opt-in admitted a separate default-off owner. It deferred only the c=1 routed reducer after
 the retained wave4 expert-down producer, invokes the exact split producer, and
 feeds its hidden row to the registered RMSNorm. Direct-weighted schedules,
 rows/prefill, key misses, gfx1151, and default execution retain control.
@@ -1487,12 +1488,25 @@ RMS calls** over two transitions, zero decode weighted-sum/D9 calls, unchanged
 5 runtime copies**. Candidate/RMS resources remain local **32/256**, allocated
 VGPR **24/16**, LDS/scratch0; no compiler runs under profiling.
 
-This admits only runtime measurement plumbing, not a default or throughput win.
-Both clean process orders at short/512/1K/near-4K and both complete category
-orders remain mandatory before promotion. Evidence:
+The frozen clean short gate then rejects runtime selection without rerun.
+Weighted-hidden boundary time improves **19.883%/12.390%** in process orders
+A/B. Order A also improves kernel sum **0.701%**, span **6.980%**, and profiled-
+child throughput **0.999%**. Order B, however, regresses complete kernel sum
+**0.320%** and dispatch span **6.342%**, despite child throughput improving
+**1.334%**. Pooled boundary/kernel/span/child changes are
+**-16.156%/-0.191%/-0.373%/+1.078%**, but pooling cannot waive the every-order
+contract. Exact IDs, finite logits, lifecycle, resources, 47+47 calls, and 723
+kernels/token all pass.
+
+Stop before 512/1K/near-4K and both category orders. Remove the capability,
+plan/session/dispatch owner, CLI/telemetry, and refactor debt; restore production
+backend/runner/MoE/benchmark files byte-identical to primitive commit
+`1a10af227`. The exact primitive/key/oracle and gfx1151 exclusion remain
+available only as diagnostics. Evidence:
 [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-design.json),
 [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-correctness.json),
-and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-runtime-correctness.json).
+[`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-runtime-correctness.json),
+and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-rejected.json).
 
 ## 9. Do not chase without new evidence
 
@@ -1547,7 +1561,7 @@ and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-h
 | Is the post-router Q4 LM-head local32 design implemented or retained? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json), and [`retained`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json): yes. Production logits and default-vs-rollback state are bit-exact; every clean order improves LM-head and kernel-sum time; both category orders move h32 **61.675 -> 61.992 tok/s (+0.512%)** with all category decode rows positive. gfx1100 defaults local32 at unchanged 723 kernels/token. |
 | Is the post-Q4 Q6 local32 standalone design implemented? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json): primitive only after clean rejection. Exact state/trace and 12.44-13.26% Q6-family wins do not override order-A kernel/span or order-B child failures. Runtime integration is removed; categories are skipped and the topline is unchanged. |
 | What happened to the post-Q6 compact-wave32 selector? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-rejected.json): primitive only. The isolated **25.78%/25.77%** event/wall win reverses under complete clean decode: both short orders regress selector **30.58%/27.60%**, router **16.89%/14.08%**, kernel sum **1.787%/0.591%**, and child throughput **1.587%/1.619%**. Runtime integration is removed and categories are skipped. |
-| What is selected after compact-wave closure? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-correctness.json), and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-runtime-correctness.json): an exact top10-unrolled local32 weighted+routed/hidden producer followed by the registered local256 RMSNorm. The repository primitive improves the complete two-call boundary **12.664% event / 12.664% wall**; its explicit/default-off owner now passes exact 16-transition full state and **47+47/723** tracing. Clean context/category adjudication remains pending, so defaults and topline are unchanged. |
+| What happened to the post-compact weighted-hidden split? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-rejected.json): primitive only after clean rejection. The repository boundary improves **12.664% event/wall**, full state and 47+47/723 tracing pass, and both short orders improve boundary time **19.883%/12.390%**. Order B nevertheless regresses kernel sum **0.320%** and span **6.342%**; runtime integration is removed and remaining contexts/categories are skipped. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The retained Q4 category gate measures hipEngine **62.638/61.992 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **2.57%/3.91%** is required. The prior [post-local32 audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) remains the pinned Vulkan source. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1636,7 +1650,8 @@ moves to a distinct MoE boundary: a top10-unrolled local32 weighted+routed/
 hidden producer followed by the unchanged registered RMSNorm. The repository
 primitive now passes RED/GREEN, synthetic/CPU/all-47-layer exactness, codegen,
 and cache-only trace gates; its isolated two-call window improves **12.664%
-event / 12.664% wall** at unchanged launch count. Its explicit/default-off
-runtime owner now also passes 16-transition full state and cache-only **47
-producer + 47 registered RMS / 723-kernel** tracing. Clean context/category
-adjudication is next; canonical h32 remains **61.992 tok/s**.
+event / 12.664% wall** at unchanged launch count. Its temporary default-off
+owner also passes 16-transition state and **47 producer + 47 registered RMS /
+723-kernel** tracing, but clean short order B regresses kernel sum **0.320%** and
+span **6.342%**. Runtime integration is removed and categories are skipped; the
+primitive remains diagnostic and canonical h32 stays **61.992 tok/s**.

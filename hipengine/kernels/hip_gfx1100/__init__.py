@@ -37,10 +37,6 @@ LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = True
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
 LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
-# The exact weighted+routed/hidden split is admitted as a gfx1100-only,
-# default-off runtime screen. Explicit opt-in is required until its complete
-# context/category decode gate decides production ownership.
-LAGUNA_WEIGHTED_HIDDEN_SPLIT = False
 # The exact expanded-magnitude IQ2 grid contracts selector reconstruction and
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
@@ -130,7 +126,6 @@ __all__ = [
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
-    "LAGUNA_WEIGHTED_HIDDEN_SPLIT",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
