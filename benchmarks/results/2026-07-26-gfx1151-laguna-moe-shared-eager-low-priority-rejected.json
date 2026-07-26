@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_shared_eager_low_priority",
+  "status": "rejected",
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "queue-matched exact Poolside Laguna S 2.1 Q4_K_M pp512 scheduling screen on gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 in both arms",
+    "stream_priority_range": {
+      "least": 1,
+      "greatest": -1
+    },
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "measurement_revision": "62b68a0320215e52813a7f06e059c001a9c6d4e9",
+    "tracked_clean_during_measurement": true,
+    "untracked_shared_tree_artifacts_excluded": true,
+    "candidate_code_added": false
+  },
+  "candidate": {
+    "baseline_schedule": "finish router selection, then release the shared expert on a priority +1 secondary stream",
+    "candidate_schedule": "release the shared expert eagerly before router selection on the same priority +1 secondary stream",
+    "arithmetic": "unchanged",
+    "buffers": "unchanged",
+    "priority": 1,
+    "dependency_contract": "same input-ready and output-ready events; caller joins only before exact final combine"
+  },
+  "protocol": {
+    "command": "env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_moe_branch_ab.py --repetitions 7 --output <tmp>/result.json",
+    "resident_weight_owners": 1,
+    "child_session_per_arm": true,
+    "order": "counterbalanced after_router_low_priority/eager_low_priority by repetition",
+    "rows": 512,
+    "repetitions": 7,
+    "complete_state_fields": [
+      "logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV cache",
+      "next token",
+      "next-token logit",
+      "cursor"
+    ],
+    "raw_sha256": "05a3ffdd22425d348abab98d058ad0268986e9c9feb6bcac7c78d9c78d7332d5"
+  },
+  "results": {
+    "after_router_low_priority_samples_tok_s": [
+      568.9453547940207,
+      570.6428402049385,
+      572.3565683831988,
+      570.7963698274696,
+      570.3575564526476,
+      571.4421572586648,
+      575.0957355269164
+    ],
+    "after_router_low_priority_median_tok_s": 570.7963698274696,
+    "eager_low_priority_samples_tok_s": [
+      569.0015322368696,
+      569.6655253027799,
+      569.4291810361075,
+      569.9458642923257,
+      569.7386382305932,
+      566.8050772290595,
+      574.4591021554309
+    ],
+    "eager_low_priority_median_tok_s": 569.6655253027799,
+    "change_percent": -0.19811697909563053,
+    "candidate_wins": "1/7",
+    "median_paired_wall_regression_ms": 1.3385429047048092,
+    "complete_state_exact": true,
+    "next_token": 2930
+  },
+  "validation": {
+    "temporary_harness_python_compile": true,
+    "complete_state_exact": true,
+    "trace_run": false,
+    "lineage_audit": "unavailable because configured read-only /home/lhl/amd-gpu-tuning/reference/atlas path is absent; no kernel port or kernel edit was made"
+  },
+  "decision": {
+    "retained": false,
+    "production_default": false,
+    "reason": "eager release regressed the robust matched median, lost six of seven pairs, and added 1.339 ms at the median paired wall",
+    "production_unchanged_tok_s": 568.8490308767773,
+    "candidate_code_removed": "not applicable; the existing rollback selector was used",
+    "do_not_retry_without": "a dependency or hardware scheduling mechanism that protects router completion while increasing the shared overlap window"
+  }
+}
