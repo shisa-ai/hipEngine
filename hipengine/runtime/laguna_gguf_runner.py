@@ -1517,6 +1517,7 @@ class LagunaGGUFResidentSession:
         prefill_cached_meta: bool | None = None,
         prefill_global_qrow6: bool | None = None,
         q6_qmicro: bool | None = None,
+        q6_compact_activation: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1597,6 +1598,15 @@ class LagunaGGUFResidentSession:
             if q6_qmicro is None
             else q6_qmicro
         )
+        self.q6_compact_activation = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_COMPACT_ACTIVATION",
+                False,
+            )
+            if q6_compact_activation is None
+            else q6_compact_activation
+        )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
         self.fuse_selected_silu_pack = bool(
@@ -1668,6 +1678,7 @@ class LagunaGGUFResidentSession:
                 config,
                 backend=self.backend,
                 q6_qmicro=self.q6_qmicro,
+                q6_compact_activation=self.q6_compact_activation,
             )
             self.prefill_scratch_plan = LagunaPrefillScratchPlan.build(
                 config,

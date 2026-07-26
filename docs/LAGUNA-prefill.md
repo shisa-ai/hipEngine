@@ -656,6 +656,7 @@ Current progress:
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
+| Q6 compact activation cache | Admitted gfx1151 default; clean publication pending | Q6 never consumes Q8_1 sum metadata. Dropping that field and storing each bounded K16 quant sum as `int16` reduces activation staging **48 -> 40 bytes/row** and kernel LDS **5,632 -> 5,120 B** without changing dots or accumulation. The actual leaf improves **5.082 -> 4.911 ms (-3.36%)**; 15 complete-state pp512 pairs improve **550.584 -> 552.807 tok/s (+0.404%, 15/15 wins)**, and tracing cuts Q6 **125.380 -> 119.566 ms (-4.64%)**. |
 | LAP-7–LAP-8 | Exact cached-only scheduling and cached-metadata policy admitted | Complete M128 tiles append before cached-only qrow4 while partial, wrapped SWA, verifier, and unmeasured paths retain attend-then-append. The qualified metadata-only policy selects every safe SWA tile and global tiles from position 128 while retaining the established global start-0 body. Matched pp512 improves **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)**; clean publication reaches **542.088 tok/s** median, and tracing cuts attention **175.802 -> 160.123 ms (-8.92%)**. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, head2, qhead3, and nine-wave GQA sharing remain closed. |
 
 ## Post-500 campaign — 700 production stretch
@@ -678,7 +679,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **314.171 ms** | **34.36%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default; the corrected **51.045-GB** route-tile ledger now yields **162.48 GB/s / 73.52%** of the existing read anchor. It clears the interim requested-byte floor; reopen only from counters or a new schedule. |
-| Selected D4 Q4/Q6 down | **196.157 ms** | **21.45%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. The fused selected-SiLU pack removes its standalone intermediate/launch. The refreshed **27.524-GB** route-tile ledger now yields **140.32 GB/s / 63.49%** of the anchor. Q6 K64 staging remains closed after VGPR/LDS growth regressed the family **14.54%** and pp512 **1.81%**. |
+| Selected D4 Q4/Q6 down | **196.157 ms** before the compact-Q6 candidate | **21.45%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. Compact Q6 activation staging cuts the traced Q6 subfamily **125.380 -> 119.566 ms (-4.64%)** with unchanged VGPR and **5,120 B** LDS; clean family/headline publication is pending. The fused selected-SiLU pack removes its standalone intermediate/launch. Q6 K64 staging remains closed after VGPR/LDS growth regressed the family **14.54%** and pp512 **1.81%**. |
 | Global + SWA attention | **152.406 ms** | **16.67%** | Cached metadata removes current/cache bookkeeping; exact qrow6 owns qualified nonzero global tiles. Qrow4 remains fallback for global position 0, all SWA, partial tiles, wrapped SWA, verifier transactions, and unmeasured backends. Scalar key splitting, tiled M16/M8 WMMA, single-wave two-head GQA reuse, and nine-wave/token8 shared-K/V remain closed. |
 | Static-range direct hipBLASLt source-F16 | **124.137 ms** | **13.58%** | All five contractions and direct boundary casts are included. Both scaled-row kernels are absent; source-F16 boundary work is closed. |
 | Q4/Q6 WMMA dense/shared | **52.918 ms** | **5.79%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
@@ -722,8 +723,14 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Attack selected down next. It is **196.157 ms / 21.45%** of kernel sum and
-   sustains only **140.32 GB/s / 63.49%** of the existing read anchor. Keep
+1. Continue selected down. The first fresh split assigns **124.254 ms** to Q6
+   and **71.903 ms** to Q4. The exact compact-activation Q6 body is now the
+   implementation-tree default after cutting the natural leaf **3.36%**, the
+   traced Q6 family **4.64%**, and winning all **15/15** complete-state pp512
+   pairs at **+0.404%**. Run clean selector-unset publication, then use the
+   refreshed trace rather than the old **196.157 ms / 21.45%** family row.
+   Selected down previously sustained only **140.32 GB/s / 63.49%** of the
+   existing read anchor. Keep
    byte-neutral Q6 qmicro and direct Q4 decode, then split the current trace by
    Q4/Q6 shape and pursue a counter-directed exact schedule that reduces Q6
    route-tile rereads without the rejected K64 LDS/VGPR growth. The exact MMQ

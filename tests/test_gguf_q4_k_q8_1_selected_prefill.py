@@ -1699,14 +1699,22 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("residual_passes", "rowvec", "tile_rows", "qmicro"),
+    ("residual_passes", "rowvec", "tile_rows", "qmicro", "compact_activation"),
     [
-        (1, False, 32, False),
-        (1, True, 32, False),
-        (1, True, 64, False),
-        pytest.param(1, True, 64, True, id="rows64-qmicro"),
-        (2, False, 32, False),
-        (3, False, 32, False),
+        (1, False, 32, False, False),
+        (1, True, 32, False, False),
+        (1, True, 64, False, False),
+        pytest.param(1, True, 64, True, False, id="rows64-qmicro"),
+        pytest.param(
+            1,
+            True,
+            64,
+            True,
+            True,
+            id="rows64-qmicro-compact-activation",
+        ),
+        (2, False, 32, False, False),
+        (3, False, 32, False, False),
     ],
 )
 def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1714,6 +1722,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     rowvec: bool,
     tile_rows: int,
     qmicro: bool,
+    compact_activation: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from tests.test_gguf_k_t16_selected_wmma_prefill import (
@@ -1809,6 +1818,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             rowvec=rowvec,
             tile_rows=tile_rows,
             qmicro=qmicro,
+            compact_activation=compact_activation,
             library=library,
             runtime=runtime,
         )
@@ -1818,7 +1828,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             baseline_dev = malloc(host_out.nbytes, runtime=runtime)
             bufs.append(baseline_dev)
             baseline_tiles_dev = bufs[4]
-            if qmicro:
+            if qmicro and not compact_activation:
                 baseline_tiles_dev = malloc(
                     fixture.tiles.nbytes,
                     runtime=runtime,
@@ -1842,8 +1852,9 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
                 fixture.num_experts,
                 mmq_total_rows,
                 residual_passes=residual_passes,
-                rowvec=rowvec if qmicro else False,
-                tile_rows=tile_rows if qmicro else 32,
+                rowvec=rowvec if qmicro or compact_activation else False,
+                tile_rows=tile_rows if qmicro or compact_activation else 32,
+                qmicro=compact_activation,
                 library=library,
                 runtime=runtime,
             )

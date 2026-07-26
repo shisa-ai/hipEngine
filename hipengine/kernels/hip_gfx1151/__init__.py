@@ -97,6 +97,11 @@ LAGUNA_FUSED_SELECTED_SILU_PACK = True
 # selected-prefill gates both improve on gfx1151; peer backends retain legacy
 # Q6 T16 bytes until independently measured.
 LAGUNA_Q6_QMICRO = True
+# Q6 has no minimum term, so selected-down never consumes the Q8_1 activation
+# sum metadata. The compact activation tile also narrows each bounded K16
+# quant sum to int16, reducing the production 64-row kernel's LDS footprint
+# from 5,632 to 5,120 bytes without changing dot or accumulation order.
+LAGUNA_Q6_COMPACT_ACTIVATION = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"

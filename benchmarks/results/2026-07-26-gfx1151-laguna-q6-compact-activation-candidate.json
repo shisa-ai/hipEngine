@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T05:35:00+00:00",
+  "kind": "hipengine_laguna_q6_compact_activation_candidate",
+  "status": "admitted_gfx1151_default_pending_clean_publication",
+  "repo_revision": "2d00b91f81d137e145d943fc75a2dfe9a3d66129",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M with resident Q6_K qmicro selected down",
+  "implementation": {
+    "activation_cache_bytes_per_row": {
+      "production": 48,
+      "candidate": 40
+    },
+    "removed_field": "Q8_1 sum metadata, unused because Q6 has no minimum term",
+    "narrowed_fields": "two K16 quant sums from int32 to int16; each is bounded to [-2032, 2032]",
+    "invariants": "Identical resident weights, Q8 quant bytes/scales, ordered K32 integer dots, F32 accumulation, output ownership, and BF16 stores",
+    "lineage_audit": "python3 scripts/check_lineage.py --kind kernel --diff stat could not complete because /home/lhl/amd-gpu-tuning/reference/atlas is absent; this is an in-tree schedule/cache change and copies no external kernel"
+  },
+  "correctness": {
+    "red": "The production-geometry compact-activation parameter failed because no specialization existed.",
+    "green": "The uneven/empty-expert CPU-reference gate passes and the actual layer-1 natural-routing output has zero BF16 mismatches.",
+    "actual_layer_bf16_mismatches": 0,
+    "actual_layer_checksum": 509500838004,
+    "complete_pp512_state_exact": true,
+    "state_surfaces": [
+      "next token and next-token logit",
+      "full logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV",
+      "final cursor"
+    ],
+    "focused_test_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate' tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151 tests/test_laguna_moe_gpu.py::test_laguna_mmq_selected_down_reuses_exact_grouped_combine tests/test_laguna_gguf_runner.py::test_laguna_owned_session_close_frees_weights_and_is_idempotent",
+    "focused_test_result": "10 passed"
+  },
+  "actual_weight_leaf": {
+    "shape": {
+      "layer": 1,
+      "natural_prompt_rows": 512,
+      "compact_routed_rows": 5120,
+      "padded_rows64": 15808,
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "resident_weight_bytes": 660602880
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 11 --warmups 3 --prefill-burst 5 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-qmicro-compact-activation-leaf.json",
+    "timing": "HIP events; eleven counter-rotated burst-five samples; activation packing excluded",
+    "production_median_ms": 5.08160629272461,
+    "candidate_median_ms": 4.911111831665039,
+    "change_percent": -3.3551292886202067,
+    "raw_sha256": "9efce997719672f863d1317091b7f1e9dce9ccd7311a512496c7e4f7726c4865"
+  },
+  "complete_pp512_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_compact_activation_ab.py --repetitions 15 --require-cached-build --output /tmp/laguna-q6-compact-activation-ab15.json",
+    "production_samples_tok_s": [
+      548.5711337247434,
+      547.4795502235819,
+      548.5032764884584,
+      548.7560519054985,
+      549.1521648919245,
+      547.0198667418747,
+      554.108461287718,
+      552.3632936306898,
+      551.8885686352518,
+      550.919990051788,
+      551.2248363452326,
+      552.0401094896991,
+      552.4813117948194,
+      550.5840829885535,
+      550.5594312174235
+    ],
+    "candidate_samples_tok_s": [
+      552.806715176184,
+      551.2182757624432,
+      551.0200744156167,
+      550.5766057149052,
+      550.7484846089045,
+      550.362648697718,
+      555.0235104588023,
+      555.0683445665942,
+      552.762487360295,
+      553.4028539416196,
+      551.9383221386305,
+      554.0670162674145,
+      553.6317542982055,
+      553.8220624203541,
+      553.3094984351945
+    ],
+    "production_median_tok_s": 550.5840829885535,
+    "candidate_median_tok_s": 552.806715176184,
+    "change_percent": 0.4036862409036779,
+    "candidate_wins": 15,
+    "pairs": 15,
+    "raw_sha256": "2b43eee396efa459641a8ab427c1b55a5ca8aea94d82081f75056f9824d37c25"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-compact-activation-ab-rocprof -- .venv/bin/python3 -u scripts/laguna_q6_compact_activation_ab.py --repetitions 1 --require-cached-build --output /tmp/laguna-q6-compact-activation-ab-rocprof-child.json",
+    "production_q6_ms": 125.380465,
+    "candidate_q6_ms": 119.566473,
+    "q6_change_percent": -4.637079627994678,
+    "production_median_call_us": 5410.195,
+    "candidate_median_call_us": 5138.846,
+    "production_resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "candidate_resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "2facabb3321ad0693e1b2814c04332fecc61a400badec2bbb626642236171c7a"
+  },
+  "decision": {
+    "pass": true,
+    "action": "Promote compact Q6 activation staging as the gfx1151 package default, retain the 48-byte cache as explicit session rollback, and run clean selector-unset production before publishing the headline.",
+    "production_prefill_before_clean_publication_tok_s": 547.064355,
+    "target_tok_s": 700
+  }
+}

@@ -285,6 +285,7 @@ class LagunaMoEKernelPlan:
     shared_ffn_size: int
     routed_scaling_factor: float
     q6_qmicro: bool
+    q6_compact_activation: bool
     router_logits_key: KernelKey
     router_logits_keys: Mapping[str, KernelKey]
     router_select_key: KernelKey
@@ -480,6 +481,7 @@ def resolve_laguna_moe_plan(
     *,
     backend: str,
     q6_qmicro: bool | None = None,
+    q6_compact_activation: bool | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -507,6 +509,15 @@ def resolve_laguna_moe_plan(
         backend_package_capability(backend, "LAGUNA_Q6_QMICRO", False)
         if q6_qmicro is None
         else q6_qmicro
+    )
+    selected_q6_compact_activation = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_Q6_COMPACT_ACTIVATION",
+            False,
+        )
+        if q6_compact_activation is None
+        else q6_compact_activation
     )
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
@@ -786,6 +797,7 @@ def resolve_laguna_moe_plan(
         shared_ffn_size=config.expert_shared_feed_forward_length,
         routed_scaling_factor=config.expert_weights_scale,
         q6_qmicro=selected_q6_qmicro,
+        q6_compact_activation=selected_q6_compact_activation,
         router_logits_key=keys["router_logits"],
         router_logits_keys=router_logits_keys,
         router_select_key=keys["router_select"],
@@ -1652,6 +1664,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
                 "residual_passes": residual_passes,
                 "tile_rows": tile_rows,
                 "qmicro": plan.q6_qmicro,
+                "compact_activation": plan.q6_compact_activation,
             }
             if plan.q6_qmicro and weight.spec.quant_key == "gguf_q6_k_t16_v1"
             else {}
