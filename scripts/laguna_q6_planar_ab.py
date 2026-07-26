@@ -100,7 +100,7 @@ def _run_mode(
     load_started = time.perf_counter()
     owner = LagunaGGUFResidentSession(
         DEFAULT_MODEL,
-        context_length=512,
+        context_length=4_096,
         backend="hip_gfx1151",
         runtime=runtime,
         compiler_version=_compiler_version(args.compiler_version_file),
