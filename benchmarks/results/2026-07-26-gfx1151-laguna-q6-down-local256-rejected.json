@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T02:34:06.569236+00:00",
+  "kind": "hipengine_laguna_q6_down_local256_screen",
+  "status": "rejected_and_removed",
+  "repo_revision": "7d67ba1297ac4e0674b160f2537e2e6cb8857799",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M with resident byte-neutral Q6_K qmicro down",
+  "shape": {
+    "layer": 1,
+    "natural_prompt_rows": 512,
+    "compact_routed_rows": 5120,
+    "padded_rows64": 15808,
+    "active_row_tiles64": 247,
+    "experts": 256,
+    "in_features": 1024,
+    "out_features": 3072,
+    "resident_weight_bytes": 660602880
+  },
+  "premise": {
+    "production": "64 output columns x 64 routed rows, local128, four wave32 row groups, 32 F32 accumulators per lane",
+    "candidate": "same tile, decode, LDS, and ordered K32 arithmetic at local256, with eight wave32 row groups and 16 F32 accumulators per lane",
+    "distinction": "does not repeat rejected local64, K64 staging, duplicate weight decode, paired-scale metadata, or F32 spill premises"
+  },
+  "correctness": {
+    "red": "The new rows64-qmicro-local256 case failed because the public wrapper had no threads=256 specialization.",
+    "green": "The uneven/empty-expert CPU-reference quality gate passed.",
+    "actual_layer_bf16_mismatches_vs_local128": 0,
+    "actual_layer_checksum": 509500838004,
+    "finite": true,
+    "test_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate[rows64-qmicro-local256]'"
+  },
+  "leaf_protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 11 --warmups 2 --prefill-burst 5 --decode-burst 20 --screen-local256 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-local256-leaf.json",
+    "timing": "HIP events, counter-rotated over five modes; activation packing excluded",
+    "samples": 11,
+    "burst": 5,
+    "production_local128_median_ms": 5.060151672363281,
+    "candidate_local256_median_ms": 5.9236713409423825,
+    "candidate_change_percent": 17.06509457602494,
+    "candidate_wins": 0,
+    "raw_sha256": "34be54ca4e058a89dd8a42c0d1d988b228b3ad193a0118067b2c4ab41c215a2a"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-local256-rocprof -- .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 1 --warmups 0 --prefill-burst 1 --decode-burst 1 --screen-local256 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-local256-rocprof.json",
+    "production": {
+      "threads": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "threads": 256,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "4d1d72d32ec0eb47b1fe2f407a7f4d779c22ddf335d5ac22a0bfe5210ccadb88",
+    "interpretation": "The candidate lowers per-lane VGPR and does not spill, but the larger workgroup is still slower; the measured result rejects workgroup widening as a route to more effective Q6 latency hiding."
+  },
+  "decision": {
+    "gate": "candidate must be exact and faster than production on the actual natural-M512 leaf",
+    "pass": false,
+    "action": "Remove the local256 HIP export, Python selector, test parameter, and harness mode before runtime integration. Keep local128 production.",
+    "production_prefill_tok_s": 542.08826
+  }
+}
