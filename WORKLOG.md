@@ -180994,3 +180994,25 @@ Vulkan local sizes verbatim will close the measured gap.
   parameter, and harness mode before integration. Production remains
   **542.088 tok/s** with the 64-column/local128 body. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`.
+
+## 2026-07-26 — Reject Q4 selected-down 128-column tile
+
+- Audited the remaining Q4-down family after closing larger Q6 geometries.
+  Production uses 64 columns x 32 rows at local64. The unscreened candidate
+  reused the exact gate/up direct-wave template at 128 columns x 32 rows and
+  local128, keeping 32 accumulators per lane and register-resident weights
+  while halving output workgroups and activation staging.
+- RED added a single-direct-cols128 case and failed on the missing single-Q4
+  wrapper specialization. GREEN passed the uneven/empty-expert CPU-reference
+  gate. Actual layer-6 Q4T16 output has zero BF16 mismatches and checksum
+  **509664879648**.
+- Eleven counter-rotated burst-five actual natural-M512 samples regress
+  production **2.971630 -> 3.018800 ms (+1.587%, 2/11 wins)**. Raw SHA-256 is
+  `98a32940cd9656cf465d56f7675f2a8040244c9b8414097fe663b975f9e7a6d7`.
+- Cached tracing confirms both bodies at VGPR88/SGPR128/LDS1536B/scratch0;
+  only local64 -> local128 and output workgroup count change. Trace SHA-256 is
+  `bd43bf9f6ef034b2c4ad2e8da8961ca643e78efcd4b249f1785320b680aef70a`.
+- Removed the HIP export, wrapper selector, test parameter, and leaf harness
+  before runtime integration. Production remains **542.088 tok/s** with Q4
+  down at 64 columns/local64. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`.

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna Q4-down 128-column tile] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / reusing the direct-wave gate template for 128-column/32-row Q4 down halves output workgroups and activation staging while preserving 32 accumulators/lane, VGPR88/LDS1,536B/scratch0, and BF16-byte-exact output, but actual layer-6 natural-M512 timing regresses **2.9716 -> 3.0188 ms (+1.59%, 2/11 wins)**, so all candidate surfaces are removed and production remains **542.088 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q6-down 128-column tile] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / a local256 128-column/64-row qmicro body halves output workgroups and doubles dot work per barrier while retaining 32 accumulators/lane and BF16-byte-exact output, but LDS rises **5,632 -> 8,192 B** and actual layer-1 natural-M512 timing regresses **5.0672 -> 5.3894 ms (+6.36%, 0/11 wins)**, so all candidate surfaces are removed and production remains **542.088 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q6-down local256] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / widening the retained 64-column/64-row qmicro body from four to eight wave32s lowers per-lane accumulators **32 -> 16** and VGPR **88 -> 72** with unchanged LDS/scratch and BF16-byte-exact output, but actual layer-1 natural-M512 timing regresses **5.0602 -> 5.9237 ms (+17.07%, 0/11 wins)**, so every candidate surface is removed and production remains **542.088 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`.
