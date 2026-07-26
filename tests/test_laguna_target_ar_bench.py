@@ -147,22 +147,23 @@ def test_iq3_signbit_schedule_cli_is_removed_after_clean_rejection(
         benchmark._parse_args()
 
 
-def test_iq3_wave10_fused_schedule_cli_keeps_explicit_wave4_rollback(
+def test_iq3_wave10_signbit_fused_schedule_cli_is_explicit_default_off(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
     assert benchmark._parse_args().iq3_c1_down_schedule is None
 
-    monkeypatch.setattr(
-        benchmark.sys,
-        "argv",
-        [
-            "laguna_target_ar_bench.py",
-            "--iq3-c1-down-schedule",
-            "wave4_reduce",
-        ],
-    )
-    assert benchmark._parse_args().iq3_c1_down_schedule == "wave4_reduce"
+    for schedule in ("wave4_reduce", "wave10_signbit_fused"):
+        monkeypatch.setattr(
+            benchmark.sys,
+            "argv",
+            [
+                "laguna_target_ar_bench.py",
+                "--iq3-c1-down-schedule",
+                schedule,
+            ],
+        )
+        assert benchmark._parse_args().iq3_c1_down_schedule == schedule
 
 
 def test_persistent_wave_top10_router_cli_is_removed_after_clean_rejection(
