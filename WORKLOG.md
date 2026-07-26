@@ -180940,3 +180940,32 @@ Vulkan local sizes verbatim will close the measured gap.
   700 requires **213.067 ms** from the clean wall. Selected down is next at
   **203.087 ms / 21.59%** and **135.53 GB/s / 61.32%** of the existing
   read anchor.
+
+## 2026-07-26 — Reject Q6 selected-down local256 workgroup
+
+- The required broad kernel-lineage audit again stopped only because
+  `docs/source_lineage.json` references the absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. ROCm and gfx1151 were
+  healthy, the tracked tree was clean, and this was an in-tree schedule
+  specialization rather than an external port.
+- RED added a rows64/qmicro/local256 quality case and failed on the missing
+  wrapper specialization. GREEN instantiated the exact
+  `<1,true,false,256,64,true>` body. It keeps the retained byte-neutral qmicro
+  layout, 64x64 tile, one shared decode, 5,632-byte LDS allocation, and ordered
+  K32 accumulation while splitting rows over eight wave32s and reducing
+  accumulators per lane from 32 to 16. The uneven/empty-expert CPU-reference
+  gate passes, and actual layer-1 output has zero BF16 mismatches versus
+  production local128.
+- Actual layer-1 natural-M512 timing used eleven counter-rotated burst-five
+  samples. Production local128 is **5.060152 ms** and local256
+  **5.923671 ms**, a **17.065% regression with 0/11 wins**. Raw SHA-256 is
+  `34be54ca4e058a89dd8a42c0d1d988b228b3ad193a0118067b2c4ab41c215a2a`.
+- Cached rocprof names production at local128/VGPR88/SGPR128/LDS5632B/
+  scratch0 and candidate at local256/VGPR72/SGPR128/LDS5632B/scratch0. Lower
+  per-lane register use does not overcome the wider-workgroup scheduling cost.
+  Trace SHA-256 is
+  `4d1d72d32ec0eb47b1fe2f407a7f4d779c22ddf335d5ac22a0bfe5210ccadb88`.
+- Removed the HIP export, wrapper selector, test parameter, and harness mode
+  before runtime integration. Production remains **542.088 tok/s** on
+  local128. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`.

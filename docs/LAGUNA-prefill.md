@@ -718,8 +718,9 @@ Immediate execution queue:
    byte-neutral Q6 qmicro and direct Q4 decode, then split the current trace by
    Q4/Q6 shape and pursue a counter-directed exact schedule that reduces Q6
    route-tile rereads without the rejected K64 LDS/VGPR growth. Do not repeat
-   Q4 activation double buffering, Q6 local64, duplicate-decode row halves,
-   64-row Q4 accumulation, paired-scale metadata, or F32 partial spills.
+   Q4 activation double buffering, Q6 local64/local256 workgroup changes,
+   duplicate-decode row halves, 64-row Q4 accumulation, paired-scale metadata,
+   or F32 partial spills.
 2. Keep exact cached-metadata attention in production. Clean selector-unset
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
@@ -1558,6 +1559,23 @@ falls **175.802 -> 160.123 ms (-8.92%, 15.679 ms saved)**. Evidence:
 [`2026-07-26-gfx1151-laguna-attention-cached-meta-default.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json) ·
 [`2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json).
 
+Fortieth post-350 screen: **Q6 local256 workgroup widening rejected and
+removed before integration**. The candidate kept production's byte-neutral
+qmicro bytes, 64-column/64-row tile, one shared weight decode, 5,632-byte LDS
+footprint, and ordered K32 arithmetic. It assigned eight wave32 row groups
+instead of four, reducing each lane's F32 accumulator count from 32 to 16.
+This is distinct from the rejected local64 and K64-stage premises.
+
+The uneven/empty-expert CPU-reference gate passes, and the actual layer-1
+natural-M512 output is BF16-byte identical to local128. Eleven counter-rotated
+burst-five samples nevertheless regress **5.0602 -> 5.9237 ms (+17.07%,
+0/11 wins)**. Tracing shows local256 lowers VGPR **88 -> 72**, keeps
+LDS **5,632 B** and scratch zero, yet remains slower; workgroup widening does
+not produce useful additional latency hiding for this body. The HIP export,
+Python selector, test parameter, and harness mode were removed. Production
+remains local128. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json)
@@ -2268,6 +2286,7 @@ Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-selected-weight-traffic-ledger.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`
