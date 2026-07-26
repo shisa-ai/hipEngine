@@ -881,8 +881,8 @@ traces **493.509 tok/s**; absolute quality transfers unchanged at maximum KL
 **0.049542582** and **316/320** top-1
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json`).
 
-The production-shaped planar-qmicro Q6 selected-down leaf now has an admitted
-integer-WMMA consumer pending clean selector-unset publication. Four wave32
+The production-shaped planar-qmicro Q6 selected-down leaf now uses an admitted
+integer-WMMA gfx1151 production consumer. Four wave32
 groups own independent 16-row bands and issue two signed-int8 x unsigned-Q6
 16x16x16 fragments per K32 from the existing shared weight and compact D4
 activation caches. The body preserves the two K16 scales, `-32*sum(x)`
@@ -894,8 +894,10 @@ names template `<1,true,false,128,64,true,true,true,true,false,true,true>` at
 local128/VGPR96/SGPR128/LDS5120B/scratch0 versus the retained planar body's
 VGPR80. The wrapper selects it by default only when the already-constrained
 planar-qmicro row64 contract is active; other shapes retain packed-dot
-fallbacks
-(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`).
+fallbacks. Clean selector-unset 512/1K/4K improves
+**573.354/530.351/446.189 -> 576.137/543.213/459.054 tok/s** with
+deterministic tokens, exact positions, and complete allocation return
+(`benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-production.json`).
 
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate
