@@ -181999,3 +181999,30 @@ Vulkan local sizes verbatim will close the measured gap.
   passes materially reduce the state/workspace burden versus the already
   rejected K3072 dual gate/up twelve-pass body. It must win on actual Q4
   layers before runtime integration.
+
+## 2026-07-26 — Reject Q4 selected-down persistent K256
+
+- RED failed on the missing persistent wrapper. GREEN added an exact local64
+  diagnostic that assigns one workgroup to each `(expert, output64)` tile,
+  stages eight decoded K32 records (one K256 slab) in 20 KiB LDS, and carries
+  row-tile accumulators between four slabs through FP32 workspace. The focused
+  K1024 fixture and actual layer both preserve every BF16 output bit.
+- The first required actual-layer gate rejects the architecture decisively.
+  Natural pp512 layer 10 has 222 active experts and 303 row32 weight passes;
+  seven counter-rotated burst-three samples regress
+  **2.872974 -> 18.455975 ms (6.424x slower)** with zero mismatches.
+- The byte trade is unfavorable before occupancy tuning: three FP32 writes
+  plus three reads of the 5,120x3,072 accumulator plane and Q8 activation
+  rereads across 48 output tiles exceed the duplicate weight slabs removed.
+  Because the campaign requires a positive result on every actual shape, the
+  HIP export, Python wrapper, RED/GREEN fixture, and leaf harness are removed.
+- Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-persistent-k256-rejected.json`.
+  Production remains **559.290 tok/s**. The next bounded screen is a no-partial
+  Q4 MMQ64x64 body: local128 covers two row32 halves for one output64 tile and
+  shares decoded weights without materializing global partial accumulators.
+- The required kernel-lineage audit was attempted before implementation:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`; it remains
+  blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No
+  external kernel code was ported; the diagnostic derived only from the
+  current in-tree Q4 selected-prefill body.

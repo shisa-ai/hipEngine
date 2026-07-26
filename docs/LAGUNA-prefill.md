@@ -914,8 +914,14 @@ Immediate execution queue:
    **1.378x** row-tile reread is the next selected-down screen. A
    down-specific persistent K256 body is materially narrower than the rejected
    gate/up body: K1024 instead of K3072, one projection instead of two, and
-   four partial passes instead of twelve. It must pass actual Q4-layer timing
-   before any integration. Retire the pre-admission **78.27 ms/layer versus
+   four partial passes instead of twelve. That exact screen is now closed:
+   natural layer 10 regresses **2.872974 -> 18.455975 ms (6.424x slower)**
+   despite zero BF16 mismatches. Three FP32 writes plus three FP32 reads of the
+   full 5,120x3,072 accumulator plane, together with Q8 rereads across 48
+   output tiles, cost much more than the removed weight passes. The candidate
+   is fully removed. The next bounded Q4 screen is a no-partial MMQ64x64 body:
+   local128 maps two row32 halves onto one output64 tile and shares decoded
+   weights between them. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
 5. After down, revisit gate/up only from physical counters or a new
    cross-tile/expert schedule. The corrected requested-byte ledger already
