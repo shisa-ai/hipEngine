@@ -1724,6 +1724,23 @@ test, and harness surface was removed and production remains
 excluded from the evidence. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json).
 
+The next register-only streaming screen is also rejected and fully removed.
+The production 128x32/local128 direct-wave Q4 gate/up body prefetched its next
+decoded 40-byte T16 K32 record into registers while current dots executed.
+Unlike the rejected K64 stage, this changed no activation/weight LDS,
+barriers, resident bytes, output ownership, packed-dot/K order, or BF16
+boundary. The CPU-reference gate and actual-weight BF16 checksum pass.
+
+Nine counter-rotated actual layer-1 samples nevertheless regress the
+pack-inclusive leaf **6.802111 -> 7.270426 ms (+6.885%, 0/9 wins)**.
+Cached tracing holds LDS at 3,072 bytes and scratch at zero but raises VGPR
+**88 -> 104**. The second live decoded record therefore costs more occupancy
+and scheduling capacity than software overlap recovers. Every candidate
+kernel, wrapper, test, and harness surface was removed. Do not retry
+register-only K32 weight prefetch without a mechanism that keeps the
+production VGPR footprint. Evidence:
+[`2026-07-26-gfx1151-laguna-q4-wave-weight-prefetch-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-wave-weight-prefetch-rejected.json).
+
 The first post-546 structural screen is retained for long prompts. Projection
 and MoE capacity rises from M512 to M2048 while every attention and KV
 operation remains independently sliced at M128. A wide pending KV transaction
@@ -2396,6 +2413,8 @@ Do not repeat:
   `slc dlc` screen regress decisively;
 - Q6 K64 multi-stage synchronization: doubling live stages raises VGPR
   **88 -> 128**, doubles LDS, and regresses the traced family **14.54%**;
+- direct-wave Q4 register weight prefetch: the second decoded K32 record raises
+  VGPR **88 -> 104** and regresses the actual gate/up leaf **6.885%**;
 - Q6 paired-scale metadata decode: removing the duplicate FP16 multiplier load
   leaves the traced family flat/slower, so metadata traffic is not the limiter;
 - Q6 static-upper sentinel grids and launch-bounds occupancy hints: unused
