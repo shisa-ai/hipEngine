@@ -2322,7 +2322,7 @@ only the exact registered primitive remains. Evidence:
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json).
 Do not retry unchanged one-page ownership.
 
-### Post-one-page selection: exact gated single-page global attention
+### Post-one-page primitive: exact gated single-page global attention
 
 The independent residual composition is the one-page body plus the standalone
 global softplus gate, not another address-only owner. Current two-order traces
@@ -2334,15 +2334,24 @@ context; its generic global inclusive window improved **9.884%** and all clean
 mechanical contexts passed, although the removed all-global/SWA/head bundle
 failed its category TTFT gate.
 
-Select a new exact key:
+The exact key is now separately registered:
 `hip_gfx1100/laguna_attention_decode+attention_gate/bf16/
-global_single_page_softplus_bf16_spans`. Start from the admitted page-zero body
-and permit only non-null gate/gated-output arguments, an unchanged F32 context
-store, and D15's exact softplus/multiply/BF16 epilogue. Preserve both page-zero
-K/V translations, the live<=256 guard, all `KVLiveSpans` fields, local256/eight
-waves, five barriers, every attention operation, and dynamic LDS16,928. The
-primitive fallback is one-page attention plus the registered standalone gate;
-scalar+gate and live>=127 split-gated controls remain callable.
+global_single_page_softplus_bf16_spans`. Its body is mechanically generated from
+the admitted page-zero primitive and adds only non-null gate/gated-output
+arguments, an unchanged F32 context store, and D15's exact softplus/multiply/
+BF16 epilogue. Both page-zero K/V translations, the live<=256 guard, all
+`KVLiveSpans` fields, local256/eight waves, five barriers, every attention
+operation, and dynamic LDS16,928 remain unchanged. The primitive fallback is
+one-page attention plus the registered standalone gate; scalar+gate and
+live>=127 split-gated controls remain callable.
+
+Focused synthetic/CPU admission and all **12 global layers x live70/126** preserve
+both F32 context and BF16 gated bytes. The frozen layer0/44 inclusive event/wall
+screen improves every row by **9.53-14.57%**. Integrated Clang-22 codegen is
+**1,181 instructions / 5,756 B**, logical VGPR32/SGPR54, private/spills0, and
+five barriers. Cache-only tracing names the distinct composite at local256,
+allocated VGPR32, dynamic LDS16,928, and scratch0 with no compiler. This is
+isolated primitive evidence, not runtime or full-model throughput evidence.
 
 Future runtime eligibility is narrower than primitive validity: full-attention
 c=1 at live<=126 after split selection is false. It replaces **12 attention +
@@ -2353,16 +2362,16 @@ saves **0.095009 ms/token** and models h32 **63.270 -> 63.653 tok/s (+0.605%)**,
 still **1.20%** below Vulkan. This is a planning ceiling, not a measured body or
 throughput claim.
 
-Primitive admission must mechanically prove source identity, F32/BF16 bytes
-against the unfused chain at synthetic live 1/70/126/256 plus live257 sentinel
-and all 12 actual layers, independent CPU quality, all-positive layer0/44
-inclusive event+wall, local256/VGPR<=40/dynamic-LDS16928/private-spills-scratch0,
-and a distinct cache-only trace. Only after a primitive commit may a separate
-false/default-off owner enter shared-weight 16-transition/live127 fallback and
-**12-candidate/zero-gate/666-kernel** tracing. Both clean process orders at
-short/512/1K/3968 and both complete 18-prompt orders retain the same no-rerun,
-no-pooled-waiver, category, E2E, prefill, and TTFT gates. Evidence:
-[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json).
+Primitive admission passes mechanical source identity, synthetic/CPU and
+all-actual F32/BF16 equality, all-positive endpoint timing, resource/codegen,
+and distinct cache-only trace gates. Runtime ownership remains absent. Only
+after the primitive commit may a separate false/default-off owner enter
+shared-weight 16-transition/live127 fallback and **12-candidate/zero-gate/
+666-kernel** tracing. Both clean process orders at short/512/1K/3968 and both
+complete 18-prompt orders retain the same no-rerun, no-pooled-waiver, category,
+E2E, prefill, and TTFT gates. Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json),
+[`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-correctness.json).
 
 ## 9. Do not chase without new evidence
 
@@ -2624,5 +2633,7 @@ trace gates pass, but clean order A regresses kernel sum **0.0949%** and span
 canonical **63.270 tok/s / 678 kernels** is unchanged. Post-rejection ranking
 selects a materially new global-only composition: append D15's exact softplus/
 RNE-BF16 epilogue to the admitted page-zero body. A zero-increment epilogue
-ceiling contracts **678 -> 666 kernels/token** and models **63.653 tok/s**; this
-gated body remains design-only.
+ceiling contracts **678 -> 666 kernels/token** and models **63.653 tok/s**. The
+gated primitive is now admitted after exact synthetic/CPU/all-12-layer,
+all-positive endpoint, codegen, and cache-only trace gates, but runtime ownership
+and the canonical **63.270 tok/s / 678-kernel** topline remain unchanged.

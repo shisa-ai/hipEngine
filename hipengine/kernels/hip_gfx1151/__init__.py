@@ -146,6 +146,11 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "global_context_single_page_spans",
         ),
         (
+            "laguna_attention_decode+attention_gate",
+            "bf16",
+            "global_single_page_softplus_bf16_spans",
+        ),
+        (
             "laguna_attention_decode",
             "bf16",
             "global_context_split_exact_spans",
