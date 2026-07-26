@@ -13,6 +13,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q8_1_mmq_ds4_pack_bf16,
     gguf_q8_1_mmq_ds4_pack_bf16_d4x3,
     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3,
+    gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3,
     gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
@@ -142,6 +143,15 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="bf16",
         )
         is gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="silu_mul_dual+activation_quant",
+            quant="q8_1_ds4x3_f32",
+            variant="bf16",
+        )
+        is gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3
     )
     assert (
         resolve(
@@ -622,6 +632,105 @@ def test_q8_1_mmq_ds8_f32_halves_quant_groups_without_more_bytes() -> None:
     )
     assert packed.nbytes == rows * (hidden // 128) * 160
     assert relative_l2 < d4_relative_l2
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("residual_passes", [1, 3])
+def test_q8_1_mmq_dual_silu_pack_is_byte_exact_to_unfused(
+    residual_passes: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+        build_paro_silu,
+        silu_mul_dual_out_bf16,
+    )
+
+    rows, hidden = 3, 512
+    gate = np.linspace(-18.0, 18.0, rows * hidden, dtype=np.float32).reshape(
+        rows,
+        hidden,
+    )
+    up = np.cos(
+        np.arange(rows * hidden, dtype=np.float32).reshape(rows, hidden)
+        * np.float32(0.03125)
+    ) * np.float32(37.0)
+    gate_up_f32 = np.ascontiguousarray(np.concatenate((gate, up), axis=1))
+    gate_up_bits = gate_up_f32.view(np.uint32)
+    gate_up_bf16 = np.ascontiguousarray(
+        (
+            (
+                gate_up_bits
+                + np.uint32(0x7FFF)
+                + ((gate_up_bits >> 16) & np.uint32(1))
+            )
+            >> 16
+        ).astype(np.uint16)
+    )
+    packed_nbytes = (
+        residual_passes * rows * (hidden // 128) * 160
+    )
+    reference = np.zeros(packed_nbytes, dtype=np.uint8)
+    candidate = np.zeros_like(reference)
+    runtime = get_hip_runtime()
+    pack_library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    silu_library = build_paro_silu(load=True)
+
+    bufs = []
+    try:
+        gate_up_dev = malloc(gate_up_bf16.nbytes, runtime=runtime)
+        intermediate_dev = malloc(rows * hidden * 2, runtime=runtime)
+        reference_dev = malloc(reference.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate.nbytes, runtime=runtime)
+        bufs.extend(
+            (gate_up_dev, intermediate_dev, reference_dev, candidate_dev)
+        )
+        copy_host_to_device(
+            gate_up_dev,
+            host_array_ptr(gate_up_bf16),
+            runtime=runtime,
+        )
+        silu_mul_dual_out_bf16(
+            gate_up_dev.ptr,
+            intermediate_dev.ptr,
+            rows,
+            hidden,
+            library=silu_library,
+            runtime=runtime,
+        )
+        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+            intermediate_dev.ptr,
+            reference_dev.ptr,
+            rows,
+            hidden,
+            residual_passes=residual_passes,
+            library=pack_library,
+            runtime=runtime,
+        )
+        gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
+            gate_up_dev.ptr,
+            candidate_dev.ptr,
+            rows,
+            hidden,
+            residual_passes=residual_passes,
+            library=pack_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(reference),
+            reference_dev,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(candidate),
+            candidate_dev,
+            runtime=runtime,
+        )
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(candidate, reference)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
