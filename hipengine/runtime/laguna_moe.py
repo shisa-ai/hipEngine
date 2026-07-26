@@ -103,6 +103,24 @@ _MMQ32_ROWS = 32
 _MMQ64_ROWS = 64
 
 
+def _should_fuse_grouped_weighted_sum(
+    *,
+    selected_down_mode: str,
+    tokens: int,
+    use_mmq_down: bool,
+) -> bool:
+    """Defer sorted-lane reduction when the exact shared-add composite applies."""
+
+    return (
+        use_mmq_down
+        or selected_down_mode == "grouped_smallm_fused"
+        or (
+            selected_down_mode == "adaptive_grouped_smallm_fused"
+            and tokens >= _GROUPED_SMALLM_MIN_ROWS
+        )
+    )
+
+
 def resolve_laguna_selected_gate_up_mode(
     backend: str,
     requested: str | None = None,
@@ -2059,31 +2077,33 @@ def run_laguna_moe_rows(
             q6_tile_rows=mmq_down_q6_tile_rows,
         )
     )
-    use_grouped_fused_combine = selected_down_mode == "grouped_smallm_fused" or (
-        selected_down_mode == "adaptive_grouped_smallm_fused"
-        and tokens >= _GROUPED_SMALLM_MIN_ROWS
+    use_grouped_fused_combine = _should_fuse_grouped_weighted_sum(
+        selected_down_mode=selected_down_mode,
+        tokens=tokens,
+        use_mmq_down=use_mmq_down,
     )
     use_grouped_smallm = compact_gate_up or selected_down_mode == "grouped_smallm" or (
         selected_down_mode == "adaptive_grouped_smallm"
         and tokens >= _GROUPED_SMALLM_MIN_ROWS
     ) or use_grouped_fused_combine
     if use_mmq_down:
-        plan.grouped_weighted_sum(
-            scratch.expert_down.ptr,
-            scratch.grouped_sorted_weights.ptr,
-            scratch.grouped_sorted_lanes.ptr,
-            scratch.grouped_lane_to_row.ptr,
-            scratch.routed_output.ptr,
-            tokens,
-            plan.top_k,
-            plan.hidden_size,
-            **_stage_kwargs(
-                "grouped_weighted_sum",
-                libraries,
-                stream=stream,
-                runtime=runtime,
-            ),
-        )
+        if not use_grouped_fused_combine:
+            plan.grouped_weighted_sum(
+                scratch.expert_down.ptr,
+                scratch.grouped_sorted_weights.ptr,
+                scratch.grouped_sorted_lanes.ptr,
+                scratch.grouped_lane_to_row.ptr,
+                scratch.routed_output.ptr,
+                tokens,
+                plan.top_k,
+                plan.hidden_size,
+                **_stage_kwargs(
+                    "grouped_weighted_sum",
+                    libraries,
+                    stream=stream,
+                    runtime=runtime,
+                ),
+            )
     elif use_grouped_smallm:
         _launch_grouped_smallm_down(
             layer,

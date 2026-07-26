@@ -717,7 +717,10 @@ Immediate execution queue:
    sustains only **135.53 GB/s / 61.32%** of the existing read anchor. Keep
    byte-neutral Q6 qmicro and direct Q4 decode, then split the current trace by
    Q4/Q6 shape and pursue a counter-directed exact schedule that reduces Q6
-   route-tile rereads without the rejected K64 LDS/VGPR growth. Do not repeat
+   route-tile rereads without the rejected K64 LDS/VGPR growth. The exact MMQ
+   grouped-combine reuse is now the default candidate: it removes 47 launches
+   and the routed-output round trip, with a clean production publication next.
+   Do not repeat
    Q4 activation double buffering, Q6 local64/local256 workgroup changes,
    Q6 128-column/local256 widening, Q4-down 128-column widening,
    static-upper sentinel grids, launch-bounds occupancy hints, duplicate-decode
@@ -1629,6 +1632,29 @@ candidate surface were removed. Production remains **542.088 tok/s**.
 Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json).
 
+Forty-fourth post-350 screen: **exact MMQ grouped-combine reuse retained as the
+default candidate**. The active MMQ route used the exact sorted-lane weighted
+sum before launching the shared expert, materialized a 512x3072 BF16
+`routed_output`, then launched a separate BF16 add. The already registered
+grouped-combine composite preserves that boundary exactly—ten slot-order F32
+FMAs, selected BF16 rounding, shared BF16 add, final BF16 rounding—so MMQ can
+defer its reduction until the shared output is ready. The primitive unfused
+chain remains registered.
+
+RED failed on the missing MMQ fusion policy. GREEN passes both actual
+production-shape Q4_K/Q6_K MoE oracle cases byte-for-byte against a
+forced-unfused MMQ path. Seven counter-rotated pp512 pairs preserve complete
+logits/hidden/KV/token/cursor state; **4/7** candidate pairs win, median paired
+wall improves **3.687 ms**, and paired geometric throughput improves
+**0.302%**. The noisy absolute medians cross, so that alone is not used as the
+claim. An independent traced pair proves the physical win: dispatches fall
+**1,887 -> 1,840**, pp512 kernel span **943.200 -> 936.635 ms (-6.565 ms)**,
+kernel sum **929.664 -> 924.797 ms (-4.867 ms)**, and all 47 sparse-layer
+selected-sum plus add pairs become 47 composite calls. The candidate is
+retained as default; clean selector-unset 512/1K/4K publication is the next
+gate, so the production headline remains **542.088 tok/s** here. Evidence:
+[`2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json)
@@ -2342,6 +2368,7 @@ Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`

@@ -181042,3 +181042,39 @@ Vulkan local sizes verbatim will close the measured gap.
   is effectively free; removed both harness controls plus every lb2 export,
   wrapper, and test surface. Production remains **542.088 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`.
+
+## 2026-07-26 — Retain exact MMQ selected-down grouped combine
+
+- Production tracing decomposed the post-down chain: 47 sorted-lane weighted
+  sums take **8.735 ms**, while 95 BF16 adds across attention/MoE take
+  **3.153 ms**. The active MMQ path had stopped using the exact grouped-combine
+  composite when selected down moved away from grouped-small-M, even though it
+  owns the same sorted-lane output and BF16 boundary.
+- RED required an MMQ fusion decision and failed because
+  `_should_fuse_grouped_weighted_sum` did not exist. GREEN defers the MMQ
+  weighted reduction until shared-down is ready, then uses the already
+  registered exact composite. The mandatory `weighted_lanes_sum` plus
+  `bf16_add` primitive fallback remains. Both production-shape Q4_K and Q6_K
+  MoE oracle cases are BF16-byte identical to a forced-unfused MMQ run; the
+  complete Laguna MoE GPU file reports **10 passed, 2 skipped**, and two runner
+  policy nodes pass.
+- Seven counter-rotated one-owner pp512 pairs preserve next token/logit, full
+  logits, final and post-layer hidden state, KV, and cursor in all seven pairs.
+  Candidate wins **4/7**; median paired wall changes by **-3.687 ms**, mean by
+  **-2.846 ms**, and paired geometric throughput is **1.003016x (+0.302%)**.
+  Absolute medians cross because of within-run drift and are not used as the
+  performance claim. Raw SHA-256 is
+  `4f60282a311498e22a66690d3ecb43cfefee388b1b81b457aa387c98c6a204db`.
+- Cached rocprof on one fixed-order A/B observes the intended physical change.
+  Unfused -> fused pp512 dispatches fall **1,887 -> 1,840**, kernel span
+  **943.200 -> 936.635 ms (-6.565 ms, -0.696%)**, and kernel sum
+  **929.664 -> 924.797 ms (-4.867 ms, -0.524%)**. The 47 weighted-sum calls and
+  47 MoE adds become 47 composite calls; the 48 attention-residual adds remain.
+  Trace throughput is **539.856 -> 544.098 tok/s (+0.786%)** with exact state.
+  Trace SHA-256 is
+  `21a4db7b9808b65347af9381185f7e9781126e26f845f50593a99a3584e3f20e`.
+- Retained the composite on the active MMQ route and added a reproducible A/B
+  harness. Clean selector-unset 512/1K/4K timing and the all-family trace remain
+  the next publication unit, so production stays **542.088 tok/s** in this
+  candidate commit. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`.

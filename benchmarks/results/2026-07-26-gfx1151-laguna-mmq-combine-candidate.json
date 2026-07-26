@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T03:11:19+00:00",
+  "kind": "hipengine_laguna_mmq_combine_candidate",
+  "status": "retained_default_pending_clean_publication",
+  "repo_revision": "c334712ec004a9d9403b1ea61b68ac415aacae08",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "shape": {
+    "rows": 512,
+    "top_k": 10,
+    "hidden_size": 3072,
+    "sparse_layers": 47,
+    "matrix_chunk": 512,
+    "attention_chunk": 128
+  },
+  "candidate": {
+    "baseline": "MMQ selected down -> sorted-lane weighted sum into BF16 routed_output -> shared projections -> BF16 add",
+    "candidate": "MMQ selected down -> shared projections -> exact sorted-lane weighted sum plus shared BF16 add composite",
+    "math": "Preserve ten slot-order F32 FMAs, round the selected sum to BF16, add the BF16 shared output, then round the final output to BF16.",
+    "physical_change": "Reuse the already registered exact grouped-combine primitive on the MMQ route, eliminating one 512x3072 BF16 write/read round trip and one launch in every sparse layer.",
+    "fallback": "The registered weighted-lanes sum and BF16 add primitives remain the numerically equivalent unfused chain."
+  },
+  "correctness": {
+    "red": "The MMQ-combine policy test failed because the runtime had no _should_fuse_grouped_weighted_sum decision and always materialized routed_output before shared projections.",
+    "green": "The policy test passes and both production-shape Q4_K and Q6_K MoE oracle cases are BF16-byte identical to a forced-unfused MMQ combine.",
+    "full_model_exact_pairs": 7,
+    "full_model_total_pairs": 7,
+    "state_fields": [
+      "next_token",
+      "next_token_logit",
+      "full logits",
+      "final hidden",
+      "post-layer hidden",
+      "KV cache",
+      "cursor"
+    ],
+    "prior_composite_category_evidence": "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-retained.json",
+    "tests": {
+      "laguna_moe_gpu": "10 passed, 2 skipped",
+      "runner_policy": "2 passed"
+    }
+  },
+  "matched_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_mmq_combine_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-mmq-combine-ab.json",
+    "protocol": "seven counter-rotated one-owner pp512 pairs after one 128-row warmup per mode; model load excluded",
+    "unfused_median_tok_s": 534.4170224689599,
+    "fused_median_tok_s": 533.7546486845839,
+    "unfused_median_wall_ms": 958.0533150583506,
+    "fused_median_wall_ms": 959.2422309797257,
+    "candidate_wins": 4,
+    "median_paired_wall_change_ms": -3.6871960619464517,
+    "mean_paired_wall_change_ms": -2.846350028578724,
+    "paired_geometric_throughput_ratio": 1.0030164328261166,
+    "paired_geometric_throughput_change_percent": 0.3016432826116633,
+    "raw_sha256": "4f60282a311498e22a66690d3ecb43cfefee388b1b81b457aa387c98c6a204db",
+    "interpretation": "Absolute medians cross because of within-run drift; the predeclared paired view is positive but noisy. Retention relies on exactness plus the independently traced physical sub-window improvement."
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-mmq-combine-ab-rocprof -- .venv/bin/python3 -u scripts/laguna_mmq_combine_ab.py --repetitions 1 --require-cached-build --output /tmp/laguna-mmq-combine-ab-rocprof.json",
+    "unfused_pp512": {
+      "dispatches": 1887,
+      "kernel_span_ms": 943.199809,
+      "kernel_sum_ms": 929.663939,
+      "weighted_inverse_calls": 47,
+      "weighted_inverse_ms": 0.093374,
+      "weighted_sum_calls": 47,
+      "weighted_sum_ms": 8.718803,
+      "bf16_add_calls": 95,
+      "bf16_add_ms": 3.159369
+    },
+    "fused_pp512": {
+      "dispatches": 1840,
+      "kernel_span_ms": 936.634692,
+      "kernel_sum_ms": 924.796591,
+      "weighted_inverse_calls": 47,
+      "weighted_inverse_ms": 0.093499,
+      "weighted_sum_shared_add_calls": 47,
+      "weighted_sum_shared_add_ms": 9.694673,
+      "bf16_add_calls": 48,
+      "bf16_add_ms": 1.67378
+    },
+    "dispatches_removed": 47,
+    "kernel_span_change_ms": -6.565117,
+    "kernel_span_change_percent": -0.6960473207644591,
+    "kernel_sum_change_ms": -4.867348,
+    "kernel_sum_change_percent": -0.5235599441703154,
+    "trace_pair_tok_s": {
+      "unfused": 539.8564599755257,
+      "fused": 544.0975975608815,
+      "change_percent": 0.785604674536633
+    },
+    "trace_sha256": "21a4db7b9808b65347af9381185f7e9781126e26f845f50593a99a3584e3f20e",
+    "trace_child_sha256": "5d4a54c291efea45ccc97b54dfe8e9f5c2c105e990ce5be9211e09a0172b2534"
+  },
+  "decision": {
+    "retained": true,
+    "default_changed": true,
+    "reason": "The existing composite is BF16-byte exact, seven complete-state pairs are exact, the paired wall view is positive, and tracing proves 47 launches plus the routed-output round trip disappear while kernel span and sum both fall.",
+    "production_prefill_before_tok_s": 542.08826,
+    "headline_changed": false,
+    "next_gate": "Run the clean selector-unset 512/1K/4K production packet and cached all-family trace from this committed revision before changing the 542.088 tok/s headline."
+  }
+}
