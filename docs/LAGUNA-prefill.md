@@ -943,7 +943,19 @@ Immediate execution queue:
 5. After down, revisit gate/up only from physical counters or a new
    cross-tile/expert schedule. The corrected requested-byte ledger already
    reaches **73.37%** of the read anchor, so a local body tweak must explain
-   how it reduces route-tile rereads or raises measured bandwidth.
+   how it reduces route-tile rereads or raises measured bandwidth. The first
+   such byte-removal screen is now closed. A 64x64 body decoded each K256
+   weight slab once and kept its F32 partial plane in LDS; it is BF16-byte
+   exact but traces at **248 VGPR / 39,936 B LDS** and regresses the actual
+   layer-1 pack-inclusive leaf **6.628 -> 30.191 ms (4.56x slower)**. Removing
+   the slab partial plane and carrying all **32 F32 accumulators/lane** in
+   registers improves the candidate to **11.433 ms**, still **66.5% slower**
+   than production because the 64-row route expands padding and doubles
+   column workgroups. Both implementations and every diagnostic hook were
+   removed. Reopen cross-row sharing only if the scheduler avoids per-expert
+   64-row padding as well as the second-launch/local256 costs already closed
+   above. Evidence:
+   [`2026-07-26-gfx1151-laguna-gate-k256-ldsacc-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-k256-ldsacc-rejected.json).
 6. **Complete:** M2048 is the gfx1151 default while attention remains M128.
    Matched M512 -> M2048 improves 1K/4K **5.420%/5.752%**, keeps pp512 within
    **-0.358%**, and passes full-logit quality at max relative KL
