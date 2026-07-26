@@ -182541,3 +182541,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `162a38c635298f3df818372ec68196c2956e3a1fd5d79ba8d3c6fa4cd68c16b2`.
   A clean cached `rocprofv3` trace remains required before promotion; the
   retained profiler intentionally refuses this dirty candidate tree.
+
+## 2026-07-26 — Promote gfx1151 Q6 qmicro permute decode
+
+- Clean cached tracing at candidate revision `d5651a86f` executes the intended
+  production specialization on all **115** Q6 selected-down calls. The
+  demangled body ends in template selector `..., true, true, true, true,
+  true>`, confirming that the new permute selector—not the scalar fallback—
+  ran. `rocprofv3` reports **88 -> 80 VGPR**, unchanged 5,120 B LDS, and zero
+  scratch.
+- Across the identical 512/1K/4K trace, the selected Q6 body improves
+  **1,138.893 -> 1,124.852 ms (-1.23%, -14.041 ms)**. At pp512 the complete
+  selected Q4/Q6 down family improves **190.799 -> 189.049 ms (-0.92%)**.
+  The one-repeat traced topline is **573.434/531.237/447.441 tok/s**, with
+  exact 2930/95/7772 next tokens, exact final positions, and tracked
+  allocations returned to zero.
+- Trace SHA-256: child
+  `e2963dc3b51d72162f4c6c3d30b4227622b94c382cee3a4ee7da6abcb5e33fdf`,
+  raw CSV
+  `e4a723da541493f0e50490c7bde32fd37bddbd356c8f694d45c6ae2630e3fa08`,
+  summary
+  `a4d1cd393d4be59b243388c0cd6006c16bce212ee85cbaf318489d29dab1ccf2`.
+- Promotion adds gfx1151 `LAGUNA_Q6_QMICRO_PERMUTE`, constructor/profile
+  rollback, and plan propagation. The selector is dependency-gated on the
+  qmicro/compact/half-row/skip-padded/row64 body. A focused bundle exposed a
+  latent fallback bug where existing production-only activation flags reached
+  explicit row32 rollback modes; the repair scopes every such flag to row64.
+  The failed Q6 production-shape oracle plus resolver and owned-session tests
+  pass after the repair, while all other tests in the completed focused bundle
+  had already passed.
+- This logical unit promotes dispatch only. A clean selector-unset
+  three-repeat 512/1K/4K publication remains required before changing the
+  production headline.

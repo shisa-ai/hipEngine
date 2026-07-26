@@ -115,6 +115,11 @@ LAGUNA_Q6_HALF_ROW_ACTIVATION = True
 # Padded rows are never consumed by the guarded dot/store loops. Avoid writing
 # zero Q8 bytes and recomputing zero K16 sums for those slots.
 LAGUNA_Q6_SKIP_PADDED_ACTIVATION = True
+# Two byte-permute gathers replace the scalar four-column qmicro unpack while
+# preserving the byte-neutral resident layout and exact integer-dot order.
+# The actual-weight leaf improves 2.67%, the complete model wins 5/7 matched
+# pairs, and cached tracing reduces the selected Q6 body with no spills.
+LAGUNA_Q6_QMICRO_PERMUTE = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
@@ -378,6 +383,7 @@ __all__ = [
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_Q6_QMICRO",
+    "LAGUNA_Q6_QMICRO_PERMUTE",
     "LAGUNA_ROUTER_LOGITS_MODE",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",

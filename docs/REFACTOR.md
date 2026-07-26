@@ -1373,6 +1373,22 @@ should be boring.
   A/B evidence remains positive; the one-later-selected-down checkpoint is
   still open.
 
+## Laguna Q6 qmicro-permute rollback
+
+- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_QMICRO_PERMUTE` and optional
+  `q6_qmicro_permute=False` session/profile rollback. It is constrained to
+  the exact qmicro/compact/half-row/skip-padded/64-row Q6 body and changes
+  neither resident bytes nor arithmetic order.
+- The actual layer-1 leaf is BF16-byte exact and improves
+  **4.872 -> 4.741 ms (-2.67%)**. Seven complete-state pp512 pairs improve
+  **567.998 -> 569.563 tok/s (+0.276%, 5/7 wins)**. Cached tracing observes
+  all **115** intended calls with scratch 0 and reduces their total
+  **1,138.893 -> 1,124.852 ms (-1.23%)** across 512/1K/4K.
+- Keep the rollback through clean selector-unset publication and one later
+  selected-down checkpoint. Then remove the constructor/profile override
+  while retaining the backend capability and scalar-unpack fallback for
+  unmeasured backends and non-production template shapes.
+
 ## Laguna source-F16 boundary-fusion rollback
 
 - Added 2026-07-26 with session-local

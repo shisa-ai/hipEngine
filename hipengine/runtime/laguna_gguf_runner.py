@@ -1576,6 +1576,7 @@ class LagunaGGUFResidentSession:
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
         q6_skip_padded_activation: bool | None = None,
+        q6_qmicro_permute: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
@@ -1708,6 +1709,20 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "Q6 skipping padded activation rows requires half-row staging"
             )
+        self.q6_qmicro_permute = bool(
+            self.q6_skip_padded_activation
+            and backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_QMICRO_PERMUTE",
+                False,
+            )
+            if q6_qmicro_permute is None
+            else q6_qmicro_permute
+        )
+        if self.q6_qmicro_permute and not self.q6_skip_padded_activation:
+            raise ValueError(
+                "Q6 qmicro permute decode requires padded-row skipping"
+            )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
         self.fuse_selected_silu_pack = bool(
@@ -1817,6 +1832,7 @@ class LagunaGGUFResidentSession:
                 q6_skip_padded_activation=(
                     self.q6_skip_padded_activation
                 ),
+                q6_qmicro_permute=self.q6_qmicro_permute,
             )
             self.prefill_scratch_plan = LagunaPrefillScratchPlan.build(
                 config,
