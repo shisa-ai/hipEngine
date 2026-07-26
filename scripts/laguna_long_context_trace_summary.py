@@ -168,11 +168,63 @@ def _attention_family(name: str) -> str | None:
     return family if family in {"global_attention", "swa_attention"} else None
 
 
-def _trace_row_family(rows: Sequence[Mapping[str, Any]], index: int) -> str:
+def _dense_initial_blas_attention_families(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[int, str]:
+    """Identify the bounded widen/QK/softmax/PV composite structurally."""
+
+    families: dict[int, str] = {}
+    for index, row in enumerate(rows):
+        name = str(row["Kernel_Name"])
+        if "laguna_dense_initial_cache_bf16_to_f32_kernel<" not in name:
+            continue
+        family = (
+            "global_attention"
+            if "kernel<true>" in name
+            else "swa_attention"
+        )
+        softmax_index = index + 9
+        final_index = index + 17
+        if final_index >= len(rows):
+            raise ValueError("dense-initial BLAS attention trace is truncated")
+        qk_names = [
+            str(rows[target]["Kernel_Name"])
+            for target in range(index + 1, softmax_index)
+        ]
+        softmax_name = str(rows[softmax_index]["Kernel_Name"])
+        pv_names = [
+            str(rows[target]["Kernel_Name"])
+            for target in range(softmax_index + 1, final_index + 1)
+        ]
+        if (
+            len(qk_names) != 8
+            or len(pv_names) != 8
+            or not all(name.startswith("Cijk_") for name in (*qk_names, *pv_names))
+            or "laguna_dense_initial_causal_softmax_f32_kernel" not in softmax_name
+        ):
+            raise ValueError(
+                "dense-initial BLAS attention trace does not match "
+                "widen + 8 QK + softmax + 8 PV"
+            )
+        for target in range(index, final_index + 1):
+            if target in families:
+                raise ValueError("dense-initial BLAS attention composites overlap")
+            families[target] = family
+    return families
+
+
+def _trace_row_family(
+    rows: Sequence[Mapping[str, Any]],
+    index: int,
+    *,
+    attention_families: Mapping[int, str] | None = None,
+) -> str:
     """Classify one row, including the otherwise ambiguous final Q6 LM head."""
 
     if index < 0 or index >= len(rows):
         raise IndexError("trace row index out of range")
+    if attention_families is not None and index in attention_families:
+        return str(attention_families[index])
     if index + 2 < len(rows):
         next_name = str(rows[index + 1]["Kernel_Name"])
         final_name = str(rows[index + 2]["Kernel_Name"])
@@ -234,6 +286,7 @@ def _segment_requests(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
 
 def _summarize_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
     rows = list(segment["rows"])
+    attention_families = _dense_initial_blas_attention_families(rows)
     kernel_sum = sum(_duration_ns(row) for row in rows)
     if kernel_sum <= 0:
         raise ValueError("profile segment kernel sum must be positive")
@@ -246,7 +299,11 @@ def _summarize_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
     # symbol is also used by ordinary quantized projections. Synthetic/partial
     # traces without both argmax stages retain normal symbol classification.
     for index, row in enumerate(rows):
-        family = _trace_row_family(rows, index)
+        family = _trace_row_family(
+            rows,
+            index,
+            attention_families=attention_families,
+        )
         family_calls[family] += 1
         family_duration[family] += _duration_ns(row)
     if sum(family_duration.values()) != kernel_sum:
@@ -316,9 +373,12 @@ def _aggregate_segments(segments: Sequence[Mapping[str, Any]]) -> dict[str, Any]
 
 
 def _trace_resources(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
+    attention_families = _dense_initial_blas_attention_families(rows)
     resources = {}
-    for row in rows:
-        family = _attention_family(str(row["Kernel_Name"]))
+    for index, row in enumerate(rows):
+        family = attention_families.get(index)
+        if family is None:
+            family = _attention_family(str(row["Kernel_Name"]))
         if family is None:
             continue
         resources.setdefault(family, {field: str(row[field]) for field in _RESOURCE_FIELDS})
@@ -326,10 +386,15 @@ def _trace_resources(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
 
 
 def _family_resources(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    attention_families = _dense_initial_blas_attention_families(rows)
     resources: dict[tuple[str, str], dict[str, Any]] = {}
     for index, row in enumerate(rows):
         name = str(row["Kernel_Name"])
-        family = _trace_row_family(rows, index)
+        family = _trace_row_family(
+            rows,
+            index,
+            attention_families=attention_families,
+        )
         key = (family, name)
         item = resources.setdefault(
             key,

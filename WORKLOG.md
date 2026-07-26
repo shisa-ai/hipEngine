@@ -183131,3 +183131,19 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json`.
 - The required lineage check remains unavailable because the configured
   read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+
+## 2026-07-27 — Classify composite BLAS attention in Laguna traces
+
+- Clean revision `dd3ad6847` publishes selector-unset
+  **623.050/563.399/462.430 tok/s** at 512/1K/4K, with deterministic tokens
+  **2930/95/7772**, exact final positions, and complete allocation recovery.
+  The previous production row was **577.396/545.366/459.716 tok/s**.
+- The cached trace confirmed the route but the existing summary initially
+  counted generic `Cijk_*` attention contractions as source-F16 or `other`.
+  The summarizer now recognizes the fail-closed structural sequence
+  **widen + 8 QK + softmax + 8 PV** and attributes each composite to global
+  or SWA according to the widen specialization.
+- Focused trace-summary tests pass (**3 passed**). Repaired pp512 attribution
+  reports **82.763 ms** total attention versus the prior **143.669 ms**,
+  with 660 global and 1,980 SWA calls. The clean profiled request has
+  **895.668 ms** kernel span and **1,141.607 ms** inclusive kernel sum.

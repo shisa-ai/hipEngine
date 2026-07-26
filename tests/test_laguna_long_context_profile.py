@@ -155,6 +155,43 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
     assert aggregate["512"]["families"]["embedding"]["calls_per_pass"] == [4]
 
 
+def test_lpf5_trace_attributes_structural_blas_attention_composite() -> None:
+    rows = [
+        _row(0, "gguf_q4_k_embedding_bf16_out_kernel", 0, 10, grid_y=128),
+        _row(
+            1,
+            "void laguna_dense_initial_cache_bf16_to_f32_kernel<true>",
+            10,
+            2,
+        ),
+    ]
+    timestamp = 12
+    for dispatch in range(2, 10):
+        rows.append(_row(dispatch, "Cijk_qk", timestamp, 3))
+        timestamp += 3
+    rows.append(
+        _row(
+            10,
+            "laguna_dense_initial_causal_softmax_f32_kernel",
+            timestamp,
+            5,
+        )
+    )
+    timestamp += 5
+    for dispatch in range(11, 19):
+        rows.append(_row(dispatch, "Cijk_pv", timestamp, 4))
+        timestamp += 4
+    rows.append(_row(19, "argmax_stage2_kernel", timestamp, 1))
+
+    summary = _summarize_segment(
+        {"length": 128, "chunks": 1, "rows": rows}
+    )
+    assert summary["families"]["global_attention"]["calls"] == 18
+    assert summary["families"]["global_attention"]["duration_ns"] == 63
+    assert summary["families"]["source_f16_projection"]["calls"] == 0
+    assert summary["attention_duration_ns"] == 63
+
+
 @pytest.mark.parametrize(
     ("kernel_name", "family"),
     [
