@@ -33,10 +33,6 @@ LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
 # full state, cached one-call tracing, both clean context orders, and both
 # complete category process orders. Explicit False restores registered local128.
 LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = True
-# Exact standalone Q6 local32 arithmetic is admitted, but full-model clean and
-# category gates have not yet decided promotion. Explicit True enables only the
-# gfx1100 c=1 BF16 same-ABI registry path; False preserves local128 pack8.
-LAGUNA_Q6_LOCAL32_STANDALONE = False
 # Clean P0 leaf/full-state/context/category evidence admits one exact local32
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
@@ -138,7 +134,6 @@ __all__ = [
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
-    "LAGUNA_Q6_LOCAL32_STANDALONE",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
