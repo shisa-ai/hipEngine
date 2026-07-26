@@ -85,6 +85,45 @@
     "lifecycle_scope": "exact through 4K; repeated 128K remains blocked"
   },
   "leaf_evidence": "benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json",
+  "rocprof": {
+    "revision": "76c963f2a04677f7e0c590150a0c03eb6614139c",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file q6-hoist-production -- env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-hoist-production-trace-child.json",
+    "traced_512_1024_4096_tok_s": [
+      578.5401477043445,
+      545.7526401277071,
+      461.17396144492926
+    ],
+    "pp512": {
+      "dispatches": 1696,
+      "kernel_sum_ms": 1200.19626,
+      "kernel_span_ms": 884.1288,
+      "synchronized_wall_ms": 884.9861189955845,
+      "wall_outside_kernel_span_ms": 0.8573189955845,
+      "selected_q4_gate_up_ms": 341.010811,
+      "selected_q4_q6_down_ms": 180.656281,
+      "q6_integer_wmma_hoist_ms": 108.232885,
+      "global_attention_ms": 23.518856,
+      "swa_attention_ms": 120.150565,
+      "source_f16_projection_ms": 124.185338,
+      "dense_shared_quant_projection_ms": 94.565353,
+      "router_ms": 23.376193,
+      "remaining_ms": 292.732863
+    },
+    "q6_512_1024_4096": {
+      "calls": 115,
+      "duration_ms": 779.70867,
+      "previous_duration_ms": 792.625432,
+      "change_percent": -1.629617,
+      "local_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "child_sha256": "616f7d0eac0f9394a2455af65d693e3240d11505d22fdedb1a55228c4258b5e4",
+    "raw_trace_sha256": "f1ff68a7d59ecdaaf7406bc51db9c1e5fbe9ae86f2174158f14939da696a119c",
+    "summary_sha256": "b0a1d54cfa4e66e079c02d101a6271606a2bba461b5cf884bbd85289e116de2a"
+  },
   "raw": {
     "path": "/tmp/laguna-q6-wmma-hoist-production.json",
     "sha256": "fec8b67bbb87b504cf439ca2c587a5bbd15ed493dd3db8c9f5f13dbecd62290c"
@@ -93,6 +132,6 @@
     "production_retained": true,
     "headline_512_tok_s": 577.3956129018674,
     "target_700_reached": false,
-    "next_action": "refresh cached all-family trace, then screen result-metadata prefetch or a WMMA-specific zero-scratch K64 schedule"
+    "next_action": "screen an exact result-metadata lane broadcast before a WMMA-specific zero-scratch K64 schedule"
   }
 }

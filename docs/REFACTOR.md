@@ -1457,3 +1457,7 @@ should be boring.
   remove both one-purpose
   wrapper selectors and collapse the admitted hoisted specialization into the
   unconditional planar-row64 gfx1151 production route.
+- The refreshed family trace is now satisfied: the 115-call Q6 window improves
+  **792.625 -> 779.709 ms (-1.63%)** with unchanged resources. Selector
+  collapse is unblocked and should accompany the next accepted Q6 body or the
+  post-campaign cleanup, whichever comes first.
