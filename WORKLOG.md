@@ -182167,3 +182167,31 @@ Vulkan local sizes verbatim will close the measured gap.
   revision. The sysfs policy is restored to `auto`; production is unchanged.
   Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-clock-high-rejected.json`.
+
+## 2026-07-26 — Add exact MoE branch-concurrency candidate
+
+- The refreshed production trace leaves **53.257 ms** in dense/shared Q4/Q6
+  work. The shared expert reads the layer input and writes only shared scratch;
+  it is independent of router selection and routed gate/up/down until the
+  final combine. Added a default-off route that records the caller-stream
+  input dependency, executes the complete shared branch on a nonblocking
+  secondary stream, and makes the caller stream wait only before combine.
+  Both dependency events disable timing.
+- RED was the missing `shared_stream`/event contract on
+  `run_laguna_moe_rows`. GREEN passes the production-style Q4_K GPU
+  composition fixture with zero BF16 mismatches between sequential and
+  concurrent outputs. The broader pre-existing Q6_K parameter reaches an
+  incompatible baseline selector before this new route
+  (`compact_activation` requires qmicro/rowvec/tile64), so validation follows
+  the isolated-failure rule rather than changing unrelated Q6 coverage.
+- Focused validation:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle -k Q4_K`
+  and
+  `PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_long_context_profile.py`;
+  both pass. Python compilation and `git diff --check` also pass.
+- This is not a performance claim. The candidate remains default-off. The next
+  gate is a clean queue-matched production A/B with
+  `GPU_MAX_HW_QUEUES=2` in both arms, followed by complete-state equality and
+  a cached trace proving overlap if wall time is positive. Perfectly hiding
+  the entire shared family would move **559.554 -> 594.1 tok/s**, so a win
+  cannot close the 700 target alone.

@@ -533,6 +533,10 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     mmq_scratch = None
     mmq_parallel_scratch = None
     down_rowvec_scratch = None
+    concurrent_scratch = None
+    concurrent_stream = 0
+    concurrent_input_ready = 0
+    concurrent_output_ready = 0
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -896,6 +900,40 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(fused_silu_pack_actual),
             _f32_to_bf16_u16(down_q6_rows64_actual),
         )
+        runtime = _runtime()
+        concurrent_scratch = allocate_laguna_moe_scratch(
+            plan,
+            max_rows=3,
+        )
+        concurrent_stream = runtime.stream_create(nonblocking=True)
+        concurrent_input_ready = runtime.event_create(flags=0x2)
+        concurrent_output_ready = runtime.event_create(flags=0x2)
+        concurrent_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            concurrent_scratch,
+            rows=3,
+            selected_gate_up_mode=(
+                "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+            ),
+            selected_down_mode=(
+                "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+            ),
+            fuse_selected_silu_pack=True,
+            shared_stream=concurrent_stream,
+            shared_input_ready_event=concurrent_input_ready,
+            shared_output_ready_event=concurrent_output_ready,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        concurrent_actual = _read_bf16(
+            concurrent_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(concurrent_actual),
+            _f32_to_bf16_u16(fused_silu_pack_actual),
+        )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -914,6 +952,15 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        runtime = _runtime()
+        if concurrent_stream:
+            runtime.stream_destroy(concurrent_stream)
+        if concurrent_output_ready:
+            runtime.event_destroy(concurrent_output_ready)
+        if concurrent_input_ready:
+            runtime.event_destroy(concurrent_input_ready)
+        if concurrent_scratch is not None:
+            concurrent_scratch.free()
         if router_tile8_scratch is not None:
             router_tile8_scratch.free()
         if mmq_parallel_scratch is not None:

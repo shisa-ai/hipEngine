@@ -1994,6 +1994,85 @@ def run_laguna_moe_c1(
     return scratch.output
 
 
+def _launch_laguna_shared_rows(
+    hidden_bf16_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    use_q4_pack8_wmma: bool,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    """Launch the independent always-on shared expert branch."""
+
+    plan = scratch.plan
+    h = plan.hidden_size
+    sf = plan.shared_ffn_size
+    shared_gate = layer.weight("ffn_gate_shexp")
+    shared_up = layer.weight("ffn_up_shexp")
+    shared_down = layer.weight("ffn_down_shexp")
+    launch_gguf_linear(
+        shared_gate,
+        hidden_bf16_ptr,
+        scratch.shared_gate.ptr,
+        tokens,
+        h,
+        sf,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=tokens == 1,
+        use_q4_pack8_wmma=use_q4_pack8_wmma,
+    )
+    launch_gguf_linear(
+        shared_up,
+        hidden_bf16_ptr,
+        scratch.shared_up.ptr,
+        tokens,
+        h,
+        sf,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=tokens == 1,
+        use_q4_pack8_wmma=use_q4_pack8_wmma,
+    )
+    plan.shared_silu(
+        scratch.shared_gate.ptr,
+        scratch.shared_up.ptr,
+        scratch.shared_intermediate.ptr,
+        tokens,
+        sf,
+        **_stage_kwargs(
+            "shared_silu",
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+    launch_gguf_linear(
+        shared_down,
+        scratch.shared_intermediate.ptr,
+        scratch.shared_output.ptr,
+        tokens,
+        sf,
+        h,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=tokens == 1,
+        use_q4_pack8_wmma=use_q4_pack8_wmma,
+    )
+
+
 def run_laguna_moe_rows(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
@@ -2006,6 +2085,9 @@ def run_laguna_moe_rows(
     dense_q4_prefill_mode: str = "retained",
     group_compact_mode: str = "serial",
     fuse_selected_silu_pack: bool = False,
+    shared_stream: int = 0,
+    shared_input_ready_event: int = 0,
+    shared_output_ready_event: int = 0,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
@@ -2033,19 +2115,56 @@ def run_laguna_moe_rows(
         raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
     if group_compact_mode not in _GROUP_COMPACT_MODES:
         raise ValueError("unsupported Laguna MoE group compact mode")
+    shared_concurrent = bool(shared_stream)
+    shared_events = (
+        bool(shared_input_ready_event),
+        bool(shared_output_ready_event),
+    )
+    if shared_concurrent and not all(shared_events):
+        raise ValueError(
+            "concurrent shared MoE requires one stream and both events"
+        )
+    if not shared_concurrent and any(shared_events):
+        raise ValueError(
+            "shared MoE events require a nonzero shared stream"
+        )
+    if shared_concurrent and shared_stream == stream:
+        raise ValueError("shared MoE stream must differ from the caller stream")
     use_q4_pack8_wmma = dense_q4_prefill_mode == "wmma_pack8"
     if tokens <= 0 or tokens > scratch.max_rows:
         raise ValueError(f"rows must be within [1, {scratch.max_rows}]")
     validate_laguna_moe_layer(layer, plan)
-    h, e, k, sf = (
+    h, e, k = (
         plan.hidden_size,
         plan.expert_count,
         plan.top_k,
-        plan.shared_ffn_size,
     )
     lanes = tokens * k
     router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
+    active_runtime = (runtime or get_hip_runtime()) if shared_concurrent else None
+
+    if shared_concurrent:
+        assert active_runtime is not None
+        active_runtime.event_record(shared_input_ready_event, stream)
+        active_runtime.stream_wait_event(
+            shared_stream,
+            shared_input_ready_event,
+        )
+        _launch_laguna_shared_rows(
+            hidden_bf16_ptr,
+            layer,
+            scratch,
+            tokens=tokens,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+            stream=shared_stream,
+            runtime=active_runtime,
+            libraries=libraries,
+        )
+        active_runtime.event_record(
+            shared_output_ready_event,
+            shared_stream,
+        )
 
     plan.router_logits_functions[router_logits_mode](
         hidden_bf16_ptr,
@@ -2267,62 +2386,23 @@ def run_laguna_moe_rows(
             ),
         )
 
-    shared_gate = layer.weight("ffn_gate_shexp")
-    shared_up = layer.weight("ffn_up_shexp")
-    shared_down = layer.weight("ffn_down_shexp")
-    launch_gguf_linear(
-        shared_gate,
-        hidden_bf16_ptr,
-        scratch.shared_gate.ptr,
-        tokens,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
-    launch_gguf_linear(
-        shared_up,
-        hidden_bf16_ptr,
-        scratch.shared_up.ptr,
-        tokens,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
-    plan.shared_silu(
-        scratch.shared_gate.ptr,
-        scratch.shared_up.ptr,
-        scratch.shared_intermediate.ptr,
-        tokens,
-        sf,
-        **_stage_kwargs("shared_silu", libraries, stream=stream, runtime=runtime),
-    )
-    launch_gguf_linear(
-        shared_down,
-        scratch.shared_intermediate.ptr,
-        scratch.shared_output.ptr,
-        tokens,
-        sf,
-        h,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
+    if shared_concurrent:
+        assert active_runtime is not None
+        active_runtime.stream_wait_event(
+            stream,
+            shared_output_ready_event,
+        )
+    else:
+        _launch_laguna_shared_rows(
+            hidden_bf16_ptr,
+            layer,
+            scratch,
+            tokens=tokens,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
     if use_grouped_fused_combine:
         plan.grouped_weighted_sum_shared_add(
             scratch.expert_down.ptr,

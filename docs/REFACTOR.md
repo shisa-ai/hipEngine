@@ -14,6 +14,26 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna MoE shared/routed branch-concurrency candidate
+
+- Added 2026-07-26 as an exact, default-off session and profile-harness
+  candidate. For rows greater than one, the always-on shared expert runs on a
+  nonblocking secondary stream while router selection and routed experts run
+  on the caller stream. Two timing-disabled events preserve the producer and
+  final-combine dependencies. Decode and the established single-stream route
+  remain unchanged.
+- The production-style Q4 GPU composition fixture is BF16-byte identical to
+  the sequential route. The performance gate must use
+  `GPU_MAX_HW_QUEUES=2` for both arms so queue count is not a confound, then
+  prove an actual overlap in a cached trace rather than inferring it from wall
+  time.
+- If the clean queue-matched A/B is negative, remove the constructor option,
+  profile flag, secondary-stream lifecycle, event plumbing, helper split, and
+  concurrency fixture immediately. If it is positive, promote through an
+  architecture capability only after complete-state/quality/lifecycle and
+  traced-overlap gates; then remove the explicit positive selector after clean
+  publication while retaining the required sequential fallback.
+
 ## Laguna selected one-plane FP32-scale MMQ modes
 
 - Added 2026-07-25 as explicit session-local LAP-3/LAP-4 candidates. The

@@ -981,6 +981,17 @@ Immediate execution queue:
    column-major payload locality bought **12.23%** at the M512 leaf but the
    best exact virtual-thread decoder still lost **6.10–6.86%**. Do not retain
    a second resident view or pay a prefill-to-decode transpose.
+8. Screen exact shared/routed MoE branch concurrency before reopening another
+   expert kernel body. The always-on shared branch is independent of router
+   selection and routed gate/up/down until the final combine, so it can run on
+   a nonblocking secondary stream with one input-ready and one output-ready
+   event. The default-off Q4 production-style fixture is BF16-byte identical
+   to the sequential route. Its absolute ceiling is the traced **53.257-ms**
+   dense/shared family: perfect hiding would move the current wall only to
+   **594.1 tok/s**, so this is additive—not the 700 solution by itself. Run a
+   clean counterbalanced A/B with `GPU_MAX_HW_QUEUES=2` in both arms, require
+   complete-state equality, and retain only if a cached trace proves real
+   overlap without slowing the controller-bound routed families.
 
 Post-350 exclusions:
 
