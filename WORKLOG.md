@@ -183381,3 +183381,24 @@ Vulkan local sizes verbatim will close the measured gap.
 - Every candidate kernel, wrapper, harness mode, and test was removed.
   Production remains **632.618 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json`.
+
+## 2026-07-27 — Reject persistent expert-row Q4 gate/up
+
+- RED extended the uneven/empty Q4 CPU-reference fixture with a persistent
+  expert-row selector. GREEN retained production's 128-column x 32-row
+  local128 geometry, direct T16 wave-column decode, D8 activation cache,
+  double buffer, and 32 FP32 accumulators/lane, but mapped grid Y to experts
+  and serially walked each expert's existing row32 tiles.
+- Counts `[0,7,18,33]` are BF16-bit exact against production and pass the CPU
+  KL/top-1 gate; the complete 12-case Q4 matrix passes. Cached-only actual
+  layer-1 timing used 21 counter-rotated three-launch samples with the frozen
+  natural routing replay.
+- M256 regresses **4.395 -> 4.627 ms (+5.28%)** and M512 regresses
+  **6.835 -> 7.268 ms (+6.33%)**. The complete 128-column K3072 sweep is too
+  large to stay live for a second row tile, while serial expert tails reduce
+  parallelism.
+- Every candidate kernel, wrapper, harness mode, and test was removed.
+  Production remains **632.618 tok/s**. Do not retry row-outer persistence;
+  cross-row reuse must keep a K tile live while multiple row tiles consume it
+  or use a different contraction architecture. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-persistent-expert-rows-rejected.json`.

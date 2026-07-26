@@ -1366,6 +1366,23 @@ Immediate execution queue:
    local256 residency loss.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json).
+29. **Rejected and removed:** keep the exact production
+   128-column x 32-row/local128 body, but map one workgroup to one expert and
+   serially walk that expert's existing row32 tiles. This avoids row64
+   padding, local256 occupancy, larger accumulator state, and any sidecar
+   while testing whether the second K3072 weight sweep can hit cache. The
+   empty/uneven/33-row fixture is BF16-bit exact versus production and passes
+   the CPU KL/top-1 gate. Twenty-one counter-rotated actual-weight samples
+   reject it at both natural shapes: M256 regresses
+   **4.395 -> 4.627 ms (+5.28%)** and M512
+   **6.835 -> 7.268 ms (+6.33%)**. A complete 128-column K3072 sweep is too
+   large to remain live for the next row tile, while serial expert tails
+   reduce parallelism. Every candidate kernel, wrapper, harness mode, and
+   test is removed. Do not retry row-outer persistence; any further
+   cross-row design must keep each K tile live while multiple row tiles
+   consume it or change the contraction architecture.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-persistent-expert-rows-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-persistent-expert-rows-rejected.json).
 
 Post-350 exclusions:
 
