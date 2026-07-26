@@ -104,6 +104,13 @@ are BF16-bit exact, and repeated endpoints improve **11.42-22.32% event** and
 and cached **50-call/723-kernel** tracing, but failed the frozen short clean gate
 on kernel-sum/span/child guards. Runtime integration is removed and categories
 are skipped; the default and **61.992 tok/s** canonical row remain unchanged.
+Post-Q6 re-ranking selects a genuinely different router boundary: retain all 47
+registered BF16-hidden/F32-weight projection launches and replace only the
+stateless correction selector with one local32 wave carrying eight experts per
+lane. Frozen actual projected logits and all 47 correction biases are field-bit
+exact, while the complete selector window improves **25.69% event / 25.67%
+wall**. This is design evidence only; repository RED/GREEN and every runtime,
+context, and category gate remain pending.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1334,6 +1341,50 @@ rejected planning model, not a throughput claim. Evidence:
 and
 [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json).
 
+The post-Q6 residual audit reuses the immutable retained post-Q4 traces because
+Q6 runtime integration was fully removed and changed no default or topline.
+Short decode still spends **0.324 ms/token** in 47 retained router projections
+and **0.402 ms/token** in 47 correction selectors. The selector is local256/
+VGPR32/LDS512/scratch0 and repeats ten block-wide winner reductions with three
+block barriers per call. Reopening the rejected persistent composite unchanged
+is forbidden: that path fused projection, last-block election, a self-resetting
+counter, and selection, then regressed full-model router time **13.69-14.42%**.
+
+The selected candidate changes only the stateless selector. One local32 wave
+owns all 256 experts as eight strided experts per lane. Each lane computes and
+stores the same stable sigmoid and correction-only scores, then each of ten
+rounds chooses its best remaining local expert before the existing stable
+higher-score/lower-ID wave reduction. Lane zero writes the same selected order,
+gathers uncorrected probabilities, sums them in retained position order,
+normalizes, and applies the routed scale. There is no projection fusion,
+counter, election, workspace, launch removal, or quality trade; all 47
+projection and 47 selector launches plus **723 model kernels/token** remain.
+
+The frozen out-of-tree selection probe materializes the retained projected
+logits once outside timing for all 47 actual sparse layers. Every
+`routing_scores`, `selection_scores`, selected-ID, routing-weight, and scaled-
+weight bit matches the registered selector. With 10 warmups, 15 counterbalanced
+repetitions, and 100 complete 47-call windows per sample, event time improves
+**0.397111 -> 0.295086 ms (-25.692%)** and synchronized wall improves
+**0.397327 -> 0.295319 ms (-25.674%)**. Local64/local128 screens improve only
+about 11%, so local32 is frozen. Repository-shaped codegen is local32/wave32,
+logical/allocated VGPR **70/72**, logical SGPR18, LDS/private/spills/scratch0,
+zero barriers, and a deliberately unrolled **2,128-instruction / 14,080-byte**
+body. Cache-only tracing names grid/workgroup **32/32**, VGPR72/LDS0/scratch0,
+with no compiler under profiling.
+
+Applying the isolated event ratio to the immutable selector family models only
+**0.103 ms/token**, or **16.98%** of the current 0.608-ms Vulkan wall gap. The
+modeled **62.391 tok/s** is not a performance claim and still trails Vulkan.
+Freeze repository admission before any owner: absent wrapper/four-axis key RED,
+random/tied/cross-item/extreme and all-actual field identity, gfx1151 exclusion,
+the same codegen ceilings, and a repeated repository actual-layer event+wall
+win. Only then may an explicit/default-off c=1 selector pass 16-transition full
+state, cached **47 retained projection + 47 candidate selector / 723-kernel**
+tracing, both short/512/1K/near-4K process orders, and both complete 18-prompt
+orders. Any failed full-model guard removes runtime selection. Evidence:
+[`...router-selector-compact-wave32-design.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json).
+
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
@@ -1386,6 +1437,7 @@ and
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
 | Is the post-router Q4 LM-head local32 design implemented or retained? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json), and [`retained`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json): yes. Production logits and default-vs-rollback state are bit-exact; every clean order improves LM-head and kernel-sum time; both category orders move h32 **61.675 -> 61.992 tok/s (+0.512%)** with all category decode rows positive. gfx1100 defaults local32 at unchanged 723 kernels/token. |
 | Is the post-Q4 Q6 local32 standalone design implemented? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json): primitive only after clean rejection. Exact state/trace and 12.44-13.26% Q6-family wins do not override order-A kernel/span or order-B child failures. Runtime integration is removed; categories are skipped and the topline is unchanged. |
+| What is selected after standalone-Q6 closure? | [`...router-selector-compact-wave32-design.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json): a stateless local32 correction selector after the unchanged retained projection. All five output fields across 47 actual projected-logit/correction rows are bit-exact; event/wall improve **25.69%/25.67%**. It has no counter, fusion, launch reduction, or default and remains selection evidence pending repository/full-model gates. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The retained Q4 category gate measures hipEngine **62.638/61.992 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **2.57%/3.91%** is required. The prior [post-local32 audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) remains the pinned Vulkan source. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1457,4 +1509,12 @@ one-call/723-kernel trace, every clean-context order, both complete category
 orders, and a fresh no-argument default-versus-local128 rollback gate. It is the
 gfx1100 default and moves canonical h32 **61.732 -> 61.992 tok/s (+0.420%)** at
 **16.131 ms/token**. Matched Vulkan remains **64.418 tok/s**, so the objective
-stays open with **3.91%** additional throughput required.
+stays open with **3.91%** additional throughput required. The subsequent
+standalone-Q6 owner is clean-rejected and removed despite an isolated Q6-family
+win. The next selected exact premise avoids that owner and the rejected
+persistent router entirely: a stateless local32 correction selector consumes
+the unchanged registered projection, assigns eight experts per lane, and finds
+the same stable global top-10 in one wave. Frozen all-47-layer output fields are
+bit-exact and its isolated selector window improves **25.69% event / 25.67%
+wall**, but it is not repository code, a default, or a topline claim until every
+frozen primitive, full-state, trace, clean-context, and category gate passes.

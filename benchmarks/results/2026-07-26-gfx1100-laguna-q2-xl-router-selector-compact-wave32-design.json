@@ -1,0 +1,279 @@
+{
+  "baseline": {
+    "additional_h32_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_decode_tok_s": 61.99155148671624,
+    "canonical_h32_ms_per_token": 16.131230401844086,
+    "dispatches_per_token": 723,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "matched_vulkan_h32_ms_per_token": 15.523553763440857,
+    "revision": "a8b32e6861ec5f06a514560e42560247e025c0ed",
+    "router_projection_calls_per_token": 47,
+    "router_selector_calls_per_token": 47
+  },
+  "codegen_probe": {
+    "candidate": {
+      "allocated_lds_bytes": 0,
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 72,
+      "barriers": 0,
+      "ds_bpermute_b32": 109,
+      "grid_x": 32,
+      "logical_sgpr": 18,
+      "logical_vgpr": 70,
+      "note": "The intentionally unrolled ten-round one-wave network is larger than control but removes all cross-wave communication and wins the complete actual-layer timing window.",
+      "private_bytes": 0,
+      "s_delay_alu": 264,
+      "scratch_bytes": 0,
+      "sgpr_spills": 0,
+      "static_instructions": 2128,
+      "static_lds_bytes": 0,
+      "text_bytes": 14080,
+      "vgpr_spills": 0,
+      "wavefront": 32,
+      "workgroup": 32
+    },
+    "probe_hsaco_sha256": "78ef8dc2bd6f82902461314510d959313c6c2cb47dbffe3f0cc5b977fd180348",
+    "probe_library_sha256": "998daf19380abb56b18f8a681f32928fbcee618ed04b272ff3a43a3a0a1142c6",
+    "probe_objdump_sha256": "d73848b3d49670ebb548c0b35feba3529a4a3a661ee466209d0982962a0e8041",
+    "probe_readobj_sha256": "bf11289a425749e353f3643067577c0995962f0f15994f67e7ba1bc543b3b47c",
+    "probe_source_sha256": "dbc9219e0c99e0ea342abcbabb977f15e2b6ac0a599403ac078ab8d5b89f187e",
+    "trace": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 72,
+      "calls": 2,
+      "child_sha256": "7015c56667b7c68c2b38003989d6d7e07faef19fdb7ac8fd94fe20afcb414434",
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-router-selector-compact-wave32-trace --output-file trace -- uv run python -u /tmp/trace_laguna_router_selector_compact_wave32.py",
+      "compiler_executed_under_profiler": false,
+      "duration_ns": [
+        16680,
+        4320
+      ],
+      "finite_outputs": true,
+      "grid_x": 32,
+      "harness_sha256": "3f853c6f5b118e013ab4d9580dcb42cf10ad20b875f5169238c3da5ab6600984",
+      "kernel_named": true,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "stderr_sha256": "d9260eea69c199ae4b8c35736d06632e130ad464d66562d0e4e2f5fd85d4d2e4",
+      "trace_sha256": "4123ee1790c8aa55e7fe14db023ce6d337a42e968d210f3af197557412771776",
+      "workgroup_x": 32
+    }
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "implement RED-first exact stateless local32 compact-wave correction selector",
+    "canonical_h32_unchanged": 61.99155148671624,
+    "completion_claim": false,
+    "default_changed": false,
+    "reason": "It is the best of local32/local64/local128 ownership screens, preserves every output bit over all 47 actual inputs, improves both complete actual-layer timers by 25.67-25.69%, and avoids every mechanism implicated in the rejected persistent composite.",
+    "repository_implementation_present": false
+  },
+  "difference_from_rejected_persistent_wave_top10": {
+    "rejected_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json",
+    "rejected_full_model_result": "both short orders regressed complete router family 14.42%/13.69% and kernel sum 0.736%/1.422%",
+    "rejected_mechanism": "256-block projection plus last-block atomic election, self-resetting counter, eight-wave top-10 selector, and 723->676 launch contraction",
+    "selected_mechanism": "one stateless local32 selector after the unchanged retained projection; no counter/election/fusion and unchanged 723-launch topology",
+    "why_not_duplicate": "The prior rejection never measured a standalone selector, and the new candidate further changes selector ownership from one expert per local256 thread/eight-wave merge to eight experts per local32 lane/one-wave global top-10."
+  },
+  "frozen_gates": {
+    "actual_weight_precondition": {
+      "calls_per_iteration": 47,
+      "counterbalanced_repetitions": 15,
+      "iterations_per_sample": 100,
+      "requirement": "Every field remains exact and complete 47-layer event and synchronized-wall medians both improve; remove candidate on any failure.",
+      "scope": "all 47 actual frozen projected-logit rows and correction biases",
+      "warmups": 10
+    },
+    "after_primitive_pass_only": [
+      "Add an explicit/default-off gfx1100 runtime plan that changes only the c=1 E256/top10 selector key and keeps the retained projection.",
+      "Shared-weight 16-transition full logits/IDs, 48 hidden and 47 routed boundaries, active K/V and every KVLiveSpans field, reset/re-prefill, ownership, and lifecycle identity.",
+      "Cached full-model trace proves 47 retained projections plus 47 candidate selectors, zero retained correction selectors when selected, unchanged 723 model kernels/token, admitted resources, and no compiler under profiling.",
+      "Two process orders at short/512/1024/3968: selector and complete router family improve in every order; complete kernel sum improves; span regression <0.5%; child throughput >-0.5%; IDs/resources/lifecycle pass.",
+      "Both complete 18-prompt category orders: pooled h16/h32 and every train/heldout category decode improve; all E2E/prefill/TTFT/state/lifecycle guards pass before gfx1100 promotion."
+    ],
+    "codegen": [
+      "Repository candidate is local32/wave32/grid32, logical/allocated VGPR <=70/72, logical SGPR <=18, LDS0/private0/spill0/scratch0.",
+      "The unrolled candidate has <=2128 instructions, <=14080 text bytes, zero barriers, <=109 ds_bpermute, and <=264 s_delay_alu under pinned Clang 22.",
+      "Non-profiled cache-only warmup precedes rocprofv3; trace names the candidate at local32/VGPR72/LDS0/scratch0 and no compiler runs under profiling."
+    ],
+    "failure_action": "Remove the primitive if repository actual timing fails; otherwise retain the independently exact primitive but remove runtime selection on any full-model/context/category failure.",
+    "primitive_correctness": [
+      "All routing_scores, selection_scores, selected IDs/order, routing weights, and scaled weights are F32/int64 bit-exact to registered control.",
+      "CPU-reference gate remains KL <=0.05 and top-1 >=90%; exact sibling requires KL0/top-1 100% and complete field identity.",
+      "No counter, allocation, persistent state, projection change, or launch-count change is permitted."
+    ],
+    "red": [
+      "Before implementation add failing coverage for the absent c=1 E256/top10 correction_bias_compact_wave32 wrapper and four-axis key.",
+      "Freeze random, all-tie, cross-lane/cross-item tie, finite-extreme, signed-zero, and every actual correction/logit corpus against the registered selector.",
+      "Assert gfx1151 and all unvalidated backends do not alias the candidate; rows and non-E256/top10 shapes retain registered correction_bias."
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_router_selector_compact_wave32_design",
+  "model": {
+    "experts": 256,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47,
+    "top_k": 10
+  },
+  "out_of_tree_selection_probe": {
+    "actual_layers": 47,
+    "all_actual_fields_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_router_selector_wave_top10_actual.py",
+    "event_candidate_vs_control_pct": -25.69191636878907,
+    "event_median_ms_per_47_layers": {
+      "compact_wave32": 0.29508586883544924,
+      "control": 0.39711139678955076
+    },
+    "event_us_per_layer": {
+      "compact_wave32": 6.278422741179771,
+      "control": 8.449178655096825
+    },
+    "fields_bit_exact": [
+      "routing_scores",
+      "selection_scores",
+      "selected",
+      "routing",
+      "scaled"
+    ],
+    "frozen_projected_logits_outside_timing": true,
+    "harness_sha256": "67933b89a4043df18feaac366e084654350069dc1f2d66752b8670e8c4b32840",
+    "protocol": {
+      "counterbalanced": true,
+      "iterations": 100,
+      "layers_per_iteration": 47,
+      "repetitions": 15,
+      "warmups": 10
+    },
+    "purpose": "Selection evidence only; repository RED/GREEN and all frozen gates remain mandatory.",
+    "raw_path": "/tmp/laguna-router-selector-wave-top10-actual.json",
+    "raw_sha256": "4cc916447747b997e2293d12d051c31aba67b495aca46d7aa49f1012077d4706",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "4cc916447747b997e2293d12d051c31aba67b495aca46d7aa49f1012077d4706",
+    "wall_candidate_vs_control_pct": -25.673641094065715,
+    "wall_median_ms_per_47_layers": {
+      "compact_wave32": 0.2953187213279307,
+      "control": 0.3973270393908024
+    },
+    "wall_us_per_layer": {
+      "compact_wave32": 6.28337704953044,
+      "control": 8.453766795548987
+    }
+  },
+  "performance_claim": false,
+  "planning_ceiling_not_claim": {
+    "current_short_selector_ms_per_token": 0.40172882142857147,
+    "fraction_of_current_vulkan_wall_gap_pct": 16.984663603648947,
+    "isolated_modeled_saving_ms_per_token": 0.10321183283075058,
+    "modeled_additional_speedup_to_vulkan_pct": 3.2496734527407645,
+    "modeled_compact_wave32_selector_ms_per_token": 0.2985169885978209,
+    "modeled_h32_ms_per_token_if_event_ratio_transfers_whole": 16.028018569013334,
+    "modeled_h32_speedup_pct": 0.6439463018235392,
+    "modeled_h32_tok_s_if_event_ratio_transfers_whole": 62.39074378995799,
+    "reason_not_claimed": "Applying an isolated selector event ratio to immutable family time does not establish full-model kernel/span/child or complete-category throughput."
+  },
+  "post_q6_rerank": {
+    "calls_per_family": 47,
+    "complete_split_router_ms_per_token": 0.7253231785714286,
+    "control_selector_resources": {
+      "allocated_lds_bytes": 512,
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 32,
+      "barriers": 3,
+      "ds_bpermute_b32": 20,
+      "grid_x": 256,
+      "logical_sgpr": 38,
+      "logical_vgpr": 26,
+      "private_bytes": 0,
+      "scratch_bytes": 0,
+      "spills": 0,
+      "static_instructions": 637,
+      "static_lds_bytes": 128,
+      "text_bytes": 3584,
+      "workgroup": 256
+    },
+    "reason_valid_after_q6_rejection": "Standalone Q6 runtime integration was removed and no retained default/topline changed; the immutable post-Q4 candidate traces remain the current retained 723-kernel topology.",
+    "router_projection_ms_per_token": 0.3235943571428571,
+    "router_selector_ms_per_token": 0.40172882142857147,
+    "sha256": "b272311d23410b28ab66f67284acf64b35621c406caa5cf8d2b8b0a75188c181",
+    "short_kernel_sum_ms_per_token": 12.921204178571427,
+    "source": "/tmp/laguna-post-q4-residual.json",
+    "source_revision": "2191db96b276a448c44274e967fde1bab85606cf"
+  },
+  "provenance": {
+    "builder_sha256": "6e5a962a4412a29a82038315bd68debbda312e4c7867db4e73b491e5c2a2a751",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "parent_revision": "a8b32e6861ec5f06a514560e42560247e025c0ed",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/moe/laguna_router.hip",
+        "sha256": "6e920c0328b61c92ac2b1c86027f542f7adb2e42feb784f052f6b9f3f94e9bd6"
+      },
+      {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json",
+        "sha256": "ffa17e82542ac9bfb1ed03ca1c9d217641b22720f02e128019bb843e93075813"
+      },
+      {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json",
+        "sha256": "55d7f6bffd071e4299d82e4ded595e85824bbb50230db7cf79594942132b70a8"
+      },
+      {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json",
+        "sha256": "1dc79b2a6d4c18734f3b357ca9d912eb036d56c667a5e4540193c42e15e9da78"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "e9afab3956cbbab017cef837c74175e07e5bcaa5258ee12bf3bb033f5b54a00a"
+      }
+    ]
+  },
+  "schema": 1,
+  "selected_candidate": {
+    "algorithm": [
+      "Compute and store the same stable sigmoid and correction-only score for all eight lane-owned experts.",
+      "For each of ten positions, each lane selects its best remaining local expert, then the wave applies the existing stable higher-score/lower-ID reduction.",
+      "Lane zero writes the identical selected order, gathers the uncorrected probability, sums the ten probabilities in the retained position order, normalizes, and applies routed scale."
+    ],
+    "description": "stateless c=1 local32 compact wave top-10 correction selector over retained projected logits",
+    "intended_four_axis_key": [
+      "hip_gfx1100",
+      "laguna_sigmoid_router_topk",
+      "f32",
+      "correction_bias_compact_wave32"
+    ],
+    "not_present": [
+      "projection fusion",
+      "last-block election",
+      "persistent counter",
+      "new allocation or workspace",
+      "launch-count reduction",
+      "arithmetic reassociation or quality trade"
+    ],
+    "ownership": "one wave; each lane owns experts lane+32*i for i=0..7",
+    "removed_relative_to_control": [
+      "ten repeated local256 block reductions",
+      "three block barriers per selector call",
+      "selector LDS and cross-wave merge state"
+    ],
+    "unchanged": [
+      "retained BF16-hidden/F32-weight router projection and its 47 launches",
+      "stable sigmoid branch and correction-only selection semantics",
+      "all routing/selection/selected/normalized/scaled output boundaries",
+      "one selector launch per sparse layer and 723 model kernels/token",
+      "split selector fallback for rows, unsupported shapes/backends, and registry misses"
+    ]
+  },
+  "status": "selected_design_repository_implementation_absent"
+}
