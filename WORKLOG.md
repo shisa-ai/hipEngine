@@ -180492,3 +180492,24 @@ Vulkan local sizes verbatim will close the measured gap.
   records the coalesced byte-plane ordering; its focused suite passes **8/8**.
   Production remains **505.084 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-t16-lite-decode-rejected.json`.
+
+## 2026-07-26 — Reject nine-wave GQA attention tile sharing
+
+- Built a new exact premise rather than retrying the rejected single-wave
+  two-head fusion: one 288-thread workgroup shares token8 current/cache K/V
+  tiles across all nine SWA query heads mapped to a KV head, while each wave
+  retains the proven qrow4 online-softmax state and K accumulation order.
+- Followed RED/GREEN. The focused registry and 508..515 ring-wrap/odd-tail
+  oracle first failed on the absent symbol, then passed **2/2**. Candidate
+  output is F32-bit identical to retained source-qualified qrow4 for rows 8
+  and 7.
+- The bounded production-shape leaf rejects the premise before full-model
+  integration. Eleven-sample counterbalanced medians regress at all four
+  pp512 slices: **0.360434 -> 0.417168 ms**, **0.898458 -> 1.245561 ms**,
+  **1.422842 -> 2.091255 ms**, and **1.950927 -> 2.803420 ms**. Their sum is
+  **4.632661 -> 6.557403 ms (0.706478x)** with zero F32 mismatches and exact
+  allocation recovery.
+- Removed the HIP export/body, Python wrapper/registry symbol, runtime
+  selector, tests, and temporary harness. Production is byte-identical to the
+  prior revision and remains **505.084 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`.

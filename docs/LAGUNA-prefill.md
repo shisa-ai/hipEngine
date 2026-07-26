@@ -640,7 +640,7 @@ Current progress:
 | Production publication | Complete/current | Clean revision `647ac846c` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle. The exact activation-double-buffer gate/up body reaches **505.084 tok/s** median with every clean sample **504.984–508.979 tok/s**; matched seven-pair A/B isolates **505.970 -> 507.405 tok/s (+0.284%)**, keeping the 500 gate closed. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
-| LAP-7–LAP-8 | Current scalar production retained | Attention is **219.709 ms / 22.20%** of kernel sum. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, and qhead3 sharing all completed negative gates. Source-qualified qrow4 remains production; attention needs a new async/library-class premise before reopening. |
+| LAP-7–LAP-8 | Current scalar production retained | Attention is **219.709 ms / 22.20%** of kernel sum. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, single-wave qhead3, and nine-wave GQA tile sharing all completed negative gates. Source-qualified qrow4 remains production; attention needs a new async/library-class premise before reopening. |
 
 ## Post-500 campaign — 700 production stretch
 
@@ -663,7 +663,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **314.378 ms** | **31.77%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. It removes one of two barriers per K32, improves the actual natural-M512 inclusive leaf **6.995 -> 6.907 ms (-1.258%)**, improves clean complete-state pp512 **505.970 -> 507.405 tok/s (+0.284%)**, and cuts traced gate/up **318.559 -> 314.378 ms (-1.313%)** with exact output. T128 fails decode and aligned LDS weight staging regresses **1.05%**. |
 | Selected D4 Q4/Q6 down | **203.721 ms** | **20.59%** | Direct Q4 decode and 64-row Q6 row-vector are retained. The Q6 full-M512 consumer remains local128; local64 and duplicate-decode row halves stay closed. A Q4-only activation double buffer is exact but regresses matched pp512 **508.788 -> 508.023 tok/s (-0.150%)** and is removed. |
-| Global + SWA attention | **219.709 ms** | **22.20%** | Source-qualified qrow4 is retained. Scalar key splitting, tiled M16/M8 WMMA, and single-wave two-head GQA reuse all lose; the next attention screen must use a materially different async/library premise. |
+| Global + SWA attention | **219.709 ms** | **22.20%** | Source-qualified qrow4 is retained. Scalar key splitting, tiled M16/M8 WMMA, single-wave two-head GQA reuse, and a nine-wave/token8 shared-K/V workgroup all lose; the next attention screen must use a materially different async/library premise. |
 | Static-range direct hipBLASLt source-F16 | **125.139 ms** | **12.65%** | All five contractions and direct boundary casts are included. Both scaled-row kernels are absent; source-F16 boundary work is closed. |
 | Q4/Q6 WMMA dense/shared | **53.154 ms** | **5.37%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
 | Router | **23.334 ms** | **2.36%** | Eight-token reuse is production and cuts the prior **30.658 ms** family. Tile 4 remains rollback; tile 16 is slower at every stable leaf shape. |
@@ -718,9 +718,11 @@ Immediate execution queue:
    publication is current at **505.084 tok/s** median and cuts traced gate/up
    **318.559 -> 314.378 ms**.
 2. Reopen the **219.709 ms attention** family only with a different premise
-   from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles, and
-   single-wave two-head fusion. The head-pair body was exact but regressed
-   512/1K/4K **1.81/2.25/2.42%**. Candidate premises are now an async-copy
+   from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles,
+   single-wave two-head fusion, and nine-wave GQA workgroup sharing. The
+   head-pair body was exact but regressed 512/1K/4K **1.81/2.25/2.42%**. The
+   wider GQA body was F32-bit exact but its four pp512 slices totaled
+   **4.633 -> 6.557 ms (0.706x)**. Candidate premises are now an async-copy
    pipeline or a supported library-class kernel around the existing
    `KVLiveSpans` ABI.
 3. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
@@ -1434,6 +1436,24 @@ measures **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 and **316/320** top-1 by exact transfer. Evidence:
 [`2026-07-26-gfx1151-laguna-router-token-tile8-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json).
 
+Thirty-fifth post-350 screen: **nine-wave GQA K/V sharing rejected and
+removed before integration**. One 288-thread workgroup assigned a wave32 to
+each of the nine query heads sharing one KV head. Every token8 step staged
+both current and cached K/V in 16 KiB of LDS, preserving ring-wrap source
+qualification without increasing each wave's qrow4 online-softmax state.
+The rows-8 and odd-7 wrap oracle was F32-bit exact to retained source-qualified
+qrow4, and tracked allocations returned to zero.
+
+Counterbalanced eleven-sample production-shape leaf medians regress at every
+128-row pp512 slice: **0.360 -> 0.417 ms** at position 0,
+**0.898 -> 1.246 ms** at 128, **1.423 -> 2.091 ms** at 256, and
+**1.951 -> 2.803 ms** at 384. The four-slice sum is
+**4.633 -> 6.557 ms (0.706x)**. Reduced global K/V reads do not repay the
+288-thread barriers, four-way current/cache LDS traffic, and occupancy cost.
+All candidate code, dispatch, test, and harness surfaces were removed.
+Evidence:
+[`2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json)
@@ -2036,6 +2056,8 @@ Do not repeat:
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - single-wave qrow4 two-head GQA fusion; exact K/V reuse regresses all measured
   512/1K/4K diagnostic lengths;
+- nine-wave qrow4 GQA token-tile sharing; exact current/cache K/V reuse
+  regresses every pp512 slice and totals **0.706x** retained;
 - fused-four source-F16 F32 row-scale restore; reducing **192 -> 48** launches
   regresses the exact 48-layer sequence **3.474 -> 6.114 ms (+76.0%)**;
 - AOTriton Laguna head-dim-128 adaptation without a newly supported geometry;
@@ -2102,6 +2124,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-f16-norm-direct-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-f16-scale-restore-fused4-rejected.json`
