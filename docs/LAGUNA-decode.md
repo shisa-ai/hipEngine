@@ -88,9 +88,10 @@ router family regresses **14.42%/13.69%** and kernel sum regresses
 are skipped; the primitive remains diagnostic. Post-router re-ranking now
 selects an exact c=1 Q4_K LM-head local32 fixed-metadata output-pair sibling.
 Its temporary full-vocabulary screen is bit-exact and improves isolated event/
-wall **28.77%/20.97%**. The separately registered repository primitive now
-passes exact synthetic/production, codegen, actual-weight, and cached-symbol
-admission; runtime/full-state/clean/category gates remain pending, with no
+wall **28.77%/20.97%**. The separately registered repository primitive and
+explicit/default-off runtime owner now pass exact synthetic/production,
+codegen, actual-weight, 16-transition full-state, and cached one-call/
+**723-kernel** tracing. Clean-context and category gates remain pending, with no
 retained default or topline change.
 
 Scope: resident batch-1 autoregressive decode of
@@ -1237,15 +1238,33 @@ head gate improves event **449.31 -> 314.34 us (-30.04%)** and synchronized wall
 require-cached trace names the sibling at grid/workgroup **1,605,632/32**,
 VGPR72/LDS0/scratch0, 265.44 us; gfx1151 aliasing is explicitly excluded.
 
-No session, capability, CLI, or default route changes in primitive admission.
-The next separate unit may add only a default-off LM-head selector, then must
-pass full state and cached one-candidate/723-model-kernel tracing. Only if those
-pass may both short/512/1K/near-4K process orders and both complete 18-prompt
-category orders run. Any failed target/kernel/span/child/category row removes
-runtime selection while leaving this exact primitive diagnostic. Evidence:
-[`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json)
+A separate runtime unit now exposes only
+`use_q4_lm_head_local32_fixed_meta=True` and
+`--enable-q4-lm-head-local32-fixed-meta`. gfx1100 advertises a false capability
+sentinel, so default/no-opt-in, gfx1151, rows>1, and registry-key miss retain the
+registered local128 body. Bulk-prefill and verifier projections also remain
+local128; only `_project_and_sample()` decode selects the sibling. The scalar
+owner adds no allocation, and its variant-keyed library entry reuses the existing
+Q4 pack8 code object.
+
+The shared-weight `mixed_ja_en_review` gate covers bulk prefill, one all-layer
+captured decode, 15 further transitions, reset, and eight-token re-prefill. Full
+logits/IDs, all **48 hidden / 47 routed** boundaries, active K/V and every
+`KVLiveSpans` field, ownership, and lifecycle are byte-exact. A non-profiled
+cache warmup precedes `rocprofv3`; each decode window contains exactly one
+candidate and zero retained Q4 LM-head calls at local32/grid **1,605,632**,
+VGPR72/LDS0/scratch0, with unchanged **723 model kernels/token**, finite logits,
+and no compiler under profiling. The trace separately names one retained
+local128 bulk-prefill projection, confirming the decode-only scope.
+
+This admits only the default-off runtime path. Both short/512/1K/near-4K process
+orders and both complete 18-prompt category orders remain mandatory. Any failed
+target/kernel/span/child/category row removes runtime selection while leaving
+this exact primitive diagnostic. Evidence:
+[`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json),
+[`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json),
 and
-[`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json).
+[`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json).
 
 ## 9. Do not chase without new evidence
 
@@ -1297,7 +1316,7 @@ and
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
-| Is the post-router Q4 LM-head local32 design implemented or retained? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json) and [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json): the exact primitive is implemented and separately registered, with production event/wall **-30.04%/-21.44%** and all 100,352 logits bit-exact. It is not runtime-selected or retained; full-state/trace/clean/category gates remain mandatory and canonical throughput is unchanged. |
+| Is the post-router Q4 LM-head local32 design implemented or retained? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json), and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json): the exact primitive is implemented and its explicit/default-off owner passes full state plus one-call/723-kernel tracing. Production event/wall improve **-30.04%/-21.44%** with all 100,352 logits bit-exact. It is not a default or retained throughput win; clean/category gates remain mandatory and canonical throughput is unchanged. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-local32 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) measures hipEngine **62.354/61.732 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **3.03%/4.35%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 

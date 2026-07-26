@@ -15,6 +15,7 @@ from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16, LAYOUT_R
 from hipengine.runtime import laguna_gguf_runner as runner_module
 from hipengine.runtime.laguna_gguf_runner import (
     LAGUNA_DFLASH_CAPTURE_DEPTHS,
+    LagunaEagerLibraries,
     LagunaEagerScratch,
     LagunaHiddenCaptureTargets,
     LagunaRowsScratch,
@@ -28,6 +29,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_mixed_attention_projections,
     resolve_laguna_mixed_local32_fixed_meta_attention,
     resolve_laguna_mixed_q6_fixed_meta_attention,
+    resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
 )
@@ -149,6 +151,19 @@ def test_laguna_mixed_q6_fixed_metadata_default_is_gfx1100_only_and_rollbackable
     assert resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1100", True)
     assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1100", False)
     assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1151")
+
+
+def test_laguna_q4_lm_head_local32_fixed_metadata_is_explicit_gfx1100_only() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA", None
+    ) is False
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA", None
+    ) is None
+    assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100")
+    assert resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100", True)
+    assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100", False)
+    assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1151", True)
 
 
 def test_laguna_q5_shared_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
@@ -517,6 +532,19 @@ def test_laguna_hidden_taps_are_caller_owned_exact_bf16_depths() -> None:
             hidden_size=hidden_size,
             runtime=runtime,
         )
+
+
+def test_laguna_q4_local32_lm_head_uses_pack8_library() -> None:
+    libraries = LagunaEagerLibraries(
+        **{
+            field: object()
+            for field in LagunaEagerLibraries.__dataclass_fields__
+        }
+    )
+
+    assert libraries.linear[
+        "gguf_q4_k:local32_fixed_meta_gemv_decode_bf16_f32_out"
+    ] is libraries.q4_decode_linear
 
 
 def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
@@ -952,6 +980,75 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
         runtime=None,
     )
     assert [name for name, _ in calls] == ["qkv", "single:gate"]
+
+
+def test_laguna_scalar_lm_head_candidate_is_decode_only(monkeypatch) -> None:
+    variants: list[str | None] = []
+
+    def launch(*args, **kwargs) -> None:
+        del args
+        variants.append(kwargs.get("registered_variant"))
+
+    monkeypatch.setattr(runner_module, "launch_gguf_linear", launch)
+    monkeypatch.setattr(runner_module, "_read_i64", lambda *args: 7)
+    monkeypatch.setattr(runner_module, "_read_f32", lambda *args: 1.25)
+    monkeypatch.setattr(
+        runner_module,
+        "_buffer_view",
+        lambda buffer, offset, nbytes: (buffer.ptr, offset, nbytes),
+    )
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    weight = SimpleNamespace(
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=200))
+    )
+    session.weights = SimpleNamespace(
+        config=SimpleNamespace(
+            hidden_size=3072,
+            vocab_size=100_352,
+            rms_norm_eps=1.0e-6,
+        ),
+        root=lambda slot: weight,
+    )
+    session.scratch = SimpleNamespace(
+        final_norm=SimpleNamespace(ptr=10),
+        logits=SimpleNamespace(ptr=20),
+        argmax_block_values=SimpleNamespace(ptr=30),
+        argmax_block_indices=SimpleNamespace(ptr=40),
+        argmax_id=SimpleNamespace(ptr=50),
+        argmax_value=SimpleNamespace(ptr=60),
+        hidden=SimpleNamespace(ptr=70),
+    )
+    session.rows_scratch = SimpleNamespace(
+        hidden=SimpleNamespace(ptr=80),
+        final_norm=SimpleNamespace(ptr=90),
+        logits=SimpleNamespace(ptr=100),
+    )
+    session.kernel_plan = SimpleNamespace(
+        rmsnorm=lambda *args, **kwargs: None,
+        argmax=lambda *args, **kwargs: None,
+    )
+    session.libraries = SimpleNamespace(
+        linear={},
+        argmax=object(),
+        gguf_ops=object(),
+    )
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.backend = "hip_gfx1100"
+    session._q4_lm_head_variant = (
+        "local32_fixed_meta_gemv_decode_bf16_f32_out"
+    )
+
+    result = session._project_and_sample(input_token_id=3, position=11, stream=0)
+    prefill_result = session._project_rows_last(
+        input_token_id=5,
+        position=12,
+        row_index=0,
+        stream=0,
+    )
+
+    assert variants == ["local32_fixed_meta_gemv_decode_bf16_f32_out", None]
+    assert result.next_token_id == prefill_result.next_token_id == 7
+    assert result.next_token_logit == prefill_result.next_token_logit == 1.25
 
 
 def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(

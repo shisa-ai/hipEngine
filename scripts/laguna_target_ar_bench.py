@@ -99,6 +99,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="restore the exact local128 fixed-Q6 Q5/Q6 projection quad",
     )
+    parser.add_argument(
+        "--enable-q4-lm-head-local32-fixed-meta",
+        action="store_true",
+        help="enable the default-off exact Q4_K c=1 local32 LM head",
+    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -245,6 +250,9 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         ),
         use_mixed_local32_fixed_meta_attention=(
             False if args.disable_mixed_local32_fixed_meta_attention else None
+        ),
+        use_q4_lm_head_local32_fixed_meta=(
+            args.enable_q4_lm_head_local32_fixed_meta
         ),
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
@@ -642,6 +650,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_mixed_local32_fixed_meta_attention=(
                 False if args.disable_mixed_local32_fixed_meta_attention else None
             ),
+            use_q4_lm_head_local32_fixed_meta=(
+                args.enable_q4_lm_head_local32_fixed_meta
+            ),
             global_split_min_live=args.global_split_min_live,
             swa_split_min_live=args.swa_split_min_live,
             swa_split_tile16_min_live=args.swa_split_tile16_min_live,
@@ -770,6 +781,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "use_mixed_local32_fixed_meta_attention": (
                 owner.use_mixed_local32_fixed_meta_attention
+            ),
+            "use_q4_lm_head_local32_fixed_meta": (
+                owner.use_q4_lm_head_local32_fixed_meta
             ),
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,

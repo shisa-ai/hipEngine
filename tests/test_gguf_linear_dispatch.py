@@ -1562,6 +1562,63 @@ def test_registered_q5_wave32x2_singleton_is_explicit_and_fails_closed() -> None
     assert calls == ["candidate", "fallback"]
 
 
+def test_registered_q4_lm_head_local32_is_explicit_and_fails_closed() -> None:
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "local32_fixed_meta_gemv_decode_bf16_f32_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_gemv_decode_bf16_f32_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, fallback_key)
+    }
+    calls: list[str] = []
+
+    register(candidate_key, lambda *args, **kwargs: calls.append("candidate"), replace=True)
+    register(fallback_key, lambda *args, **kwargs: calls.append("fallback"), replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=3072,
+            out_features=100_352,
+            output_dtype=GGUF_OUTPUT_F32,
+            use_gemv_decode=True,
+            registered_variant=candidate_key.variant,
+        )
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=3072,
+            out_features=100_352,
+            output_dtype=GGUF_OUTPUT_F32,
+            use_gemv_decode=True,
+            registered_variant="missing_local32_fixed_meta_variant",
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert calls == ["candidate", "fallback"]
+
+
 def test_registered_q5_wave32x2_pair_is_c1_only_with_pack8_fallback() -> None:
     weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
     weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")

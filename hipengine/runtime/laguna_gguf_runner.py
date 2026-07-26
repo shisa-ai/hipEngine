@@ -110,6 +110,9 @@ _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT = (
     "wave32x2_fixed_meta_gemv_decode_bf16_f32_out"
 )
 _Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+_Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
+    "local32_fixed_meta_gemv_decode_bf16_f32_out"
+)
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -684,6 +687,9 @@ class LagunaEagerLibraries:
             "gguf_q4_k": self.q4_linear,
             "gguf_q4_k:pack8_gemv_decode_bf16_bf16_out": self.q4_decode_linear,
             "gguf_q4_k:pack8_gemv_decode_bf16_f32_out": self.q4_decode_linear,
+            "gguf_q4_k:local32_fixed_meta_gemv_decode_bf16_f32_out": (
+                self.q4_decode_linear
+            ),
             "gguf_q5_k": self.q6_linear,
             "gguf_q6_k": self.q6_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": self.q6_decode_linear,
@@ -1314,6 +1320,22 @@ def resolve_laguna_mixed_q6_fixed_meta_attention(
     )
 
 
+def resolve_laguna_q4_lm_head_local32_fixed_meta(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the explicit-only gfx1100 Q4_K c=1 LM-head sibling."""
+
+    capability = backend_package_capability(
+        backend,
+        "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
+        None,
+    )
+    if capability is None:
+        return False
+    return bool(capability) if requested is None else bool(requested)
+
+
 def resolve_laguna_q5_shared_fixed_meta(
     backend: str,
     requested: bool | None = None,
@@ -1788,6 +1810,7 @@ class LagunaGGUFResidentSession:
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
+        use_q4_lm_head_local32_fixed_meta: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1857,6 +1880,17 @@ class LagunaGGUFResidentSession:
                 self.backend,
                 use_mixed_local32_fixed_meta_attention,
             )
+        )
+        self.use_q4_lm_head_local32_fixed_meta = (
+            resolve_laguna_q4_lm_head_local32_fixed_meta(
+                self.backend,
+                use_q4_lm_head_local32_fixed_meta,
+            )
+        )
+        self._q4_lm_head_variant = (
+            _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT
+            if self.use_q4_lm_head_local32_fixed_meta
+            else None
         )
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
@@ -3336,6 +3370,7 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             use_wmma_prefill=False,
             use_gemv_decode=True,
+            registered_variant=self._q4_lm_head_variant,
         )
         self.kernel_plan.argmax(
             scratch.logits.ptr,
@@ -3754,6 +3789,7 @@ __all__ = [
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
+    "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",
 ]
