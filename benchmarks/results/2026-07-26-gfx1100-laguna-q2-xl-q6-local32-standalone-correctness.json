@@ -1,0 +1,335 @@
+{
+  "actual_weight_performance_precondition": {
+    "all_50_weights_bit_exact": true,
+    "all_required_rows_improve": true,
+    "counterbalanced_repetitions": 15,
+    "event_improvement_range_pct": [
+      11.418603107786529,
+      22.322772376058374
+    ],
+    "launches_per_sample": 200,
+    "reason_not_performance_claim": "Isolated repository primitive timing does not establish full-model span, clean-process throughput, prompt-category throughput, or default behavior.",
+    "rows": [
+      {
+        "bf16_bit_exact": true,
+        "event_delta_pct": -20.703791346678948,
+        "event_us": {
+          "local128": 63.269033432006836,
+          "local32": 50.169944763183594
+        },
+        "role": "dense_down",
+        "shape": [
+          3072,
+          12288
+        ],
+        "wall_delta_pct": -20.50508459792798,
+        "wall_us": {
+          "local128": 63.4780409745872,
+          "local32": 50.461814971640706
+        },
+        "weight": "blk.0.ffn_down.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "event_delta_pct": -11.418603107786529,
+        "event_us": {
+          "local128": 10.059070587158203,
+          "local32": 8.910465240478516
+        },
+        "role": "shared_down_first",
+        "shape": [
+          3072,
+          1024
+        ],
+        "wall_delta_pct": -11.463712582088814,
+        "wall_us": {
+          "local128": 10.13117958791554,
+          "local32": 8.969770278781652
+        },
+        "weight": "blk.1.ffn_down_shexp.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "event_delta_pct": -11.76180459604188,
+        "event_us": {
+          "local128": 10.751874446868896,
+          "local32": 9.487259984016418
+        },
+        "role": "shared_down_last",
+        "shape": [
+          3072,
+          1024
+        ],
+        "wall_delta_pct": -12.168023711389985,
+        "wall_us": {
+          "local128": 10.826039360836148,
+          "local32": 9.508724324405193
+        },
+        "weight": "blk.46.ffn_down_shexp.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "event_delta_pct": -22.322772376058374,
+        "event_us": {
+          "local128": 48.43898296356201,
+          "local32": 37.62605905532837
+        },
+        "role": "attention_output_layer47",
+        "shape": [
+          3072,
+          9216
+        ],
+        "wall_delta_pct": -19.352897261271917,
+        "wall_us": {
+          "local128": 48.21229027584195,
+          "local32": 38.88181527145207
+        },
+        "weight": "blk.47.attn_output.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "event_delta_pct": -16.64305446209888,
+        "event_us": {
+          "local128": 13.533694744110107,
+          "local32": 11.281274557113647
+        },
+        "role": "shared_gate_layer47",
+        "shape": [
+          1024,
+          3072
+        ],
+        "wall_delta_pct": -16.480614038246188,
+        "wall_us": {
+          "local128": 13.611629838123918,
+          "local32": 11.36834966018796
+        },
+        "weight": "blk.47.ffn_gate_shexp.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "event_delta_pct": -16.770651467855657,
+        "event_us": {
+          "local128": 13.53089451789856,
+          "local32": 11.261675357818604
+        },
+        "role": "shared_up_layer47",
+        "shape": [
+          1024,
+          3072
+        ],
+        "wall_delta_pct": -16.60673230324059,
+        "wall_us": {
+          "local128": 13.611229369416833,
+          "local32": 11.350848944857717
+        },
+        "weight": "blk.47.ffn_up_shexp.weight"
+      }
+    ],
+    "wall_improvement_range_pct": [
+      11.463712582088814,
+      20.50508459792798
+    ],
+    "warmups_per_mode": 50
+  },
+  "builder_sha256": "4ce584168fff81205f0cd8db04e19c87e996965dc9492d81459a0013bf312d11",
+  "cache_only_trace": {
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 80,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q6-local32-standalone-repository-trace --output-file trace -- uv run python -u /tmp/trace_laguna_q6_local32_standalone_repository.py",
+    "count": 1,
+    "duration_ns": 11000,
+    "grid_x": 49152,
+    "harness_sha256": "d0eb8c67a13e9a2bdae4d6c2637f64eeec38d6ece74da68fa964a9b0c42c549d",
+    "lds_bytes": 0,
+    "no_compiler_under_profile": true,
+    "nonprofiled_require_cached_warmup_preceded_trace": true,
+    "scratch_bytes": 0,
+    "stderr_sha256": "35c192d496348f2aa24652063401fb557761e9387a1a2a1ea2441ab07bf22748",
+    "stdout_sha256": "8c14248fc9ab3ace466e7ca10fa31d9e85a7673848dd756ad903bf7b33539593",
+    "symbol": "void (anonymous namespace)::gguf_q6_k_wave32x2_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int)",
+    "trace_sha256": "d9a2b33d64d63c9fc2ac6b47e4fa4ba19a5e292edac7d871c50a5145bdae3392",
+    "workgroup_x": 32
+  },
+  "codegen": {
+    "allocated_lds_bytes": 0,
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 80,
+    "barriers": 0,
+    "candidate_library_sha256": "8755ce795749073d3360f03e565007f37fac84d4cf955b35b535fe6f6a19fa9b",
+    "compile_command": "hipcc -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100 --genco hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip -o /tmp/laguna-q6-local32-standalone-repository.hsaco",
+    "control_library_sha256": "f01f4571d30b75a4228919d26486c6fca86162ae85616c1a304244c46edda4ef",
+    "ds_bpermute_b32": 56,
+    "hsaco_sha256": "29479d6909312d993fa4928ea73713717a4015e5f3d8f1afc640734efc221bba",
+    "logical_sgpr": 18,
+    "logical_vgpr": 75,
+    "max_flat_workgroup_size": 32,
+    "objdump_sha256": "c55b6889a88c2d61b4278613e293bbfc3640e54738f4ed53c1db76717ba1f641",
+    "private_bytes": 0,
+    "readobj_sha256": "6983d4254af26a31dcf6f9f504bffe1be4b2bdeff4c070143c2b3ecbd966046b",
+    "scratch_bytes": 0,
+    "scratch_instructions": 0,
+    "sgpr_spills": 0,
+    "static_instructions": 451,
+    "static_lds_bytes": 0,
+    "text_bytes": 2816,
+    "vgpr_spills": 0,
+    "wavefront_size": 32
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "retain separately registered exact primitive; do not select at runtime yet",
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "completion_claim": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_gate": "In a separate commit, add only an explicit/default-off gfx1100 selector through c=1 BF16 raw single-linears, then require shared-weight 16-transition full state and a cached 50-candidate/723-model-kernel trace before clean context or category measurement."
+  },
+  "default_changed": false,
+  "design": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json",
+    "artifact_sha256": "a51feeb2eb17963de6698d6c958fa748485cce80ba7137e447409fce97334051",
+    "commit": "cc2c3f52061b557c328e9d454337b87066f5dabe",
+    "frozen_gate_satisfied": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "arithmetic": "One local32 wave owns two output rows, carries original local128 partitions lane+{0,32,64,96} independently, preserves every k/k+128 FMA and wave tree, and adds partition totals in order 0..3 before the same RNE BF16 store.",
+    "backend_capability_added": false,
+    "cli_added": false,
+    "dispatch_delta": 0,
+    "export": "hipengine_gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+    "four_axis_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q6_k",
+      "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+    ],
+    "gfx1151_alias_excluded": true,
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "retained_local128_changed": false,
+    "rows_contract": "rows == 1; in_features divisible by 256; out_features positive and even; local_size 32",
+    "runtime_selector_added": false,
+    "variant_collision_guard": "The standalone_ registry name cannot alias the already-default Q5 fixed-metadata request, so primitive registration alone remains behavior-neutral.",
+    "wrapper": "gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+  },
+  "kind": "hipengine_laguna_q2_xl_q6_local32_standalone_correctness",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "only already-catalogued unrelated drift",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "q6_runtime_tensors": 50,
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "pass": true,
+  "performance_claim": false,
+  "primitive_correctness": {
+    "actual_weight_bf16_bit_exact_to_retained": true,
+    "actual_weight_count": 50,
+    "actual_weight_harness_sha256": "bc6b6fb6eb1dba6c795905e1e014624a88100808b50056590d9d1a4b3bf9d50b",
+    "actual_weight_mismatches": 0,
+    "actual_weight_raw_sha256": "37122df4822cd049acdba699cc409db0df19220e891a3b7dce7aa04533dbf29a",
+    "actual_weight_stdout_sha256": "86da6ebf2ca1200b25f79e77f13b5e3d9059263d29966263f3ca711002f6038f",
+    "cpu_reference_gate": {
+      "kl_max": 0.0002859544252920426,
+      "kl_mean": 2.9555683815469246e-05,
+      "passed": true,
+      "shape": [
+        10,
+        64,
+        1024
+      ],
+      "top1_agreement": 1.0
+    },
+    "exact_sibling_kl": 0.0,
+    "exact_sibling_top1_agreement": 1.0,
+    "synthetic_bf16_bit_exact_to_retained": true,
+    "synthetic_boundary_shapes": [
+      [
+        256,
+        2
+      ],
+      [
+        1024,
+        8
+      ],
+      [
+        3072,
+        8
+      ],
+      [
+        9216,
+        8
+      ],
+      [
+        12288,
+        8
+      ],
+      [
+        256,
+        1024
+      ],
+      [
+        256,
+        3072
+      ]
+    ],
+    "synthetic_coverage": [
+      "minimum/maximum signed Q6 scales",
+      "zero/all-one/alternating ql and qh bytes",
+      "BF16 signed zero, subnormal, normal, and maximum finite inputs",
+      "K-block, local128 partition, output-pair, pack8, and production output boundaries"
+    ]
+  },
+  "red_green": {
+    "adjacent_gfx1151": {
+      "command": "PYTHONPATH=. uv run pytest -q tests/test_gfx1151_backend.py -k 'not test_gguf_fused_linear_matching_uses_resident_backend'",
+      "passes": 22,
+      "sha256": "e2289c230135b682d66e48107f8caab30f5b37878e8daf2e9fb92df9aebb1375"
+    },
+    "focused": {
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q6_k_local32_standalone.py tests/test_gguf_k_gemv.py tests/test_gguf_q5_q6_mixed_attention_decode.py tests/test_gguf_q6_k_pack8_gemv_decode.py -k 'q6_local32 or gguf_k_gemv or mixed_q5_q6 or p9_b4b_registry_keys_resolve or p9_b4b_bf16_bf16_matches_cpu_oracle'",
+      "passes": 29,
+      "sha256": "b71db6006ecc410f6085db2500759568a2da5d0cdf2fd3f7165307654085abe2"
+    },
+    "green": {
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q6_k_local32_standalone.py",
+      "passes": 11,
+      "sha256": "08faea39fd19189f6544839f505d91d76ecb1367e219f5db362cdf22916ef869"
+    },
+    "red": {
+      "command": "PYTHONPATH=. uv run pytest -q tests/test_gguf_q6_k_local32_standalone.py",
+      "result": "collection failed only because the frozen public wrapper was absent",
+      "sha256": "2e9094b6e0986d869d77695b1643b2a0d7533a42aab0734d19f329a3018ac711"
+    },
+    "ruff_compile": {
+      "passed": true,
+      "sha256": "c9d3588957ed6562e2506e19aacc6bc6bc8eea34a5cabf18fe1c488a428e7ce8"
+    },
+    "unfiltered_known_failure": {
+      "candidate_related": false,
+      "output_sha256": "220f0b78f56287fc4fb335a7c152203dc9508553c8a18da03a83e479bb170dd7",
+      "reason": "pre-existing stale _resolve_gguf_linear_pair_kind call omits activation_dtype, output_dtype, and registered_decode_variant",
+      "test": "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend"
+    }
+  },
+  "schema": 1,
+  "source_hashes": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "9abc7ef022b739dcac260b2acc8357bbadba2601ad073a355c897e137036205b",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "bfab50f09e92f19a4bc0fee9110027654d84b7f3884ea36fef222b10aaec7a03",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "495cbf2685bfbd7f1cff7e4d34c07b6453b8d0130a74c0da4687459bc8cf0dc9",
+    "tests/test_gguf_q6_k_local32_standalone.py": "d0e71783448c17f4c1d2e2a34e823315b844f5922299880a58bd97cb2f0736df"
+  },
+  "source_revision": "cc2c3f52061b557c328e9d454337b87066f5dabe",
+  "status": "primitive_admitted_runtime_unselected"
+}

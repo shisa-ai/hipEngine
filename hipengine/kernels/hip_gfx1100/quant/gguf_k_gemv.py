@@ -273,6 +273,9 @@ gguf_q6_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q6_k", _symbol("g
 gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out = _make_unequal_dual_pack8_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "pair_pack8_gemv_decode_bf16_f32_out")
 )
+gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out = _make_wave32x2_wrapper(
+    _symbol("gguf_q6_k", "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out")
+)
 _MIXED_ATTENTION_SYMBOL = (
     "hipengine_gguf_q5_q6_mixed_attention_pack8_gemv_decode_bf16_f32_out"
 )
@@ -907,6 +910,7 @@ _WRAPPERS = {
         "gemv_bf16_bf16_out": gguf_q6_k_gemv_bf16_bf16_out,
         "pack8_gemv_bf16_f32_out": gguf_q6_k_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q6_k_pack8_gemv_bf16_bf16_out,
+        "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out": gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q6_k_selected_gemv_bf16_bf16_out,
         "selected_silu_gemv_bf16_bf16_out": gguf_q6_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
@@ -970,6 +974,7 @@ __all__ = [
     "gguf_q6_k_gemv_bf16_fp16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
     "gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out",
+    "gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",

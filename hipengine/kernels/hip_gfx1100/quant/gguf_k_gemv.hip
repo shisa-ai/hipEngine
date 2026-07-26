@@ -1414,6 +1414,23 @@ __device__ __forceinline__ void gguf_q6_k_wave32x2_fixed_meta_decode_out_block(
 
 template <typename scalar_t, typename out_t>
 __launch_bounds__(32, 8)
+__global__ void gguf_q6_k_wave32x2_fixed_meta_decode_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int in_features,
+    int out_features) {
+  gguf_q6_k_wave32x2_fixed_meta_decode_out_block(
+      x,
+      qweight,
+      out,
+      blockIdx.x,
+      in_features,
+      out_features);
+}
+
+template <typename scalar_t, typename out_t>
+__launch_bounds__(32, 8)
 __global__ void gguf_q5_k_wave32x2_decode_out_kernel(
     const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ qweight,
@@ -2477,6 +2494,32 @@ int launch_gguf_q5_k_wave32x2_fixed_meta_decode_out(
 }
 
 template <typename out_t>
+int launch_gguf_q6_k_wave32x2_fixed_meta_decode_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows != 1 ||
+      in_features <= 0 || (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % 2) != 0 || threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(out_features / 2));
+  gguf_q6_k_wave32x2_fixed_meta_decode_out_kernel<uint16_t, out_t>
+      <<<grid, dim3(32), 0, stream>>>(
+          x,
+          qweight,
+          out,
+          static_cast<int>(in_features),
+          static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t>
 int launch_gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out(
     const uint16_t* x,
     const uint8_t* qweight_a,
@@ -3132,6 +3175,14 @@ extern "C" int hipengine_gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out(
   return launch_gguf_q6_k_pair_pack8_decode_out<float>(
       x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features_a,
       out_features_b, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out(
+    const uint16_t* x, const uint8_t* qweight, uint16_t* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q6_k_wave32x2_fixed_meta_decode_out<uint16_t>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q5_q6_mixed_attention_pack8_gemv_decode_bf16_f32_out(
