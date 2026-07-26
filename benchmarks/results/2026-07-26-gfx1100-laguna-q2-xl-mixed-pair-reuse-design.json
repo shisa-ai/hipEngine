@@ -1,0 +1,671 @@
+{
+  "cache_only_trace": {
+    "candidate_rows": [
+      {
+        "DurationNs": 19480,
+        "Grid_Size_X": 99072,
+        "Kernel_Name": "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+        "LDS_Block_Size": 0,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "VGPR_Count": 96,
+        "Workgroup_Size_X": 32
+      },
+      {
+        "DurationNs": 28840,
+        "Grid_Size_X": 99072,
+        "Kernel_Name": "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+        "LDS_Block_Size": 0,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "VGPR_Count": 96,
+        "Workgroup_Size_X": 32
+      }
+    ],
+    "compiler_under_profiler": false,
+    "finite": true,
+    "outputs_f32_bit_exact": true,
+    "preflight_sha256": "03fc0140f57c46e28608e6756096ea5c2fa3ca76bac8c17cb279438a5cf869ec",
+    "stderr_sha256": "073ab487d697e6edbc12dc3533c07e12b18659b9b75f3ad9445d5502d303b487",
+    "stdout_sha256": "03fc0140f57c46e28608e6756096ea5c2fa3ca76bac8c17cb279438a5cf869ec",
+    "trace_harness_sha256": "218f7fd0d05a59e4a426efe9b6339ff41e3b95a0ab62a6788a58bab0c2bf77db",
+    "trace_sha256": "1e0dc40f203cf730f893c16167950c03a80007cc8e9b1360524185a9bf7ddee1"
+  },
+  "closed_before_selection": [
+    "standalone Q6 local32 runtime owner",
+    "stateless compact-wave32 router-selector runtime owner",
+    "persistent wave-top10 router composition",
+    "weighted+routed/hidden split runtime owner",
+    "homogeneous Q5 local64 workgroup packing",
+    "heterogeneous IQ2/shared-Q5 launch packing",
+    "activation LDS staging and barrier-based reuse without new evidence",
+    "Q5/Q6 local-size and fixed-metadata-only sweeps"
+  ],
+  "date": "2026-07-26",
+  "decision": {
+    "action": "select for repository RED/GREEN",
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "default_changed": false,
+    "next_action": "Commit this design record, then add repository RED before the separately registered primitive.",
+    "why_distinct": "This shares an activation register across heterogeneous Q5 and Q6 decoders inside one wave; it is not homogeneous local64 packing, an LDS/barrier stage, a metadata rewrite, a local-size sweep, or a launch-count-only fusion."
+  },
+  "frozen_gates": {
+    "primitive_correctness": [
+      "F32 bytes match retained local32 at K256/1024/3072/9216 and small/production output boundaries with Q5/Q6 metadata and BF16 signed-zero/subnormal/finite-edge fixtures",
+      "all four outputs match retained local32 on actual layers 0/44/1/46 and the complete all-47 actual-weight transfer",
+      "CPU-reference KL <= 0.05 and top-1 >= 90%"
+    ],
+    "primitive_performance_and_resources": [
+      "repository-built layers 0/44/1/46 use 50 warmups, 15 counterbalanced repetitions, and 200 launches/sample; every event and synchronized-wall median must improve",
+      "candidate remains local32/wave32, logical VGPR <= 92, allocated VGPR <= 96, logical SGPR <= 70, LDS/private/spills/scratch 0, <=1245 instructions, <=7208 text bytes, and zero barriers",
+      "non-profiled cache warmup precedes rocprofv3 and no compiler runs under profiling"
+    ],
+    "primitive_red_green": [
+      "candidate wrapper and exact four-axis key are absent before implementation",
+      "gfx1151 and unsupported backends cannot alias the key",
+      "rows != 1, invalid block/output divisibility, Q5 total < Q6 total, and null pointers reject before library load"
+    ],
+    "runtime": [
+      "only explicit default-off gfx1100 c=1 Q5/Q6 layers select the candidate; retained local32, rows/prefill, misses, gfx1151, and layer47 remain exact fallbacks",
+      "16-transition shared-weight full logits/IDs, all 48 hidden/47 routed boundaries, active K/V and KVLiveSpans, reset/re-prefill, ownership, and teardown are exact",
+      "cached tracing records 47 candidate Q5/Q6 calls plus one unchanged layer47 Q6/Q8 call and 723 model kernels/token, with zero candidate prefill calls",
+      "both clean short/512/1K/near-4K process orders improve projection and complete kernel sum, keep span below +0.5%, and child throughput above -0.5%",
+      "both complete 18-prompt category process orders pass every decode/E2E/prefill/TTFT and correctness guard before promotion"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_mixed_pair_reuse_design",
+  "model": {
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "layer47_fallback_family": "Q6/Q8/Q8/Q6",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "q5_q6_layers": 47,
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling_not_claim": {
+    "canonical_h32_tok_s": 61.99155148671624,
+    "canonical_wall_ms": 16.131230401844086,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "modeled_isolated_saving_ms_per_token": 0.11760311071892696,
+    "modeled_kernel_sum_improvement_pct": 0.9138826816904717,
+    "modeled_kernel_sum_ms": 12.750909782138217,
+    "modeled_projection_ms": 1.8223571749953587,
+    "modeled_remaining_to_vulkan_pct": 3.156967374561237,
+    "modeled_throughput_gain_pct": 0.7343939544796729,
+    "modeled_tok_s": 62.446813693122834,
+    "modeled_wall_ms": 16.013627291125157,
+    "performance_claim": false,
+    "projection_event_ratio_from_actual_screen": 0.9393785988378489
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "bc9bc908285a1cb18feb406db49a18c9e7d6bf2325089a4dc0d7979baf1ecaba",
+    "kernel_catalog_sha256": "b55777520c6fad2bbcd0ddcdb320f59eba731b8cd2941e21f2bc569e4ed8687a",
+    "kernel_source_sha256": "9abc7ef022b739dcac260b2acc8357bbadba2601ad073a355c897e137036205b",
+    "kernel_wrapper_sha256": "bfab50f09e92f19a4bc0fee9110027654d84b7f3884ea36fef222b10aaec7a03",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "prior_rejection_sha256": "141afce603647c62840c6fe60989d230d3b75d886e366c20188443aa4dc0d0f3"
+  },
+  "residual_trace": {
+    "derivation": "last 14 complete 47-call groups from each immutable control process order",
+    "mixed_q5_q6_calls_per_token": 47,
+    "mixed_q5_q6_ms_per_token": 1.9399602857142857,
+    "model_kernels_per_token": 723,
+    "sha256": "2ad53dbba218e63993184b8b98da71a6b8bd9f2c1e8d862f4b1a2ba94487349b",
+    "short_kernel_sum_ms_per_token": 12.868512892857144,
+    "source": "/tmp/laguna-q2-xl-weighted-hidden-split-clean-profile-summary.json",
+    "stable_samples": 28
+  },
+  "schema": 1,
+  "selected_design": {
+    "description": "One barrier-free local32 wave carries one retained fixed-metadata Q5 output pair and one retained fixed-metadata Q6 output pair, loading each BF16 activation once into a register and applying it to both independent quant decoders; excess Q5 pairs keep the retained helper.",
+    "dynamic_work_contraction": {
+      "barriers": 0,
+      "dispatch_delta_per_token": 0,
+      "fmas_changed": 0,
+      "global_grid_threads": {
+        "candidate": 99072,
+        "control": 131840,
+        "delta_pct": -24.854368932038835
+      },
+      "model_kernels_per_token": 723,
+      "paired_activation_bf16_bytes_avoided_per_layer": 6291456,
+      "swa_grid_threads": {
+        "candidate": 148608,
+        "control": 181376,
+        "delta_pct": -18.066298342541437
+      },
+      "weight_bytes_changed": 0
+    },
+    "exact_arithmetic": [
+      "all eight Q5 accumulator chains retain their per-chain K/FMA order, four wave trees, and 0..3 group additions",
+      "all eight Q6 accumulator chains retain their per-chain k/k+128 fmaf order, four wave trees, and 0..3 partition additions",
+      "Q5 and Q6 operations are interleaved only across independent accumulators",
+      "F32 output stores, raw GGUF weights, pointers, buffers, and one-dispatch layer boundary are unchanged"
+    ],
+    "fallback": "retained mixed_local32_fixed_meta projection; explicit disable, rows/prefill, shape/key miss, gfx1151, and layer 47 retain existing registered routes",
+    "mapping": {
+      "layer47": "unchanged registered Q6/Q8 fixed-Q6 mixed projection",
+      "paired_pairs_per_layer": 1024,
+      "q5_pair_owner": "flat Q5 query pairs followed by Q5 gate pairs",
+      "q6_pair_owner": "flat Q6 K pairs followed by Q6 V pairs",
+      "unpaired_q5_pairs": {
+        "global": 2072,
+        "swa": 3620
+      }
+    },
+    "persistent_weight_copy_delta_bytes": 0,
+    "planned_registry_key": [
+      "hip_gfx1100",
+      "attention_projection_quad",
+      "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+      "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+    ],
+    "planned_wrapper": "gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out",
+    "scope": "rows=1, BF16 activation, F32 output, in_features divisible by 256, all output widths divisible by 8, total Q5 outputs >= total Q6 outputs, gfx1100 only",
+    "workspace_delta_bytes": 0
+  },
+  "selection_probe": {
+    "abi_preflight_correction": "The first direct-C attempt used model pointer order instead of the C symbol primary-role order and stopped after layer 0; its partial outputs/timing were discarded. The final harness changes only pointer order to Q5 q/gate then Q6 k/v and reruns the complete frozen protocol.",
+    "actual_weight_path": "/tmp/laguna-mixed-pair-reuse-actual.json",
+    "actual_weight_sha256": "2d96665bf564faa57b8294418c3099286d2a6ce61e89db19962205729b206893",
+    "all_event_rows_improve": true,
+    "all_outputs_f32_bit_exact": true,
+    "all_wall_rows_improve": true,
+    "event_improvement_range_pct": [
+      3.0830459028415302,
+      6.769050386062081
+    ],
+    "harness_sha256": "dc02ff815b9738734b05c78038a551fb41b6ac91e0bde2b2a8bb23673c900930",
+    "kind": "out-of-tree source/ISA plus actual-weight precondition only",
+    "protocol": {
+      "device": "HIP_VISIBLE_DEVICES=0 / W7900 / one hardware queue",
+      "launches_per_sample": 200,
+      "order": "counterbalanced",
+      "repetitions": 15,
+      "warmups": 50
+    },
+    "representative_weighted_47_layer_screen": {
+      "event_candidate_ms": 1.749486939907074,
+      "event_control_ms": 1.862387478351593,
+      "event_improvement_pct": 6.062140116215109,
+      "global_layer_count": 12,
+      "swa_layer_count": 35,
+      "wall_candidate_ms": 1.762102198554203,
+      "wall_control_ms": 1.8486068927450106,
+      "wall_improvement_pct": 4.6794531887932145
+    },
+    "rows": [
+      {
+        "candidate_grid_threads": 99072,
+        "event_delta_pct": -5.315789933380599,
+        "event_samples_us": {
+          "pair_reuse_local32": [
+            28.07741403579712,
+            29.7228741645813,
+            31.745779514312744,
+            31.62114381790161,
+            30.996975898742676,
+            30.986979007720947,
+            30.524985790252686,
+            30.478785037994385,
+            29.716179370880127,
+            29.974980354309082,
+            29.691336154937744,
+            29.357988834381104,
+            29.0915846824646,
+            28.769586086273193,
+            28.56379985809326
+          ],
+          "retained_local32": [
+            30.701415538787842,
+            33.29068899154663,
+            32.31597900390625,
+            33.130905628204346,
+            32.48278617858887,
+            32.32198476791382,
+            31.391584873199463,
+            31.95949077606201,
+            31.56498432159424,
+            30.816190242767334,
+            30.88698387145996,
+            30.67164421081543,
+            29.63038444519043,
+            29.86759901046753,
+            29.923405647277832
+          ]
+        },
+        "event_us": {
+          "pair_reuse_local32": 29.7228741645813,
+          "retained_local32": 31.391584873199463
+        },
+        "features": [
+          6144,
+          1024,
+          1024,
+          48
+        ],
+        "layer_id": 0,
+        "outputs_exact": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "paired_output_pairs": 1024,
+        "retained_grid_threads": 131840,
+        "wall_delta_pct": -4.829566666473317,
+        "wall_samples_us": {
+          "pair_reuse_local32": [
+            29.98856594786048,
+            30.895625241100788,
+            31.483630882576108,
+            31.572584994137287,
+            31.343280570581555,
+            31.325978925451636,
+            30.431069899350405,
+            30.93877458013594,
+            29.81881028972566,
+            29.625005554407835,
+            29.272005194798112,
+            29.817360918968916,
+            28.899400494992733,
+            28.695545624941587,
+            28.47509109415114
+          ],
+          "retained_local32": [
+            32.81405079178512,
+            32.431394793093204,
+            32.34879462979734,
+            33.04890473373234,
+            32.347594387829304,
+            32.34489471651614,
+            31.92319069057703,
+            31.5103807952255,
+            31.287079909816384,
+            31.18357970379293,
+            31.03342605754733,
+            30.157265719026327,
+            29.881459195166826,
+            29.917764477431774,
+            29.96431547217071
+          ]
+        },
+        "wall_us": {
+          "pair_reuse_local32": 29.98856594786048,
+          "retained_local32": 31.5103807952255
+        },
+        "weights": [
+          "blk.0.attn_q.weight",
+          "blk.0.attn_k.weight",
+          "blk.0.attn_v.weight",
+          "blk.0.attn_gate.weight"
+        ]
+      },
+      {
+        "candidate_grid_threads": 99072,
+        "event_delta_pct": -3.0830459028415302,
+        "event_samples_us": {
+          "pair_reuse_local32": [
+            28.08398962020874,
+            28.35019588470459,
+            28.32139492034912,
+            28.061394691467285,
+            28.009390830993652,
+            28.13239574432373,
+            28.77140522003174,
+            29.587209224700928,
+            29.73820924758911,
+            30.085809230804443,
+            29.84360933303833,
+            29.707810878753662,
+            29.91241455078125,
+            29.9994158744812,
+            29.919610023498535
+          ],
+          "retained_local32": [
+            28.133394718170166,
+            29.527604579925537,
+            29.56860065460205,
+            29.534199237823486,
+            28.953800201416016,
+            29.867804050445557,
+            29.71121072769165,
+            30.528414249420166,
+            30.912818908691406,
+            32.07847595214844,
+            31.430225372314453,
+            31.57022476196289,
+            31.238625049591064,
+            31.179075241088867,
+            31.031224727630615
+          ]
+        },
+        "event_us": {
+          "pair_reuse_local32": 29.587209224700928,
+          "retained_local32": 30.528414249420166
+        },
+        "features": [
+          6144,
+          1024,
+          1024,
+          48
+        ],
+        "layer_id": 44,
+        "outputs_exact": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "paired_output_pairs": 1024,
+        "retained_grid_threads": 131840,
+        "wall_delta_pct": -3.797066274716965,
+        "wall_samples_us": {
+          "pair_reuse_local32": [
+            28.7965452298522,
+            28.126590186730027,
+            28.627089923247695,
+            27.997485594823956,
+            28.35943945683539,
+            28.205685084685683,
+            29.249655781313777,
+            29.662660090252757,
+            30.07871564477682,
+            30.205765506252646,
+            29.99615971930325,
+            30.139314476400614,
+            30.093014938756824,
+            30.069210333749652,
+            30.06450948305428
+          ],
+          "retained_local32": [
+            31.192179303616285,
+            29.73385970108211,
+            29.40340433269739,
+            29.528610175475478,
+            29.286250937730074,
+            29.822110664099455,
+            29.59451056085527,
+            30.833425698801875,
+            30.999224400147796,
+            31.23887930996716,
+            31.050824327394366,
+            31.245480058714747,
+            31.01452486589551,
+            31.152080046012998,
+            30.752919847145677
+          ]
+        },
+        "wall_us": {
+          "pair_reuse_local32": 29.662660090252757,
+          "retained_local32": 30.833425698801875
+        },
+        "weights": [
+          "blk.44.attn_q.weight",
+          "blk.44.attn_k.weight",
+          "blk.44.attn_v.weight",
+          "blk.44.attn_gate.weight"
+        ]
+      },
+      {
+        "candidate_grid_threads": 148608,
+        "event_delta_pct": -6.769050386062081,
+        "event_samples_us": {
+          "pair_reuse_local32": [
+            37.94187068939209,
+            38.022074699401855,
+            37.55207061767578,
+            39.22448396682739,
+            40.091891288757324,
+            40.071682929992676,
+            40.041494369506836,
+            40.08229732513428,
+            39.75348472595215,
+            39.989891052246094,
+            39.967100620269775,
+            40.07130146026611,
+            39.85569953918457,
+            40.2446985244751,
+            39.48428392410278
+          ],
+          "retained_local32": [
+            45.372724533081055,
+            40.64849376678467,
+            38.279476165771484,
+            44.185566902160645,
+            43.36491584777832,
+            43.79672050476074,
+            42.296109199523926,
+            42.93285369873047,
+            41.04464530944824,
+            42.9052209854126,
+            42.20371723175049,
+            42.868919372558594,
+            41.68750762939453,
+            42.26330280303955,
+            42.89091110229492
+          ]
+        },
+        "event_us": {
+          "pair_reuse_local32": 39.967100620269775,
+          "retained_local32": 42.868919372558594
+        },
+        "features": [
+          9216,
+          1024,
+          1024,
+          72
+        ],
+        "layer_id": 1,
+        "outputs_exact": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "paired_output_pairs": 1024,
+        "retained_grid_threads": 181376,
+        "wall_delta_pct": -3.93319768781899,
+        "wall_samples_us": {
+          "pair_reuse_local32": [
+            36.393949994817376,
+            36.714954767376184,
+            38.87563478201628,
+            40.04550050012767,
+            40.19265528768301,
+            40.32245487906039,
+            40.0610500946641,
+            40.366455214098096,
+            40.09190481156111,
+            40.36155412904918,
+            40.117905009537935,
+            40.26445560157299,
+            40.221749804914,
+            40.30805081129074,
+            40.098450845107436
+          ],
+          "retained_local32": [
+            38.29907509498298,
+            39.029334438964725,
+            39.51534512452781,
+            42.058974504470825,
+            43.50285045802593,
+            42.68573480658233,
+            41.760425083339214,
+            42.41288406774402,
+            42.776535265147686,
+            41.187864262610674,
+            41.62357421591878,
+            42.55583509802818,
+            41.56072507612407,
+            41.5626703761518,
+            42.542784940451384
+          ]
+        },
+        "wall_us": {
+          "pair_reuse_local32": 40.117905009537935,
+          "retained_local32": 41.760425083339214
+        },
+        "weights": [
+          "blk.1.attn_q.weight",
+          "blk.1.attn_k.weight",
+          "blk.1.attn_v.weight",
+          "blk.1.attn_gate.weight"
+        ]
+      },
+      {
+        "candidate_grid_threads": 148608,
+        "event_delta_pct": -6.272666054746323,
+        "event_samples_us": {
+          "pair_reuse_local32": [
+            36.865410804748535,
+            37.61086463928223,
+            39.07188415527344,
+            40.2264928817749,
+            39.378294944763184,
+            40.12229919433594,
+            39.87649917602539,
+            40.18430233001709,
+            39.552295207977295,
+            40.1462984085083,
+            39.4154953956604,
+            39.98909950256348,
+            39.64089393615723,
+            39.861295223236084,
+            39.66869592666626
+          ],
+          "retained_local32": [
+            38.81247520446777,
+            41.17769718170166,
+            42.072906494140625,
+            44.09592628479004,
+            42.32350826263428,
+            42.670912742614746,
+            43.15512180328369,
+            42.597713470458984,
+            41.808509826660156,
+            42.93487071990967,
+            41.501755714416504,
+            44.20797824859619,
+            41.20530605316162,
+            43.828372955322266,
+            41.89445972442627
+          ]
+        },
+        "event_us": {
+          "pair_reuse_local32": 39.66869592666626,
+          "retained_local32": 42.32350826263428
+        },
+        "features": [
+          9216,
+          1024,
+          1024,
+          72
+        ],
+        "layer_id": 46,
+        "outputs_exact": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "paired_output_pairs": 1024,
+        "retained_grid_threads": 181376,
+        "wall_delta_pct": -5.594065067474851,
+        "wall_samples_us": {
+          "pair_reuse_local32": [
+            37.74016979150474,
+            37.746019661426544,
+            39.21599010936916,
+            40.121800266206264,
+            40.16035469248891,
+            39.91099540144205,
+            40.12755467556417,
+            40.29705538414419,
+            40.07294890470803,
+            40.22590001113713,
+            40.14324978925288,
+            39.7213501855731,
+            40.09200492873788,
+            40.27735558338463,
+            40.22864974103868
+          ],
+          "retained_local32": [
+            39.750945288687944,
+            43.60459977760911,
+            42.30682970955968,
+            43.29279996454716,
+            42.38743451423943,
+            42.499235132709146,
+            41.62176977843046,
+            42.88088995963335,
+            43.09139563702047,
+            43.09509531594813,
+            42.735389433801174,
+            42.4114300403744,
+            41.891324799507856,
+            42.39998059347272,
+            42.54058585502207
+          ]
+        },
+        "wall_us": {
+          "pair_reuse_local32": 40.121800266206264,
+          "retained_local32": 42.499235132709146
+        },
+        "weights": [
+          "blk.46.attn_q.weight",
+          "blk.46.attn_k.weight",
+          "blk.46.attn_v.weight",
+          "blk.46.attn_gate.weight"
+        ]
+      }
+    ],
+    "stdout_sha256": "1e5c852ca346f61f2cba8fbfa84e1faf15b8309d998e614a06e23f9a637f96a0",
+    "wall_improvement_range_pct": [
+      3.797066274716965,
+      5.594065067474851
+    ]
+  },
+  "source_revision": "a5415f81096d5645da1f8a3cb302f1a7b03bafac",
+  "static_codegen": {
+    "candidate": {
+      "allocated_vgpr_ceiling": 96,
+      "barriers": 0,
+      "instructions": 1245,
+      "lds_bytes": 0,
+      "logical_sgpr": 70,
+      "logical_vgpr": 92,
+      "private_bytes": 0,
+      "sgpr_spills": 0,
+      "text_bytes": 7208,
+      "vgpr_spills": 0,
+      "wavefront": 32,
+      "workgroup": 32
+    },
+    "control": {
+      "instructions": 947,
+      "logical_sgpr": 61,
+      "logical_vgpr": 75,
+      "private_bytes": 0,
+      "spill_count": 0,
+      "text_bytes": 5640
+    },
+    "device_hsaco_sha256": "4419fe81238f79d1f2e06fbe416f767b15efe10e10872fb11195d9257529551d",
+    "objdump_sha256": "af3739ffd9b1e032e430b9b3fb2a7d981b3c04232adf41eae5b813c8b2ddf7df",
+    "probe_library_sha256": "6b9dd32fd86cfa82076b94cadc328ee36a5435308c43f28ed4166272de20c413",
+    "probe_source_sha256": "c6113d73ddba600e31f96a84ea13566338a948d72591dbc361f7c3ee0de89597",
+    "readobj_sha256": "3fc7c92d43bc7f5bef797718b4c979a7a013e97f6168724070f565b968a5acf2"
+  },
+  "status": "selected_pending_repository_red_green"
+}
