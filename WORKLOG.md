@@ -183626,3 +183626,19 @@ Vulkan local sizes verbatim will close the measured gap.
   selector. `py_compile` and `git diff --check` pass. Production remains
   **632.618 tok/s** pending both clean quality gates. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-quality-pending.json`.
+
+## 2026-07-27 — Pass M512 selector short no-change gate
+
+- The clean `q4_m512_role_split_short_absolute` run at revision `4d3f6a612`
+  uses all ten canonical prompts, four categories, three balanced
+  repetitions, h16/h32, 32 teacher-forced steps, and matrix chunk 128.
+- It exactly reproduces the admitted production quality profile:
+  **316/320 (98.75%)** top-1, max KL **0.049542582**, and every category
+  passes. Poolside remains exact top-1 at KL **0.0000175125**; same-mode
+  repeats are deterministic and all **109,859,542,160** tracked bytes return
+  to zero.
+- Diagnostic prefill is **4.505x** all-exact, h16/h32 E2E improve
+  **1.984x/1.553x**, and decode is flat. The M512 selector is therefore
+  verified invisible below its threshold. Promotion remains blocked on the
+  extended-512 full-logit gate. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-short-absolute-passed.json`.
