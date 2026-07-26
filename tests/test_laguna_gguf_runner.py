@@ -831,6 +831,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.fuse_selected_silu_pack is False
     assert session.dense_q4_prefill_mode == "wmma_pack8"
     assert session.f16_prefill_mode == "hipblaslt_range_direct"
+    assert session.fuse_f16_boundaries is True
+    session.set_f16_boundary_fusion(False)
+    assert session.fuse_f16_boundaries is False
     assert session.group_compact_mode == "parallel"
     assert session.verifier_scratch is None
     session.close()
