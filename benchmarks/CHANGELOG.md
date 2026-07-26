@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna Q4_K X16 decode] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the byte-neutral one-pack decoder is BF16-bit exact and beats X8 at c1/c2/c4/c8, but resident T16 -> X16 moves c1 **0.163258 -> 0.175753 ms (+7.654%)** and c2 **0.352933 -> 0.359698 ms (+1.917%)** before c4/c8 wins **1.167%/2.794%**; it fails before prefill/runtime, the decoder is removed, and only the byte-lossless host oracle remains; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-x16-decode-rejected.json`.
+
 - [retained exact-subwindow gfx1151 Laguna Q6 padded-activation production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset 512/1K/4K improves **549.150 -> 551.459 (+0.420%)**, **514.956 -> 517.307 (+0.456%)**, and **430.300 -> 432.099 tok/s (+0.418%)**; the exact 23-layer screen cuts **112.008 -> 111.806 ms (-0.180%, 19/23 wins)**, while the single clean Q6 trace is explicitly noisy at **118.802 ms** with unchanged local128/VGPR88/SGPR128/LDS5120B/scratch0; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-production.json`.
 
 - [retained exact gfx1151 Laguna Q6 padded-activation elision candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / never-read padded Q6 activation slots skip zero LDS stores and K16 sum work; the actual 23-layer screen improves **112.008 -> 111.806 ms (-0.180%, 19/23 layers)** with zero BF16 mismatches, and complete-state pp512 A/B is exact at **552.983 -> 553.559 tok/s (+0.104%, 7/11 wins)** with unchanged local128/VGPR88/SGPR128/LDS5120B/scratch0; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-candidate.json`.

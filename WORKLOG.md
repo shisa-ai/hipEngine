@@ -181611,3 +181611,28 @@ Vulkan local sizes verbatim will close the measured gap.
   material lever; the next bounded screen is the remaining sole-resident,
   byte-neutral X16 or genuinely different Q4 microtile premise, with exact
   c1 decode before prefill integration.
+
+## 2026-07-26 — Reject sole-resident Q4_K X16 decode
+
+- RED added a missing X16 host materializer/roundtrip fixture; GREEN adds the
+  byte-neutral `[expert,out_pack16,k_block,16 raw Q4_K blocks]` oracle. The
+  exact temporary decoder and adjacent X8/T16 bundle passed **12 tests** with
+  zero BF16 mismatches.
+- The actual layer-1 K3072/N1024 gate+up counter-rotated c1/c2/c4/c8 screen
+  measures T16/X16 **0.163258/0.175753**, **0.352933/0.359698**,
+  **0.691072/0.683010**, and **1.368045/1.329822 ms**. X16 beats X8 at every
+  shape and wins c4/c8, but c1 regresses resident T16 **7.654%**, failing the
+  <=2% all-shape prerequisite before prefill.
+- X16 and X8 each require **905,969,664 bytes** for the actual gate/up pair
+  versus T16's **931,135,488 bytes**. Temporary three-layout comparison
+  residency peaked at **2,743,452,288 bytes** and returned to zero.
+- Remove the temporary device decoder, wrapper, registry, benchmark extension,
+  and GPU fixture. Retain only the byte-lossless host oracle; no production,
+  materializer, or runtime route changes. Raw result SHA-256 is
+  `c039cfc173845abcdde0678a480d9f057ba261e23a9d4a2f138641d49bf0fcae`;
+  publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-x16-decode-rejected.json`.
+- The next bounded layout keeps T16-local Q nibbles and packs each four-column
+  scale/min quartet into an exact three-byte record. Sixty-four work items can
+  cooperatively expand its 64 records, directly attacking the serial metadata
+  cost that closed T16-lite and X16.

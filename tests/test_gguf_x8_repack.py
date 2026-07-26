@@ -7,13 +7,17 @@ import numpy as np
 from hipengine.quant.registry import resolve_quant
 from hipengine.quant.gguf_x8 import (
     GGUF_Q4_K_X8_BLOCK_BYTES,
+    GGUF_Q4_K_X16_BLOCK_BYTES,
     GGUF_Q5_K_X8_BLOCK_BYTES,
     GGUF_Q6_K_X8_BLOCK_BYTES,
     GGUF_X8_COLS,
+    GGUF_X16_COLS,
     repack_gguf_q4_k_x8,
+    repack_gguf_q4_k_x16,
     repack_gguf_q5_k_x8,
     repack_gguf_q6_k_x8,
     unpack_gguf_q4_k_x8,
+    unpack_gguf_q4_k_x16,
     unpack_gguf_q5_k_x8,
     unpack_gguf_q6_k_x8,
 )
@@ -41,6 +45,20 @@ def test_q4_x8_repack_is_byte_lossless() -> None:
 
     assert packed.tiles.shape == (3, raw.shape[1] // GGUF_X8_COLS, 2, GGUF_Q4_K_X8_BLOCK_BYTES)
     np.testing.assert_array_equal(unpack_gguf_q4_k_x8(packed), raw)
+
+
+def test_q4_x16_repack_is_byte_lossless() -> None:
+    raw = _stack(make_q4_k_weight, out_features=32)
+    packed = repack_gguf_q4_k_x16(raw)
+
+    assert packed.tiles.shape == (
+        3,
+        raw.shape[1] // GGUF_X16_COLS,
+        2,
+        GGUF_Q4_K_X16_BLOCK_BYTES,
+    )
+    assert packed.tiles.nbytes == raw.nbytes
+    np.testing.assert_array_equal(unpack_gguf_q4_k_x16(packed), raw)
 
 
 def test_q6_x8_repack_is_byte_lossless() -> None:

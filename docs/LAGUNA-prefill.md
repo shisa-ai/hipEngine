@@ -570,11 +570,24 @@ materializer, or runtime route. The host byte-neutral roundtrip oracle remains
 for any genuinely different microtile premise. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-t16-lite-decode-rejected.json`.
 
-X16 remains only a cheaper control compatible with the closed-work rules. Any
-future X16 or different microtiled replacement must beat current T16 on both
-exact c1 decode and prefill GB/s before replacing the resident format. The
-prior 4.69x direct-X8 result is recorded as an untuned-kernel failure, not
-proof that every byte-neutral layout is intrinsically bad.
+X16 is also now **closed**. Its one-pack exact consumer beats X8 at every
+screened shape and reaches parity/wins at c2/c4/c8, but natural c1 remains
+**7.654% slower** than resident T16: T16/X16 is
+**0.163258/0.175753 ms** at c1, **0.352933/0.359698 ms** at c2,
+**0.691072/0.683010 ms** at c4, and **1.368045/1.329822 ms** at c8. It
+therefore fails before prefill, materialization, or runtime integration. The
+temporary decoder is removed; the byte-neutral host roundtrip oracle remains.
+Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-x16-decode-rejected.json`.
+
+The next allowed byte-neutral premise keeps the proven T16-local nibble
+payload but replaces expanded scale/min bytes with exact **four-column,
+three-byte** 6-bit metadata records. Its 64 scale/min quartets can be unpacked
+cooperatively by 64 work items instead of making 16 lanes serialize the source
+metadata. It must pass the same exact c1-first decode gate before any prefill
+or resident-route work. The prior 4.69x direct-X8 result remains an
+untuned-kernel failure, not proof that every byte-neutral layout is
+intrinsically bad.
 
 ## Quality strategy
 
@@ -733,13 +746,15 @@ Immediate execution queue:
    **551.459/517.307/432.099 tok/s**. It improves the full 23-layer exact Q6
    sub-window only **0.180%** and confirms that activation padding is not the
    missing route-tile architecture. Freeze the current **190.363-ms**
-   selected-down body and screen a sole-resident, byte-neutral **X16 or
-   genuinely different Q4 microtile** before integration: it must beat
-   current T16 on exact natural c1 decode, then beat it on actual-weight
-   natural-M512 prefill GB/s, with zero sidecar bytes. This is the remaining
-   open layout premise after T16-lite and T128 failed decode. If it fails,
-   return to an expert schedule that reduces Q4 route-tile rereads without
-   larger accumulator state or F32 partial spills. Keep byte-neutral Q6
+   selected-down body. X16 is now closed after exact c1 regressed **7.654%**
+   despite c4/c8 wins. Screen the sole-resident byte-neutral
+   **T16-local-Q + four-column/three-byte metadata** microtile before
+   integration: it must beat current T16 on exact natural c1 decode, then beat
+   it on actual-weight natural-M512 prefill GB/s, with zero sidecar bytes.
+   This is the remaining open layout premise after T16-lite, X16, and T128
+   failed decode. If it fails, return to an expert schedule that reduces Q4
+   route-tile rereads without larger accumulator state or F32 partial spills.
+   Keep byte-neutral Q6
    qmicro and direct Q4 decode. The exact MMQ
    grouped-combine reuse is now clean production: it removes 47 launches and
    the routed-output round trip. Do not repeat
@@ -786,8 +801,10 @@ Immediate execution queue:
    repeats, 1.755-GB scratch, and lifecycle recovery are published. This
    receives no pp512 credit.
 6. Do not retry T16-lite: its best exact byte-plane/LDS decoder loses
-   **11.22–17.63%** at c1/c2/c4/c8. Any future X16 or genuinely different
-   microtiled replacement must run the same exact screen before an integrated
+   **11.22–17.63%** at c1/c2/c4/c8. X16 is also closed: its exact one-pack
+   consumer loses **7.654%** at c1 even though it wins at c4/c8. The only
+   active byte-neutral layout screen is T16-local Q with cooperatively decoded
+   four-column/three-byte metadata; it must pass exact c1 before an integrated
    prefill route. T128 is also closed:
    column-major payload locality bought **12.23%** at the M512 leaf but the
    best exact virtual-thread decoder still lost **6.10–6.86%**. Do not retain
