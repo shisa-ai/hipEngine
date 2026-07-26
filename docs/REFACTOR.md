@@ -63,6 +63,10 @@ should be removed or collapsed.
   wins**, and tracing verifies a **0.310-ms** span reduction. Promote through
   a gfx1151 capability, then collapse redundant positive selection after clean
   selector-unset publication.
+- Promotion now resolves `LAGUNA_MOE_SHARED_AFTER_ROUTER` from the gfx1151
+  package; explicit constructor/CLI false remains rollback. Remove redundant
+  public positive selection after clean selector-unset 512/1K/4K publication,
+  while retaining the false rollback through the next MoE scheduling audit.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 
