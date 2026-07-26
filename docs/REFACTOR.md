@@ -77,6 +77,11 @@ should be removed or collapsed.
   `(least=+1, greatest=-1)`. Remove the Laguna selector if the complete-state
   gate fails; the general HIP helpers may remain because they are exact,
   tested runtime primitives.
+- The checkpoint passes **+0.494%, 6/7 wins** and tracing cuts kernel span
+  **7.255 ms**. Promote the least-priority selection through a gfx1151
+  capability. After clean selector-unset publication, remove redundant
+  positive CLI/session selection while retaining explicit priority-0 rollback
+  through one later scheduling checkpoint.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 

@@ -182436,3 +182436,22 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next gate: priority 0 versus +1 under fixed two-queue after-router scheduling,
   one resident owner, seven counterbalanced pp512 pairs, and complete-state
   digests. Trace only if the robust gate is positive.
+
+## 2026-07-26 — Retain low-priority shared-stream candidate
+
+- Seven counterbalanced, queue-matched pp512 pairs improve default priority
+  **568.106 -> 570.914 tok/s (+0.494%, 6/7 wins)**. Every logits, hidden,
+  complete-KV, token/logit, and cursor digest is exact.
+- Cached tracing reaches **574.011 tok/s**, records **1,696** dispatches, and
+  cuts kernel span **898.024 -> 890.769 ms (-7.255 ms)**. Selected gate/up
+  recovers **344.619 -> 337.502 ms (-7.116 ms)**, confirming that lower shared
+  priority reduces routed-family contention.
+- The 188 secondary kernels slow **269.084 -> 337.239 ms**, but
+  **336.386 ms (99.75%)** overlaps caller work. Unoverlapped secondary time
+  rises only **0.645 -> 0.853 ms**, so the slower shared branch does not become
+  the critical path.
+- Retain and promote through a gfx1151 capability. Production remains
+  selector-unset **566.839 tok/s** until capability integration and a clean
+  512/1K/4K publication.
+- Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-candidate.json`.
