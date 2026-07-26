@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T09:28:41Z",
+  "kind": "hipengine_laguna_gate_up_physical_counter_audit",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "scope": "Production Laguna S 2.1 Q4_K_M layer-1 D8 Q4 gate/up consumer on gfx1151 with natural M512 routing",
+  "repo": {
+    "revision": "c4585ea84e0096f3605b4f457a573c0edf41d34c",
+    "tracked_status": []
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1,
+    "performance_level": "auto",
+    "performance_level_qualification": "The sysfs performance-level control is root-owned and not writable by the benchmark user. GRBM_COUNT records the actual in-kernel engine clock instead of claiming locked clocks.",
+    "in_kernel_engine_clock_ghz": {
+      "samples": [
+        2.542651208849406,
+        2.6980482362919966,
+        2.540956902449822,
+        2.519777929838993,
+        2.6086738183983043
+      ],
+      "median": 2.542651208849406
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "shape": {
+      "rows": 512,
+      "in_features": 3072,
+      "gate_features": 1024,
+      "up_features": 1024,
+      "experts": 256,
+      "top_k": 10
+    }
+  },
+  "routing": {
+    "artifact": "/tmp/laguna-lap0-routing-8d26a9562.json",
+    "route_count_sha256": "ebca42b7185d4275c15ecf28c99052d50002cd284dc9c419e0dabc47a46747f9",
+    "compact_rows": 5120,
+    "active_experts": 228,
+    "max_expert_rows": 232,
+    "row_tile": 32,
+    "scheduled_row_tiles": 297,
+    "padded_rows": 9504,
+    "scheduled_tiles_per_active_expert": 1.3026315789473684
+  },
+  "kernel": {
+    "name": "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,false,true,128,true,true,128,true,true>",
+    "mode": "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+    "workgroup_size": 128,
+    "grid_workgroups": 4752,
+    "lds_bytes": 3072,
+    "vgpr": 88,
+    "sgpr": 128,
+    "scratch_bytes": 0
+  },
+  "protocol": {
+    "control_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 2 --samples 5 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-bw0-leaf-control.json",
+    "counter_command_template": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --pmc <COUNTER> --kernel-include-regex '.*mmq64x32_prefill_compact32_kernel.*' --output-directory <TMP> --output-file gate_<COUNTER> -f csv -- python3 scripts/laguna_q4_k_mmq_leaf_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --routing-json /tmp/laguna-lap0-routing-8d26a9562.json --rows 512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 1 --samples 3 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <TMP_JSON>",
+    "counter_collection": "One hardware-compatible counter group per process; five filtered consumer dispatches per counter",
+    "activation_pack_excluded": true
+  },
+  "control": {
+    "inclusive_pack_plus_consumer_samples_ms": [
+      6.6864573160807295,
+      6.733653386433919,
+      6.804967880249023,
+      6.767845153808594,
+      6.8607133229573565
+    ],
+    "median_ms": 6.767845153808594,
+    "checksum_f64": 1114.1769413301445,
+    "finite": true,
+    "max_abs": 6.6875
+  },
+  "counters": {
+    "FETCH_SIZE_kib": {
+      "samples": [
+        1299916.4375,
+        1301454.9375,
+        1294345.0,
+        1294602.8125,
+        1294638.0
+      ],
+      "median": 1294638.0,
+      "median_bytes": 1325709312,
+      "csv_sha256": "ee6cb9772f13a0ee982806972b6c204f37420c22b1e7ba5188d5dd78341b9dba"
+    },
+    "L2CacheHit_percent": {
+      "samples": [
+        53.257331,
+        53.46512,
+        53.252884,
+        53.110144,
+        52.948401
+      ],
+      "median": 53.252884,
+      "csv_sha256": "03db5d97f37b5c247269250c6d64bd56bc9bc5d27842ee213f2b51ad9c2322e5"
+    },
+    "MemUnitBusy_percent": {
+      "samples": [
+        79.103158,
+        80.975021,
+        81.411579,
+        80.885061,
+        80.824242
+      ],
+      "median": 80.885061,
+      "csv_sha256": "e3d4cdf7b6ae1bf2920d2636ac68f3d7cf658775ca0241b15724603acf7abc9b"
+    },
+    "OccupancyPercent": {
+      "samples": [
+        96.149155,
+        95.892149,
+        95.767462,
+        94.837003,
+        95.662732
+      ],
+      "median": 95.767462,
+      "csv_sha256": "f0603350c7bc5e48247d99bfd776e5b8d674b9c112856891823ca0e19bc26af2"
+    },
+    "ALUStalledByLDS_percent": {
+      "samples": [
+        1.377368,
+        1.37064,
+        1.401187,
+        1.348459,
+        1.392289
+      ],
+      "median": 1.377368,
+      "csv_sha256": "d6b5156a6e203464beb071f24df848598ab74258b51225032676cd2bb31d3eb9"
+    },
+    "GRBM_COUNT": {
+      "csv_sha256": "467cc9042df092662610a4650c98ce5ddb3587472bde08e6b3fa6bb2f2d723d4"
+    }
+  },
+  "derived": {
+    "physical_fetch_gb_per_layer": 1.325709312,
+    "physical_bandwidth_gb_s_at_unprofiled_median": 195.88351711237942,
+    "percent_of_221_gb_s_stream_anchor": 88.63507561646128,
+    "scheduled_weight_request_gb_per_layer": 1.080262656,
+    "physical_fetch_over_scheduled_weight_request": 1.2272101647101648,
+    "interpretation": "The consumer is controller-bandwidth-bound, not LDS-, occupancy-, or arithmetic-bound. Its remaining local-body ceiling is small. A useful next gate/up design must remove physical bytes, principally the 1.3026x complete-weight reread caused by 32-row expert tiling, without the already-rejected larger live accumulator state or global F32 partial spills."
+  },
+  "decision": {
+    "lap_bw0_gate_up": "complete",
+    "closed": [
+      "more local LDS rearrangement without byte reduction",
+      "more launch-bounds or occupancy tuning",
+      "more arithmetic-only inner-loop tuning"
+    ],
+    "next": "Measure Q4 and Q6 selected-down physical traffic independently, then implement only a schedule whose byte model removes row-tile weight rereads."
+  }
+}
