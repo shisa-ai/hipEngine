@@ -52,13 +52,25 @@
     "candidate_regression_percent": 39.29069806134582,
     "candidate_speed_ratio": 0.7179275580250099,
     "candidate_wins": 0,
+    "full_prefix_control": {
+      "scope": "four complete natural layer-1 128-row expert prefixes",
+      "compact_rows": 512,
+      "production_padded_rows64": 512,
+      "candidate_padded_rows128": 512,
+      "production_qmicro_skip_padded_ms": 0.4475521469116211,
+      "candidate_cols32_rows128_ms": 0.47493309020996094,
+      "candidate_regression_percent": 6.117933627910133,
+      "candidate_wins": 0,
+      "bf16_mismatches": 0,
+      "output_checksum": 50931506543
+    },
     "bf16_mismatches": 0,
     "output_checksum": 509500838004,
     "tracked_allocations_returned": true
   },
   "decision": {
     "retain": false,
-    "reason": "The narrower tile nearly doubles scheduled padded rows and workgroup overhead; the 7.37% all-layer Q6 route-tile reduction cannot offset it.",
+    "reason": "The narrower tile nearly doubles scheduled padded rows over the full layer. A padding-free complete-prefix control still regresses 6.12%, isolating the activation/LDS cost of the geometry itself.",
     "cleanup": "Candidate HIP export/body specialization, Python selector, test parameter, and harness mode removed; production sources restored byte-for-byte."
   }
 }

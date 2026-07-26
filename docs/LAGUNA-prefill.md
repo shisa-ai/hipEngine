@@ -822,7 +822,11 @@ Immediate execution queue:
    **15,808 -> 29,696**. The exact actual-weight leaf regressed
    **4.8492 -> 6.7545 ms (+39.29%)** with zero BF16 mismatches. Do not retry
    a narrower-column/wider-row rectangle unless its scheduler avoids padding
-   amplification rather than merely changing the tile aspect ratio.
+   amplification rather than merely changing the tile aspect ratio. A
+   padding-free hybrid control is closed too: four complete 128-row prefixes
+   hold both schedules at 512 rows and the same total workgroup count, yet
+   32x128 still regresses **0.44755 -> 0.47493 ms (+6.12%)**. Extra
+   activation/LDS cost, not only padding, defeats this geometry.
 2. Keep exact cached-metadata attention in production. Clean selector-unset
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
