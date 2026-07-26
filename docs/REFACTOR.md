@@ -1442,3 +1442,7 @@ should be boring.
   A/B mode and make the admitted production specialization unconditional
   inside the planar-row64 wrapper while retaining packed-dot bodies for all
   other template shapes and unmeasured backends.
+- Clean selector-unset publication is satisfied at
+  **576.137/543.213/459.054 tok/s**, improving every preceding production
+  length with deterministic tokens, exact positions, and complete allocation
+  return. The refreshed selected-down family trace remains open.

@@ -12,7 +12,7 @@
   "model": {
     "name": "Poolside Laguna S 2.1",
     "quant": "Q4_K_M with resident planar-qmicro Q6_K selected down",
-    "model_sha256": "7da520ed3e0ac4e56a774f44177461567dfd5237f2791cf16a6bea8745753f"
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
   },
   "implementation": {
     "scope": "Q6 planar-qmicro selected down; one D4 activation plane; 64 output columns x 64 routed rows; local128",

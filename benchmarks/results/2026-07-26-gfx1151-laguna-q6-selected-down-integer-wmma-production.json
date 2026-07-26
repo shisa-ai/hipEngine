@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T14:50:11+00:00",
+  "kind": "hipengine_laguna_q6_selected_down_integer_wmma_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "repo_revision": "4404f57204afb2d385ce8611c23580f0c2fcdb97",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "selector-unset planar-qmicro Q6 selected-down prefill uses the exact integer-WMMA row64 body",
+    "resident_delta_bytes": 0,
+    "previous_revision": "8c5315a9e",
+    "previous_512_1024_4096_tok_s": [
+      573.3541789,
+      530.3510237,
+      446.189409
+    ],
+    "new_512_1024_4096_tok_s": [
+      576.1371111044512,
+      543.2126795265896,
+      459.05356601874894
+    ],
+    "change_percent": [
+      0.48537750431858484,
+      2.4251213350848344,
+      2.883115726027663
+    ],
+    "pp512_wall_ms": 888.677348033525,
+    "pp512_wall_to_700_ms": 157.24877660495362
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-integer-wmma-production.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "load_seconds_excluded": 92.22383188595995,
+    "tracked_worktree_clean": true,
+    "unrelated_untracked_artifacts_excluded": 255
+  },
+  "samples": {
+    "512_tok_s": [
+      579.8586076337895,
+      574.1700160384564,
+      576.1371111044512
+    ],
+    "1024_tok_s": [
+      548.6527073624554,
+      543.2126795265896,
+      543.0893205863537
+    ],
+    "4096_tok_s": [
+      461.5449448193781,
+      459.05356601874894,
+      457.75398972763725
+    ]
+  },
+  "correctness": {
+    "primitive": "The 12-case Q6 CPU-reference/quality gate passes; the integer-WMMA leaf is BF16-byte identical to the packed-dot planar body.",
+    "actual_weight_layer1_bf16_mismatches": 0,
+    "absolute_quality_transfer_max_kl": 0.04954258196634279,
+    "absolute_quality_transfer_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "repeat_next_token_deterministic": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "tracked_allocations_returned": true,
+    "tracked_resident_bytes": 78777775764,
+    "lifecycle_scope": "exact through 4K; repeated 128K remains blocked"
+  },
+  "leaf_evidence": "benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json",
+  "raw_sha256": "326f0b8df80e2f13bb1f1d0249a129f48a592193ba492a990499be201c9cdad8",
+  "next": "Refresh the pp512 Q6 selected-down family trace, then test a fragment/staging change only if attribution shows a material critical-path Q6 remainder."
+}

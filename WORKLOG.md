@@ -182859,3 +182859,30 @@ Vulkan local sizes verbatim will close the measured gap.
 - `python3 scripts/check_lineage.py --kind kernel --diff stat` remains
   mechanically blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is
   absent.
+
+## 2026-07-26 — Publish Q6 selected-down integer WMMA
+
+- Clean tracked revision `4404f5720` enables the exact integer-WMMA body only
+  for selector-unset planar-qmicro Q6 row64 prefill. The retained production
+  protocol uses Poolside Laguna S 2.1 Q4_K_M SHA-256
+  `7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`,
+  BF16 KV, matrix2048/attention128, and the automatic two-queue
+  after-router/least-priority shared schedule.
+- Three clean repetitions publish 512/1K/4K medians
+  **576.137/543.213/459.054 tok/s**, improving the preceding
+  **573.354/530.351/446.189 tok/s** by
+  **0.485%/2.425%/2.883%**. Every length improves; pp512 wall is
+  **888.677 ms** and the remaining wall reduction to 700 tok/s is
+  **157.249 ms**.
+- Tokens are deterministic at **2930/95/7772**, final positions are exact,
+  and all **78,777,775,764** tracked resident bytes return. The
+  CPU-reference/BF16-equality gate transfers the unchanged absolute production
+  quality result: max KL **0.049542582**, **316/320** top-1, minimum category
+  **96.875%**. Repeated 128K remains blocked and is not claimed.
+- Raw long-context JSON SHA-256:
+  `326f0b8df80e2f13bb1f1d0249a129f48a592193ba492a990499be201c9cdad8`.
+  Retained artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-production.json`.
+- Next action is a cached pp512 trace to refresh the Q6 selected-down family
+  window and critical-path overlap before selecting another fragment/staging
+  candidate.
