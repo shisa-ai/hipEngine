@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_exact_decode_primitive",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "device": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queues": 1
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "weight_shape": "actual layer-1 K3072/N1024 gate+up"
+  },
+  "layout": {
+    "name": "Q4_K T16-local qmicro",
+    "description": "FP16 d/dmin, 64 four-column 24-bit scale/min records, T16-local Q payload",
+    "pair_bytes": {
+      "qmicro": 905969664,
+      "t16": 931135488
+    },
+    "resident_reduction_bytes": 25165824,
+    "resident_reduction_percent": 2.7777777778,
+    "sidecar_bytes": 0,
+    "temporary_comparison_peak_bytes": 1837482624,
+    "temporary_comparison_after_bytes": 0
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_x8_exact_decode_bench.py --candidate qmicro --producer-rows 1,2,4,8 --warmups 3 --samples 12 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/2026-07-26-gfx1151-laguna-q4-k-qmicro-exact-decode-balanced.json",
+    "producer_rows": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "topk": 10,
+    "warmups": 3,
+    "samples": 12,
+    "burst": 5,
+    "schedule": "balanced counter-rotation",
+    "gate": "zero BF16 mismatches and candidate/T16 <= 1.02 at every shape"
+  },
+  "results": {
+    "c1": {
+      "t16_ms": 0.1575789988,
+      "qmicro_ms": 0.1498124003,
+      "qmicro_over_t16": 0.9507129851,
+      "qmicro_vs_t16_percent": -4.9287014907,
+      "bf16_mismatches": 0
+    },
+    "c2": {
+      "t16_ms": 0.3505043983,
+      "qmicro_ms": 0.3477676034,
+      "qmicro_over_t16": 0.9921918385,
+      "qmicro_vs_t16_percent": -0.78081615,
+      "bf16_mismatches": 0
+    },
+    "c4": {
+      "t16_ms": 0.6877967119,
+      "qmicro_ms": 0.6624091864,
+      "qmicro_over_t16": 0.9630886203,
+      "qmicro_vs_t16_percent": -3.6911379654,
+      "bf16_mismatches": 0
+    },
+    "c8": {
+      "t16_ms": 1.3512374878,
+      "qmicro_ms": 1.288635397,
+      "qmicro_over_t16": 0.9536705491,
+      "qmicro_vs_t16_percent": -4.6329450893,
+      "bf16_mismatches": 0
+    }
+  },
+  "validation": {
+    "focused_tests": 21,
+    "bf16_exact_all_shapes": true,
+    "trace_command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-qmicro-rocprof.ISVwZN --output-file qmicro-decode -- .venv/bin/python3 -u scripts/laguna_q4_k_x8_exact_decode_bench.py --candidate qmicro --producer-rows 1 --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "trace_kernel": "gguf_q4_qmicro_selected_dual_exact_gemv_kernel",
+    "trace_resources": {
+      "local_size": 128,
+      "vgpr": 192,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "raw_result_sha256": "9dbe6804bc059196fcffcdbb5277e5a61990e751984697bd9ebc71b468940eb4",
+    "trace_sha256": "b176891c41d75a18e415cc438890b1e28317822364776ae9a176a428c7ad2ebb"
+  },
+  "decision": {
+    "decode_primitive_retained": true,
+    "runtime_default_changed": false,
+    "materializer_changed": false,
+    "prefill_gate_next": true,
+    "production_unchanged_tok_s": 551.459
+  }
+}

@@ -580,14 +580,16 @@ temporary decoder is removed; the byte-neutral host roundtrip oracle remains.
 Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-x16-decode-rejected.json`.
 
-The next allowed byte-neutral premise keeps the proven T16-local nibble
-payload but replaces expanded scale/min bytes with exact **four-column,
-three-byte** 6-bit metadata records. Its 64 scale/min quartets can be unpacked
-cooperatively by 64 work items instead of making 16 lanes serialize the source
-metadata. It must pass the same exact c1-first decode gate before any prefill
-or resident-route work. The prior 4.69x direct-X8 result remains an
-untuned-kernel failure, not proof that every byte-neutral layout is
-intrinsically bad.
+The stronger byte-neutral premise **passes exact decode**. It keeps the proven
+T16-local nibble payload but replaces expanded scale/min bytes with exact
+**four-column, three-byte** 6-bit metadata records. All 128 work items expand
+the gate/up records cooperatively. Balanced c1/c2/c4/c8 timing improves T16
+**4.929%/0.781%/3.691%/4.633%**, with zero BF16 mismatches, no sidecar, and
+**25,165,824 fewer bytes** for the actual layer-1 gate/up pair. The exact
+decoder runs at local128/VGPR192/SGPR128/LDS1536B/scratch0. It is retained as
+a primitive; materialization and runtime remain unchanged until the
+actual-weight natural-M512 selected-prefill consumer passes. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-exact-decode-retained.json`.
 
 ## Quality strategy
 
@@ -747,12 +749,12 @@ Immediate execution queue:
    sub-window only **0.180%** and confirms that activation padding is not the
    missing route-tile architecture. Freeze the current **190.363-ms**
    selected-down body. X16 is now closed after exact c1 regressed **7.654%**
-   despite c4/c8 wins. Screen the sole-resident byte-neutral
-   **T16-local-Q + four-column/three-byte metadata** microtile before
-   integration: it must beat current T16 on exact natural c1 decode, then beat
-   it on actual-weight natural-M512 prefill GB/s, with zero sidecar bytes.
-   This is the remaining open layout premise after T16-lite, X16, and T128
-   failed decode. If it fails, return to an expert schedule that reduces Q4
+   despite c4/c8 wins. The sole-resident byte-neutral
+   **T16-local-Q + four-column/three-byte metadata** microtile has now passed
+   exact c1/c2/c4/c8 by **4.929%/0.781%/3.691%/4.633%**. Build its direct
+   selected-prefill consumer next and require positive actual-weight
+   natural-M512 GB/s before materialization/runtime integration, with zero
+   sidecar bytes. If it fails, return to an expert schedule that reduces Q4
    route-tile rereads without larger accumulator state or F32 partial spills.
    Keep byte-neutral Q6
    qmicro and direct Q4 decode. The exact MMQ
@@ -802,10 +804,10 @@ Immediate execution queue:
    receives no pp512 credit.
 6. Do not retry T16-lite: its best exact byte-plane/LDS decoder loses
    **11.22–17.63%** at c1/c2/c4/c8. X16 is also closed: its exact one-pack
-   consumer loses **7.654%** at c1 even though it wins at c4/c8. The only
-   active byte-neutral layout screen is T16-local Q with cooperatively decoded
-   four-column/three-byte metadata; it must pass exact c1 before an integrated
-   prefill route. T128 is also closed:
+   consumer loses **7.654%** at c1 even though it wins at c4/c8. T16-local Q
+   with cooperatively decoded four-column/three-byte metadata supersedes both:
+   exact decode is positive at every shape and its selected-prefill consumer
+   is now active. T128 is also closed:
    column-major payload locality bought **12.23%** at the M512 leaf but the
    best exact virtual-thread decoder still lost **6.10–6.86%**. Do not retain
    a second resident view or pay a prefill-to-decode transpose.

@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     build_gguf_x8_selected_gemv,
+    gguf_q4_k_qmicro_selected_dual_exact_gemv_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -28,6 +29,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16_qmicro
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8, repack_gguf_q5_k_x8, repack_gguf_q6_k_x8
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_k_weight, make_q6_k_weight
 
@@ -605,6 +607,60 @@ def test_q4_x8_selected_dual_exact_matches_raw_bits_and_cpu_source_gate(
         assert kl_mean <= 0.05
         assert kl_max <= 0.05
         assert _top1(exact, got) >= 0.90
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_qmicro_selected_dual_exact_matches_raw_bits() -> None:
+    rng = np.random.default_rng(20260726)
+    x_rows, top_k = 1, 10
+    in_features, out_features, experts = 3_072, 32, 4
+    rows = x_rows * top_k
+    x_bits = _bf16_bits(
+        rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    )
+    qweight_a = _weights(
+        "q4",
+        out_features=out_features,
+        in_features=in_features,
+        experts=experts,
+    )
+    blocks = qweight_a.reshape(
+        experts,
+        out_features,
+        in_features // QK_K,
+        Q4_K_BLOCK_BYTES,
+    )
+    blocks[..., 4:] = rng.integers(
+        0,
+        256,
+        size=blocks[..., 4:].shape,
+        dtype=np.uint8,
+    )
+    qweight_b = np.ascontiguousarray(np.roll(qweight_a, shift=3, axis=1))
+    selected = ((np.arange(rows, dtype=np.int64) * 3 + 1) % experts).astype(
+        np.int64
+    )
+
+    got_a_bits, got_b_bits = _run_bf16_dual_direct(
+        gguf_q4_k_qmicro_selected_dual_exact_gemv_bf16_bf16_out,
+        x_bits,
+        selected,
+        repack_gguf_q4_k_tile16_qmicro(qweight_a).tiles,
+        repack_gguf_q4_k_tile16_qmicro(qweight_b).tiles,
+        out_features=out_features,
+        library=build_gguf_x8_selected_gemv(load=True),
+    )
+    raw_a_bits, raw_b_bits = _run_bf16_dual_direct(
+        gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+        x_bits,
+        selected,
+        qweight_a,
+        qweight_b,
+        out_features=out_features,
+        library=build_gguf_q4_k_gemv(load=True),
+    )
+    np.testing.assert_array_equal(got_a_bits, raw_a_bits)
+    np.testing.assert_array_equal(got_b_bits, raw_b_bits)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
