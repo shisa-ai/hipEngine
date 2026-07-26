@@ -1496,3 +1496,21 @@ should be boring.
   **792.625 -> 779.709 ms (-1.63%)** with unchanged resources. Selector
   collapse is unblocked and should accompany the next accepted Q6 body or the
   post-campaign cleanup, whichever comes first.
+
+## Laguna Q4 projection-role quality candidate
+
+- Added 2026-07-27 as default-off selected gate/up modes
+  `mmq128x32_role_gate_d4_up_d8` and
+  `mmq128x32_role_gate_d8_up_d4`, plus a reusable multi-arm pp512 harness.
+  Both use uniform role kernels, two existing-size activation planes, and no
+  resident weight sidecar. The exact separate-input fused SiLU/down pack
+  preserves the established BF16 boundary.
+- D4-gate/D8-up clears the economic gate at **15.329 ms** saved in seven
+  paired complete pp512 medians and reproduces its unfused complete-state
+  hashes. Keep both role modes only through the clean 320-step comparison.
+- If D4-gate/D8-up passes, promote it for gfx1151 and remove the unselected
+  D8-gate/D4-up runtime/leaf surface after one clean selector-unset
+  publication. If it fails and no bounded producer-row repair is retained,
+  remove both role exports, the separate fused pack, plan fields, runtime
+  modes, leaf modes, and their focused tests. Retain the generic multi-arm
+  harness only if it is reused by another selected-projection comparison.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare exact Laguna direct and activation-double-buffer gate/up paths."""
+"""Compare Laguna selected gate/up runtime modes on one resident model."""
 
 from __future__ import annotations
 
@@ -36,9 +36,34 @@ _MODES = {
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repetitions", type=int, default=7)
+    parser.add_argument(
+        "--mode",
+        action="append",
+        metavar="LABEL=RUNTIME_MODE",
+        help=(
+            "runtime mode arm; repeat for a multi-arm comparison "
+            "(defaults to the retained direct/double-buffer pair)"
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
+
+
+def _modes_from_args(values: list[str] | None) -> dict[str, str]:
+    if values is None:
+        return dict(_MODES)
+    modes: dict[str, str] = {}
+    for value in values:
+        label, separator, runtime_mode = value.partition("=")
+        if not separator or not label or not runtime_mode:
+            raise ValueError("--mode must use LABEL=RUNTIME_MODE")
+        if label in modes:
+            raise ValueError(f"duplicate --mode label: {label!r}")
+        modes[label] = runtime_mode
+    if len(modes) < 2:
+        raise ValueError("at least two --mode arms are required")
+    return modes
 
 
 def _child_session(
@@ -61,12 +86,12 @@ def _child_session(
 
 def _run(
     owner: LagunaGGUFResidentSession,
-    mode: str,
+    selected_gate_up_mode: str,
     tokens: list[int],
 ) -> dict[str, float | int | str]:
     child = _child_session(owner)
     try:
-        child.set_selected_gate_up_mode(_MODES[mode])
+        child.set_selected_gate_up_mode(selected_gate_up_mode)
         started = time.perf_counter()
         result = child.prefill(tokens, use_bulk=True)
         child.runtime.device_synchronize()
@@ -95,14 +120,15 @@ def main() -> int:
     args = _parse_args()
     if args.repetitions <= 0:
         raise ValueError("--repetitions must be positive")
+    modes = _modes_from_args(args.mode)
     reader = GGUFReader(DEFAULT_MODEL)
     tokenizer = LagunaGGUFTokenizer.from_gguf_info(reader.info)
     prompts = _load_prompts(DEFAULT_PROMPTS, tokenizer)
     token_stream, _ = _profile_token_stream(prompts, 512)
     tokens = list(token_stream)
     runtime = get_hip_runtime()
-    samples = {mode: [] for mode in _MODES}
-    records = {mode: [] for mode in _MODES}
+    samples = {mode: [] for mode in modes}
+    records = {mode: [] for mode in modes}
     owner = LagunaGGUFResidentSession(
         DEFAULT_MODEL,
         context_length=512,
@@ -119,7 +145,7 @@ def main() -> int:
         prefill_attention_chunk_size=128,
     )
     try:
-        for gate_up_mode in _MODES.values():
+        for gate_up_mode in modes.values():
             warm_session = _child_session(owner)
             try:
                 warm_session.set_selected_gate_up_mode(gate_up_mode)
@@ -128,14 +154,13 @@ def main() -> int:
             finally:
                 warm_session.close()
         for repetition in range(args.repetitions):
-            mode_order = tuple(_MODES)
-            order = (
-                mode_order
-                if repetition % 2 == 0
-                else tuple(reversed(mode_order))
+            mode_order = tuple(modes)
+            order = tuple(
+                mode_order[(repetition + offset) % len(mode_order)]
+                for offset in range(len(mode_order))
             )
             for mode in order:
-                record = _run(owner, mode, tokens)
+                record = _run(owner, modes[mode], tokens)
                 samples[mode].append(float(record["tok_s"]))
                 records[mode].append(record)
                 print(
@@ -152,7 +177,7 @@ def main() -> int:
             "samples_tok_s": values,
             "median_tok_s": statistics.median(values),
             "records": records[mode],
-            "selected_gate_up_mode": _MODES[mode],
+            "selected_gate_up_mode": modes[mode],
         }
         for mode, values in samples.items()
     }

@@ -1438,19 +1438,31 @@ Immediate execution queue:
    noise-level **0.339 ms** at the paired median. That is **0.44%** of the
    **77.907-ms** gap to 700, so no production selector or wider scratch ABI
    survives.
+33. **Quality-pending candidate:** split gate and up by global projection role
+   so each branchless kernel consumes one uniform activation format. On
+   actual layer-1 natural M512 routing, D4-gate/D8-up improves the
+   pack-inclusive leaf **6.8616 -> 6.6175 ms (-3.56%)**; D8-gate/D4-up reaches
+   **6.6065 ms (-3.72%)**. Both model at least 11 ms across 47 layers.
+   D4-gate/D8-up is the complete-wall leader after an exact separate-input
+   fused SiLU/down-pack boundary: seven paired pp512 medians improve
+   **617.519 -> 629.151 tok/s (+1.884%)**, saving **15.329 ms** with token
+   2930 throughout. The fused and unfused candidate paths produce identical
+   complete-state hashes. Cached tracing records the role body at local128,
+   VGPR88, SGPR128, zero scratch and the exact fused pack at local128, VGPR16,
+   512 B LDS, zero scratch. Production remains D8 at **632.618 tok/s** until
+   the clean direct-all-exact 320-step category gate passes. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-role-split-quality-pending.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-split-quality-pending.json).
 
 ### Next exact and quality-gated attacks
 
-The next gate/up screen changes projection ownership instead of inserting a
-branch into every K32 interval:
+The projection-role screen cleared its 10-ms economic gate. Its quality gate
+now decides whether repair work is needed:
 
-1. Split the dual projection by role and screen **D4 gate + D8 up** and
-   **D8 gate + D4 up**. Each role gets a uniform kernel and its own
-   once-per-source-row pack, so no inner-loop D4/D8 selector survives. This is
-   a global projection-role policy, never a prompt, token, or layer policy.
-   First require an actual-weight leaf/full-wall saving large enough to model
-   at least **10 ms** pp512; then run the direct all-exact 320-step gate.
-2. If neither role split meets KL <=0.05, retain D8 and prototype a bounded
+1. Run the clean all-exact versus D4-gate/D8-up 320-step category comparison.
+   Promote only at KL <=0.05 and top-1 >=90%; otherwise remove the unqualified
+   alternate D8-gate/D4-up surface unless its own complete quality gate has a
+   materially different result.
+2. If the selected role split misses KL <=0.05, retain D8 and prototype a bounded
    producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
    separately compacted risk-row kernel adds the D8-minus-D4 correction
    before the existing BF16 SiLU boundary, and overflow falls back to D8.

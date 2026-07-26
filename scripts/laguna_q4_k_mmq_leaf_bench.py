@@ -36,6 +36,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q8_1_mmq_ds4_pack_bf16,
@@ -73,6 +74,8 @@ MODES = (
     "t16-mmq128x32-d8-f32-wavecols",
     "t16-mmq128x32-d8-f32-wavecols-direct",
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf",
+    "t16-mmq128x32-role-gate-d4-up-d8",
+    "t16-mmq128x32-role-gate-d8-up-d4",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -420,10 +423,19 @@ def main() -> None:
             )
             out_shape = (compact_rows, OUT_FEATURES)
             out_bytes = compact_rows * OUT_FEATURES * np.dtype(np.uint16).itemsize
-            q8_planes = 3 if "t16-mmq32-d4x3" in effective_modes else 1
+            q8_planes = (
+                3
+                if "t16-mmq32-d4x3" in effective_modes
+                else 2
+                if any("-role-" in mode for mode in effective_modes)
+                else 1
+            )
             q8_block_bytes = (
                 160
-                if any("d8-f32" in mode for mode in effective_modes)
+                if any(
+                    "d8-f32" in mode or "-role-" in mode
+                    for mode in effective_modes
+                )
                 else Q8_DS4_BYTES_PER_128
             )
             q8_bytes = (
@@ -713,6 +725,72 @@ def main() -> None:
                         runtime=runtime,
                     )
 
+                def t16_mmq128_role_split(
+                    *,
+                    gate_split16: bool,
+                ) -> None:
+                    q8_plane_bytes = (
+                        rows * (HIDDEN // 128) * 160
+                    )
+                    q8_d8_ptr = q8_dev.ptr
+                    q8_d4_ptr = q8_dev.ptr + q8_plane_bytes
+                    gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+                        source_x_dev.ptr,
+                        q8_d8_ptr,
+                        rows,
+                        HIDDEN,
+                        residual_passes=1,
+                        split16=True,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+                        source_x_dev.ptr,
+                        q8_d4_ptr,
+                        rows,
+                        HIDDEN,
+                        residual_passes=1,
+                        split16=False,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+                        q8_d8_ptr if gate_split16 else q8_d4_ptr,
+                        compact_to_source_dev.ptr,
+                        starts_dev.ptr,
+                        starts32_dev.ptr,
+                        tile_expert32_dev.ptr,
+                        tiles_gate_dev.ptr,
+                        out_a_dev.ptr,
+                        compact_rows,
+                        rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total32"]),
+                        split16=gate_split16,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+                        q8_d4_ptr if gate_split16 else q8_d8_ptr,
+                        compact_to_source_dev.ptr,
+                        starts_dev.ptr,
+                        starts32_dev.ptr,
+                        tile_expert32_dev.ptr,
+                        tiles_up_dev.ptr,
+                        out_b_dev.ptr,
+                        compact_rows,
+                        rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total32"]),
+                        split16=not gate_split16,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+
                 launchers = {
                     "retained-direct": retained_direct,
                     "t16-wmma": t16_wmma,
@@ -739,6 +817,12 @@ def main() -> None:
                             direct_wave_decode=True,
                             double_buffer_activation=True,
                         )
+                    ),
+                    "t16-mmq128x32-role-gate-d4-up-d8": (
+                        lambda: t16_mmq128_role_split(gate_split16=False)
+                    ),
+                    "t16-mmq128x32-role-gate-d8-up-d4": (
+                        lambda: t16_mmq128_role_split(gate_split16=True)
                     ),
                 }
                 for threshold, hybrid in mixed_metadata.items():
@@ -814,7 +898,9 @@ def main() -> None:
                 for mode in effective_modes:
                     launchers[mode]()
                     runtime.device_synchronize()
-                    if mode in ("retained-direct", "t16-grouped-exact"):
+                    if mode in ("retained-direct", "t16-grouped-exact") or (
+                        "-role-" in mode
+                    ):
                         host_a = np.empty(out_shape, dtype=np.uint16)
                         host_b = np.empty(out_shape, dtype=np.uint16)
                         copy_device_to_host(
