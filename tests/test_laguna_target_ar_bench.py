@@ -159,6 +159,18 @@ def test_persistent_wave_top10_router_cli_is_removed_after_clean_rejection(
         benchmark._parse_args()
 
 
+def test_q6_local32_standalone_cli_is_explicit_and_default_off(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().enable_q6_local32_standalone
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--enable-q6-local32-standalone"],
+    )
+    assert benchmark._parse_args().enable_q6_local32_standalone
+
+
 def test_q4_lm_head_local32_fixed_metadata_cli_defaults_on_with_rollback(
     monkeypatch,
 ) -> None:
