@@ -247,6 +247,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_iq3_xxs",
             "selected_weighted_down_gemv_decode_k1024_wave10_signbit_bf16_bf16_out",
         ),
+        # Laguna top-10/K1024 IQ4 weighted ownership is gfx1100-only pending an
+        # independent gfx1151 correctness and performance gate.
+        (
+            "moe_linear",
+            "gguf_iq4_xs",
+            "selected_weighted_down_gemv_decode_bf16_bf16_out",
+        ),
         # Q4 local32 LM-head ownership is W7900-only pending an independent gate.
         (
             "linear",
