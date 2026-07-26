@@ -61,12 +61,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--chunk-size", type=int, default=64)
     parser.add_argument(
         "--iq3-c1-down-schedule",
-        choices=(
-            "serial_weighted",
-            "wave4_reduce",
-            "wave10_fused",
-            "wave10_signbit_fused",
-        ),
+        choices=("serial_weighted", "wave4_reduce", "wave10_fused"),
         default=None,
         help="override the backend default; wave4_reduce is the gfx1100 rollback",
     )
