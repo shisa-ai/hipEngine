@@ -181907,3 +181907,13 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols32-rows128-rejected.json`.
   Production remains **559.290 tok/s**. Do not retry tile transposition without
   a scheduler that avoids per-expert padding amplification.
+- Screened that exact objection before closing the path. A hybrid would use
+  32x128 only for complete 128-row prefixes and retain 64x64 tails, preserving
+  the natural all-Q6 total workgroup count while removing 162/5,671 expert
+  weight passes. On layer 1, four complete prefixes hold both schedules at
+  exactly 512 compact/padded rows. The padding-free candidate still regresses
+  **0.447552 -> 0.474933 ms (+6.1179%)**, wins zero of fifteen
+  counter-rotated burst-50 samples, and remains BF16-bit exact. This isolates
+  the extra activation/LDS cost of the transposed geometry itself. Candidate
+  code was again removed byte-for-byte and the same rejection artifact now
+  includes the control.
