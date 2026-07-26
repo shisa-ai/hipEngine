@@ -1177,16 +1177,25 @@ Immediate execution queue:
    geometry is justified. Evidence:
    [`2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json).
    [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-production.json).
-19. **Active next screen:** hoist each wave's invariant activation fragments
-   outside the four-column-fragment loop in the production Q6 integer-WMMA
-   body. The current source reconstructs the same two K16 `a` vectors once per
-   16-column fragment even though they depend only on `(wave,row,K32)`;
-   compilers may not fully eliminate the repeated LDS reads across WMMA
-   builtins. Keep the exact weight fragments, result mapping, two Q6 scales,
-   `-32*sum(x)` correction, FP32 K32 order, and BF16 stores. Gate on resource
-   emission plus the 21-pair actual-weight leaf; remove the selector if the
-   hoist is not faster with zero BF16 mismatches. If it wins, reprofile before
-   considering K64 staging or a wider output tile.
+19. **Admitted pending clean publication:** hoist each wave's invariant
+   activation fragments outside the four-column-fragment loop in the
+   production Q6 integer-WMMA body. The source now constructs the same two K16
+   `a` vectors once per `(wave,row,K32)` rather than once per 16-column
+   fragment. Weight fragments, result mapping, two Q6 scales,
+   `-32*sum(x)` correction, FP32 K32 order, and BF16 stores remain exact.
+   Twenty-one actual layer-1 natural-M512 pairs improve
+   **4.5645 -> 4.5126 ms (-1.136%, 20/21 wins)** with zero BF16 mismatches
+   and complete memory return. Cached tracing stays at
+   local128/VGPR96/SGPR128/LDS5120B/scratch0, identical to the current
+   integer-WMMA body. Selector-unset clean 512/1K/4K publication is the next
+   gate; no production headline is claimed yet. Evidence:
+   [`2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json).
+20. **Queued after publication:** refresh the selected-down trace, then choose
+   between an exact result-metadata prefetch screen and a new WMMA-specific
+   K64 screen. Do not inherit the rejected scalar K64 schedule blindly: the
+   next candidate must preserve zero scratch and avoid increasing VGPR above
+   the current 96 unless its measured traffic reduction pays for the occupancy
+   loss.
 
 Post-350 exclusions:
 
@@ -3029,6 +3038,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-production.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`

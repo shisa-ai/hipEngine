@@ -154,6 +154,7 @@ def main() -> int:
         "prefill_qmicro_permute": [],
         "prefill_qmicro_planar": [],
         "prefill_qmicro_planar_integer_wmma": [],
+        "prefill_qmicro_planar_integer_wmma_hoist_activation": [],
         "decode_legacy": [],
         "decode_qmicro": [],
         "decode_qmicro_planar": [],
@@ -195,6 +196,10 @@ def main() -> int:
             prefill_out_nbytes,
             runtime=runtime,
         )
+        prefill_qmicro_planar_integer_wmma_hoist_activation_out = malloc(
+            prefill_out_nbytes,
+            runtime=runtime,
+        )
         decode_legacy_out = malloc(decode_out_nbytes, runtime=runtime)
         decode_qmicro_out = malloc(decode_out_nbytes, runtime=runtime)
         decode_qmicro_planar_out = malloc(
@@ -221,6 +226,7 @@ def main() -> int:
                 prefill_qmicro_permute_out,
                 prefill_qmicro_planar_out,
                 prefill_qmicro_planar_integer_wmma_out,
+                prefill_qmicro_planar_integer_wmma_hoist_activation_out,
                 decode_legacy_out,
                 decode_qmicro_out,
                 decode_qmicro_planar_out,
@@ -245,6 +251,7 @@ def main() -> int:
             qmicro_permute: bool = False,
             qmicro_planar: bool = False,
             integer_wmma: bool = False,
+            wmma_hoist_activation: bool = False,
         ) -> None:
             gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
                 q8_dev.ptr,
@@ -259,7 +266,9 @@ def main() -> int:
                     else legacy_dev.ptr
                 ),
                 (
-                    prefill_qmicro_planar_integer_wmma_out.ptr
+                    prefill_qmicro_planar_integer_wmma_hoist_activation_out.ptr
+                    if wmma_hoist_activation
+                    else prefill_qmicro_planar_integer_wmma_out.ptr
                     if integer_wmma
                     else prefill_qmicro_planar_out.ptr
                     if qmicro_planar
@@ -290,6 +299,7 @@ def main() -> int:
                 qmicro_permute=qmicro_permute,
                 qmicro_planar=qmicro_planar,
                 integer_wmma=integer_wmma,
+                wmma_hoist_activation=wmma_hoist_activation,
                 library=prefill_library,
                 runtime=runtime,
             )
@@ -382,6 +392,18 @@ def main() -> int:
                 ),
                 args.prefill_burst,
             ),
+            "prefill_qmicro_planar_integer_wmma_hoist_activation": (
+                lambda: prefill(
+                    True,
+                    compact_activation=True,
+                    half_row_activation=True,
+                    skip_padded_activation=True,
+                    qmicro_planar=True,
+                    integer_wmma=True,
+                    wmma_hoist_activation=True,
+                ),
+                args.prefill_burst,
+            ),
             "decode_legacy": (lambda: decode(False), args.decode_burst),
             "decode_qmicro": (lambda: decode(True), args.decode_burst),
             "decode_qmicro_planar": (
@@ -434,6 +456,15 @@ def main() -> int:
             qmicro_planar=True,
             integer_wmma=True,
         )
+        prefill(
+            True,
+            compact_activation=True,
+            half_row_activation=True,
+            skip_padded_activation=True,
+            qmicro_planar=True,
+            integer_wmma=True,
+            wmma_hoist_activation=True,
+        )
         decode(False)
         decode(True)
         decode(True, qmicro_planar=True)
@@ -476,6 +507,11 @@ def main() -> int:
         prefill_qmicro_planar_integer_wmma_host = _read_bf16(
             runtime,
             prefill_qmicro_planar_integer_wmma_out,
+            (compact_rows, OUT_FEATURES),
+        )
+        prefill_qmicro_planar_integer_wmma_hoist_activation_host = _read_bf16(
+            runtime,
+            prefill_qmicro_planar_integer_wmma_hoist_activation_out,
             (compact_rows, OUT_FEATURES),
         )
         decode_legacy_host = _read_bf16(
@@ -540,6 +576,12 @@ def main() -> int:
             != prefill_qmicro_planar_host
         )
     )
+    prefill_qmicro_planar_integer_wmma_hoist_activation_mismatches = int(
+        np.count_nonzero(
+            prefill_qmicro_planar_integer_wmma_hoist_activation_host
+            != prefill_qmicro_planar_integer_wmma_host
+        )
+    )
     decode_mismatches = int(
         np.count_nonzero(decode_qmicro_host != decode_legacy_host)
     )
@@ -579,7 +621,7 @@ def main() -> int:
             "warmups": args.warmups,
             "prefill_burst": args.prefill_burst,
             "decode_burst": args.decode_burst,
-            "order": "counter-rotated over twelve modes",
+            "order": "counter-rotated over thirteen modes",
             "timing": "HIP events; prefill activation pack excluded",
         },
         "samples_ms": samples,
@@ -625,6 +667,14 @@ def main() -> int:
                 - 1.0
             )
             * 100.0,
+            "prefill_qmicro_planar_integer_wmma_hoist_activation": (
+                medians[
+                    "prefill_qmicro_planar_integer_wmma_hoist_activation"
+                ]
+                / medians["prefill_qmicro_planar_integer_wmma"]
+                - 1.0
+            )
+            * 100.0,
             "decode": (
                 medians["decode_qmicro"] / medians["decode_legacy"] - 1.0
             )
@@ -656,6 +706,9 @@ def main() -> int:
             "prefill_qmicro_planar_integer_wmma_bf16_mismatches": (
                 prefill_qmicro_planar_integer_wmma_mismatches
             ),
+            "prefill_qmicro_planar_integer_wmma_hoist_activation_bf16_mismatches": (
+                prefill_qmicro_planar_integer_wmma_hoist_activation_mismatches
+            ),
             "decode_bf16_mismatches": decode_mismatches,
             "decode_qmicro_planar_bf16_mismatches": (
                 decode_qmicro_planar_mismatches
@@ -669,6 +722,11 @@ def main() -> int:
             ),
             "prefill_qmicro_planar_integer_wmma_checksum": int(
                 prefill_qmicro_planar_integer_wmma_host.sum(
+                    dtype=np.uint64
+                )
+            ),
+            "prefill_qmicro_planar_integer_wmma_hoist_activation_checksum": int(
+                prefill_qmicro_planar_integer_wmma_hoist_activation_host.sum(
                     dtype=np.uint64
                 )
             ),
@@ -689,11 +747,17 @@ def main() -> int:
             and prefill_qmicro_permute_mismatches == 0
             and prefill_qmicro_planar_mismatches == 0
             and prefill_qmicro_planar_integer_wmma_mismatches == 0
+            and prefill_qmicro_planar_integer_wmma_hoist_activation_mismatches
+            == 0
             and decode_mismatches == 0
             and decode_qmicro_planar_mismatches == 0
             and medians["prefill_qmicro"] < medians["prefill_legacy"]
             and medians["prefill_qmicro_planar_integer_wmma"]
             < medians["prefill_qmicro_planar"]
+            and medians[
+                "prefill_qmicro_planar_integer_wmma_hoist_activation"
+            ]
+            < medians["prefill_qmicro_planar_integer_wmma"]
             and medians["decode_qmicro"] < medians["decode_legacy"]
             and tracked_before["current_allocated_bytes"]
             == tracked_after["current_allocated_bytes"]

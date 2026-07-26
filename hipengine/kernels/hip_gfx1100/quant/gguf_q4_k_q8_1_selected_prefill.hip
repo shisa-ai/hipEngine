@@ -3590,7 +3590,8 @@ template <
     bool SKIP_PADDED_ACTIVATION_STAGE = false,
     bool QMICRO_PERMUTE = false,
     bool QMICRO_PLANAR = false,
-    bool INTEGER_WMMA = false>
+    bool INTEGER_WMMA = false,
+    bool WMMA_HOIST_ACTIVATION = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3647,6 +3648,9 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
            SKIP_PADDED_ACTIVATION_STAGE && !QMICRO_PERMUTE &&
            QMICRO_PLANAR),
       "integer WMMA requires production Q6 planar row64 geometry");
+  static_assert(
+      !WMMA_HOIST_ACTIVATION || INTEGER_WMMA,
+      "WMMA activation hoisting requires integer WMMA");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -4045,22 +4049,21 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
       const int lane16 = lane & 15;
       const int half_id = lane >> 4;
       const int a_row_offset = wave * 16 + lane16;
+      if constexpr (WMMA_HOIST_ACTIVATION) {
+        mmq_i32x4_t a_vec0 = {0, 0, 0, 0};
+        mmq_i32x4_t a_vec1 = {0, 0, 0, 0};
+        if (a_row_offset < valid_rows) {
+          const q6_activation_cache_t& a =
+              activation_tile[0][a_row_offset];
+          a_vec0 = mmq_i32x4_t{
+              a.qs[0], a.qs[1], a.qs[2], a.qs[3]};
+          a_vec1 = mmq_i32x4_t{
+              a.qs[4], a.qs[5], a.qs[6], a.qs[7]};
+        }
 #pragma unroll
-      for (int col_fragment = 0; col_fragment < 4; ++col_fragment) {
-        const int col_offset = col_fragment * 16 + lane16;
-        const q6_k_mmq64_cache& wb = weight_tile[col_offset];
-#pragma unroll
-        for (int pass = 0; pass < ACTIVATION_PASSES; ++pass) {
-          mmq_i32x4_t a_vec0 = {0, 0, 0, 0};
-          mmq_i32x4_t a_vec1 = {0, 0, 0, 0};
-          if (a_row_offset < valid_rows) {
-            const q6_activation_cache_t& a =
-                activation_tile[pass][a_row_offset];
-            a_vec0 = mmq_i32x4_t{
-                a.qs[0], a.qs[1], a.qs[2], a.qs[3]};
-            a_vec1 = mmq_i32x4_t{
-                a.qs[4], a.qs[5], a.qs[6], a.qs[7]};
-          }
+        for (int col_fragment = 0; col_fragment < 4; ++col_fragment) {
+          const int col_offset = col_fragment * 16 + lane16;
+          const q6_k_mmq64_cache& wb = weight_tile[col_offset];
           const mmq_i32x4_t b_vec0 = {
               static_cast<int>(wb.qs[0]),
               static_cast<int>(wb.qs[1]),
@@ -4082,7 +4085,7 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
             const int row_offset = wave * 16 + half_id + j * 2;
             if (row_offset >= valid_rows) continue;
             const q6_activation_cache_t& xb =
-                activation_tile[pass][row_offset];
+                activation_tile[0][row_offset];
             const int corrected0 =
                 dot0[j] - 32 * xb.sums[0];
             const int corrected1 =
@@ -4092,6 +4095,57 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                 xb.d *
                 (wb.scales[0] * static_cast<float>(corrected0) +
                  wb.scales[1] * static_cast<float>(corrected1));
+          }
+        }
+      } else {
+#pragma unroll
+        for (int col_fragment = 0; col_fragment < 4; ++col_fragment) {
+          const int col_offset = col_fragment * 16 + lane16;
+          const q6_k_mmq64_cache& wb = weight_tile[col_offset];
+#pragma unroll
+          for (int pass = 0; pass < ACTIVATION_PASSES; ++pass) {
+            mmq_i32x4_t a_vec0 = {0, 0, 0, 0};
+            mmq_i32x4_t a_vec1 = {0, 0, 0, 0};
+            if (a_row_offset < valid_rows) {
+              const q6_activation_cache_t& a =
+                  activation_tile[pass][a_row_offset];
+              a_vec0 = mmq_i32x4_t{
+                  a.qs[0], a.qs[1], a.qs[2], a.qs[3]};
+              a_vec1 = mmq_i32x4_t{
+                  a.qs[4], a.qs[5], a.qs[6], a.qs[7]};
+            }
+            const mmq_i32x4_t b_vec0 = {
+                static_cast<int>(wb.qs[0]),
+                static_cast<int>(wb.qs[1]),
+                static_cast<int>(wb.qs[2]),
+                static_cast<int>(wb.qs[3])};
+            const mmq_i32x4_t b_vec1 = {
+                static_cast<int>(wb.qs[4]),
+                static_cast<int>(wb.qs[5]),
+                static_cast<int>(wb.qs[6]),
+                static_cast<int>(wb.qs[7])};
+            mmq_i32x8_t dot0 = {0, 0, 0, 0, 0, 0, 0, 0};
+            mmq_i32x8_t dot1 = {0, 0, 0, 0, 0, 0, 0, 0};
+            dot0 = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, a_vec0, true, b_vec0, dot0, false);
+            dot1 = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, a_vec1, true, b_vec1, dot1, false);
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+              const int row_offset = wave * 16 + half_id + j * 2;
+              if (row_offset >= valid_rows) continue;
+              const q6_activation_cache_t& xb =
+                  activation_tile[pass][row_offset];
+              const int corrected0 =
+                  dot0[j] - 32 * xb.sums[0];
+              const int corrected1 =
+                  dot1[j] - 32 * xb.sums[1];
+              const int acc_index = col_fragment * 8 + j;
+              acc[acc_index >> 4][acc_index & 15] +=
+                  xb.d *
+                  (wb.scales[0] * static_cast<float>(corrected0) +
+                   wb.scales[1] * static_cast<float>(corrected1));
+            }
           }
         }
       }
@@ -4204,7 +4258,8 @@ template <
     bool SKIP_PADDED_ACTIVATION_STAGE = false,
     bool QMICRO_PERMUTE = false,
     bool QMICRO_PLANAR = false,
-    bool INTEGER_WMMA = false>
+    bool INTEGER_WMMA = false,
+    bool WMMA_HOIST_ACTIVATION = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -4243,7 +4298,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           SKIP_PADDED_ACTIVATION_STAGE,
           QMICRO_PERMUTE,
           QMICRO_PLANAR,
-          INTEGER_WMMA>),
+          INTEGER_WMMA,
+          WMMA_HOIST_ACTIVATION>),
       grid,
       block,
       0,
@@ -5477,6 +5533,48 @@ hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_skip_padded_activation_select
       true,
       true,
       false,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_skip_padded_activation_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
       true,
       true>(
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
