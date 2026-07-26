@@ -31,6 +31,18 @@ constexpr int Q4_X16_Q_OFFSET =
     Q4_X16_MIN_OFFSET + Q4_X16_SUBBLOCKS * Q4_X16_COLS;
 constexpr int Q4_X16_TILE_BYTES =
     Q4_X16_Q_OFFSET + QK_K * (Q4_X16_COLS / 2);
+constexpr int Q4_QMICRO_D_OFFSET = 0;
+constexpr int Q4_QMICRO_DMIN_OFFSET =
+    Q4_QMICRO_D_OFFSET + Q4_X16_COLS * 2;
+constexpr int Q4_QMICRO_META_OFFSET =
+    Q4_QMICRO_DMIN_OFFSET + Q4_X16_COLS * 2;
+constexpr int Q4_QMICRO_SCALE_BYTES =
+    Q4_X16_SUBBLOCKS * Q4_X16_COLS;
+constexpr int Q4_QMICRO_META_BYTES = 2 * Q4_QMICRO_SCALE_BYTES;
+constexpr int Q4_QMICRO_Q_OFFSET =
+    Q4_QMICRO_META_OFFSET + 2 * Q4_X16_SUBBLOCKS * 4 * 3;
+constexpr int Q4_QMICRO_TILE_BYTES =
+    Q4_QMICRO_Q_OFFSET + QK_K * (Q4_X16_COLS / 2);
 
 struct gguf_q8_1_block {
   half_t d;
@@ -132,6 +144,43 @@ __device__ inline float q4_x16_exact_weight(
       tile[Q4_X16_MIN_OFFSET + subblock * Q4_X16_COLS + col]);
   const uint8_t packed =
       tile[Q4_X16_Q_OFFSET +
+           (subblock * 32 + lane) * (Q4_X16_COLS / 2) +
+           (col >> 1)];
+  const float q = static_cast<float>(
+      (col & 1) ? (packed >> 4) : (packed & 0x0Fu));
+  return d * scale * q - dmin * minv;
+}
+
+__device__ inline uint32_t q4_qmicro_unpack_record(
+    const uint8_t* __restrict__ record) {
+  const uint32_t word =
+      static_cast<uint32_t>(record[0]) |
+      (static_cast<uint32_t>(record[1]) << 8) |
+      (static_cast<uint32_t>(record[2]) << 16);
+  return (word & 0x3Fu) |
+         (((word >> 6) & 0x3Fu) << 8) |
+         (((word >> 12) & 0x3Fu) << 16) |
+         (((word >> 18) & 0x3Fu) << 24);
+}
+
+__device__ inline float q4_qmicro_exact_weight(
+    const uint8_t* __restrict__ tile,
+    const uint8_t* __restrict__ metadata,
+    int k_in_block,
+    int col) {
+  const int subblock = k_in_block >> 5;
+  const int lane = k_in_block & 31;
+  const float d =
+      fp16_bytes_to_float(tile + Q4_QMICRO_D_OFFSET + col * 2);
+  const float dmin =
+      fp16_bytes_to_float(tile + Q4_QMICRO_DMIN_OFFSET + col * 2);
+  const float scale = static_cast<float>(
+      metadata[subblock * Q4_X16_COLS + col]);
+  const float minv = static_cast<float>(
+      metadata[Q4_QMICRO_SCALE_BYTES +
+               subblock * Q4_X16_COLS + col]);
+  const uint8_t packed =
+      tile[Q4_QMICRO_Q_OFFSET +
            (subblock * 32 + lane) * (Q4_X16_COLS / 2) +
            (col >> 1)];
   const float q = static_cast<float>(
@@ -478,6 +527,153 @@ void gguf_q4_x8_selected_dual_exact_gemv_kernel(
             xv * q4_x16_exact_weight(tile_a, k_in_block, col);
         acc_b[col] +=
             xv * q4_x16_exact_weight(tile_b, k_in_block, col);
+      }
+    }
+    __syncthreads();
+  }
+
+  const int64_t out_base =
+      static_cast<int64_t>(row) * out_features + (out_tile << 4);
+  {
+    GGUF_X8_REDUCE(
+        acc_a[0], acc_a[1], acc_a[2], acc_a[3],
+        acc_a[4], acc_a[5], acc_a[6], acc_a[7],
+        ar0, ar1, ar2, ar3, ar4, ar5, ar6, ar7);
+    if (tid == 0) {
+      store_output<uint16_t>(out_a, out_base + 0, ar0);
+      store_output<uint16_t>(out_a, out_base + 1, ar1);
+      store_output<uint16_t>(out_a, out_base + 2, ar2);
+      store_output<uint16_t>(out_a, out_base + 3, ar3);
+      store_output<uint16_t>(out_a, out_base + 4, ar4);
+      store_output<uint16_t>(out_a, out_base + 5, ar5);
+      store_output<uint16_t>(out_a, out_base + 6, ar6);
+      store_output<uint16_t>(out_a, out_base + 7, ar7);
+    }
+  }
+  __syncthreads();
+  {
+    GGUF_X8_REDUCE(
+        acc_a[8], acc_a[9], acc_a[10], acc_a[11],
+        acc_a[12], acc_a[13], acc_a[14], acc_a[15],
+        ar8, ar9, ar10, ar11, ar12, ar13, ar14, ar15);
+    if (tid == 0) {
+      store_output<uint16_t>(out_a, out_base + 8, ar8);
+      store_output<uint16_t>(out_a, out_base + 9, ar9);
+      store_output<uint16_t>(out_a, out_base + 10, ar10);
+      store_output<uint16_t>(out_a, out_base + 11, ar11);
+      store_output<uint16_t>(out_a, out_base + 12, ar12);
+      store_output<uint16_t>(out_a, out_base + 13, ar13);
+      store_output<uint16_t>(out_a, out_base + 14, ar14);
+      store_output<uint16_t>(out_a, out_base + 15, ar15);
+    }
+  }
+  __syncthreads();
+  {
+    GGUF_X8_REDUCE(
+        acc_b[0], acc_b[1], acc_b[2], acc_b[3],
+        acc_b[4], acc_b[5], acc_b[6], acc_b[7],
+        br0, br1, br2, br3, br4, br5, br6, br7);
+    if (tid == 0) {
+      store_output<uint16_t>(out_b, out_base + 0, br0);
+      store_output<uint16_t>(out_b, out_base + 1, br1);
+      store_output<uint16_t>(out_b, out_base + 2, br2);
+      store_output<uint16_t>(out_b, out_base + 3, br3);
+      store_output<uint16_t>(out_b, out_base + 4, br4);
+      store_output<uint16_t>(out_b, out_base + 5, br5);
+      store_output<uint16_t>(out_b, out_base + 6, br6);
+      store_output<uint16_t>(out_b, out_base + 7, br7);
+    }
+  }
+  __syncthreads();
+  {
+    GGUF_X8_REDUCE(
+        acc_b[8], acc_b[9], acc_b[10], acc_b[11],
+        acc_b[12], acc_b[13], acc_b[14], acc_b[15],
+        br8, br9, br10, br11, br12, br13, br14, br15);
+    if (tid == 0) {
+      store_output<uint16_t>(out_b, out_base + 8, br8);
+      store_output<uint16_t>(out_b, out_base + 9, br9);
+      store_output<uint16_t>(out_b, out_base + 10, br10);
+      store_output<uint16_t>(out_b, out_base + 11, br11);
+      store_output<uint16_t>(out_b, out_base + 12, br12);
+      store_output<uint16_t>(out_b, out_base + 13, br13);
+      store_output<uint16_t>(out_b, out_base + 14, br14);
+      store_output<uint16_t>(out_b, out_base + 15, br15);
+    }
+  }
+}
+
+__global__ __launch_bounds__(128, 2)
+void gguf_q4_qmicro_selected_dual_exact_gemv_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint16_t* __restrict__ out_a,
+    uint16_t* __restrict__ out_b,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_tile = blockIdx.x;
+  const int row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+  const int blocks_per_row = in_features / QK_K;
+  const int out_tiles = out_features / Q4_X16_COLS;
+
+  float acc_a[Q4_X16_COLS];
+  float acc_b[Q4_X16_COLS];
+#pragma unroll
+  for (int col = 0; col < Q4_X16_COLS; ++col) {
+    acc_a[col] = 0.0f;
+    acc_b[col] = 0.0f;
+  }
+
+  __shared__ uint32_t expanded_metadata_words[
+      2 * Q4_QMICRO_META_BYTES / 4];
+  uint8_t* __restrict__ metadata_a =
+      reinterpret_cast<uint8_t*>(expanded_metadata_words);
+  uint8_t* __restrict__ metadata_b =
+      metadata_a + Q4_QMICRO_META_BYTES;
+
+  for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+    const int64_t tile_index =
+        (expert_id * out_tiles + out_tile) * blocks_per_row + block_idx;
+    const uint8_t* __restrict__ tile_a =
+        tiles_a + tile_index * Q4_QMICRO_TILE_BYTES;
+    const uint8_t* __restrict__ tile_b =
+        tiles_b + tile_index * Q4_QMICRO_TILE_BYTES;
+
+    const int record = tid & 63;
+    const bool load_b = tid >= 64;
+    const uint8_t* __restrict__ source =
+        (load_b ? tile_b : tile_a) + Q4_QMICRO_META_OFFSET + record * 3;
+    uint32_t* __restrict__ destination =
+        reinterpret_cast<uint32_t*>(load_b ? metadata_b : metadata_a);
+    destination[record] = q4_qmicro_unpack_record(source);
+    __syncthreads();
+
+    const int k_base = block_idx * QK_K;
+    for (int k_in_block = tid;
+         k_in_block < QK_K;
+         k_in_block += blockDim.x) {
+      const float xv =
+          bf16_bits_to_float(x_row_ptr[k_base + k_in_block]);
+#pragma unroll
+      for (int col = 0; col < Q4_X16_COLS; ++col) {
+        acc_a[col] += xv * q4_qmicro_exact_weight(
+            tile_a, metadata_a, k_in_block, col);
+        acc_b[col] += xv * q4_qmicro_exact_weight(
+            tile_b, metadata_b, k_in_block, col);
       }
     }
     __syncthreads();
@@ -975,6 +1171,51 @@ int launch_q4_x8_selected_dual_exact(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q4_qmicro_selected_dual_exact(
+    const void* x,
+    const void* selected,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out_a,
+    void* out_b,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out_a || !out_b ||
+      x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 ||
+      num_experts <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % Q4_X16_COLS) != 0 ||
+      threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / Q4_X16_COLS),
+      static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL(
+      gguf_q4_qmicro_selected_dual_exact_gemv_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<uint16_t*>(out_a),
+      reinterpret_cast<uint16_t*>(out_b),
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename out_t, int qtype>
 int launch_x8_selected_compact(
     const void* xq,
@@ -1011,6 +1252,16 @@ int launch_x8_selected_compact(
 }
 
 }  // namespace
+
+extern "C" int hipengine_gguf_q4_k_qmicro_selected_dual_exact_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a,
+    const void* tiles_b, void* out_a, void* out_b, int64_t x_rows,
+    int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_q4_qmicro_selected_dual_exact(
+      x, selected, tiles_a, tiles_b, out_a, out_b, x_rows, rows,
+      num_experts, in_features, out_features, threads, stream);
+}
 
 extern "C" int hipengine_gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out(
     const void* x, const void* selected, const void* tiles_a,

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Compare exact Q4_K X8 and retained T16 selected gate/up on gfx1151.
+"""Compare an exact byte-neutral Q4_K layout with retained T16 on gfx1151.
 
-The benchmark temporarily holds one actual layer's X8 and T16 gate/up pairs
-side by side for counterbalanced timing. Candidate residency is the X8 pair
-alone; the comparison does not propose keeping both layouts resident.
+The benchmark temporarily holds one actual layer's candidate and T16 gate/up
+pairs side by side for counterbalanced timing. Candidate residency is the
+byte-neutral pair alone; the comparison does not propose keeping both layouts
+resident.
 """
 
 from __future__ import annotations
@@ -38,9 +39,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     build_gguf_x8_selected_gemv,
+    gguf_q4_k_qmicro_selected_dual_exact_gemv_bf16_bf16_out,
     gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out,
 )
 from hipengine.loading.gguf import GGUFReader
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16_qmicro
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +86,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--samples", type=int, default=11)
     parser.add_argument("--burst", type=int, default=5)
     parser.add_argument("--seed", type=int, default=20260725)
+    parser.add_argument(
+        "--candidate",
+        choices=("x8", "qmicro"),
+        default="x8",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -240,8 +248,20 @@ def main() -> None:
             f"{raw_gate.shape}/{raw_up.shape}"
         )
 
-    x8_gate = repack_gguf_q4_k_x8(raw_gate).tiles
-    x8_up = repack_gguf_q4_k_x8(raw_up).tiles
+    if args.candidate == "qmicro":
+        candidate_gate = repack_gguf_q4_k_tile16_qmicro(raw_gate).tiles
+        candidate_up = repack_gguf_q4_k_tile16_qmicro(raw_up).tiles
+        candidate_wrapper = (
+            gguf_q4_k_qmicro_selected_dual_exact_gemv_bf16_bf16_out
+        )
+        candidate_layout = "gguf_q4_k_tile16_qmicro"
+    else:
+        candidate_gate = repack_gguf_q4_k_x8(raw_gate).tiles
+        candidate_up = repack_gguf_q4_k_x8(raw_up).tiles
+        candidate_wrapper = (
+            gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out
+        )
+        candidate_layout = "gguf_q4_k_x8_v1"
     t16_gate, gate_entry = _cache_tiles(
         args.repacked_cache,
         layer=args.layer,
@@ -266,12 +286,17 @@ def main() -> None:
     resident_buffers = []
     results: dict[str, dict] = {}
     try:
-        x8_gate_dev = _upload(runtime, x8_gate)
-        x8_up_dev = _upload(runtime, x8_up)
+        candidate_gate_dev = _upload(runtime, candidate_gate)
+        candidate_up_dev = _upload(runtime, candidate_up)
         t16_gate_dev = _upload(runtime, t16_gate)
         t16_up_dev = _upload(runtime, t16_up)
         resident_buffers.extend(
-            (x8_gate_dev, x8_up_dev, t16_gate_dev, t16_up_dev)
+            (
+                candidate_gate_dev,
+                candidate_up_dev,
+                t16_gate_dev,
+                t16_up_dev,
+            )
         )
 
         for producer_rows in args.producer_rows:
@@ -319,12 +344,12 @@ def main() -> None:
                         runtime=runtime,
                     )
 
-                def launch_x8() -> None:
-                    gguf_q4_k_x8_selected_dual_exact_gemv_bf16_bf16_out(
+                def launch_candidate() -> None:
+                    candidate_wrapper(
                         x_dev.ptr,
                         selected_dev.ptr,
-                        x8_gate_dev.ptr,
-                        x8_up_dev.ptr,
+                        candidate_gate_dev.ptr,
+                        candidate_up_dev.ptr,
                         out_a_dev.ptr,
                         out_b_dev.ptr,
                         producer_rows,
@@ -336,18 +361,21 @@ def main() -> None:
                         runtime=runtime,
                     )
 
-                launchers = {"t16": launch_t16, "x8_exact": launch_x8}
+                launchers = {
+                    "t16": launch_t16,
+                    "candidate_exact": launch_candidate,
+                }
                 for _ in range(args.warmups):
                     launch_t16()
-                    launch_x8()
+                    launch_candidate()
                 runtime.device_synchronize()
 
-                samples = {"t16": [], "x8_exact": []}
+                samples = {"t16": [], "candidate_exact": []}
                 for sample in range(args.samples):
                     order = (
-                        ("t16", "x8_exact")
+                        ("t16", "candidate_exact")
                         if sample % 2 == 0
-                        else ("x8_exact", "t16")
+                        else ("candidate_exact", "t16")
                     )
                     for mode in order:
                         samples[mode].append(
@@ -362,19 +390,22 @@ def main() -> None:
                 runtime.device_synchronize()
                 t16_a = _copy_output(runtime, out_a_dev, shape)
                 t16_b = _copy_output(runtime, out_b_dev, shape)
-                launch_x8()
+                launch_candidate()
                 runtime.device_synchronize()
-                x8_a = _copy_output(runtime, out_a_dev, shape)
-                x8_b = _copy_output(runtime, out_b_dev, shape)
-                mismatch_a = int(np.count_nonzero(t16_a != x8_a))
-                mismatch_b = int(np.count_nonzero(t16_b != x8_b))
+                candidate_a = _copy_output(runtime, out_a_dev, shape)
+                candidate_b = _copy_output(runtime, out_b_dev, shape)
+                mismatch_a = int(np.count_nonzero(t16_a != candidate_a))
+                mismatch_b = int(np.count_nonzero(t16_b != candidate_b))
                 medians = {
                     mode: statistics.median(values)
                     for mode, values in samples.items()
                 }
-                ratio = medians["x8_exact"] / medians["t16"]
+                ratio = medians["candidate_exact"] / medians["t16"]
                 values_f32 = np.concatenate(
-                    (_bf16_to_f32(x8_a), _bf16_to_f32(x8_b)),
+                    (
+                        _bf16_to_f32(candidate_a),
+                        _bf16_to_f32(candidate_b),
+                    ),
                     axis=1,
                 )
                 results[str(producer_rows)] = {
@@ -385,8 +416,8 @@ def main() -> None:
                     ).hexdigest(),
                     "samples_ms": samples,
                     "median_ms": medians,
-                    "x8_over_t16": ratio,
-                    "x8_regression_percent": (ratio - 1.0) * 100.0,
+                    "candidate_over_t16": ratio,
+                    "candidate_regression_percent": (ratio - 1.0) * 100.0,
                     "bf16_mismatch_gate": mismatch_a,
                     "bf16_mismatch_up": mismatch_b,
                     "finite": bool(np.isfinite(values_f32).all()),
@@ -397,7 +428,7 @@ def main() -> None:
                 print(
                     f"producer_rows={producer_rows} routes={routes} "
                     f"t16={medians['t16']:.6f}ms "
-                    f"x8={medians['x8_exact']:.6f}ms "
+                    f"{args.candidate}={medians['candidate_exact']:.6f}ms "
                     f"ratio={ratio:.6f} "
                     f"mismatch={mismatch_a + mismatch_b}",
                     flush=True,
@@ -417,12 +448,12 @@ def main() -> None:
         for item in results.values()
     )
     within_gate = all(
-        item["x8_over_t16"] <= 1.02 for item in results.values()
+        item["candidate_over_t16"] <= 1.02 for item in results.values()
     )
     artifact = {
         "schema": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "kind": "hipengine_laguna_q4_k_x8_exact_decode_leaf",
+        "kind": "hipengine_laguna_q4_k_exact_decode_leaf",
         "status": "retained" if exact and within_gate else "rejected",
         "performance_claim": bool(exact and within_gate),
         "scope": (
@@ -452,9 +483,11 @@ def main() -> None:
             ),
         },
         "layouts": {
-            "x8_pair_bytes": int(x8_gate.nbytes + x8_up.nbytes),
+            "candidate_pair_bytes": int(
+                candidate_gate.nbytes + candidate_up.nbytes
+            ),
             "t16_pair_bytes": int(t16_gate.nbytes + t16_up.nbytes),
-            "candidate_single_resident_layout": "gguf_q4_k_x8_v1",
+            "candidate_single_resident_layout": candidate_layout,
             "temporary_side_by_side_one_layer_only": True,
             "t16_entries": {"gate": gate_entry, "up": up_entry},
         },
@@ -468,7 +501,9 @@ def main() -> None:
                 "focused CPU-source primitive gate is in "
                 "tests/test_gguf_x8_selected_gemv.py"
             ),
-            "promotion_gate": "all shapes exact and X8/T16 <= 1.02",
+            "promotion_gate": (
+                "all shapes exact and candidate/T16 <= 1.02"
+            ),
             "command": shlex.join(sys.argv),
         },
         "repo": {
@@ -486,9 +521,9 @@ def main() -> None:
             "passed": exact and within_gate,
         },
         "notes": [
-            "This qualifies the exact X8 leaf, not full-model decode.",
+            "This qualifies the exact candidate leaf, not full-model decode.",
             "No raw-Q4 or T16 sidecar is required by the candidate kernel.",
-            "The comparison temporarily co-resides one layer of X8 and T16.",
+            "The comparison temporarily co-resides one candidate layer and T16.",
             "Runtime dispatch and materialization remain unchanged.",
         ],
     }
@@ -509,9 +544,9 @@ def main() -> None:
         )
     )
     if not exact:
-        raise SystemExit("X8 exact output differs from retained T16")
+        raise SystemExit("candidate exact output differs from retained T16")
     if not within_gate:
-        raise SystemExit("X8 exact leaf exceeds the 2% decode gate")
+        raise SystemExit("candidate exact leaf exceeds the 2% decode gate")
 
 
 if __name__ == "__main__":

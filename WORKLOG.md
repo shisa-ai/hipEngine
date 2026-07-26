@@ -181655,3 +181655,30 @@ Vulkan local sizes verbatim will close the measured gap.
 - This is host-only foundation. No quant registry key, materializer, device
   decoder, or runtime route exists until the exact c1-first decoder gate beats
   resident T16.
+
+## 2026-07-26 — Retain exact Q4 T16-local qmicro decode
+
+- RED failed on the missing qmicro exact wrapper. GREEN adds a local128
+  selected-dual consumer that assigns the 64 gate and 64 up metadata records
+  across all 128 work items, expands each record into one uint32 LDS write,
+  reads the existing T16-local Q payload directly, and preserves T16's
+  K/reduction/BF16 store order.
+- The real K3072/top-10 GPU fixture is BF16-bit exact. The adjacent qmicro
+  host tests and full X8 selected-GEMV file report **21 passed**.
+- A balanced 12-sample, five-launch-burst actual layer-1 screen improves
+  resident T16 at every shape: c1 **0.157579 -> 0.149812 ms (-4.929%)**, c2
+  **0.350504 -> 0.347768 ms (-0.781%)**, c4
+  **0.687797 -> 0.662409 ms (-3.691%)**, and c8
+  **1.351237 -> 1.288635 ms (-4.633%)**, with zero BF16 mismatches.
+- The sole-resident pair shrinks **931,135,488 -> 905,969,664 bytes
+  (-2.778%)** with no sidecar. Temporary comparison residency peaks at
+  **1,837,482,624 bytes** and returns to zero.
+- Cached `rocprofv3 --kernel-trace` observes
+  `gguf_q4_qmicro_selected_dual_exact_gemv_kernel` at
+  local128/VGPR192/SGPR128/LDS1536B/scratch0. Raw timing and trace SHA-256 are
+  `9dbe6804bc059196fcffcdbb5277e5a61990e751984697bd9ebc71b468940eb4`
+  and `b176891c41d75a18e415cc438890b1e28317822364776ae9a176a428c7ad2ebb`.
+- Retain the exact decoder and generic candidate-capable benchmark, publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-exact-decode-retained.json`,
+  and leave materialization/runtime unchanged. The next gate is the
+  actual-weight natural-M512 selected-prefill consumer.
