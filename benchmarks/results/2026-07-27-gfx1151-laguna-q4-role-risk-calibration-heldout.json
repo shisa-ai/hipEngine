@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_laguna_q4_role_risk_calibration_heldout",
+  "status": "screen_passed",
+  "date": "2026-07-27",
+  "revision": "7aeee252d",
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": {
+    "cpu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "workload": {
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "layers_per_prompt": 47,
+    "producer_rows_per_split": 120320,
+    "calibration_prompt_ids": [
+      "code_lru_cache",
+      "code_merge_intervals",
+      "general_en_plan",
+      "general_ja_plan",
+      "mixed_ja_en_translate"
+    ],
+    "heldout_prompt_ids": [
+      "code_topological_sort",
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ]
+  },
+  "method": {
+    "authoritative_model_path": "production D8",
+    "candidate_measurement": "off-path D4 gate versus D8 gate on real projection inputs",
+    "risk_inputs": "activation_only",
+    "policy_scope": "global_layer_and_prompt_independent",
+    "repair_unit": "producer_row_all_top10_routes",
+    "error_metric": "exact_route_weight_squared_times_silu_gate_product_delta_squared",
+    "maximum_repair_fraction": 0.25,
+    "selected_rule": "activation_abs_max >= 2.0"
+  },
+  "selected_rule_results": {
+    "calibration": {
+      "repair_fraction": 0.1968500664893617,
+      "error_mass_coverage": 0.9976430872990507,
+      "severe_row_coverage": 0.9642857142857143
+    },
+    "heldout": {
+      "repair_fraction": 0.1972406914893617,
+      "error_mass_coverage": 0.9975797516857396,
+      "severe_row_coverage": 0.9700996677740864
+    }
+  },
+  "alternate_rule": {
+    "rule": "d4_vs_d8_activation_reconstruction_max_abs >= 0.01",
+    "reason_not_selected": "slightly stronger but requires extra producer arithmetic",
+    "calibration": {
+      "repair_fraction": 0.2447722739361702,
+      "error_mass_coverage": 0.9985083078230198,
+      "severe_row_coverage": 0.9900332225913622
+    },
+    "heldout": {
+      "repair_fraction": 0.24488863031914893,
+      "error_mass_coverage": 0.9985216551493744,
+      "severe_row_coverage": 0.9966777408637874
+    }
+  },
+  "raw_evidence": {
+    "calibration_path": "/tmp/2026-07-27-gfx1151-laguna-q4-role-risk-calibration5.raw.json",
+    "calibration_sha256": "ab89721b68700153d7a34e95369ced5ed6425bc21c20eb81f13d1489821bac20",
+    "heldout_path": "/tmp/2026-07-27-gfx1151-laguna-q4-role-risk-heldout5.raw.json",
+    "heldout_sha256": "0700ce1749bddd920a8df7bd5fcbbed472b1e853971734b4b90f1aaf2b4bb247"
+  },
+  "commands": {
+    "calibration": "uv run python scripts/laguna_q4_role_risk_calibration.py --prompt-id code_lru_cache --prompt-id code_merge_intervals --prompt-id general_en_plan --prompt-id general_ja_plan --prompt-id mixed_ja_en_translate --require-cached-build --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/2026-07-27-gfx1151-laguna-q4-role-risk-calibration5.raw.json",
+    "heldout": "uv run python scripts/laguna_q4_role_risk_calibration.py --prompt-id code_topological_sort --prompt-id code_markdown_table --prompt-id general_en_explain --prompt-id general_ja_explain --prompt-id mixed_ja_en_review --require-cached-build --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/2026-07-27-gfx1151-laguna-q4-role-risk-heldout5.raw.json"
+  },
+  "decision": {
+    "pass": true,
+    "next": "implement a bounded GPU absmax producer-row classifier plus sparse D8 gate repair candidate"
+  }
+}
