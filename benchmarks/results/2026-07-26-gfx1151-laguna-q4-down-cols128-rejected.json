@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T02:48:39.668424+00:00",
+  "kind": "hipengine_laguna_q4_down_cols128_screen",
+  "status": "rejected_and_removed",
+  "repo_revision": "88733bb49eb33de535fade70c6a3fe8781afe90d",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M with resident Q4_K T16 selected down",
+  "shape": {
+    "layer": 6,
+    "natural_prompt_rows": 512,
+    "compact_routed_rows": 5120,
+    "padded_rows32": 9536,
+    "active_row_tiles32": 298,
+    "experts": 256,
+    "in_features": 1024,
+    "out_features": 3072,
+    "resident_weight_bytes": 465567744
+  },
+  "premise": {
+    "production": "64 output columns x 32 routed rows, local64 direct wave columns, 48 output-column workgroups per row tile",
+    "candidate": "128 output columns x 32 routed rows, local128 direct wave columns, 24 output-column workgroups per row tile",
+    "invariants": "same T16 bytes, per-column decode, D4 activations, ordered K32 dots/F32 accumulation, BF16 boundary, 32 F32 accumulators per lane, and 1536-byte LDS allocation",
+    "expected_gain": "halve output workgroups and activation staging while preserving register-resident weights"
+  },
+  "correctness": {
+    "red": "The single-direct-cols128 case failed because the single-Q4 wrapper had no tile_cols=128 specialization.",
+    "green": "The uneven/empty-expert CPU-reference quality gate passed.",
+    "actual_layer_bf16_mismatches_vs_production": 0,
+    "actual_layer_checksum": 509664879648,
+    "finite": true,
+    "test_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate[single-direct-cols128]'"
+  },
+  "leaf_protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_down_cols128_leaf.py --samples 11 --warmups 2 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-down-cols128-leaf.json",
+    "timing": "HIP events, counter-rotated; activation packing excluded",
+    "samples": 11,
+    "burst": 5,
+    "production_cols64_median_ms": 2.9716299057006834,
+    "candidate_cols128_median_ms": 3.018799591064453,
+    "candidate_change_percent": 1.5873337818171906,
+    "candidate_wins": 2,
+    "raw_sha256": "98a32940cd9656cf465d56f7675f2a8040244c9b8414097fe663b975f9e7a6d7"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q4-down-cols128-rocprof -- .venv/bin/python3 -u scripts/laguna_q4_down_cols128_leaf.py --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-down-cols128-rocprof.json",
+    "production": {
+      "threads": 64,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "threads": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "bd43bf9f6ef034b2c4ad2e8da8961ca643e78efcd4b249f1785320b680aef70a",
+    "interpretation": "The candidate halves workgroups with identical reported register/LDS resources per workgroup, but the wider workgroup remains slower after warmup; activation-stage amortization is not the limiting cost."
+  },
+  "decision": {
+    "gate": "candidate must be exact and faster than production on the actual natural-M512 leaf",
+    "pass": false,
+    "action": "Remove the 128-column single-Q4 export, wrapper selector, test parameter, and leaf harness before runtime integration. Keep 64-column/local64 production.",
+    "production_prefill_tok_s": 542.08826
+  }
+}
