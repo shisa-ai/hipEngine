@@ -16,8 +16,6 @@ from scripts.laguna_grouped_down_category_bench import (
     MODES,
     PREFILL_350_COMPARISON,
     PRODUCTION_ABSOLUTE_COMPARISON,
-    Q4_M512_ROLE_SPLIT_LONG_ABSOLUTE_COMPARISON,
-    Q4_M512_ROLE_SPLIT_SHORT_ABSOLUTE_COMPARISON,
     Q4_ROLE_SPLIT_ABSOLUTE_COMPARISON,
     Q4_UP_ROLE_SPLIT_ABSOLUTE_COMPARISON,
     SWA_QROW2_COMPARISON,
@@ -121,37 +119,6 @@ def test_q4_up_role_split_comparison_changes_only_selected_gate_up() -> None:
     assert (
         lane.selected_gate_up_mode
         == "mmq128x32_role_gate_d8_up_d4"
-    )
-    assert lane.selected_down_mode == production.selected_down_mode
-    assert lane.f16_projection_mode == production.f16_projection_mode
-    assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
-    assert lane.global_prefill_variant == production.global_prefill_variant
-    assert lane.swa_prefill_variant == production.swa_prefill_variant
-    assert lane.attention_hipblaslt == production.attention_hipblaslt
-
-
-def test_q4_m512_role_split_comparisons_scope_only_long_matrix_chunks() -> None:
-    assert Q4_M512_ROLE_SPLIT_SHORT_ABSOLUTE_COMPARISON.modes == (
-        "all_exact",
-        "q4_m512_role_split_candidate",
-    )
-    assert Q4_M512_ROLE_SPLIT_SHORT_ABSOLUTE_COMPARISON.required_chunk_size == 128
-    assert Q4_M512_ROLE_SPLIT_SHORT_ABSOLUTE_COMPARISON.prompt_token_target == 0
-    assert Q4_M512_ROLE_SPLIT_LONG_ABSOLUTE_COMPARISON.modes == (
-        "all_exact",
-        "q4_m512_role_split_candidate",
-    )
-    assert Q4_M512_ROLE_SPLIT_LONG_ABSOLUTE_COMPARISON.required_chunk_size == 512
-    assert Q4_M512_ROLE_SPLIT_LONG_ABSOLUTE_COMPARISON.prompt_token_target == 512
-    lane = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "q4_m512_role_split_candidate"
-    ]
-    production = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "attention_hipblaslt_candidate"
-    ]
-    assert (
-        lane.selected_gate_up_mode
-        == "mmq128x32_m512_role_gate_d4_up_d8"
     )
     assert lane.selected_down_mode == production.selected_down_mode
     assert lane.f16_projection_mode == production.f16_projection_mode

@@ -1499,14 +1499,18 @@ Immediate execution queue:
    flat decode and exact lifecycle recovery, but it cannot ship. Production
    remains D8 at **632.618 tok/s**. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute-rejected.json).
+39. **Rejected selector removed:** the M512 runtime mode, its short/long
+   comparison definitions, cumulative lane, and selector-specific tests are
+   gone. The generic deterministic 512-token extension helper remains for the
+   repair gate, and the shared D4/D8 role kernels remain only because bounded
+   producer-row repair reuses them. Production dispatch is unchanged.
 
 ### Next exact and quality-gated attacks
 
 The projection-role screen cleared its 10-ms economic gate. Its quality gate
 now decides whether repair work is needed:
 
-1. M512-wide D4 is rejected. Remove its selector and both one-purpose quality
-   lanes while retaining the shared D4/D8 role primitives needed by repair.
+1. M512-wide D4 cleanup is complete.
 2. Retain D8 and prototype a bounded
    producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
    separately compacted risk-row kernel adds the D8-minus-D4 correction

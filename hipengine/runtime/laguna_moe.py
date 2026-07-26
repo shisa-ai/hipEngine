@@ -86,7 +86,6 @@ _SELECTED_GATE_UP_MODES = frozenset(
         "mmq128x32_d8_f32_wavecols",
         "mmq128x32_d8_f32_wavecols_direct",
         "mmq128x32_d8_f32_wavecols_direct_doublebuf",
-        "mmq128x32_m512_role_gate_d4_up_d8",
         "mmq128x32_role_gate_d4_up_d8",
         "mmq128x32_role_gate_d8_up_d4",
         "mmq64x32_d4x2_f32",
@@ -108,7 +107,6 @@ _Q8_1_DS4_F32_BLOCK_BYTES = 160
 _Q8_1_DS4_RESIDUAL_PLANES = 3
 _MMQ32_ROWS = 32
 _MMQ64_ROWS = 64
-_ROLE_SPLIT_GATE_UP_MIN_ROWS = 512
 
 
 def _should_fuse_grouped_weighted_sum(
@@ -137,7 +135,6 @@ _FUSED_SELECTED_SILU_PACK_GATE_UP_MODES = frozenset(
         "mmq128x32_d8_f32_wavecols",
         "mmq128x32_d8_f32_wavecols_direct",
         "mmq128x32_d8_f32_wavecols_direct_doublebuf",
-        "mmq128x32_m512_role_gate_d4_up_d8",
         "mmq128x32_role_gate_d4_up_d8",
         "mmq128x32_role_gate_d8_up_d4",
     }
@@ -2451,14 +2448,6 @@ def run_laguna_moe_rows(
             True,
             True,
         ),
-        "mmq128x32_m512_role_gate_d4_up_d8": (
-            1,
-            True,
-            True,
-            True,
-            True,
-            True,
-        ),
         "mmq64x32_d4x2_f32": (2, False, False, False, False, False),
         "mmq64x32_d4x3_f32": (3, False, False, False, False, False),
     }.get(selected_gate_up_mode)
@@ -2466,11 +2455,6 @@ def run_laguna_moe_rows(
         "mmq128x32_role_gate_d4_up_d8": False,
         "mmq128x32_role_gate_d8_up_d4": True,
     }.get(selected_gate_up_mode)
-    if (
-        selected_gate_up_mode == "mmq128x32_m512_role_gate_d4_up_d8"
-        and tokens >= _ROLE_SPLIT_GATE_UP_MIN_ROWS
-    ):
-        gate_up_role_split16 = False
     use_fused_selected_separate_silu_pack = bool(
         use_fused_selected_silu_pack
         and gate_up_role_split16 is not None

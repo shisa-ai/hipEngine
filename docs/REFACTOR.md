@@ -1526,8 +1526,9 @@ should be boring.
   admission, remove both projection-wide runtime modes and collapse the M512
   selector into the gfx1151 backend capability after clean publication.
 - The extended-512 gate rejects the bucket at max KL **1.379757** across nine
-  failing streams. Remove the M512 runtime selector plus its short/long
-  category comparisons and lane before producer-row repair. Keep the shared
-  role kernels, activation packs, and exact separate-input fused boundary only
-  because the next bounded repair consumes them; remove those too if the
-  repair screen has no economically viable risk-row operating point.
+  failing streams. The M512 runtime selector plus its short/long category
+  comparisons, lane, and selector-specific tests are removed. Keep the shared
+  role kernels, activation packs, exact separate-input fused boundary, and
+  generic long-prompt extension helper only because the next bounded repair
+  consumes them; remove those too if the repair screen has no economically
+  viable risk-row operating point.
