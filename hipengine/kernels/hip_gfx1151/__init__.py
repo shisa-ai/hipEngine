@@ -242,6 +242,11 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_iq3_xxs",
             "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out",
         ),
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_weighted_down_gemv_decode_k1024_wave10_signbit_bf16_bf16_out",
+        ),
         # Q4 local32 LM-head ownership is W7900-only pending an independent gate.
         (
             "linear",
