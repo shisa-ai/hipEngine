@@ -1,0 +1,287 @@
+{
+  "acceptance": {
+    "category": true,
+    "correctness": true,
+    "matched_vulkan_beaten": false,
+    "mechanical": true,
+    "promote_gfx1100_default": true
+  },
+  "candidate": {
+    "default": "gfx1100 c=1 _project_and_sample decode only",
+    "description": "exact local32 fixed-metadata Q4_K output-pair LM head",
+    "dispatches_per_token": 723,
+    "fallback": [
+      "bulk-prefill and verifier projections",
+      "rows greater than one",
+      "unsupported backends including gfx1151",
+      "registry key miss"
+    ],
+    "lm_head_calls_per_token": 1,
+    "measurement_revision": "2191db96b276a448c44274e967fde1bab85606cf",
+    "new_allocations": 0,
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q4_k",
+      "local32_fixed_meta_gemv_decode_bf16_f32_out"
+    ],
+    "rollback": "use_q4_lm_head_local32_fixed_meta=False / --disable-q4-lm-head-local32-fixed-meta"
+  },
+  "category_gate": {
+    "aggregate": {
+      "candidate": {
+        "h16_decode_tok_s": 62.63841255421744,
+        "h16_e2e_output_tok_s": 7.046273641657327,
+        "h32_decode_tok_s": 61.99155148671624,
+        "h32_e2e_output_tok_s": 12.641714484525757,
+        "prefill_tok_s": 42.8037542300633,
+        "ttft_median_seconds": 1.9411133724497631
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 0.5262925560187925,
+        "h16_e2e_output_tok_s": -0.13059526313643488,
+        "h32_decode_tok_s": 0.5124846739396283,
+        "h32_e2e_output_tok_s": -0.06569622479790649,
+        "prefill_tok_s": -0.20803818850798628,
+        "ttft_median_seconds": 0.028465552278711392
+      },
+      "control": {
+        "h16_decode_tok_s": 62.3104771513501,
+        "h16_e2e_output_tok_s": 7.05548777448197,
+        "h32_decode_tok_s": 61.675474134198865,
+        "h32_e2e_output_tok_s": 12.650025073434993,
+        "prefill_tok_s": 42.89298802534818,
+        "ttft_median_seconds": 1.9405609810492024
+      }
+    },
+    "all_e2e_prefill_ttft_guards_pass": true,
+    "all_ids_oracles_and_lifecycle_exact": true,
+    "all_train_and_heldout_category_decode_improve": true,
+    "command": "bash /tmp/run_laguna_q4_lmhead_local32_category.sh",
+    "comparison_sha256": "7306fc574abc04c0bf8219cdd2cde04ac04110be2417293357ff1a4b8e4e9662",
+    "contract_sha256": "d0ba0131c9ce32cde011ce33b4fd7f599f86ec8c112bfa696f5d71aeb30afcdb",
+    "harness_sha256": {
+      "analyzer": "9af314b916ac642b76e5a520ff623050006eb2683cf16fb627d89d8873b7a245",
+      "benchmark": "8e2f26aaf90cf2bbf07700234a76a5e5b29cb869a52579dac018c5c0aa048984",
+      "runner": "af0348902a4bfb1533a1e0055d5cd99088774dee6df7f4b677f15cd90a6de77b"
+    },
+    "pass": true,
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "protocol": "18 prompts, train+heldout, four categories, h16/h32, two repetitions, two process orders",
+    "raw_sha256": {
+      "candidate": [
+        "5ac40752140de87ba1ab90e9307dcc8c73de7ffff19146e64652ffeb6845270b",
+        "63d6dcd4a1ac3976ac6fb7654ca5d1dc4ea7c48017734e7d33a4cff124250912"
+      ],
+      "control": [
+        "f4157597fed7e18264fdf7abd38c0689c365762260a79e357ef188f79b461d4c",
+        "a59ef02b49e65214467efa8ad7de80eb6c1507d5ba2e08d8fa5aae504060e8f1"
+      ]
+    },
+    "report_sha256": "7c17fc342513b20309e413cb7230bd5ed53c629b913b366fbf3f60cfe8c32d26",
+    "train_and_heldout_category_decode_delta_range_pct": [
+      0.24670281288017293,
+      0.8043983215852535
+    ],
+    "train_and_heldout_category_e2e_delta_range_pct": [
+      -0.38893678507420093,
+      0.08687943438427936
+    ]
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_q4_lmhead_local32_clean_profiles.sh",
+    "contexts": [
+      "short",
+      "512",
+      "1024",
+      "3968"
+    ],
+    "contract_sha256": "598c0e41c28d305b4eaa78c5a57ac2288e118b4ea31b78d3dc2a7503e979f2d7",
+    "harness_sha256": {
+      "analyzer": "f82182a87df238b1549c2b4fd2da9b3e943d919cfe0a39b58b6343a5c67b7a54",
+      "child": "a19fb129ead3c7f49d30efaf470370dd86bdbdd4441e389df9fa6a86e61060c8",
+      "runner": "51031980537638334106136f9201cb45319b9c4fdd8b7d8fedb7470dd77467aa"
+    },
+    "ids_finite_lifecycle_exact": true,
+    "kernel_sum_improvement_range_pct": [
+      0.3420530679943634,
+      1.0950015942645774
+    ],
+    "lm_head_improvement_range_pct": [
+      29.071244200505262,
+      30.78639161531035
+    ],
+    "mechanical_gate_pass": true,
+    "profiled_child_change_range_pct": [
+      -0.027000034815627405,
+      2.4125494750264043
+    ],
+    "report_sha256": "f5ea8b4313932ee1fdbbcc7b3e35d6962b15f214bf7fbddb19d6969b14eecc36",
+    "resource_and_dispatch_gate": true,
+    "revision": "2191db96b",
+    "span_improvement_range_pct": [
+      0.2473860776245118,
+      1.348793523873093
+    ],
+    "stable_samples_per_arm": {
+      "1024": 12,
+      "3968": 12,
+      "512": 12,
+      "short": 28
+    },
+    "summary_sha256": "e617aa26477ba5048db5266d1b7cdfc082e1072cc43cc0615198af4862605e40"
+  },
+  "correctness": {
+    "active_bf16_kv_and_all_span_fields_exact": true,
+    "actual_event_improvement_pct": 30.04,
+    "actual_wall_improvement_pct": 21.44,
+    "actual_weight_outputs_f32_bit_exact": true,
+    "cached_trace": {
+      "candidate_calls_per_token": 1,
+      "grid_x": 1605632,
+      "lds_bytes": 0,
+      "model_kernels_per_token": 723,
+      "retained_calls_per_decode_token": 0,
+      "scratch_bytes": 0,
+      "trace_sha256": "165fd266599d8cc3c5edcf47d1e263f4a824d432b91dd1c8b7d301e1afc8a924",
+      "vgpr": 72,
+      "workgroup": 32
+    },
+    "default_vs_rollback": {
+      "harness_sha256": "3caca6cc6909cc2051ee32bea2161c0dc34dcb170114a786ef2f45dd49d103a5",
+      "passed": true,
+      "path": "/tmp/laguna-q4-lmhead-local32-default-rollback.json",
+      "sha256": "3751e41d1d61a59b4835481162060ee6d3002ad6305df9ad18e88b73bb022202",
+      "stdout_sha256": "8c6f69b93ecad436b7dc05193909a321a643676d3d13ca0c1e448509153f5ed5"
+    },
+    "full_logits_and_argmax_exact": true,
+    "hidden_boundaries_exact": 48,
+    "primitive_artifact": {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json",
+      "sha256": "a7738e7ced36a51bfc19b8e942397801c02a8c817f4128fc338eca50aca8a96b"
+    },
+    "reset_and_reprefill_exact": true,
+    "routed_boundaries_exact": 47,
+    "runtime_artifact": {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json",
+      "sha256": "b75161a50cffd66e26dce2419ec80b034118e39c98bb6de9cfdff0979f9b0717"
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-26",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_q4_lmhead_local32_fixed_metadata_retained",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "kv_dtype": "bf16",
+    "lm_head": {
+      "k": 3072,
+      "n": 100352,
+      "quant": "Q4_K",
+      "rows": 1
+    },
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": true,
+  "performance_claim_scope": "AMD Radeon Pro W7900 gfx1100; Laguna-S-2.1-UD-Q2_K_XL; BF16 KV; batch-1 eager c=1 target AR; complete 18-prompt train+heldout suite; greedy h16/h32; two process orders and two repetitions",
+  "promotion": {
+    "adjacent_tests": {
+      "log_sha256": "e4b795f516d7393d5394fe4fb0859087efe7f835c774db0bb02e80797fb556da",
+      "passed": 175,
+      "warning": "one unrelated Starlette httpx deprecation warning"
+    },
+    "compileall_passed": true,
+    "green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "red_sha256": "2a9e710959e057c1a2394be749d467be4aecd71d2f86d9f63c5d1cdb3789e747",
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "provenance": {
+    "builder_sha256": "9ba18c385903b75c8bd6c66e00caf6fb604a7d7a43751abbbc7c918a0f59200e",
+    "dirty_files_at_build": [
+      " M WORKLOG.md",
+      " M benchmarks/CHANGELOG.md",
+      " M benchmarks/README.md",
+      " M docs/KERNELS.md",
+      " M docs/LAGUNA-decode.md",
+      " M docs/REFACTOR.md",
+      " M hipengine/kernels/hip_gfx1100/__init__.py",
+      " M hipengine/runtime/laguna_gguf_runner.py",
+      " M scripts/laguna_target_ar_bench.py",
+      " M tests/test_laguna_gguf_runner.py",
+      " M tests/test_laguna_target_ar_bench.py"
+    ],
+    "parent_revision": "2191db96b276a448c44274e967fde1bab85606cf",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7"
+      },
+      {
+        "path": "tests/test_laguna_gguf_runner.py",
+        "sha256": "c9b22c08fac2e99435a3360d71b4bd95ee73457d1d0160afb42b0b395bad4470"
+      },
+      {
+        "path": "tests/test_laguna_target_ar_bench.py",
+        "sha256": "e1584c7313a627dee2576cb65272c0eef82ec6e9f82b41090200b81ef33400f5"
+      },
+      {
+        "path": "docs/KERNELS.md",
+        "sha256": "4093af4fbde64d65e0fc9d98df90b8f9c8e80995635b7594db7175e5265806af"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "5ecbbb231fab3abcb3b8f2463176d028b24961401d3005852f5bb4b22e52e028"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "1f25d2be4cdab6cbaa6e5fb706f22d172ab26557815048fcca8ef5b47780690b"
+      },
+      {
+        "path": "benchmarks/README.md",
+        "sha256": "f6ea391b78f8af0cd779d5aa543833b2abc04b0585e4d96f7797edae3ade3e6e"
+      },
+      {
+        "path": "benchmarks/CHANGELOG.md",
+        "sha256": "7b6ad4c17fcb78a7a5d527464e78095ae0be9dc1b629efb1811a72207c2f0308"
+      }
+    ]
+  },
+  "schema": 1,
+  "status": "retained_gfx1100_default",
+  "topline": {
+    "additional_h16_speedup_required_pct": 2.56485977257479,
+    "additional_h32_speedup_required_pct": 3.9145459065845767,
+    "h16_improvement_vs_previous_retained_pct": 0.45679099589872596,
+    "h32_improvement_vs_previous_retained_pct": 0.4198867262229289,
+    "matched_vulkan_h16_tok_s": 64.245,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "new_h16_decode_tok_s": 62.63841255421744,
+    "new_h32_decode_tok_s": 61.99155148671624,
+    "new_ms_per_token": 16.131230401844086,
+    "objective_met": false,
+    "paired_control_h16_decode_tok_s": 62.3104771513501,
+    "paired_control_h32_decode_tok_s": 61.675474134198865,
+    "paired_h16_improvement_pct": 0.5262925560187925,
+    "paired_h32_improvement_pct": 0.5124846739396283,
+    "previous_retained_h16_decode_tok_s": 62.35358698325803,
+    "previous_retained_h32_decode_tok_s": 61.73234556191569
+  }
+}
