@@ -292,6 +292,16 @@ and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-s
 retain the primitive only. Runtime selection is removed; scalar below live 127,
 split-exact at live>=127, and canonical **63.270 tok/s / 678 kernels** remain.
 
+The next selected design is a materially new global-only composition: append
+D15's proven exact softplus/RNE-BF16 epilogue to the admitted one-page body in
+the same local256 workgroup. It does not restore D15/D17 head/KV or SWA bundles.
+The unfused one-page+gate chain remains required. Current two-order scalar+gate
+windows are **0.5558/0.5664 ms/token** versus **0.5008/0.5029** for one-page plus
+separate gate; a zero-increment epilogue ceiling removes 12 more launches and
+models h32 **63.653 tok/s (+0.605%)**, still below Vulkan. The
+[`gated design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json)
+is not implemented and makes no throughput/default claim.
+
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
 explains the measured gap between llama.cpp Vulkan and hipEngine, audits the
@@ -2310,7 +2320,49 @@ the immutable strict-win/+0.5% guards; favorable order B and pooled kernel/span
 512/1K/3968/category outputs. Capability/session/CLI/route ownership is removed;
 only the exact registered primitive remains. Evidence:
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json).
-Do not retry unchanged one-page ownership; re-rank an independent exact surface.
+Do not retry unchanged one-page ownership.
+
+### Post-one-page selection: exact gated single-page global attention
+
+The independent residual composition is the one-page body plus the standalone
+global softplus gate, not another address-only owner. Current two-order traces
+measure scalar+gate at **0.555764/0.566353 ms/token** and one-page+separate-gate
+at **0.500807/0.502853 ms/token**. Historical D15 independently proved that
+appending `context_value * softplus(gate[q_head])` and the same RNE BF16 store
+inside the generic global workgroup preserves both F32 context and BF16 gated
+context; its generic global inclusive window improved **9.884%** and all clean
+mechanical contexts passed, although the removed all-global/SWA/head bundle
+failed its category TTFT gate.
+
+Select a new exact key:
+`hip_gfx1100/laguna_attention_decode+attention_gate/bf16/
+global_single_page_softplus_bf16_spans`. Start from the admitted page-zero body
+and permit only non-null gate/gated-output arguments, an unchanged F32 context
+store, and D15's exact softplus/multiply/BF16 epilogue. Preserve both page-zero
+K/V translations, the live<=256 guard, all `KVLiveSpans` fields, local256/eight
+waves, five barriers, every attention operation, and dynamic LDS16,928. The
+primitive fallback is one-page attention plus the registered standalone gate;
+scalar+gate and live>=127 split-gated controls remain callable.
+
+Future runtime eligibility is narrower than primitive validity: full-attention
+c=1 at live<=126 after split selection is false. It replaces **12 attention +
+12 gate calls with 12 composites**, contracting short topology **678 -> 666
+model kernels/token** without allocation/workspace/weight changes. Assuming the
+epilogue adds zero duration to the measured one-page body, the smaller order
+saves **0.095009 ms/token** and models h32 **63.270 -> 63.653 tok/s (+0.605%)**,
+still **1.20%** below Vulkan. This is a planning ceiling, not a measured body or
+throughput claim.
+
+Primitive admission must mechanically prove source identity, F32/BF16 bytes
+against the unfused chain at synthetic live 1/70/126/256 plus live257 sentinel
+and all 12 actual layers, independent CPU quality, all-positive layer0/44
+inclusive event+wall, local256/VGPR<=40/dynamic-LDS16928/private-spills-scratch0,
+and a distinct cache-only trace. Only after a primitive commit may a separate
+false/default-off owner enter shared-weight 16-transition/live127 fallback and
+**12-candidate/zero-gate/666-kernel** tracing. Both clean process orders at
+short/512/1K/3968 and both complete 18-prompt orders retain the same no-rerun,
+no-pooled-waiver, category, E2E, prefill, and TTFT gates. Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json).
 
 ## 9. Do not chase without new evidence
 
@@ -2373,6 +2425,7 @@ Do not retry unchanged one-page ownership; re-rank an independent exact surface.
 | What happened after closing SWAR ownership? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-rejected.json): primitive only after clean rejection. Exhaustive/CPU/**45/45** production/full-state/**45/2/678** trace gates pass. Both short and 512 orders improve IQ3 and kernel sum, but 512 order-B span regresses **0.862%**, beyond +0.5%; pooled span **-0.736%** cannot waive it. Runtime integration is removed; 1K/3968/categories are skipped and canonical **63.270 tok/s** remains unchanged. |
 | What happened after sign-bit ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-design.json), [`certification`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-rejected.json): primitive only after clean rejection. Package/key/backend, edge, CPU, actual-layer, codegen, full-state, and exact **2-IQ4/45-wave10/676-kernel** trace gates pass. Both short orders nevertheless regress inclusive IQ4 **25.515%/25.191%**, kernel sum **0.202%/0.303%**, and span **0.681%/2.198%**. Runtime integration is removed before long contexts/categories; canonical **63.270 tok/s / 678 kernels** remains. |
 | What happened after IQ4 ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json): primitive only after clean rejection. Primitive/all-layer/full-state and **12-candidate/zero-scalar/678-kernel** trace gates pass, and both short orders improve global attention **10.97%/12.12%**. Order A still regresses kernel sum **0.0949%** and span **1.3203%**, so runtime integration is removed before longer contexts/categories; canonical **63.270 tok/s / 678 kernels** remains. |
+| What is selected after one-page ownership rejection? | [`gated design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json): compose the admitted page-zero body with D15's exact softplus/RNE-BF16 epilogue inside one global-only local256 workgroup. It does not restore rejected head/KV or SWA bundles. A zero-increment epilogue ceiling contracts **678 -> 666 kernels/token** and models h32 **63.653 tok/s (+0.605%)**; no body, runtime owner, default, or throughput claim exists yet. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -2565,6 +2618,11 @@ selects an exact single-page scalar global-attention sibling without reopening
 rejected head pairing, online reassociation, or fused attention boundaries.
 Actual layers 0/44 at live 70/126 are F32 bit-exact and improve all event/wall
 medians **15.52-17.75%**; codegen contracts **1,705 -> 1,008 instructions** and
-logical VGPR **35 -> 32**. Runtime eligibility will remain live<=126 so retained
-split-exact owns live>=127. The modeled **63.597 tok/s** row is design-only;
-canonical **63.270 tok/s / 678 kernels** is unchanged.
+logical VGPR **35 -> 32**. Primitive/all-layer/full-state and exact **12/678**
+trace gates pass, but clean order A regresses kernel sum **0.0949%** and span
+**1.3203%**. Runtime ownership is removed before long contexts/categories and
+canonical **63.270 tok/s / 678 kernels** is unchanged. Post-rejection ranking
+selects a materially new global-only composition: append D15's exact softplus/
+RNE-BF16 epilogue to the admitted page-zero body. A zero-increment epilogue
+ceiling contracts **678 -> 666 kernels/token** and models **63.653 tok/s**; this
+gated body remains design-only.

@@ -233,6 +233,21 @@ Canonical **63.270 tok/s / 678 kernels** is unchanged. Evidence:
 [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json),
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json).
 
+Post-rejection ranking selects a new composite, not a retry of either removed
+owner: `laguna_attention_decode+attention_gate/bf16/
+global_single_page_softplus_bf16_spans`. It will preserve the admitted page-zero
+body and append only D15's previously exact F32 softplus/multiply/RNE-BF16
+epilogue inside the same local256 workgroup, writing both unchanged F32 context
+and BF16 gated context. It is global-only and live<=126; head/KV, SWA, and
+live>=127 split-exact ownership remain untouched. The required unfused fallback
+is the admitted one-page primitive plus the registered standalone softplus gate.
+Current two-order traces put scalar+gate at **0.5558/0.5664 ms/token** and
+one-page+separate-gate at **0.5008/0.5029 ms/token**. A zero-increment epilogue
+ceiling removes 12 more launches (**678 -> 666 kernels/token**) and models only
+**63.653 tok/s (+0.605%)**, still below Vulkan. This is design evidence, not an
+implemented body or throughput claim:
+[`gated design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json).
+
 ### SOL-G2 exact GGUF GDN split evidence
 
 The current acceptance artifact is
