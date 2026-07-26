@@ -1445,4 +1445,8 @@ should be boring.
 - Clean selector-unset publication is satisfied at
   **576.137/543.213/459.054 tok/s**, improving every preceding production
   length with deterministic tokens, exact positions, and complete allocation
-  return. The refreshed selected-down family trace remains open.
+  return. The refreshed trace cuts selected down
+  **189.049 -> 181.583 ms (-3.95%)** and the 115-call Q6 window
+  **1,124.852 -> 792.625 ms (-29.54%)**. Keep the comparator only through the
+  immediately queued activation-fragment-hoist screen, then apply the removal
+  rule above.

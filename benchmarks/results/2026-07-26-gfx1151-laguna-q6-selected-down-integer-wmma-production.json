@@ -85,6 +85,40 @@
     "lifecycle_scope": "exact through 4K; repeated 128K remains blocked"
   },
   "leaf_evidence": "benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json",
+  "rocprof": {
+    "revision": "1c4f1e4cfcfc83fab6316069cea1ffd898cdcdf2",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file q6-int-wmma-production -- env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-int-wmma-production-trace-child.json",
+    "traced_512_1024_4096_tok_s": [
+      579.5338891092754,
+      547.1729423559239,
+      460.3313351501925
+    ],
+    "pp512": {
+      "dispatches": 1696,
+      "kernel_sum_ms": 1217.231128,
+      "kernel_span_ms": 882.725756,
+      "selected_q4_gate_up_ms": 339.302362,
+      "selected_q4_q6_down_ms": 181.583335,
+      "previous_selected_q4_q6_down_ms": 189.049252,
+      "selected_down_change_percent": -3.949191504867733,
+      "q6_integer_wmma_calls": 23,
+      "q6_integer_wmma_ms": 109.290422
+    },
+    "q6_kernel_full_trace": {
+      "calls": 115,
+      "integer_wmma_total_ms": 792.625432,
+      "previous_planar_total_ms": 1124.852206,
+      "change_percent": -29.53514890470864,
+      "workgroup_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "child_sha256": "ec95a1ff15af064eea6d25e17147937c6890591ac817bf671c49c46e9fb322fd",
+    "trace_sha256": "9587bb7cc8b69c465e0be88dfe9da76f3cc4909a7cd4db1fca4535cbf2181271",
+    "summary_sha256": "a0ebb241d9b9e759cd988a031060992367745f18e4e41019bb23a032c7fb32ac"
+  },
   "raw_sha256": "326f0b8df80e2f13bb1f1d0249a129f48a592193ba492a990499be201c9cdad8",
-  "next": "Refresh the pp512 Q6 selected-down family trace, then test a fragment/staging change only if attribution shows a material critical-path Q6 remainder."
+  "next": "Screen activation-fragment hoisting inside the exact Q6 integer-WMMA body; retain only a zero-mismatch actual-weight leaf win before runtime integration."
 }
