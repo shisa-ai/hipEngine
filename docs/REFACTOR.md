@@ -1451,7 +1451,9 @@ should be boring.
 - The immediately queued activation-fragment hoist is also admitted at the
   leaf gate: **4.5645 -> 4.5126 ms (-1.136%, 20/21 wins)**, zero BF16
   mismatches, and unchanged local128/VGPR96/LDS5120B/scratch0 resources.
-  Keep `wmma_hoist_activation=False` only through clean selector-unset
-  publication and one refreshed family trace. Then remove both one-purpose
+  Clean selector-unset publication is satisfied at
+  **577.396/545.366/459.716 tok/s**, improving every required length. Keep
+  `wmma_hoist_activation=False` only through one refreshed family trace. Then
+  remove both one-purpose
   wrapper selectors and collapse the admitted hoisted specialization into the
   unconditional planar-row64 gfx1151 production route.

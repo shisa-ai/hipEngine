@@ -182946,3 +182946,31 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json`.
   No production throughput is claimed until the tracked tree is committed and
   a clean selector-unset 512/1K/4K run completes.
+
+## 2026-07-26 — Publish Q6 WMMA activation-fragment hoist
+
+- Clean tracked revision `acbb72215` enables activation-fragment reuse only
+  inside selector-unset planar-qmicro Q6 integer-WMMA row64 prefill. The
+  retained production protocol uses Poolside Laguna S 2.1 Q4_K_M SHA-256
+  `7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`,
+  BF16 KV, matrix2048/attention128, and the automatic two-queue
+  after-router/least-priority shared schedule.
+- Three clean repetitions publish 512/1K/4K medians
+  **577.396/545.366/459.716 tok/s**, improving the preceding
+  **576.137/543.213/459.054 tok/s** by
+  **0.218%/0.396%/0.144%**. Every required length improves; pp512 wall is
+  **886.740 ms** and the remaining wall reduction to 700 tok/s is
+  **155.312 ms**.
+- Tokens remain deterministic at **2930/95/7772**, final positions are exact,
+  and all **78,777,775,764** tracked resident bytes return. The exact
+  primitive and actual-weight equality gates transfer the unchanged absolute
+  production quality result: max KL **0.049542582**, **316/320** top-1,
+  minimum category **96.875%**. Repeated 128K remains blocked and is not
+  claimed.
+- Raw long-context JSON SHA-256:
+  `fec8b67bbb87b504cf439ca2c587a5bbd15ed493dd3db8c9f5f13dbecd62290c`.
+  Retained artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-production.json`.
+- Next action is a cached all-family trace at this clean production revision.
+  Use the new Q6 family/resource attribution to choose between exact result
+  metadata prefetch and a WMMA-specific zero-scratch K64 schedule.
