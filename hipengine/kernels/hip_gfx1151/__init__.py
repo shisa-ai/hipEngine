@@ -138,8 +138,13 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
-        # P2 exact split attention is W7900-only until gfx1151 receives an
-        # independent crossover, full-state, and performance gate.
+        # Exact single-page and P2 split attention are W7900-only until gfx1151
+        # receives independent crossover, full-state, and performance gates.
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "global_context_single_page_spans",
+        ),
         (
             "laguna_attention_decode",
             "bf16",

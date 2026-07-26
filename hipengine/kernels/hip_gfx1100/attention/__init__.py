@@ -3,6 +3,7 @@
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
     laguna_global_attention_decode_bf16_spans,
+    laguna_global_attention_decode_single_page_bf16_spans,
     laguna_global_attention_decode_split_exact_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_head_rmsnorm_rope_write_kv_f32_spans,
@@ -108,6 +109,7 @@ __all__ = [
     "build_aotriton_wrap",
     "build_qwen35_paged_kv_write",
     "laguna_global_attention_decode_bf16_spans",
+    "laguna_global_attention_decode_single_page_bf16_spans",
     "laguna_global_attention_decode_split_exact_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_bf16_spans",
     "laguna_global_head_rmsnorm_rope_write_kv_f32_spans",
