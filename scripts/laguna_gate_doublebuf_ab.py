@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Laguna selected gate/up runtime modes on one resident model."""
+"""Compare exact Laguna prefill runtime modes on one resident model."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def _run(
 ) -> dict[str, float | int | str]:
     child = _child_session(owner)
     try:
-        child.set_selected_gate_up_mode(selected_gate_up_mode)
+        _apply_mode(child, selected_gate_up_mode)
         started = time.perf_counter()
         result = child.prefill(tokens, use_bulk=True)
         child.runtime.device_synchronize()
@@ -114,6 +114,18 @@ def _run(
         }
     finally:
         child.close()
+
+
+def _apply_mode(
+    session: LagunaGGUFResidentSession,
+    runtime_mode: str,
+) -> None:
+    if runtime_mode == "q6_wmma_current":
+        session.set_q6_wmma_prefetch_weight(False)
+    elif runtime_mode == "q6_wmma_prefetch":
+        session.set_q6_wmma_prefetch_weight(True)
+    else:
+        session.set_selected_gate_up_mode(runtime_mode)
 
 
 def main() -> int:
@@ -148,7 +160,7 @@ def main() -> int:
         for gate_up_mode in modes.values():
             warm_session = _child_session(owner)
             try:
-                warm_session.set_selected_gate_up_mode(gate_up_mode)
+                _apply_mode(warm_session, gate_up_mode)
                 warm_session.prefill(tokens[:128], use_bulk=True)
                 runtime.device_synchronize()
             finally:

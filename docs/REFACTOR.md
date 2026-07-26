@@ -1497,6 +1497,26 @@ should be boring.
   collapse is unblocked and should accompany the next accepted Q6 body or the
   post-campaign cleanup, whichever comes first.
 
+## Laguna Q6 WMMA weight-prefetch rollback
+
+- Added 2026-07-27 as gfx1151
+  `LAGUNA_Q6_WMMA_PREFETCH_WEIGHT`, the optional
+  `q6_wmma_prefetch_weight` resident-session field/setter, and two
+  one-purpose benchmark modes. It applies only to the admitted
+  planar-qmicro/compact/half-row/skip-padded/integer-WMMA/activation-hoist
+  row64 specialization.
+- The candidate overlaps the next K32 planar-qmicro record plus `d`/scale
+  global loads with current fragment compute. It adds no resident bytes,
+  second LDS plane, arithmetic change, or scratch. The exact layer leaf
+  improves **4.518 -> 4.104 ms (-9.156%)**; seven complete-state pairs
+  improve **618.294 -> 623.900 tok/s (+0.907%)**. The resource cost is
+  VGPR **96 -> 104** with LDS fixed at 5,120 bytes.
+- Keep explicit `False` rollback through clean selector-unset publication and
+  one subsequent retained Q6 body or all-family trace. Then collapse the
+  prefetch and already-satisfied activation-hoist selectors into the
+  unconditional gfx1151 production specialization; retain the non-prefetch
+  template only for unmeasured backends and non-production geometries.
+
 ## Laguna Q4 projection-role quality candidate
 
 - Added 2026-07-27 as default-off selected gate/up modes

@@ -999,6 +999,16 @@ Cached all-family tracing at the published revision cuts the 115-call
 **109.290 -> 108.233 ms (-0.97%)**. The intended template remains
 local128/VGPR96/SGPR128/LDS5120B/scratch0; the complete pp512 kernel span is
 **884.129 ms** with only **0.857 ms** outside it.
+An exact zero-sidecar follow-up overlaps the next planar-qmicro K32 global
+fetch with current integer-WMMA compute and then fills the same shared tile
+from registers. The actual layer-1 leaf improves
+**4.518 -> 4.104 ms (-9.156%, 21/21 wins)** with zero BF16 mismatches, and
+seven complete-state pp512 pairs improve
+**618.294 -> 623.900 tok/s (+0.907%)** with identical full state. Cached
+tracing reports local128/VGPR104/SGPR128/LDS5120B/scratch0, so the overlap
+costs eight VGPRs but no LDS, scratch, or resident bytes. gfx1151 enables the
+candidate behind an explicit rollback pending clean selector-unset publication
+(`benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-candidate.json`).
 
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate

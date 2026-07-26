@@ -142,6 +142,10 @@ LAGUNA_Q6_QMICRO_PERMUTE = True
 # decode register pressure. The actual leaf wins, while two owner-order
 # full-model blocks are aggregate-neutral with complete state exact.
 LAGUNA_Q6_QMICRO_PLANAR = True
+# Prefetch the next planar-qmicro weight record into registers while the
+# current integer-WMMA fragment consumes LDS, then recycle the same 5,120-byte
+# shared tile. This preserves every Q6 dot/FP32 boundary and adds no sidecar.
+LAGUNA_Q6_WMMA_PREFETCH_WEIGHT = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"

@@ -1657,6 +1657,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
     wave_cols_q4: bool = False,
     direct_wave_decode_q4: bool = False,
     q6_tile_rows: int = _MMQ32_ROWS,
+    q6_wmma_prefetch_weight: bool = False,
     fused_silu_pack: bool = False,
 ) -> bool:
     """Quantize compact post-SiLU rows and run range-safe Q6T16 MMQ down."""
@@ -1766,6 +1767,12 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
                 ),
                 "qmicro_planar": (
                     plan.q6_qmicro_planar
+                    and rowvec
+                    and tile_rows == _MMQ64_ROWS
+                ),
+                "wmma_prefetch_weight": (
+                    q6_wmma_prefetch_weight
+                    and plan.q6_qmicro_planar
                     and rowvec
                     and tile_rows == _MMQ64_ROWS
                 ),
@@ -2151,6 +2158,7 @@ def run_laguna_moe_rows(
     dense_q4_prefill_mode: str = "retained",
     group_compact_mode: str = "serial",
     fuse_selected_silu_pack: bool = False,
+    q6_wmma_prefetch_weight: bool = False,
     shared_after_router: bool = False,
     shared_stream: int = 0,
     shared_input_ready_event: int = 0,
@@ -2396,6 +2404,7 @@ def run_laguna_moe_rows(
             wave_cols_q4=mmq_down_wave_cols_q4,
             direct_wave_decode_q4=mmq_down_direct_wave_decode_q4,
             q6_tile_rows=mmq_down_q6_tile_rows,
+            q6_wmma_prefetch_weight=q6_wmma_prefetch_weight,
             fused_silu_pack=use_fused_selected_silu_pack,
         )
     )

@@ -908,6 +908,23 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             down_q6_rows64_output,
             (3, h),
         )
+        down_q6_prefetch_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            down_rowvec_scratch,
+            rows=3,
+            selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+            selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
+            q6_wmma_prefetch_weight=True,
+        )
+        down_q6_prefetch_actual = _read_bf16(
+            down_q6_prefetch_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(down_q6_prefetch_actual),
+            _f32_to_bf16_u16(down_q6_rows64_actual),
+        )
         with monkeypatch.context() as unfused_combine:
             unfused_combine.setattr(
                 laguna_moe_module,

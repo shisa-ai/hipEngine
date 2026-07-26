@@ -1537,20 +1537,41 @@ Immediate execution queue:
    regressions. Activation-only D4/D8 projection-role repair is closed;
    production remains **632.618 tok/s**. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-layer-risk-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-absolute-rejected.json).
+43. **Admitted pending clean publication:** the exact Q6 integer-WMMA
+   selected-down body now register-prefetches the next planar-qmicro K32
+   record and its `d`/scale metadata while the current K32 fragments execute.
+   It reuses the existing **5,120-byte LDS** tile, adds no resident bytes or
+   scratch, and preserves the current activation fragments, scaled K32
+   accumulation, correction, and BF16 boundary. Twenty-one actual layer-1
+   samples improve **4.518 -> 4.104 ms (-9.156%, 21/21 wins)** with zero
+   BF16 mismatches. Seven complete pp512 pairs improve
+   **618.294 -> 623.900 tok/s (+0.907%)** with identical token, logit bits,
+   full logits, final/post-layer hidden, KV, and cursor in all 14 runs.
+   Cached tracing reports local128/**VGPR104**/SGPR128/LDS5120B/scratch0
+   versus VGPR96 for the rollback. gfx1151 enables it behind an explicit
+   session rollback; the public **632.618 tok/s** headline remains unchanged
+   until the committed selector-unset 512/1K/4K production run passes.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-candidate.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-candidate.json).
 
 ### Next exact and quality-gated attacks
 
-The activation-only Q4 repair branch is exhausted and removed:
+The activation-only Q4 repair branch is exhausted and removed. The refreshed
+post-cleanup trace reopened Q6 selected down, and its first new exact mechanism
+has cleared leaf plus complete-state A/B:
 
-1. Rebuild and run the focused production Q4 CPU-reference plus resolver/
-   fusion bundle after cleanup.
-2. Capture a fresh cached selector-unset production pp512 kernel trace.
-3. Rebuild the family wall table from that trace and reopen only an exact
-   family with at least a **5% perfect-removal ceiling**, or a newly supported
-   hipBLASLt/grouped-contraction algorithm that changes a prior premise.
-4. Require the next candidate to attack physical bytes, cross-tile reuse, or
-   a measured synchronization/occupancy limiter; no further activation-only
-   D4 role policy is admissible without a new numerical representation.
+1. Commit the exact Q6 prefetch candidate and publish a clean selector-unset
+   matrix2048/attention128 512/1K/4K production result.
+2. Capture a clean all-family trace and measure how much of the leaf's
+   **9.156%** survives across all 23 pp512 Q6 calls and caller-stream overlap.
+3. Attack the refreshed largest exact critical-path family with a mechanism
+   that changes physical bytes, cross-tile reuse, or a measured
+   synchronization/latency limiter. Extend the Q6 register-overlap lesson only
+   where it does not repeat the rejected decoded-Q4 prefetch schedule.
+4. Reopen a closed family only if the new trace leaves a **>=5%**
+   perfect-removal ceiling or a newly supported library algorithm changes a
+   prior premise. No further activation-only D4 role policy is admissible
+   without a new numerical representation.
 
 The stretch target remains **>=700 tok/s**, i.e. **<=731.429 ms** for pp512.
 Current production is **632.618 tok/s / 809.335 ms**, leaving **77.907 ms**.

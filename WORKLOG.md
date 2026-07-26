@@ -183805,3 +183805,39 @@ Vulkan local sizes verbatim will close the measured gap.
   of this cleanup. A focused rerun reproduces it; per the focused-repair rule,
   no broad rerun or unrelated Q6 change is included here. All Q4
   CPU-reference, registry, resolver, fusion, and category-harness checks pass.
+
+## 2026-07-27 — Admit Q6 WMMA next-weight register prefetch
+
+- RED extended the production-shaped uneven/empty-expert Q6
+  CPU-reference/quality fixture with a missing `wmma_prefetch_weight`
+  specialization and initially failed on the absent wrapper contract. GREEN
+  fetches the next planar-qmicro K32 record plus FP16 `d`/int8 scale metadata
+  into registers while the current integer-WMMA fragments execute, then fills
+  the existing 5,120-byte shared tile from those registers on the next
+  iteration. It adds no resident sidecar, second LDS plane, scratch, activation
+  approximation, arithmetic reordering, or BF16-boundary change.
+- Twenty-one counter-rotated burst-seven actual layer-1 natural-M512 samples
+  improve the activation-hoisted production leaf
+  **4.517531 -> 4.103903 ms (-9.1561%, 21/21 wins)**. Candidate and current
+  outputs have zero BF16 mismatches and checksum **509500838004**; all
+  **2,326,720,536** tracked bytes return. Raw SHA-256 is
+  `8b4e42ddea22873849db34808eda215512be0f8ad868c025bc5d3c68cf3543f3`.
+- Cached `rocprofv3 --kernel-trace` names the intended current/candidate
+  templates at local128, SGPR128, LDS5120B, scratch0. Register use moves
+  **VGPR96 -> VGPR104**; no second shared stage was allocated. Trace CSV
+  SHA-256 is
+  `7c43e4439fc4c7a0e45295f29236adba2561238fe4b415397202f46de89a22f3`.
+- Seven alternating complete pp512 pairs improve the same-owner median
+  **618.294491 -> 623.899531 tok/s (+0.9065%)**. All 14 runs have token
+  2930 plus identical next-logit bits, full logits, final/post-layer hidden,
+  complete KV, and final cursor. Raw SHA-256 is
+  `e3c6e865307503dbc0121d064921d7f21730fa5bf44e87fcd82b2b3676ae41ae`.
+- gfx1151 enables the candidate with explicit session rollback. The broad
+  Laguna MoE runtime node now reaches and passes the new prefetch-versus-current
+  assertion before failing its known pre-existing Q6 row64-versus-row32
+  comparison (**9,088/9,216** BF16 mismatches), already reproduced on the
+  untouched prior revision. No unrelated repair is included. Candidate
+  evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-candidate.json`.
+  Clean selector-unset matrix2048/attention128 publication remains required
+  before changing the **632.617985 tok/s** production headline.
