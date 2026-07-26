@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T17:52:14.712841+00:00",
+  "kind": "hipengine_laguna_attention_packed_query_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "pass": true,
+  "performance_claim": true,
+  "repo": {
+    "runtime_revision": "b988eb75a19b28aa30f5d7438133702d3c92a689",
+    "trace_revision": "f28932f523f679a70f4ccde7f88b530f0d9c3407",
+    "previous_production_revision": "dd3ad684736db2228150034151fb015c921e9b01",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "qualified dense-initial F32 hipBLASLt attention tiles",
+    "mechanism": "transpose row-major F32 queries to head-major scratch, execute one eight-way wide QK and one eight-way wide PV batch over unreplicated K/V, then transpose output back",
+    "qk_calls_per_tile": 1,
+    "pv_calls_per_tile": 1,
+    "previous_qk_calls_per_tile": 8,
+    "previous_pv_calls_per_tile": 8,
+    "scratch_nbytes": 27787264,
+    "previous_scratch_nbytes": 23068672,
+    "resident_delta_bytes": 0,
+    "previous_512_1024_4096_tok_s": [
+      623.0495848119392,
+      563.3989805698919,
+      462.42997861644005
+    ],
+    "new_512_1024_4096_tok_s": [
+      629.1009015858788,
+      566.8576693904288,
+      463.9027776422036
+    ],
+    "change_percent": [
+      0.9712416028278215,
+      0.6138968900934572,
+      0.3184912514041738
+    ],
+    "pp512_wall_ms": 813.8599049998447,
+    "pp512_wall_to_700_ms": 82.43133357127329,
+    "fallbacks_unchanged": true
+  },
+  "protocol": {
+    "command": "env -u HIPENGINE_LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-attention-packed-query-production.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "load_seconds_excluded": 90.672641268,
+    "tracked_worktree_clean": true,
+    "selector_unset": true
+  },
+  "samples": {
+    "512_tok_s": [
+      606.9661654052798,
+      631.5087576903628,
+      629.1009015858788
+    ],
+    "1024_tok_s": [
+      571.8450194981247,
+      566.8576693904288,
+      566.2516232343002
+    ],
+    "4096_tok_s": [
+      466.7475140351246,
+      463.9027776422036,
+      462.35761175358516
+    ]
+  },
+  "correctness": {
+    "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+    "maximum_absolute_output_error": 4.0978193283081055e-08,
+    "pp512_all_exact_vs_production_kl": 0.0020966178467309326,
+    "pp512_all_exact_top1": 2930,
+    "pp512_production_top1": 2930,
+    "previous_production_vs_new_kl": 0.00011904538286574792,
+    "absolute_category_revision": "e899573332be439b300a5f424f0ac20511c09185",
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "poolside_kl": 1.7512451201671218e-05,
+    "poolside_top1_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "tracked_allocations_returned": true,
+    "tracked_resident_bytes": 78805563028,
+    "category_note": "Canonical category prompts are shorter than one complete M128 tile, so absolute category evidence remains inherited from the unchanged compounded schedule; the packed route itself is distribution-gated by the dedicated pp512 all-exact comparison."
+  },
+  "validation": {
+    "focused_tests_passed": 19,
+    "trace_summary_tests_passed": 29,
+    "rocprof_new_kernels": [
+      {
+        "name": "laguna_dense_initial_query_head_transpose_f32_kernel<true>",
+        "workgroup": 256,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes_per_thread": 0
+      },
+      {
+        "name": "laguna_dense_initial_query_head_transpose_f32_kernel<false>",
+        "workgroup": 256,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes_per_thread": 0
+      }
+    ]
+  },
+  "rocprof": {
+    "revision": "f28932f523f679a70f4ccde7f88b530f0d9c3407",
+    "command": "env -u HIPENGINE_LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-packed-production-trace.91y7uc --output-file packed-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-packed-production-trace.91y7uc/child.json",
+    "traced_512_1024_4096_tok_s": [
+      572.7833632259207,
+      569.5575497772298,
+      465.1726580101225
+    ],
+    "pp512": {
+      "dispatches": 2417,
+      "previous_dispatches": 4145,
+      "dispatch_change": -1728,
+      "kernel_sum_ms": 1140.941755,
+      "kernel_span_ms": 889.546124,
+      "attention_ms": 73.329962,
+      "attention_previous_ms": 82.76344,
+      "attention_change_percent": -11.39812216601921,
+      "global_attention_ms": 14.948744,
+      "global_attention_calls": 228,
+      "swa_attention_ms": 58.381218,
+      "swa_attention_calls": 684,
+      "selected_q4_gate_up_ms": 339.335939,
+      "selected_q4_q6_down_ms": 181.211401,
+      "source_f16_projection_ms": 123.831964,
+      "dense_shared_quant_projection_ms": 93.049135,
+      "router_ms": 22.629165,
+      "remaining_ms": 307.554189
+    },
+    "child_sha256": "f3e343760e536abac2396045d333fc312d1b4bd07c74a4f10582f635c9bba551",
+    "raw_trace_sha256": "03712a2d07991f0160ddfe980e38bc957adaf8cb2f77943cfb9c14592ababd88",
+    "summary_sha256": "b581f858abf4d447ed4594fc09cfacfe3b3e4df709d3e9ea1294ce4deb97530a"
+  },
+  "source_runs": {
+    "production": {
+      "path": "/tmp/laguna-attention-packed-query-production.json",
+      "sha256": "a9ca2cffe8a92c895450b1e3dcdfd8da4701f944590bc41828e11422e6244740"
+    },
+    "candidate": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-production.json"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 629.1009015858788,
+    "target_700_reached": false,
+    "next_action": "profile and screen the next bounded pp512 lever against the 82.431 ms wall gap, prioritizing selected quantized projection work over the now-fifth-place attention family"
+  }
+}
