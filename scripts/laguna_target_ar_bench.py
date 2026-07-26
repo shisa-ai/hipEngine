@@ -105,6 +105,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="restore the registered exact local128 Q4_K c=1 LM head",
     )
+    parser.add_argument(
+        "--enable-global-single-page-attention",
+        action="store_true",
+        help="screen exact one-page global attention below the split crossover",
+    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -263,6 +268,9 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_split_gate_fusion=False if args.disable_split_gate_fusion else None,
         use_swa_split_wave_local=(
             False if args.disable_swa_split_wave_local else None
+        ),
+        use_global_single_page_attention=(
+            True if args.enable_global_single_page_attention else None
         ),
         use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
     )
@@ -663,6 +671,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_swa_split_wave_local=(
                 False if args.disable_swa_split_wave_local else None
             ),
+            use_global_single_page_attention=(
+                True if args.enable_global_single_page_attention else None
+            ),
             use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
         )
         load_seconds = time.perf_counter() - load_started
@@ -771,6 +782,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_split_attention": owner.use_split_attention,
             "use_split_gate_fusion": owner.use_split_gate_fusion,
             "use_swa_split_wave_local": owner.use_swa_split_wave_local,
+            "use_global_single_page_attention": (
+                owner.use_global_single_page_attention
+            ),
             "use_head_kv_fusion": owner.use_head_kv_fusion,
             "use_iq2_grid64": owner.use_iq2_grid64,
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,

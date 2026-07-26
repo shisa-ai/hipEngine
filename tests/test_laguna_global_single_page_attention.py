@@ -12,7 +12,6 @@ from hipengine.core.tensor import Tensor
 from hipengine.kvcache import KVLiveSpans
 
 _SOURCE = Path("hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip")
-_RUNTIME = Path("hipengine/runtime/laguna_kv.py")
 _VARIANT = "global_context_single_page_spans"
 
 
@@ -200,7 +199,7 @@ def test_single_page_wrapper_validates_before_build(monkeypatch) -> None:
         launch(*valid, spans, 512, 48, 8, 64, 64**-0.5)
 
 
-def test_single_page_package_registry_backend_scope_and_no_runtime_owner() -> None:
+def test_single_page_package_registry_backend_scope() -> None:
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.hip_gfx1100 import attention
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
@@ -231,9 +230,6 @@ def test_single_page_package_registry_backend_scope_and_no_runtime_owner() -> No
             KernelKey(backend, "laguna_attention_decode", "bf16", _VARIANT)
         )
 
-    runtime_source = _RUNTIME.read_text(encoding="utf-8")
-    assert _VARIANT not in runtime_source
-    assert "laguna_global_attention_decode_single_page_bf16_spans" not in runtime_source
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
