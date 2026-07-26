@@ -53,7 +53,6 @@ _IQ3_C1_DOWN_VARIANTS = MappingProxyType(
 )
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
-_WEIGHTED_HIDDEN_SPLIT_VARIANT = "laguna_top10_routed_hidden_out"
 _ADD_VARIANT = "add"
 _SELECTED_DOWN_MODES = frozenset(
     {
@@ -87,22 +86,6 @@ def resolve_laguna_iq3_c1_down_schedule(
     if parsed not in _IQ3_C1_DOWN_VARIANTS:
         raise ValueError("unsupported Laguna IQ3 c=1 down schedule")
     return parsed
-
-
-def resolve_laguna_weighted_hidden_split(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the backend-qualified weighted/hidden split as default-off."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_WEIGHTED_HIDDEN_SPLIT",
-        None,
-    )
-    if capability is None:
-        return False
-    return bool(capability) if requested is None else bool(requested)
 
 
 def resolve_laguna_selected_down_mode(
@@ -163,7 +146,6 @@ class LagunaMoEKernelPlan:
     c1_selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_weighted_down_keys: Mapping[str, KernelKey]
     selected_weighted_down_routes: Mapping[str, LagunaMoESelectedRoute]
-    weighted_hidden_split_key: KernelKey
     routed_sum_key: KernelKey
     routed_sum_rows_key: KernelKey
     grouped_count_key: KernelKey
@@ -182,7 +164,6 @@ class LagunaMoEKernelPlan:
     selected_silu: Callable
     selected_down: Callable
     selected_downs: Mapping[str, Callable]
-    weighted_hidden_split: Callable | None
     routed_sum: Callable
     routed_sum_rows: Callable
     grouped_count: Callable
@@ -207,7 +188,6 @@ class LagunaMoEKernelPlan:
             *tuple(self.selected_down_keys.values()),
             *tuple(self.c1_selected_down_keys.values()),
             *tuple(self.selected_weighted_down_keys.values()),
-            *((self.weighted_hidden_split_key,) if self.weighted_hidden_split else ()),
             self.routed_sum_key,
             self.routed_sum_rows_key,
             self.grouped_count_key,
@@ -301,7 +281,6 @@ def resolve_laguna_moe_plan(
     iq3_selected_down_tile: int = 1,
     iq3_c1_down_schedule: str | None = None,
     use_iq2_grid64: bool = False,
-    use_weighted_hidden_split: bool | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -355,12 +334,6 @@ def resolve_laguna_moe_plan(
             "moe_linear",
             "gguf_q6_k_t16_v1",
             _SELECTED_DOWN_VARIANT,
-        ),
-        "weighted_hidden_split": KernelKey(
-            backend,
-            "weighted_sum+moe_tail",
-            "bf16",
-            _WEIGHTED_HIDDEN_SPLIT_VARIANT,
         ),
         "routed_sum": KernelKey(backend, "weighted_sum", "bf16", _WEIGHTED_SUM_VARIANT),
         "routed_sum_rows": KernelKey(backend, "weighted_sum", "bf16", "laguna_rows"),
@@ -431,23 +404,7 @@ def resolve_laguna_moe_plan(
             ),
         }
     )
-    required_keys = {
-        name: key for name, key in keys.items() if name != "weighted_hidden_split"
-    }
-    functions = {name: _resolve_exact(key) for name, key in required_keys.items()}
-    weighted_hidden_split_key = keys["weighted_hidden_split"]
-    weighted_hidden_split_enabled = (
-        resolve_laguna_weighted_hidden_split(backend, use_weighted_hidden_split)
-        and iq3_c1_schedule != "serial_weighted"
-        and config.hidden_size == 3_072
-        and config.expert_used_count == 10
-        and is_registered(weighted_hidden_split_key)
-    )
-    weighted_hidden_split = (
-        _resolve_exact(weighted_hidden_split_key)
-        if weighted_hidden_split_enabled
-        else None
-    )
+    functions = {name: _resolve_exact(key) for name, key in keys.items()}
     selected_gate_up_route_specs = {
         "gguf_q4_k_t16_v1": ("t16_dual", "tiles", "selected_gate_up"),
         "gguf_iq2_xs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
@@ -594,7 +551,6 @@ def resolve_laguna_moe_plan(
         c1_selected_down_routes=c1_selected_down_routes,
         selected_weighted_down_keys=selected_weighted_down_keys,
         selected_weighted_down_routes=selected_weighted_down_routes,
-        weighted_hidden_split_key=weighted_hidden_split_key,
         routed_sum_key=keys["routed_sum"],
         routed_sum_rows_key=keys["routed_sum_rows"],
         shared_silu_key=keys["shared_silu"],
@@ -605,7 +561,6 @@ def resolve_laguna_moe_plan(
         selected_silu=functions["selected_silu"],
         selected_down=functions["selected_down"],
         selected_downs=selected_downs,
-        weighted_hidden_split=weighted_hidden_split,
         routed_sum=functions["routed_sum"],
         routed_sum_rows=functions["routed_sum_rows"],
         grouped_count_key=keys["grouped_count"],
@@ -1059,7 +1014,6 @@ def _launch_weighted_selected_down(
     scratch: LagunaMoEScratch,
     *,
     tokens: int,
-    defer_weighted_sum: bool = False,
     stream: int,
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
@@ -1086,25 +1040,20 @@ def _launch_weighted_selected_down(
             runtime=runtime,
             libraries=libraries,
         )
-        if not defer_weighted_sum:
-            plan.routed_sum(
-                scratch.expert_down.ptr,
-                scratch.scaled_routing_weights.ptr,
-                scratch.routed_output.ptr,
-                plan.top_k,
-                plan.hidden_size,
-                **_stage_kwargs(
-                    "routed_sum",
-                    libraries,
-                    stream=stream,
-                    runtime=runtime,
-                ),
-            )
+        plan.routed_sum(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            plan.top_k,
+            plan.hidden_size,
+            **_stage_kwargs(
+                "routed_sum",
+                libraries,
+                stream=stream,
+                runtime=runtime,
+            ),
+        )
         return True
-    if defer_weighted_sum:
-        # Direct-weighted producers do not materialize expert_down, so the
-        # candidate owner must fall back to the independent selected producer.
-        return False
     try:
         route = plan.selected_weighted_down_routes[weight.spec.quant_key]
         launch = _SELECTED_WEIGHTED_DOWN_ABIS[route.abi]
@@ -1245,7 +1194,6 @@ def run_laguna_moe_c1_components(
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
-    defer_routed_sum: bool = False,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -1299,7 +1247,6 @@ def run_laguna_moe_c1_components(
         layer,
         scratch,
         tokens=1,
-        defer_weighted_sum=defer_routed_sum,
         stream=stream,
         runtime=runtime,
         libraries=libraries,
@@ -1313,17 +1260,14 @@ def run_laguna_moe_c1_components(
             runtime=runtime,
             libraries=libraries,
         )
-        if not defer_routed_sum:
-            plan.routed_sum(
-                scratch.expert_down.ptr,
-                scratch.scaled_routing_weights.ptr,
-                scratch.routed_output.ptr,
-                k,
-                h,
-                **_stage_kwargs(
-                    "routed_sum", libraries, stream=stream, runtime=runtime
-                ),
-            )
+        plan.routed_sum(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            k,
+            h,
+            **_stage_kwargs("routed_sum", libraries, stream=stream, runtime=runtime),
+        )
 
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
@@ -1652,7 +1596,6 @@ __all__ = [
     "resolve_laguna_iq3_c1_down_schedule",
     "resolve_laguna_moe_plan",
     "resolve_laguna_selected_down_mode",
-    "resolve_laguna_weighted_hidden_split",
     "run_laguna_moe_c1",
     "run_laguna_moe_c1_components",
     "run_laguna_moe_rows",

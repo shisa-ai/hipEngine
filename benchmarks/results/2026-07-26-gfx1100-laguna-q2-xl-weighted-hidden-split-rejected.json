@@ -1,0 +1,501 @@
+{
+  "date": "2026-07-26",
+  "decision": {
+    "action": "remove runtime integration and retain exact primitive diagnostic only",
+    "additional_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "category_orders_run": 0,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank immutable retained traces with weighted-hidden runtime selection mechanically closed; do not retry the unchanged split schedule.",
+    "performance_claim": false
+  },
+  "frozen_clean_gate": {
+    "candidate_pooled": {
+      "kernel_sum_ms": 12.843955178571425,
+      "profiled_child_tok_s": 57.7217754831887,
+      "span_median_ms": 15.7637805,
+      "stable_samples": 28,
+      "weighted_hidden_boundary_ms": 0.44814760714285706
+    },
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_child_inside_0_5pct": true,
+      "all_order_kernel_sum_improve": false,
+      "all_order_span_inside_0_5pct": false,
+      "all_order_weighted_hidden_boundary_improve": true,
+      "all_resources_calls_and_dispatches_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "compiler_grep_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compiler_spawned_under_profiler": false,
+    "contract": {
+      "acceptance": {
+        "candidate_producer_and_registered_rms_calls_per_token": [
+          47,
+          47
+        ],
+        "category_gate_requires_all_contexts": true,
+        "control_weighted_sum_and_d9_calls_per_token": [
+          47,
+          47
+        ],
+        "finite_logits": true,
+        "generated_ids_exact": true,
+        "kernel_sum_improves_in_every_order": true,
+        "lifecycle_returns_to_baseline": true,
+        "model_kernels_per_token": 723,
+        "profiled_child_throughput_regression_min_pct": -0.5,
+        "span_regression_max_pct": 0.5,
+        "stop_on_first_failed_context": true,
+        "third_order_or_guard_waiver_allowed": false,
+        "weighted_hidden_boundary_improves_in_every_order": true
+      },
+      "command": "bash /tmp/run_laguna_weighted_hidden_split_clean_profiles.sh",
+      "contexts": [
+        "short",
+        "512",
+        "1024",
+        "3968"
+      ],
+      "frozen_before_launch": true,
+      "harness_sha256": {
+        "analyzer": "0772eac504bbc770346fba3c1b293626275f64f96351428f0149633c26d7361e",
+        "child": "6aa75d5dc20a0253ac96597a8d16f9fd68eaf2e0cbda2fdd4d0bc7c02e36b26a",
+        "runner": "f034375d2024a466316ce4dc633dce4aaee8ce69e33967f84e2bc6d04165c2a3"
+      },
+      "orders": {
+        "1024": [
+          "control-a",
+          "candidate-a",
+          "candidate-b",
+          "control-b"
+        ],
+        "3968": [
+          "candidate-a",
+          "control-a",
+          "control-b",
+          "candidate-b"
+        ],
+        "512": [
+          "candidate-a",
+          "control-a",
+          "control-b",
+          "candidate-b"
+        ],
+        "short": [
+          "control-a",
+          "candidate-a",
+          "candidate-b",
+          "control-b"
+        ]
+      },
+      "process_orders": 2,
+      "revision": "ab030ad64",
+      "runtime_artifact": {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-runtime-correctness.json",
+        "sha256": "be0826724cde5a0da896bd4146b5fb1ef97cda5ac40d98954629c2bf54d081b7"
+      }
+    },
+    "control_pooled": {
+      "kernel_sum_ms": 12.868512892857144,
+      "profiled_child_tok_s": 57.106106613219374,
+      "span_median_ms": 15.822862,
+      "stable_samples": 28,
+      "weighted_hidden_boundary_ms": 0.5345046785714286
+    },
+    "idle_vram_bytes_after": 27959296,
+    "orders": [
+      {
+        "candidate": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.782254142857141,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.677546113414955,
+          "raw_sha256": {
+            "bench.json": "35e23725f19914d7278b2907ed18ba3b8d8aff3138c1dfd19ee12f4de43c213c",
+            "stderr.log": "60806103cc68e303534143ec6f295efa8d238d1dd4de70e47d75de789f64bd08",
+            "stdout.log": "35e23725f19914d7278b2907ed18ba3b8d8aff3138c1dfd19ee12f4de43c213c",
+            "trace_kernel_trace.csv": "16b2d0834c68e0c17d8983247c3e899751b3697b3ede1c61a1a462afa7b957ba"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::laguna_weighted_top10_routed_hidden_out_kernel(unsigned short const*, float const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, long, long)",
+              3072,
+              1,
+              32,
+              24,
+              128,
+              0,
+              0
+            ],
+            [
+              "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+              256,
+              1,
+              256,
+              16,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.6697125,
+          "stable_steps": 14,
+          "weighted_hidden_boundary_calls_per_token": 94,
+          "weighted_hidden_boundary_mean_ms": 0.4305264285714285
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": -0.7014484056154235,
+          "profiled_child_tok_s_pct": 0.998932346247905,
+          "span_pct": -6.9795663541708635,
+          "weighted_hidden_boundary_pct": -19.88270388779644
+        },
+        "control": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.87254842857143,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.107084969653805,
+          "raw_sha256": {
+            "bench.json": "5b6d7be9099fea7ae0e94815fc37d0784d3f3d2a645db34344313d1459885f6a",
+            "stderr.log": "3aad1c1569c9f12cf5b63176782962f7e4ca0aad781cc457e805d86549a40de6",
+            "stdout.log": "5b6d7be9099fea7ae0e94815fc37d0784d3f3d2a645db34344313d1459885f6a",
+            "trace_kernel_trace.csv": "01354e34452a76c2ba3740efd5cb8bbb9d6b70244115776d1bcd474c15e783d6"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::laguna_aggregate_moe_tail_next_rmsnorm_out_kernel(unsigned short const*, unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, long, float)",
+              256,
+              1,
+              256,
+              16,
+              128,
+              1024,
+              0
+            ],
+            [
+              "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)",
+              3072,
+              1,
+              256,
+              8,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 16.845452,
+          "stable_steps": 14,
+          "weighted_hidden_boundary_calls_per_token": 94,
+          "weighted_hidden_boundary_mean_ms": 0.5373701428571429
+        },
+        "order": "a",
+        "pass": true
+      },
+      {
+        "candidate": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.905656214285711,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 57.83696890714741,
+          "raw_sha256": {
+            "bench.json": "c47a4383729124a31cc96946d81f1461c1b55a94d566c62925cd24794f37c1a6",
+            "stderr.log": "96d652c379a5357701fa41ca5df44d983c90eb1f04dbccbdcbe0833c70a0d0fc",
+            "stdout.log": "c47a4383729124a31cc96946d81f1461c1b55a94d566c62925cd24794f37c1a6",
+            "trace_kernel_trace.csv": "3d5207d66c5a179b237f05a0831b16b700a8331f6558b3d1607c92041b7116a0"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::laguna_weighted_top10_routed_hidden_out_kernel(unsigned short const*, float const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, long, long)",
+              3072,
+              1,
+              32,
+              24,
+              128,
+              0,
+              0
+            ],
+            [
+              "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+              256,
+              1,
+              256,
+              16,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 16.744083,
+          "stable_steps": 14,
+          "weighted_hidden_boundary_calls_per_token": 94,
+          "weighted_hidden_boundary_mean_ms": 0.46576878571428565
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": 0.32009739688325656,
+          "profiled_child_tok_s_pct": 1.3337070927220251,
+          "span_pct": 6.342055298991878,
+          "weighted_hidden_boundary_pct": -12.390062057391503
+        },
+        "control": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.86447735714286,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 57.07574563933166,
+          "raw_sha256": {
+            "bench.json": "736339f38acbc51b93196b69c05ce406cb57560715682f0aa31656c68d32dc66",
+            "stderr.log": "40f9244a0edbec514a57d544a2e170ce5b0d8f7745a9889f48d4b8313f6e86c3",
+            "stdout.log": "736339f38acbc51b93196b69c05ce406cb57560715682f0aa31656c68d32dc66",
+            "trace_kernel_trace.csv": "d0b2a02246f69a9ba8a9d73ceb32b1e0d1ccac06d8f264c9d4d33e95f52f31ba"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::laguna_aggregate_moe_tail_next_rmsnorm_out_kernel(unsigned short const*, unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, long, float)",
+              256,
+              1,
+              256,
+              16,
+              128,
+              1024,
+              0
+            ],
+            [
+              "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)",
+              3072,
+              1,
+              256,
+              8,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.745495,
+          "stable_steps": 14,
+          "weighted_hidden_boundary_calls_per_token": 94,
+          "weighted_hidden_boundary_mean_ms": 0.5316392142857143
+        },
+        "order": "b",
+        "pass": false
+      }
+    ],
+    "pooled_delta_pct": {
+      "kernel_sum_ms": -0.19083568155998654,
+      "profiled_child_tok_s": 1.0781138944373492,
+      "span_median_ms": -0.37339325843833704,
+      "weighted_hidden_boundary_ms": -16.156466891810595
+    },
+    "report_sha256": "bb40e53e3a1162b424d8ec9634cc55de3c18ce370c6cce67d3fc818a0571dd99",
+    "stopped_before": [
+      "512",
+      "1024",
+      "3968",
+      "complete_18_prompt_categories"
+    ],
+    "summary_sha256": "2ad53dbba218e63993184b8b98da71a6b8bd9f2c1e8d862f4b1a2ba94487349b",
+    "third_order_or_guard_waiver": false,
+    "through": "short"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "interpretation": {
+    "decisive_failures": [
+      "order B complete kernel sum regresses 0.320%",
+      "order B dispatch span regresses 6.342%, above the 0.5% guard"
+    ],
+    "full_model_boundary_improves_both_orders": true,
+    "ids_resources_dispatches_and_lifecycle_exact": true,
+    "isolated_primitive_event_improvement_pct": 12.664,
+    "isolated_primitive_wall_improvement_pct": 12.664,
+    "no_benchmark_gaming_or_prompt_conditioning": true,
+    "pooled_wins_do_not_waive_every_order_contract": true
+  },
+  "kind": "hipengine_laguna_q2_xl_weighted_hidden_split_rejection",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-design.json",
+      "sha256": "067579608aedfdcfc346adcfb944e1fc782b74e1ff6ee732c95d9fe00793ca84"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-correctness.json",
+      "sha256": "763e69c81d5e5dab7b119c7d6f1d6a71083d480a907de8e1e95834599b2e3ac2"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-runtime-correctness.json",
+      "sha256": "be0826724cde5a0da896bd4146b5fb1ef97cda5ac40d98954629c2bf54d081b7"
+    }
+  ],
+  "provenance": {
+    "builder_sha256": "813dbb5d91276436145f9a2d645ea1503d640961e6b6f64d3e20fcd4c78787ca",
+    "primitive_commit": "1a10af227",
+    "runtime_commit": "ab030ad64",
+    "source_sha256": {
+      "docs/KERNELS.md": "b55777520c6fad2bbcd0ddcdb320f59eba731b8cd2941e21f2bc569e4ed8687a",
+      "docs/LAGUNA-decode.md": "6ecabb4b78be8b5b05fd1794985bc22d071bebe4b9ce715e804cbff5a9504d34",
+      "docs/REFACTOR.md": "1f25d2be4cdab6cbaa6e5fb706f22d172ab26557815048fcca8ef5b47780690b",
+      "tests/test_laguna_weighted_hidden_split_runtime.py": "7143e4f1480d612d2ccc220c914ab606dda7aa338481a523781ee0dfd34e7bc2"
+    }
+  },
+  "regression_validation": {
+    "adjacent_exclusion": "unchanged stale gfx1151 test_gguf_fused_linear_matching_uses_resident_backend call missing three current resolver arguments",
+    "adjacent_passed": 132,
+    "adjacent_sha256": "3a2bca544c6040004b7954922fb60e04cee3b1ef2648d8131f95099477558a6d",
+    "adjacent_warning": "one unrelated Starlette httpx deprecation warning",
+    "compileall_sha256": "c46ad92c4c757f76cf07217ab5562ae913d3e068f4b7c3900ef75fd9bf3d3436",
+    "focused_passed": 10,
+    "focused_sha256": "7040371af15613c02e821ec0eecc1d1330f691ace4cef93a41bfa358822c4103",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "removal": {
+    "backend_capability_removed": true,
+    "benchmark_cli_and_telemetry_removed": true,
+    "category_work_skipped": true,
+    "moe_plan_and_c1_deferral_removed": true,
+    "permanent_rejection_test": {
+      "path": "tests/test_laguna_weighted_hidden_split_runtime.py",
+      "sha256": "7143e4f1480d612d2ccc220c914ab606dda7aa338481a523781ee0dfd34e7bc2"
+    },
+    "production_byte_identical_to_primitive_commit": true,
+    "production_files": [
+      {
+        "current_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7",
+        "matches_primitive_commit": true,
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "primitive_commit_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7"
+      },
+      {
+        "current_sha256": "aab5d30d36a42cc0b95a442a5873ddac7518d3ba8b6930af4d37e75d324c57ca",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_moe.py",
+        "primitive_commit_sha256": "aab5d30d36a42cc0b95a442a5873ddac7518d3ba8b6930af4d37e75d324c57ca"
+      },
+      {
+        "current_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "primitive_commit_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616"
+      },
+      {
+        "current_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7",
+        "matches_primitive_commit": true,
+        "path": "scripts/laguna_target_ar_bench.py",
+        "primitive_commit_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7"
+      }
+    ],
+    "refactor_debt_removed": true,
+    "retained_primitive": {
+      "gfx1151_excluded": true,
+      "key": [
+        "hip_gfx1100",
+        "weighted_sum+moe_tail",
+        "bf16",
+        "laguna_top10_routed_hidden_out"
+      ],
+      "runtime_selected": false
+    },
+    "session_dispatch_removed": true
+  },
+  "schema": 1
+}
