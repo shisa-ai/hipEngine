@@ -1349,6 +1349,23 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json).
+28. **Rejected and removed:** use a 256-thread, 128-column x 64-row Q4
+   gate/up tile so eight waves preserve production's 32 FP32
+   accumulators/lane while serving twice the routed rows. The synthetic
+   empty/uneven/65-row fixture is BF16-bit exact versus row32 and passes the
+   CPU KL/top-1 gate. Natural routing defeats the premise before integration:
+   row64 padding removes only **5.44%/16.84%** of M256/M512 tiles.
+   Cooperative shared-weight reconstruction regresses the actual layer-1 leaf
+   **4.377 -> 9.498 ms (+116.98%)** and
+   **6.804 -> 13.836 ms (+103.34%)**. Retaining direct per-column decode
+   avoids LDS reconstruction but still regresses
+   **4.420 -> 5.671 ms (+28.31%)** and
+   **6.902 -> 8.233 ms (+19.29%)**. Every candidate kernel, wrapper, harness
+   mode, and test is removed. Reopen row64 only with a variable-row or
+   persistent cross-tile mechanism that avoids both per-expert padding and
+   local256 residency loss.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json).
 
 Post-350 exclusions:
 

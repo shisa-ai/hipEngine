@@ -196,6 +196,17 @@ tracing cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)** at unchanged
 **2,417** dispatches. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-{candidate,production}.json`.
 
+The subsequent Q4 row64/local256 screen is rejected and removed. Eight waves
+split 64 routed rows while preserving 32 FP32 accumulators/lane. Natural
+routing nevertheless reduces M256/M512 tiles only **5.44%/16.84%**.
+Cooperatively reconstructing one shared 128-column weight tile regresses the
+actual layer-1 leaf **116.98%/103.34%**; retaining production's direct
+per-column decode still regresses **28.31%/19.29%**. Both variants are BF16
+bit exact against row32 and pass the CPU quality gate, but no kernel, wrapper,
+mode, or test remains. Do not retry row64 without a variable-row or persistent
+mechanism that avoids both padding and local256 residency loss. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna Q4 row64/local256 gate/up] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / eight waves preserve production's 32 accumulators/lane, but natural row64 padding cuts M256/M512 tiles only **5.44%/16.84%**; shared-weight reconstruction regresses the actual layer-1 leaf **116.98%/103.34%**, and direct per-column decode still regresses **28.31%/19.29%**; all candidate surfaces are removed and production remains **632.618 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json`.
+
 - [retained quality-gated gfx1151 Laguna wave-per-row softmax production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / one local32 wave replaces each local256/LDS/barrier causal-score reduction and improves clean selector-unset 512/1K/4K **629.101/566.858/463.903 -> 632.618/568.845/464.606 tok/s (+0.559%/+0.351%/+0.152%)**; corrected tracing cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)** at unchanged **2,417** dispatches, while all-exact KL improves **0.002097 -> 0.001796** with top-1 2930; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json`.
 
 - [superseded quality-gated gfx1151 Laguna wave-per-row softmax candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / one local32 wave replaces each local256/LDS/barrier causal-score reduction, improving the qualified packed 48-layer attention model **72.738 -> 62.755 ms (-13.73%)** and seven-pair pp512 **614.668 -> 620.032 tok/s (+0.873%, 6/7 wins)** while all-exact KL improves **0.002097 -> 0.001796** with top-1 2930; the clean publication above retains the path; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json`.

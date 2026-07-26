@@ -183360,3 +183360,24 @@ Vulkan local sizes verbatim will close the measured gap.
   The next bounded screen must remove selected expert physical bytes or
   create cross-tile reuse; attention is now sixth and cannot close the
   remaining wall gap.
+
+## 2026-07-27 — Reject Q4 row64/local256 gate/up
+
+- RED imported a missing row64 wrapper. GREEN added temporary local256
+  128-column x 64-row Q4 gate/up variants that keep **32 FP32
+  accumulators/lane**: one cooperatively reconstructs/stages the weight tile,
+  while one retains production direct wave-column decode and pairs two
+  32-row wave groups per column group.
+- Both variants are BF16-bit exact against production on
+  counts `[0,7,18,65]` and pass the CPU-reference KL/top-1 gate. Cached-only
+  actual layer-1 timing uses 21 counter-rotated three-launch samples per
+  natural shape.
+- Row64 padding cuts tiles only **239 -> 226 (-5.44%)** at M256 and
+  **297 -> 247 (-16.84%)** at M512. Shared-weight reconstruction regresses
+  **4.377 -> 9.498 ms (+116.98%)** and
+  **6.804 -> 13.836 ms (+103.34%)**. Direct decode still regresses
+  **4.420 -> 5.671 ms (+28.31%)** and
+  **6.902 -> 8.233 ms (+19.29%)**.
+- Every candidate kernel, wrapper, harness mode, and test was removed.
+  Production remains **632.618 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json`.

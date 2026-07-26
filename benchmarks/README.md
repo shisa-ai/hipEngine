@@ -23,6 +23,14 @@ target now requires another **77.907 ms** from the **809.335-ms** pp512
 median wall.
 [`candidate`](results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json).
 
+The 256-thread Q4 row64 gate/up screen is exact but rejected and fully
+removed. Keeping 32 accumulators per lane avoids the earlier row64 register
+failure, but natural routing cuts M256/M512 tiles only **5.44%/16.84%**.
+Cooperative shared-weight reconstruction regresses the actual layer-1 leaf
+**116.98%/103.34%**; retaining direct per-column decode still regresses
+**28.31%/19.29%**. Production remains **632.618 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q4-row64-local256-rejected.json).
+
 The mixed short-tail Q4 gate/up schedule is rejected and fully removed.
 Replacing only eligible final `32 + remainder` pairs with 40/48-row tiles
 would reduce the natural-M512 47-layer grid **14,034 -> 12,788 (-8.88%)**,
