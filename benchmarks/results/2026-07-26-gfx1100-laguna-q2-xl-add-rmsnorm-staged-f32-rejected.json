@@ -1,0 +1,451 @@
+{
+  "date": "2026-07-26",
+  "decision": {
+    "action": "remove runtime integration and retain exact primitive diagnostic only",
+    "additional_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "category_orders_run": 0,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank immutable retained traces with staged add+RMSNorm runtime selection mechanically closed; do not retry the unchanged staging schedule."
+  },
+  "frozen_clean_gate": {
+    "candidate_pooled": {
+      "add_rmsnorm_family_ms": 0.3899991071428571,
+      "kernel_sum_ms": 12.902826321428572,
+      "profiled_child_tok_s": 57.474111409013794,
+      "span_median_ms": 15.803963,
+      "stable_samples": 28
+    },
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_add_rmsnorm_family_improve": true,
+      "all_order_child_inside_0_5pct": true,
+      "all_order_kernel_sum_improve": false,
+      "all_order_span_inside_0_5pct": false,
+      "all_resources_calls_dispatches_and_no_compiler_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "compiler_grep_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compiler_spawned_under_profiler": false,
+    "contract": {
+      "categories_forbidden_until_all_eight_orders_pass": true,
+      "contexts": [
+        "short",
+        512,
+        1024,
+        3968
+      ],
+      "harness_sha256": {
+        "analyzer": "8967ac38c617836be6cc43b8cb5a840899a510d9b308d7e99b178687fe6d044f",
+        "child": "5703044db8458d965bdf940729826b46a6179ec922cea01456b6b59fd7ef417e",
+        "runner": "fa173de311b8988426545ad16ba310ffa7482c6c310327f10b5d00a85f600722"
+      },
+      "no_rerun_or_third_order": true,
+      "orders": {
+        "1024": [
+          "control-a",
+          "candidate-a",
+          "candidate-b",
+          "control-b"
+        ],
+        "3968": [
+          "candidate-a",
+          "control-a",
+          "control-b",
+          "candidate-b"
+        ],
+        "512": [
+          "candidate-a",
+          "control-a",
+          "control-b",
+          "candidate-b"
+        ],
+        "short": [
+          "control-a",
+          "candidate-a",
+          "candidate-b",
+          "control-b"
+        ]
+      },
+      "requirements": [
+        "exact IDs, finite logits, lifecycle, selectors, and no compiler under profiler",
+        "48 selected add-rmsnorm calls and 723 model kernels per token",
+        "candidate local256/VGPR16/reported-LDS0/dynamic-LDS13312/scratch0",
+        "add-rmsnorm family improves in every order",
+        "complete kernel sum improves in every order",
+        "median dispatch span regression below 0.5 percent in every order",
+        "profiled-child throughput regression above -0.5 percent in every order"
+      ],
+      "revision": "f7ce87765cb6c31d9c583e2d12ecd475a6980cea",
+      "runtime_artifact": {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-runtime-correctness.json",
+        "sha256": "cb08e407d7b15b300d3ca794b8c272cf188d4a7ebe52b579c1c12ee3f952abe3"
+      },
+      "schema": 1,
+      "stop_on_first_failed_context": true
+    },
+    "contract_sha256": "0982abd2ed61f0e9d1403a811fbe21e88b45ed65df706312a3cef3159bfdc358",
+    "control_pooled": {
+      "add_rmsnorm_family_ms": 0.4000993214285714,
+      "kernel_sum_ms": 12.885494964285716,
+      "profiled_child_tok_s": 57.214916843013505,
+      "span_median_ms": 15.769975500000001,
+      "stable_samples": 28
+    },
+    "idle_vram_bytes_after": 27959296,
+    "orders": [
+      {
+        "candidate": {
+          "add_rmsnorm_calls_per_token": 48,
+          "add_rmsnorm_family_mean_ms": 0.38837457142857146,
+          "compiler_spawned_under_profiler": false,
+          "dynamic_lds_bytes": 13312,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.906809071428572,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.54801947820338,
+          "raw_sha256": {
+            "bench.json": "3c29d26fdb8e43e08bdc73efb3c0a9014845ccef237983d490dbdc8e3aa9a200",
+            "stderr.log": "e47cf7212d7eb240cad01af104eb1179cab7cd072d32d1222bc3a5ef5912a37a",
+            "stdout.log": "3c29d26fdb8e43e08bdc73efb3c0a9014845ccef237983d490dbdc8e3aa9a200",
+            "trace_kernel_trace.csv": "22dffce7d2c1203686f00889253659ea93097f441a897daa6e74e7617aa7265d"
+          },
+          "resources": [
+            [
+              "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+              256,
+              1,
+              256,
+              16,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.798123,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "add_rmsnorm_family_pct": -2.5485187842429147,
+          "kernel_sum_pct": 0.34041156714199605,
+          "profiled_child_tok_s_pct": 0.03622806050469496,
+          "span_pct": 0.06859947427340085
+        },
+        "control": {
+          "add_rmsnorm_calls_per_token": 48,
+          "add_rmsnorm_family_mean_ms": 0.39853121428571425,
+          "compiler_spawned_under_profiler": false,
+          "dynamic_lds_bytes": 1024,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.863021857142856,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.52717849717078,
+          "raw_sha256": {
+            "bench.json": "eacc13068b880bc9c01b45e6fa38d4487033e6db46fee6b1e7fcd715040cf981",
+            "stderr.log": "74cb3b9525e166dad5e13b35a8839523c7dfa576965578ddea7414394dc83548",
+            "stdout.log": "eacc13068b880bc9c01b45e6fa38d4487033e6db46fee6b1e7fcd715040cf981",
+            "trace_kernel_trace.csv": "2ba00fbd060785fe1b0912f2b2980fd516852483bc640c75c39b91be3f378f1e"
+          },
+          "resources": [
+            [
+              "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+              256,
+              1,
+              256,
+              24,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.787293,
+          "stable_steps": 14
+        },
+        "order": "a",
+        "pass": false
+      },
+      {
+        "candidate": {
+          "add_rmsnorm_calls_per_token": 48,
+          "add_rmsnorm_family_mean_ms": 0.39162364285714285,
+          "compiler_spawned_under_profiler": false,
+          "dynamic_lds_bytes": 13312,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.898843571428571,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 57.34973067420036,
+          "raw_sha256": {
+            "bench.json": "ec63c112f00f5f7eed014851903342ecc066cefeb42d7ab3463e4c1b336cb7a2",
+            "stderr.log": "da0052a423c6d199719ee786e8233231d7eac9d40034ac3c52f0d0ec80ccf70c",
+            "stdout.log": "ec63c112f00f5f7eed014851903342ecc066cefeb42d7ab3463e4c1b336cb7a2",
+            "trace_kernel_trace.csv": "cbc174ef82311a5b4bebf0d6b5c8a2686e3c4355ad4e3f92e9f487f2a5f4158e"
+          },
+          "resources": [
+            [
+              "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+              256,
+              1,
+              256,
+              16,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.848624999999998,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "add_rmsnorm_family_pct": -2.5005228205850494,
+          "kernel_sum_pct": -0.0706888950260054,
+          "profiled_child_tok_s_pct": 0.5981375429664926,
+          "span_pct": 0.5277594385916018
+        },
+        "control": {
+          "add_rmsnorm_calls_per_token": 48,
+          "add_rmsnorm_family_mean_ms": 0.40166742857142856,
+          "compiler_spawned_under_profiler": false,
+          "dynamic_lds_bytes": 1024,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.907968071428574,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 57.00873999750314,
+          "raw_sha256": {
+            "bench.json": "c4aa08d093eee1104c0b8eea3bc6694ab0c047f4714d777e03d61a62e034c7af",
+            "stderr.log": "712e4dba1210d6608d9603a5de3ce990b7ff770e80d4ffdad3785ed2f02bf3b8",
+            "stdout.log": "c4aa08d093eee1104c0b8eea3bc6694ab0c047f4714d777e03d61a62e034c7af",
+            "trace_kernel_trace.csv": "057b69625d7df1be23dd85b29715421db5e9e047d5cde3daa13a95f20c9d41f2"
+          },
+          "resources": [
+            [
+              "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+              256,
+              1,
+              256,
+              24,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.7654215,
+          "stable_steps": 14
+        },
+        "order": "b",
+        "pass": false
+      }
+    ],
+    "pooled_delta_pct": {
+      "add_rmsnorm_family_ms": -2.524426747251418,
+      "kernel_sum_ms": 0.13450284363070164,
+      "profiled_child_tok_s": 0.4530192129990729,
+      "span_median_ms": 0.21552030946401235
+    },
+    "report_sha256": "5652bf740a6e7a6f3085bbfb96498233f40d269af1c8425dd3bd5326765c1bcd",
+    "stopped_before": [
+      "512",
+      "1024",
+      "3968",
+      "complete_18_prompt_categories"
+    ],
+    "summary_sha256": "e75b96b7264c6239aa5505f99219c131af9092ee026da407aee444540c092125",
+    "third_order_or_guard_waiver": false,
+    "through": "short"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "interpretation": {
+    "decisive_failures": [
+      "order A complete kernel sum regresses 0.340%",
+      "order B dispatch span regresses 0.528%, above the 0.5% guard"
+    ],
+    "full_model_family_improves_both_orders": true,
+    "ids_resources_dispatches_and_lifecycle_exact": true,
+    "isolated_repository_event_improvement_pct": 3.534,
+    "isolated_repository_wall_improvement_pct": 3.699,
+    "no_benchmark_gaming_or_prompt_conditioning": true,
+    "pooled_kernel_sum_regression_pct": 0.13450284363070164,
+    "pooled_wins_do_not_waive_every_order_contract": true
+  },
+  "kind": "hipengine_laguna_q2_xl_add_rmsnorm_staged_f32_rejection",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-design.json",
+      "sha256": "8f51bf53ecaa110e78019cca28475df7b7899247b10ca19affc2766309b5a877"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-correctness.json",
+      "sha256": "30a7b0f44f9344d71bfaf7fa85a2f6c564761682e3b51b16233c901dcaa5cc74"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-runtime-correctness.json",
+      "sha256": "cb08e407d7b15b300d3ca794b8c272cf188d4a7ebe52b579c1c12ee3f952abe3"
+    }
+  ],
+  "provenance": {
+    "builder_sha256": "0d894da3ee2ce011ab088426e2146c726fbbf3285b2ce1e0a274f06c7fd7a929",
+    "primitive_commit": "d2c97cacc",
+    "runtime_commit": "f7ce87765",
+    "source_sha256": {
+      "docs/KERNELS.md": "de07cb58813dbe8480df420ac6b823203d0dafae5d8521b9d6b549b70fbb4a10",
+      "docs/LAGUNA-decode.md": "4c0ea76624efbee6ec23f7227b99a81011f71c0c560148b545843216386dc1b8",
+      "docs/REFACTOR.md": "1f25d2be4cdab6cbaa6e5fb706f22d172ab26557815048fcca8ef5b47780690b",
+      "tests/test_laguna_add_rmsnorm_staged_runtime.py": "a3f2d73922bc81e9a33db5f18fc6a3b2cef7350fd99a5f2bf3777dfc5574d5dc"
+    }
+  },
+  "regression_validation": {
+    "adjacent_exclusion": "unchanged stale gfx1151 test_gguf_fused_linear_matching_uses_resident_backend call missing three current resolver arguments",
+    "adjacent_passed": 121,
+    "adjacent_sha256": "99499644d20a44d6622b3a3c69bf6aac9cb3bf5954806bb25ebe355cc35322d9",
+    "adjacent_warning": "one unrelated Starlette httpx deprecation warning",
+    "compileall_sha256": "b9a7a7bdf18f0940bd1e4f2a0af1284a0286a3c6256b77f010dadfe940fead1a",
+    "focused_passed": 10,
+    "focused_sha256": "7040371af15613c02e821ec0eecc1d1330f691ace4cef93a41bfa358822c4103",
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "removal": {
+    "backend_capability_removed": true,
+    "benchmark_cli_removed": true,
+    "category_work_skipped": true,
+    "permanent_rejection_test": {
+      "path": "tests/test_laguna_add_rmsnorm_staged_runtime.py",
+      "sha256": "a3f2d73922bc81e9a33db5f18fc6a3b2cef7350fd99a5f2bf3777dfc5574d5dc"
+    },
+    "production_byte_identical_to_primitive_commit": true,
+    "production_files": [
+      {
+        "current_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7",
+        "matches_primitive_commit": true,
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "primitive_commit_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7"
+      },
+      {
+        "current_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "primitive_commit_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616"
+      },
+      {
+        "current_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7",
+        "matches_primitive_commit": true,
+        "path": "scripts/laguna_target_ar_bench.py",
+        "primitive_commit_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7"
+      }
+    ],
+    "refactor_debt_removed": true,
+    "resolver_plan_session_and_dispatch_removed": true,
+    "retained_primitive": {
+      "gfx1151_excluded": true,
+      "key": [
+        "hip_gfx1100",
+        "add_rmsnorm",
+        "gguf_f32_weight",
+        "bf16_out_staged_f32_local256"
+      ],
+      "runtime_selected": false
+    }
+  },
+  "schema": 1
+}

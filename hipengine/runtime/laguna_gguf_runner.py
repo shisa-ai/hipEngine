@@ -190,7 +190,6 @@ class LagunaEagerKernelPlan:
     backend: str
     rmsnorm_key: KernelKey
     add_rmsnorm_key: KernelKey
-    c1_add_rmsnorm_key: KernelKey
     add_key: KernelKey
     moe_tail_next_rmsnorm_key: KernelKey
     global_head_kv_key: KernelKey
@@ -204,7 +203,6 @@ class LagunaEagerKernelPlan:
     rope_key: KernelKey
     rmsnorm: Callable
     add_rmsnorm: Callable
-    c1_add_rmsnorm: Callable
     add: Callable
     moe_tail_next_rmsnorm: Callable | None
     global_head_kv: Callable | None
@@ -215,11 +213,6 @@ class LagunaEagerKernelPlan:
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
-        optional_c1_add_rmsnorm = (
-            (self.c1_add_rmsnorm_key,)
-            if self.c1_add_rmsnorm_key != self.add_rmsnorm_key
-            else ()
-        )
         optional_tail = (
             (self.moe_tail_next_rmsnorm_key,)
             if self.moe_tail_next_rmsnorm is not None
@@ -233,7 +226,6 @@ class LagunaEagerKernelPlan:
         return (
             self.rmsnorm_key,
             self.add_rmsnorm_key,
-            *optional_c1_add_rmsnorm,
             self.add_key,
             *optional_tail,
             *optional_head_kv,
@@ -1266,22 +1258,6 @@ def resolve_laguna_iq2_grid64(
     return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
 
 
-def resolve_laguna_add_rmsnorm_staged_f32(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the explicit gfx1100 staged-F32 c=1 add+RMSNorm screen."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_ADD_RMSNORM_STAGED_F32",
-        None,
-    )
-    if capability is None:
-        return False
-    return bool(capability) if requested is None else bool(requested)
-
-
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -1432,7 +1408,6 @@ def resolve_laguna_eager_kernel_plan(
     backend: str,
     use_moe_tail_next_rmsnorm: bool = True,
     use_head_kv_fusion: bool = False,
-    use_add_rmsnorm_staged_f32: bool = False,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
 
@@ -1463,12 +1438,6 @@ def resolve_laguna_eager_kernel_plan(
     keys = {
         "rmsnorm": KernelKey(backend, "rmsnorm", "gguf_f32_weight", "bf16_out"),
         "add_rmsnorm": KernelKey(backend, "add_rmsnorm", "gguf_f32_weight", "bf16_out"),
-        "c1_add_rmsnorm": KernelKey(
-            backend,
-            "add_rmsnorm",
-            "gguf_f32_weight",
-            "bf16_out_staged_f32_local256",
-        ),
         "add": KernelKey(backend, "elementwise", "bf16", "add"),
         "moe_tail_next_rmsnorm": KernelKey(
             backend,
@@ -1503,29 +1472,9 @@ def resolve_laguna_eager_kernel_plan(
             "positions_f32",
         ),
     }
-    optional_names = {
-        "c1_add_rmsnorm",
-        "moe_tail_next_rmsnorm",
-        "global_head_kv",
-        "swa_head_kv",
-    }
+    optional_names = {"moe_tail_next_rmsnorm", "global_head_kv", "swa_head_kv"}
     required = {name: key for name, key in keys.items() if name not in optional_names}
     functions = {name: _resolve_exact(key) for name, key in required.items()}
-    control_add_rmsnorm_key = keys["add_rmsnorm"]
-    candidate_add_rmsnorm_key = keys["c1_add_rmsnorm"]
-    use_candidate_add_rmsnorm = bool(use_add_rmsnorm_staged_f32) and is_registered(
-        candidate_add_rmsnorm_key
-    )
-    c1_add_rmsnorm_key = (
-        candidate_add_rmsnorm_key
-        if use_candidate_add_rmsnorm
-        else control_add_rmsnorm_key
-    )
-    c1_add_rmsnorm = (
-        _resolve_exact(candidate_add_rmsnorm_key)
-        if use_candidate_add_rmsnorm
-        else functions["add_rmsnorm"]
-    )
     tail_key = keys["moe_tail_next_rmsnorm"]
     tail = (
         _resolve_exact(tail_key)
@@ -1541,8 +1490,7 @@ def resolve_laguna_eager_kernel_plan(
     return LagunaEagerKernelPlan(
         backend=backend,
         rmsnorm_key=keys["rmsnorm"],
-        add_rmsnorm_key=control_add_rmsnorm_key,
-        c1_add_rmsnorm_key=c1_add_rmsnorm_key,
+        add_rmsnorm_key=keys["add_rmsnorm"],
         add_key=keys["add"],
         moe_tail_next_rmsnorm_key=tail_key,
         global_head_kv_key=keys["global_head_kv"],
@@ -1556,7 +1504,6 @@ def resolve_laguna_eager_kernel_plan(
         rope_key=keys["rope"],
         rmsnorm=functions["rmsnorm"],
         add_rmsnorm=functions["add_rmsnorm"],
-        c1_add_rmsnorm=c1_add_rmsnorm,
         add=functions["add"],
         moe_tail_next_rmsnorm=tail,
         global_head_kv=head_kv[0],
@@ -1864,7 +1811,6 @@ class LagunaGGUFResidentSession:
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
         use_q4_lm_head_local32_fixed_meta: bool | None = None,
-        use_add_rmsnorm_staged_f32: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1946,10 +1892,6 @@ class LagunaGGUFResidentSession:
             if self.use_q4_lm_head_local32_fixed_meta
             else None
         )
-        self.use_add_rmsnorm_staged_f32 = resolve_laguna_add_rmsnorm_staged_f32(
-            self.backend,
-            use_add_rmsnorm_staged_f32,
-        )
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
             self.backend,
@@ -2012,11 +1954,6 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
                 use_head_kv_fusion=requested_head_kv_fusion,
-                use_add_rmsnorm_staged_f32=self.use_add_rmsnorm_staged_f32,
-            )
-            self.use_add_rmsnorm_staged_f32 = (
-                self.kernel_plan.c1_add_rmsnorm_key
-                != self.kernel_plan.add_rmsnorm_key
             )
             self.use_head_kv_fusion = (
                 self.kernel_plan.global_head_kv is not None
@@ -3265,7 +3202,7 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             registered_variant=self._q5_output_variant,
         )
-        self.kernel_plan.c1_add_rmsnorm(
+        self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,
             scratch.attention_output.ptr,
             layer.weight("ffn_norm").allocation("raw").tensor.ptr,
@@ -3846,7 +3783,6 @@ __all__ = [
     "launch_laguna_mixed_attention_projections",
     "launch_laguna_moe_tail_next_rmsnorm",
     "load_laguna_eager_libraries",
-    "resolve_laguna_add_rmsnorm_staged_f32",
     "resolve_laguna_eager_kernel_plan",
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",
