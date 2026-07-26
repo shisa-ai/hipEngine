@@ -834,6 +834,16 @@ Immediate execution queue:
    **13.3577 ms** for weighted qrow4 and **12.8481 ms** for the qualified
    production policy. Its global-start0 result merely ties the actual
    non-metadata production body (**0.18634 vs 0.18580 ms**).
+   The next exact dense-initial leaf is positive and retained for immediate
+   runtime qualification. Before the first wrap, complete preappended tiles
+   have identity token positions and no eviction, allowing the global/SWA
+   kernels to remove per-token position/eviction reads while retaining the
+   complete `KVLiveSpans` ABI and base-offset mapping. Global qrow4/qrow6 and
+   SWA qrow4 are F32-bit exact at every pp512 position; the qualified
+   production-shaped leaf improves **12.8348 -> 11.8695 ms (1.0813x)** and
+   models **11.584 ms** pp512 saving. Integrate only for runtime-proven
+   complete initial no-wrap tiles; partial, wrapped, verifier, gfx1100, and
+   unmeasured routes remain on their exact fallbacks.
 3. Freeze source-F16 grouping. One combined row-major QKV contraction is
    F32-bit exact but saves only **2.891 ms** across the 12 full and 36 SWA
    layers before splitting `[M,Q+K+V]` back into the three contiguous
@@ -1901,6 +1911,21 @@ algorithms for the full QKV problem with either zero or 64-MiB workspace. The
 temporary C++/Python shim, harness, and RED fixture were removed. Production
 remains **551.459 tok/s**. Evidence:
 [`2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json).
+
+The next exact attention specialization is retained as a kernel candidate.
+For complete initial no-wrap preappended tiles, logical and absolute token
+positions are identical and no cache slot is evicted. The new global/SWA
+bodies still consume the full `KVLiveSpans` ABI, preserve physical
+`base_offsets`, and validate boundary metadata, but remove per-token
+position/eviction loads and branches. Global qrow4, global qrow6, and SWA
+qrow4 match the existing F32 output bit-for-bit at starts 0/128/256/384.
+Eleven counter-rotated samples improve every natural point; the qualified
+global-qrow4/qrow6 plus SWA-qrow4 policy moves **12.8348 -> 11.8695 ms
+(1.0813x)** per four-layer pattern, modeling **11.584 ms** pp512 saving.
+Cached tracing reports local32, zero LDS/scratch, and VGPR64/88/64 for global
+qrow4/global qrow6/SWA qrow4. Runtime/default promotion remains open behind a
+strict complete-initial-tile gate. Evidence:
+[`2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json).
 
 Production evidence:
 

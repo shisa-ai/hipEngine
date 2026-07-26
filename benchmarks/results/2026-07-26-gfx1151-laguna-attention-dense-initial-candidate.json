@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26",
+  "kind": "hipengine_laguna_attention_dense_initial_candidate",
+  "status": "retained_candidate",
+  "hardware": {
+    "gpu": "AMD Radeon Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "scope": {
+    "rows_per_tile": 128,
+    "context_rows": 512,
+    "starts": [
+      0,
+      128,
+      256,
+      384
+    ],
+    "global_heads": 48,
+    "swa_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "production_layer_mix": "12 global + 36 SWA"
+  },
+  "change": {
+    "summary": "Use the proven initial no-wrap KVLiveSpans identity to remove per-token token-position and eviction-mask reads while preserving base-offset physical addressing and the complete ABI.",
+    "global_policy": "qrow4 dense-initial at start 0; qrow6 dense-initial at starts 128/256/384",
+    "swa_policy": "qrow4 dense-initial at all four pre-wrap positions",
+    "fallbacks_unchanged": "partial tiles, wrapped SWA, verifier transactions, gfx1100, and unmeasured backends"
+  },
+  "leaf": {
+    "protocol": "eleven counter-rotated samples; two warmups; 25 launches per timed burst; deterministic nonzero inputs",
+    "global_qrow4_dense_initial_ms": [
+      0.16866056442260743,
+      0.4440450668334961,
+      0.7278630065917969,
+      1.0062643432617187
+    ],
+    "global_qrow6_dense_initial_ms": [
+      0.1764545249938965,
+      0.37887149810791015,
+      0.5913714218139648,
+      0.8035924530029297
+    ],
+    "swa_qrow4_dense_initial_ms": [
+      0.24824348449707032,
+      0.6272131729125977,
+      1.0142921447753905,
+      1.4192367553710938
+    ],
+    "dense_initial_speedup_over_cached_metadata": {
+      "global_qrow4": [
+        1.2290839498608508,
+        1.161620652255619,
+        1.1386997777625438,
+        1.1303003918022083
+      ],
+      "global_qrow6": [
+        1.1758757337753325,
+        1.1330651198377268,
+        1.1135716832316858,
+        1.1068418633632484
+      ],
+      "swa_qrow4": [
+        1.1239830664486226,
+        1.083422672534641,
+        1.0684039225155009,
+        1.0624234096790597
+      ]
+    },
+    "qualified_production_shape": {
+      "cached_qrow6_policy_ms": 12.834755821228027,
+      "dense_initial_policy_ms": 11.86945261001587,
+      "speedup": 1.0813266831191188,
+      "modeled_pp512_saving_ms": 11.5836385345459
+    },
+    "correctness": {
+      "f32_bit_mismatches": 0,
+      "allocation_bytes_after": 0,
+      "active_allocations_after": 0
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_cached_meta_leaf.py --samples 11 --warmups 2 --burst 25 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-attention-dense-initial-global-leaf.json",
+    "raw_sha256": "a8e4d03c069f8875aa311f36dcdd77e48eb31be46d65e148cff083af7bba5716"
+  },
+  "profile": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file dense-initial -- .venv/bin/python3 scripts/laguna_attention_cached_meta_leaf.py --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output <tmp>/leaf.json",
+    "trace_sha256": "bce4a6dd8f28c02f9adb1a976b4116a00a7a6972b8960a7f73921579a53f2e7d",
+    "global_qrow4": {
+      "template": "<4,true,true,true>",
+      "workgroup": 32,
+      "vgpr": 64,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "global_qrow6": {
+      "template": "<6,true,true,true>",
+      "workgroup": 32,
+      "vgpr": 88,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "swa_qrow4": {
+      "template": "<4,true,true,true,true>",
+      "workgroup": 32,
+      "vgpr": 64,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "validation": {
+    "focused": "13 passed",
+    "files": [
+      "tests/test_laguna_kv_attention.py"
+    ]
+  },
+  "decision": {
+    "outcome": "retain_kernel_candidate",
+    "production_default_changed": false,
+    "next_gate": "Integrate only for runtime-proven complete initial no-wrap preappended tiles, then require complete-state exact matched A/B and clean selector-unset production publication."
+  }
+}

@@ -181809,3 +181809,30 @@ Vulkan local sizes verbatim will close the measured gap.
   Production remains **551.459 tok/s**. Source-F16 is frozen until a genuinely
   layout-preserving grouped capability exists; continue with exact attention
   data movement or a selected-expert schedule that changes physical reuse.
+
+## 2026-07-26 — Retain exact dense-initial attention leaf
+
+- RED failed on missing dense-initial global/SWA wrappers. GREEN added
+  separately registered qrow4 global/SWA and qrow6 global bodies for complete
+  initial no-wrap preappended M128 tiles. They retain the full `KVLiveSpans`
+  ABI, preserve physical `base_offsets`, and validate boundary metadata, while
+  deriving the token position from the logical slot and skipping per-token
+  eviction reads.
+- The focused GPU file reports **13 passed**. Global qrow4, global qrow6, and
+  SWA qrow4 match the existing production bodies with zero F32-bit mismatches
+  at starts 0/128/256/384; all tracked allocations return.
+- Eleven counter-rotated burst-25 samples improve cached metadata at every
+  natural point: global qrow4 **1.130–1.229x**, global qrow6
+  **1.107–1.176x**, and SWA qrow4 **1.062–1.124x**. The qualified
+  production-shaped policy improves **12.834756 -> 11.869453 ms (1.081327x)**
+  per four-layer pattern, modeling **11.583639 ms** pp512 saving. Raw SHA-256
+  is `a8e4d03c069f8875aa311f36dcdd77e48eb31be46d65e148cff083af7bba5716`.
+- Cached `rocprofv3 --kernel-trace` names global qrow4
+  `<4,true,true,true>`, global qrow6 `<6,true,true,true>`, and SWA qrow4
+  `<4,true,true,true,true>` at local32, VGPR64/88/64, and zero LDS/scratch.
+  Trace SHA-256 is
+  `bce4a6dd8f28c02f9adb1a976b4116a00a7a6972b8960a7f73921579a53f2e7d`.
+- Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`.
+  Production remains **551.459 tok/s** until strict runtime qualification,
+  complete-state matched A/B, and clean selector-unset publication pass.
