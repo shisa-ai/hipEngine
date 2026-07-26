@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_qmicro_planar_actual_leaf",
+  "status": "positive_candidate_trace_pending",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "actual layer-1 Q6 selected-down leaf with natural pp512 routing on gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "layout": "[ql01(k0..3), ql23(k0..3), qh(k0..3)] per 12-byte record",
+    "resident_tile_bytes": 3360,
+    "resident_growth_bytes": 0,
+    "prefill_change": "replace two v_perm_b32 gathers with three direct aligned dword loads",
+    "arithmetic": "unchanged",
+    "sidecar": false
+  },
+  "shape": {
+    "weight": "blk.1.ffn_down_exps.weight",
+    "weight_shape": [256, 192, 4, 3360],
+    "weight_nbytes": 660602880,
+    "natural_prompt_rows": 512,
+    "compact_rows": 5120,
+    "padded_rows64": 15808,
+    "in_features": 1024,
+    "out_features": 3072,
+    "experts": 256,
+    "top_k": 10
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 5 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-q6-qmicro-planar-leaf.json",
+    "samples": 21,
+    "warmups": 3,
+    "prefill_burst": 5,
+    "decode_burst": 20,
+    "order": "counter-rotated over eleven modes",
+    "timing": "HIP events; prefill activation pack excluded"
+  },
+  "medians_ms": {
+    "prefill_current_permute": 4.771810913085938,
+    "prefill_planar": 4.756837463378906,
+    "decode_current_qmicro": 0.08564065098762512,
+    "decode_planar": 0.08415395021438599
+  },
+  "change_percent": {
+    "prefill_planar_vs_current_permute": -0.3137896697869902,
+    "decode_planar_vs_current_qmicro": -1.7359755631165874
+  },
+  "correctness": {
+    "byte_neutral_roundtrip": true,
+    "decode_shapes_exact": [1, 2, 4, 8],
+    "prefill_bf16_mismatches": 0,
+    "decode_bf16_mismatches": 0,
+    "prefill_checksum": 509500838004,
+    "decode_checksum": 991324999,
+    "memory_returned_to_baseline": true
+  },
+  "validation": {
+    "tests": [
+      "tests/test_gguf_t16_repack.py::test_q6_k_tile16_qmicro_planar_is_byte_neutral_and_roundtrips",
+      "tests/test_gguf_t16_selected_gemv_decode.py::test_q6_t16_qmicro_direct_decode_matches_production_bits[1-8]",
+      "tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate[rows64-qmicro-planar]"
+    ],
+    "result": "6 passed"
+  },
+  "raw": {
+    "path": "/tmp/laguna-q6-qmicro-planar-leaf.json",
+    "sha256": "67bad702e540d92e67d138c23dbe779b0efc290bfa9d9ae27c4c6cf6aa63b3b6"
+  },
+  "next_gate": "clean cached rocprof specialization trace, then complete-state full-model A/B before resident-layout promotion"
+}

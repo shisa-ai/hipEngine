@@ -17,6 +17,15 @@ and full allocation recovery. Absolute maximum KL remains **0.049542582**;
 decode stays sequential and unchanged. The active pp512 stretch target is
 700 tok/s, requiring another **164.592 ms** from the clean median wall.
 
+The byte-neutral planar-Q6 candidate passes its first gate. Reordering each
+existing 12-byte qmicro record into direct `ql01`/`ql23`/`qh` dwords preserves
+every byte of resident capacity and every tested BF16 result. On the actual
+660.6-MB layer-1 tensor, 21 counter-rotated samples improve the current
+permute leaf **4.7718 -> 4.7568 ms (-0.314%)** and exact top-10 c1 decode
+**0.08564 -> 0.08415 ms (-1.736%)**. Clean tracing and complete-state
+full-model A/B remain promotion gates.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json).
+
 The byte-neutral Q4 qmicro passes exact c1/c2/c4/c8 decode, but its
 actual-weight natural-M512 selected-prefill gate is rejected and fully
 removed. Direct per-column packed metadata regresses resident T16

@@ -10,17 +10,21 @@ from hipengine.quant.gguf_t16 import (
     GGUF_Q5_K_T16_BLOCK_BYTES,
     GGUF_Q6_K_BLOCK_BYTES,
     GGUF_Q6_K_T16_BLOCK_BYTES,
+    GGUF_Q6_K_T16_QMICRO_OFFSET,
     GGUF_Q8_0_BLOCK_BYTES,
     GGUF_Q8_0_T16_BLOCK_BYTES,
     GGUF_T16_COLS,
     convert_gguf_q6_k_tile16_to_qmicro,
+    convert_gguf_q6_k_tile16_to_qmicro_planar,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
     repack_gguf_q6_k_tile16_qmicro,
+    repack_gguf_q6_k_tile16_qmicro_planar,
     repack_gguf_q8_0_tile16,
     unpack_gguf_q5_k_tile16,
     unpack_gguf_q6_k_tile16,
     unpack_gguf_q6_k_tile16_qmicro,
+    unpack_gguf_q6_k_tile16_qmicro_planar,
     unpack_gguf_q8_0_tile16,
 )
 
@@ -134,6 +138,39 @@ def test_q6_k_tile16_qmicro_is_byte_neutral_and_roundtrips() -> None:
     assert packed.tiles.shape == (2, 2, 2, GGUF_Q6_K_T16_BLOCK_BYTES)
     assert packed.tiles.nbytes == raw.nbytes
     np.testing.assert_array_equal(converted.tiles, packed.tiles)
+    np.testing.assert_array_equal(restored, raw)
+
+
+def test_q6_k_tile16_qmicro_planar_is_byte_neutral_and_roundtrips() -> None:
+    raw = _raw_q6_k_bytes(experts=2, out_features=32, blocks_per_row=2)
+    legacy = repack_gguf_q6_k_tile16(raw)
+    interleaved = convert_gguf_q6_k_tile16_to_qmicro(legacy)
+
+    packed = repack_gguf_q6_k_tile16_qmicro_planar(raw)
+    converted = convert_gguf_q6_k_tile16_to_qmicro_planar(legacy)
+    restored = unpack_gguf_q6_k_tile16_qmicro_planar(packed)
+
+    interleaved_records = interleaved.tiles[
+        ..., GGUF_Q6_K_T16_QMICRO_OFFSET:
+    ].reshape(*interleaved.tiles.shape[:-1], 8, 4, 8, 12)
+    planar_records = packed.tiles[
+        ..., GGUF_Q6_K_T16_QMICRO_OFFSET:
+    ].reshape(*packed.tiles.shape[:-1], 8, 4, 8, 12)
+    assert packed.tiles.shape == (2, 2, 2, GGUF_Q6_K_T16_BLOCK_BYTES)
+    assert packed.tiles.nbytes == raw.nbytes
+    np.testing.assert_array_equal(converted.tiles, packed.tiles)
+    np.testing.assert_array_equal(
+        planar_records[..., :4],
+        interleaved_records[..., :8:2],
+    )
+    np.testing.assert_array_equal(
+        planar_records[..., 4:8],
+        interleaved_records[..., 1:8:2],
+    )
+    np.testing.assert_array_equal(
+        planar_records[..., 8:],
+        interleaved_records[..., 8:],
+    )
     np.testing.assert_array_equal(restored, raw)
 
 
