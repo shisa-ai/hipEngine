@@ -1577,6 +1577,7 @@ class LagunaGGUFResidentSession:
         q6_half_row_activation: bool | None = None,
         q6_skip_padded_activation: bool | None = None,
         moe_branch_concurrency: bool | None = None,
+        moe_shared_after_router: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1730,6 +1731,7 @@ class LagunaGGUFResidentSession:
             self.backend,
             moe_branch_concurrency,
         )
+        self.moe_shared_after_router = bool(moe_shared_after_router)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1912,6 +1914,11 @@ class LagunaGGUFResidentSession:
         """Select exact dual-SiLU packing or its registered primitive fallback."""
 
         self.fuse_selected_silu_pack = bool(enabled)
+
+    def set_moe_shared_after_router(self, enabled: bool) -> None:
+        """Move concurrent shared work behind the exact router prefix."""
+
+        self.moe_shared_after_router = bool(enabled)
 
     def set_router_logits_mode(self, mode: str) -> None:
         """Select the exact rows>1 router-logit token-reuse schedule."""
@@ -3070,6 +3077,7 @@ class LagunaGGUFResidentSession:
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             group_compact_mode=self.group_compact_mode,
             fuse_selected_silu_pack=self.fuse_selected_silu_pack,
+            shared_after_router=self.moe_shared_after_router,
             shared_stream=(
                 self._moe_shared_stream
                 if self.moe_branch_concurrency and rows > 1
