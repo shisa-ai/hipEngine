@@ -1196,6 +1196,9 @@ should be boring.
   wins)** with identical logits/hidden/KV/token/cursor. Remove the public
   positive selector after clean selector-unset publication plus one later
   attention checkpoint; keep the automatic safety fallbacks permanently.
+  The publication trigger is satisfied at **559.290/523.090/439.044 tok/s**,
+  with traced attention **153.226 -> 141.846 ms (-7.43%)**. Keep the rollback
+  through one later attention checkpoint.
 
 ## Laguna Q6 qmicro resident-layout rollback
 

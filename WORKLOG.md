@@ -181860,3 +181860,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json`.
   The gfx1151 package now defaults the exact capability; clean selector-unset
   512/1K/4K publication and cached full-family tracing are next.
+
+## 2026-07-26 — Publish exact dense-initial attention production
+
+- Clean tracked revision `227398af9`, selector-unset M2048 matrix/M128
+  attention, and three repetitions measure 512/1K/4K medians
+  **559.290324/523.090224/439.043608 tok/s**, improving the previous production
+  **1.420198%/1.118027%/1.607080%**. The pp512 minimum is **558.934952 tok/s**.
+  Next tokens are deterministic at 2930/95/7772, final positions are exact,
+  and every tracked allocation returns. Raw SHA-256 is
+  `973208a7a43b0cacad1530e837631435d67041d6b7c7d698ea986424f0f0e339`.
+- Cached `rocprofv3` independently measures **559.225200 tok/s**, 915.552-ms
+  synchronized pp512 wall, 911.664-ms kernel span, and 901.178-ms kernel sum.
+  It observes exactly 12 global-qrow4, 36 global-qrow6, and 144 SWA-qrow4
+  dense-initial launches. Attention falls **153.226 -> 141.846 ms (-7.43%)**;
+  all three kernels remain local32, zero LDS/scratch, with VGPR64/88/64.
+  Child/trace/summary SHA-256 values are
+  `f39f75a9272efa40ef76fe893f370f03e35569669361e343765796dc776e1673`,
+  `434ef64784d903f038c2edfda86ac44f52e0030b2981d9dc84521bad13e33f84`,
+  and `bb58b87198656b0a23b7e1abbe7194b387cb94588903ecd4c1d311a2d90118a2`.
+- Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-production.json`.
+  Production is now **559.290/523.090/439.044 tok/s**. Reaching 700 requires
+  another **184.017 ms** from the clean pp512 wall; selected down is the first
+  expert-family target at **191.098 ms**, followed by gate/up and any further
+  exact attention reuse.
