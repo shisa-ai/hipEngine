@@ -680,6 +680,7 @@ def test_laguna_cached_metadata_policy_qualifies_swa_and_later_global_tiles() ->
         backend="hip_gfx1151",
         runtime=runtime,
         prefill_cached_meta=True,
+        prefill_global_qrow6=True,
     )
     variants: list[str] = []
 
@@ -704,7 +705,7 @@ def test_laguna_cached_metadata_policy_qualifies_swa_and_later_global_tiles() ->
             )
         assert variants == [
             "global_context_rows_qrow4_cached_online_spans",
-            "global_context_rows_qrow4_cached_meta_online_spans",
+            "global_context_rows_qrow6_cached_meta_online_spans",
             "swa_context_rows_qrow4_cached_meta_online_spans",
             "swa_context_rows_qrow4_cached_meta_online_spans",
         ]
@@ -722,6 +723,7 @@ def test_laguna_cached_metadata_policy_has_explicit_full_rollback() -> None:
         backend="hip_gfx1151",
         runtime=runtime,
         prefill_cached_meta=False,
+        prefill_global_qrow6=False,
     )
     variants: list[str] = []
 

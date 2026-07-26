@@ -15,6 +15,16 @@ deterministic repeats, exact multi-wrap KV semantics, and exact lifecycle
 recovery. Absolute maximum KL for the byte-identical <=M512 quality suite
 remains **0.049542582**. The active pp512 stretch target is 700 tok/s.
 
+An exact global-only qrow6 attention policy is now the gfx1151 default pending
+clean selector-unset publication. It applies only to complete preappended M128
+global tiles from position 128; global position 0, all SWA, partial, wrapped,
+verifier, and unmeasured paths retain qrow4. Seven complete-state pp512 pairs
+improve **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** and save
+**4.645 ms** median with identical logits, hidden state, KV, token/logit, and
+cursor.
+[`default artifact`](results/2026-07-26-gfx1151-laguna-global-qrow6-default.json) ·
+[`leaf artifact`](results/2026-07-26-gfx1151-laguna-global-qrow6-candidate.json).
+
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
 the range-safe down pack while explicitly preserving the BF16 boundary. Seven

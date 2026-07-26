@@ -1177,6 +1177,16 @@ should be boring.
   one later attention-family checkpoint; retain source-qualified registered
   fallbacks for global start 0, partial tiles, wrapped SWA, verifier
   transactions, and unmeasured backends.
+- The next exact global-only checkpoint adds
+  `LAGUNA_PREFILL_GLOBAL_QROW6` and the optional
+  `prefill_global_qrow6` session/cache rollback. It applies only to complete
+  preappended global M128 tiles from position 128; global position 0 and every
+  SWA tile retain qrow4. Seven complete-state pairs improve
+  **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** with identical
+  logits/hidden/KV/token/cursor. Remove the public positive selector after
+  clean selector-unset publication plus one later attention checkpoint; keep
+  automatic qrow4 fallbacks and do not reintroduce the rejected SWA qrow6
+  surface.
 
 ## Laguna Q6 qmicro resident-layout rollback
 

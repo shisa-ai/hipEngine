@@ -77,10 +77,13 @@ qrow4 at start 0 and for every SWA call models **13.3281 -> 12.8211 ms
 across the 12/36 production layer split. Cached tracing names global
 `<6,true,true>` at local32/VGPR88/SGPR128/LDS0/scratch0 versus qrow4 VGPR64.
 The analogous SWA qrow6 body lost **10.9–18.4%** at all four positions and was
-removed completely. The global primitive remains separately registered
-pending a repeated complete-state production A/B; it is not yet a default.
-Evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-candidate.json`.
+removed completely. Seven alternating complete-state pp512 pairs then improve
+qrow4 **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** with identical
+logits/hidden/KV/token/cursor. gfx1151 therefore defaults only the qualified
+global positions to qrow6, with `prefill_global_qrow6=false` as explicit
+qrow4 rollback; other backends remain unchanged. Clean selector-unset
+publication is still required. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-{candidate,default}.json`.
 
 ### Laguna gfx1151 exact router token reuse
 

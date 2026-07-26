@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna global qrow6 default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / six adjacent queries reuse each streamed K/V row only on complete preappended global M128 tiles from position 128; seven matched pp512 pairs improve qrow4 **546.056 -> 548.774 tok/s (+0.498%, 4.645 ms saved, 7/7 wins)** with identical logits/hidden/KV/token/cursor, so gfx1151 defaults to qrow6 pending clean publication while global start 0 and all SWA stay qrow4; `benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-default.json`.
+
 - [retained gfx1151 Laguna M2048 production scheduling] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / raising projection/MoE capacity from M512 to M2048 while retaining M128 attention moves clean selector-unset 1K/4K **481.640 -> 506.299 (+5.120%)** and **389.686 -> 410.099 tok/s (+5.238%)**; pp512 is flat within **546.100 -> 545.015 (-0.199%)** variance, while the matched screen shows maximum relative KL **0.000012503**, 100% top-1, exact multi-wrap KV semantics, deterministic repeats, and exact lifecycle; `benchmarks/results/2026-07-26-gfx1151-laguna-m2048-production.json`.
 
 - [retained exact gfx1151 Laguna fused selected-SiLU pack production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset 512/1K/4K improves **543.807 -> 546.100 (+0.422%)**, **480.017 -> 481.640 (+0.338%)**, and **388.595 -> 389.686 tok/s (+0.281%)**; cached tracing removes another **47 dispatches**, observes 47 local128/VGPR16/LDS512B/scratch0 fused packs and zero standalone selected-SiLU launches, and reaches **549.845 tok/s** with unchanged absolute quality/lifecycle, making **546.100 tok/s** current production; `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`.

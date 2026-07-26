@@ -1515,6 +1515,7 @@ class LagunaGGUFResidentSession:
         swa_prefill_variant: str | None = None,
         prefill_kv_preappend: bool | None = None,
         prefill_cached_meta: bool | None = None,
+        prefill_global_qrow6: bool | None = None,
         q6_qmicro: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -1570,6 +1571,15 @@ class LagunaGGUFResidentSession:
             )
             if prefill_cached_meta is None
             else prefill_cached_meta
+        )
+        self.prefill_global_qrow6 = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_GLOBAL_QROW6",
+                False,
+            )
+            if prefill_global_qrow6 is None
+            else prefill_global_qrow6
         )
         resident_q6_qmicro = (
             getattr(resident_weights, "q6_qmicro", None)
@@ -1712,6 +1722,7 @@ class LagunaGGUFResidentSession:
                 swa_decode_variant=self.swa_decode_variant,
                 swa_prefill_variant=self.swa_prefill_variant,
                 prefill_cached_meta=self.prefill_cached_meta,
+                prefill_global_qrow6=self.prefill_global_qrow6,
             )
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
