@@ -1268,6 +1268,17 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-production.json).
+24. **Rejected and removed:** replicate each widened KV head into
+   query-head-major scratch so one 48/72-way QK and one PV contraction replace
+   sixteen smaller calls. The CPU-reference route remains within **4.10e-8**
+   absolute error, but scratch grows **23.1 -> 56.6 MB**. After sweeping all
+   32 zero-workspace heuristics per contraction, the qualified 48-layer model
+   regresses **75.380 -> 105.483 ms (+39.94%)** and loses every context
+   256/384/512 sample; SWA context 512 is **73.02%** slower. Every candidate
+   kernel, wrapper, route, and test surface is removed. The next formulation
+   packs only the 4.7-MB query/output tiles and leaves K/V unreplicated.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-attention-replicated-heads-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-replicated-heads-rejected.json).
 
 Post-350 exclusions:
 
