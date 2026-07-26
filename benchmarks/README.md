@@ -32,6 +32,14 @@ LDS **5,632 -> 11,264 B**, regresses the traced Q6 family
 **526.451 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json).
 
+A Q6 paired-scale metadata screen is also closed and fully removed. Loading
+each FP16 block multiplier once per output column instead of once per
+column/scale-half leaves local128/VGPR88/LDS5632B unchanged. Five-pair pp512 is
+noise at **529.210 -> 529.334 tok/s (+0.023%, 3/5 wins)**, while the traced Q6
+family is slightly worse at **126.899 -> 126.947 ms (+0.038%)**. This rules
+out scale metadata as the Q6 limiter; production remains **526.451 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json).
+
 The first post-500 replacement-layout screen is closed. Q4_K T128 improves the
 exact actual layer-1 natural-M512 gate/up leaf **7.015 -> 6.157 ms (-12.23%,
 1.139x)** with no byte growth versus current T16, but its best exact
