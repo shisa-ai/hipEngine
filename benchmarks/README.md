@@ -45,6 +45,13 @@ ties the actual non-metadata production body (**0.18634 vs 0.18580 ms**).
 Production stays **551.459 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json).
 
+The exact Q4 gate/up row-tile-fast grid is also rejected and fully removed.
+Swapping only the launch axes preserves the production 128x32/local128 body
+and every BF16 output bit, but the actual-weight natural-M512 leaf regresses
+**6.908966 -> 6.921503 ms (+0.181%)**. Axis order alone does not create useful
+cross-workgroup weight reuse; production stays **551.459 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json).
+
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
 the range-safe down pack while explicitly preserving the BF16 boundary. Seven

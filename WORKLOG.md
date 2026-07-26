@@ -181757,3 +181757,29 @@ Vulkan local sizes verbatim will close the measured gap.
   Publish
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json`;
   production remains **551.459 tok/s**.
+
+## 2026-07-26 — Reject Q4 gate/up row-tile-fast grid
+
+- Before the kernel screen, `libamdhip64.so` loaded and `rocminfo` reported
+  gfx1151. The required lineage check could not inspect the external parent
+  because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; no external
+  code was copied or ported.
+- RED extended the actual K3072/N1024/top-10 GPU fixture and failed on the
+  missing `row_tile_fast_grid` selector. GREEN added a temporary specialization
+  that changed only block-grid axis ownership: routed rows ran fastest for a
+  fixed output-column tile while resident T16 bytes, local128, D8 split16
+  arithmetic, direct decode, activation double buffering, K order, and BF16
+  stores stayed unchanged.
+- The focused file reports **12 passed**, including BF16-byte equality against
+  production. Twelve counter-rotated burst-three layer-1 natural-M512 samples
+  measure production/row-fast **6.908966/6.921503 ms (+0.181%)**. Both
+  checksums are exactly **1114.1769413301445**.
+- The candidate fails its positive leaf gate. Remove the kernel
+  specialization, Python wrapper, harness mode, and test additions. Raw
+  SHA-256 is
+  `22e6a7ba6f420d4b6af4094ce6df1d7ba0654372784516f6fbb095e5fffff4ca`.
+  Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json`;
+  production remains **551.459 tok/s**. The next bounded architecture measures
+  the Q/K/V grouped-contraction ceiling inside the traced 126.084-ms
+  source-F16 family before proposing any runtime or resident-layout change.

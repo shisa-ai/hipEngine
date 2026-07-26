@@ -49,8 +49,12 @@ tested 40/48-row direct-wave gate/up tiles; both were exact but slower and
 were removed. A three-query single-wave attention point was also exact, but it
 lost **3.22%** to qrow4 on the weighted mix and **7.31%** to the qualified
 production policy; every candidate surface was removed. The active bounded
-screen now returns to a traced production family with a new architectural
-premise rather than another query-row interpolation.
+screen then swapped the Q4 gate/up grid axes to run routed-row tiles fastest.
+That path was BF16-bit exact but regressed the natural-M512 leaf **0.18%** and
+was removed. Axis order alone is therefore closed. The active bounded screen
+now returns to the traced **126.084-ms source-F16 family**, first measuring a
+Q/K/V grouped-contraction ceiling before changing resident layout or runtime
+numerics.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -786,6 +790,10 @@ Immediate execution queue:
    closed: rows40 reduces all-layer route tiles **8.32%** but regresses the
    actual leaf **2.40%**, while rows48 reduces tiles **13.15%** but regresses
    **1.71%**. Both exact candidates are removed.
+   A row-tile-fast grid axis swap is also closed after the exact actual-weight
+   leaf regressed **6.908966 -> 6.921503 ms (+0.181%)**. Do not retry a launch
+   axis permutation without counter evidence or a schedule that actually
+   shares a resident weight slice across workgroups.
    Keep byte-neutral Q6
    qmicro and direct Q4 decode. The exact MMQ
    grouped-combine reuse is now clean production: it removes 47 launches and
@@ -858,6 +866,8 @@ Post-350 exclusions:
   that avoids the additional live accumulator cost;
 - do not retry qrow3 attention without a mechanism that changes the SWA
   K/V-reuse or accumulator-cost tradeoff;
+- do not retry Q4 gate/up grid-axis permutations without a cross-workgroup
+  weight-sharing mechanism or physical cache-counter evidence;
 - do not claim 500 or 700 from a leaf, explicit session selector, dirty tree,
   single sample, or incomplete quality lane.
 
@@ -1855,6 +1865,16 @@ speed credit because the actual transaction still contains 512 rows; the win
 is retained for 1K/4K production. Evidence:
 [`2026-07-26-gfx1151-laguna-m2048-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-m2048-production.json).
 
+The subsequent exact Q4 gate/up scheduling screen is rejected and fully
+removed. It kept the production 128x32/local128 D8 direct-wave body and merely
+swapped grid axes so routed-row tiles ran fastest within a weight-column tile.
+The actual layer-1 natural-M512 fixture is BF16-bit identical and the focused
+GPU file passes **12 tests**, but twelve counter-rotated burst-three samples
+regress **6.908966 -> 6.921503 ms (+0.181%)**. Axis order does not create
+useful cross-workgroup weight reuse on this schedule. Production remains
+**551.459 tok/s**. Evidence:
+[`2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-q6-skip-padded-activation-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-production.json)
@@ -2608,6 +2628,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`
