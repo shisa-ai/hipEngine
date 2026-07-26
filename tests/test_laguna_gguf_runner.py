@@ -166,6 +166,11 @@ def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
         context_length=4_096,
         matrix_rows=256,
     )
+    wide = LagunaPrefillChunkPolicy.resolve(
+        context_length=4_096,
+        matrix_rows=2_048,
+        attention_rows=128,
+    )
 
     assert (policy.matrix_rows, policy.attention_rows) == (512, 128)
     assert policy.attention_ranges(511) == (
@@ -175,14 +180,16 @@ def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
         (384, 127),
     )
     assert (automatic.matrix_rows, automatic.attention_rows) == (256, 128)
+    assert (wide.matrix_rows, wide.attention_rows) == (2_048, 128)
+    assert len(wide.attention_ranges(2_048)) == 16
     with pytest.raises(ValueError, match="attention rows"):
         LagunaPrefillChunkPolicy.resolve(
             context_length=4_096,
             matrix_rows=128,
             attention_rows=256,
         )
-    with pytest.raises(ValueError, match="context/512"):
-        LagunaPrefillChunkPolicy.resolve(context_length=4_096, matrix_rows=513)
+    with pytest.raises(ValueError, match="context/2048"):
+        LagunaPrefillChunkPolicy.resolve(context_length=4_096, matrix_rows=2_049)
 
 
 def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
@@ -201,6 +208,22 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     assert plan.total_nbytes == 438_824_992
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
+
+    wide_policy = LagunaPrefillChunkPolicy.resolve(
+        context_length=4_096,
+        matrix_rows=2_048,
+        attention_rows=128,
+    )
+    wide_plan = LagunaPrefillScratchPlan.build(
+        config,
+        moe_plan,
+        policy=wide_policy,
+    )
+    assert wide_plan.rows_nbytes == 1_338_605_568
+    assert wide_plan.moe_nbytes == 416_669_728
+    assert wide_plan.total_nbytes == 1_755_275_296
+    assert wide_plan.matrix_rows == 2_048
+    assert wide_plan.attention_rows == 128
 
 
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Screen Laguna M128/M256/M512 matrix chunks with fixed 128-row attention tiles."""
+"""Screen Laguna matrix-chunk capacities with fixed 128-row attention tiles."""
 
 from __future__ import annotations
 
@@ -81,25 +81,40 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _mode_order(length_index: int, repetition: int) -> tuple[int, ...]:
-    shift = (int(length_index) + int(repetition)) % len(MATRIX_ROWS)
-    return MATRIX_ROWS[shift:] + MATRIX_ROWS[:shift]
+def _mode_order(
+    length_index: int,
+    repetition: int,
+    *,
+    matrix_rows: Sequence[int] = MATRIX_ROWS,
+) -> tuple[int, ...]:
+    modes = tuple(int(value) for value in matrix_rows)
+    if not modes:
+        raise ValueError("matrix policy order requires at least one mode")
+    shift = (int(length_index) + int(repetition)) % len(modes)
+    return modes[shift:] + modes[:shift]
 
 
-def _correctness(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _correctness(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    matrix_rows: Sequence[int] = MATRIX_ROWS,
+    lengths: Sequence[int] = LENGTHS,
+) -> dict[str, Any]:
+    modes_expected = tuple(int(value) for value in matrix_rows)
+    lengths_expected = tuple(int(value) for value in lengths)
     grouped: dict[tuple[int, int], dict[int, Mapping[str, Any]]] = defaultdict(dict)
     for row in rows:
         grouped[(int(row["length"]), int(row["repetition"]))][
             int(row["matrix_rows"])
         ] = row
     comparisons = []
-    per_mode = {str(mode): True for mode in MATRIX_ROWS}
+    per_mode = {str(mode): True for mode in modes_expected}
     for (length, repetition), modes in sorted(grouped.items()):
-        if set(modes) != set(MATRIX_ROWS):
+        if set(modes) != set(modes_expected):
             raise ValueError(f"missing matrix policy for length={length} rep={repetition}")
-        baseline = modes[MATRIX_ROWS[0]]
+        baseline = modes[modes_expected[0]]
         checks = {}
-        for mode in MATRIX_ROWS:
+        for mode in modes_expected:
             exact = all(modes[mode][field] == baseline[field] for field in _EXACT_FIELDS)
             checks[str(mode)] = exact
             per_mode[str(mode)] = bool(per_mode[str(mode)] and exact)
@@ -112,8 +127,8 @@ def _correctness(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             }
         )
     deterministic = True
-    for mode in MATRIX_ROWS:
-        for length in LENGTHS:
+    for mode in modes_expected:
+        for length in lengths_expected:
             selected = [
                 row
                 for row in rows
@@ -129,13 +144,20 @@ def _correctness(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _aggregate(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _aggregate(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    matrix_rows: Sequence[int] = MATRIX_ROWS,
+    lengths: Sequence[int] = LENGTHS,
+) -> dict[str, Any]:
+    modes = tuple(int(value) for value in matrix_rows)
+    profiled_lengths = tuple(int(value) for value in lengths)
     result: dict[str, Any] = {}
-    for mode in MATRIX_ROWS:
+    for mode in modes:
         selected = [row for row in rows if int(row["matrix_rows"]) == mode]
         lengths = {}
         median_sum = 0.0
-        for length in LENGTHS:
+        for length in profiled_lengths:
             samples = [
                 float(row["prefill_seconds"])
                 for row in selected
@@ -154,17 +176,19 @@ def _aggregate(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "matrix_rows": mode,
             "attention_rows": ATTENTION_ROWS,
             "median_sum_seconds": median_sum,
-            "weighted_tok_s": sum(LENGTHS) / median_sum,
+            "weighted_tok_s": sum(profiled_lengths) / median_sum,
             "lengths": lengths,
         }
-    baseline = result[str(MATRIX_ROWS[0])]
-    for mode in MATRIX_ROWS:
+    baseline_mode = modes[0]
+    speedup_key = f"speedup_vs_{baseline_mode}"
+    baseline = result[str(baseline_mode)]
+    for mode in modes:
         current = result[str(mode)]
-        current["speedup_vs_128"] = (
+        current[speedup_key] = (
             baseline["median_sum_seconds"] / current["median_sum_seconds"]
         )
-        for length in LENGTHS:
-            current["lengths"][str(length)]["speedup_vs_128"] = (
+        for length in profiled_lengths:
+            current["lengths"][str(length)][speedup_key] = (
                 baseline["lengths"][str(length)]["median_seconds"]
                 / current["lengths"][str(length)]["median_seconds"]
             )
@@ -176,28 +200,34 @@ def _decision(
     correctness: Mapping[str, Any],
     *,
     recovered: bool,
+    matrix_rows: Sequence[int] = MATRIX_ROWS,
+    lengths: Sequence[int] = LENGTHS,
 ) -> dict[str, Any]:
+    modes = tuple(int(value) for value in matrix_rows)
+    profiled_lengths = tuple(int(value) for value in lengths)
+    baseline_mode = modes[0]
+    speedup_key = f"speedup_vs_{baseline_mode}"
     eligible = []
-    for mode in MATRIX_ROWS[1:]:
+    for mode in modes[1:]:
         summary = aggregate[str(mode)]
         exact = bool(correctness["exact_by_matrix_rows"][str(mode)])
         every_length_positive = all(
-            float(summary["lengths"][str(length)]["speedup_vs_128"]) > 1.0
-            for length in LENGTHS
+            float(summary["lengths"][str(length)][speedup_key]) > 1.0
+            for length in profiled_lengths
         )
-        if exact and every_length_positive and float(summary["speedup_vs_128"]) > 1.0:
+        if exact and every_length_positive and float(summary[speedup_key]) > 1.0:
             eligible.append(mode)
     selected = max(
         eligible,
-        key=lambda mode: float(aggregate[str(mode)]["speedup_vs_128"]),
-        default=MATRIX_ROWS[0],
+        key=lambda mode: float(aggregate[str(mode)][speedup_key]),
+        default=baseline_mode,
     )
     failed = []
     if not correctness["pass"]:
         failed.append("matrix_policy_outputs_or_state_not_exact")
     if not recovered:
         failed.append("tracked_lifecycle_not_recovered")
-    if selected == MATRIX_ROWS[0]:
+    if selected == baseline_mode:
         failed.append("no_larger_policy_improves_every_length")
     return {
         "pass": not failed,
@@ -207,7 +237,7 @@ def _decision(
         "failed_checks": failed,
         "policy": (
             "all logits/hidden/KV/cursor fields exact, deterministic repeats, exact lifecycle, "
-            "and aggregate plus every-length wall improvement versus M128"
+            f"and aggregate plus every-length wall improvement versus M{baseline_mode}"
         ),
     }
 
@@ -357,8 +387,12 @@ def _run_one(
 def run(args: argparse.Namespace) -> dict[str, Any]:
     lengths = tuple(int(value) for value in args.lengths)
     matrix_rows = tuple(int(value) for value in args.matrix_rows)
-    if lengths != LENGTHS or matrix_rows != MATRIX_ROWS:
-        raise ValueError(f"matrix screen requires lengths={LENGTHS} and rows={MATRIX_ROWS}")
+    if lengths != LENGTHS:
+        raise ValueError(f"matrix screen requires lengths={LENGTHS}")
+    if len(matrix_rows) < 2 or tuple(sorted(matrix_rows)) != matrix_rows:
+        raise ValueError("matrix screen rows must be at least two ascending capacities")
+    if matrix_rows[-1] > 2_048:
+        raise ValueError("matrix screen rows cannot exceed 2048")
     if args.attention_rows != ATTENTION_ROWS:
         raise ValueError(f"matrix screen requires attention rows {ATTENTION_ROWS}")
     if args.context_length < max(lengths):
@@ -382,9 +416,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
-        build_profile="laguna_prefill_ar_o3_matrix_chunk_screen",
-        timing_protocol="same_load_m128_m256_m512_attention128_512_1024_4096",
-        warmups=len(MATRIX_ROWS),
+        build_profile="laguna_prefill_matrix_chunk_screen",
+        timing_protocol=(
+            "same_load_m"
+            + "_m".join(str(value) for value in matrix_rows)
+            + "_attention128_512_1024_4096"
+        ),
+        warmups=len(matrix_rows),
         repetitions=args.repetitions,
     )
     reader = GGUFReader(args.model)
@@ -408,11 +446,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             progress=_progress,
             repacked_cache=args.repacked_cache,
             model_sha256=args.model_sha256,
-            prefill_chunk_size=MATRIX_ROWS[0],
+            prefill_chunk_size=matrix_rows[0],
             prefill_attention_chunk_size=ATTENTION_ROWS,
         )
         load_seconds = time.perf_counter() - load_started
-        for mode in MATRIX_ROWS:
+        for mode in matrix_rows:
             warmup = _session(owner, args, matrix_rows=mode)
             try:
                 warmup.prefill(token_stream[: args.warmup_rows], use_bulk=True)
@@ -421,7 +459,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 warmup.close()
         for repetition in range(args.repetitions):
             for length_index, length in enumerate(LENGTHS):
-                for mode in _mode_order(length_index, repetition):
+                for mode in _mode_order(
+                    length_index,
+                    repetition,
+                    matrix_rows=matrix_rows,
+                ):
                     row = _run_one(
                         owner,
                         token_stream,
@@ -447,14 +489,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if gpu_total_after != gpu_total:
         raise RuntimeError("HIP total memory changed during Laguna matrix screen")
 
-    correctness = _correctness(rows)
-    aggregate = _aggregate(rows)
+    correctness = _correctness(
+        rows,
+        matrix_rows=matrix_rows,
+        lengths=lengths,
+    )
+    aggregate = _aggregate(
+        rows,
+        matrix_rows=matrix_rows,
+        lengths=lengths,
+    )
     recovered = bool(
         tracked_after["current_allocated_bytes"] == tracked_before["current_allocated_bytes"]
         and tracked_after["active_allocations"] == tracked_before["active_allocations"]
         and all(bool(row["session_tracked_returned_to_baseline"]) for row in rows)
     )
-    decision = _decision(aggregate, correctness, recovered=recovered)
+    decision = _decision(
+        aggregate,
+        correctness,
+        recovered=recovered,
+        matrix_rows=matrix_rows,
+        lengths=lengths,
+    )
     manifest_path = args.repacked_cache / "manifest.json"
     return {
         "schema": 1,
@@ -463,7 +519,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "status": "retained_candidate" if decision["pass"] else "measured_rejected",
         "pass": bool(decision["pass"]),
         "performance_claim": bool(decision["pass"]),
-        "scope": "Laguna prefill-only M128/M256/M512 matrix chunks with fixed attention128",
+        "scope": (
+            "Laguna prefill-only "
+            + "/".join(f"M{value}" for value in matrix_rows)
+            + " matrix chunks with fixed attention128"
+        ),
         "provenance": provenance,
         "repo": repo,
         "model": {
@@ -483,12 +543,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "hip_total_bytes": gpu_total,
         },
         "protocol": {
-            "lengths": list(LENGTHS),
-            "matrix_rows": list(MATRIX_ROWS),
+            "lengths": list(lengths),
+            "matrix_rows": list(matrix_rows),
             "attention_rows": ATTENTION_ROWS,
             "repetitions": args.repetitions,
             "warmup_rows_per_mode": args.warmup_rows,
-            "mode_order": "three-way rotating Latin order by length and repetition",
+            "mode_order": "rotating Latin order by length and repetition",
             "timing_scope": (
                 "borrowed session construction excluded; synchronized prefill and final "
                 "projection included; hashing excluded"
@@ -523,7 +583,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command": [str(Path(sys.executable).resolve()), *sys.argv],
         "limitations": [
             "Shape-policy screen uses one deterministic canonical-prompt-derived long token stream.",
-            "Canonical 68-122-token category prompts do not cross the retained 128-row default.",
+            "Canonical 68-122-token category prompts do not cross any screened matrix capacity.",
             "No package default changes until the clean screen and required rollup are retained.",
         ],
     }

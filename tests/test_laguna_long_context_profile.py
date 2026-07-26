@@ -26,10 +26,15 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert LAP0_LENGTHS == (128, 512, 1024, 4096)
     assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
     assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)
-    assert [_parse_chunk_size(value) for value in ("128", "256", "512")] == [
+    assert [
+        _parse_chunk_size(value)
+        for value in ("128", "256", "512", "1024", "2048")
+    ] == [
         128,
         256,
         512,
+        1024,
+        2048,
     ]
     assert _timing_order((512, 1024, 4096), 0) == (512, 1024, 4096)
     assert _timing_order((512, 1024, 4096), 1) == (4096, 1024, 512)
@@ -37,7 +42,10 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
         _parse_lengths("512,0")
     with pytest.raises(argparse.ArgumentTypeError, match="distinct"):
         _parse_lengths("512,512")
-    with pytest.raises(argparse.ArgumentTypeError, match="128, 256, or 512"):
+    with pytest.raises(
+        argparse.ArgumentTypeError,
+        match="128, 256, 512, 1024, or 2048",
+    ):
         _parse_chunk_size("64")
 
 
