@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T19:02:28.506953+00:00",
+  "kind": "hipengine_laguna_q4_persistent_expert_rows_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "3a260d325f34f592d87be16742ec060f3373f748",
+    "candidate_tracked_dirty": true,
+    "candidate_surfaces_removed": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "gate_up_resident_bytes": 931135488
+  },
+  "hypothesis": {
+    "production": "one local128 workgroup owns one 128-column x 32-row tile",
+    "candidate": "one local128 workgroup owns one expert and 128 output columns, then serially walks all of that expert's existing row32 tiles",
+    "unchanged": "direct T16 wave-column decode, D8 activation cache, activation double buffer, 32 FP32 accumulators per lane, row32 padding, output arithmetic",
+    "resident_sidecar_bytes": 0,
+    "goal": "keep repeated expert weights warm across row tiles without the local256 residency loss of the row64 screen"
+  },
+  "correctness": {
+    "fixture_counts": [
+      0,
+      7,
+      18,
+      33
+    ],
+    "candidate_vs_production_bf16_mismatches": 0,
+    "actual_weight_checksums_equal": true,
+    "cpu_reference_kl_limit": 0.05,
+    "cpu_reference_top1_minimum": 0.9,
+    "focused_cases_passed": 12,
+    "result": "pass"
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-persistent --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-persistent-expert-actual.json",
+    "timing": "counter-rotated HIP events; each sample is the mean of a three-launch burst",
+    "natural_routing_artifact": "/tmp/laguna-lap1-routing-all-shapes.json",
+    "candidate_build_prebuilt": true,
+    "candidate_build_cached_only_during_timing": true
+  },
+  "results": {
+    "m256": {
+      "active_experts": 222,
+      "production_row32_tiles": 239,
+      "production_median_ms": 4.394931475321452,
+      "persistent_median_ms": 4.6271177927653,
+      "latency_change_percent": 5.283047500231275,
+      "candidate_throughput_ratio": 0.9498205302214521
+    },
+    "m512": {
+      "active_experts": 228,
+      "production_row32_tiles": 297,
+      "production_median_ms": 6.835154851277669,
+      "persistent_median_ms": 7.2676741282145185,
+      "latency_change_percent": 6.327863616081797,
+      "candidate_throughput_ratio": 0.9404872495235131
+    }
+  },
+  "source_run": {
+    "path": "/tmp/laguna-q4-persistent-expert-actual.json",
+    "sha256": "5d66503f7df0aee1a6e0b4381f9696c2415f30996ef3aed2910e212a936a8daf"
+  },
+  "decision": {
+    "retain": false,
+    "reason": "the serial per-expert tail and reduced workgroup parallelism cost more than any cache retention; a complete 128-column K3072 weight sweep is too large to remain reusable for the next row32 tile",
+    "production_512_tok_s": 632.6179846953831,
+    "next_action": "do not retry row-outer persistent ownership; cross-row reuse must keep the K tile live while multiple row tiles consume it or use a different contraction architecture"
+  }
+}
