@@ -124,6 +124,13 @@ exact 16-transition state and cache-only **47 producer + 47 registered RMS /
 723-model-kernel** tracing, but the frozen clean short gate fails order B on
 kernel-sum and span guards. Runtime integration is removed, remaining contexts
 and categories are skipped, and the default/topline remain unchanged.
+Post-weighted re-ranking now selects a genuinely different exact mixed-
+projection dataflow: one local32 wave carries one Q5 output pair and one Q6
+output pair, reusing each BF16 activation register while preserving both
+retained arithmetic trees. An out-of-tree actual-weight screen is F32-bit exact
+and improves every first/last global/SWA event and wall row; repository
+RED/GREEN and all runtime/category gates remain pending. No default or topline
+has changed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1507,6 +1514,55 @@ available only as diagnostics. Evidence:
 [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-correctness.json),
 [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-runtime-correctness.json),
 and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-weighted-hidden-split-rejected.json).
+
+Post-weighted re-ranking returns to the largest surviving exact family rather
+than retrying the rejected owner. The latest immutable short control trace is
+**12.8685 ms/token** of model kernels, including **1.93996 ms/token** across 47
+retained all-local32 Q5/Q6 projection calls. Source and ISA audit closes another
+local-size or fixed-metadata rewrite. It also rejects activation LDS staging:
+D12's retained gain came from removing LDS/barriers, and prior packed/expanded
+staging probes show no new evidence that a barrier-based replay is viable.
+
+The selected boundary instead shares an activation **register** across
+heterogeneous arithmetic. For each of the existing 1,024 Q6 output pairs, one
+local32 wave simultaneously carries one retained fixed-metadata Q5 pair and one
+retained fixed-metadata Q6 pair. The Q5 and Q6 accumulator chains remain
+independent: every per-chain FMA order, four wave trees, and final 0..3
+partition/group additions are unchanged. Excess Q5 query/gate pairs continue
+through the retained helper. Raw weights, F32 outputs, one layer dispatch,
+buffers, and workspace are unchanged; layer 47 remains on the registered Q6/Q8
+fixed-Q6 mixed fallback.
+
+This is a real device-work/dataflow contraction rather than launch-count-only
+fusion. Global/SWA grids fall **131,840 -> 99,072** and **181,376 -> 148,608**
+threads (**-24.85%/-18.07%**) while weight bytes and FMAs are unchanged. Each
+layer avoids **6,291,456** logical BF16 activation bytes by loading the 3,072-
+element row once rather than once per independent Q5/Q6 owner for the paired
+subset. There is no LDS, barrier, counter, persistent state, sidecar, or prompt-
+conditioned branch, and model topology remains **723 kernels/token**.
+
+The frozen out-of-tree selection probe uses actual layers **0/44/1/46**, 50
+warmups, 15 counterbalanced repetitions, and 200 launches/sample. All four F32
+outputs are bit-exact in every layer. Event medians improve **3.08-6.77%** and
+synchronized wall medians improve **3.80-5.59%**. A 12-global/35-SWA weighted
+screen models the 47-call window **1.86239 -> 1.74949 ms event (-6.06%)** and
+**1.84861 -> 1.76210 ms wall (-4.68%)**. Same-Clang-22 codegen is local32/
+wave32, logical VGPR/SGPR **92/70**, allocated VGPR **96**, LDS/private/spills/
+scratch0, zero barriers, and **1,245 instructions / 7,208 bytes**. Cache-only
+tracing names grid/local **99,072/32**, VGPR96/LDS0/scratch0 with no compiler
+under profiling.
+
+Applying only the actual event ratio to the immutable projection family models
+an isolated **0.11761 ms/token** ceiling: about **0.914%** of short kernel sum
+and **62.447 tok/s**, still **3.16%** below matched Vulkan. This is explicitly
+not a performance claim. Freeze repository RED/GREEN on the separate gfx1100
+four-axis key, gfx1151 exclusion, K/output/metadata/BF16 exactness, CPU KL <=
+0.05/top-1 >=90%, the same all-positive actual-layer gate, and the codegen
+ceilings above. Only then may an explicit default-off owner enter the exact
+16-transition state gate, cached **47 candidate + one unchanged layer-47 /
+723-kernel** trace, both clean short/512/1K/near-4K orders, and both complete
+18-prompt category orders. Evidence:
+[`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-design.json).
 
 ## 9. Do not chase without new evidence
 
