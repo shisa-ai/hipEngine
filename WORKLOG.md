@@ -182026,3 +182026,27 @@ Vulkan local sizes verbatim will close the measured gap.
   blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No
   external kernel code was ported; the diagnostic derived only from the
   current in-tree Q4 selected-prefill body.
+
+## 2026-07-26 — Reject Q4 selected-down MMQ64x64
+
+- RED failed on the missing row64 wrapper. GREEN first generalized the
+  retained Q6 local128 geometry to Q4: four waves cover 64 columns x 64 rows
+  with 32 accumulators/lane, direct BF16 output, and no global partial plane.
+  The focused K1024 fixture is BF16-bit exact.
+- The generic pair-cooperative decoder regresses natural pp512 layer 10
+  **2.948389 -> 5.200135 ms (+76.37%)**. A second bounded body restores the
+  production per-lane direct T16 decoder, maps each of two thread halves to
+  one 32-row half, and narrows but does not reverse the loss:
+  **2.951132 -> 3.790972 ms (+28.46%)**, zero mismatches.
+- A padding-free control rules out a hybrid-prefix rescue. One active expert
+  with exactly 64 valid rows compares two complete production row32 tiles
+  against one complete direct-decode row64 tile. Fifteen counter-rotated
+  burst-50 samples still regress **0.075383 -> 0.081069 ms (+7.54%)** with
+  every BF16 bit equal. Across all 24 Q4 layers, complete row64 prefixes could
+  remove only 609 of 7,088 row32 weight passes (8.59%) anyway.
+- Removed the HIP bodies/export, Python wrapper, and focused test; production
+  sources are byte-identical to `cc8b9570d`. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-rows64-rejected.json`.
+  Production remains **559.290 tok/s**. Selected-down persistence and row64
+  scheduling are closed; return to the **314.920-ms** gate/up family and
+  require a byte model that avoids full-output partial traffic.
