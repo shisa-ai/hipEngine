@@ -37,6 +37,8 @@ GGUF_Q6_K_T16_SCALE_OFFSET = GGUF_Q6_K_T16_D_OFFSET + GGUF_T16_COLS * 2
 GGUF_Q6_K_T16_QL_OFFSET = GGUF_Q6_K_T16_SCALE_OFFSET + GGUF_Q6_K_GROUPS * GGUF_T16_COLS
 GGUF_Q6_K_T16_QH_OFFSET = GGUF_Q6_K_T16_QL_OFFSET + QK_K * (GGUF_T16_COLS // 2)
 GGUF_Q6_K_T16_BLOCK_BYTES = GGUF_Q6_K_T16_QH_OFFSET + QK_K * (GGUF_T16_COLS // 4)
+GGUF_Q6_K_T16_QMICRO_OFFSET = GGUF_Q6_K_T16_QL_OFFSET
+GGUF_Q6_K_T16_QMICRO_RECORD_BYTES = 12
 
 GGUF_Q8_0_BLOCK_BYTES = 34
 GGUF_Q8_0_QK = 32
@@ -426,6 +428,127 @@ def unpack_gguf_q6_k_tile16(packed: GGUFQ6KTile16 | np.ndarray, *, out_features:
     return blocks.reshape(experts, inferred_out, blocks_per_row * GGUF_Q6_K_BLOCK_BYTES)
 
 
+def repack_gguf_q6_k_tile16_qmicro(raw_qweight: Any) -> GGUFQ6KTile16:
+    """Repack Q6T16 with each K4/column-quartet payload in one 12-byte record.
+
+    Metadata is identical to ``repack_gguf_q6_k_tile16``.  The 3,072-byte
+    quant payload is reordered as ``[K32][col4][K4][QL8,QH4]`` so a selected
+    prefill work item can replace twelve scalar byte gathers with three
+    aligned dword loads.  The layout remains byte-neutral with raw Q6_K.
+    """
+
+    legacy = repack_gguf_q6_k_tile16(raw_qweight)
+    tiles = np.empty_like(legacy.tiles)
+    tiles[..., :GGUF_Q6_K_T16_QMICRO_OFFSET] = legacy.tiles[
+        ..., :GGUF_Q6_K_T16_QMICRO_OFFSET
+    ]
+    experts, out_tiles, blocks_per_row, _ = tiles.shape
+    ql = legacy.tiles[..., GGUF_Q6_K_T16_QL_OFFSET:GGUF_Q6_K_T16_QH_OFFSET].reshape(
+        experts,
+        out_tiles,
+        blocks_per_row,
+        8,
+        8,
+        4,
+        4,
+        2,
+    )
+    qh = legacy.tiles[..., GGUF_Q6_K_T16_QH_OFFSET:].reshape(
+        experts,
+        out_tiles,
+        blocks_per_row,
+        8,
+        8,
+        4,
+        4,
+    )
+    records = tiles[..., GGUF_Q6_K_T16_QMICRO_OFFSET:].reshape(
+        experts,
+        out_tiles,
+        blocks_per_row,
+        8,
+        4,
+        8,
+        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+    )
+    records[..., :8] = ql.transpose(0, 1, 2, 3, 6, 4, 5, 7).reshape(
+        experts,
+        out_tiles,
+        blocks_per_row,
+        8,
+        4,
+        8,
+        8,
+    )
+    records[..., 8:] = qh.transpose(0, 1, 2, 3, 6, 4, 5)
+    return GGUFQ6KTile16(
+        tiles=tiles,
+        experts=legacy.experts,
+        out_features=legacy.out_features,
+        in_features=legacy.in_features,
+    )
+
+
+def unpack_gguf_q6_k_tile16_qmicro(
+    packed: GGUFQ6KTile16 | np.ndarray,
+    *,
+    out_features: int | None = None,
+) -> np.ndarray:
+    """Reconstruct raw GGUF Q6_K bytes from the Q6T16 qmicro layout."""
+
+    if isinstance(packed, GGUFQ6KTile16):
+        tiles = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        tiles = np.asarray(packed, dtype=np.uint8)
+        expected_out = out_features
+    if tiles.ndim != 4 or tiles.shape[-1] != GGUF_Q6_K_T16_BLOCK_BYTES:
+        raise ValueError(
+            "tiles must have shape [experts, out_tiles16, blocks_per_row, 3360]"
+        )
+    experts, out_tiles, blocks_per_row, _ = tiles.shape
+    inferred_out = int(out_tiles) * GGUF_T16_COLS
+    if expected_out is not None and int(expected_out) != inferred_out:
+        raise ValueError(
+            f"out_features mismatch: expected {expected_out}, "
+            f"tile layout implies {inferred_out}"
+        )
+
+    legacy = np.empty_like(tiles)
+    legacy[..., :GGUF_Q6_K_T16_QMICRO_OFFSET] = tiles[
+        ..., :GGUF_Q6_K_T16_QMICRO_OFFSET
+    ]
+    records = tiles[..., GGUF_Q6_K_T16_QMICRO_OFFSET:].reshape(
+        experts,
+        out_tiles,
+        blocks_per_row,
+        8,
+        4,
+        8,
+        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+    )
+    legacy[..., GGUF_Q6_K_T16_QL_OFFSET:GGUF_Q6_K_T16_QH_OFFSET] = (
+        records[..., :8]
+        .reshape(experts, out_tiles, blocks_per_row, 8, 4, 8, 4, 2)
+        .transpose(0, 1, 2, 3, 5, 6, 4, 7)
+        .reshape(
+            experts,
+            out_tiles,
+            blocks_per_row,
+            QK_K * (GGUF_T16_COLS // 2),
+        )
+    )
+    legacy[..., GGUF_Q6_K_T16_QH_OFFSET:] = records[..., 8:].transpose(
+        0, 1, 2, 3, 5, 6, 4
+    ).reshape(
+        experts,
+        out_tiles,
+        blocks_per_row,
+        QK_K * (GGUF_T16_COLS // 4),
+    )
+    return unpack_gguf_q6_k_tile16(legacy, out_features=inferred_out)
+
+
 def repack_gguf_q8_0_tile16(raw_qweight: Any) -> GGUFQ80Tile16:
     """Repack rank-2 raw GGUF Q8_0 weights into bit-lossless Q8T16 tiles."""
 
@@ -487,6 +610,8 @@ __all__ = [
     "GGUF_Q5_K_T16_V1",
     "GGUF_Q6_K_BLOCK_BYTES",
     "GGUF_Q6_K_T16_BLOCK_BYTES",
+    "GGUF_Q6_K_T16_QMICRO_OFFSET",
+    "GGUF_Q6_K_T16_QMICRO_RECORD_BYTES",
     "GGUF_Q6_K_T16_V1",
     "GGUF_Q8_0_BLOCK_BYTES",
     "GGUF_Q8_0_T16_BLOCK_BYTES",
@@ -500,8 +625,10 @@ __all__ = [
     "GGUFQ80T16Quant",
     "repack_gguf_q5_k_tile16",
     "repack_gguf_q6_k_tile16",
+    "repack_gguf_q6_k_tile16_qmicro",
     "repack_gguf_q8_0_tile16",
     "unpack_gguf_q5_k_tile16",
     "unpack_gguf_q6_k_tile16",
+    "unpack_gguf_q6_k_tile16_qmicro",
     "unpack_gguf_q8_0_tile16",
 ]
