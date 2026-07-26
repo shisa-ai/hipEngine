@@ -74,10 +74,11 @@ after-router, least-priority boundary. Two byte permutes now replace scalar
 Q6 qmicro quartet unpack without changing resident bytes or arithmetic: the
 actual leaf improves **2.67%**, tracing cuts the 115-call Q6 body **1.23%**,
 and clean selector-unset planar-Q6 production reaches
-**573.354/530.351/446.189 tok/s**. The next bounded screen attacks Q4
-gate/up route-tile rereads with two 128-thread row32 teams in one local256
-workgroup, sharing one decoded weight tile while keeping 32 accumulators per
-lane.
+**573.354/530.351/446.189 tok/s**. Cooperative Q4 row64 and byte-neutral Q4
+qmicro direct-wave consumers are now both exact but decisively rejected.
+Production remains unchanged while the campaign continues with a hybrid
+Q4 metadata layout that trades half of T16's 2.778% metadata growth for only
+one packed 6-bit coefficient extraction.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -1120,7 +1121,7 @@ Immediate execution queue:
    weight tile through LDS costs more than rereading compact T16 into
    per-wave registers. Every candidate surface is removed. Evidence:
    [`2026-07-26-gfx1151-laguna-q4-cooperative-row64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-cooperative-row64-rejected.json).
-16. **Active next screen:** combine two independently positive premises:
+16. **Rejected and removed:** combine two independently positive premises:
    the byte-neutral Q4 qmicro layout already improves exact c1/c2/c4/c8
    decode and removes **25,165,824 bytes** from the actual gate/up pair, while
    production direct-wave T16 decode removed pair shuffle and cut the family
@@ -1128,8 +1129,24 @@ Immediate execution queue:
    **128-column x 32-row/local128** register schedule, extracting only packed
    scale/min metadata per lane while retaining direct per-column quant decode.
    This is distinct from the removed shared-MMQ32 qmicro body measured at
-   9.57 ms. Gate on exact BF16 identity and the actual natural-M512 leaf
-   before any materializer or runtime integration.
+   9.57 ms. The uneven/empty-expert CPU-reference gate passes and the
+   candidate is BF16-bit identical to production. On actual layer-1 weights,
+   however, an unaligned-dword metadata decoder regresses M256/M512
+   **4.92%/6.17%**. Replacing it with explicit three-byte loads still regresses
+   M512 **6.861 -> 7.087 ms (+3.31%)**. Cached tracing shows packed
+   coefficient extraction raises VGPR **88 -> 120** with unchanged
+   local128/LDS3072B/scratch0. Every prefill candidate surface is removed;
+   no materializer or runtime route was added. Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-k-qmicro-direct-wave-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-direct-wave-rejected.json).
+17. **Active next screen:** test a byte/decode midpoint rather than another
+   fully packed qmicro consumer. Keep one T16 coefficient plane expanded and
+   pack only the other as four 6-bit values per three-byte record. The
+   resulting 2,336-byte tile saves **32 bytes / 1.351%** versus T16 while
+   requiring only one packed coefficient extraction per lane. Screen both
+   scale-expanded/min-packed and min-expanded/scale-packed orderings on the
+   production direct-wave body, then retain only if BF16 identity and the
+   actual natural-M512 leaf are positive. Do not materialize or integrate
+   either ordering before that gate.
 
 Post-350 exclusions:
 

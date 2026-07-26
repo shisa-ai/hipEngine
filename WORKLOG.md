@@ -182758,3 +182758,36 @@ Vulkan local sizes verbatim will close the measured gap.
   blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
   Production remains **573.354 tok/s**. Next screen combines byte-neutral Q4
   qmicro metadata with the production direct-wave 128x32 register body.
+
+## 2026-07-26 — Reject Q4 qmicro direct-wave prefill
+
+- RED extended the production-shape uneven/empty-expert CPU-reference fixture
+  to the byte-neutral Q4 qmicro layout. GREEN consumed it with the admitted
+  128-column x 32-row/local128 direct-wave D8 body; all 12 focused Q4 cases
+  pass and the candidate is BF16-bit identical to production.
+- This is a distinct retry of the premise, not the old shared-MMQ32 body:
+  qmicro removes **25,165,824 bytes (2.778%)** from the actual layer-1
+  gate/up pair while retaining direct per-column quant decode.
+- Twenty-one counter-rotated burst-three samples reject the initial
+  unaligned-dword coefficient decoder: M256 regresses
+  **4.356 -> 4.570 ms (+4.92%)** and M512 regresses
+  **6.670 -> 7.082 ms (+6.17%)**.
+- Replacing the unaligned dword with explicit three-byte loads is still
+  negative at M512: **6.861 -> 7.087 ms (+3.31%)**. Cached
+  `rocprofv3 --kernel-trace` shows the mechanism did not recover resources:
+  production is local128/VGPR88/SGPR128/LDS3072B/scratch0, while qmicro is
+  local128/VGPR120/SGPR128/LDS3072B/scratch0.
+- Candidate HIP, wrapper, fixture, and benchmark surfaces are removed. The
+  host qmicro oracle and already-retained exact-decode primitive remain; no
+  materializer or runtime route was added. Production remains
+  **573.354 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-direct-wave-rejected.json`.
+  Raw leaf SHA-256:
+  `936645acd34925e75ac9d3b37a08b93666c4be3eb353eb326a63f877f870cfd5` /
+  `351c3842f89c6fbe088885935919326d2cadca31d746488ef34f19476618681a`;
+  trace CSV SHA-256:
+  `39bfe3f96baeebaeec7c10319b63b4ad0f67e6fd59d4174cc1373302b28c9ce1`.
+- Next screen keeps only one 6-bit coefficient plane packed, targeting a
+  2,336-byte hybrid tile with half the qmicro byte saving and half the packed
+  coefficient extraction.
