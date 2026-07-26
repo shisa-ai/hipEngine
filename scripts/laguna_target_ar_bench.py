@@ -104,11 +104,6 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="restore the registered exact local128 Q4_K c=1 LM head",
     )
-    parser.add_argument(
-        "--enable-add-rmsnorm-staged-f32",
-        action="store_true",
-        help="screen the exact staged-F32 c=1 add+RMSNorm sibling",
-    )
     parser.add_argument("--global-split-min-live", type=int)
     parser.add_argument("--swa-split-min-live", type=int)
     parser.add_argument("--swa-split-tile16-min-live", type=int)
@@ -259,7 +254,6 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_q4_lm_head_local32_fixed_meta=(
             False if args.disable_q4_lm_head_local32_fixed_meta else None
         ),
-        use_add_rmsnorm_staged_f32=args.enable_add_rmsnorm_staged_f32,
         global_split_min_live=args.global_split_min_live,
         swa_split_min_live=args.swa_split_min_live,
         swa_split_tile16_min_live=args.swa_split_tile16_min_live,
