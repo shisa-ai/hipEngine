@@ -21,6 +21,17 @@ packing change and removes 1,728 pp512 dispatches. The clean 700 target now
 requires another **82.431 ms** from the **813.860-ms** pp512 median wall.
 [`candidate`](results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json).
 
+The gfx1151 wave-per-row causal-softmax candidate is admitted pending clean
+selector-unset publication. One local32 wave replaces one local256 block,
+eight LDS partials, and four barriers per score row. The qualified packed
+48-layer attention model improves **72.738 -> 62.755 ms (-13.73%)**; seven
+complete pp512 pairs improve **614.668 -> 620.032 tok/s (+0.873%, 6/7
+wins)** and save **7.206 ms** at the median wall. All-exact pp512 KL improves
+again **0.002097 -> 0.001796**, with top-1 2930 unchanged. Tracing names
+local32/VGPR24/SGPR128/LDS0/scratch0. The clean production topline remains
+**629.101 tok/s** until publication.
+[`artifact`](results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json).
+
 The mixed short-tail Q4 gate/up schedule is rejected and fully removed.
 Replacing only eligible final `32 + remainder` pairs with 40/48-row tiles
 would reduce the natural-M512 47-layer grid **14,034 -> 12,788 (-8.88%)**,

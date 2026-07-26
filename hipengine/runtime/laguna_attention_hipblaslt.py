@@ -21,6 +21,7 @@ from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_dense_initial_cache_bf16_to_f32_spans,
     laguna_dense_initial_causal_softmax_f32_spans,
+    laguna_dense_initial_causal_softmax_wave_rows_f32_spans,
     laguna_dense_initial_query_head_transpose_f32,
 )
 from hipengine.kvcache import KVLiveSpans
@@ -273,10 +274,12 @@ class LagunaAttentionHipblasLt:
         library_path: str = "libhipblaslt.so",
         runtime: HipRuntime | None = None,
         packed_queries: bool = False,
+        wave_rows_softmax: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
-        self.owner = HipblasLt(library_path)
         self.packed_queries = bool(packed_queries)
+        self.wave_rows_softmax = bool(wave_rows_softmax)
+        self.owner = HipblasLt(library_path)
         self._problems: dict[tuple[int, int], _ProblemPair] = {}
         self._buffers: list[DeviceBuffer] = []
         self._closed = False
@@ -495,18 +498,32 @@ class LagunaAttentionHipblasLt:
                     + kv_head * q_group * _ROWS * context * 4,
                     stream=stream,
                 )
-        laguna_dense_initial_causal_softmax_f32_spans(
-            self.scores_f32.ptr,
-            spans,
-            rows,
-            context,
-            q_heads,
-            start_position,
-            scale,
-            stream=stream,
-            library=kv_library,
-            runtime=self.runtime,
-        )
+        if not self.wave_rows_softmax:
+            laguna_dense_initial_causal_softmax_f32_spans(
+                self.scores_f32.ptr,
+                spans,
+                rows,
+                context,
+                q_heads,
+                start_position,
+                scale,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+        else:
+            laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
+                self.scores_f32.ptr,
+                spans,
+                rows,
+                context,
+                q_heads,
+                start_position,
+                scale,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
         if self.packed_queries:
             assert self.head_major_f32 is not None
             problems.pv.launch(

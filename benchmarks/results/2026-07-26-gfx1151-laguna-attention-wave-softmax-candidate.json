@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-27T03:26:00+09:00",
+  "kind": "hipengine_laguna_attention_wave_softmax_candidate",
+  "status": "candidate_admitted_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1 for matched candidate gate"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "candidate": {
+    "change": "one wave32 workgroup owns one dense-initial causal-score row",
+    "replaces": "one local256 workgroup per row with eight wave partials, two LDS reduction levels, and four workgroup barriers",
+    "preserves": [
+      "complete KVLiveSpans qualification",
+      "head-major F32 score ABI",
+      "causal visibility",
+      "F32 exp and normalization",
+      "zero workspace and existing packed-query QK/PV contractions",
+      "all unsafe-shape attention fallbacks"
+    ],
+    "reassociation": "each lane accumulates context positions separated by 32 before one wave reduction"
+  },
+  "leaf": {
+    "softmax": {
+      "contexts": [128, 256, 384, 512],
+      "query_heads": [48, 72],
+      "production_ms": [
+        0.063679,
+        0.097434,
+        0.073253,
+        0.101959,
+        0.086300,
+        0.125752,
+        0.091247,
+        0.132701
+      ],
+      "wave32_ms": [
+        0.016393,
+        0.022039,
+        0.029339,
+        0.041049,
+        0.040817,
+        0.060265,
+        0.088147,
+        0.121201
+      ],
+      "delta_percent_range": [-77.38, -3.40],
+      "note": "the retained one-row policy was selected from one/two/four/eight-row workgroup screens"
+    },
+    "qualified_48_layer_packed_attention": {
+      "production_ms": 72.73839616775513,
+      "wave32_ms": 62.75454890727997,
+      "delta_percent": -13.725691
+    }
+  },
+  "pp512": {
+    "protocol": "seven counter-rotated complete-session pairs; shared resident weights; block256 rollback versus wave32 candidate",
+    "rollback_samples_tok_s": [
+      593.7937335721961,
+      620.2961237899375,
+      618.2713973723893,
+      618.1172814117692,
+      614.5838916259704,
+      614.6677848716687,
+      614.5155471436169
+    ],
+    "candidate_samples_tok_s": [
+      620.0317233781388,
+      618.8340117310115,
+      621.8161743639511,
+      621.9278170560463,
+      619.3714094214139,
+      619.3255467872901,
+      620.2411092800326
+    ],
+    "rollback_median_tok_s": 614.6677848716687,
+    "candidate_median_tok_s": 620.0317233781388,
+    "delta_percent": 0.872656520886328,
+    "candidate_wins": 6,
+    "pairs": 7,
+    "rollback_median_wall_ms": 832.9702850896865,
+    "candidate_median_wall_ms": 825.7641999516636,
+    "median_wall_saved_ms": 7.2060851380229,
+    "next_token": 2930,
+    "deterministic_per_mode": true
+  },
+  "correctness": {
+    "cpu_reference": {
+      "node": "tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+      "rtol": 0.000002,
+      "atol": 0.0000002,
+      "result": "pass"
+    },
+    "pp512_full_logits": {
+      "all_exact_vs_production_kl": 0.0020966178467309326,
+      "all_exact_vs_candidate_kl": 0.0017963404552110262,
+      "production_vs_candidate_kl": 0.0000971133253770168,
+      "all_exact_top1": 2930,
+      "production_top1": 2930,
+      "candidate_top1": 2930,
+      "finite": true
+    },
+    "focused_tests": "41 passed"
+  },
+  "rocprof": {
+    "kernel": "(anonymous namespace)::laguna_dense_initial_causal_softmax_wave_rows_f32_kernel",
+    "workgroup": 32,
+    "vgpr": 24,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "fixture_calls": 2,
+    "fixture_average_us": 21.04,
+    "trace_db_sha256": "f262af54c59c3494eba411bfd9e25911b32463897a4bfd419fc4f4f16cb62535"
+  },
+  "source_runs": {
+    "pp512": {
+      "path": "/tmp/laguna-attention-softmax-wave32-ab-cleaned.json",
+      "sha256": "7db4bfdf9cf50bea9f2cfb5540cc9b90437098d445b0bf1475ad7f26f659050c"
+    },
+    "quality": {
+      "path": "/tmp/laguna-attention-wave-softmax-kl.json",
+      "sha256": "dcf0b74bc9abb0e0c65ea6e83d564c430efedbe9f9e538ce2959043553c06dc7"
+    },
+    "trace": {
+      "path": "/tmp/laguna-wave-softmax-final-trace.ZFT4Wf/gfx1151/2073689_results.db",
+      "sha256": "f262af54c59c3494eba411bfd9e25911b32463897a4bfd419fc4f4f16cb62535"
+    }
+  },
+  "decision": {
+    "result": "admit gfx1151 capability",
+    "production_publication_pending": true,
+    "reason": "positive leaf and full-model gates, 6/7 paired wins, lower all-exact KL, stable top-1, and clean resource trace",
+    "previous_clean_production_pp512_tok_s": 629.1009016
+  },
+  "repo": {
+    "base_revision": "11ebe1897714bcb32efd5e91a07d247c7b27f64c"
+  }
+}

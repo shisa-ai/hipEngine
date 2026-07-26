@@ -78,6 +78,9 @@ _SYMBOL_DENSE_INITIAL_QUERY_HEAD_TRANSPOSE_F32 = (
 _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_F32 = (
     "hipengine_laguna_dense_initial_causal_softmax_f32_spans"
 )
+_SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_WAVE_ROWS_F32 = (
+    "hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans"
+)
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
 _GLOBAL_BLOCK_SIZE = 256
@@ -1902,6 +1905,62 @@ def laguna_dense_initial_causal_softmax_f32_spans(
     _check_launch(runtime, err)
 
 
+def laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
+    scores_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    context: int,
+    num_q_heads: int,
+    start_position: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply causal softmax with one independent wave32 per score row."""
+
+    if spans.spans_mode == "uniform":
+        capacity = _check_global_spans(spans, _LAGUNA_KV_HEADS, _LAGUNA_HEAD_DIM)
+    else:
+        capacity = _check_swa_spans(spans, _LAGUNA_KV_HEADS, _LAGUNA_HEAD_DIM)
+    _check_prefill_rows(spans, rows, capacity)
+    parsed_context = int(context)
+    parsed_start = int(start_position)
+    if parsed_context <= 0 or parsed_context > min(int(capacity), 512):
+        raise ValueError("dense-initial BLAS context must be within [1, 512]")
+    if parsed_start < 0 or parsed_start + int(rows) != parsed_context:
+        raise ValueError("dense-initial BLAS rows must end at the context boundary")
+    if int(num_q_heads) <= 0:
+        raise ValueError("num_q_heads must be positive")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_WAVE_ROWS_F32,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 5
+        + [ctypes.c_int64] * 4
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(scores_ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(parsed_context),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(parsed_start),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
     registrations = (
         (
@@ -2126,6 +2185,7 @@ __all__ = [
     "build_laguna_kv_attention",
     "laguna_dense_initial_cache_bf16_to_f32_spans",
     "laguna_dense_initial_causal_softmax_f32_spans",
+    "laguna_dense_initial_causal_softmax_wave_rows_f32_spans",
     "laguna_dense_initial_query_head_transpose_f32",
     "laguna_global_attention_decode_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",

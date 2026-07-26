@@ -183289,3 +183289,35 @@ Vulkan local sizes verbatim will close the measured gap.
   temporary HIP/Python/harness/test surface was removed. Production remains
   **629.101 tok/s**. Rejection artifact:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json`.
+
+## 2026-07-27 — Admit wave-per-row packed-attention softmax
+
+- RED extended the dense-initial BLAS helper fixture and failed on the missing
+  wave-row softmax wrapper. GREEN assigns one F32 causal-score row to one
+  wave32 workgroup, removing the former local256 kernel's eight LDS partials
+  and four workgroup barriers. Complete `KVLiveSpans` boundary qualification,
+  causal visibility, F32 score ABI, exp/inverse operations, and packed-query
+  contractions remain intact.
+- A one/two/four/eight-row workgroup screen selected the simplest one-row
+  policy. Across context 128/256/384/512 and 48/72 heads, the softmax leaf is
+  positive at every shape. The complete qualified 48-layer packed-attention
+  model improves **72.738 -> 62.755 ms (-13.73%)**.
+- After collapsing the rejected multirow variants, seven counter-rotated
+  complete pp512 pairs improve **614.668 -> 620.032 tok/s (+0.873%, 6/7
+  wins)** and save **7.206 ms** at the median wall. Both modes are
+  deterministic and retain token 2930.
+- The explicit association gate passes with additional headroom: all-exact
+  pp512 KL improves **0.00209662 -> 0.00179634**,
+  production-to-candidate KL is **0.0000971133**, and all top-1 IDs remain
+  2930. The short-prompt category schedule does not qualify for this
+  start>=128 dense-initial route, so the already-published absolute category
+  gate remains unchanged.
+- Cached `rocprofv3` tracing names
+  `laguna_dense_initial_causal_softmax_wave_rows_f32_kernel` at
+  local32/VGPR24/SGPR128/LDS0/scratch0 and **21.04 us** average in the
+  focused fixture. Validation passes **41 tests** across the CPU-reference
+  helper, gfx1151 capability, and runner bundle.
+- gfx1151 now enables the candidate with explicit block256 rollback; clean
+  selector-unset publication is still required before advancing the
+  **629.101 tok/s** production topline. Candidate artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json`.

@@ -157,6 +157,23 @@ should be removed or collapsed.
   collapse the redundant positive selector/session rebuild path while keeping
   the whole-BLAS-route rollback and every unsafe-shape `KVLiveSpans` fallback.
 
+## Laguna wave-per-row causal-softmax rollback
+
+- Added 2026-07-27 as
+  `prefill_attention_hipblaslt_wave_rows_softmax=false` plus the session
+  setter. The gfx1151 capability selects a local32 wave-per-row reduction;
+  false restores the local256 block/LDS reduction. Unsafe shapes never enter
+  either BLAS route and retain their established `KVLiveSpans` kernels.
+- The candidate improves the qualified 48-layer attention model
+  **72.738 -> 62.755 ms (-13.73%)** and seven-pair pp512
+  **614.668 -> 620.032 tok/s (+0.873%, 6/7 wins)**. All-exact KL improves
+  **0.002097 -> 0.001796**, top-1 stays 2930, and tracing reports
+  local32/VGPR24/SGPR128/LDS0/scratch0.
+- Keep the explicit block256 rollback through clean selector-unset publication
+  and one later attention-family trace. Then remove the session setter and
+  one-purpose A/B harness while retaining the block256 kernel as the numerical
+  fallback until the packed-query rollback window closes.
+
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
 - Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16

@@ -1577,6 +1577,7 @@ class LagunaGGUFResidentSession:
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
         prefill_attention_hipblaslt_packed_queries: bool | None = None,
+        prefill_attention_hipblaslt_wave_rows_softmax: bool | None = None,
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
@@ -1676,6 +1677,16 @@ class LagunaGGUFResidentSession:
             )
             if prefill_attention_hipblaslt_packed_queries is None
             else prefill_attention_hipblaslt_packed_queries
+        )
+        capability_wave_rows_softmax = backend_package_capability(
+            self.backend,
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
+            None,
+        )
+        self.prefill_attention_hipblaslt_wave_rows_softmax = bool(
+            capability_wave_rows_softmax
+            if prefill_attention_hipblaslt_wave_rows_softmax is None
+            else prefill_attention_hipblaslt_wave_rows_softmax
         )
         resident_q6_qmicro = (
             getattr(resident_weights, "q6_qmicro", None)
@@ -2101,6 +2112,21 @@ class LagunaGGUFResidentSession:
         if selected == self.prefill_attention_hipblaslt_packed_queries:
             return
         self.prefill_attention_hipblaslt_packed_queries = selected
+        if self.attention_hipblaslt is not None:
+            route = self.attention_hipblaslt
+            self.attention_hipblaslt = None
+            route.close()
+
+    def set_prefill_attention_hipblaslt_wave_rows_softmax(
+        self,
+        enabled: bool,
+    ) -> None:
+        """Select the explicit wave-per-row causal-softmax candidate."""
+
+        selected = bool(enabled)
+        if selected == self.prefill_attention_hipblaslt_wave_rows_softmax:
+            return
+        self.prefill_attention_hipblaslt_wave_rows_softmax = selected
         if self.attention_hipblaslt is not None:
             route = self.attention_hipblaslt
             self.attention_hipblaslt = None
@@ -2724,6 +2750,9 @@ class LagunaGGUFResidentSession:
                 runtime=self.runtime,
                 packed_queries=(
                     self.prefill_attention_hipblaslt_packed_queries
+                ),
+                wave_rows_softmax=(
+                    self.prefill_attention_hipblaslt_wave_rows_softmax
                 ),
             )
             self.attention_hipblaslt = route
