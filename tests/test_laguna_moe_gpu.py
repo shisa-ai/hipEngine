@@ -224,25 +224,30 @@ def test_laguna_iq2_grid64_route_is_c1_only_and_default_off() -> None:
 def test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    rollback = resolve_laguna_moe_plan(
+    serial_rollback = resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1100",
         iq3_c1_down_schedule="serial_weighted",
     )
-    wave4_with_verifier_tile4 = resolve_laguna_moe_plan(
+    wave4_rollback = resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1100",
         iq3_c1_down_schedule="wave4_reduce",
         iq3_selected_down_tile=4,
     )
-    assert not rollback.c1_selected_down_keys
-    assert default.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
+    assert not serial_rollback.c1_selected_down_keys
+    assert default.iq3_c1_down_schedule == "wave10_fused"
+    assert not default.c1_selected_down_keys
+    assert default.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
+    )
+    assert wave4_rollback.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
         "selected_gemv_decode_k1024_wave4_bf16_bf16_out"
     )
-    assert wave4_with_verifier_tile4.selected_down_keys["gguf_iq3_xxs"].variant == (
+    assert wave4_rollback.selected_down_keys["gguf_iq3_xxs"].variant == (
         "selected_gemv_decode_tile4_bf16_bf16_out"
     )
-    assert resolve_laguna_iq3_c1_down_schedule("hip_gfx1100") == "wave4_reduce"
+    assert resolve_laguna_iq3_c1_down_schedule("hip_gfx1100") == "wave10_fused"
     assert (
         resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", "serial_weighted")
         == "serial_weighted"
@@ -252,13 +257,13 @@ def test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes() -> None:
             resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", rejected)
 
 
-def test_laguna_iq3_wave10_fused_schedule_is_default_off_and_fail_closed(
+def test_laguna_iq3_wave10_fused_schedule_is_default_on_and_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.kernels.hip_gfx1100 as backend
     import hipengine.runtime.laguna_moe as laguna_moe
 
-    assert backend.LAGUNA_IQ3_WAVE10_FUSED is False
+    assert backend.LAGUNA_IQ3_WAVE10_FUSED is True
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     candidate = laguna_moe.resolve_laguna_moe_plan(
         config,
