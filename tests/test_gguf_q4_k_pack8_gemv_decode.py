@@ -18,7 +18,6 @@ the F32 lm-head case to make the bit-exact regime explicit.
 from __future__ import annotations
 
 import ctypes
-import importlib
 
 import numpy as np
 import pytest
@@ -34,13 +33,14 @@ from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
     build_gguf_q4_k_pack8_gemv,
     gguf_q4_k_pack8_gemv_decode_bf16_bf16_out,
+    gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q4_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q4_k_pack8_gemv_decode_fp16_f32_out,
     gguf_q4_k_pack8_gemv_decode_fp16_fp16_out,
     plan_gguf_q4_k_pack8_gemv_build,
     register_gguf_q4_k_pack8_gemv_kernels,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from tests._gguf_synthetic_weights import make_q4_k_weight
 
@@ -83,6 +83,26 @@ def test_p9_b4_registry_keys_resolve() -> None:
             variant=variant,
         )
         assert fn is not None, f"missing registry entry: {variant}"
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k",
+        variant="local32_fixed_meta_gemv_decode_bf16_f32_out",
+    ) is gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out
+
+
+def test_laguna_q4_local32_fixed_meta_is_not_aliased_to_gfx1151() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k",
+            "local32_fixed_meta_gemv_decode_bf16_f32_out",
+        )
+    )
 
 
 def test_p9_b4_build_plan_is_dry_run_safe() -> None:
@@ -110,6 +130,13 @@ def test_p9_b4_build_plan_is_dry_run_safe() -> None:
             r"out_features must be a multiple of 8 \(pack8 lane\)",
         ),
         (gguf_q4_k_pack8_gemv_decode_fp16_f32_out, 1, 256, 0, "out_features must be positive"),
+        (
+            gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out,
+            2,
+            256,
+            16,
+            "local32 fixed-metadata decode requires rows == 1",
+        ),
     ],
 )
 def test_p9_b4_wrapper_validates_args(
@@ -314,3 +341,77 @@ def test_p9_b4_fp16_f32_lm_head_matches_cpu_oracle(
     )
     expected_f32 = gguf_quant_gemv(x_ref, qweight, GGMLQuantizationType.Q4_K)
     np.testing.assert_allclose(actual, expected_f32, **_F32_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "in_features,out_features",
+    [
+        (256, 8),
+        (512, 16),
+        (1024, 24),
+        (3072, 16),
+    ],
+)
+def test_laguna_q4_local32_fixed_meta_is_bit_exact_to_retained(
+    in_features: int,
+    out_features: int,
+    q4_k_dense_library,
+) -> None:
+    qweight = make_q4_k_weight(out_features, in_features)
+    metadata_patterns = np.asarray(
+        [
+            [0x00] * 12,
+            [0xFF] * 12,
+            [0xAA, 0x55] * 6,
+            [0x01, 0x3F, 0x40, 0x7F, 0x80, 0xC0, 0xFE, 0x10, 0x21, 0x43, 0x65, 0x87],
+        ],
+        dtype=np.uint8,
+    )
+    blocks_per_row = in_features // 256
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * 144 + 4
+            qweight[out_idx, start : start + 12] = metadata_patterns[
+                (out_idx + block_idx) % len(metadata_patterns)
+            ]
+
+    bf16_edges = np.asarray(
+        [
+            0x0000,
+            0x8000,
+            0x0001,
+            0x8001,
+            0x007F,
+            0x807F,
+            0x0080,
+            0x8080,
+            0x3F80,
+            0xBF80,
+            0x4700,
+            0xC700,
+        ],
+        dtype=np.uint16,
+    )
+    x_bf16 = np.resize(bf16_edges, (1, in_features)).copy()
+    retained = _run_q4_k_dense(
+        gguf_q4_k_pack8_gemv_decode_bf16_f32_out,
+        x_bf16,
+        qweight,
+        1,
+        in_features,
+        out_features,
+        np.float32,
+        q4_k_dense_library,
+    )
+    candidate = _run_q4_k_dense(
+        gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out,
+        x_bf16,
+        qweight,
+        1,
+        in_features,
+        out_features,
+        np.float32,
+        q4_k_dense_library,
+    )
+    np.testing.assert_array_equal(candidate.view(np.uint32), retained.view(np.uint32))

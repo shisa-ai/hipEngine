@@ -218,6 +218,12 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_iq3_xxs",
             "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
         ),
+        # Q4 local32 LM-head ownership is W7900-only pending an independent gate.
+        (
+            "linear",
+            "gguf_q4_k",
+            "local32_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
         # Persistent Laguna routing is W7900-only pending an independent gate.
         (
             "laguna_router_topk",

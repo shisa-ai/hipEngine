@@ -121,6 +121,62 @@ __device__ inline uint8_t gguf_q4_k_quant(const uint8_t* qs, int subblock, int l
     acc += __shfl_down(acc, 1);                       \
   } while (0)
 
+__device__ __forceinline__ uint32_t gguf_q4_k_uniform_u32(
+    const uint8_t* __restrict__ ptr) {
+  const uint32_t value = *reinterpret_cast<const uint32_t*>(ptr);
+  return static_cast<uint32_t>(
+      __builtin_amdgcn_readfirstlane(static_cast<int>(value)));
+}
+
+__device__ __forceinline__ float gguf_q4_k_fp16_bits_to_float(uint16_t bits) {
+  union {
+    uint16_t u16;
+    half_t f16;
+  } in;
+  in.u16 = bits;
+  return static_cast<float>(in.f16);
+}
+
+template <int INDEX>
+__device__ __forceinline__ uint8_t gguf_q4_k_fixed_meta_byte(
+    uint32_t word0,
+    uint32_t word1,
+    uint32_t word2) {
+  static_assert(INDEX >= 0 && INDEX < 12, "Q4_K metadata byte index");
+  const uint32_t word = INDEX < 4 ? word0 : (INDEX < 8 ? word1 : word2);
+  return static_cast<uint8_t>((word >> (8 * (INDEX & 3))) & 0xFFu);
+}
+
+template <int SUBBLOCK>
+__device__ __forceinline__ uint8_t gguf_q4_k_fixed_scale(
+    uint32_t word0,
+    uint32_t word1,
+    uint32_t word2) {
+  static_assert(SUBBLOCK >= 0 && SUBBLOCK < 8, "Q4_K scale subblock");
+  if constexpr (SUBBLOCK < 4) {
+    return gguf_q4_k_fixed_meta_byte<SUBBLOCK>(word0, word1, word2) & 0x3Fu;
+  } else {
+    constexpr int idx = SUBBLOCK - 4;
+    return (gguf_q4_k_fixed_meta_byte<8 + idx>(word0, word1, word2) & 0x0Fu) |
+           ((gguf_q4_k_fixed_meta_byte<idx>(word0, word1, word2) >> 2) & 0x30u);
+  }
+}
+
+template <int SUBBLOCK>
+__device__ __forceinline__ uint8_t gguf_q4_k_fixed_min(
+    uint32_t word0,
+    uint32_t word1,
+    uint32_t word2) {
+  static_assert(SUBBLOCK >= 0 && SUBBLOCK < 8, "Q4_K min subblock");
+  if constexpr (SUBBLOCK < 4) {
+    return gguf_q4_k_fixed_meta_byte<4 + SUBBLOCK>(word0, word1, word2) & 0x3Fu;
+  } else {
+    constexpr int idx = SUBBLOCK - 4;
+    return (gguf_q4_k_fixed_meta_byte<8 + idx>(word0, word1, word2) >> 4) |
+           ((gguf_q4_k_fixed_meta_byte<4 + idx>(word0, word1, word2) >> 2) & 0x30u);
+  }
+}
+
 // Dense Q4_K pack8 GEMV decode.
 //
 // Grid: (out_features / 8, rows). One block per (output pack of 8, row).
@@ -259,6 +315,127 @@ __launch_bounds__(128, 4) __global__ void gguf_q4_k_pack8_gemv_kernel(
   }
 }
 
+// Exact c=1 LM-head sibling. One wave owns two adjacent output rows and
+// reconstructs the original local128 partitions lane+{0,32,64,96} in four
+// independent accumulators per row. The FMA, wave-reduction, and final
+// partition-add order remain byte-identical without LDS or barriers.
+template <typename scalar_in_t, typename scalar_out_t>
+__launch_bounds__(32, 8) __global__ void
+    gguf_q4_k_local32_fixed_meta_gemv_kernel(
+        const scalar_in_t* __restrict__ x,
+        const uint8_t* __restrict__ qweight,
+        scalar_out_t* __restrict__ out,
+        int64_t rows,
+        int64_t in_features,
+        int64_t out_features) {
+  const int64_t out_pair = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int lane = threadIdx.x;
+  if (row >= rows) return;
+  const int64_t out_col = out_pair << 1;
+  if (out_col >= out_features) return;
+
+  const int blocks_per_row = static_cast<int>(in_features / QK_K);
+  const int row_bytes = blocks_per_row * Q4_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ weight_row0 = qweight + out_col * row_bytes;
+  const uint8_t* __restrict__ weight_row1 = weight_row0 + row_bytes;
+  const scalar_in_t* __restrict__ x_row = x + row * in_features;
+
+  float acc00 = 0.0f, acc01 = 0.0f, acc02 = 0.0f, acc03 = 0.0f;
+  float acc10 = 0.0f, acc11 = 0.0f, acc12 = 0.0f, acc13 = 0.0f;
+  for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+    const uint8_t* __restrict__ block0 =
+        weight_row0 + static_cast<int64_t>(block_idx) * Q4_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ block1 =
+        weight_row1 + static_cast<int64_t>(block_idx) * Q4_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ qs0 = block0 + Q4_K_QS_OFFSET;
+    const uint8_t* __restrict__ qs1 = block1 + Q4_K_QS_OFFSET;
+
+    const uint32_t meta0_head = gguf_q4_k_uniform_u32(block0);
+    const uint32_t meta0_word0 = gguf_q4_k_uniform_u32(block0 + 4);
+    const uint32_t meta0_word1 = gguf_q4_k_uniform_u32(block0 + 8);
+    const uint32_t meta0_word2 = gguf_q4_k_uniform_u32(block0 + 12);
+    const uint32_t meta1_head = gguf_q4_k_uniform_u32(block1);
+    const uint32_t meta1_word0 = gguf_q4_k_uniform_u32(block1 + 4);
+    const uint32_t meta1_word1 = gguf_q4_k_uniform_u32(block1 + 8);
+    const uint32_t meta1_word2 = gguf_q4_k_uniform_u32(block1 + 12);
+    const float d0 = gguf_q4_k_fp16_bits_to_float(
+        static_cast<uint16_t>(meta0_head));
+    const float dmin0 = gguf_q4_k_fp16_bits_to_float(
+        static_cast<uint16_t>(meta0_head >> 16));
+    const float d1 = gguf_q4_k_fp16_bits_to_float(
+        static_cast<uint16_t>(meta1_head));
+    const float dmin1 = gguf_q4_k_fp16_bits_to_float(
+        static_cast<uint16_t>(meta1_head >> 16));
+    const int k_base = block_idx * QK_K;
+
+#define GGUF_Q4K_LOCAL32_FIXED_META_GROUP(GROUP, ACC0, ACC1) \
+    { \
+      constexpr int subblock0 = GROUP; \
+      constexpr int subblock1 = GROUP + 4; \
+      const float scale0_0 = d0 * static_cast<float>( \
+          gguf_q4_k_fixed_scale<subblock0>(meta0_word0, meta0_word1, meta0_word2)); \
+      const float min0_0 = dmin0 * static_cast<float>( \
+          gguf_q4_k_fixed_min<subblock0>(meta0_word0, meta0_word1, meta0_word2)); \
+      const float scale0_1 = d1 * static_cast<float>( \
+          gguf_q4_k_fixed_scale<subblock0>(meta1_word0, meta1_word1, meta1_word2)); \
+      const float min0_1 = dmin1 * static_cast<float>( \
+          gguf_q4_k_fixed_min<subblock0>(meta1_word0, meta1_word1, meta1_word2)); \
+      const int k0 = lane + 32 * GROUP; \
+      const float x0 = scalar_to_float<scalar_in_t>(x_row[k_base + k0]); \
+      ACC0 = fmaf(x0, scale0_0 * static_cast<float>( \
+          gguf_q4_k_quant(qs0, subblock0, lane)) - min0_0, ACC0); \
+      ACC1 = fmaf(x0, scale0_1 * static_cast<float>( \
+          gguf_q4_k_quant(qs1, subblock0, lane)) - min0_1, ACC1); \
+      const float scale1_0 = d0 * static_cast<float>( \
+          gguf_q4_k_fixed_scale<subblock1>(meta0_word0, meta0_word1, meta0_word2)); \
+      const float min1_0 = dmin0 * static_cast<float>( \
+          gguf_q4_k_fixed_min<subblock1>(meta0_word0, meta0_word1, meta0_word2)); \
+      const float scale1_1 = d1 * static_cast<float>( \
+          gguf_q4_k_fixed_scale<subblock1>(meta1_word0, meta1_word1, meta1_word2)); \
+      const float min1_1 = dmin1 * static_cast<float>( \
+          gguf_q4_k_fixed_min<subblock1>(meta1_word0, meta1_word1, meta1_word2)); \
+      const int k1 = k0 + 128; \
+      const float x1 = scalar_to_float<scalar_in_t>(x_row[k_base + k1]); \
+      ACC0 = fmaf(x1, scale1_0 * static_cast<float>( \
+          gguf_q4_k_quant(qs0, subblock1, lane)) - min1_0, ACC0); \
+      ACC1 = fmaf(x1, scale1_1 * static_cast<float>( \
+          gguf_q4_k_quant(qs1, subblock1, lane)) - min1_1, ACC1); \
+    }
+    GGUF_Q4K_LOCAL32_FIXED_META_GROUP(0, acc00, acc10);
+    GGUF_Q4K_LOCAL32_FIXED_META_GROUP(1, acc01, acc11);
+    GGUF_Q4K_LOCAL32_FIXED_META_GROUP(2, acc02, acc12);
+    GGUF_Q4K_LOCAL32_FIXED_META_GROUP(3, acc03, acc13);
+#undef GGUF_Q4K_LOCAL32_FIXED_META_GROUP
+  }
+
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    acc00 += __shfl_down(acc00, offset);
+    acc01 += __shfl_down(acc01, offset);
+    acc02 += __shfl_down(acc02, offset);
+    acc03 += __shfl_down(acc03, offset);
+    acc10 += __shfl_down(acc10, offset);
+    acc11 += __shfl_down(acc11, offset);
+    acc12 += __shfl_down(acc12, offset);
+    acc13 += __shfl_down(acc13, offset);
+  }
+  if (lane == 0) {
+    float total0 = 0.0f;
+    total0 += acc00;
+    total0 += acc01;
+    total0 += acc02;
+    total0 += acc03;
+    float total1 = 0.0f;
+    total1 += acc10;
+    total1 += acc11;
+    total1 += acc12;
+    total1 += acc13;
+    scalar_out_t* __restrict__ out_ptr = out + row * out_features + out_col;
+    out_ptr[0] = float_to_scalar<scalar_out_t>(total0);
+    out_ptr[1] = float_to_scalar<scalar_out_t>(total1);
+  }
+}
+
 template <typename scalar_in_t, typename scalar_out_t>
 int launch_q4_k_pack8_gemv(
     const scalar_in_t* x,
@@ -279,6 +456,29 @@ int launch_q4_k_pack8_gemv(
       dim3(static_cast<unsigned int>(out_packed),
            static_cast<unsigned int>(rows)),
       dim3(128),
+      0,
+      stream,
+      x, qweight, out, rows, in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_q4_k_local32_fixed_meta_gemv_bf16_f32(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr ||
+      rows != 1 || in_features <= 0 || out_features <= 0 ||
+      (out_features & 7) != 0 || (in_features % QK_K) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gguf_q4_k_local32_fixed_meta_gemv_kernel<uint16_t, float>),
+      dim3(static_cast<unsigned int>(out_features >> 1)),
+      dim3(32),
       0,
       stream,
       x, qweight, out, rows, in_features, out_features);
@@ -332,5 +532,17 @@ extern "C" int hipengine_gguf_q4_k_pack8_gemv_decode_fp16_f32_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_q4_k_pack8_gemv<_Float16, float>(
+      x, qweight, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_k_local32_fixed_meta_gemv_bf16_f32(
       x, qweight, out, rows, in_features, out_features, stream);
 }

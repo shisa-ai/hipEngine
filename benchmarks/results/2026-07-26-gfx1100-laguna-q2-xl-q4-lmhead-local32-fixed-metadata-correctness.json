@@ -1,0 +1,297 @@
+{
+  "actual_weight_performance_precondition": {
+    "all_required_rows_improve": true,
+    "counterbalanced_repetitions": 15,
+    "event_delta_pct": -30.03899696994936,
+    "event_us": {
+      "control": 449.30843353271484,
+      "local32_fixed": 314.3406867980957
+    },
+    "launches_per_sample": 200,
+    "wall_delta_pct": -21.440654397780413,
+    "wall_us": {
+      "control": 449.1748148575425,
+      "local32_fixed": 352.8687951620668
+    },
+    "warmups_per_mode": 50
+  },
+  "builder_sha256": "b27bc28ab672162c8e9434f276f1c113ffdf12955d83bdb261d0a99a2ff0dd44",
+  "cache_only_trace": {
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 72,
+    "child_sha256": "5a8dd0b471f0c4eb2d77b467c9e98bfe2544badaf69bce417983c467e18f835e",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q4-lmhead-local32-fixed-repo-trace-csv -o trace -- .venv/bin/python -u /tmp/trace_laguna_q4_lmhead_local32_fixed_repo.py",
+    "count": 1,
+    "duration_ns": 265443,
+    "finite_logits": true,
+    "grid_x": 1605632,
+    "harness_sha256": "6c6ebcce3c7091130bc291ea3bbe3c0145db16baadf62c421de5e1589197a639",
+    "lds_bytes": 0,
+    "no_compiler_under_profile": true,
+    "scratch_bytes": 0,
+    "symbol": "void (anonymous namespace)::gguf_q4_k_local32_fixed_meta_gemv_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+    "trace_sha256": "3f1298bb40d555b91fe10873e45f9538e7b1b75260bee4b3f307923b7aa895af",
+    "tracked_returned_to_baseline": true,
+    "workgroup_x": 32
+  },
+  "codegen": {
+    "allocated_lds_bytes": 0,
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 72,
+    "barriers": 0,
+    "command": "hipcc -shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100 -mcumode hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.hip -o <cache>/gguf_q4_k_pack8_gemv.so",
+    "ds_bpermute_b32": 40,
+    "function_objdump_sha256": "3d6603c75ba3191d6d06a13940cc2ab487970a2eafd17539c2780ff50351d340",
+    "hsaco_sha256": "9c85144928115b4453ae6a9326f6ad2f7dc0062527767ca4ac086694dfa7ecd1",
+    "library_sha256": "9ed8ce5a67dc66cdc488f75f1b696d98d4e272dc554d44240a18110cb8a768b5",
+    "local_size": 32,
+    "logical_sgpr": 61,
+    "logical_vgpr": 70,
+    "private_bytes": 0,
+    "readobj_sha256": "5be17071c27682949943425d3d70ac194db574c084762c6443c60dfda4557cab",
+    "scratch_bytes": 0,
+    "sgpr_spills": 0,
+    "static_instructions": 443,
+    "static_lds_bytes": 0,
+    "text_bytes": 2520,
+    "vgpr_spills": 0,
+    "wavefront_size": 32
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "retain separately registered exact primitive; do not select at runtime yet",
+    "canonical_h32_tok_s_unchanged": 61.73234556191569,
+    "completion_claim": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_gate": "In a separate commit, add only an explicit/default-off Laguna LM-head selector, then require shared-weight 16-transition full state and a cached one-candidate/723-model-kernel trace before clean context or category measurement."
+  },
+  "default_changed": false,
+  "design": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json",
+    "artifact_sha256": "2daa47eb48ada19247abc87b18ba12fb1d24aec30685d7f8cbc81f012e13ef7d",
+    "commit": "c04d2e6ec3217f3900b58cd09056ed7f0dd28ade",
+    "frozen_gate_satisfied": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "arithmetic": "One local32 wave owns an output pair, reconstructs original local128 partitions lane+{0,32,64,96} in independent accumulators, replays K/K+128 FMAs and each wave tree, then adds partition totals in order 0..3 before F32 stores.",
+    "backend_capability_added": false,
+    "cli_added": false,
+    "dispatch_delta": 0,
+    "export": "hipengine_gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out",
+    "four_axis_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q4_k",
+      "local32_fixed_meta_gemv_decode_bf16_f32_out"
+    ],
+    "gfx1151_alias_excluded": true,
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "retained_local128_changed": false,
+    "rows_contract": "rows == 1",
+    "runtime_selector_added": false,
+    "wrapper": "gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out"
+  },
+  "kind": "hipengine_laguna_q2_xl_q4_lmhead_local32_fixed_metadata_correctness",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "only already-catalogued unrelated drift",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "lm_head_quant": "Q4_K",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "shape": {
+      "in_features": 3072,
+      "out_features": 100352,
+      "rows": 1
+    }
+  },
+  "pass": true,
+  "performance_claim": false,
+  "primitive_correctness": {
+    "actual_weight_gate": {
+      "argmax_exact": true,
+      "candidate_library_sha256": "9ed8ce5a67dc66cdc488f75f1b696d98d4e272dc554d44240a18110cb8a768b5",
+      "candidate_source_sha256": "0fc899c54a35581fb838c8ba0062ba28eb24a0235bbb7a17984d10fc03896c04",
+      "counterbalanced_repetitions": 15,
+      "event_delta_pct": -30.03899696994936,
+      "event_samples_us": {
+        "control": [
+          430.54473876953125,
+          473.6809539794922,
+          448.1047821044922,
+          474.9150085449219,
+          448.2442092895508,
+          471.97513580322266,
+          448.58802795410156,
+          471.30210876464844,
+          449.30843353271484,
+          470.32054901123047,
+          449.2616271972656,
+          470.33790588378906,
+          449.3006134033203,
+          470.8964538574219,
+          449.13265228271484
+        ],
+        "local32_fixed": [
+          313.6567687988281,
+          345.16197204589844,
+          314.3406867980957,
+          346.8830871582031,
+          314.3020820617676,
+          349.8902130126953,
+          314.0270805358887,
+          350.0315856933594,
+          312.75537490844727,
+          351.7986297607422,
+          312.044620513916,
+          352.87174224853516,
+          312.2312355041504,
+          353.6334228515625,
+          312.8388023376465
+        ]
+      },
+      "event_us": {
+        "control": 449.30843353271484,
+        "local32_fixed": 314.3406867980957
+      },
+      "f32_bit_exact": true,
+      "harness_sha256": "027363941b356e2977550bb4ed83324c0620b876a0b041431f108f6879eb96d9",
+      "kind": "laguna_q2_xl_q4_lmhead_local32_fixed_metadata_repository_actual_weight_gate",
+      "launches_per_sample": 200,
+      "model": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "model_sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+      "position": 123,
+      "prompt_id": "mixed_ja_en_review",
+      "prompt_tokens": 122,
+      "schema": 1,
+      "shape": {
+        "in_features": 3072,
+        "out_features": 100352,
+        "rows": 1
+      },
+      "tracked_after": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 40070756404,
+        "peak_allocations": 1159,
+        "total_allocated_bytes": 40070756404,
+        "total_freed_bytes": 40070756404
+      },
+      "tracked_peak": {
+        "active_allocations": 1159,
+        "current_allocated_bytes": 40070756404,
+        "peak_allocated_bytes": 40070756404,
+        "peak_allocations": 1159,
+        "total_allocated_bytes": 40070756404,
+        "total_freed_bytes": 0
+      },
+      "tracked_returned_to_baseline": true,
+      "wall_delta_pct": -21.440654397780413,
+      "wall_samples_us": {
+        "control": [
+          453.3607652410865,
+          446.57433056272566,
+          449.3911156896502,
+          446.64732995443046,
+          449.1748148575425,
+          447.17838522046804,
+          449.1961596067995,
+          447.04898493364453,
+          449.2343601305038,
+          447.69964064471424,
+          449.4315152987838,
+          447.28623586706817,
+          449.8509201221168,
+          446.99487974867225,
+          449.71682014875114
+        ],
+        "local32_fixed": [
+          352.8687951620668,
+          344.5328795351088,
+          357.4502049013972,
+          343.7649749685079,
+          356.6185396630317,
+          344.48578488081694,
+          356.84424452483654,
+          344.2557796370238,
+          358.51011984050274,
+          344.65398523025215,
+          358.25096536427736,
+          344.8613407090306,
+          359.4082302879542,
+          344.8363847564906,
+          359.8534851334989
+        ]
+      },
+      "wall_us": {
+        "control": 449.1748148575425,
+        "local32_fixed": 352.8687951620668
+      },
+      "warmups_per_mode": 50
+    },
+    "actual_weight_harness_sha256": "027363941b356e2977550bb4ed83324c0620b876a0b041431f108f6879eb96d9",
+    "actual_weight_raw_sha256": "7c50aeb504b130e1e0963e792af80515f468940a365f0e51af3092087d271c6d",
+    "actual_weight_stdout_sha256": "921d824e246bd20d9efa1afe6820bb8b0c84a964b210c6eb2c0a62ef5e8c1a83",
+    "cpu_reference_gate": "Existing module CPU-reference fixtures pass; exact sibling has KL0 and top-1 100% by F32 byte identity.",
+    "production_argmax_exact": true,
+    "production_elements": 100352,
+    "production_f32_bit_exact_to_retained": true,
+    "synthetic_f32_bit_exact_to_retained": true
+  },
+  "red_green": {
+    "adjacent": {
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_k_pack8_gemv_decode.py tests/test_gfx1151_backend.py -k 'not test_gguf_fused_linear_matching_uses_resident_backend'",
+      "passes": 51,
+      "sha256": "fbdc38bb22ab9d4d108abbac2db93d82b0ba41432f10b852f0bcab0f5bdcf50b",
+      "unfiltered_known_failure": {
+        "candidate_related": false,
+        "output_sha256": "0cb490acccfaf1e218e2d22b19ca29b3c0db0209c1ec9e2757f95b15bcab26d9",
+        "reason": "pre-existing stale _resolve_gguf_linear_pair_kind call omits activation_dtype, output_dtype, and registered_decode_variant",
+        "test": "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend"
+      }
+    },
+    "green": {
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_k_pack8_gemv_decode.py",
+      "coverage": [
+        "existing CPU-reference Q4_K BF16/FP16 and F32/lowp fixtures",
+        "rows=1-only wrapper validation",
+        "gfx1100 registry resolution and gfx1151 non-aliasing",
+        "exact retained-sibling K256/512/1024/3072 output-boundary corpus",
+        "zero/all-one/alternating/seeded packed metadata bytes",
+        "BF16 signed zero, subnormal, normal, and finite-edge inputs"
+      ],
+      "passes": 29,
+      "sha256": "b71db6006ecc410f6085db2500759568a2da5d0cdf2fd3f7165307654085abe2"
+    },
+    "red": {
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_k_pack8_gemv_decode.py",
+      "result": "collection fails only because the frozen wrapper is absent",
+      "sha256": "ad6ccca013e0f4b04ae2eade4dacbb3813ab4a1edc2ea9ad7c3cd3d3a809f45a"
+    },
+    "ruff_compile": {
+      "passed": true,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    }
+  },
+  "schema": 1,
+  "source_hashes": {
+    "gfx1151": "c78154ee38aa09238109c290472cb0f29821c4da624b4f8cb1f610d5a7fb5a0a",
+    "hip": "0fc899c54a35581fb838c8ba0062ba28eb24a0235bbb7a17984d10fc03896c04",
+    "python": "c7aea7b8e138e7e262ce98509ecb12006d137ab090590e5f82702e3cc8d679b6",
+    "test": "3b9c88ec0421d0930498bde67da010668261d3f6063bb5f81fdea49e2fa1fa1b"
+  },
+  "source_revision": "c04d2e6ec3217f3900b58cd09056ed7f0dd28ade",
+  "status": "primitive_admitted_runtime_unselected"
+}
