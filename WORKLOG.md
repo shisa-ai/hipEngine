@@ -182125,3 +182125,28 @@ Vulkan local sizes verbatim will close the measured gap.
   **183.586 ms**. Standalone source-F16 boundary casts are closed. The next
   bounded task returns to the **314.560-ms** Q4 gate/up family and requires a
   physical-byte-removal premise.
+
+## 2026-07-26 — Reject gate/up K256 LDS partial persistence
+
+- The required lineage audit remains blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external code was
+  copied; both candidates were derived from the in-tree direct-wave body.
+- The first exact 64x64 candidate decoded one complete K256 slab once for 64
+  routed rows and carried F32 partials in LDS between the twelve K256 slabs.
+  Its 0/7/18/65-row K512/N128 fixture has zero BF16 mismatches versus the
+  independently scheduled production kernel, but actual layer-1 M512
+  pack-inclusive time is **32.640 ms** versus **6.730 ms**. Removing explicit
+  half/K32 unroll narrows the candidate only to **30.191 ms**.
+- Cached tracing explains the loss: local128, **VGPR248**, SGPR128,
+  **39,936 B LDS**, and zero scratch. The no-unroll source still compiles to
+  the same resource footprint; the matched no-unroll comparison is
+  **6.628 -> 30.191 ms (4.56x slower)**.
+- A no-partial follow-up retained all **32 F32 accumulators/lane** in
+  registers and double-buffered only one K32 weight tile. It remains
+  BF16-byte exact and reduces the candidate to **11.433 ms**, but production
+  is **6.867 ms** across nine counter-rotated burst-three samples. The
+  per-expert 64-row schedule expands padding and doubles output-column
+  workgroups, erasing the weight-read reduction.
+- Every candidate HIP, wrapper, registry, test, and harness surface was
+  removed. Production remains **559.554 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-k256-ldsacc-rejected.json`.
