@@ -1547,6 +1547,7 @@ class LagunaGGUFResidentSession:
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
         q6_skip_padded_activation: bool | None = None,
+        moe_branch_concurrency: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1696,6 +1697,7 @@ class LagunaGGUFResidentSession:
                 False,
             )
         )
+        self.moe_branch_concurrency = bool(moe_branch_concurrency)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1719,6 +1721,9 @@ class LagunaGGUFResidentSession:
         self._require_cached_build = bool(require_cached_build)
         self._dflash_accept_library = None
         self._staged_verifier_tokens: tuple[int, ...] | None = None
+        self._moe_shared_stream = 0
+        self._moe_shared_input_ready_event = 0
+        self._moe_shared_output_ready_event = 0
 
         if self.context_length <= 0 or self.context_length > _INITIAL_MAX_CONTEXT:
             raise ValueError(
@@ -1831,6 +1836,16 @@ class LagunaGGUFResidentSession:
                 max_rows=self.prefill_chunk_size,
                 runtime=self.runtime,
             )
+            if self.moe_branch_concurrency:
+                self._moe_shared_stream = self.runtime.stream_create(
+                    nonblocking=True
+                )
+                self._moe_shared_input_ready_event = (
+                    self.runtime.event_create(flags=0x2)
+                )
+                self._moe_shared_output_ready_event = (
+                    self.runtime.event_create(flags=0x2)
+                )
         except BaseException:
             self._close(suppress_errors=True)
             raise
@@ -3023,6 +3038,21 @@ class LagunaGGUFResidentSession:
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             group_compact_mode=self.group_compact_mode,
             fuse_selected_silu_pack=self.fuse_selected_silu_pack,
+            shared_stream=(
+                self._moe_shared_stream
+                if self.moe_branch_concurrency and rows > 1
+                else 0
+            ),
+            shared_input_ready_event=(
+                self._moe_shared_input_ready_event
+                if self.moe_branch_concurrency and rows > 1
+                else 0
+            ),
+            shared_output_ready_event=(
+                self._moe_shared_output_ready_event
+                if self.moe_branch_concurrency and rows > 1
+                else 0
+            ),
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,
@@ -3545,6 +3575,18 @@ class LagunaGGUFResidentSession:
             except BaseException as exc:  # best-effort teardown after HIP failures
                 errors.append(exc)
 
+        if self._moe_shared_stream:
+            stream = self._moe_shared_stream
+            self._moe_shared_stream = 0
+            release(lambda: self.runtime.stream_destroy(stream))
+        if self._moe_shared_output_ready_event:
+            event = self._moe_shared_output_ready_event
+            self._moe_shared_output_ready_event = 0
+            release(lambda: self.runtime.event_destroy(event))
+        if self._moe_shared_input_ready_event:
+            event = self._moe_shared_input_ready_event
+            self._moe_shared_input_ready_event = 0
+            release(lambda: self.runtime.event_destroy(event))
         if self.f16_hipblaslt is not None:
             route = self.f16_hipblaslt
             self.f16_hipblaslt = None

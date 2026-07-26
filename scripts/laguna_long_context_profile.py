@@ -75,6 +75,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-rows", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--moe-branch-concurrency", action="store_true")
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -170,6 +171,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             repacked_cache=args.repacked_cache,
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
+            moe_branch_concurrency=args.moe_branch_concurrency,
         )
         load_seconds = time.perf_counter() - load_started
         owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
@@ -258,6 +260,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "context_length": args.context_length,
             "repetitions": args.repetitions,
             "warmup_rows": args.warmup_rows,
+            "moe_branch_concurrency": bool(
+                args.moe_branch_concurrency
+            ),
             "timed_order": "ascending then alternating direction by repetition",
             "timing_scope": "reset complete through synchronized first-token projection; load excluded",
             "prompt_suite": str(args.prompts.resolve()),
