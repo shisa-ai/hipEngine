@@ -182495,3 +182495,26 @@ Vulkan local sizes verbatim will close the measured gap.
   compare eager shared release against the current after-router boundary.
   Priority should protect router work while the earlier release may eliminate
   the remaining **0.853-ms** secondary spill.
+
+## 2026-07-26 — Reject eager low-priority shared release
+
+- One resident-weight owner and seven counterbalanced pp512 pairs held
+  `GPU_MAX_HW_QUEUES=2` and shared priority +1 constant. Moving only the
+  dependency boundary from after-router to eager release regresses
+  **570.796 -> 569.666 tok/s (-0.198%, 1/7 wins)** and adds **1.339 ms** at
+  the median paired wall.
+- Every pair preserves logits, both hidden snapshots, complete KV, next
+  token/logit, and cursor exactly; all runs select token 2930. No trace is
+  warranted because the robust timing gate fails, and no code surface was
+  introduced.
+- Rejection artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-eager-low-priority-rejected.json`.
+  Raw SHA-256:
+  `05a3ffdd22425d348abab98d058ad0268986e9c9feb6bcac7c78d9c78d7332d5`.
+- The required lineage audit could not run because its configured read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent. This does not
+  block the screen because it changes no kernel or ported code.
+- Next screen targets the Q6 qmicro instruction path: use gfx11 byte permutes
+  to gather the existing 12-byte quartet record before exact mask/shift
+  expansion. Resident bytes, row64 geometry, activation staging, FP32 order,
+  and BF16 output remain unchanged.

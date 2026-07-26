@@ -68,7 +68,10 @@ protects router selection before releasing shared work and cuts pp512 kernel
 span **898.024 -> 890.769 ms** versus priority-0 after-router overlap. Moving
 shared work after gate/up is rejected. The next bounded screen holds priority
 +1 constant and tests whether eager release can eliminate the remaining
-**0.853-ms** secondary spill without reintroducing router contention.
+**0.853-ms** secondary spill without reintroducing router contention. That
+screen is now rejected at **-0.198%, 1/7 wins**. Scheduling is frozen at the
+after-router, least-priority boundary while the next screen attacks Q6
+qmicro's decode instruction path without changing resident bytes.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -758,7 +761,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Global + SWA attention | **143.121 ms** | **11.74%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
 | Static-range direct hipBLASLt source-F16 | **124.629 ms** | **10.22%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
 | Q4/Q6 WMMA dense/shared | **94.228 ms** | **7.73%** | This inclusive family overlaps routed work. The full secondary branch totals **337.239 ms** at least priority and overlaps **336.386 ms (99.75%)**; only its **0.853-ms** critical-path spill matters. |
-| Router | **23.191 ms** | **1.90%** | The after-router boundary remains production. Eight-token reuse is retained; the next bounded screen tests whether least-priority scheduling alone protects this prefix under eager release. |
+| Router | **23.191 ms** | **1.90%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
 | Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **305.422 ms** | **25.06%** | This includes the heavily slowed secondary shared SiLU and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
@@ -1039,13 +1042,27 @@ Immediate execution queue:
    slows **269.084 -> 337.239 ms**, but **99.75%** remains hidden and only
    **0.853 ms** is unoverlapped. The gfx1151 capability and clean
    selector-unset publication pass at **568.849/527.113/444.508 tok/s**.
-12. **Active next screen:** hold the shared stream at priority +1 in both arms
+12. **Rejected:** hold the shared stream at priority +1 in both arms
    and compare eager release against the retained after-router boundary.
    Earlier release restores the longest possible overlap window and may remove
    the remaining **0.853-ms** shared spill; priority protection may be enough
    to keep router and gate/up on the critical path. Require seven
    counterbalanced complete-state-exact pairs and trace only if eager release
-   is positive. No new production surface is needed for this screen.
+   is positive. No new production surface is needed for this screen. Eager
+   release preserves complete state but regresses **570.796 -> 569.666 tok/s
+   (-0.198%, 1/7 wins)** and adds **1.339 ms** at the median paired wall. No
+   trace or production change is retained.
+13. **Active next screen:** reduce Q6 qmicro decode instructions without
+   expanding its byte-neutral 12-byte quartet record. Gather the two
+   interleaved low-nibble words into per-column words with gfx11 `v_perm_b32`,
+   then combine the existing high-two-bit word with masks and shifts. Keep the
+   64-column x 64-row/local128 geometry, activation cache, FP32 accumulation
+   order, resident bytes, and BF16 boundary unchanged. Gate first on the
+   uneven/empty-expert CPU-reference fixture and actual layer-1 BF16 identity;
+   retain only if a counter-rotated actual-weight leaf improves before any
+   full-model integration. This is a new instruction-path premise, not a
+   retry of non-temporal loads, paired-scale decode, K64 staging, or a larger
+   row tile.
 
 Post-350 exclusions:
 

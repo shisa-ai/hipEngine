@@ -88,9 +88,10 @@ should be removed or collapsed.
   is the remaining promotion gate.
 - Clean selector-unset publication passes at
   **568.849/527.113/444.508 tok/s**; 1K/4K are flat within
-  **-0.051%/+0.014%**. Keep explicit priority-0 rollback through the active
-  eager-priority1 versus after-router-priority1 checkpoint, then collapse
-  redundant positive selection.
+  **-0.051%/+0.014%**. The eager-priority1 checkpoint is now closed at
+  **-0.198%, 1/7 wins**. Collapse redundant positive selection during the next
+  MoE scheduling cleanup while retaining explicit priority-0 and sequential
+  rollbacks.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 
