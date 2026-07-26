@@ -1584,6 +1584,7 @@ class LagunaGGUFResidentSession:
         q6_skip_padded_activation: bool | None = None,
         q6_qmicro_permute: bool | None = None,
         q6_qmicro_planar: bool | None = None,
+        q6_wmma_prefetch_weight: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
@@ -1784,6 +1785,20 @@ class LagunaGGUFResidentSession:
         if self.q6_qmicro_planar and self.q6_qmicro_permute:
             raise ValueError(
                 "Q6 planar and permute decode are mutually exclusive"
+            )
+        self.q6_wmma_prefetch_weight = bool(
+            self.q6_qmicro_planar
+            and backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_WMMA_PREFETCH_WEIGHT",
+                False,
+            )
+            if q6_wmma_prefetch_weight is None
+            else q6_wmma_prefetch_weight
+        )
+        if self.q6_wmma_prefetch_weight and not self.q6_qmicro_planar:
+            raise ValueError(
+                "Q6 WMMA weight prefetch requires planar qmicro"
             )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
@@ -2027,6 +2042,15 @@ class LagunaGGUFResidentSession:
         """Select exact dual-SiLU packing or its registered primitive fallback."""
 
         self.fuse_selected_silu_pack = bool(enabled)
+
+    def set_q6_wmma_prefetch_weight(self, enabled: bool) -> None:
+        """Select exact Q6 register prefetch or its current WMMA rollback."""
+
+        if enabled and not self.q6_qmicro_planar:
+            raise ValueError(
+                "Q6 WMMA weight prefetch requires planar qmicro"
+            )
+        self.q6_wmma_prefetch_weight = bool(enabled)
 
     def set_moe_shared_after_router(self, enabled: bool) -> None:
         """Move concurrent shared work behind the exact router prefix."""
@@ -3288,6 +3312,7 @@ class LagunaGGUFResidentSession:
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             group_compact_mode=self.group_compact_mode,
             fuse_selected_silu_pack=self.fuse_selected_silu_pack,
+            q6_wmma_prefetch_weight=self.q6_wmma_prefetch_weight,
             shared_after_router=self.moe_shared_after_router,
             shared_stream=(
                 self._moe_shared_stream

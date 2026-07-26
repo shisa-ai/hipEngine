@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T08:47:20+09:00",
+  "kind": "hipengine_laguna_q6_wmma_weight_prefetch_candidate",
+  "status": "admitted_gfx1151_default_pending_clean_publication",
+  "repo": {
+    "base_revision": "3b62ebda8d13a828122bb93759c9a7419370325c",
+    "tracked_changes": true,
+    "headline_production_claimed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "runtime_queue_policy": "automatic production two-queue schedule"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M with resident planar-qmicro Q6_K selected down",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "implementation": {
+    "scope": "production planar-qmicro Q6 selected-down integer-WMMA row64 body",
+    "mechanism": "fetch the next K32 planar-qmicro record and its d/scale metadata into registers while current-K32 integer WMMA executes, then populate the existing shared tile from those registers on the next iteration",
+    "resident_delta_bytes": 0,
+    "lds_delta_bytes": 0,
+    "scratch_bytes_per_thread": 0,
+    "arithmetic_order_changed": false,
+    "activation_or_quality_surface_changed": false,
+    "rollback": "gfx1151 backend capability plus session-local q6_wmma_prefetch_weight=false"
+  },
+  "correctness": {
+    "red": "The production-shaped Q6 CPU-reference parameter initially failed because the wmma_prefetch_weight wrapper contract did not exist.",
+    "primitive": "candidate is BF16-bit identical to the current activation-hoisted integer-WMMA body on the uneven/empty-expert fixture",
+    "actual_weight_bf16_mismatches": 0,
+    "actual_weight_checksum": 509500838004,
+    "complete_model_pairs": 7,
+    "complete_model_runs": 14,
+    "next_token": 2930,
+    "next_token_logit_hex": "0x1.a64a720000000p+4",
+    "logits_sha256": "37c6c744ab615cb00a179b6203ba9a44eeb3075eb3c5d8f09714ba5fc218b12a",
+    "final_hidden_sha256": "171fd66d4069fa17f6cced691f655c5a57ca5d86b76b744b85a1f05aa80417f6",
+    "post_layer_hidden_sha256": "4dbefceaf71d1af6d679af6ff5cd09052dd0917fd007175d8aaba054fb33653a",
+    "kv_sha256": "af9befce8c336bf50b0684e949152efbf180df91e24b99c29b2ccbad87ddfb44",
+    "final_position": 511,
+    "memory_returned": true,
+    "known_independent_failure": "The broad Laguna MoE runtime node later reaches the pre-existing Q6 row64-versus-row32 assertion (9088/9216 BF16 mismatches), reproduced on the untouched prior revision; the new prefetch-versus-current assertion runs and passes before it."
+  },
+  "actual_weight_layer1_leaf": {
+    "shape": {
+      "prompt_rows": 512,
+      "compact_routed_rows": 5120,
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-wmma-weight-prefetch-actual.json",
+    "timing": "HIP events; activation packing excluded; 21 counter-rotated burst-seven samples",
+    "current_median_ms": 4.5175307137625555,
+    "candidate_median_ms": 4.103903089250837,
+    "change_percent": -9.156055613559232,
+    "candidate_wins": 21,
+    "pairs": 21,
+    "raw_sha256": "8b4e42ddea22873849db34808eda215512be0f8ad868c025bc5d3c68cf3543f3"
+  },
+  "complete_pp512_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --mode current=q6_wmma_current --mode candidate=q6_wmma_prefetch --require-cached-build --output /tmp/laguna-q6-wmma-weight-prefetch-pp512-ab.json",
+    "current_samples_tok_s": [
+      597.1930004492771,
+      618.2944905334579,
+      620.6220952193042,
+      623.6806086885474,
+      618.2640762845242,
+      620.6293466685969,
+      616.9165891217284
+    ],
+    "candidate_samples_tok_s": [
+      626.581915059367,
+      624.480680848109,
+      623.8995309739755,
+      623.2252860825338,
+      623.8999126092575,
+      620.3975739531288,
+      623.7348233607489
+    ],
+    "current_median_tok_s": 618.2944905334579,
+    "candidate_median_tok_s": 623.8995309739755,
+    "change_percent": 0.9065324899922178,
+    "raw_sha256": "e3c6e865307503dbc0121d064921d7f21730fa5bf44e87fcd82b2b3676ae41ae"
+  },
+  "trace": {
+    "current": {
+      "local_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "candidate": {
+      "local_size": 128,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "raw_trace_sha256": "7c43e4439fc4c7a0e45295f29236adba2561238fe4b415397202f46de89a22f3"
+  },
+  "gate": {
+    "leaf_admitted": true,
+    "complete_model_admitted": true,
+    "gfx1151_default_enabled": true,
+    "clean_selector_unset_publication_pending": true,
+    "production_headline_before_publication_tok_s": 632.6179846953831,
+    "target_700_reached": false
+  }
+}

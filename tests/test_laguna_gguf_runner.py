@@ -866,6 +866,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.q6_skip_padded_activation is True
     assert session.q6_qmicro_permute is False
     assert session.q6_qmicro_planar is True
+    assert session.q6_wmma_prefetch_weight is True
+    session.set_q6_wmma_prefetch_weight(False)
+    assert session.q6_wmma_prefetch_weight is False
     assert kv_kwargs["prefill_cached_meta"] is True
     assert kv_kwargs["prefill_global_qrow6"] is True
     assert kv_kwargs["prefill_dense_initial"] is True
