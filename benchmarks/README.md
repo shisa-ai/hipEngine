@@ -52,6 +52,15 @@ and every BF16 output bit, but the actual-weight natural-M512 leaf regresses
 cross-workgroup weight reuse; production stays **551.459 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json).
 
+Source-F16 Q/K/V grouping is likewise closed. A single row-major combined
+contraction is F32-bit exact but models only **2.891 ms** total pp512 saving
+before splitting `[M,Q+K+V]` into the three contiguous production outputs.
+The layout-preserving hipBLASLt `GroupedGemm` alternative exposes zero
+algorithms for the full QKV problem on gfx1151 at both zero and 64-MiB
+workspace. All temporary candidate surfaces were removed; production stays
+**551.459 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json).
+
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
 the range-safe down pack while explicitly preserving the BF16 boundary. Seven
