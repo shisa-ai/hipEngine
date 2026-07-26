@@ -181327,3 +181327,31 @@ Vulkan local sizes verbatim will close the measured gap.
   scratch, and the unchanged absolute quality gate. Production pp512 remains
   roughly **545 tok/s**; the next work must remove about **208 ms** from pp512
   through a genuinely new selected-expert or attention architecture.
+
+## 2026-07-26 — Reject direct-wave Q4 register weight prefetch
+
+- The required lineage audit stopped at the absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. This screen is an
+  in-tree schedule change and copies no external kernel.
+- Added a RED production-geometry CPU-reference parameter for a missing
+  `weight_prefetch` specialization. The exact candidate keeps the production
+  128x32/local128 direct-wave body and D8 activation double buffer, but holds
+  the next decoded 40-byte T16 Q4 K32 record in registers while the current
+  K32 dots execute. It changes no resident bytes, LDS, barriers, dot/K order,
+  output ownership, or BF16 boundary. GREEN passes the uneven/empty-expert
+  oracle and produces the identical actual-layer finite checksum
+  **1114.1769413301445**.
+- Actual layer-1 E256/K3072/N1024+1024 natural-pp512 timing, inclusive of the
+  unchanged D8 pack, uses nine counter-rotated burst-three HIP-event samples.
+  Production measures **6.802111 ms**; prefetch measures **7.270426 ms**,
+  regressing **6.885%** with **0/9** wins. Raw SHA-256 is
+  `3bf7db970412b092eae0da2775ab12ebc43ba8d75fcb6a697f4c8e20769d4362`.
+- Cached `rocprofv3 --kernel-trace` names both intended templates. Production
+  is local128/VGPR88/SGPR128/LDS3072B/scratch0; the candidate is
+  local128/**VGPR104**/SGPR128/LDS3072B/scratch0. The extra live decoded record
+  costs occupancy/register scheduling more than its latency overlap can
+  recover. Trace SHA-256 is
+  `f3d934659fcd228df8b618937c7fb3aca96374c4bb449f17177f5799690f4a2a`.
+- Removed every candidate kernel, wrapper, test, and harness surface; tracked
+  production code/tests are byte-identical to `0fd4982de`. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-wave-weight-prefetch-rejected.json`.
