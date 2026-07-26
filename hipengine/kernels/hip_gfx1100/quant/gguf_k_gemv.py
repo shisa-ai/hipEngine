@@ -43,6 +43,9 @@ _MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT = (
 _MIXED_ATTENTION_PAIR_REUSE_LOCAL32_FIXED_META_VARIANT = (
     "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
 )
+_MIXED_ATTENTION_LOCAL32_Q5_SWAR_PAIR_FIXED_META_VARIANT = (
+    "mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out"
+)
 _MIXED_ATTENTION_Q5_QG_QUANT = (
     "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k"
 )
@@ -131,18 +134,26 @@ def _make_unequal_dual_pack8_wrapper(quant: str, symbol: str):
     return wrapper
 
 
-def _make_wave32x2_wrapper(symbol: str):
+def _make_wave32x2_wrapper(symbol: str, *, require_non_null: bool = False):
     def wrapper(*args, **kwargs) -> None:
         kwargs.setdefault("threads", 32)
-        _launch_wave32x2(symbol, *args, **kwargs)
+        _launch_wave32x2(
+            symbol, *args, require_non_null=require_non_null, **kwargs
+        )
 
     return wrapper
 
 
-def _make_unequal_wave32x2_wrapper(symbol: str):
+def _make_unequal_wave32x2_wrapper(
+    symbol: str,
+    *,
+    require_non_null: bool = False,
+):
     def wrapper(*args, **kwargs) -> None:
         kwargs.setdefault("threads", 32)
-        _launch_unequal_wave32x2(symbol, *args, **kwargs)
+        _launch_unequal_wave32x2(
+            symbol, *args, require_non_null=require_non_null, **kwargs
+        )
 
     return wrapper
 
@@ -261,6 +272,42 @@ gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out = (
         _symbol("gguf_q5_k", "pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out")
     )
 )
+gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out = (
+    _make_wave32x2_wrapper(
+        _symbol(
+            "gguf_q5_k",
+            "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        require_non_null=True,
+    )
+)
+gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_wave32x2_wrapper(
+        _symbol(
+            "gguf_q5_k",
+            "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
+        require_non_null=True,
+    )
+)
+gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out = (
+    _make_unequal_wave32x2_wrapper(
+        _symbol(
+            "gguf_q5_k",
+            "pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        require_non_null=True,
+    )
+)
+gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_unequal_wave32x2_wrapper(
+        _symbol(
+            "gguf_q5_k",
+            "pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
+        require_non_null=True,
+    )
+)
 gguf_q5_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_silu_gemv_bf16_bf16_out")
@@ -308,6 +355,13 @@ gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out = (
     _make_mixed_attention_wrapper(
         "hipengine_gguf_q5_q6_mixed_local32_fixed_meta_attention_pack8_gemv_decode_bf16_f32_out",
         (0, 3),
+    )
+)
+gguf_q5_q6_attention_q5_qg_mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_mixed_attention_wrapper(
+        "hipengine_gguf_q5_q6_mixed_local32_q5_swar_pair_fixed_meta_attention_gemv_decode_bf16_f32_out",
+        (0, 3),
+        require_non_null=True,
     )
 )
 gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out = (
@@ -425,6 +479,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear_pair",
+            "gguf_q5_k",
+            "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "attention_projection_quad",
             _MIXED_ATTENTION_Q5_QG_QUANT,
             _MIXED_ATTENTION_VARIANT,
@@ -460,6 +524,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             _MIXED_ATTENTION_PAIR_REUSE_LOCAL32_FIXED_META_VARIANT,
         ),
         gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_projection_quad",
+            _MIXED_ATTENTION_Q5_QG_QUANT,
+            _MIXED_ATTENTION_LOCAL32_Q5_SWAR_PAIR_FIXED_META_VARIANT,
+        ),
+        gguf_q5_q6_attention_q5_qg_mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out,
         replace=replace,
     )
     register(
@@ -616,7 +690,10 @@ def _launch_wave32x2(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    require_non_null: bool = False,
 ) -> None:
+    if require_non_null and not all((x_ptr, qweight_ptr, out_ptr)):
+        raise ValueError("GGUF Q5_K SWAR pair pointers must be non-zero")
     _validate_wave32x2(rows, in_features, out_features, threads)
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
@@ -641,7 +718,12 @@ def _launch_unequal_wave32x2(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    require_non_null: bool = False,
 ) -> None:
+    if require_non_null and not all(
+        (x_ptr, qweight_a_ptr, qweight_b_ptr, out_a_ptr, out_b_ptr)
+    ):
+        raise ValueError("GGUF Q5_K SWAR pair pointers must be non-zero")
     _validate_wave32x2(rows, in_features, out_features, threads)
     _validate_wave32x2(rows, in_features, out_features_b, threads)
     library = library or build_gguf_k_gemv(load=True)
@@ -938,6 +1020,7 @@ _WRAPPERS = {
         "pack8_gemv_decode_bf16_bf16_out": gguf_q5_k_pack8_gemv_decode_bf16_bf16_out,
         "wave32x2_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out,
         "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out,
+        "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
         "selected_silu_gemv_bf16_bf16_out": gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
@@ -989,6 +1072,7 @@ __all__ = [
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out",
+    "gguf_q5_q6_attention_q5_qg_mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out",
@@ -1005,9 +1089,13 @@ __all__ = [
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pair_wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",

@@ -2,6 +2,11 @@
 
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
+    gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out,
+    gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
+    gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out,
+    gguf_q5_q6_attention_q5_qg_mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out,
     gguf_q5_k_gemv_bf16_bf16_out,
     gguf_q5_k_gemv_bf16_f32_out,
     gguf_q5_k_gemv_f32_f32_out,
@@ -206,6 +211,11 @@ __all__ = [
     "gguf_q3_k_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_gemv_bf16_bf16_out",
     "gguf_q5_k_gemv_bf16_f32_out",
+    "gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_pair_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
+    "gguf_q5_q6_attention_q5_qg_mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_k_gemv_fp16_f32_out",
     "gguf_q4_k_embedding_bf16_out",

@@ -249,6 +249,22 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q6_k",
             "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
         ),
+        # Paired-output SWAR Q5 reconstruction is W7900-only pending an independent gate.
+        (
+            "linear",
+            "gguf_q5_k",
+            "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        (
+            "linear_pair",
+            "gguf_q5_k",
+            "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        (
+            "attention_projection_quad",
+            "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+            "mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
         # Heterogeneous Q5/Q6 pair reuse is W7900-only pending an independent gate.
         (
             "attention_projection_quad",
