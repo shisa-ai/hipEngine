@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna Q6-down 128-column tile] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / a local256 128-column/64-row qmicro body halves output workgroups and doubles dot work per barrier while retaining 32 accumulators/lane and BF16-byte-exact output, but LDS rises **5,632 -> 8,192 B** and actual layer-1 natural-M512 timing regresses **5.0672 -> 5.3894 ms (+6.36%, 0/11 wins)**, so all candidate surfaces are removed and production remains **542.088 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q6-down local256] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / widening the retained 64-column/64-row qmicro body from four to eight wave32s lowers per-lane accumulators **32 -> 16** and VGPR **88 -> 72** with unchanged LDS/scratch and BF16-byte-exact output, but actual layer-1 natural-M512 timing regresses **5.0602 -> 5.9237 ms (+17.07%, 0/11 wins)**, so every candidate surface is removed and production remains **542.088 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`.
 
 - [retained exact gfx1151 Laguna cached-metadata attention production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset pp512 improves **530.447 -> 542.088 tok/s (+2.195%, minimum 542.022)**, 1K/4K improve **1.213%/1.665%**, and cached tracing observes the qualified 12-global-start0/36-global-metadata/144-SWA-metadata policy while cutting global+SWA attention **175.802 -> 160.123 ms (-8.92%, 15.679 ms saved)** with unchanged exact quality/lifecycle; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`.

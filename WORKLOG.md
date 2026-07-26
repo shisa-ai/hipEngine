@@ -180969,3 +180969,28 @@ Vulkan local sizes verbatim will close the measured gap.
   before runtime integration. Production remains **542.088 tok/s** on
   local128. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`.
+
+## 2026-07-26 — Reject Q6 selected-down 128-column tile
+
+- The captured 47-layer routing histogram first closed a 128-row/local256
+  follow-up without code: row64 -> row128 removes only
+  **11,408 -> 10,542 tiles (-7.59%)** across all layers and
+  **247 -> 232 (-6.07%)** on layer 1, less than the preceding local256
+  workgroup penalty. The distinct implemented premise instead doubled column
+  ownership: 128 columns x 64 rows at local256 keeps 32 accumulators per lane,
+  halves output workgroups, and doubles dot work per activation/barrier stage.
+- RED added the cols128/rows64/qmicro case and failed on the missing
+  specialization. GREEN generalized the column tile and passed the
+  uneven/empty-expert CPU-reference gate. Actual layer-1 output has zero BF16
+  mismatches versus production and checksum **509500838004**.
+- Eleven counter-rotated burst-five actual M512 samples regress production
+  **5.067215 -> 5.389426 ms (+6.359%, 0/11 wins)**. Raw SHA-256 is
+  `65dab519ea4e6641bb3cdf782ac3d502cf4650b0bda2648e2cfce04ade0fbbae`.
+- Cached tracing keeps candidate VGPR88/SGPR128/scratch0 but raises LDS
+  **5,632 -> 8,192 B** and uses local256. Halving workgroups does not repay
+  the wider shared weight tile/workgroup cost. Trace SHA-256 is
+  `564dba79b71c82adbc7d9a52c24e32409fec9c906fa39836732b672d4773ee15`.
+- Removed the generalized template, HIP export, Python selector, test
+  parameter, and harness mode before integration. Production remains
+  **542.088 tok/s** with the 64-column/local128 body. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`.
