@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T07:55:00+09:00",
+  "kind": "hipengine_laguna_q4_layer_risk_candidate",
+  "status": "quality_pending_candidate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "03dd8083a",
+    "candidate_tracked_dirty": true,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "selected_runtime_mode": "mmq128x32_absmax2_layer_gate_d4_up_d8",
+    "production_rollback": "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+    "classifier": "one GPU scalar: any producer-row BF16 absmax >= 2.0",
+    "risky_layer": "production dual D8 gate/up",
+    "safe_layer": "specialized D4 gate plus specialized D8 up",
+    "down_boundary": "GPU-conditional interleaved-or-separate BF16 SiLU plus range-safe D4 pack",
+    "resident_sidecar_bytes": 0,
+    "policy_scope": "global activation-only threshold; no prompt, token identity, layer identity, output, or K-block policy"
+  },
+  "correctness": {
+    "q4_cpu_reference_and_focused_bundle": "39 passed",
+    "risk_scalar_matches_host_absmax": true,
+    "safe_d4_role_matches_standalone_bits": true,
+    "conditional_silu_pack_matches_both_layout_specific_packers": true,
+    "full_model_next_token_id": 2930,
+    "absolute_extended_512_quality": "pending clean revision"
+  },
+  "full_model_protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --mode production=mmq128x32_d8_f32_wavecols_direct_doublebuf --mode candidate=mmq128x32_absmax2_layer_gate_d4_up_d8 --require-cached-build --output /tmp/laguna-q4-layer-risk-ab7.json",
+    "timing": "one resident owner, mode warmup, seven alternating synchronized pp512 repetitions",
+    "matrix_rows": 512,
+    "attention_rows": 128
+  },
+  "full_model_results": {
+    "production_samples_tok_s": [
+      588.7628388846582,
+      616.7361823109685,
+      624.725690435451,
+      618.4775823830178,
+      617.4206489738276,
+      618.3796039071347,
+      618.3828811867884
+    ],
+    "candidate_samples_tok_s": [
+      616.3417207227172,
+      618.7132801856696,
+      623.7261004011984,
+      621.463405171658,
+      620.3578866217392,
+      621.7493302674127,
+      620.9491044797712
+    ],
+    "production_median_tok_s": 618.3796039071347,
+    "candidate_median_tok_s": 620.9491044797712,
+    "throughput_change_percent": 0.415521559,
+    "production_median_wall_ms": 827.970387065,
+    "candidate_median_wall_ms": 824.544228031,
+    "median_wall_saved_ms": 3.426159034,
+    "next_token_id": 2930
+  },
+  "rejected_alternatives": [
+    {
+      "name": "per-producer-row mixed D4/D8 MMQ",
+      "result": "5.5937 ms mixed gate versus 3.6002 ms specialized D8 role in trace; removed"
+    },
+    {
+      "name": "one dual grid with workgroup-uniform dynamic D4/D8 arithmetic",
+      "result": "593.700 -> 481.054 tok/s (-18.97%); removed"
+    }
+  ],
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q4-layer-risk-rocprof -- .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 1 --mode production=mmq128x32_d8_f32_wavecols_direct_doublebuf --mode candidate=mmq128x32_absmax2_layer_gate_d4_up_d8 --require-cached-build --output /tmp/laguna-q4-layer-risk-rocprof.json",
+    "risk_pack": "local128, VGPR16, SGPR128, LDS512 B, scratch0",
+    "conditional_mmq": "local128, VGPR88, SGPR128, LDS3072 B, scratch0",
+    "conditional_silu_pack": "local128, VGPR16, SGPR128, LDS512 B, scratch0",
+    "trace_sha256": "a9a703185910506e15dde7f66926da620f275c022c407ffa1d460e456ec4b1ac",
+    "child_sha256": "5e6ee14a4db8acaa4cb8a5124ed672092d84b5ec5de2800f0436fb252ed0366b"
+  },
+  "source_runs": [
+    {
+      "path": "/tmp/laguna-q4-layer-risk-ab7.json",
+      "sha256": "bb5a881453d7b6f5c0bd71ff03d72ebb98d6c4e13fa2905832f9f3500eb60b00"
+    }
+  ],
+  "decision": {
+    "retain_candidate_surface": true,
+    "promote": false,
+    "reason": "the layer-uniform specialized route is a small positive complete-wall result, but changed D4 arithmetic must pass the clean extended-512 absolute KL/top-1 gate",
+    "next_action": "commit the default-off candidate and run q4_layer_risk_absolute on all ten extended canonical streams"
+  }
+}

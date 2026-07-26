@@ -183735,3 +183735,42 @@ Vulkan local sizes verbatim will close the measured gap.
 - Extended the off-path diagnostic to retain each layer's real compact route
   map and report active-expert plus padded-MMQ32-row fractions for the fixed
   absmax rule. This is a read-only economics gate; no runtime dispatch changed.
+
+## 2026-07-27 — Reject sparse and dynamic Q4 repair bodies
+
+- The five-prompt calibration routing maps expand the **19.685%** producer-row
+  risk rate to **30.266%** active experts and **26.784%** padded MMQ32 rows.
+  Only **135/235 (57.45%)** layer/prompt pairs have no repair rows, and ten
+  repair every row. A second sparse gate-weight pass cannot preserve enough of
+  the role-split saving.
+- A direct per-row mixed D4/D8 gate body is also rejected. Cached tracing
+  measures the mixed gate at **5.5937 ms/layer** versus **3.6002 ms/layer**
+  for the specialized D8 role, despite the same VGPR88/SGPR128/scratch0
+  resources. The row-dependent arithmetic branch serializes the hot body.
+- A follow-up one-grid variant makes the risk decision uniform across each
+  workgroup but still carries both arithmetic bodies. It regresses a complete
+  pp512 pair **593.700 -> 481.054 tok/s (-18.97%)** and is removed. Dynamic
+  D4/D8 arithmetic inside the MMQ template is closed.
+
+## 2026-07-27 — Add quality-pending whole-layer Q4 risk gate
+
+- The D8 activation pack now emits one GPU `any_absmax_ge_2` scalar. Risky
+  layers run the existing dual-D8 specialization; safe layers run the
+  existing D4-gate and D8-up role specializations. A conditional-layout fused
+  SiLU/down pack is byte-exact to both existing layout-specific packers. No
+  host synchronization, resident weight sidecar, prompt/token/layer identity,
+  output-conditioned rule, or K-block policy is added.
+- Seven alternating complete pp512 pairs improve the median
+  **618.380 -> 620.949 tok/s (+0.416%)**, saving **3.426 ms**; every sample
+  selects token 2930. This is quality-pending and does not change production,
+  which remains **632.618 tok/s / 809.335 ms**.
+- The Q4 CPU-reference/focused bundle reports **39 passed**. Cached
+  `rocprofv3 --kernel-trace` records the risk pack at local128/VGPR16/LDS512B,
+  the specialized conditional MMQ bodies at local128/VGPR88/LDS3072B, and
+  the conditional fused pack at local128/VGPR16/LDS512B, all scratch0. Trace
+  SHA-256 is `a9a70318...1ac`.
+- Added the clean `q4_layer_risk_absolute` comparison: all ten canonical
+  streams are extended to exactly 512 rows, matrix chunk is 512, attention
+  remains independently tiled at 128, and admission requires the existing
+  three-repetition/320-step absolute KL/top-1 contract. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-quality-pending.json`.

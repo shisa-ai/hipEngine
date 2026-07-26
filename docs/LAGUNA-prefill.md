@@ -1513,33 +1513,41 @@ Immediate execution queue:
    model path and the comparisons run off-path. This clears the **<=25%**
    economic gate for a GPU sparse-repair candidate. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json).
+41. **Sparse second-pass economics rejected:** the same real routing maps show
+   that a **19.685%** producer-row repair rate expands to **30.266%** of active
+   experts and **26.784%** of padded MMQ32 rows. Only **57.45% (135/235)** of
+   layer/prompt pairs have no repair rows, while ten require every row. A
+   second sparse weight pass therefore gives up too much of the original
+   15-ms role-split saving. The retained opportunity is a whole-layer GPU
+   gate: use specialized D4-gate/D8-up only when the layer has no risk rows,
+   otherwise run production dual D8.
+42. **Quality-pending layer gate:** the D8 activation pack now atomically
+   produces one `any_absmax_ge_2` scalar. Risky layers execute the unchanged
+   dual-D8 body; safe layers execute the unchanged single-role D4 gate and D8
+   up bodies. A conditional-layout fused SiLU/down pack preserves both
+   existing byte-exact BF16 boundaries. Seven alternating pp512 pairs improve
+   **618.380 -> 620.949 tok/s (+0.416%)**, saving **3.426 ms** at the medians;
+   token 2930 is unchanged. Cached tracing records the intended risk pack,
+   risky-only/safe-only specialized MMQ templates, and conditional pack with
+   zero scratch. Per-row mixed arithmetic is removed after a traced
+   **5.594 vs 3.600 ms** gate regression, and a one-grid uniform dynamic
+   arithmetic variant is removed after **593.700 -> 481.054 tok/s
+   (-18.97%)**. Production remains **632.618 tok/s** until the extended-512
+   absolute gate passes. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-layer-risk-quality-pending.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-quality-pending.json).
 
 ### Next exact and quality-gated attacks
 
-The projection-role screen cleared its 10-ms economic gate. Its quality gate
-now decides whether repair work is needed:
+The producer-row screen has now narrowed repair to one bounded whole-layer
+candidate:
 
 1. M512-wide D4 cleanup is complete.
-2. Retain D8 and prototype a bounded
-   producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
-   separately compacted risk-row kernel adds the D8-minus-D4 correction
-   before the existing BF16 SiLU boundary, and overflow falls back to D8.
-   Risk classification may use activation statistics only. No per-K32 branch,
-   output-conditioned policy, global partial spill, or resident weight
-   sidecar is allowed. The first gate is now implemented as an off-path
-   calibration harness: production D8 preserves every hidden state, then D4
-   and D8 role projections are compared on the real 512-row layer inputs.
-   It reports global threshold sweeps in repair-row fraction, weighted SiLU
-   error-mass coverage, and severe-row coverage. Thresholds are fixed across
-   calibration and heldout prompts; they are not derived from each prompt's
-   quantiles. Proceed to a GPU repair candidate only if one activation-only
-   threshold captures useful error at no more than **25%** repaired producer
-   rows. That gate has passed with the fixed `row_abs_max >= 2.0` rule;
-   first quantify per-layer active-expert and MMQ32 padded-tile coverage. Only
-   implement GPU compaction if row sparsity also preserves enough physical
-   weight/tile sparsity to keep a positive share of the measured role-split
-   wall saving.
-3. Remeasure a clean production trace after candidate cleanup. Reopen another
+2. Run `q4_layer_risk_absolute` on all ten canonical streams extended to 512
+   rows, three balanced repetitions, and 320 teacher-forced logits. Promote
+   only at KL <= 0.05 and top-1 >= 90%; otherwise remove the candidate,
+   conditional kernels, runtime mode, and category lane immediately.
+3. Whether admitted or rejected, remeasure a clean production trace after
+   cleanup. Reopen another
    exact family only if the trace gives it at least a **5% perfect-removal
    ceiling** or a newly supported hipBLASLt/grouped-contraction algorithm
    changes the prior premise.
@@ -3401,6 +3409,8 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-quality-pending.json`
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-selective-repair-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-selected-down-integer-wmma-candidate.json`

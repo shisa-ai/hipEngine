@@ -415,6 +415,13 @@ def test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified() -> None:
         selected_gate_up_mode="mmq128x32_role_gate_d8_up_d4",
         selected_down_mode=production["selected_down_mode"],
     )
+    assert should_fuse(
+        requested=True,
+        selected_gate_up_mode=(
+            "mmq128x32_absmax2_layer_gate_d4_up_d8"
+        ),
+        selected_down_mode=production["selected_down_mode"],
+    )
     assert not should_fuse(requested=False, **production)
     assert not should_fuse(
         requested=True,
@@ -534,6 +541,13 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
             "mmq128x32_role_gate_d8_up_d4",
         )
         == "mmq128x32_role_gate_d8_up_d4"
+    )
+    assert (
+        resolve_laguna_selected_gate_up_mode(
+            "hip_gfx1151",
+            "mmq128x32_absmax2_layer_gate_d4_up_d8",
+        )
+        == "mmq128x32_absmax2_layer_gate_d4_up_d8"
     )
     with pytest.raises(ValueError, match="unsupported Laguna selected gate/up mode"):
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unsafe")
