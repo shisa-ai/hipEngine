@@ -14,11 +14,13 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("laguna_router.hip")
 _OUTPUT_NAME = "laguna_router.so"
 _SYMBOL = "hipengine_laguna_sigmoid_correction_topk_f32"
+_COMPACT_WAVE32_SYMBOL = "hipengine_laguna_sigmoid_correction_topk_compact_wave32_f32"
 _PERSISTENT_WAVE_TOP10_SYMBOL = (
     "hipengine_laguna_router_topk_bf16_f32w_correction_persistent_wave_top10"
 )
 _WEIGHTED_SUM_ROWS_SYMBOL = "hipengine_laguna_weighted_sum_rows_bf16_f32w"
 _THREADS = 256
+_COMPACT_WAVE32_THREADS = 32
 _MAX_HIDDEN_SIZE = 3_072
 _MAX_EXPERTS = 256
 _MAX_TOP_K = 16
@@ -154,6 +156,61 @@ def laguna_sigmoid_correction_topk_f32(
         runtime.check(int(err))
 
 
+def laguna_sigmoid_correction_topk_compact_wave32_f32(
+    logits_ptr: int,
+    correction_bias_ptr: int,
+    routing_scores_ptr: int,
+    selection_scores_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    scaled_routing_ptr: int,
+    tokens: int,
+    num_experts: int,
+    top_k: int,
+    routed_scaling_factor: float,
+    *,
+    threads: int = _COMPACT_WAVE32_THREADS,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply the exact c=1 E256/top10 correction selector in one wave32."""
+
+    if int(tokens) != 1:
+        raise ValueError("compact-wave32 Laguna router is decode-only and requires tokens == 1")
+    if int(num_experts) != _MAX_EXPERTS:
+        raise ValueError(f"compact-wave32 Laguna router requires num_experts == {_MAX_EXPERTS}")
+    if int(top_k) != 10:
+        raise ValueError("compact-wave32 Laguna router requires top_k == 10")
+    scale = float(routed_scaling_factor)
+    if not math.isfinite(scale) or scale <= 0.0:
+        raise ValueError("routed_scaling_factor must be finite and positive")
+    if int(threads) != _COMPACT_WAVE32_THREADS:
+        raise ValueError(
+            f"compact-wave32 Laguna router requires {_COMPACT_WAVE32_THREADS} threads"
+        )
+    library = library or build_laguna_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _COMPACT_WAVE32_SYMBOL, _ARGTYPES, ctypes.c_int)
+    err = fn(
+        logits_ptr,
+        correction_bias_ptr,
+        routing_scores_ptr,
+        selection_scores_ptr,
+        selected_ptr,
+        routing_ptr,
+        scaled_routing_ptr,
+        int(tokens),
+        int(num_experts),
+        int(top_k),
+        scale,
+        int(threads),
+        int(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10(
     hidden_ptr: int,
     weight_ptr: int,
@@ -279,6 +336,16 @@ def register_laguna_router_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "laguna_sigmoid_router_topk",
+            "f32",
+            "correction_bias_compact_wave32",
+        ),
+        laguna_sigmoid_correction_topk_compact_wave32_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "laguna_router_topk",
             "f32",
             "bf16_hidden_correction_bias_persistent_wave_top10",
@@ -325,6 +392,7 @@ register_laguna_router_kernels()
 __all__ = [
     "build_laguna_router",
     "laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10",
+    "laguna_sigmoid_correction_topk_compact_wave32_f32",
     "laguna_sigmoid_correction_topk_f32",
     "laguna_weighted_sum_rows_bf16_f32w",
     "plan_laguna_router_build",

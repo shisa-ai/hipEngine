@@ -3,6 +3,7 @@
 from hipengine.kernels.hip_gfx1100.moe.laguna_router import (
     build_laguna_router,
     laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10,
+    laguna_sigmoid_correction_topk_compact_wave32_f32,
     laguna_sigmoid_correction_topk_f32,
     plan_laguna_router_build,
     register_laguna_router_kernels,
@@ -52,6 +53,7 @@ __all__ = [
     "build_laguna_router",
     "build_qwen35_moe_group_scatter",
     "laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10",
+    "laguna_sigmoid_correction_topk_compact_wave32_f32",
     "laguna_sigmoid_correction_topk_f32",
     "build_qwen35_router",
     "plan_laguna_router_build",
