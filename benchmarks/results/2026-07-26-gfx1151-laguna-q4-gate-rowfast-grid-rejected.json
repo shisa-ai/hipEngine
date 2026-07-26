@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T17:05:05+09:00",
+  "kind": "hipengine_laguna_q4_gate_rowfast_grid_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1
+  },
+  "workload": {
+    "rows": 512,
+    "top_k": 10,
+    "active_experts": 228,
+    "compact_rows": 5120,
+    "max_expert_rows": 232,
+    "timing": "counter-rotated HIP events",
+    "warmups": 3,
+    "samples": 12,
+    "burst": 3,
+    "scope": "BF16 producer-row DS4 pack plus one dual gate/up MMQ launch"
+  },
+  "candidate": {
+    "change": "swap blockIdx axes so routed-row tiles run fastest within each output-column tile",
+    "unchanged": [
+      "resident T16 bytes",
+      "128x32 local128 geometry",
+      "D8 split16 arithmetic",
+      "direct per-column decode",
+      "activation double buffering",
+      "K accumulation and BF16 store order"
+    ]
+  },
+  "results": {
+    "production_ms": 6.908966064453125,
+    "row_tile_fast_ms": 6.921503067016602,
+    "row_tile_fast_delta_percent": 0.1814599,
+    "row_tile_fast_over_production_speedup": 0.998188688,
+    "production_checksum_f64": 1114.1769413301445,
+    "row_tile_fast_checksum_f64": 1114.1769413301445
+  },
+  "correctness": {
+    "focused_result": "12 passed",
+    "actual_weight_bf16_equal": true
+  },
+  "decision": {
+    "gate": "positive actual-weight natural-M512 leaf before runtime integration",
+    "result": "fail",
+    "reason": "axis order alone does not convert routed-weight temporal locality into a measurable cache or scheduler win",
+    "candidate_surfaces_removed": true,
+    "production_changed": false,
+    "production_pp512_tok_s": 551.459
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rowfast --warmups 3 --samples 12 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/2026-07-26-gfx1151-laguna-q4-gate-rowfast-leaf.json",
+  "raw_sha256": "22e6a7ba6f420d4b6af4094ce6df1d7ba0654372784516f6fbb095e5fffff4ca",
+  "repo": {
+    "base_revision": "54b09eef10da28617c2a0fff3e482a4b85726c84"
+  }
+}

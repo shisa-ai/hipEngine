@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna Q4 gate/up row-fast grid] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / swapping the launch axes preserves every BF16 bit but regresses the actual-weight natural-M512 leaf **6.908966 -> 6.921503 ms (+0.181%)**; all candidate surfaces are removed and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json`.
+
 - [rejected and removed exact gfx1151 Laguna qrow3 attention] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the F32-bit-exact three-query point regresses the weighted cached-metadata mix **13.3577 -> 13.7874 ms (+3.22%)**, loses **7.31%** to the qualified production qrow6 policy, and only ties the actual global-start0 body; all candidate surfaces are removed and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q4 gate/up rows40/48] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / frozen route tiles fall **14,034 -> 12,866/12,189 (-8.32%/-13.15%)**, but BF16-exact actual-weight natural-M512 leaves regress rows32 **6.851842 -> 7.016511 ms (+2.40%)** and **6.824466 -> 6.941421 ms (+1.71%)**; all candidate surfaces are removed and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rows40-48-rejected.json`.
