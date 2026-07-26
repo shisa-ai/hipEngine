@@ -70,9 +70,11 @@ compare/select sign operations with load-free IEEE-754 sign-bit insertion while
 preserving all ownership, FMA, reduction, BF16, and launch boundaries.
 Repository codegen contracts static instructions **527 -> 499** and logical
 SGPR **28 -> 18**; layers-1/45 producer and inclusive producer+reducer event and
-wall improve **6.20-9.15%** with exact bytes. Its explicit default-off runtime
-schedule now passes full-state and cached-trace admission; clean-context and
-complete-category gates remain pending.
+wall improve **6.20-9.15%** with exact bytes. Full-state and cached-trace
+admission also pass, but both frozen short process orders fail end-to-end guards:
+span regresses **0.571%/1.931%**, and order-A profiled-child throughput regresses
+**1.124%**. Runtime selection is removed, categories are skipped, and the
+primitive remains diagnostic.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -668,8 +670,8 @@ horizon positive and prefill/TTFT inside guard. gfx1100 now defaults wave4;
 `serial_weighted` and all unmeasured backends remain exact fallback. Evidence:
 [`...p0-iq3-wave4-retained.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-retained.json).
 
-A subsequent load-free sign-bit sibling is now runtime-correctness-admitted
-through an explicit default-off schedule. It keeps the same local32
+A subsequent load-free sign-bit sibling remains a separately registered
+runtime-unselected diagnostic primitive. It keeps the same local32
 `(route, output)` grid, four K256 accumulators, shuffle trees, 0..3 partition
 addition, BF16 route store, and slot-order weighted reducer. Exhaustive
 all-selector/grid tests are exact; repository Clang-22 codegen removes all 32
@@ -677,16 +679,17 @@ sign compares/cndmasks, contracts **527 -> 499 instructions** and logical SGPR
 **28 -> 18**, and stays in the allocated VGPR88/LDS0/scratch0 class. On actual
 layers 1/45, producer event/wall improves **8.12-8.17% / 7.33-9.15%** and
 inclusive producer+reducer improves **6.42-8.55% / 6.20-7.80%**, with zero
-route/reduced mismatches. Shared-weight execution is exact for full logits/IDs,
-all 48 hidden and 47 routed boundaries, active K/V and every `KVLiveSpans`
-field, reset/re-prefill, ownership, and lifecycle through 16 transitions.
-Cached full-model tracing records **45 candidate producers + 47 unchanged
-reducers/token**, zero retained-wave4 decode producers, and unchanged **723
-model kernels/token** at local32/grid `98304 x 10`/VGPR88/LDS0/scratch0. The
-retained wave4 schedule remains the gfx1100 default until both clean context
-orders and both complete category orders pass. Evidence:
+route/reduced mismatches. Its temporary default-off runtime schedule passed
+shared-weight 16-transition full state and cached **45 producer + 47 unchanged
+reducer / 723-kernel** topology. Clean profiling also reduces producer and
+inclusive time in both short orders by **2.43-3.05% / 2.24-2.74%**, but violates
+the frozen end-to-end guards: dispatch span regresses **0.571%/1.931%**, and
+order-A profiled-child throughput regresses **1.124%**. The any-failure rule
+stops the remaining profile matrix and all categories; runtime schedule/CLI
+selection is removed while retained wave4 remains canonical. Evidence:
 [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-correctness.json),
-[`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-runtime-correctness.json).
+[`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-runtime-correctness.json),
+[`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json).
 
 The experiment definitions are:
 
@@ -1168,7 +1171,7 @@ and [`retained`](../benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-grid6
 | Does exact GQA3 value reuse accelerate the SWA reducer? | [`...swa-gqa3-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json): no. All F32 context and BF16 gated outputs are byte-exact, but reducing **72 -> 24** workgroups regresses every layer-1/46/47 live-70/128/257/512 row by **61.16-89.95%**; the candidate is removed before runtime integration. |
 | Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
-| Does load-free IQ3 sign-bit insertion pass runtime correctness admission? | [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-runtime-correctness.json): yes, default-off. Exhaustive selector/grid and actual outputs are exact; codegen contracts **527 -> 499** instructions; layers-1/45 producer and inclusive event/wall improve **6.20-9.15%**; and 16-transition full state plus cached **45 producer/47 reducer/723-kernel** topology pass. Retained wave4 stays default pending context/category gates. |
+| Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The [post-local32 matched audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) measures hipEngine **62.354/61.732 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **3.03%/4.35%** is required. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1216,12 +1219,12 @@ query-head workgroups and passes primitive, codegen, actual-weight, full-state,
 and cached-trace gates, but its complete clean context-512 reducer/SWA regresses
 **0.073%/0.247%**. The frozen gate rejects runtime promotion; the selector and
 capability are removed, categories are skipped, and local128 remains canonical.
-The subsequent load-free exact IQ3 sign-bit insertion sibling is now
-runtime-correctness-admitted through an explicit default-off K1024 wave4
-schedule. Exhaustive selector/grid, repository-codegen, cached-resource,
-first/last actual-weight, shared-weight 16-transition full-state, and cached
-full-model trace gates all pass. The trace records 45 candidate producers and 47
-unchanged weighted reducers/token, zero retained-wave4 decode producers, and the
-same 723 model kernels/token. The retained wave4 schedule remains canonical;
-both clean context orders must pass before complete categories, and no default
-or topline claim is made here.
+The subsequent load-free exact IQ3 sign-bit insertion sibling passes
+primitive, codegen, actual-weight, shared-weight 16-transition full-state, and
+cached 45-producer/47-reducer/723-kernel trace gates. Its frozen clean gate does
+not pass: both short orders improve the targeted producer, inclusive family,
+and kernel sum, but dispatch span regresses **0.571%/1.931%** and order-A
+profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Per the
+predeclared any-failure rule, remaining profiles and categories are skipped;
+the runtime schedule/CLI route is removed, the primitive remains diagnostic,
+and retained wave4 stays canonical at **61.732 tok/s**.
