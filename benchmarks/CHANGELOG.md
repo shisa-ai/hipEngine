@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna Q6 qmicro production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral qmicro records preserve the 3,360-byte T16 tile and every BF16 result; clean selector-unset pp512 improves **526.451 -> 530.447 tok/s (+0.759%, minimum 525.864)**, 1K/4K improve **1.127%/0.918%**, and cached tracing cuts Q6 selected down **126.594 -> 123.473 ms (-2.465%)** plus total selected down **203.923 -> 200.510 ms (-1.673%)** with local128/VGPR88/LDS5,632B/scratch0; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json`.
+
 - [retained exact gfx1151 Laguna Q6 qmicro candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 output while actual layer-1 natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**; gfx1151 expert-down defaults to qmicro pending clean production publication, while the headline remains **526.451 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q6-down paired-scale decode] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / loading each FP16 block multiplier once for two adjacent Q6 scales is BF16-byte exact and leaves local128/VGPR88/LDS5,632B unchanged, but five-pair pp512 is noise at **529.210 -> 529.334 tok/s (+0.023%, 3/5 wins)** and traced Q6 regresses **126.899 -> 126.947 ms (+0.038%)**, so every candidate surface is removed and production remains **526.451 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json`.

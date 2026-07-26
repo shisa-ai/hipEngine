@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_qmicro_production",
+  "status": "retained_production",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 77461325460
+  },
+  "repo": {
+    "revision": "7aa0e09851a5c5a396bdd5ae306f6305cd7d57bd",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_Q6_QMICRO=True",
+    "scope": "sparse ffn_down_exps Q6 tensors on gfx1151 only",
+    "layout": "unchanged 288-byte d/scales metadata plus byte-neutral [K32][col4][K4][QL8,QH4] 12-byte records",
+    "tile_bytes": 3360,
+    "cache_policy": "existing legacy repacked-cache fingerprint remains valid; expert Q6 payloads convert once on host before upload",
+    "fallbacks": [
+      "explicit q6_qmicro=False session rollback",
+      "root Q6 lm_head",
+      "gfx1100 and unmeasured backends"
+    ],
+    "arithmetic": "unchanged Q6 decode, dot products, FP32 accumulation order, and BF16 boundary"
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-qmicro-production-clean.json",
+    "pp512_samples_tok_s": [
+      525.8639152214366,
+      530.4472032965276,
+      533.1470834570944
+    ],
+    "pp512_median_tok_s": 530.4472032965276,
+    "pp512_min_tok_s": 525.8639152214366,
+    "pp1024_samples_tok_s": [
+      483.76565923435277,
+      473.11793886698615,
+      472.8657178469232
+    ],
+    "pp1024_median_tok_s": 473.11793886698615,
+    "pp4096_samples_tok_s": [
+      387.96942146380525,
+      381.37524369798524,
+      380.88614785450426
+    ],
+    "pp4096_median_tok_s": 381.37524369798524,
+    "previous_production_pp512_tok_s": 526.4508060955051,
+    "pp512_change_percent": 0.7591207297529712,
+    "pp1024_change_percent": 1.1267511638330063,
+    "pp4096_change_percent": 0.9182713530824893,
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "load_seconds_excluded": 82.46531705593225,
+    "raw_sha256": "005736d891c6166ac788187a557b54db4daf49228e15e3f021430df96e1b9c80"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-qmicro-production-rocprof -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-qmicro-production-rocprof.json",
+    "pp512_tok_s": 535.005965,
+    "pp512_dispatches": 1886,
+    "pp512_synchronized_wall_ms": 956.998675,
+    "pp512_kernel_span_ms": 952.619146,
+    "pp512_kernel_sum_ms": 941.469180,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 313.356608,
+      "selected_q4_q6_down": 200.510006,
+      "global_attention": 33.443118,
+      "swa_attention": 142.359156,
+      "source_f16_projection": 125.279982,
+      "dense_shared_quant_projection": 52.951965,
+      "router": 23.222905,
+      "activation_reduce_residual": 17.763218,
+      "norm_rope_gate": 24.385447,
+      "other": 5.241708,
+      "prefill_kv_write": 1.746038,
+      "lm_head_argmax": 1.172080,
+      "embedding": 0.036949
+    },
+    "selected_down_split_ms": {
+      "q8_1_activation_pack": 4.971534,
+      "q6_qmicro": 123.473313,
+      "q4": 72.065159
+    },
+    "previous_selected_down_ms": 203.922621,
+    "selected_down_change_percent": -1.6734852579204484,
+    "previous_q6_ms": 126.593722,
+    "q6_change_percent": -2.4649002736486403,
+    "q6_kernel": "gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,true,false,128,64,true>",
+    "q6_resources": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 5632,
+      "scratch_bytes": 0
+    },
+    "child_sha256": "c36aaa981802ac31f6f981f9f9f7e240336257f7831f4bf41daf29646c51a776",
+    "trace_sha256": "38cbd8ed5b08e2c4b6bf5a060f140e9f731630690afe16bb9f1ff44ec12d275e",
+    "summary_sha256": "09156ffc903f0f5461d63c1f6e145a61725426a2e02e5edcbe60c462eabae407"
+  },
+  "correctness": {
+    "transfer_basis": "Every qmicro direct, grouped, and MMQ consumer is BF16-byte identical to legacy T16, so the admitted full-model quality and lifecycle packet transfers without a new approximation.",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 530.4472032965276,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 233.79472849291882,
+    "next_measured_bottlenecks": [
+      "selected Q4 gate/up: 313.357 ms",
+      "selected Q4/Q6 down: 200.510 ms",
+      "global plus SWA attention: 175.802 ms"
+    ]
+  }
+}

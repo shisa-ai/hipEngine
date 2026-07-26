@@ -180767,3 +180767,55 @@ Vulkan local sizes verbatim will close the measured gap.
   Current production remains the clean **526.451 tok/s** packet until this
   candidate is committed and republished selector-unset. Next: clean
   512/1K/4K, full Q6 trace, then rebuild the bottleneck table.
+
+## 2026-07-26 — Publish byte-neutral Q6 qmicro production
+
+- Ran clean committed revision
+  `7aa0e09851a5c5a396bdd5ae306f6305cd7d57bd` selector-unset with:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_long_context_profile.py
+  --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build
+  --output /tmp/laguna-q6-qmicro-production-clean.json`.
+- Clean pp512 samples are **525.864/530.447/533.147 tok/s**, median
+  **530.447 tok/s**, minimum **525.864 tok/s**. This improves the preceding
+  **526.451 tok/s** production row by **0.759%**. Clean 1K is
+  **473.118 tok/s (+1.127%)** and 4K is **381.375 tok/s (+0.918%)**.
+  Tokens remain 2930/95/7772, repeats and final positions are exact, and all
+  tracked allocations/bytes return to zero. Raw SHA-256 is
+  `005736d891c6166ac788187a557b54db4daf49228e15e3f021430df96e1b9c80`.
+- Prebuilt outside profiling, then ran:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  rocprofv3 --kernel-trace --output-format csv
+  -d /tmp/laguna-q6-qmicro-production-rocprof --
+  .venv/bin/python3 -u scripts/laguna_long_context_profile.py
+  --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build
+  --output /tmp/laguna-q6-qmicro-production-rocprof.json`.
+  The trace child reaches **535.006 tok/s** at pp512 with 1,886 dispatches,
+  **952.619 ms** kernel span, and **941.469 ms** kernel sum. Q6 selected down
+  falls **126.594 -> 123.473 ms (-2.465%)**, total selected down falls
+  **203.923 -> 200.510 ms (-1.673%)**, and the QMICRO body is observed at
+  local128/VGPR88/SGPR128/LDS5,632B/scratch0. Gate/up is **313.357 ms**,
+  global+SWA attention **175.802 ms**, source-F16 **125.280 ms**,
+  dense/shared **52.952 ms**, and router **23.223 ms**.
+- Trace-child, trace-CSV, and summary SHA-256 are respectively
+  `c36aaa981802ac31f6f981f9f9f7e240336257f7831f4bf41daf29646c51a776`,
+  `38cbd8ed5b08e2c4b6bf5a060f140e9f731630690afe16bb9f1ff44ec12d275e`,
+  and `09156ffc903f0f5461d63c1f6e145a61725426a2e02e5edcbe60c462eabae407`.
+  Qmicro is BF16-byte exact, so the existing absolute quality packet transfers:
+  max KL **0.049542582**, top-1 **316/320**, category minimum **96.875%**,
+  Poolside/decode/determinism/lifecycle pass.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json`
+  and refreshed the benchmark rollup, changelog, kernel catalog, refactor
+  trigger, and `docs/LAGUNA-prefill.md`. Current production is
+  **530.447 tok/s**. Reaching 700 now requires **233.795 ms** from the clean
+  wall; the next distinct exact screen is a three-wave-per-KV-head,
+  three-query-heads-per-wave cooperative attention geometry.
