@@ -153,14 +153,14 @@ def test_laguna_mixed_q6_fixed_metadata_default_is_gfx1100_only_and_rollbackable
     assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1151")
 
 
-def test_laguna_q4_lm_head_local32_fixed_metadata_is_explicit_gfx1100_only() -> None:
+def test_laguna_q4_lm_head_local32_fixed_metadata_defaults_on_with_rollback() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA", None
-    ) is False
+    ) is True
     assert backend_package_capability(
         "hip_gfx1151", "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA", None
     ) is None
-    assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100")
+    assert resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100")
     assert resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100", True)
     assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100", False)
     assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1151", True)

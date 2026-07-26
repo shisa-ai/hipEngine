@@ -1236,13 +1236,15 @@ recoverable from the linked compact artifacts, changelog, and
 
 ### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-26
 
+Last updated: **2026-07-26**.
+
 **Status: exact dense decode, P0 IQ3 wave4 route/output ownership, P2 exact
 split attention plus SWA tile16 scores, P4.1 split-reducer+gate, current-P4 head
 RMSNorm+RoPE+BF16-KV, wave-local exact SWA split reduction, expanded-magnitude
 IQ2 gate/up, raw-Q5 wave32x2 fixed-metadata loads, all-local32 Q5/Q6 plus
-retained local128 Q6/Q8 attention-projection quads, token4 SWA, raw-Q6
-attention pairing, and aggregate MoE-tail plus next-RMS are the retained W7900
-target-only AR default.**
+retained local128 Q6/Q8 attention-projection quads, exact local32 Q4 LM head,
+token4 SWA, raw-Q6 attention pairing, and aggregate MoE-tail plus next-RMS are
+the retained W7900 target-only AR default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1333,6 +1335,9 @@ slot-order reducer.
 | Local128 fixed-Q6 mixed-projection matched control | 42.966 | 1.938 s | 60.900 | 7.056 | 12.635 |
 | Exact all-local32 Q5/Q6 mixed projections | **42.883** | **1.938 s** | **61.732** | **7.055** | **12.650** |
 | All-local32 mixed-projection change vs matched control | **-0.192%** | **+0.000%** | **+1.367%** | **-0.025%** | **+0.118%** |
+| Local128 Q4 LM-head matched control | 42.893 | 1.941 s | 61.675 | 7.055 | 12.650 |
+| Exact local32 Q4 LM head | **42.804** | **1.941 s** | **61.992** | **7.046** | **12.642** |
+| Local32 Q4 LM-head change vs matched control | **-0.208%** | **+0.028%** | **+0.512%** | **-0.131%** | **-0.066%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -2021,6 +2026,31 @@ tok/s**, so another **4.35%** is required and completion stays open.
 `--disable-mixed-local32-fixed-meta-attention` restores the registered local128
 fixed-Q6 mixed quad; layer 47, rows>1, registry misses, and unsupported backends
 retain their existing routes. [Correctness artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-correctness.json), [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json), and [post-local32 matched Vulkan audit](results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json).
+
+##### Laguna Q2 XL local32 Q4 LM head (retained gfx1100 default)
+
+The c=1 BF16/F32 LM head now gives one local32 wave two adjacent vocabulary
+rows while replaying the retained local128 body's four K partitions, FMA order,
+wave trees, and 0..3 partition addition exactly. Total threads and waves remain
+**1,605,632 / 50,176**, while local128/LDS1024/VGPR48 becomes
+local32/LDS0/VGPR72. All **100,352** F32 logits and the complete default-versus-
+local128 rollback trajectory are bit exact; bulk-prefill/verifier projections,
+rows>1, gfx1151, and registry misses retain local128.
+
+Both clean process orders improve the LM head **29.07-30.79%**, complete kernel
+sum **0.34-1.10%**, and dispatch span **0.25-1.35%** at unchanged **723 model
+kernels/token**; profiled-child throughput remains inside the frozen guard. Both
+complete 18-prompt orders move paired h16/h32 decode **62.310/61.675 ->
+62.638/61.992 tok/s (+0.526%/+0.512%)**. Every train/heldout category improves
+**0.247-0.804%**; category E2E stays within **-0.389% to +0.087%**, aggregate
+prefill is **-0.208%**, and TTFT **+0.028%**. Relative to the prior retained
+all-local32 row, h32 improves **61.732 -> 61.992 tok/s (+0.420%)** to **16.131
+ms/token**. Pinned Vulkan remains **64.418 tok/s**, so another **3.91%** is
+required. `use_q4_lm_head_local32_fixed_meta=False` /
+`--disable-q4-lm-head-local32-fixed-meta` is the explicit local128 rollback.
+[Primitive artifact](results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json),
+[runtime artifact](results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json),
+and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**

@@ -1324,7 +1324,7 @@ def resolve_laguna_q4_lm_head_local32_fixed_meta(
     backend: str,
     requested: bool | None = None,
 ) -> bool:
-    """Resolve the explicit-only gfx1100 Q4_K c=1 LM-head sibling."""
+    """Resolve the gfx1100 Q4_K c=1 LM-head default with explicit rollback."""
 
     capability = backend_package_capability(
         backend,
