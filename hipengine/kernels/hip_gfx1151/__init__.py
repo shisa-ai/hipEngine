@@ -127,6 +127,10 @@ LAGUNA_MOE_BRANCH_CONCURRENCY = True
 # branch. Matched complete-state pp512 is +0.073% with 5/7 wins, and cached
 # tracing verifies a 0.310-ms kernel-span reduction.
 LAGUNA_MOE_SHARED_AFTER_ROUTER = True
+# gfx1151 exposes least/greatest HIP stream priorities +1/-1. Running the
+# after-router shared branch at +1 improves exact pp512 0.494% (6/7 wins) and
+# cuts cached kernel span 7.255 ms while keeping 99.75% of shared work hidden.
+LAGUNA_MOE_SHARED_LOW_PRIORITY = True
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
@@ -369,6 +373,7 @@ __all__ = [
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
+    "LAGUNA_MOE_SHARED_LOW_PRIORITY",
     "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",

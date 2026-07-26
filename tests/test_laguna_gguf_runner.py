@@ -854,7 +854,6 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         model_sha256="synthetic-sha256",
         safety_reserve_nbytes=4 * 2**30,
         global_prefill_variant="global_context_rows_qrow2_online_spans",
-        moe_shared_low_priority=True,
     )
     assert session.prefill_chunk_size == 2_048
     assert session.prefill_attention_chunk_size == 128
