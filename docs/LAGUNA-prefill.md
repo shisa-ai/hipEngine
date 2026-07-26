@@ -45,8 +45,9 @@ selector-unset **551.459/517.307/432.099 tok/s** at 512/1K/4K. Its small
 gain closes activation-stage padding as a useful local lever. The byte-neutral
 Q4 qmicro subsequently passed exact decode but failed its actual-weight M512
 prefill gate; all prefill candidate surfaces were removed. The next screen
-therefore returns to an expert schedule that reduces selected-weight
-route-tile rereads without another resident view.
+tested 40/48-row direct-wave gate/up tiles; both were exact but slower and
+were removed. The active bounded screen therefore shifts to a different
+single-wave attention query-reuse point.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -778,7 +779,10 @@ Immediate execution queue:
    LDS expansion regress **9.539%/5.563%**. The prefill consumer is removed;
    do not materialize or integrate qmicro for Q4. Return now to an expert
    schedule that reduces Q4 route-tile rereads without larger accumulator
-   state or F32 partial spills.
+   state or F32 partial spills. The bounded intermediate-tile sweep is also
+   closed: rows40 reduces all-layer route tiles **8.32%** but regresses the
+   actual leaf **2.40%**, while rows48 reduces tiles **13.15%** but regresses
+   **1.71%**. Both exact candidates are removed.
    Keep byte-neutral Q6
    qmicro and direct Q4 decode. The exact MMQ
    grouped-combine reuse is now clean production: it removes 47 launches and
@@ -842,6 +846,8 @@ Post-350 exclusions:
 - do not retry the rejected raw-sum D8 or D4-gate quality shortcuts;
 - do not add a duplicate resident expert-weight sidecar or weaken c=1 exact
   decode to buy prefill;
+- do not retry 40/48/64-row Q4 gate/up accumulation without a new mechanism
+  that avoids the additional live accumulator cost;
 - do not claim 500 or 700 from a leaf, explicit session selector, dirty tree,
   single sample, or incomplete quality lane.
 

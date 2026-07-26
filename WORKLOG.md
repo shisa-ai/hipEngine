@@ -181710,3 +181710,27 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-prefill-rejected.json`;
   production remains **551.459 tok/s**. The next premise must reduce
   selected-weight route-tile rereads without a second resident view.
+
+## 2026-07-26 — Reject intermediate Q4 gate/up row tiles
+
+- RED added a missing 128-column x 48-row direct-wave D8 path and initially
+  failed on the absent wrapper argument. GREEN templated the temporary row
+  count and compared rows40/rows48 directly with production rows32 on
+  0/7/18/33-row experts. Both candidates are BF16-bit exact with zero
+  mismatches.
+- On the frozen 47-layer natural pp512 routing, rows40 reduces route tiles
+  **14,034 -> 12,866 (-8.32%)** and rows48 reduces them to **12,189
+  (-13.15%)**. Both remain local128 and keep direct T16 decode, D8 split16
+  arithmetic, activation double buffering, K order, and resident bytes.
+- Twelve counter-rotated burst-three actual layer-1 K3072/N1024 samples
+  measure rows32/rows40 **6.851842/7.016511 ms (+2.403%)** and independent
+  rows32/rows48 **6.824466/6.941421 ms (+1.714%)**. Checksums are exactly
+  **1114.1769413301445**.
+- Remove both device specializations, Python selectors, benchmark metadata,
+  modes, and GPU fixtures. Raw SHA-256 values are
+  `91e6d3134db00ee2547eef37e211160ca192e0b012a0b03139eca2898440ba54`
+  and `941ef4600295387fb73e322dbc50a048da366be7825c627599540bf8fbab3250`.
+  Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rows40-48-rejected.json`.
+  Production remains **551.459 tok/s**; the next bounded screen shifts to a
+  single-wave attention query-reuse point.

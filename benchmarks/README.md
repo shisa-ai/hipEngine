@@ -29,6 +29,14 @@ bit. Only the host oracle and separately retained exact-decode primitive
 remain; production stays **551.459 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q4-k-qmicro-prefill-rejected.json).
 
+Intermediate 40/48-row Q4 gate/up tiles are also rejected and fully removed.
+They reduce the frozen 47-layer route grid **14,034 -> 12,866/12,189
+(-8.32%/-13.15%)**, but the exact actual-weight M512 leaves regress production
+**6.851842 -> 7.016511 ms (+2.40%)** and
+**6.824466 -> 6.941421 ms (+1.71%)**. The extra live accumulators cost more
+than the avoided weight rereads; production stays **551.459 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q4-gate-rows40-48-rejected.json).
+
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
 the range-safe down pack while explicitly preserving the BF16 boundary. Seven
