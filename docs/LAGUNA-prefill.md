@@ -1303,6 +1303,22 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-production.json).
+26. **Rejected and removed:** keep production row32 tiles except when an
+   expert ends in `32 + remainder`, replacing that pair with one row40 tile
+   for remainders 1..8 or one row48 tile for remainders 9..16. Across all 47
+   natural-M512 sparse layers this removes **1,246/14,034 tiles (-8.88%)**.
+   The reduced grid is still slower: combined row40+row48 regresses M256
+   **4.3543 -> 4.6782 ms (+7.44%)** and M512
+   **6.6991 -> 7.0457 ms (+5.17%)**. Row40-only regresses
+   **2.10%/1.66%** and row48-only **3.92%/1.09%** at M256/M512. The focused
+   BF16 fixture is bit exact and actual-weight checksums agree, but the extra
+   live accumulators and separate tail launches cost more than the avoided
+   weight rereads. All candidate kernel, wrapper, harness, and test surfaces
+   are removed. Production remains **629.101 tok/s**. Reopen intermediate
+   row counts only with a mechanism that does not increase per-lane
+   accumulator lifetime.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json).
 
 Post-350 exclusions:
 

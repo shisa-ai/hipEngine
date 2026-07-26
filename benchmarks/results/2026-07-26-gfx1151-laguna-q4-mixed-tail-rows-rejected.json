@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-27T03:10:44+09:00",
+  "kind": "hipengine_laguna_q4_mixed_tail_rows_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1
+  },
+  "candidate": {
+    "mechanism": "retain ordinary 128x32 tiles, but replace the final full-32 plus remainder pair with one explicit 128x40 tile for remainders 1..8 or one 128x48 tile for remainders 9..16",
+    "unchanged": [
+      "resident T16 weight bytes",
+      "D8 split16 arithmetic",
+      "direct per-column decode",
+      "activation double buffering",
+      "BF16 store order"
+    ]
+  },
+  "route_tile_census": {
+    "natural_m512_layer1": {
+      "production_rows32_tiles": 297,
+      "combined_rows40_rows48_tiles": 270,
+      "rows40_only_tiles": 281,
+      "rows48_only_tiles": 286
+    },
+    "natural_m512_all_47_sparse_layers": {
+      "production_rows32_tiles": 14034,
+      "eligible_rows40_pairs": 741,
+      "eligible_rows48_pairs": 505,
+      "combined_tiles": 12788,
+      "combined_delta_percent": -8.878438
+    }
+  },
+  "workload": {
+    "producer_rows": [256, 512],
+    "hidden": 3072,
+    "out_features_per_projection": 1024,
+    "experts": 256,
+    "top_k": 10,
+    "timing": "21 counter-rotated HIP-event samples",
+    "warmups": 3,
+    "burst": 3,
+    "inclusive": "D8 BF16 activation pack plus production row32 launch and any explicit tail launch"
+  },
+  "results": {
+    "combined_rows40_rows48": {
+      "m256_production_ms": 4.354319254557292,
+      "m256_candidate_ms": 4.678234100341797,
+      "m256_delta_percent": 7.43893,
+      "m512_production_ms": 6.699053446451823,
+      "m512_candidate_ms": 7.045703887939453,
+      "m512_delta_percent": 5.17462,
+      "raw_sha256": "3fb55387a69f1c8c861f2f6ff83dfca9e8a9f862aa3c1af4b747646afd5a5d0b"
+    },
+    "rows40_only": {
+      "m256_production_ms": 4.407227516174316,
+      "m256_candidate_ms": 4.499717712402344,
+      "m256_delta_percent": 2.09860,
+      "m512_production_ms": 6.869222640991211,
+      "m512_candidate_ms": 6.983143488566081,
+      "m512_delta_percent": 1.65842,
+      "raw_sha256": "f138be25cfe799f66dcf86376a87f88f5bde28b6109937d1d8daf5a452695ae7"
+    },
+    "rows48_only": {
+      "m256_production_ms": 4.4118092854817705,
+      "m256_candidate_ms": 4.5848541259765625,
+      "m256_delta_percent": 3.92231,
+      "m512_production_ms": 6.884171803792317,
+      "m512_candidate_ms": 6.959259033203125,
+      "m512_delta_percent": 1.09072,
+      "raw_sha256": "9df389990d5807e6489403a752dd1a3db6be221c4a85e328017c7c886f0be296"
+    }
+  },
+  "correctness": {
+    "fixture_counts": [7, 33, 41, 49, 65],
+    "in_features": 512,
+    "out_features_per_projection": 128,
+    "focused_result": "1 passed",
+    "bf16_array_equal_to_production": true,
+    "actual_weight_candidate_and_production_checksums_equal": true
+  },
+  "decision": {
+    "gate": "positive at every natural shape before runtime integration",
+    "result": "fail",
+    "reason": "extra live accumulators plus separate tail launches cost more than the avoided row32 weight rereads",
+    "candidate_surfaces_removed": true,
+    "production_changed": false,
+    "production_pp512_tok_s": 629.1009016
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d8-f32-mixed-tail40-48 --mixed-tail-rows <40,48|40|48> --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <trial.json>",
+  "repo": {
+    "base_revision": "32528b58caec709983c48f08bd9efe208936a293"
+  }
+}
