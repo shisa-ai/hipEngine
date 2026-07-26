@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_shared_low_priority",
+  "status": "retained_candidate",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "queue-matched exact Poolside Laguna S 2.1 Q4_K_M pp512 stream-priority screen and cached trace on gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 in both arms",
+    "stream_priority_range": {
+      "least": 1,
+      "greatest": -1
+    },
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "candidate_revision": "d2426ede296958a687e5b1beaf4a737a8a76e820",
+    "tracked_clean_during_measurement": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "candidate": {
+    "baseline_schedule": "after-router shared branch on a default-priority nonblocking stream",
+    "candidate_schedule": "same after-router dependency boundary on a least-priority nonblocking stream",
+    "priority": 1,
+    "arithmetic": "unchanged",
+    "buffers": "unchanged",
+    "events": "unchanged"
+  },
+  "matched_ab": {
+    "command": "env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_moe_branch_ab.py --repetitions 7 --output <tmp>/result.json",
+    "resident_weight_owners": 1,
+    "child_session_per_arm": true,
+    "order": "counterbalanced priority0/priority1 by repetition",
+    "default_priority_samples_tok_s": [
+      565.6442922908657,
+      568.7950079951337,
+      568.5418894747576,
+      568.0948123029914,
+      568.1055552933344,
+      566.0020056924783,
+      569.7598573533111
+    ],
+    "default_priority_median_tok_s": 568.1055552933344,
+    "low_priority_samples_tok_s": [
+      572.1479478101954,
+      571.0186564407819,
+      570.9135532427916,
+      570.7887115854517,
+      567.7905258359617,
+      568.752088204973,
+      579.2889843375049
+    ],
+    "low_priority_median_tok_s": 570.9135532427916,
+    "change_percent": 0.4942739818848185,
+    "candidate_wins": "6/7",
+    "complete_state_exact": true,
+    "exact_fields": [
+      "logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV cache",
+      "next token",
+      "next-token logit",
+      "cursor"
+    ],
+    "raw_sha256": "13e51be8b42f11040fd5b4103f3c37cb8cbe171175c4f4f203f9f80b9b65a8cf"
+  },
+  "rocprof": {
+    "command": "env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file low-priority -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-shared-low-priority --output <tmp>/child.json",
+    "pp512_tok_s": 574.011442297738,
+    "pp512_dispatches": 1696,
+    "pp512_kernel_span_ms": 890.769321,
+    "pp512_kernel_sum_ms": 1218.893478,
+    "previous_default_priority_kernel_span_ms": 898.023983,
+    "kernel_span_change_ms": -7.254662,
+    "queues_observed": 2,
+    "streams_observed": 2,
+    "secondary_stream_kernels": 188,
+    "secondary_stream_kernel_sum_ms": 337.239193,
+    "previous_secondary_stream_kernel_sum_ms": 269.084439,
+    "secondary_stream_overlap_with_caller_kernels_ms": 336.385826,
+    "secondary_stream_overlap_percent": 99.74695497507017,
+    "secondary_stream_unoverlapped_ms": 0.853367,
+    "previous_secondary_stream_unoverlapped_ms": 0.64505,
+    "router_ms": 23.191448,
+    "selected_gate_up_ms": 337.502409,
+    "previous_selected_gate_up_ms": 344.618575,
+    "selected_gate_up_change_ms": -7.116166,
+    "selected_down_ms": 190.799225,
+    "attention_ms": 143.121222,
+    "source_f16_ms": 124.628836,
+    "dense_shared_quant_projection_ms": 94.228368,
+    "contention_note": "least priority slows the shared branch by 68.155 ms but keeps 99.75% hidden, recovers 7.116 ms of gate/up, and cuts critical-path span 7.255 ms",
+    "child_sha256": "50eb96e67f2fe4841c427b5351b5b70da6a64babe9a545efaa34073de7f24f88",
+    "trace_sha256": "81ce1aac235146885e6f56e458f4b2591ac2b953866a730cfff3a3cfec18c6a5",
+    "summary_sha256": "a48777b402a03c393e82b254245c0672c2a90ecfb9e1c0a71ecdd50ffc069842"
+  },
+  "correctness": {
+    "primitive_q4_bf16_exact": true,
+    "complete_state_exact": true,
+    "decode_neutral": true,
+    "quality_transfer": "arithmetic and every state digest are unchanged from the admitted production packet"
+  },
+  "validation": {
+    "red_first": "missing typed HIP priority-range API",
+    "hip_session_profile_tests": 49,
+    "focused_q4_gpu_bf16_exact_at_priority1": true,
+    "python_compile": true,
+    "cached_trace_expected_queues_observed": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": false,
+    "reason": "exact 6/7 matched improvement plus an independently measured 7.255-ms kernel-span reduction",
+    "production_unmodified_tok_s": 566.838551353783,
+    "next_step": "promote through a gfx1151 capability, then require selector-unset 512/1K/4K publication"
+  }
+}

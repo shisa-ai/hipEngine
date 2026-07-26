@@ -1031,7 +1031,13 @@ Immediate execution queue:
    raises gate/up **22.418 ms**, while more than **500 ms** of routed gate/up
    and down remains available for hiding it. Require exact state, a positive
    seven-pair gate, and a trace showing gate/up recovery without shared work
-   spilling materially past the final combine.
+   spilling materially past the final combine. The candidate passes: priority
+   **0 -> +1** improves exact matched pp512 **568.106 -> 570.914 tok/s
+   (+0.494%, 6/7 wins)**. Tracing recovers gate/up **344.619 -> 337.502 ms**
+   and cuts kernel span **898.024 -> 890.769 ms (-7.255 ms)**. Shared work
+   slows **269.084 -> 337.239 ms**, but **99.75%** remains hidden and only
+   **0.853 ms** is unoverlapped. Promote through a gfx1151 capability and
+   require clean selector-unset publication.
 
 Post-350 exclusions:
 

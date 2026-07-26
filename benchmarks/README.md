@@ -2,6 +2,15 @@
 
 Last updated: **2026-07-26**
 
+An exact low-priority shared-stream candidate is retained for promotion.
+Seven queue-matched complete-state pairs improve **568.106 -> 570.914 tok/s
+(+0.494%, 6/7 wins)**. Cached tracing cuts gate/up **344.619 -> 337.502 ms**
+and kernel span **898.024 -> 890.769 ms (-7.255 ms)**. The shared branch itself
+slows **269.084 -> 337.239 ms**, but **99.75%** remains hidden. Current
+selector-unset production remains the packet below until gfx1151 capability
+promotion and clean publication.
+[`candidate artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-candidate.json).
+
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json).
 gfx1151 now completes router selection before releasing the independent shared
@@ -17,7 +26,7 @@ router **44.075 -> 23.356 ms**, and cuts kernel span
 **0.049542582**; decode stays sequential and unchanged. The active pp512
 stretch target is 700 tok/s, requiring another **171.827 ms** from the clean
 median wall. This verified micro-win is not a material step toward 700.
-[`candidate artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json).
+[`after-router candidate artifact`](results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json).
 
 The byte-neutral Q4 qmicro passes exact c1/c2/c4/c8 decode, but its
 actual-weight natural-M512 selected-prefill gate is rejected and fully
