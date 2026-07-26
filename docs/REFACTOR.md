@@ -1184,9 +1184,10 @@ should be boring.
   SWA tile retain qrow4. Seven complete-state pairs improve
   **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** with identical
   logits/hidden/KV/token/cursor. Remove the public positive selector after
-  clean selector-unset publication plus one later attention checkpoint; keep
-  automatic qrow4 fallbacks and do not reintroduce the rejected SWA qrow6
-  surface.
+  clean selector-unset publication plus one later attention checkpoint. The
+  first trigger is satisfied at **547.064/513.180/428.628 tok/s**, with traced
+  attention **158.702 -> 152.406 ms (-3.97%)**. Keep automatic qrow4
+  fallbacks and do not reintroduce the rejected SWA qrow6 surface.
 
 ## Laguna Q6 qmicro resident-layout rollback
 

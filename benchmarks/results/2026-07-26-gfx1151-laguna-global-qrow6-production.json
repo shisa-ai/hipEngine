@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_global_qrow6_production",
+  "status": "retained_production",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 78777775764
+  },
+  "repo": {
+    "revision": "0f71800dcbf4e0fc9927673c6c76fba5f3fba0f0",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_PREFILL_GLOBAL_QROW6=true",
+    "policy": "cached-metadata global qrow6 for safe complete M128 tiles at start_position >=128",
+    "fallbacks": [
+      "explicit prefill_global_qrow6=false session rollback",
+      "global start_position 0",
+      "all SWA tiles",
+      "partial tiles",
+      "wrapped SWA",
+      "staged verifier transactions",
+      "gfx1100 and unmeasured backends"
+    ],
+    "arithmetic": "unchanged visible-key order, ordered dot, wave32 reduction, online-softmax/PV order, and F32 output"
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/2026-07-26-gfx1151-laguna-global-qrow6-production-clean.json",
+    "pp512_samples_tok_s": [
+      560.9065037910169,
+      546.9338782566712,
+      547.0643551850093
+    ],
+    "pp512_median_tok_s": 547.0643551850093,
+    "pp512_min_tok_s": 546.9338782566712,
+    "pp1024_samples_tok_s": [
+      520.8410401727324,
+      513.1801809787337,
+      512.9423862414477
+    ],
+    "pp1024_median_tok_s": 513.1801809787337,
+    "pp4096_samples_tok_s": [
+      436.7478834864416,
+      428.6278039774413,
+      427.3165826064065
+    ],
+    "pp4096_median_tok_s": 428.6278039774413,
+    "previous_production": {
+      "pp512_tok_s": 545.0149388339617,
+      "pp1024_tok_s": 506.299357,
+      "pp4096_tok_s": 410.099097
+    },
+    "change_percent": {
+      "pp512": 0.376028,
+      "pp1024": 1.35904,
+      "pp4096": 4.51762
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "load_seconds_excluded": 80.88013793004211,
+    "raw_sha256": "793e7ae9e844a391c9075e165f76061aeb3783d446aa5f189b7ea20a000cc872"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-global-qrow6-production-rocprof2 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-qrow6-production-rocprof2.json",
+    "pp512_tok_s": 550.9070299849768,
+    "pp512_dispatches": 1792,
+    "pp512_synchronized_wall_ms": 929.3764140456915,
+    "pp512_kernel_span_ms": 924.806689,
+    "pp512_kernel_sum_ms": 914.33243,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 314.171376,
+      "selected_q4_q6_down": 196.157215,
+      "global_attention": 25.795449,
+      "swa_attention": 126.61066,
+      "source_f16_projection": 124.136692,
+      "dense_shared_quant_projection": 52.918204,
+      "router": 23.452251,
+      "activation_reduce_residual": 18.309919
+    },
+    "attention": {
+      "previous_ms": 158.702,
+      "current_ms": 152.406109,
+      "change_percent": -3.96711,
+      "saved_ms": 6.295891,
+      "global_start0_calls": 12,
+      "global_start0_ms": 2.291821,
+      "global_qrow6_calls": 36,
+      "global_qrow6_ms": 23.503628,
+      "swa_qrow4_cached_meta_calls": 144,
+      "swa_qrow4_cached_meta_ms": 126.61066,
+      "global_qrow6_resources": {
+        "workgroup_size": 32,
+        "vgpr": 88,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    },
+    "child_sha256": "2fcaebaf0f0ff4d446e23f97636599bee46c3af345b74490d60f553b612c5131",
+    "trace_sha256": "853b2bd79d2e63a29392dc201829160e4bdb35512ae3f3cb07957a9f89de00b5",
+    "summary_sha256": "75c4e86e5d40a0508451927de7c8bdcbf212995a7b2999f8509e1ff829e5d379"
+  },
+  "correctness": {
+    "transfer_basis": "Primitive outputs are F32-byte exact, and matched full-model A/B preserves logits, final/post-layer hidden state, KV, next token/logit, and cursor across all fourteen runs.",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 547.0643551850093,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 204.47594354727434,
+    "next_measured_bottlenecks": [
+      "selected Q4 gate/up: 314.171 ms",
+      "selected Q4/Q6 down: 196.157 ms",
+      "global plus SWA attention: 152.406 ms",
+      "source-F16 projection: 124.137 ms"
+    ]
+  }
+}
