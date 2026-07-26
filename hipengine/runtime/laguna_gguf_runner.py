@@ -8,6 +8,7 @@ owned scratch, greedy top-1, and caller-owned DFlash hidden taps.
 from __future__ import annotations
 
 import ctypes
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -112,6 +113,34 @@ _F32_NBYTES = DType.FP32.itemsize
 _I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
 _U8_NBYTES = DType.BOOL.itemsize
+
+
+def resolve_laguna_moe_branch_concurrency(
+    backend: str,
+    requested: bool | None,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """Resolve the exact MoE overlap default against process queue capacity."""
+
+    if requested is not None:
+        return bool(requested)
+    env = os.environ if environ is None else environ
+    queue_count_raw = env.get("GPU_MAX_HW_QUEUES")
+    try:
+        queue_count = 2 if queue_count_raw is None else int(queue_count_raw)
+    except ValueError:
+        queue_count = 0
+    return bool(
+        queue_count >= 2
+        and backend_package_capability(
+            backend,
+            "LAGUNA_MOE_BRANCH_CONCURRENCY",
+            False,
+        )
+    )
+
+
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -1547,7 +1576,7 @@ class LagunaGGUFResidentSession:
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
         q6_skip_padded_activation: bool | None = None,
-        moe_branch_concurrency: bool = False,
+        moe_branch_concurrency: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1697,7 +1726,10 @@ class LagunaGGUFResidentSession:
                 False,
             )
         )
-        self.moe_branch_concurrency = bool(moe_branch_concurrency)
+        self.moe_branch_concurrency = resolve_laguna_moe_branch_concurrency(
+            self.backend,
+            moe_branch_concurrency,
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None

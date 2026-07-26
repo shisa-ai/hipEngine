@@ -77,6 +77,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_F16_PREFILL_MODE,
     LAGUNA_F16_PREFILL_STRATEGY,
     LAGUNA_GLOBAL_PREFILL_VARIANT,
+    LAGUNA_MOE_BRANCH_CONCURRENCY,
     LAGUNA_MOE_GROUP_COMPACT_MODE,
     LAGUNA_PREFILL_CACHED_META,
     LAGUNA_PREFILL_GLOBAL_QROW6,
@@ -135,7 +136,7 @@ def test_explicit_backend_is_not_autodetected() -> None:
     assert selection.detected_arches == ()
 
 
-def test_gfx1151_hip_process_environment_defaults_to_one_hardware_queue() -> None:
+def test_gfx1151_hip_process_environment_defaults_to_two_hardware_queues() -> None:
     env: dict[str, str] = {}
 
     applied = configure_hip_process_environment(
@@ -143,8 +144,8 @@ def test_gfx1151_hip_process_environment_defaults_to_one_hardware_queue() -> Non
         env=env,
     )
 
-    assert applied == {"GPU_MAX_HW_QUEUES": "1"}
-    assert env["GPU_MAX_HW_QUEUES"] == "1"
+    assert applied == {"GPU_MAX_HW_QUEUES": "2"}
+    assert env["GPU_MAX_HW_QUEUES"] == "2"
 
 
 def test_gfx1151_hip_process_environment_preserves_explicit_queue_override() -> None:
@@ -182,7 +183,7 @@ def test_explicit_gfx1151_backend_hint_applies_when_arch_detection_is_empty() ->
 
     applied = configure_hip_process_environment(detected_arches=[], env=env)
 
-    assert applied == {"GPU_MAX_HW_QUEUES": "1"}
+    assert applied == {"GPU_MAX_HW_QUEUES": "2"}
 
 
 def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
@@ -231,6 +232,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_range_direct"
     assert LAGUNA_F16_BOUNDARY_FUSION is True
     assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
+    assert LAGUNA_MOE_BRANCH_CONCURRENCY is True
     assert LAGUNA_MOE_GROUP_COMPACT_MODE == "parallel"
     assert LAGUNA_ROUTER_LOGITS_MODE == "token_tile_8"
     assert (
@@ -273,6 +275,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_F16_BOUNDARY_FUSION", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_MOE_BRANCH_CONCURRENCY", None
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_MOE_BRANCH_CONCURRENCY", None
     ) is None
     assert (
         backend_package_capability(

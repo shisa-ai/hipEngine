@@ -998,8 +998,9 @@ Immediate execution queue:
    **565.457/525.733/443.027 tok/s**. Cached tracing places **188** shared
    kernels on the secondary stream and overlaps **100.390/101.241 ms
    (99.16%)** with caller-stream kernels; despite contention, total kernel span
-   falls **909.598 -> 896.871 ms (-12.727 ms)**. Promote through a gfx1151
-   capability and two-queue process policy, then publish selector-unset before
+   falls **909.598 -> 896.871 ms (-12.727 ms)**. The gfx1151 capability and
+   two-queue process policy are now promoted with automatic single-queue
+   fallback and explicit session rollback. Publish selector-unset before
    treating this as production.
 
 Post-350 exclusions:
