@@ -43,10 +43,12 @@ TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 # retain the exact LPF-1 tile; decode retains the separately registered GEMV.
 LAGUNA_F16_PREFILL_STRATEGY = "wmma_comp_swa"
 LAGUNA_F16_PREFILL_MIN_ROWS = 16
-# Clean AR-O3 repeated 512/1K/4K full-state equality and timing admit 512-row
-# projection/MoE transactions while attention remains independently tiled at 128.
+# Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
+# 2048-row projection/MoE transactions while attention and physical KV writes
+# remain independently tiled at 128. M2048 is byte-identical at pp512, keeps
+# top-1 at 512/1K/4K, and has max relative KL 1.25e-5 versus M512.
 # Other backends retain the 128-row runtime fallback until measured independently.
-LAGUNA_PREFILL_MATRIX_ROWS = 512
+LAGUNA_PREFILL_MATRIX_ROWS = 2048
 # The post-350 LAP-7 screen reuses each streamed BF16 K/V row across four
 # adjacent queries. It is byte-identical to the admitted online-qrow2 arithmetic
 # on the wrap/eviction oracle and improves matched pp512 production by 3.23%.

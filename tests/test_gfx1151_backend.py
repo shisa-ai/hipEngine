@@ -238,7 +238,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         LAGUNA_SELECTED_DOWN_MODE
         == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
     )
-    assert LAGUNA_PREFILL_MATRIX_ROWS == 512
+    assert LAGUNA_PREFILL_MATRIX_ROWS == 2048
     assert LAGUNA_PREFILL_CACHED_META is True
     assert LAGUNA_PREFILL_KV_PREAPPEND is True
     assert (
@@ -265,7 +265,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_PREFILL_MATRIX_ROWS", None
         )
-        == 512
+        == 2048
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None

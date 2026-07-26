@@ -181284,3 +181284,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `py_compile`/diff checks. Commit the harness, then repeat the clean screen
   specifically because the prior artifact lacks the quality distribution
   required for a production scheduling decision.
+
+## 2026-07-26 — Promote M2048 matrix transactions on gfx1151
+
+- Clean revision `9f560a764` repeated the full M512/M1024/M2048 screen with
+  synchronized full-logit capture. M512 medians are
+  **547.663/483.675/388.760 tok/s** at 512/1K/4K. M2048 reaches
+  **545.703/509.891/411.121 tok/s**: pp512 is effectively flat
+  (**-0.358%**), while 1K improves **5.420%** and 4K improves **5.752%**.
+  Weighted timing improves **5.256%**. Raw artifact SHA-256 is
+  `45765fc1d471b311234b11c06e6ea75b3aa22125c54a992ca9743beb377f2c0c`.
+- M2048 is byte-identical to M512 whenever the request has 512 rows. Across
+  repeated 512/1K/4K distributions, its maximum relative KL is
+  **0.0000125026**, top-1 is **6/6**, every logit is finite, and each mode is
+  internally deterministic. All next tokens remain **2930/95/7772**.
+  The 640-row multi-wrap KV oracle remains byte-exact, and all tracked
+  allocations return to zero after a **79,501,193,512-byte** peak.
+- RED changed the gfx1151 capability and session expectations to M2048 and
+  failed at the retained M512 value. GREEN promotes only
+  `LAGUNA_PREFILL_MATRIX_ROWS`; attention/KV slices remain M128, explicit
+  M512 rollback remains, and other backends retain their fallback.
+  Gfx1151/runner/matrix tests report **43 passed** with compile/diff checks.
+  Commit this promotion, then capture a clean selector-unset production run
+  before publishing the retained artifact and benchmark rollups.
