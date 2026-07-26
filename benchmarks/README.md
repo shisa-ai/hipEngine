@@ -3,15 +3,17 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json).
-It binds exact selected-down scratch reuse and an explicit-BF16-boundary
-dual-SiLU Q8 pack to clean selector-unset timing and full-family cached
-attribution at revision `c0730bb94`. Conservative median pp512 is
-**546.100 tok/s**, every clean sample is at least **543.299 tok/s**, the
-independent cached trace is **549.845 tok/s**, and absolute maximum KL remains
-**0.049542582**. Clean selector-unset 512/1K/4K improve
-**0.422%/0.338%/0.281%** over the preceding production packet. The active
-stretch target is 700 tok/s.
+[`2026-07-26-gfx1151-laguna-m2048-production.json`](results/2026-07-26-gfx1151-laguna-m2048-production.json).
+It raises gfx1151 projection/MoE transactions from M512 to M2048 while keeping
+attention at M128 and each physical KV operation bounded by the 512-token SWA
+ring. Clean selector-unset 512/1K/4K medians are
+**545.015/506.299/410.099 tok/s**. Relative to the preceding matrix512 packet,
+pp512 is flat within **-0.199%** run variance while 1K/4K improve
+**5.120%/5.238%**. The matched policy screen measures
+**+5.420%/+5.752%** at 1K/4K, maximum relative KL **0.000012503**, 100% top-1,
+deterministic repeats, exact multi-wrap KV semantics, and exact lifecycle
+recovery. Absolute maximum KL for the byte-identical <=M512 quality suite
+remains **0.049542582**. The active pp512 stretch target is 700 tok/s.
 
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
@@ -23,12 +25,19 @@ no standalone selected-SiLU launches.
 [`production artifact`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json) ·
 [`candidate artifact`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json).
 
+The M2048 default uses **1,755,275,296 bytes** of row/MoE scratch within the
+existing 2-GiB admission floor. A 640-row pending transaction matches five
+separately committed M128 transactions byte-for-byte across SWA wraps; wide
+transactions require resident row-position views and every physical
+attention/write slice remains bounded.
+[`current production artifact`](results/2026-07-26-gfx1151-laguna-m2048-production.json).
+
 The first post-546 selected-down screen is closed and fully removed. An exact
 64-column x 128-row/local256 Q6 qmicro body collapses actual >=65-row expert
 tiles **32 -> 17**, but saves only **0.017 ms** before its required second
 metadata schedule and launch. The >=129-row tail instead regresses
 **0.673548 -> 0.687981 ms (+2.14%)** at
-local256/VGPR88/LDS8704B/scratch0. Production remains **546.100 tok/s**.
+local256/VGPR88/LDS8704B/scratch0. The selected-down body remains unchanged.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json).
 
 Complete M128 tiles now append current F32 K/V through the existing BF16 cache
@@ -153,6 +162,8 @@ regresses **508.788 -> 508.023 tok/s (-0.150%, +1.515 ms)** and wins only
 [`artifact`](results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json).
 
 Latest retained hipEngine revisions in this scoreboard:
+`dcf29b1d5` for M2048 projection/MoE transactions with independent M128
+attention/KV slices in gfx1151 Laguna production,
 `53e3c2468` for exact qualified cached-metadata qrow4 attention in gfx1151
 Laguna production,
 `7b4f2ef82` for exact cached-only M128 qrow4 attention scheduling in gfx1151
@@ -852,7 +863,8 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact fused selected-SiLU pack production prefill | 2026-07-26 | clean measured/default `c0730bb94`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; three selector-unset 512/1K/4K repetitions, seven paired admission runs, and cached all-family trace | **Current retained quality-gated production default; 500 target passed, 700 active**: reuse selected-down scratch for packed gate/up and fold the standalone sparse SiLU into the range-safe Q8 pack while explicitly preserving its BF16 boundary. Clean selector-unset pp512 improves **543.807 -> 546.100 tok/s (+0.422%)**, with minimum **543.299 tok/s**; 1K/4K improve **480.017 -> 481.640 (+0.338%)** and **388.595 -> 389.686 tok/s (+0.281%)**. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing removes another **47 dispatches**, names 47 fused packs at local128/VGPR16/LDS512B/scratch0, records zero standalone selected-SiLU launches, and reaches **549.845 tok/s**. [`artifact`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json). | Yes, for selector-unset c=1 pp512 and the exact fused-SiLU-pack/retained quality scope | Continue toward 700 through selected experts and attention; rerun after arithmetic/layout, matrix/attention policy, model/quant/KV, compiler/runtime, or device/queue policy change. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M M2048 production prefill | 2026-07-26 | clean screen `9f560a764`; promoted/default `dcf29b1d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix2048/attention128; two matched-policy and three selector-unset 512/1K/4K repetitions | **Current retained quality-gated production default; 500 passed, 700 pp512 active**: projection/MoE capacity rises M512 -> M2048 while attention stays M128 and physical KV operations remain bounded. Clean selector-unset 512/1K/4K reaches **545.015/506.299/410.099 tok/s**; pp512 is flat within **-0.199%** variance while 1K/4K improve **5.120%/5.238%** over the preceding packet. Matched M2048 improves 1K/4K **5.420%/5.752%**, has maximum relative KL **0.000012503**, 100% top-1, deterministic repeats, exact multi-wrap KV semantics, and exact lifecycle. Scratch is **1,755,275,296 bytes**, within the existing 2-GiB admission floor. [`artifact`](results/2026-07-26-gfx1151-laguna-m2048-production.json). | Yes, for selector-unset c=1 512/1K/4K and the declared scheduling/quality/lifecycle scope | Continue toward 700 through a new selected-expert or attention architecture; rerun after matrix/attention/KV policy, arithmetic/layout, model/quant, compiler/runtime, or device/queue changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact fused selected-SiLU pack production prefill | 2026-07-26 | clean measured/default `c0730bb94`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; three selector-unset 512/1K/4K repetitions, seven paired admission runs, and cached all-family trace | **Superseded matrix512 production packet**: reuse selected-down scratch for packed gate/up and fold the standalone sparse SiLU into the range-safe Q8 pack while explicitly preserving its BF16 boundary. Clean selector-unset pp512 improves **543.807 -> 546.100 tok/s (+0.422%)**, with minimum **543.299 tok/s**; 1K/4K improve **480.017 -> 481.640 (+0.338%)** and **388.595 -> 389.686 tok/s (+0.281%)**. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing removes another **47 dispatches**, names 47 fused packs at local128/VGPR16/LDS512B/scratch0, records zero standalone selected-SiLU launches, and reaches **549.845 tok/s**. [`artifact`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json). | Superseded; exact fused-pack and matrix512 trace provenance | Use the M2048 production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M Q6-down heavy 128-row tile | 2026-07-26 | rejected leaf on `8538f4bc4`; TheRock HIP 7.15; exact actual layer-1 Q6 weight and natural pp512 routing; serial 11-sample actual-weight screens plus cached resource trace | **Rejected and fully removed**: the 64-column x 128-row/local256 qmicro body is BF16-byte exact and preserves 32 accumulators/lane. The >=65-row subset collapses **32 -> 17** weight tiles but saves only **0.017 ms** before its required second metadata schedule/launch; the >=129-row tail collapses **14 -> 8** tiles yet regresses **0.673548 -> 0.687981 ms (+2.14%)**. Trace resources are local256/VGPR88/LDS8704B/scratch0. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json). | No; rejected leaf evidence only | Do not retry a larger local256 Q6 row tile without a new occupancy mechanism. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact fused selected-SiLU pack candidate | 2026-07-26 | candidate on `4cbb50632`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions and one cached traced pair | **Superseded exact admission evidence**: reuse selected-down scratch for packed gate/up and fold the standalone sparse SiLU into the range-safe Q8 pack while explicitly preserving its BF16 boundary. All seven complete-state pairs are exact and the candidate wins **7/7**; paired geometric throughput improves **0.651%** and median paired wall falls **4.636 ms**. Tracing removes **47 dispatches**, cuts the target window **10.301 -> 6.377 ms (-38.09%)**, and records local128/VGPR16/LDS512B/scratch0. [`artifact`](results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json). | Superseded; exact paired/sub-window provenance | Use the fused selected-SiLU pack production row above for current performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact MMQ grouped-combine production prefill | 2026-07-26 | clean measured/default `b6bfc4a0b`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; three selector-unset 512/1K/4K repetitions, seven paired admission runs, and cached all-family trace | **Superseded exact grouped-combine production**: the registered exact sorted-lane weighted-sum plus shared-add composite follows MMQ selected down, preserving every BF16 boundary while removing one routed-output round trip and one launch per sparse layer. Clean selector-unset pp512 improves **542.088 -> 543.807 tok/s (+0.317%)**, with minimum **541.485 tok/s**; 1K/4K improve **478.856 -> 480.017 (+0.243%)** and **387.725 -> 388.595 tok/s (+0.224%)**. Direct all-exact quality transfers unchanged at max KL **0.049542582**. [`artifact`](results/2026-07-26-gfx1151-laguna-mmq-combine-production.json). | Superseded; exact grouped-combine provenance | Use the fused selected-SiLU pack production row above for current performance and correctness. |
