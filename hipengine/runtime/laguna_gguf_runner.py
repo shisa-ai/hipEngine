@@ -1578,6 +1578,7 @@ class LagunaGGUFResidentSession:
         q6_skip_padded_activation: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
+        moe_shared_low_priority: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1740,6 +1741,7 @@ class LagunaGGUFResidentSession:
             if moe_shared_after_router is None
             else moe_shared_after_router
         )
+        self.moe_shared_low_priority = bool(moe_shared_low_priority)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1764,6 +1766,7 @@ class LagunaGGUFResidentSession:
         self._dflash_accept_library = None
         self._staged_verifier_tokens: tuple[int, ...] | None = None
         self._moe_shared_stream = 0
+        self.moe_shared_priority_range: tuple[int, int] | None = None
         self._moe_shared_input_ready_event = 0
         self._moe_shared_output_ready_event = 0
 
@@ -1879,9 +1882,22 @@ class LagunaGGUFResidentSession:
                 runtime=self.runtime,
             )
             if self.moe_branch_concurrency:
-                self._moe_shared_stream = self.runtime.stream_create(
-                    nonblocking=True
-                )
+                if self.moe_shared_low_priority:
+                    priority_range = self.runtime.stream_priority_range()
+                    if priority_range[0] == priority_range[1]:
+                        raise ValueError(
+                            "low-priority shared MoE requires a non-degenerate "
+                            "HIP stream-priority range"
+                        )
+                    self.moe_shared_priority_range = priority_range
+                    self._moe_shared_stream = self.runtime.stream_create(
+                        nonblocking=True,
+                        priority=priority_range[0],
+                    )
+                else:
+                    self._moe_shared_stream = self.runtime.stream_create(
+                        nonblocking=True
+                    )
                 self._moe_shared_input_ready_event = (
                     self.runtime.event_create(flags=0x2)
                 )

@@ -45,7 +45,13 @@ class FakeHipLibrary:
         self.hipMemset = FakeFunction(self._memset)
         self.hipMemsetAsync = FakeFunction(self._memset_async)
         self.hipMemGetInfo = FakeFunction(self._mem_get_info)
+        self.hipDeviceGetStreamPriorityRange = FakeFunction(
+            self._device_get_stream_priority_range
+        )
         self.hipStreamCreateWithFlags = FakeFunction(self._stream_create_with_flags)
+        self.hipStreamCreateWithPriority = FakeFunction(
+            self._stream_create_with_priority
+        )
         self.hipStreamDestroy = FakeFunction(lambda stream: 0)
         self.hipStreamSynchronize = FakeFunction(lambda stream: 0)
         self.hipStreamWaitEvent = FakeFunction(lambda stream, event, flags: 0)
@@ -109,6 +115,15 @@ class FakeHipLibrary:
         out_stream._obj.value = 0x5000 + int(flags.value)
         return 0
 
+    def _device_get_stream_priority_range(self, least, greatest):
+        least._obj.value = 1
+        greatest._obj.value = -1
+        return 0
+
+    def _stream_create_with_priority(self, out_stream, flags, priority):
+        out_stream._obj.value = 0x5100 + int(priority.value)
+        return 0
+
     def _stream_end_capture(self, stream, out_graph):
         out_graph._obj.value = 0x6000
         return 0
@@ -168,7 +183,9 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     runtime.memcpy(ptr, 0x2000, 16, HipMemcpyKind.HOST_TO_DEVICE)
     runtime.memset(ptr, 0, 16)
     free_bytes, total_bytes = runtime.mem_get_info()
+    least_priority, greatest_priority = runtime.stream_priority_range()
     stream = runtime.stream_create()
+    low_priority_stream = runtime.stream_create(priority=least_priority)
     runtime.memcpy_async(ptr, 0x3000, 8, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
     runtime.memset_async(ptr, 0xAB, 8, stream)
     runtime.stream_begin_capture(stream)
@@ -180,6 +197,7 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     runtime.graph_exec_destroy(graph_exec)
     runtime.graph_destroy(graph)
     runtime.stream_destroy(stream)
+    runtime.stream_destroy(low_priority_stream)
     runtime.device_synchronize()
     runtime.free(ptr)
 
@@ -188,6 +206,8 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     assert lib.host_registered == [(0x4000, 4096, 2)]
     assert lib.host_unregistered == [0x4000]
     assert stream == 0x5001
+    assert low_priority_stream == 0x5101
+    assert (least_priority, greatest_priority) == (1, -1)
     assert graph == 0x6000
     assert graph_exec == 0x7000
     assert (free_bytes, total_bytes) == (0x9000, 0xA000)
