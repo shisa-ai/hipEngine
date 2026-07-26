@@ -183663,3 +183663,17 @@ Vulkan local sizes verbatim will close the measured gap.
   classifier for bounded D8-minus-D4 correction before the existing BF16
   SiLU boundary. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-long-absolute-rejected.json`.
+
+## 2026-07-27 — Remove rejected M512 role selector
+
+- Removed `mmq128x32_m512_role_gate_d4_up_d8` from runtime resolution,
+  fused-boundary qualification, and selected gate/up dispatch. Removed its
+  short/long comparison definitions, cumulative lane, and selector-specific
+  tests.
+- Retained the generic deterministic prompt-extension helper and its unit test
+  for the upcoming repair gate. Retained shared D4/D8 role kernels, activation
+  packs, and exact separate-input fused boundary only because bounded
+  producer-row repair reuses them.
+- All **25** focused category-harness plus resolver/fusion tests pass;
+  `py_compile`, source-tree removal search, and `git diff --check` pass.
+  Production dispatch remains same-byte D8 at **632.618 tok/s**.
