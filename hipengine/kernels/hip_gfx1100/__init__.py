@@ -33,6 +33,10 @@ LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
 # full state, cached one-call tracing, both clean context orders, and both
 # complete category process orders. Explicit False restores registered local128.
 LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = True
+# The exact stateless c=1 E256/top10 selector is primitive-admitted but remains
+# explicit-only until full-state, trace, clean-context, and category gates pass.
+# False is both the gfx1100 support sentinel and the default selection policy.
+LAGUNA_ROUTER_SELECTOR_COMPACT_WAVE32 = False
 # Clean P0 leaf/full-state/context/category evidence admits one exact local32
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
@@ -134,6 +138,7 @@ __all__ = [
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
+    "LAGUNA_ROUTER_SELECTOR_COMPACT_WAVE32",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",

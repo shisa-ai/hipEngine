@@ -107,11 +107,12 @@ are skipped; the default and **61.992 tok/s** canonical row remain unchanged.
 Post-Q6 re-ranking selects a genuinely different router boundary: retain all 47
 registered BF16-hidden/F32-weight projection launches and replace only the
 stateless correction selector with one local32 wave carrying eight experts per
-lane. The separately registered repository primitive now passes RED/GREEN, CPU and
-field-bit exact gates, all 47 actual projected-logit/correction rows, frozen
+lane. The separately registered repository primitive now passes RED/GREEN, CPU
+and field-bit exact gates, all 47 actual projected-logit/correction rows, frozen
 codegen/resource ceilings, and cache-only tracing. Its repeated repository
-window improves **25.78% event / 25.77% wall**. It remains runtime-absent and
-has no default/topline effect; full-state, context, and category gates are next.
+window improves **25.78% event / 25.77% wall**. A default-off c=1 owner also
+passes full-state and 47+47/723 tracing with no allocation or default/topline
+change; clean context and category gates are next.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1386,17 +1387,26 @@ instructions, logical/allocated VGPR **70/72**, SGPR **18/128**, and zero
 LDS/private/spill/scratch/barriers; cache-only tracing names grid/local **32/32**.
 The repository all-47-layer repeat improves **0.397646 -> 0.295123 ms event
 (-25.783%)** and **0.397976 -> 0.295419 ms wall (-25.770%)**, with every field
-exact. The primitive is admitted under
-`correction_bias_compact_wave32`, but no runtime plan/session/CLI/default changed.
+exact. The primitive is admitted under `correction_bias_compact_wave32`.
 
-An explicit/default-off c=1 owner may now enter the frozen 16-transition full-
-state gate, cached **47 retained projection + 47 candidate selector /
-723-kernel** tracing, both short/512/1K/near-4K process orders, and both complete
-18-prompt orders. Any failed full-model guard removes runtime selection while
-the independently exact primitive remains diagnostic. Evidence:
-[`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json)
-and
-[`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-correctness.json).
+The explicit/default-off c=1 owner now passes its mechanical gates. A shared-
+weight 16-transition run matches full logits/IDs, all 48 hidden and 47 routed
+boundaries, active K/V plus every live-span field, reset/re-prefill, ownership,
+and teardown at KL0/top-1 100%. Peak tracked ownership remains
+**40,459,057,576 bytes / 1,500 allocations**. Cache-only tracing records exactly
+**47 retained projections + 47 candidate selectors/token**, zero candidate
+prefill calls and zero retained decode selectors, local32/VGPR72/LDS0/scratch0,
+and unchanged **723 model kernels/token**. Rows and key misses retain control;
+gfx1151 remains excluded. No default changed.
+
+Both short/512/1K/near-4K process orders are now allowed. Every order must
+improve selector, complete router-family, and kernel-sum time, keep span below
++0.5%, keep profiled-child throughput above -0.5%, and pass ID/resource/lifecycle
+guards before either complete 18-prompt order. Any failed full-model guard
+removes runtime selection while the independently exact primitive remains.
+Evidence: [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json),
+[`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-correctness.json),
+and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-runtime-correctness.json).
 
 ## 9. Do not chase without new evidence
 
@@ -1450,7 +1460,7 @@ and
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
 | Is the post-router Q4 LM-head local32 design implemented or retained? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json), and [`retained`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json): yes. Production logits and default-vs-rollback state are bit-exact; every clean order improves LM-head and kernel-sum time; both category orders move h32 **61.675 -> 61.992 tok/s (+0.512%)** with all category decode rows positive. gfx1100 defaults local32 at unchanged 723 kernels/token. |
 | Is the post-Q4 Q6 local32 standalone design implemented? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json): primitive only after clean rejection. Exact state/trace and 12.44-13.26% Q6-family wins do not override order-A kernel/span or order-B child failures. Runtime integration is removed; categories are skipped and the topline is unchanged. |
-| What is selected after standalone-Q6 closure? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json) and [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-correctness.json): a separately registered stateless local32 correction selector after the unchanged retained projection. Repository RED/GREEN, CPU/field-exact, all-47-layer, codegen, trace, and actual timing gates pass; event/wall improve **25.78%/25.77%**. It has no counter, fusion, launch reduction, runtime owner, or default; full-model gates remain pending. |
+| What is selected after standalone-Q6 closure? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-correctness.json), and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-runtime-correctness.json): a separately registered stateless local32 correction selector after the unchanged retained projection. Primitive event/wall improve **25.78%/25.77%**; exact 16-transition state and 47+47/723 tracing pass with no allocation. The owner remains explicit/default-off pending clean contexts/categories. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The retained Q4 category gate measures hipEngine **62.638/61.992 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **2.57%/3.91%** is required. The prior [post-local32 audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) remains the pinned Vulkan source. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 
@@ -1529,6 +1539,8 @@ persistent router entirely: a stateless local32 correction selector consumes
 the unchanged registered projection, assigns eight experts per lane, and finds
 the same stable global top-10 in one wave. The repository primitive is now
 admitted after exact synthetic/CPU/all-47-layer gates, frozen codegen and cached
-trace; its actual selector window improves **25.78% event / 25.77% wall**. It is
-not runtime-selectable, a default, or a topline claim until full-state, full-
-model trace, clean-context, and complete-category gates pass.
+trace; its actual selector window improves **25.78% event / 25.77% wall**. Its
+explicit/default-off owner now also passes exact 16-transition state, ownership,
+and **47 projection + 47 selector / 723-kernel** tracing. It is not a default or
+a topline claim until both clean-context orders and both complete-category gates
+pass.
