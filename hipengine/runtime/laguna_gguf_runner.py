@@ -1814,6 +1814,7 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
+        use_weighted_hidden_split: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1901,6 +1902,7 @@ class LagunaGGUFResidentSession:
             self.backend,
             use_iq2_grid64,
         )
+        self.use_weighted_hidden_split = False
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1985,6 +1987,10 @@ class LagunaGGUFResidentSession:
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
                 use_iq2_grid64=self.use_iq2_grid64,
+                use_weighted_hidden_split=use_weighted_hidden_split,
+            )
+            self.use_weighted_hidden_split = (
+                getattr(self.moe_plan, "weighted_hidden_split", None) is not None
             )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
@@ -3298,7 +3304,9 @@ class LagunaGGUFResidentSession:
         assert self.scratch is not None
         assert self.moe_scratch is not None
         assert self.kernel_plan is not None
+        assert self.moe_plan is not None
         assert self.libraries is not None
+        weighted_hidden_split = self.moe_plan.weighted_hidden_split
         routed, shared = run_laguna_moe_c1_components(
             self.scratch.norm.ptr,
             layer,
@@ -3307,6 +3315,7 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             libraries=self.libraries.moe,
             shared_pair_decode_variant=self._q5_shared_pair_variant,
+            defer_routed_sum=weighted_hidden_split is not None,
         )
         config = self.weights.config
         if layer_id + 1 < config.block_count:
@@ -3322,6 +3331,33 @@ class LagunaGGUFResidentSession:
                 self.weights.root("output_norm").allocation("raw").tensor.ptr
             )
             next_norm_out_ptr = self.scratch.final_norm.ptr
+        if weighted_hidden_split is not None:
+            weighted_hidden_split(
+                self.moe_scratch.expert_down.ptr,
+                self.moe_scratch.scaled_routing_weights.ptr,
+                shared.ptr,
+                self.scratch.post_attention.ptr,
+                routed.ptr,
+                self.scratch.hidden.ptr,
+                1,
+                self.moe_scratch.plan.top_k,
+                config.hidden_size,
+                stream=stream,
+                library=self.libraries.routed_sum,
+                runtime=self.runtime,
+            )
+            self.kernel_plan.rmsnorm(
+                self.scratch.hidden.ptr,
+                next_norm_weight_ptr,
+                next_norm_out_ptr,
+                1,
+                config.hidden_size,
+                config.rms_norm_eps,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
+            return
         launch_laguna_moe_tail_next_rmsnorm(
             routed.ptr,
             shared.ptr,
