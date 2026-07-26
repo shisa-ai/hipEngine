@@ -169,10 +169,13 @@ should be removed or collapsed.
   **614.668 -> 620.032 tok/s (+0.873%, 6/7 wins)**. All-exact KL improves
   **0.002097 -> 0.001796**, top-1 stays 2930, and tracing reports
   local32/VGPR24/SGPR128/LDS0/scratch0.
-- Keep the explicit block256 rollback through clean selector-unset publication
-  and one later attention-family trace. Then remove the session setter and
-  one-purpose A/B harness while retaining the block256 kernel as the numerical
-  fallback until the packed-query rollback window closes.
+- Clean selector-unset publication now passes at
+  **632.618/568.845/464.606 tok/s**, and the required later corrected
+  attention-family trace measures **69.983 ms** at unchanged **2,417**
+  dispatches. The removal preconditions are satisfied. Remove the session
+  setter and one-purpose A/B harness in the next rollback-cleanup unit while
+  retaining the block256 kernel as the numerical fallback until the
+  packed-query rollback window closes.
 
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 

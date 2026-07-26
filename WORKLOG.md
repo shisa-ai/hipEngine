@@ -183337,3 +183337,26 @@ Vulkan local sizes verbatim will close the measured gap.
   the existing trace now attributes pp512 attention **69.983 ms**, with
   selected gate/up **357.087 ms** and selected down **189.556 ms**; no
   runtime or kernel change was required.
+
+## 2026-07-27 — Publish wave-per-row softmax production
+
+- Clean selector-unset revision `7470bd3a7` measures
+  **632.618/568.845/464.606 tok/s** at 512/1K/4K versus packed-query
+  production **629.101/566.858/463.903**
+  (**+0.559%/+0.351%/+0.152%**). The pp512 median wall is
+  **809.335 ms**, leaving **77.907 ms** to the 700-tok/s wall.
+- Tokens **2930/95/7772**, final positions, deterministic repeats, and full
+  allocation recovery pass on the clean tracked tree. The changed reduction
+  tree retains pp512 all-exact KL **0.001796340** and top-1 2930; the
+  unchanged short-prompt category schedule remains max KL **0.049542582**
+  with **316/320** top-1.
+- Cached selector-unset tracing retains **2,417** pp512 dispatches and measures
+  attention **73.330 -> 69.983 ms (-4.56%)**. The wave-softmax kernel is
+  local32/VGPR24/SGPR128/LDS0/scratch0. Refreshed inclusive leaders are
+  selected gate/up **357.087 ms**, down **189.556 ms**, source-F16
+  **127.906 ms**, dense/shared **95.414 ms**, and attention **69.983 ms**.
+- Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-production.json`.
+  The next bounded screen must remove selected expert physical bytes or
+  create cross-tile reuse; attention is now sixth and cannot close the
+  remaining wall gap.

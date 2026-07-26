@@ -178,7 +178,7 @@ attention **82.763 -> 73.330 ms (-11.40%)** and dispatches
 SGPR128/LDS0/scratch0. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-{candidate,production}.json`.
 
-The successor causal-softmax candidate maps exactly one score row to one
+The successor causal-softmax production default maps exactly one score row to one
 wave32 workgroup. It removes the prior local256 kernel's eight LDS partials
 and four workgroup barriers while preserving complete `KVLiveSpans`
 qualification, causal visibility, the F32 score/output ABI, and the
@@ -187,11 +187,14 @@ improves **72.738 -> 62.755 ms (-13.73%)**; seven complete pp512 pairs improve
 **614.668 -> 620.032 tok/s (+0.873%, 6/7 wins)**. The changed reduction tree
 passes its explicit quality gate: all-exact KL improves
 **0.002097 -> 0.001796**, production-to-candidate KL is **0.0000971**, and
-top-1 remains 2930. Cached tracing names the candidate at
+top-1 remains 2930. Cached tracing names the retained kernel at
 local32/VGPR24/SGPR128/LDS0/scratch0. gfx1151 enables the capability with the
-block256 body retained as explicit numerical rollback; clean selector-unset
-publication remains pending. Evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-candidate.json`.
+block256 body retained as explicit numerical rollback. Clean selector-unset
+512/1K/4K improves **629.101/566.858/463.903 ->
+632.618/568.845/464.606 tok/s (+0.559%/+0.351%/+0.152%)**; corrected
+tracing cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)** at unchanged
+**2,417** dispatches. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-{candidate,production}.json`.
 
 ### Laguna gfx1151 exact router token reuse
 
