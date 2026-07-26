@@ -10,10 +10,15 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_LITE_META_OFFSET,
     GGUF_Q4_K_TILE16_LITE_Q_OFFSET,
+    GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_QMICRO_META_OFFSET,
+    GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET,
     repack_gguf_q4_k_tile16,
     repack_gguf_q4_k_tile16_lite,
+    repack_gguf_q4_k_tile16_qmicro,
     unpack_gguf_q4_k_tile16,
     unpack_gguf_q4_k_tile16_lite,
+    unpack_gguf_q4_k_tile16_qmicro,
 )
 
 
@@ -100,6 +105,60 @@ def test_q4_k_tile16_lite_keeps_packed_metadata_byte_planes_coalesced() -> None:
         GGUF_Q4_K_TILE16_LITE_Q_OFFSET,
     ].reshape(1, 1, 2, 12, 16)
     np.testing.assert_array_equal(actual[:, 0], expected)
+
+
+def test_q4_k_tile16_qmicro_roundtrips_and_is_byte_neutral() -> None:
+    raw = _raw_q4_k_bytes(experts=3, out_features=32, blocks_per_row=2)
+
+    packed = repack_gguf_q4_k_tile16_qmicro(raw)
+    restored = unpack_gguf_q4_k_tile16_qmicro(packed)
+
+    assert packed.tiles.shape == (
+        3,
+        2,
+        2,
+        GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES,
+    )
+    assert packed.tiles.nbytes == raw.nbytes
+    assert packed.experts == 3
+    assert packed.out_features == 32
+    assert packed.in_features == 512
+    np.testing.assert_array_equal(restored, raw)
+
+
+def test_q4_k_tile16_qmicro_metadata_records_decode_four_coefficients() -> None:
+    raw = _raw_q4_k_bytes(experts=1, out_features=16, blocks_per_row=1)
+    packed = repack_gguf_q4_k_tile16_qmicro(raw)
+
+    blocks = raw.reshape(1, 16, 1, GGUF_Q4_K_BLOCK_BYTES)
+    from hipengine.quant.gguf import unpack_q4_k_scale_min
+
+    scales, mins = unpack_q4_k_scale_min(blocks[..., 4:16].reshape(-1, 12))
+    expected = np.stack(
+        (
+            scales.reshape(1, 16, 1, 8),
+            mins.reshape(1, 16, 1, 8),
+        ),
+        axis=3,
+    ).transpose(0, 2, 3, 4, 1)
+    records = packed.tiles[
+        ...,
+        GGUF_Q4_K_TILE16_QMICRO_META_OFFSET:
+        GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET,
+    ].reshape(1, 1, 1, 2, 8, 4, 3)
+    words = (
+        records[..., 0].astype(np.uint32)
+        | (records[..., 1].astype(np.uint32) << np.uint32(8))
+        | (records[..., 2].astype(np.uint32) << np.uint32(16))
+    )
+    decoded = np.stack(
+        tuple(
+            ((words >> np.uint32(6 * lane)) & np.uint32(0x3F)).astype(np.uint8)
+            for lane in range(4)
+        ),
+        axis=-1,
+    ).reshape(1, 1, 2, 8, 16)
+    np.testing.assert_array_equal(decoded, expected)
 
 
 def test_q4_k_tile16_unpack_rejects_out_feature_mismatch() -> None:
