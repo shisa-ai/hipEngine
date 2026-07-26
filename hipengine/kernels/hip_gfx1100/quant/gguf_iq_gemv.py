@@ -13,6 +13,7 @@ _SOURCE = Path(__file__).with_name("gguf_iq_gemv.hip")
 _OUTPUT_NAME = "gguf_iq_gemv.so"
 _QK_K = 256
 _ALLOWED_THREADS = frozenset({64, 128, 256})
+_IQ2_LOCAL64_THREADS = frozenset({64})
 _IQ3_WAVE4_THREADS = frozenset({32})
 _SYMBOL_IQ2_SELECTED_TILE1 = "hipengine_gguf_iq2_xs_selected_gemv_bf16_bf16_out"
 _SYMBOL_IQ2_SELECTED = (
@@ -28,6 +29,10 @@ _SYMBOL_IQ2_DUAL_SILU = (
 _SYMBOL_IQ2_DUAL_SILU_TILE2 = _SYMBOL_IQ2_DUAL_SILU
 _SYMBOL_IQ2_DUAL_SILU_TILE2_GRID64 = (
     "hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out"
+)
+_SYMBOL_IQ2_DUAL_SILU_TILE2_GRID64_LOCAL64_REDUCE = (
+    "hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_"
+    "local64_reduce_bf16_bf16_out"
 )
 _SYMBOL_IQ3_SELECTED = "hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out"
 _SYMBOL_IQ3_SELECTED_K1024_WAVE4 = (
@@ -562,6 +567,64 @@ def gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out(
     )
 
 
+def gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    for name, pointer in (
+        ("x_ptr", x_ptr),
+        ("selected_ptr", selected_ptr),
+        ("gate_weight_ptr", gate_weight_ptr),
+        ("up_weight_ptr", up_weight_ptr),
+        ("out_ptr", out_ptr),
+    ):
+        if int(pointer) == 0:
+            raise ValueError(f"{name} must be non-zero")
+    if x_rows != 1:
+        raise ValueError("x_rows must be exactly 1")
+    if threads != 64:
+        raise ValueError("threads must be exactly 64")
+    _validate_selected(
+        x_rows=x_rows,
+        rows=rows,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+        threads=threads,
+        allowed_threads=_IQ2_LOCAL64_THREADS,
+    )
+    _launch_dual_silu(
+        _SYMBOL_IQ2_DUAL_SILU_TILE2_GRID64_LOCAL64_REDUCE,
+        x_ptr,
+        selected_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        x_rows=x_rows,
+        rows=rows,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -928,6 +991,11 @@ def register_gguf_iq_gemv_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq2_xs",
+            "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq2_xs",
             "selected_gemv_decode_tile1_bf16_bf16_out",
             gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
         ),
@@ -993,6 +1061,7 @@ __all__ = [
     "gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out",
     "gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out",

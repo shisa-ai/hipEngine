@@ -564,6 +564,80 @@ __device__ inline void reduce_block_quad(
   }
 }
 
+__device__ inline float permlanex16_f32(float value) {
+  union FloatBits {
+    float value;
+    uint32_t bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_permlanex16(
+      data.bits, data.bits, 0x76543210U, 0xFEDCBA98U, false, false);
+  return data.value;
+}
+
+template <int DPP_CTRL>
+__device__ inline float dpp_move_f32(float value) {
+  union FloatBits {
+    float value;
+    int bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_mov_dpp(
+      data.bits, DPP_CTRL, 0xF, 0xF, true);
+  return data.value;
+}
+
+__device__ inline void reduce_block_quad_local64_dpp(
+    float& value_a,
+    float& value_b,
+    float& value_c,
+    float& value_d) {
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+
+  value_a += permlanex16_f32(value_a);
+  value_b += permlanex16_f32(value_b);
+  value_c += permlanex16_f32(value_c);
+  value_d += permlanex16_f32(value_d);
+#define IQ2_DPP_REDUCE_STEP(CTRL) \
+  value_a += dpp_move_f32<CTRL>(value_a); \
+  value_b += dpp_move_f32<CTRL>(value_b); \
+  value_c += dpp_move_f32<CTRL>(value_c); \
+  value_d += dpp_move_f32<CTRL>(value_d)
+  IQ2_DPP_REDUCE_STEP(0x108);
+  IQ2_DPP_REDUCE_STEP(0x104);
+  IQ2_DPP_REDUCE_STEP(0x102);
+  IQ2_DPP_REDUCE_STEP(0x101);
+#undef IQ2_DPP_REDUCE_STEP
+
+  __shared__ float wave_sums_a[2];
+  __shared__ float wave_sums_b[2];
+  __shared__ float wave_sums_c[2];
+  __shared__ float wave_sums_d[2];
+  if (lane == 0) {
+    wave_sums_a[wave] = value_a;
+    wave_sums_b[wave] = value_b;
+    wave_sums_c[wave] = value_c;
+    wave_sums_d[wave] = value_d;
+  }
+  __syncthreads();
+  if (tid == 0) {
+    value_a = 0.0f;
+    value_b = 0.0f;
+    value_c = 0.0f;
+    value_d = 0.0f;
+    value_a += wave_sums_a[0];
+    value_b += wave_sums_b[0];
+    value_c += wave_sums_c[0];
+    value_d += wave_sums_d[0];
+    value_a += wave_sums_a[1];
+    value_b += wave_sums_b[1];
+    value_c += wave_sums_c[1];
+    value_d += wave_sums_d[1];
+  }
+}
+
 __device__ inline int selected_x_row(int row, int x_rows, int rows) {
   const int lanes_per_x_row = rows / x_rows;
   return x_rows == 1 ? 0 : row / lanes_per_x_row;
@@ -895,6 +969,88 @@ __global__ void gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel(
     }
   }
   reduce_block_quad(gate_acc0, up_acc0, gate_acc1, up_acc1);
+  if (threadIdx.x == 0) {
+    const float gate0 = bf16_bits_to_float(float_to_bf16_bits(gate_acc0));
+    const float up0 = bf16_bits_to_float(float_to_bf16_bits(up_acc0));
+    const float sig0 = 1.0f / (1.0f + expf(-gate0));
+    out[static_cast<int64_t>(row) * out_features + out_col] =
+        float_to_bf16_bits(gate0 * sig0 * up0);
+    if (has_second) {
+      const float gate1 = bf16_bits_to_float(float_to_bf16_bits(gate_acc1));
+      const float up1 = bf16_bits_to_float(float_to_bf16_bits(up_acc1));
+      const float sig1 = 1.0f / (1.0f + expf(-gate1));
+      out[static_cast<int64_t>(row) * out_features + out_col + 1] =
+          float_to_bf16_bits(gate1 * sig1 * up1);
+    }
+  }
+}
+
+__launch_bounds__(256, 2)
+__global__ void gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ gate_weight,
+    const uint8_t* __restrict__ up_weight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = 2 * static_cast<int>(blockIdx.x);
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const bool has_second = out_col + 1 < out_features;
+  const int row_bytes = (in_features / QK_K) * IQ2_XS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int64_t weight_offset =
+      expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes;
+  const uint8_t* __restrict__ gate_row0 =
+      valid_expert ? gate_weight + weight_offset : gate_weight;
+  const uint8_t* __restrict__ gate_row1 =
+      valid_expert && has_second ? gate_row0 + row_bytes : gate_weight;
+  const uint8_t* __restrict__ up_row0 =
+      valid_expert ? up_weight + weight_offset : up_weight;
+  const uint8_t* __restrict__ up_row1 =
+      valid_expert && has_second ? up_row0 + row_bytes : up_weight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+
+  float gate_acc0 = 0.0f;
+  float up_acc0 = 0.0f;
+  float gate_acc1 = 0.0f;
+  float up_acc1 = 0.0f;
+  if (valid_expert) {
+    const int pairs16 = in_features / 16;
+    for (int pair16 = threadIdx.x; pair16 < pairs16;
+         pair16 += blockDim.x) {
+      const int block_idx = pair16 >> 4;
+      const int group8_even = (pair16 & 15) * 2;
+      const int x_offset = pair16 * 16;
+      float x_values[16];
+#pragma unroll
+      for (int j = 0; j < 16; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const int64_t block_offset =
+          static_cast<int64_t>(block_idx) * IQ2_XS_BLOCK_BYTES;
+      gate_acc0 += iq2_xs_pair16_dot_grid64(
+          gate_row0 + block_offset, group8_even, x_values);
+      up_acc0 += iq2_xs_pair16_dot_grid64(
+          up_row0 + block_offset, group8_even, x_values);
+      if (has_second) {
+        gate_acc1 += iq2_xs_pair16_dot_grid64(
+            gate_row1 + block_offset, group8_even, x_values);
+        up_acc1 += iq2_xs_pair16_dot_grid64(
+            up_row1 + block_offset, group8_even, x_values);
+      }
+    }
+  }
+  reduce_block_quad_local64_dpp(gate_acc0, up_acc0, gate_acc1, up_acc1);
   if (threadIdx.x == 0) {
     const float gate0 = bf16_bits_to_float(float_to_bf16_bits(gate_acc0));
     const float up0 = bf16_bits_to_float(float_to_bf16_bits(up_acc0));
@@ -1639,6 +1795,43 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_b
       static_cast<unsigned int>((out_features + 1) / 2),
       static_cast<unsigned int>(rows));
   gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      gate_weight,
+      up_weight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || gate_weight == nullptr ||
+      up_weight == nullptr || out == nullptr || x_rows != 1 || rows <= 0 ||
+      num_experts <= 0 || in_features <= 0 || in_features % QK_K != 0 ||
+      out_features <= 0 || threads != 64) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(64U);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 1) / 2),
+      static_cast<unsigned int>(rows));
+  gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_kernel<<<grid, block, 0, stream>>>(
       x,
       selected,
       gate_weight,

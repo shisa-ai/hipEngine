@@ -19,6 +19,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
+    gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out,
     gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
     gguf_iq4_xs_selected_gemv_bf16_bf16_out,
@@ -188,6 +189,7 @@ __all__ = [
     "gemv_paro_marlin_k_fma_fp16",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out",
