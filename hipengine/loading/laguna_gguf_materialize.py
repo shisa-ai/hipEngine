@@ -39,6 +39,7 @@ from hipengine.quant.gguf_q4_k import (
 from hipengine.quant.gguf_t16 import (
     GGUF_Q6_K_T16_BLOCK_BYTES,
     convert_gguf_q6_k_tile16_to_qmicro,
+    convert_gguf_q6_k_tile16_to_qmicro_planar,
     repack_gguf_q6_k_tile16,
 )
 
@@ -308,6 +309,7 @@ class LagunaGGUFResidentWeights:
     backend: str
     admission: LagunaMemoryAdmissionPlan
     q6_qmicro: bool = False
+    q6_qmicro_planar: bool = False
 
     def root(self, slot: str) -> LagunaGGUFDeviceWeight:
         return self.root_weights[slot]
@@ -645,6 +647,7 @@ def materialize_laguna_gguf_weights(
     repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
     repacked_cache_source_sha256: str | None = None,
     q6_qmicro: bool | None = None,
+    q6_qmicro_planar: bool | None = None,
 ) -> LagunaGGUFResidentWeights:
     """Stream selected or all planned Laguna weights into owned device buffers."""
 
@@ -672,6 +675,18 @@ def materialize_laguna_gguf_weights(
         if q6_qmicro is None
         else q6_qmicro
     )
+    selected_q6_qmicro_planar = bool(
+        selected_q6_qmicro
+        and backend_package_capability(
+            backend,
+            "LAGUNA_Q6_QMICRO_PLANAR",
+            False,
+        )
+        if q6_qmicro_planar is None
+        else q6_qmicro_planar
+    )
+    if selected_q6_qmicro_planar and not selected_q6_qmicro:
+        raise ValueError("Q6 planar layout requires qmicro")
     if available_bytes is None:
         try:
             available_bytes = int(active_runtime.mem_get_info()[0])
@@ -709,6 +724,7 @@ def materialize_laguna_gguf_weights(
                 runtime=active_runtime,
                 backend=backend,
                 q6_qmicro=selected_q6_qmicro,
+                q6_qmicro_planar=selected_q6_qmicro_planar,
                 profile=profile,
                 repacked_cache=cache,
             )
@@ -731,6 +747,7 @@ def materialize_laguna_gguf_weights(
                     runtime=active_runtime,
                     backend=backend,
                     q6_qmicro=selected_q6_qmicro,
+                    q6_qmicro_planar=selected_q6_qmicro_planar,
                     profile=profile,
                     repacked_cache=cache,
                 )
@@ -759,6 +776,7 @@ def materialize_laguna_gguf_weights(
         backend=backend,
         admission=admission,
         q6_qmicro=selected_q6_qmicro,
+        q6_qmicro_planar=selected_q6_qmicro_planar,
     )
 
 
@@ -810,6 +828,7 @@ def _materialize_spec(
     runtime: HipRuntime,
     backend: str,
     q6_qmicro: bool | None = None,
+    q6_qmicro_planar: bool | None = None,
     profile: Callable[[LagunaGGUFMaterializationProfile], None] | None = None,
     repacked_cache: LagunaGGUFRepackedCache | None = None,
 ) -> LagunaGGUFDeviceWeight:
@@ -839,6 +858,18 @@ def _materialize_spec(
         if q6_qmicro is None
         else q6_qmicro
     )
+    selected_q6_qmicro_planar = bool(
+        selected_q6_qmicro
+        and backend_package_capability(
+            backend,
+            "LAGUNA_Q6_QMICRO_PLANAR",
+            False,
+        )
+        if q6_qmicro_planar is None
+        else q6_qmicro_planar
+    )
+    if selected_q6_qmicro_planar and not selected_q6_qmicro:
+        raise ValueError("Q6 planar layout requires qmicro")
 
     def measured_repack(operation: Callable[[], Any]) -> Any:
         nonlocal repack_seconds, repack_delta
@@ -864,8 +895,14 @@ def _materialize_spec(
     ):
         legacy_payload = payloads["tiles"]
         qmicro = measured_repack(
-            lambda: convert_gguf_q6_k_tile16_to_qmicro(
-                legacy_payload.array
+            lambda: (
+                convert_gguf_q6_k_tile16_to_qmicro_planar(
+                    legacy_payload.array
+                )
+                if selected_q6_qmicro_planar
+                else convert_gguf_q6_k_tile16_to_qmicro(
+                    legacy_payload.array
+                )
             )
         )
         payloads = MappingProxyType(

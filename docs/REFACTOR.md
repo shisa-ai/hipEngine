@@ -1389,6 +1389,20 @@ should be boring.
   while retaining the backend capability and scalar-unpack fallback for
   unmeasured backends and non-production template shapes.
 
+## Laguna Q6 planar-qmicro candidate rollback
+
+- Added 2026-07-26 with disabled-by-default gfx1151
+  `LAGUNA_Q6_QMICRO_PLANAR` plus the temporary
+  `q6_qmicro_planar=True` session/profile selector. It changes only the
+  byte order inside each existing 12-byte qmicro record and selects matching
+  prefill, direct-decode, and grouped-small-M consumers.
+- Remove the public selector and candidate capability if the complete-state
+  full-model gate is non-positive. If retained, enable the capability, keep
+  `q6_qmicro_planar=False` only through clean selector-unset publication and
+  one later selected-down checkpoint, then remove the constructor/profile
+  override and obsolete production permute selector. Preserve legacy and
+  interleaved qmicro fallbacks for unmeasured backends and rollback caches.
+
 ## Laguna source-F16 boundary-fusion rollback
 
 - Added 2026-07-26 with session-local

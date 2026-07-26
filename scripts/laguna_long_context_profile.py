@@ -86,6 +86,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument(
+        "--q6-qmicro-planar",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
         "--moe-shared-after-router",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -181,6 +186,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     owner: LagunaGGUFResidentSession | None = None
     active_moe_branch_concurrency = False
     active_q6_qmicro_permute = False
+    active_q6_qmicro_planar = False
     active_moe_shared_after_router = False
     active_moe_shared_low_priority = False
     active_moe_shared_priority_range: tuple[int, int] | None = None
@@ -199,12 +205,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
             q6_qmicro_permute=args.q6_qmicro_permute,
+            q6_qmicro_planar=args.q6_qmicro_planar,
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
+        active_q6_qmicro_planar = owner.q6_qmicro_planar
         active_moe_shared_after_router = owner.moe_shared_after_router
         active_moe_shared_low_priority = owner.moe_shared_low_priority
         active_moe_shared_priority_range = owner.moe_shared_priority_range
@@ -296,6 +304,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "repetitions": args.repetitions,
             "warmup_rows": args.warmup_rows,
             "q6_qmicro_permute": active_q6_qmicro_permute,
+            "q6_qmicro_planar": active_q6_qmicro_planar,
             "moe_branch_concurrency": active_moe_branch_concurrency,
             "moe_shared_after_router": active_moe_shared_after_router,
             "moe_shared_low_priority": active_moe_shared_low_priority,
