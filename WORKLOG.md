@@ -180819,3 +180819,47 @@ Vulkan local sizes verbatim will close the measured gap.
   **530.447 tok/s**. Reaching 700 now requires **233.795 ms** from the clean
   wall; the next distinct exact screen is a three-wave-per-KV-head,
   three-query-heads-per-wave cooperative attention geometry.
+
+## 2026-07-26 — Retain exact cached-metadata attention primitive
+
+- The required broad kernel-lineage audit again could not complete because
+  `docs/source_lineage.json` references the absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. This is an in-tree
+  Laguna attention specialization, not an external port.
+- Auditing the current qrow4 body and the qhead3/head2/nine-wave rejection
+  artifacts closed the planned three-wave GQA screen before implementation:
+  it would combine the measured serial multi-head register penalty with the
+  measured cross-wave synchronous-sharing penalty. The replacement premise is
+  distinct: after exact preappend, complete cache metadata can replace all
+  current-vs-cache source bookkeeping inside the qrow4 token loop.
+- Added RED import/registry/GPU coverage for missing global/SWA cached-metadata
+  wrappers, then implemented separately registered templates. Global
+  `<4,true,true>` and SWA `<4,true,true,true>` preserve the ordered dot,
+  wave32 reduction, online-softmax/PV update order, and F32 output. The full
+  `tests/test_laguna_kv_attention.py` file passes (**11 passed**), with cached
+  and cached-metadata outputs F32-byte identical to source-qualified qrow4.
+- Added reproducible harness
+  `scripts/laguna_attention_cached_meta_leaf.py`. Command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_attention_cached_meta_leaf.py
+  --samples 11 --warmups 2 --burst 25
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build --allow-dirty
+  --output /tmp/laguna-attention-cached-meta-leaf.json`.
+  At pp512 positions 0/128/256/384, SWA improves
+  **1.128/1.113/1.110/1.108x**. Global is **0.897x** at position 0 and
+  **1.010/1.040/1.052x** thereafter, so integration will keep the established
+  global position-0 body. The qualified 12-full/36-SWA leaf model improves
+  **14.602413 -> 13.322987 ms (1.096x)** and projects **15.353 ms** pp512
+  saving. Every output bit matches and allocations recover to zero. Raw
+  SHA-256 is
+  `7fc9e328aee21cfa0647b1e4e6f8c23c7d96ab4e6463f6b48c996d681a5b3956`.
+- Cached rocprof over the exact fixture names both candidate templates at
+  local32/VGPR64/SGPR128/LDS0/scratch0. Trace SHA-256 is
+  `308064520c7badb0a88bd7975dc8f8898d9cc3fcf051e0c2b1016d2bef355ba3`.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`.
+  Retain the primitive; next integrate SWA-all/global-start>=128 behind a
+  gfx1151-qualified policy and run matched full-model gates.
