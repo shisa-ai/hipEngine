@@ -704,7 +704,7 @@ Current progress:
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
 | LAP-1 | Complete | Direct resident-T16 MMQ32 is BF16-bit identical to X8, positive at all seven natural shapes, **2.502x/3.959x/5.502x** retained at M128/M256/M512, and within **4.66%/4.05%/3.02%** of X8 with no transpose or sidecar. |
 | LAP-2 primitive | Complete | Three-plane pack, direct/guarded T16 MMQ, bounded queue, and overflow-safe exact correction landed in `d9bb6ad88`; 35 focused tests and cached trace pass. |
-| LAP-BW0 / LAP-Q0 | LAP-Q0 complete; LAP-BW0 requested-byte ledger complete, counters open | Direct production-versus-all-exact attribution exposed that the prior shipping-relative gate was insufficient: heuristic-4 production reaches max KL **0.0535024**. A shape-qualified hipBLASLt schedule keeps heuristic 4 except K3072xN72 SWA gate on heuristic 2 and passes the absolute 320-step gate at max KL **0.0495426**, **316/320** top-1. The refreshed schedule-correct natural-M512 ledger now puts gate/up at **161.82 GB/s / 73.22%** and half-row compact-qmicro production down at **144.12 GB/s / 65.21%** of the existing 221 GB/s read anchor; fresh locked-clock controller counters remain open. |
+| LAP-BW0 / LAP-Q0 | LAP-Q0 complete; gate/up physical counters complete; down counters open | Direct production-versus-all-exact attribution exposed that the prior shipping-relative gate was insufficient: heuristic-4 production reaches max KL **0.0535024**. A shape-qualified hipBLASLt schedule keeps heuristic 4 except K3072xN72 SWA gate on heuristic 2 and passes the absolute 320-step gate at max KL **0.0495426**, **316/320** top-1. The production layer-1 gate/up consumer physically fetches **1.326 GB**, sustains **195.88 GB/s / 88.64%** of the 221-GB/s anchor, is **80.89%** memory-unit busy and only **1.38%** LDS-stalled. The user cannot write the root-owned clock policy; the audit records `auto` plus the measured **2.54-GHz** in-kernel median. Q4/Q6 down counters remain next. |
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
@@ -736,7 +736,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | pp512 kernel time | Kernel-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **314.920 ms** | **34.95%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default; the corrected **51.045-GB** route-tile ledger remains above the interim requested-byte floor. Reopen only from counters or a new schedule. |
+| Selected D8 Q4 gate/up | **314.920 ms** | **34.95%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters now measure **1.326 GB/layer**, **195.88 GB/s / 88.64%** of the stream anchor, **80.89%** memory-unit busy, **95.77%** occupancy, and **1.38%** LDS stall. Reopen only with a schedule that removes physical bytes. |
 | Selected D4 Q4/Q6 down | **191.098 ms** | **21.21%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. The **27.524-GB** requested ledger remains below the interim bandwidth floor, so a schedule that reduces row-tile rereads is the first expert-family target. |
 | Global + SWA attention | **141.846 ms** | **15.74%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 calls. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
 | Static-range direct hipBLASLt source-F16 | **125.250 ms** | **13.90%** | All five contractions and direct boundary casts are included. Concatenated QKV has only a **2.891-ms** modeled ceiling before restride; layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. Freeze this family pending a different library/runtime capability. |
@@ -764,7 +764,19 @@ The current trace gives concrete Amdahl checkpoints, not performance claims:
   across Q4 row32 and Q6 row64 grids; using the refreshed **191.098-ms**
   family window leaves the rounded rate at **144.03 GB/s / 65.17%**.
   These are requested-byte rates, not controller counters; locked-clock
-  physical traffic remains the final LAP-BW0 step.
+  physical traffic remains the final LAP-BW0 step for selected down.
+- The gate/up physical-counter half of LAP-BW0 is complete. The production
+  layer-1 consumer fetches **1,325,709,312 bytes** from video memory per
+  dispatch and sustains **195.88 GB/s** at the unprofiled **6.768-ms** median,
+  or **88.64%** of the existing stream anchor. It is **80.89%** memory-unit
+  busy, **95.77%** occupied, **53.25%** L2-hit, and only **1.38%**
+  ALU-stalled by LDS. Natural routing creates **297** 32-row expert tiles from
+  **228** active experts, a **1.3026x** complete-weight reread factor. The
+  remaining gate/up problem is physical bytes, not barriers or occupancy.
+  The root-owned performance policy could not be pinned by the benchmark
+  user; the evidence records `auto` and a **2.54-GHz** median in-kernel clock.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-up-physical-counters.json`.
 
 The quality contract remains binding. LAP-Q0 found that the prior
 **0.040724836** result compared current production with an already approximate
@@ -881,11 +893,14 @@ Immediate execution queue:
    64-MiB workspace on gfx1151. Do not add concatenated resident weights or a
    restride kernel for this ceiling; reopen only if the installed library
    gains a viable grouped algorithm or consumers accept the combined stride.
-4. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
-   The schedule-correct requested-byte ledger is published: gate/up is
-   **162.15 GB/s (73.37%)** and down **137.16 GB/s (62.06%)** against the
-   existing 221 GB/s anchor. Retire the pre-admission **78.27 ms/layer versus
-   52.80 ms layer-1** bridge instead of scaling it into new forecasts.
+4. Complete LAP-BW0 for selected down. Gate/up controller evidence is now
+   decisive: **1.326 GB/layer**, **195.88 GB/s (88.64%)** of the 221-GB/s
+   anchor, **80.89%** memory-unit busy, and **1.38%** LDS stall. The
+   schedule-correct requested-byte ledger remains gate/up
+   **162.15 GB/s (73.37%)** and down **137.16 GB/s (62.06%)**. Profile Q4
+   and Q6 down separately before choosing their next byte-eliding schedule.
+   Retire the pre-admission **78.27 ms/layer versus 52.80 ms layer-1** bridge
+   instead of scaling it into new forecasts.
 5. After down, revisit gate/up only from physical counters or a new
    cross-tile/expert schedule. The corrected requested-byte ledger already
    reaches **73.37%** of the read anchor, so a local body tweak must explain

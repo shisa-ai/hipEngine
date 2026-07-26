@@ -181936,3 +181936,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-swa-qrow5-rejected.json`.
   Production remains **559.290 tok/s**. Wider SWA query-row accumulation is
   closed without a new state-compression mechanism.
+
+## 2026-07-26 — Complete LAP-BW0 physical counters for gate/up
+
+- Collected one hardware-compatible `rocprofv3` counter group per process on
+  only the production layer-1 D8 Q4 gate/up consumer, excluding activation
+  packing. The actual Laguna S 2.1 Q4_K_M K3072/N1024 pair used frozen natural
+  M512 routing: 5,120 compact rows, 228 active experts, 297 populated 32-row
+  tiles, and maximum expert width 232.
+- The unprofiled pack-inclusive leaf is **6.767845 ms** median and remains
+  finite with checksum **1114.1769413301445**. The consumer physically fetches
+  **1,325,709,312 bytes/layer**, implying **195.884 GB/s / 88.635%** of the
+  existing 221-GB/s stream anchor at that median. Counter medians are
+  **80.885%** memory-unit busy, **95.767%** occupancy, **53.253%** L2 hit, and
+  only **1.377%** ALU stall by LDS.
+- The 297/228 routing ratio creates a **1.3026x** complete-weight reread
+  factor. Physical fetch is **1.2272x** the 1.080-GB scheduled T16 weight
+  request after metadata/activation/cache effects. Gate/up is therefore
+  controller-bound, not LDS-, occupancy-, or arithmetic-bound; further local
+  body tuning is closed unless it removes bytes.
+- `/sys/class/drm/card1/device/power_dpm_force_performance_level` is root-owned,
+  so the benchmark user cannot pin it. The artifact records `auto` and
+  `GRBM_COUNT` instead: median in-kernel engine clock is **2.543 GHz** across
+  five filtered dispatches. No locked-clock claim is made.
+- Published diagnostic evidence
+  `benchmarks/results/2026-07-26-gfx1151-laguna-gate-up-physical-counters.json`.
+  LAP-BW0 next profiles Q4 and Q6 selected down separately, then admits only a
+  schedule whose byte model removes row-tile weight rereads.
