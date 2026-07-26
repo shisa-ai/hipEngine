@@ -305,6 +305,15 @@ new external/roofline rows must pin the supported performance policy when
 possible and record in-kernel or sampled load clocks; otherwise the result is
 explicitly qualified as clock-unbounded.
 
+The supported `high` policy is not a production speed lever. A root-applied
+`auto -> high -> auto` screen under the complete 512/1K/4K production protocol
+measures pp512 **560.898 -> 557.949 -> 560.759 tok/s**. High is **0.514%**
+below the median of the surrounding auto runs, lowers 1K, and is inconsistent
+at 4K. The original `auto` state was restored. This closes `high` as a
+deployment default; manual clock locking remains useful only to tighten future
+roofline experiments. Evidence:
+[`2026-07-26-gfx1151-laguna-clock-high-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-clock-high-rejected.json).
+
 The compact LAP-0 evidence packet is
 [`2026-07-24-gfx1151-laguna-prefill-lap0-control.json`](../benchmarks/results/2026-07-24-gfx1151-laguna-prefill-lap0-control.json).
 

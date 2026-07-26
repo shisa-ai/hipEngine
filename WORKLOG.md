@@ -182150,3 +182150,20 @@ Vulkan local sizes verbatim will close the measured gap.
 - Every candidate HIP, wrapper, registry, test, and harness surface was
   removed. Production remains **559.554 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-gate-k256-ldsacc-rejected.json`.
+
+## 2026-07-26 — Reject gfx1151 high performance level
+
+- Resolved the root-owned gfx1151 performance policy directly through
+  `/sys/class/drm/card1/device/power_dpm_force_performance_level`. The
+  counterbalanced production order was `auto -> high -> auto`, with three
+  repetitions each at 512/1K/4K, matrix M2048, attention M128, one queue, and
+  cached builds.
+- pp512 medians are **560.898 -> 557.949 -> 560.759 tok/s**. The `high`
+  result is **0.514%** below the median of the two surrounding auto runs. It
+  also lowers 1K (**524.640/523.573 auto vs 522.906 high**) and does not show
+  a consistent 4K gain (**441.381/440.767 auto vs 442.109 high**).
+- Every run preserves tokens 2930/95/7772, exact final positions,
+  deterministic repeats, zero tracked allocations after teardown, and a clean
+  revision. The sysfs policy is restored to `auto`; production is unchanged.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-clock-high-rejected.json`.

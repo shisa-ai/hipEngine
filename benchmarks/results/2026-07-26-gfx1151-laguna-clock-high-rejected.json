@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T11:10:00Z",
+  "kind": "hipengine_laguna_performance_level_screen",
+  "status": "rejected",
+  "performance_claim": false,
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory_clock_level": "2: 1000 MHz",
+    "original_performance_level": "auto",
+    "final_performance_level": "auto"
+  },
+  "protocol": {
+    "order": [
+      "auto",
+      "high",
+      "auto"
+    ],
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build",
+    "timing_scope": "canonical reset-through-first-token production prefill; load excluded",
+    "repetitions_per_length": 3
+  },
+  "median_tok_s": {
+    "auto_a": {
+      "512": 560.898367470328,
+      "1024": 524.6397883544931,
+      "4096": 441.38126697673937
+    },
+    "high_b": {
+      "512": 557.9487877290717,
+      "1024": 522.905602902133,
+      "4096": 442.1086790934354
+    },
+    "auto_c": {
+      "512": 560.7591528618037,
+      "1024": 523.5728353659092,
+      "4096": 440.7672439948237
+    }
+  },
+  "pp512": {
+    "auto_outer_median_tok_s": 560.8287601660658,
+    "high_tok_s": 557.9487877290717,
+    "high_delta_percent": -0.5135231323641728
+  },
+  "correctness": {
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "repeat_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_zero_each_run": true
+  },
+  "hashes": {
+    "auto_a_raw_json_sha256": "b9007736d22b94d33fb71e9ac94a01f4c03b7adda5ef5f5462d9508201ff7619",
+    "high_b_raw_json_sha256": "f39ca517a27143302e70bb62c0b03ddb34bdd0a982c8f5d5f20be2ce3fa6b844",
+    "auto_c_raw_json_sha256": "ca16874ce80303eed0dc4add4a199f6ae3a2b207b2625d2291eb0fa8ada516fe"
+  },
+  "decision": {
+    "retain_high_policy": false,
+    "production_changed": false,
+    "reason": "The high policy loses 0.51% at pp512 against the median of the two surrounding auto runs, lowers 1K, and does not produce a consistent long-context win.",
+    "machine_state_restored": true
+  },
+  "repo": {
+    "revision": "650f93e5e19481aaa4173354b88780af303e9a00",
+    "tracked_clean": true
+  }
+}
