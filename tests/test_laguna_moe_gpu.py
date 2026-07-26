@@ -224,6 +224,30 @@ def test_laguna_dense_q4_prefill_mode_is_explicit_and_fail_closed() -> None:
         resolve_laguna_dense_q4_prefill_mode("hip_gfx1151", "rowtile8")
 
 
+def test_laguna_mmq_selected_down_reuses_exact_grouped_combine() -> None:
+    should_fuse = laguna_moe_module._should_fuse_grouped_weighted_sum
+    assert should_fuse(
+        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
+        tokens=512,
+        use_mmq_down=True,
+    )
+    assert should_fuse(
+        selected_down_mode="grouped_smallm_fused",
+        tokens=3,
+        use_mmq_down=False,
+    )
+    assert not should_fuse(
+        selected_down_mode="grouped_smallm",
+        tokens=512,
+        use_mmq_down=False,
+    )
+    assert not should_fuse(
+        selected_down_mode="direct",
+        tokens=512,
+        use_mmq_down=False,
+    )
+
+
 def test_laguna_group_compact_mode_is_backend_qualified() -> None:
     assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"
     assert resolve_laguna_group_compact_mode("hip_gfx1151") == "parallel"
@@ -719,6 +743,28 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         down_q6_rows64_actual = _read_bf16(
             down_q6_rows64_output,
             (3, h),
+        )
+        with monkeypatch.context() as unfused_combine:
+            unfused_combine.setattr(
+                laguna_moe_module,
+                "_should_fuse_grouped_weighted_sum",
+                lambda **_: False,
+            )
+            down_q6_rows64_unfused_output = run_laguna_moe_rows(
+                bulk_hidden_buffer.ptr,
+                layer,
+                down_rowvec_scratch,
+                rows=3,
+                selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+                selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
+            )
+            down_q6_rows64_unfused_actual = _read_bf16(
+                down_q6_rows64_unfused_output,
+                (3, h),
+            )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(down_q6_rows64_actual),
+            _f32_to_bf16_u16(down_q6_rows64_unfused_actual),
         )
         np.testing.assert_array_equal(
             _f32_to_bf16_u16(down_q6_rows64_actual),
