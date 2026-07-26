@@ -1,0 +1,388 @@
+{
+  "admission_plan": {
+    "clean_and_category_adjudication": [
+      "Freeze two counterbalanced process orders at short/512/1024/3968. Every order must improve IQ2-family and complete kernel-sum time, keep median dispatch span <=+0.5%, keep profiled-child throughput >=-0.5%, and pass exact topology/resource/ID/finite/lifecycle checks. Stop on first failure; no third order or pooled waiver.",
+      "Only after all clean contexts pass, run both complete 18-prompt mtp-bench category/heldout orders. Require every category decode row positive and aggregate decode positive, with E2E/prefill/TTFT inside the frozen 0.5% guards and exact generated IDs/state/lifecycle.",
+      "Promote as the gfx1100 c=1 default only if every gate passes; otherwise remove runtime integration while retaining an exact separately registered diagnostic primitive."
+    ],
+    "codegen_and_trace": {
+      "compiler": "same AMD Clang 22 gfx1100 decode profile",
+      "required": {
+        "allocated_vgpr_max": 112,
+        "barriers": 1,
+        "dpp_instructions": 16,
+        "ds_bpermute": 0,
+        "group_segment_fixed_size_max": 32,
+        "logical_sgpr_max": 31,
+        "logical_vgpr_max": 110,
+        "private_segment_fixed_size": 0,
+        "rocprof_lds_allocation_max": 512,
+        "s_waitcnt_max": 30,
+        "scratch_bytes": 0,
+        "sgpr_spills": 0,
+        "static_instructions_max": 858,
+        "text_bytes_max": 4888,
+        "v_permlanex16": 4,
+        "vgpr_spills": 0,
+        "wavefront_size": 32,
+        "workgroup_x": 64
+      },
+      "trace": "After a non-profiled exact-key prebuild, require cache-only rocprofv3 to name the distinct candidate at grid/local 32768x10/64 for the production shape with plausible duration, allocated VGPR<=112, LDS<=512, scratch0, finite exact output, and no compiler process under profiling."
+    },
+    "commit_boundaries": [
+      "Commit this design before implementation.",
+      "Commit primitive correctness before adding runtime ownership.",
+      "Commit runtime correctness before clean measurement.",
+      "Commit retained default or mechanical rejection immediately after final adjudication."
+    ],
+    "correctness": [
+      "Synthetic K256/K1024/K3072 cases cover one and ten selected rows, odd/even output tails, signed-zero/subnormal/finite BF16 activations, selector/sign/scale extremes, and compare both gate/up intermediates plus final BF16 SiLU output against the retained grid64 body bit-for-bit.",
+      "An independent CPU IQ2_XS dequantization oracle must pass KL <=0.05 and top-1 >=90%; candidate and retained output bytes must also match exactly.",
+      "All 46 production IQ2 gate/up layer pairs must be BF16-bit exact to retained grid64, with actual model pointers and selected IDs. Repeat the frozen first/last timing protocol once and require both HIP-event and synchronized-wall medians to improve at both endpoints."
+    ],
+    "primitive_red_green": [
+      "Add a candidate-specific HIP helper, kernel, C export, Python wrapper, package export, and exact four-axis key; do not mutate the generic reducer or the retained grid64 symbol.",
+      "RED must prove the wrapper/key/export are absent, then freeze five non-null pointer checks, x_rows==1, rows>0, num_experts>0, K>0 divisible by 256, N>0, and threads exactly 64 before library load.",
+      "Register only on hip_gfx1100 and explicitly prove no gfx1151/cuda/cpu alias. Retained grid64 remains registered and callable as the unfused fallback.",
+      "Primitive admission adds no backend capability, runner/session selector, CLI, allocation, workspace, launch, sidecar, weight copy, or default change."
+    ],
+    "runtime_owner_after_primitive_commit": [
+      "Only after primitive admission, add a separate false gfx1100 capability and explicit session/CLI opt-in. Candidate lookup precedes retained grid64 only for c=1 decode; rows/prefill, explicit disable, key/shape/backend misses, and gfx1151 retain control.",
+      "Shared-weight mixed_ja_en_review must compare bulk prefill, one captured all-layer decode, 15 more transitions, reset, and eight-token re-prefill. Require full logits/IDs, all 48 hidden and 47 routed boundaries, active K/V and every KVLiveSpans field, positions, ownership, lifecycle, KL=0, and top-1 100%.",
+      "A cache-only two-transition full-model trace must record exactly 92 candidate calls (46/token), zero candidate prefill calls, all 46 bulk-prefill calls on retained compact-grid, exactly 723 model kernels/token, expected resources, finite IDs/logits, clean teardown, and no compiler under profiling."
+    ]
+  },
+  "baseline": {
+    "additional_h32_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "canonical_wall_ms_per_token": 16.131230401844086,
+    "commit": "250568853b43cf91041366a023d615972890caa5",
+    "context_rerank": {
+      "contexts": {
+        "1024": {
+          "iq2_ms_per_token": 1.860361625,
+          "kernel_sum_ms_per_token": 24.699050333333343,
+          "stable_samples": 12
+        },
+        "3968": {
+          "iq2_ms_per_token": 1.8753803125,
+          "kernel_sum_ms_per_token": 37.81661575,
+          "stable_samples": 12
+        },
+        "512": {
+          "iq2_ms_per_token": 1.8823429375,
+          "kernel_sum_ms_per_token": 22.374972250000006,
+          "stable_samples": 12
+        },
+        "short": {
+          "iq2_ms_per_token": 1.900342625,
+          "kernel_sum_ms_per_token": 12.921204178571427,
+          "stable_samples": 28
+        }
+      },
+      "note": "These immutable post-Q4 context traces remain production-equivalent because every later rejected owner was removed and no subsequent retained default changed the IQ2 path.",
+      "source": "/tmp/laguna-q2-xl-q4-lmhead-local32-clean-profile-summary.json",
+      "source_sha256": "e617aa26477ba5048db5266d1b7cdfc082e1072cc43cc0615198af4862605e40"
+    },
+    "latest_short_iq2_ms_per_token": 1.87667390625,
+    "latest_short_kernel_sum_ms_per_token": 12.885494964285716,
+    "latest_short_source": "/tmp/laguna-q2-xl-add-rmsnorm-staged-clean-profile-summary.json",
+    "latest_short_source_sha256": "e75b96b7264c6239aa5505f99219c131af9092ee026da407aee444540c092125",
+    "latest_short_top_independent_families_ms_per_token": {
+      "mixed_q5_q6_projection": 1.948203,
+      "selected_iq2_gate_up_silu": 1.87667390625,
+      "selected_iq3_down": 1.459715,
+      "standalone_q5_attention_output": 1.570107,
+      "swa_wave_local_reducer": 1.459666
+    },
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 723
+  },
+  "cache_only_trace": {
+    "agent_info_path": "/tmp/laguna-iq2-local64-reduce-trace-design-250568853/laguna_iq2_local64_reduce_agent_info.csv",
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "candidate_calls": 2,
+    "candidate_library_sha256": "c3bf9cd2c2094894187f48647bcb0ea97510cdb31b28773fbcefa598b0413661",
+    "compiler_allowed_under_profiler": false,
+    "finite": true,
+    "harness_path": "/tmp/trace_laguna_iq2_local64_reduce.py",
+    "harness_sha256": "47fd9b0accd18ba32db01c76853516f97639c4e745007f0833b499192f5a9656",
+    "kernel_rows": [
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 112,
+        "duration_ns": 533122,
+        "grid_x": 32768,
+        "grid_y": 10,
+        "kernel_name": "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 64
+      },
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 112,
+        "duration_ns": 32600,
+        "grid_x": 32768,
+        "grid_y": 10,
+        "kernel_name": "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 64
+      }
+    ],
+    "kernel_trace_path": "/tmp/laguna-iq2-local64-reduce-trace-design-250568853/laguna_iq2_local64_reduce_kernel_trace.csv",
+    "kernel_trace_sha256": "314f78d70bf21d86b0a72c492c3fda1dd237ce84274e8e951bbe16203697958e",
+    "no_compiler_under_profiler": true,
+    "output_sha256": "729bb0c99721e5b04185d0a747f452f90f19e696c6d357b79a959b1997a66673",
+    "prebuilt_candidate_required": true,
+    "preflight_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/trace_laguna_iq2_local64_reduce.py",
+    "preflight_stdout_sha256": "1b359d832ee8968c3ae7f19b15ae26c1d5a1d3a1d22b0cea48a033ae73e328ae",
+    "profile_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq2-local64-reduce-trace-design-250568853 --output-file laguna_iq2_local64_reduce -- uv run python -u /tmp/trace_laguna_iq2_local64_reduce.py",
+    "profile_stderr_sha256": "c4f6bd55b5bbe00f9f793e813cd21bf99d0e15ead3b277f715506eb17b017b37",
+    "profile_stdout_sha256": "1b359d832ee8968c3ae7f19b15ae26c1d5a1d3a1d22b0cea48a033ae73e328ae",
+    "resource_interpretation": "rocprofv3 reports allocation granularity (VGPR112, LDS512, SGPR128); ELF metadata reports logical VGPR110, fixed group-segment 32 B, SGPR31. The first 533.122-us dispatch includes cold residency and is not timing evidence; the second is 32.600 us. This trace is only an executed-symbol/resource/name gate."
+  },
+  "closed_before_selection": [
+    {
+      "candidate": "Q5 one-wave four-output activation reuse",
+      "harness_sha256": "507dac941c8eaf08d9934176139c2533d6d94140e76797cdb68546e60247d331",
+      "raw_path": "/tmp/laguna-q5-wave32x4-perwave-actual.json",
+      "raw_sha256": "10ae19fbcb5865d09cb064dd34d76740b7b37ad21eb48d1e4779ee9169d69f22",
+      "reason": "All first/last global/SWA rows are exact but regress 34.08-39.49% event and 29.63-37.27% wall.",
+      "result": "reject before repository work"
+    },
+    {
+      "candidate": "SWA tile4 query-register reuse",
+      "harness_sha256": "cfbcf8c085db8cc2cca48814a209117f6052104371a9c434b5b5873efa94a932",
+      "raw_path": "/tmp/laguna-swa-tile4-qreuse-actual.json",
+      "raw_sha256": "0bcd17cdc5d9dfd1f092eaaecc099ff653f1a8ed478f2f3bb8a14e73d1240ba1",
+      "reason": "All nine actual rows are exact but regress 0.10-21.42% event and 0.36-21.53% wall; LDS/barrier sharing costs exceed saved query loads.",
+      "result": "reject before repository work"
+    },
+    {
+      "candidate": "IQ2 16-lane super-scale publication",
+      "raw_path": "/tmp/bench_laguna_iq2_cohort_scale_actual.out",
+      "raw_sha256": "e722ae9ccff8a84fe2a5898f855b9d6d85d23f45b55d775bff3761f8118a90c1",
+      "reason": "Exact outputs do not offset four added shuffles; layers 1/45 regress 5.01/2.72% event and 4.99/3.01% wall.",
+      "result": "reject before repository work",
+      "source_sha256": "84d3f9bbf066f4aa384ee9263926d7f3d162ee9c954d86b1624c55e4826a96e6"
+    },
+    {
+      "candidate": "IQ2 hybrid offset16-shuffle plus DPP row reduction",
+      "raw_path": "/tmp/bench_laguna_iq2_dpp_reduce_actual.out",
+      "raw_sha256": "9329bc00430eb7ae2f82af5fafee29141559baab02cdb21e19e46c00d2b10aba",
+      "reason": "Exact and mechanically smaller, but layers 1/45 regress 0.72/0.31% event while wall changes -0.03/-0.36%.",
+      "result": "reject as incomplete reduction",
+      "source_sha256": "c8bead9a3f1545d11381452a5c66a720a91ddf27824c76a9449748b76b97ce80"
+    },
+    {
+      "candidate": "IQ2 permlanex16 plus DPP with generic 1-8-wave tail",
+      "raw_path": "/tmp/bench_laguna_iq2_permlane_dpp_actual.out",
+      "raw_sha256": "76233adab950d16b30d2ce7e78a2705dca06e1394300e296e4ed6be4e79519bc",
+      "reason": "All 20 wave ds_bpermutes disappear, but layer-1 event remains +0.16% despite wall -1.53%; the generic cross-wave tail remains.",
+      "result": "reject as incomplete reduction",
+      "source_sha256": "8ab1a11ff9720fa2b808df21777cab08b92208d1f8fc875a3c758c0dd754b28f"
+    },
+    "staged add+RMSNorm, mixed pair reuse, weighted-hidden, compact/wave-top10 router, standalone Q6, IQ3 sign-bit, SWA dim2/GQA3/no-max-sync, IQ2 local32/wave64/tile4/grid64 repeats, broad Q8_1, and prompt/token-conditioned paths remain closed by their committed artifacts"
+  ],
+  "codegen": {
+    "candidate": {
+      "barriers": 1,
+      "dpp_instructions": 16,
+      "ds_bpermute": 0,
+      "ds_load_instructions": 2,
+      "ds_store_instructions": 2,
+      "group_segment_fixed_size": 32,
+      "logical_sgpr": 31,
+      "logical_vgpr": 110,
+      "private_segment_fixed_size": 0,
+      "s_waitcnt": 30,
+      "sgpr_spills": 0,
+      "static_instructions": 858,
+      "text_bytes": 4888,
+      "v_permlanex16": 4,
+      "vgpr_spills": 0,
+      "wavefront_size": 32
+    },
+    "candidate_hsaco_sha256": "413add4981aea795c3989c508d0ce7123f22cfbd957126ab4cf1b4f40a873abc",
+    "candidate_objdump_sha256": "df2c47a80d15021d3a407c499e2ad91b18b6830140ba7f463a0041d545866a2c",
+    "candidate_readobj_sha256": "a68ae4c0596f1afffce54d3e8541121e2b301d5e58202651aaaf1e3bb5f4e7c0",
+    "control": {
+      "barriers": 1,
+      "dpp_instructions": 0,
+      "ds_bpermute": 20,
+      "ds_load_instructions": 19,
+      "ds_store_instructions": 2,
+      "group_segment_fixed_size": 128,
+      "logical_sgpr": 31,
+      "logical_vgpr": 110,
+      "private_segment_fixed_size": 0,
+      "s_waitcnt": 49,
+      "sgpr_spills": 0,
+      "static_instructions": 984,
+      "text_bytes": 5548,
+      "v_permlanex16": 0,
+      "vgpr_spills": 0,
+      "wavefront_size": 32
+    },
+    "control_hsaco_sha256": "cbe1624344a9fdb725d5b66a8c24134bf6887cf8356b27d04e3fa47704891289",
+    "control_objdump_sha256": "9116fa3143ccb1bf79ee882e98688ce38b40868f0dff69307ed075c415bcead4",
+    "control_readobj_sha256": "4de91de09eaf3da1fb40c44311ce4611a4e067a1a633b854156e92eb84aae315",
+    "delta": {
+      "group_segment_fixed_size_pct": -75.0,
+      "s_waitcnt_pct": -38.775510204081634,
+      "static_instruction_pct": -12.804878048780488,
+      "text_bytes_pct": -11.896178803172319
+    },
+    "source_diff_scope": "Design probe changes only the four-accumulator transport and fixed-two-wave tail. Repository admission must use a candidate-specific helper/kernel/export; it must not replace the generic reducer used by retained tile2/tile4 bodies."
+  },
+  "date": "2026-07-26",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation_status": {
+    "benchmark_changelog_update": false,
+    "benchmark_scoreboard_update": false,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "default": "unchanged retained IQ2 grid64",
+    "repository_primitive": "not implemented",
+    "runtime_owner": "not implemented"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq2_local64_reduction_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "path": "/tmp/laguna-iq2-local64-reduce-lineage.txt",
+    "result": "catalogued references clean; no new parent drift affecting the selected in-tree IQ2 body",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "in_features": 3072,
+    "iq2_decode_calls_per_token": 46,
+    "num_experts": 256,
+    "out_features": 1024,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "selected_experts": 10,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling": {
+    "canonical_h32_tok_s_before": 61.99155148671624,
+    "conservative_ratio": 0.009591792637868468,
+    "iq2_ms_per_token_before": 1.87667390625,
+    "kernel_sum_ms_per_token_after": 12.867494297328067,
+    "kernel_sum_ms_per_token_before": 12.885494964285716,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "method": "Apply only the smaller endpoint event improvement (0.959179%) to the immutable latest short IQ2 family; leave every other kernel and host interval unchanged.",
+    "modeled_h32_delta_pct": 0.11171358724362257,
+    "modeled_h32_tok_s_after": 62.06080447267003,
+    "modeled_saving_ms_per_token": 0.018000666957648608,
+    "note": "The approximately 0.0180-ms/token ceiling is too small to close the Vulkan gap by itself and is not a default/full-model throughput claim.",
+    "performance_claim": false,
+    "remaining_gap_pct": 3.7985887795506823
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "selected_design": {
+    "description": "Keep the retained local64 two-wave IQ2 grid64 dot body and replace only its generic block-quad reduction with a fixed two-wave implementation: permlanex16 handles the offset-16 exchange, DPP row_shl 8/4/2/1 handles the remaining wave tree, and thread 0 adds exactly wave0 then wave1 after the unchanged barrier.",
+    "exact_arithmetic_invariants": [
+      "Every grid64 magnitude/sign reconstruction, scale multiply, pair16 FMA order, four gate/up/output accumulators, BF16 projection boundary, SiLU expression, and RNE BF16 output store are unchanged.",
+      "For each accumulator, lane 0 observes the identical reduction tree: add lane+16, then +8, +4, +2, +1. permlanex16 and DPP change transport only, not operands or FP32 addition order.",
+      "Only lane 0 from each wave is published, so non-lane0 values outside the tree's live dependency cone are not observable.",
+      "After the unchanged barrier, thread 0 starts from +0.0 and adds wave 0 then wave 1 exactly as the retained local64 dynamic loop does."
+    ],
+    "fallbacks": [
+      "retained selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out on explicit disable, key miss, unsupported shape/backend, or non-local64 request",
+      "retained compact-grid and grouped prefill routes for rows/prefill",
+      "no gfx1151 alias until independently implemented and measured on that backend"
+    ],
+    "name": "exact IQ2 grid64 fixed-local64 permlanex16+DPP reduction",
+    "ownership_invariants": [
+      "Each local64 workgroup still owns two adjacent output columns for one selected route.",
+      "Threads 0..63 retain the same pair16 indices pair16=tid, tid+64, tid+128 at K3072; both waves and all activation/weight loads are unchanged.",
+      "The candidate adds no workgroup, launch, counter, workspace, persistent allocation, sidecar, weight copy, or prompt/token branch; full-model topology remains 723 kernels/token."
+    ],
+    "planned_four_axis_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq2_xs",
+      "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out"
+    ],
+    "planned_wrapper": "gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out",
+    "scope": "gfx1100, rows=selected routes, x_rows=1 decode, raw IQ2_XS gate/up, BF16 activation/output, K divisible by 256, fixed local64; current grid64 remains fallback",
+    "why_distinct": "The rejected local32 IQ2 body serialized the two K partitions in one wave and lost parallelism; wave64 changed the code object; tile4 changed output ownership. This candidate keeps the retained two wave32 owners, output tile2, grid, dot/FMA chains, workgroups, and launch count and changes only the collective implementation plus compile-time two-wave tail."
+  },
+  "selection_probe": {
+    "all_bf16_bit_exact": true,
+    "candidate_library_path": "/tmp/gguf_iq_gemv_iq2_local64_permlane_dpp_reduce.so",
+    "candidate_library_sha256": "c3bf9cd2c2094894187f48647bcb0ea97510cdb31b28773fbcefa598b0413661",
+    "candidate_source_path": "/tmp/gguf_iq_gemv_iq2_local64_permlane_dpp_reduce.hip",
+    "candidate_source_sha256": "7a074d6379c418b82bf7ef2e97a7a3e9a304efd7e31f6ebfa01a7d307973f154",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq2_local64_reduce_actual.py",
+    "control_library_path": "/home/lhl/.cache/hipengine/build/gguf_iq_gemv-471079af51d44cb3/gguf_iq_gemv.so",
+    "control_library_sha256": "34e6165c4ae85a3e964494770c5fe125fa6df3716152a0d67654c969b1c0c0c9",
+    "harness_path": "/tmp/bench_laguna_iq2_local64_reduce_actual.py",
+    "harness_sha256": "3f3eb7d995e0072b13d49c0a65b125d8e4e0b6970e5f3a72603b552441550cd6",
+    "pooled_event_delta_pct": -1.0885868909402907,
+    "pooled_wall_delta_pct": -1.1581032825907611,
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "promotion_precondition": "Both event and wall medians improve at both endpoints without rerun.",
+      "selected_experts": [
+        193,
+        7,
+        89,
+        221,
+        3,
+        127,
+        44,
+        255,
+        18,
+        166
+      ],
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "warmups": 50,
+      "weights": "first/last actual IQ2 layers 1/45"
+    },
+    "raw_path": "/tmp/bench_laguna_iq2_local64_reduce_actual.out",
+    "raw_sha256": "7a7e7673efe17483ae7fdc175d0d46e1b788c2e9032bbd594daf9e4db94daa5c",
+    "rows": [
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 39.505650997161865,
+        "candidate_wall_us": 39.42776471376419,
+        "control_event_us": 39.88825082778931,
+        "control_wall_us": 39.846220752224326,
+        "event_delta_pct": -0.9591792637868468,
+        "kl_max": 0.0,
+        "layer_id": 1,
+        "top1_agreement": 1.0,
+        "wall_delta_pct": -1.0501774837373357
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 40.326852798461914,
+        "candidate_wall_us": 40.407779160887,
+        "control_event_us": 40.82286357879639,
+        "control_wall_us": 40.92473420314491,
+        "event_delta_pct": -1.215031815142198,
+        "kl_max": 0.0,
+        "layer_id": 45,
+        "top1_agreement": 1.0,
+        "wall_delta_pct": -1.2631848497581144
+      }
+    ]
+  },
+  "status": "candidate_selected"
+}
