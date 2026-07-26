@@ -1501,6 +1501,15 @@ scattered packed-quant loads per work item with a byte-neutral contiguous
 resident micro-layout. Evidence:
 [`2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json).
 
+Q6 qmicro implementation checkpoint: the CPU materializer/inverse now stores
+the unchanged 288-byte `d/scales` metadata followed by records ordered
+`[K32][col4][K4][QL8,QH4]`. Each selected-prefill work item therefore owns one
+aligned 12-byte record instead of twelve scattered byte addresses. The
+transform is bit-lossless and remains exactly **3,360 bytes** per
+16-column/K256 tile, equal to current T16 and raw Q6_K. This is not a
+performance claim or resident promotion; exact decode and prefill consumers
+must pass their independent gates first.
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-attention-preappend-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json)

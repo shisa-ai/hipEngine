@@ -180718,3 +180718,22 @@ Vulkan local sizes verbatim will close the measured gap.
   target the twelve scattered packed-quant loads per work item with a
   byte-neutral contiguous resident micro-layout. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json`.
+
+## 2026-07-26 — Add byte-neutral Q6T16 qmicro host materializer
+
+- The required broad kernel-lineage audit could not complete because the
+  manifest references the absent
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. A narrow
+  `--file '*q6*'` audit selected no external sources; this qmicro work is an
+  in-tree resident-layout evolution, not an upstream port.
+- Added RED coverage for a missing Q6T16 qmicro materializer/inverse, then
+  implemented the bit-lossless CPU transform. It preserves the existing
+  288-byte FP16-`d`/int8-scale metadata and rearranges the 3,072-byte quant
+  payload as `[K32][col4][K4][QL8,QH4]`. Each selected-prefill work item can
+  therefore read one aligned 12-byte record rather than gather twelve scalar
+  bytes.
+- The focused roundtrip test passes. The candidate remains exactly
+  **3,360 bytes per 16-column/K256 tile**, equal to current T16 and raw Q6_K;
+  no registry, materializer default, runtime dispatch, or production behavior
+  changes in this checkpoint. Next: exact qmicro decode and selected-prefill
+  consumers, then natural-shape performance gates.
