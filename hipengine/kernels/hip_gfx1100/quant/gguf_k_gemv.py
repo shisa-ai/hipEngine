@@ -40,6 +40,9 @@ _MIXED_ATTENTION_Q6_FIXED_META_VARIANT = (
 _MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT = (
     "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
 )
+_MIXED_ATTENTION_PAIR_REUSE_LOCAL32_FIXED_META_VARIANT = (
+    "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+)
 _MIXED_ATTENTION_Q5_QG_QUANT = (
     "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k"
 )
@@ -151,9 +154,22 @@ def _make_pack8_wrapper(quant: str, symbol: str):
     return wrapper
 
 
-def _make_mixed_attention_wrapper(symbol: str, primary_roles: tuple[int, int]):
+def _make_mixed_attention_wrapper(
+    symbol: str,
+    primary_roles: tuple[int, int],
+    *,
+    require_non_null: bool = False,
+    require_primary_total_at_least_secondary: bool = False,
+):
     def wrapper(*args, **kwargs) -> None:
-        _launch_mixed_attention(symbol, *args, primary_roles=primary_roles, **kwargs)
+        _launch_mixed_attention(
+            symbol,
+            *args,
+            primary_roles=primary_roles,
+            require_non_null=require_non_null,
+            require_primary_total_at_least_secondary=require_primary_total_at_least_secondary,
+            **kwargs,
+        )
 
     return wrapper
 
@@ -294,6 +310,14 @@ gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out = (
         (0, 3),
     )
 )
+gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out = (
+    _make_mixed_attention_wrapper(
+        "hipengine_gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_pack8_gemv_decode_bf16_f32_out",
+        (0, 3),
+        require_non_null=True,
+        require_primary_total_at_least_secondary=True,
+    )
+)
 gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out = (
     _make_mixed_attention_wrapper(
         "hipengine_gguf_q6_q8_mixed_attention_pack8_gemv_decode_bf16_f32_out",
@@ -426,6 +450,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             _MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT,
         ),
         gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_projection_quad",
+            _MIXED_ATTENTION_Q5_QG_QUANT,
+            _MIXED_ATTENTION_PAIR_REUSE_LOCAL32_FIXED_META_VARIANT,
+        ),
+        gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out,
         replace=replace,
     )
     register(
@@ -652,10 +686,25 @@ def _launch_mixed_attention(
     gate_features: int,
     *,
     primary_roles: tuple[int, int],
+    require_non_null: bool = False,
+    require_primary_total_at_least_secondary: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
+    pointers = (
+        x_ptr,
+        qweight_q_ptr,
+        qweight_k_ptr,
+        qweight_v_ptr,
+        qweight_gate_ptr,
+        out_q_ptr,
+        out_k_ptr,
+        out_v_ptr,
+        out_gate_ptr,
+    )
+    if require_non_null and any(not pointer for pointer in pointers):
+        raise ValueError("mixed GGUF K attention pointers must be non-zero")
     if rows != 1:
         raise ValueError("rows must be exactly 1 for mixed GGUF K attention decode")
     if in_features <= 0 or in_features % _QTYPE_BLOCK_SIZE["gguf_q5_k"] != 0:
@@ -666,6 +715,10 @@ def _launch_mixed_attention(
     qweights = (qweight_q_ptr, qweight_k_ptr, qweight_v_ptr, qweight_gate_ptr)
     outputs = (out_q_ptr, out_k_ptr, out_v_ptr, out_gate_ptr)
     secondary_roles = tuple(index for index in range(4) if index not in primary_roles)
+    if require_primary_total_at_least_secondary and sum(
+        features[index] for index in primary_roles
+    ) < sum(features[index] for index in secondary_roles):
+        raise ValueError("Q5 total output features must be at least Q6 total output features")
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(
@@ -936,6 +989,7 @@ __all__ = [
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out",
+    "gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q6_q8_attention_q6_qg_mixed_gemv_decode_bf16_f32_out",
     "gguf_q6_q8_attention_q6_qg_mixed_q6_fixed_meta_gemv_decode_bf16_f32_out",

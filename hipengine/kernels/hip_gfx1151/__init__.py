@@ -236,6 +236,12 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q6_k",
             "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
         ),
+        # Heterogeneous Q5/Q6 pair reuse is W7900-only pending an independent gate.
+        (
+            "attention_projection_quad",
+            "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+            "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+        ),
         # Laguna compact/persistent routing is W7900-only pending independent gates.
         (
             "laguna_sigmoid_router_topk",
