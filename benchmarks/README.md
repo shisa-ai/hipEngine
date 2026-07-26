@@ -61,6 +61,17 @@ workspace. All temporary candidate surfaces were removed; production stays
 **551.459 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json).
 
+The exact dense-initial attention leaf is retained for runtime qualification.
+On complete pre-wrap initial tiles, logical and absolute token positions are
+identical and no slot is evicted, so the separately registered kernels keep
+the full `KVLiveSpans` ABI and physical base-offset mapping while removing
+per-token position/eviction reads. All outputs are F32-bit exact. The
+qualified global-qrow4/qrow6 plus SWA-qrow4 policy improves
+**12.8348 -> 11.8695 ms (1.0813x)** per four-layer pattern, modeling
+**11.584 ms** pp512 saving. Production remains **551.459 tok/s** until the
+strict runtime qualification and complete-state full-model gate pass.
+[`artifact`](results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json).
+
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
 the range-safe down pack while explicitly preserving the BF16 boundary. Seven

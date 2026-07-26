@@ -27,9 +27,12 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
     laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans,
     laguna_global_attention_prefill_qrow4_cached_online_bf16_spans,
+    laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans,
     laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans,
+    laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans,
     laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans,
     laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans,
+    laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans,
 )
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
@@ -46,8 +49,11 @@ MODES = (
     "global_cached",
     "global_cached_meta",
     "global_qrow6_cached_meta",
+    "global_dense_initial",
+    "global_qrow6_dense_initial",
     "swa_cached",
     "swa_cached_meta",
+    "swa_dense_initial",
 )
 
 
@@ -169,8 +175,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         global_qrow6_out = malloc(
             ROWS * GLOBAL_HEADS * HEAD_DIM * 4, runtime=runtime
         )
+        global_dense_initial_out = malloc(
+            ROWS * GLOBAL_HEADS * HEAD_DIM * 4, runtime=runtime
+        )
+        global_qrow6_dense_initial_out = malloc(
+            ROWS * GLOBAL_HEADS * HEAD_DIM * 4, runtime=runtime
+        )
         swa_baseline_out = malloc(ROWS * SWA_HEADS * HEAD_DIM * 4, runtime=runtime)
         swa_candidate_out = malloc(ROWS * SWA_HEADS * HEAD_DIM * 4, runtime=runtime)
+        swa_dense_initial_out = malloc(
+            ROWS * SWA_HEADS * HEAD_DIM * 4, runtime=runtime
+        )
         allocations.extend(
             (
                 key_device,
@@ -180,8 +195,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 global_baseline_out,
                 global_candidate_out,
                 global_qrow6_out,
+                global_dense_initial_out,
+                global_qrow6_dense_initial_out,
                 swa_baseline_out,
                 swa_candidate_out,
+                swa_dense_initial_out,
             )
         )
         for device, host in (
@@ -277,6 +295,46 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     runtime=runtime,
                 )
 
+            def global_dense_initial() -> None:
+                laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans(
+                    global_q_ptr,
+                    key_device.ptr + kv_offset,
+                    value_device.ptr + kv_offset,
+                    global_layer.key_cache.ptr,
+                    global_layer.value_cache.ptr,
+                    global_dense_initial_out.ptr,
+                    global_layer.spans,
+                    ROWS,
+                    global_layer.capacity,
+                    GLOBAL_HEADS,
+                    KV_HEADS,
+                    HEAD_DIM,
+                    scale,
+                    start_position=start_position,
+                    library=library,
+                    runtime=runtime,
+                )
+
+            def global_qrow6_dense_initial() -> None:
+                laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans(
+                    global_q_ptr,
+                    key_device.ptr + kv_offset,
+                    value_device.ptr + kv_offset,
+                    global_layer.key_cache.ptr,
+                    global_layer.value_cache.ptr,
+                    global_qrow6_dense_initial_out.ptr,
+                    global_layer.spans,
+                    ROWS,
+                    global_layer.capacity,
+                    GLOBAL_HEADS,
+                    KV_HEADS,
+                    HEAD_DIM,
+                    scale,
+                    start_position=start_position,
+                    library=library,
+                    runtime=runtime,
+                )
+
             def swa_cached() -> None:
                 laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans(
                     swa_q_ptr,
@@ -317,12 +375,35 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     runtime=runtime,
                 )
 
+            def swa_dense_initial() -> None:
+                laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans(
+                    swa_q_ptr,
+                    key_device.ptr + kv_offset,
+                    value_device.ptr + kv_offset,
+                    swa_layer.key_cache.ptr,
+                    swa_layer.value_cache.ptr,
+                    swa_dense_initial_out.ptr,
+                    swa_layer.spans,
+                    ROWS,
+                    SWA_HEADS,
+                    KV_HEADS,
+                    HEAD_DIM,
+                    scale,
+                    sliding_window=CONTEXT,
+                    start_position=start_position,
+                    library=library,
+                    runtime=runtime,
+                )
+
             functions = {
                 "global_cached": global_cached,
                 "global_cached_meta": global_cached_meta,
                 "global_qrow6_cached_meta": global_qrow6_cached_meta,
+                "global_dense_initial": global_dense_initial,
+                "global_qrow6_dense_initial": global_qrow6_dense_initial,
                 "swa_cached": swa_cached,
                 "swa_cached_meta": swa_cached_meta,
+                "swa_dense_initial": swa_dense_initial,
             }
             for _ in range(args.warmups):
                 for mode in MODES:
@@ -356,6 +437,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 global_qrow6_out,
                 (ROWS, GLOBAL_HEADS, HEAD_DIM),
             )
+            actual_global_dense_initial = _copy_f32(
+                runtime,
+                global_dense_initial_out,
+                (ROWS, GLOBAL_HEADS, HEAD_DIM),
+            )
+            actual_global_qrow6_dense_initial = _copy_f32(
+                runtime,
+                global_qrow6_dense_initial_out,
+                (ROWS, GLOBAL_HEADS, HEAD_DIM),
+            )
             expected_swa = _copy_f32(
                 runtime,
                 swa_baseline_out,
@@ -364,6 +455,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             actual_swa = _copy_f32(
                 runtime,
                 swa_candidate_out,
+                (ROWS, SWA_HEADS, HEAD_DIM),
+            )
+            actual_swa_dense_initial = _copy_f32(
+                runtime,
+                swa_dense_initial_out,
                 (ROWS, SWA_HEADS, HEAD_DIM),
             )
             medians = {
@@ -379,8 +475,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     / medians["global_cached_meta"],
                     "swa_speedup": medians["swa_cached"]
                     / medians["swa_cached_meta"],
+                    "swa_dense_initial_over_cached_meta": (
+                        medians["swa_cached_meta"]
+                        / medians["swa_dense_initial"]
+                    ),
                     "global_qrow6_over_qrow4": medians["global_cached_meta"]
                     / medians["global_qrow6_cached_meta"],
+                    "global_dense_initial_over_cached_meta": (
+                        medians["global_cached_meta"]
+                        / medians["global_dense_initial"]
+                    ),
+                    "global_qrow6_dense_initial_over_cached_meta": (
+                        medians["global_qrow6_cached_meta"]
+                        / medians["global_qrow6_dense_initial"]
+                    ),
                     "global_f32_bit_mismatches": int(
                         np.count_nonzero(
                             expected_global.view(np.uint32)
@@ -393,10 +501,28 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                             != actual_swa.view(np.uint32)
                         )
                     ),
+                    "swa_dense_initial_f32_bit_mismatches": int(
+                        np.count_nonzero(
+                            actual_swa.view(np.uint32)
+                            != actual_swa_dense_initial.view(np.uint32)
+                        )
+                    ),
                     "global_qrow6_f32_bit_mismatches": int(
                         np.count_nonzero(
                             actual_global.view(np.uint32)
                             != actual_global_qrow6.view(np.uint32)
+                        )
+                    ),
+                    "global_dense_initial_f32_bit_mismatches": int(
+                        np.count_nonzero(
+                            actual_global.view(np.uint32)
+                            != actual_global_dense_initial.view(np.uint32)
+                        )
+                    ),
+                    "global_qrow6_dense_initial_f32_bit_mismatches": int(
+                        np.count_nonzero(
+                            actual_global_qrow6.view(np.uint32)
+                            != actual_global_qrow6_dense_initial.view(np.uint32)
                         )
                     ),
                 }
@@ -431,6 +557,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         + 3.0 * float(row["medians_ms"]["swa_cached_meta"])
         for row in results
     )
+    total_dense_initial_policy = sum(
+        (
+            float(row["medians_ms"]["global_dense_initial"])
+            if int(row["start_position"]) == 0
+            else float(row["medians_ms"]["global_qrow6_dense_initial"])
+        )
+        + 3.0 * float(row["medians_ms"]["swa_dense_initial"])
+        for row in results
+    )
     return {
         "schema_version": 1,
         "kind": "laguna_attention_cached_meta_leaf",
@@ -444,7 +579,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "samples": args.samples,
             "warmups": args.warmups,
             "burst": args.burst,
-            "order": "five-mode counter-rotation",
+            "order": f"{len(MODES)}-mode counter-rotation",
         },
         "results": results,
         "weighted_pp512": {
@@ -457,11 +592,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "qrow6_qualified_policy_speedup": (
                 total_qrow4_meta / total_qrow6_policy
             ),
+            "dense_initial_swa_policy_ms": total_dense_initial_policy,
+            "dense_initial_swa_policy_speedup": (
+                total_qrow6_policy / total_dense_initial_policy
+            ),
         },
         "correctness": {
             "pass": all(
                 int(row["global_f32_bit_mismatches"]) == 0
+                and int(row["global_dense_initial_f32_bit_mismatches"]) == 0
+                and int(
+                    row["global_qrow6_dense_initial_f32_bit_mismatches"]
+                ) == 0
                 and int(row["swa_f32_bit_mismatches"]) == 0
+                and int(row["swa_dense_initial_f32_bit_mismatches"]) == 0
                 and int(row["global_qrow6_f32_bit_mismatches"]) == 0
                 for row in results
             ),

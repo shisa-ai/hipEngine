@@ -88,6 +88,24 @@ global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 calls at pp512 and cuts
 attention **158.702 -> 152.406 ms (-3.97%)**. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-{candidate,default,production}.json`.
 
+The next exact specialization exploits a stronger fact already established by
+the same preappend schedule: before the first ring wrap, a complete initial
+tile has `token_positions[logical_slot] == logical_slot` and no eviction.
+Separately registered dense-initial global/SWA bodies still consume the full
+`KVLiveSpans` ABI, preserve `base_offsets` physical mapping, and validate
+boundary metadata, but remove every per-token position/eviction load and
+branch. All three candidates are F32-bit exact at starts 0/128/256/384.
+Eleven-sample leaf timing improves cached metadata by **1.130–1.229x** for
+global qrow4, **1.107–1.176x** for global qrow6, and **1.062–1.124x** for SWA
+qrow4. The qualified production-shaped policy falls **12.8348 -> 11.8695 ms
+(1.0813x)** per four-layer pattern, modeling **11.584 ms** pp512 saving.
+Cached tracing names global qrow4 `<4,true,true,true>` at local32/VGPR64,
+global qrow6 `<6,true,true,true>` at local32/VGPR88, and SWA qrow4
+`<4,true,true,true,true>` at local32/VGPR64; all use zero LDS and scratch.
+Runtime promotion still requires strict complete-initial-tile qualification
+and a full-model complete-state gate. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers

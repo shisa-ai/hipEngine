@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna dense-initial attention candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / complete initial no-wrap M128 tiles remove per-token position/eviction reads while preserving the full `KVLiveSpans` ABI and every F32 bit; the qualified global-qrow4/qrow6 plus SWA-qrow4 leaf moves **12.8348 -> 11.8695 ms (1.0813x)** and models **11.584 ms** pp512 saving, with production unchanged pending runtime/full-model gates; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json`.
+
 - [rejected and removed exact gfx1151 Laguna source-F16 QKV grouping] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / one row-major combined contraction is F32-bit exact but models only **2.891 ms** pp512 saving before mandatory output restride, while layout-preserving hipBLASLt `GroupedGemm` exposes zero algorithms at zero or 64-MiB workspace; all candidate surfaces are removed and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-qkv-grouping-rejected.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q4 gate/up row-fast grid] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / swapping the launch axes preserves every BF16 bit but regresses the actual-weight natural-M512 leaf **6.908966 -> 6.921503 ms (+0.181%)**; all candidate surfaces are removed and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rowfast-grid-rejected.json`.

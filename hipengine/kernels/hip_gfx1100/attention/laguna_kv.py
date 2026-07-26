@@ -32,6 +32,12 @@ _SYMBOL_GLOBAL_PREFILL_QROW4_CACHED_META_ONLINE = (
 _SYMBOL_GLOBAL_PREFILL_QROW6_CACHED_META_ONLINE = (
     "hipengine_laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans"
 )
+_SYMBOL_GLOBAL_PREFILL_QROW4_DENSE_INITIAL_ONLINE = (
+    "hipengine_laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans"
+)
+_SYMBOL_GLOBAL_PREFILL_QROW6_DENSE_INITIAL_ONLINE = (
+    "hipengine_laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans"
+)
 _SYMBOL_SWA_WRITE = "hipengine_laguna_swa_write_kv_f32_bf16_spans"
 _SYMBOL_SWA_WRITE_ROWS = "hipengine_laguna_swa_write_kv_rows_f32_bf16_spans"
 _SYMBOL_SWA_ATTENTION = "hipengine_laguna_swa_attention_decode_bf16_spans"
@@ -59,6 +65,9 @@ _SYMBOL_SWA_PREFILL_QROW4_CACHED_ONLINE = (
 )
 _SYMBOL_SWA_PREFILL_QROW4_CACHED_META_ONLINE = (
     "hipengine_laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans"
+)
+_SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_ONLINE = (
+    "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans"
 )
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
@@ -644,6 +653,160 @@ def laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def _laguna_global_attention_prefill_dense_initial_online_bf16_spans(
+    query_ptr: int,
+    current_key_ptr: int,
+    current_value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    symbol: str,
+    start_position: int | None,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    _check_prefill_rows(spans, rows, capacity)
+    if int(max_context_len) != capacity:
+        raise ValueError("max_context_len must equal the global span capacity")
+    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
+        raise ValueError("Laguna global prefill currently supports at most 4096 tokens")
+    if start_position is None or int(start_position) < 0:
+        raise ValueError("dense-initial global prefill requires a start position")
+    if int(start_position) + int(rows) > capacity:
+        raise ValueError("dense-initial global prefill cannot exceed capacity")
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 11
+        + [ctypes.c_int64] * 7
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(current_key_ptr),
+        ctypes.c_void_p(current_value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans(
+    query_ptr: int,
+    current_key_ptr: int,
+    current_value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    start_position: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run qrow4 global attention over an identity-positioned initial fill."""
+
+    _laguna_global_attention_prefill_dense_initial_online_bf16_spans(
+        query_ptr,
+        current_key_ptr,
+        current_value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        spans,
+        rows,
+        max_context_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        symbol=_SYMBOL_GLOBAL_PREFILL_QROW4_DENSE_INITIAL_ONLINE,
+        start_position=start_position,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans(
+    query_ptr: int,
+    current_key_ptr: int,
+    current_value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    start_position: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run qrow6 global attention over an identity-positioned initial fill."""
+
+    _laguna_global_attention_prefill_dense_initial_online_bf16_spans(
+        query_ptr,
+        current_key_ptr,
+        current_value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        spans,
+        rows,
+        max_context_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        symbol=_SYMBOL_GLOBAL_PREFILL_QROW6_DENSE_INITIAL_ONLINE,
+        start_position=start_position,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def laguna_global_attention_prefill_qrow4_m128_online_bf16_spans(
@@ -1415,6 +1578,71 @@ def laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans(
     _check_launch(runtime, err)
 
 
+def laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans(
+    query_ptr: int,
+    current_key_ptr: int,
+    current_value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    start_position: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run qrow4 SWA over an identity-positioned initial ring fill."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_prefill_rows(spans, rows, capacity)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if window <= 0 or window > capacity:
+        raise ValueError("sliding_window must be in [1, ring capacity]")
+    if start_position is None or int(start_position) < 0:
+        raise ValueError("dense-initial SWA prefill requires a non-negative start_position")
+    if int(start_position) + int(rows) > capacity:
+        raise ValueError("dense-initial SWA prefill cannot cross the first ring wrap")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_ONLINE)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 11
+        + [ctypes.c_int64] * 6
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(current_key_ptr),
+        ctypes.c_void_p(current_value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(window),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_swa_attention_prefill_qrow4_m128_online_bf16_spans(
     query_ptr: int,
     current_key_ptr: int,
@@ -1572,8 +1800,18 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_prefill",
+            "global_context_rows_qrow4_dense_initial_online_spans",
+            laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans,
+        ),
+        (
+            "laguna_attention_prefill",
             "global_context_rows_qrow6_cached_meta_online_spans",
             laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans,
+        ),
+        (
+            "laguna_attention_prefill",
+            "global_context_rows_qrow6_dense_initial_online_spans",
+            laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans,
         ),
         (
             "laguna_attention_prefill",
@@ -1624,6 +1862,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
             "laguna_attention_prefill",
             "swa_context_rows_qrow4_cached_meta_online_spans",
             laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans,
+        ),
+        (
+            "laguna_attention_prefill",
+            "swa_context_rows_qrow4_dense_initial_online_spans",
+            laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans,
         ),
         (
             "laguna_attention_prefill",
@@ -1725,9 +1968,11 @@ __all__ = [
     "laguna_global_attention_prefill_qrow2_online_bf16_spans",
     "laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans",
     "laguna_global_attention_prefill_qrow4_cached_online_bf16_spans",
+    "laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans",
     "laguna_global_attention_prefill_qrow4_online_bf16_spans",
     "laguna_global_attention_prefill_qrow4_m128_online_bf16_spans",
     "laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans",
+    "laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans",
     "laguna_global_write_kv_f32_spans",
     "laguna_global_write_kv_rows_f32_spans",
     "laguna_swa_attention_decode_bf16_spans",
@@ -1737,6 +1982,7 @@ __all__ = [
     "laguna_swa_attention_prefill_qrow2_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow2_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans",
+    "laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans",
