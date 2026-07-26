@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "retained_production",
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "revision": "7b4f2ef82118a17a8a9e2eb92a836c8d529ce453",
+    "tracked_clean": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_PREFILL_KV_PREAPPEND=True",
+    "schedule": "append complete M128 tile before cached-only qrow4 attention",
+    "global_scope": "all complete M128 tiles",
+    "swa_scope": "complete M128 tiles before the first 512-slot ring wrap",
+    "fallbacks": [
+      "partial attention tiles",
+      "wrapped SWA tiles",
+      "staged verifier transactions",
+      "gfx1100 and unmeasured backends"
+    ],
+    "arithmetic": "unchanged qrow4 dot, online softmax, PV order, and F32 output; current F32 K/V is rounded once by the existing BF16 writer and then read from the cache"
+  },
+  "matched_ab": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json",
+    "production_median_tok_s": 507.39080204934595,
+    "preappend_median_tok_s": 528.771062477596,
+    "throughput_change_percent": 4.2137658668418,
+    "candidate_pair_wins": 7,
+    "pair_count": 7,
+    "complete_state_exact": true
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-preappend-production-clean.json",
+    "pp512_samples_tok_s": [
+      531.2299753047711,
+      526.288212891372,
+      526.4508060955051
+    ],
+    "pp512_median_tok_s": 526.4508060955051,
+    "pp512_min_tok_s": 526.288212891372,
+    "pp1024_samples_tok_s": [
+      477.9770280366257,
+      467.8464732843036,
+      467.1828350471061
+    ],
+    "pp1024_median_tok_s": 467.8464732843036,
+    "pp4096_samples_tok_s": [
+      383.8205389728188,
+      377.41074935500234,
+      377.9050498830571
+    ],
+    "pp4096_median_tok_s": 377.9050498830571,
+    "previous_production_pp512_tok_s": 505.08432732184866,
+    "pp512_change_percent": 4.230279503414747,
+    "pp1024_change_percent": 3.217854220472427,
+    "pp4096_change_percent": 5.700673549032076,
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "125cff72bef240a0862f1c4c6cea29704897d9358be075b29a0bcb577ae7f22c"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-preappend-production-rocprof -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-preappend-production-rocprof.json",
+    "pp512_tok_s": 532.1009581739944,
+    "pp512_dispatches": 1886,
+    "pp512_kernel_span_ms": 958.196664,
+    "pp512_kernel_sum_ms": 947.513298,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 314.554622,
+      "selected_q4_q6_down": 203.922621,
+      "global_attention": 33.399449,
+      "swa_attention": 143.18037,
+      "source_f16_projection": 124.792386,
+      "dense_shared_quant_projection": 53.272267,
+      "router": 23.624622,
+      "activation_reduce_residual": 17.818566,
+      "norm_rope_gate": 24.756742,
+      "other": 5.27065,
+      "prefill_kv_write": 1.712094,
+      "lm_head_argmax": 1.171919,
+      "embedding": 0.03699
+    },
+    "attention_change": {
+      "previous_ms": 219.709243,
+      "current_ms": 176.579819,
+      "saved_ms": 43.129424,
+      "change_percent": -19.630227391025144
+    },
+    "child_sha256": "f0e205913c4c887be9c23e3f84b6f4c1a59a529c05f06abd15af30728cd34c20",
+    "trace_sha256": "51e9e5474fb79c99f88a2dd4b783500f431da4362251cac90313d2b2e5b96430",
+    "summary_sha256": "d2f540ea0140ead224a1131d81920b513e56d0f7c7b8e12df545c04ef16da710"
+  },
+  "quality": {
+    "transfer_basis": "The cached-only M128 primitive is F32 byte-identical to source-qualified qrow4, and matched full-model runs preserve logits, hidden states, KV cache, cursor, and next token.",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 526.4508060955051,
+    "next_target_tok_s": 700.0,
+    "next_measured_bottleneck": "selected Q4/Q6 down at 203.923 ms and 61.13% of the requested-byte read anchor"
+  }
+}
