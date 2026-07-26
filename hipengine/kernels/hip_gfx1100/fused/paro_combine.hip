@@ -125,6 +125,33 @@ __global__ void weighted_sum_out_kernel(
   out[col] = float_to_scalar<scalar_t>(acc);
 }
 
+__global__ void laguna_weighted_top10_routed_hidden_out_kernel(
+    const uint16_t* __restrict__ expert_down,
+    const float* __restrict__ routing_weights,
+    const uint16_t* __restrict__ shared,
+    const uint16_t* __restrict__ post_attention,
+    uint16_t* __restrict__ routed_out,
+    uint16_t* __restrict__ hidden_out,
+    int64_t top_k,
+    int64_t features) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= features) return;
+  float selected_acc = 0.0f;
+#pragma unroll
+  for (int64_t row = 0; row < 10; ++row) {
+    selected_acc = fmaf(
+        bf16_bits_to_float(expert_down[row * features + idx]),
+        routing_weights[row],
+        selected_acc);
+  }
+  const uint16_t routed_bits = float_to_bf16_bits(selected_acc);
+  routed_out[idx] = routed_bits;
+  const uint16_t moe_bits = float_to_bf16_bits(
+      bf16_bits_to_float(routed_bits) + bf16_bits_to_float(shared[idx]));
+  hidden_out[idx] = float_to_bf16_bits(
+      bf16_bits_to_float(post_attention[idx]) + bf16_bits_to_float(moe_bits));
+}
+
 template <typename scalar_t, typename weight_t>
 __global__ void weighted_sum_shared_gate_combine_residual_out_kernel(
     const scalar_t* __restrict__ values,
@@ -758,6 +785,40 @@ extern "C" int hipengine_weighted_sum_out_bf16_f32w(
       weights,
       out,
       rows,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_weighted_top10_routed_hidden_bf16_out(
+    const uint16_t* expert_down,
+    const float* routing_weights,
+    const uint16_t* shared,
+    const uint16_t* post_attention,
+    uint16_t* routed_out,
+    uint16_t* hidden_out,
+    int64_t rows,
+    int64_t top_k,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!expert_down || !routing_weights || !shared || !post_attention ||
+      !routed_out || !hidden_out || rows != 1 || top_k != 10 ||
+      features != 3072 || threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_weighted_top10_routed_hidden_out_kernel,
+      feature_grid(features, threads),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      expert_down,
+      routing_weights,
+      shared,
+      post_attention,
+      routed_out,
+      hidden_out,
+      top_k,
       features);
   return static_cast<int>(hipGetLastError());
 }
