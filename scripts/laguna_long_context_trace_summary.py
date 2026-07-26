@@ -171,7 +171,7 @@ def _attention_family(name: str) -> str | None:
 def _dense_initial_blas_attention_families(
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[int, str]:
-    """Identify the bounded widen/QK/softmax/PV composite structurally."""
+    """Identify the bounded dense-initial BLAS attention composites."""
 
     families: dict[int, str] = {}
     for index, row in enumerate(rows):
@@ -183,6 +183,41 @@ def _dense_initial_blas_attention_families(
             if "kernel<true>" in name
             else "swa_attention"
         )
+        packed_query = (
+            index + 1 < len(rows)
+            and "laguna_dense_initial_query_head_transpose_f32_kernel<true>"
+            in str(rows[index + 1]["Kernel_Name"])
+        )
+        if packed_query:
+            final_index = index + 5
+            if final_index >= len(rows):
+                raise ValueError(
+                    "packed-query dense-initial BLAS attention trace is truncated"
+                )
+            qk_name = str(rows[index + 2]["Kernel_Name"])
+            softmax_name = str(rows[index + 3]["Kernel_Name"])
+            pv_name = str(rows[index + 4]["Kernel_Name"])
+            unpack_name = str(rows[index + 5]["Kernel_Name"])
+            if (
+                not qk_name.startswith("Cijk_")
+                or "laguna_dense_initial_causal_softmax_f32_kernel"
+                not in softmax_name
+                or not pv_name.startswith("Cijk_")
+                or "laguna_dense_initial_query_head_transpose_f32_kernel<false>"
+                not in unpack_name
+            ):
+                raise ValueError(
+                    "packed-query dense-initial BLAS attention trace does not "
+                    "match widen + pack + QK + softmax + PV + unpack"
+                )
+            for target in range(index, final_index + 1):
+                if target in families:
+                    raise ValueError(
+                        "dense-initial BLAS attention composites overlap"
+                    )
+                families[target] = family
+            continue
+
         softmax_index = index + 9
         final_index = index + 17
         if final_index >= len(rows):
