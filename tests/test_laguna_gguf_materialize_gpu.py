@@ -16,7 +16,9 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
-from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16
+from hipengine.quant.gguf_t16 import (
+    repack_gguf_q6_k_tile16_qmicro,
+)
 from tests._laguna_synthetic import tensor_info
 
 MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
@@ -62,7 +64,7 @@ def test_laguna_tiny_pack8_and_t16_gpu_payloads_match_host_repack() -> None:
             "layers.1.ffn_down_exps",
             tensor_info("q6_t16", (2, 16, 256), GGMLQuantizationType.Q6_K),
             rng.integers(0, 256, size=(2, 16, 210), dtype=np.uint8),
-            repack_gguf_q6_k_tile16,
+            repack_gguf_q6_k_tile16_qmicro,
             ("tiles",),
         ),
     )

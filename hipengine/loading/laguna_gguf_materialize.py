@@ -19,6 +19,7 @@ from typing import Any, Mapping
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
 from hipengine.loading.laguna_gguf import (
     LagunaGGUFConfig,
@@ -37,6 +38,7 @@ from hipengine.quant.gguf_q4_k import (
 )
 from hipengine.quant.gguf_t16 import (
     GGUF_Q6_K_T16_BLOCK_BYTES,
+    convert_gguf_q6_k_tile16_to_qmicro,
     repack_gguf_q6_k_tile16,
 )
 
@@ -305,6 +307,7 @@ class LagunaGGUFResidentWeights:
     layers: tuple[LagunaGGUFResidentLayerWeights, ...]
     backend: str
     admission: LagunaMemoryAdmissionPlan
+    q6_qmicro: bool = False
 
     def root(self, slot: str) -> LagunaGGUFDeviceWeight:
         return self.root_weights[slot]
@@ -641,6 +644,7 @@ def materialize_laguna_gguf_weights(
     profile: Callable[[LagunaGGUFMaterializationProfile], None] | None = None,
     repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
     repacked_cache_source_sha256: str | None = None,
+    q6_qmicro: bool | None = None,
 ) -> LagunaGGUFResidentWeights:
     """Stream selected or all planned Laguna weights into owned device buffers."""
 
@@ -663,6 +667,11 @@ def materialize_laguna_gguf_weights(
         if cached_sha256 != repacked_cache_source_sha256:
             raise ValueError("Laguna repacked cache source SHA-256 mismatch")
     active_runtime = runtime if runtime is not None else get_hip_runtime()
+    selected_q6_qmicro = bool(
+        backend_package_capability(backend, "LAGUNA_Q6_QMICRO", False)
+        if q6_qmicro is None
+        else q6_qmicro
+    )
     if available_bytes is None:
         try:
             available_bytes = int(active_runtime.mem_get_info()[0])
@@ -699,6 +708,7 @@ def materialize_laguna_gguf_weights(
                 device=device,
                 runtime=active_runtime,
                 backend=backend,
+                q6_qmicro=selected_q6_qmicro,
                 profile=profile,
                 repacked_cache=cache,
             )
@@ -720,6 +730,7 @@ def materialize_laguna_gguf_weights(
                     device=device,
                     runtime=active_runtime,
                     backend=backend,
+                    q6_qmicro=selected_q6_qmicro,
                     profile=profile,
                     repacked_cache=cache,
                 )
@@ -747,6 +758,7 @@ def materialize_laguna_gguf_weights(
         layers=tuple(resident_layers),
         backend=backend,
         admission=admission,
+        q6_qmicro=selected_q6_qmicro,
     )
 
 
@@ -797,6 +809,7 @@ def _materialize_spec(
     device: Device | None,
     runtime: HipRuntime,
     backend: str,
+    q6_qmicro: bool | None = None,
     profile: Callable[[LagunaGGUFMaterializationProfile], None] | None = None,
     repacked_cache: LagunaGGUFRepackedCache | None = None,
 ) -> LagunaGGUFDeviceWeight:
@@ -821,6 +834,11 @@ def _materialize_spec(
     repack_seconds = 0.0
     repack_delta = _ProcessCounterDelta()
     timed_runtime = _TimedUploadRuntime(runtime) if profile is not None else runtime
+    selected_q6_qmicro = bool(
+        backend_package_capability(backend, "LAGUNA_Q6_QMICRO", False)
+        if q6_qmicro is None
+        else q6_qmicro
+    )
 
     def measured_repack(operation: Callable[[], Any]) -> Any:
         nonlocal repack_seconds, repack_delta
@@ -839,6 +857,26 @@ def _materialize_spec(
             payloads = measured_repack(lambda: _resident_payloads(spec, raw))
         else:
             payloads = _resident_payloads(spec, raw)
+    if (
+        selected_q6_qmicro
+        and spec.layout == LAYOUT_GGUF_Q6_K_T16
+        and spec.slot_path.endswith(".ffn_down_exps")
+    ):
+        legacy_payload = payloads["tiles"]
+        qmicro = measured_repack(
+            lambda: convert_gguf_q6_k_tile16_to_qmicro(
+                legacy_payload.array
+            )
+        )
+        payloads = MappingProxyType(
+            {
+                "tiles": _ResidentPayload(
+                    qmicro.tiles,
+                    legacy_payload.dtype,
+                    legacy_payload.source_dtype,
+                )
+            }
+        )
 
     allocations: dict[str, DeviceTensorAllocation] = {}
     source_abs_max: float | None = None

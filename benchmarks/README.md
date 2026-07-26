@@ -40,6 +40,16 @@ family is slightly worse at **126.899 -> 126.947 ms (+0.038%)**. This rules
 out scale metadata as the Q6 limiter; production remains **526.451 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json).
 
+The follow-up byte-neutral Q6 qmicro payload is retained as the gfx1151
+expert-down candidate pending clean production publication. It groups each
+four-column K4 quant quartet into one aligned 12-byte record while preserving
+the **3,360-byte** T16 tile. Direct, grouped, and MMQ consumers are BF16-byte
+exact. On the actual layer-1 660.6 MB Q6 tensor, natural-M512 selected prefill
+improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves
+**0.0910 -> 0.0846 ms (-6.99%)**. The production headline remains
+**526.451 tok/s** until the clean committed selector-unset run.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json).
+
 The first post-500 replacement-layout screen is closed. Q4_K T128 improves the
 exact actual layer-1 natural-M512 gate/up leaf **7.015 -> 6.157 ms (-12.23%,
 1.139x)** with no byte growth versus current T16, but its best exact

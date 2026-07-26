@@ -437,13 +437,44 @@ def repack_gguf_q6_k_tile16_qmicro(raw_qweight: Any) -> GGUFQ6KTile16:
     aligned dword loads.  The layout remains byte-neutral with raw Q6_K.
     """
 
-    legacy = repack_gguf_q6_k_tile16(raw_qweight)
-    tiles = np.empty_like(legacy.tiles)
-    tiles[..., :GGUF_Q6_K_T16_QMICRO_OFFSET] = legacy.tiles[
+    return convert_gguf_q6_k_tile16_to_qmicro(
+        repack_gguf_q6_k_tile16(raw_qweight)
+    )
+
+
+def convert_gguf_q6_k_tile16_to_qmicro(
+    packed: GGUFQ6KTile16 | np.ndarray,
+) -> GGUFQ6KTile16:
+    """Convert existing Q6T16 tiles to byte-neutral qmicro records."""
+
+    if isinstance(packed, GGUFQ6KTile16):
+        legacy_tiles = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        legacy_tiles = np.asarray(packed, dtype=np.uint8)
+        expected_out = None
+    if (
+        legacy_tiles.ndim != 4
+        or legacy_tiles.shape[-1] != GGUF_Q6_K_T16_BLOCK_BYTES
+    ):
+        raise ValueError(
+            "tiles must have shape "
+            "[experts, out_tiles16, blocks_per_row, 3360]"
+        )
+    experts, out_tiles, blocks_per_row, _ = legacy_tiles.shape
+    out_features = int(out_tiles) * GGUF_T16_COLS
+    if expected_out is not None and int(expected_out) != out_features:
+        raise ValueError(
+            f"out_features mismatch: expected {expected_out}, "
+            f"tile layout implies {out_features}"
+        )
+    tiles = np.empty_like(legacy_tiles)
+    tiles[..., :GGUF_Q6_K_T16_QMICRO_OFFSET] = legacy_tiles[
         ..., :GGUF_Q6_K_T16_QMICRO_OFFSET
     ]
-    experts, out_tiles, blocks_per_row, _ = tiles.shape
-    ql = legacy.tiles[..., GGUF_Q6_K_T16_QL_OFFSET:GGUF_Q6_K_T16_QH_OFFSET].reshape(
+    ql = legacy_tiles[
+        ..., GGUF_Q6_K_T16_QL_OFFSET:GGUF_Q6_K_T16_QH_OFFSET
+    ].reshape(
         experts,
         out_tiles,
         blocks_per_row,
@@ -453,7 +484,7 @@ def repack_gguf_q6_k_tile16_qmicro(raw_qweight: Any) -> GGUFQ6KTile16:
         4,
         2,
     )
-    qh = legacy.tiles[..., GGUF_Q6_K_T16_QH_OFFSET:].reshape(
+    qh = legacy_tiles[..., GGUF_Q6_K_T16_QH_OFFSET:].reshape(
         experts,
         out_tiles,
         blocks_per_row,
@@ -483,9 +514,9 @@ def repack_gguf_q6_k_tile16_qmicro(raw_qweight: Any) -> GGUFQ6KTile16:
     records[..., 8:] = qh.transpose(0, 1, 2, 3, 6, 4, 5)
     return GGUFQ6KTile16(
         tiles=tiles,
-        experts=legacy.experts,
-        out_features=legacy.out_features,
-        in_features=legacy.in_features,
+        experts=int(experts),
+        out_features=out_features,
+        in_features=int(blocks_per_row) * QK_K,
     )
 
 
@@ -623,6 +654,7 @@ __all__ = [
     "GGUFQ6KT16Quant",
     "GGUFQ80Tile16",
     "GGUFQ80T16Quant",
+    "convert_gguf_q6_k_tile16_to_qmicro",
     "repack_gguf_q5_k_tile16",
     "repack_gguf_q6_k_tile16",
     "repack_gguf_q6_k_tile16_qmicro",

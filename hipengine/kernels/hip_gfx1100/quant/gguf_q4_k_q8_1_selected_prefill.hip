@@ -45,6 +45,8 @@ constexpr int Q6_K_T16_QH_OFFSET =
     Q6_K_T16_QL_OFFSET + QK_K * (Q4_K_TILE16_COLS / 2);
 constexpr int Q6_K_T16_BLOCK_BYTES =
     Q6_K_T16_QH_OFFSET + QK_K * (Q4_K_TILE16_COLS / 4);
+constexpr int Q6_K_T16_QMICRO_OFFSET = Q6_K_T16_QL_OFFSET;
+constexpr int Q6_K_T16_QMICRO_RECORD_BYTES = 12;
 constexpr int Q4_K_LAYOUT_RAW = 0;
 constexpr int Q4_K_LAYOUT_X8 = 1;
 constexpr int Q4_K_LAYOUT_T16 = 2;
@@ -337,6 +339,56 @@ __device__ inline void pack_q6_k_t16_u8x4_quartet(
         << (8 * i);
     cols[3] |=
         static_cast<uint32_t>((ql23 >> 4) | (((qh >> 6) & 0x03u) << 4))
+        << (8 * i);
+  }
+}
+
+__device__ inline void pack_q6_k_t16_qmicro_u8x4_quartet(
+    const uint8_t* __restrict__ tile,
+    int subblock,
+    int pack,
+    int col_quartet,
+    uint32_t (&cols)[4]) {
+  const int record_index =
+      (subblock * (Q4_K_TILE16_COLS / 4) + col_quartet) * 8 + pack;
+  const uint8_t* __restrict__ record =
+      tile + Q6_K_T16_QMICRO_OFFSET +
+      record_index * Q6_K_T16_QMICRO_RECORD_BYTES;
+  const uint32_t ql_lo =
+      reinterpret_cast<const uint32_t*>(record)[0];
+  const uint32_t ql_hi =
+      reinterpret_cast<const uint32_t*>(record)[1];
+  const uint32_t qh =
+      reinterpret_cast<const uint32_t*>(record)[2];
+  cols[0] = 0;
+  cols[1] = 0;
+  cols[2] = 0;
+  cols[3] = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    const uint32_t ql_word = i < 2 ? ql_lo : ql_hi;
+    const int ql_shift = (i & 1) * 16;
+    const uint8_t ql01 =
+        static_cast<uint8_t>((ql_word >> ql_shift) & 0xFFu);
+    const uint8_t ql23 =
+        static_cast<uint8_t>((ql_word >> (ql_shift + 8)) & 0xFFu);
+    const uint8_t qh_byte =
+        static_cast<uint8_t>((qh >> (8 * i)) & 0xFFu);
+    cols[0] |=
+        static_cast<uint32_t>(
+            (ql01 & 0x0Fu) | ((qh_byte & 0x03u) << 4))
+        << (8 * i);
+    cols[1] |=
+        static_cast<uint32_t>(
+            (ql01 >> 4) | (((qh_byte >> 2) & 0x03u) << 4))
+        << (8 * i);
+    cols[2] |=
+        static_cast<uint32_t>(
+            (ql23 & 0x0Fu) | (((qh_byte >> 4) & 0x03u) << 4))
+        << (8 * i);
+    cols[3] |=
+        static_cast<uint32_t>(
+            (ql23 >> 4) | (((qh_byte >> 6) & 0x03u) << 4))
         << (8 * i);
   }
 }
@@ -3360,7 +3412,8 @@ template <
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
-    int MMQ_N = 32>
+    int MMQ_N = 32,
+    bool QMICRO = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3453,12 +3506,21 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
         for (int pack = 0; pack < 8; ++pack) {
           uint32_t packed[4] = {0, 0, 0, 0};
           if ((lane & 3) == 0) {
-            pack_q6_k_t16_u8x4_quartet(
-                tile,
-                subblock,
-                pack * 4,
-                col >> 2,
-                packed);
+            if constexpr (QMICRO) {
+              pack_q6_k_t16_qmicro_u8x4_quartet(
+                  tile,
+                  subblock,
+                  pack,
+                  col >> 2,
+                  packed);
+            } else {
+              pack_q6_k_t16_u8x4_quartet(
+                  tile,
+                  subblock,
+                  pack * 4,
+                  col >> 2,
+                  packed);
+            }
           }
           const uint32_t packed0 =
               __shfl(packed[0], quartet_leader, 32);
@@ -3516,12 +3578,21 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
               weight_block;
           const uint8_t* __restrict__ tile =
               qweight + tile_index * Q6_K_T16_BLOCK_BYTES;
-          pack_q6_k_t16_u8x4_quartet(
-              tile,
-              subblock,
-              pack * 4,
-              col >> 2,
-              packed);
+          if constexpr (QMICRO) {
+            pack_q6_k_t16_qmicro_u8x4_quartet(
+                tile,
+                subblock,
+                pack,
+                col >> 2,
+                packed);
+          } else {
+            pack_q6_k_t16_u8x4_quartet(
+                tile,
+                subblock,
+                pack * 4,
+                col >> 2,
+                packed);
+          }
         }
         weight_tile[col_offset].qs[pack] = packed[0];
         weight_tile[col_offset + 1].qs[pack] = packed[1];
@@ -3760,7 +3831,8 @@ template <
     bool ROWVEC_ACTIVATION_STAGE = false,
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
-    int MMQ_N = 32>
+    int MMQ_N = 32,
+    bool QMICRO = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -3792,7 +3864,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           ROWVEC_ACTIVATION_STAGE,
           WAVE_COLUMNS,
           THREADS,
-          MMQ_N>),
+          MMQ_N,
+          QMICRO>),
       grid,
       block,
       0,
@@ -4723,6 +4796,161 @@ hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
       expert_start_compact,
       expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1, false, false, 128, 32, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4x2_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      2, false, false, 128, 32, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      3, false, false, 128, 32, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4_f32_mmq64x32_rowvec_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1, true, false, 128, 32, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq32,
       tile_expert,
       qweight,
       out,

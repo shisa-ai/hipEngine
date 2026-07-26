@@ -52,7 +52,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
-from hipengine.quant.gguf_t16 import repack_gguf_q5_k_tile16, repack_gguf_q6_k_tile16
+from hipengine.quant.gguf_t16 import (
+    repack_gguf_q5_k_tile16,
+    repack_gguf_q6_k_tile16,
+    repack_gguf_q6_k_tile16_qmicro,
+)
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_k_weight, make_q6_k_weight
 
 
@@ -283,7 +287,7 @@ def _run_grouped_dual(
 
 
 def _run_grouped_smallm_single(
-    fn, x_dev, expert_start, tiles, out_features, out_dtype, library
+    fn, x_dev, expert_start, tiles, out_features, out_dtype, library, **kwargs
 ) -> np.ndarray:
     compact_rows = int(expert_start[-1])
     in_features = x_dev.shape[1]
@@ -316,6 +320,7 @@ def _run_grouped_smallm_single(
             out_features,
             tiles.shape[0],
             library=library,
+            **kwargs,
         )
         copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
         return out_arr
@@ -539,7 +544,9 @@ def _run_direct_dual_silu_q8_dp4a(
             free(buf)
 
 
-def _run_direct_single(fn, x_dev, selected, tiles, out_features, out_dtype, library) -> np.ndarray:
+def _run_direct_single(
+    fn, x_dev, selected, tiles, out_features, out_dtype, library, **kwargs
+) -> np.ndarray:
     rows = int(selected.size)
     in_features = x_dev.shape[1]
     x_buf = malloc(x_dev.nbytes)
@@ -562,6 +569,7 @@ def _run_direct_single(fn, x_dev, selected, tiles, out_features, out_dtype, libr
             in_features,
             out_features,
             library=library,
+            **kwargs,
         )
         copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
         return out_arr
@@ -1098,6 +1106,30 @@ def test_q4_q6_t16_grouped_smallm_matches_direct_bits_and_cpu_oracle(
         **_TOL,
     )
 
+    t6_qmicro = repack_gguf_q6_k_tile16_qmicro(q6).tiles
+    direct_down_qmicro = _run_direct_single(
+        gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        t6_qmicro,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        qmicro=True,
+    )
+    grouped_down_qmicro = _run_grouped_smallm_single(
+        gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out,
+        x_bf16,
+        expert_start,
+        t6_qmicro,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        qmicro=True,
+    )
+    np.testing.assert_array_equal(direct_down_qmicro, direct_down)
+    np.testing.assert_array_equal(grouped_down_qmicro, direct_down)
+
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_q4_q6_t16_grouped_smallm_matches_laguna_production_shape_bits(
@@ -1576,6 +1608,55 @@ def test_p9_h3d_qk_t16_direct_bf16_matches_cpu_oracle(
     expected = _expected_direct_single(x_ref, selected, qw, out_features, qtype_enum)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     np.testing.assert_allclose(_bf16_u16_to_f32(actual), expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_direct_decode_matches_production_bits(
+    t16_selected_library,
+) -> None:
+    x_rows, top_k = 2, 3
+    selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
+    in_features, out_features, num_experts = 512, 256, 3
+    rng = np.random.default_rng(20260726)
+    qweight = _stack_experts(
+        make_q6_k_weight,
+        out_features,
+        in_features,
+        num_experts,
+        seed=23,
+    )
+    legacy = repack_gguf_q6_k_tile16(qweight).tiles
+    qmicro = repack_gguf_q6_k_tile16_qmicro(qweight).tiles
+    x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    production = _run_direct_single(
+        gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        legacy,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    def qmicro_decode(*args, **kwargs):
+        return gguf_q6_k_t16_selected_gemv_bf16_bf16_out(
+            *args,
+            qmicro=True,
+            **kwargs,
+        )
+
+    candidate = _run_direct_single(
+        qmicro_decode,
+        x_bf16,
+        selected,
+        qmicro,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(candidate, production)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

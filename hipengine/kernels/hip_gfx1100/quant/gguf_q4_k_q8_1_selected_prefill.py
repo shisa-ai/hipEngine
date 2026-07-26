@@ -65,8 +65,24 @@ _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
     "hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_"
     "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q6_T16_QMICRO_DS4_F32_MMQ64X32_BF16 = {
+    passes: (
+        "hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_"
+        f"ds4{'x' + str(passes) if passes > 1 else ''}_f32_"
+        "mmq64x32_prefill_compact32_bf16_bf16_out"
+    )
+    for passes in (1, 2, 3)
+}
+_SYMBOL_Q6_T16_QMICRO_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4_f32_"
+    "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_Q6_T16_DS4_F32_MMQ64X64_ROWVEC_BF16 = (
     "hipengine_gguf_q6_k_t16_selected_q8_1_ds4_f32_"
+    "mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
+)
+_SYMBOL_Q6_T16_QMICRO_DS4_F32_MMQ64X64_ROWVEC_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_selected_q8_1_ds4_f32_"
     "mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
 )
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
@@ -338,6 +354,7 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     residual_passes: int = 3,
     rowvec: bool = False,
     tile_rows: int = 32,
+    qmicro: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -368,7 +385,13 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     fn = getattr(
         library,
         (
-            _SYMBOL_Q6_T16_DS4_F32_MMQ64X64_ROWVEC_BF16
+            _SYMBOL_Q6_T16_QMICRO_DS4_F32_MMQ64X64_ROWVEC_BF16
+            if qmicro and tile_rows == 64
+            else _SYMBOL_Q6_T16_QMICRO_DS4_F32_MMQ64X32_ROWVEC_BF16
+            if qmicro and rowvec
+            else _SYMBOL_Q6_T16_QMICRO_DS4_F32_MMQ64X32_BF16[residual_passes]
+            if qmicro
+            else _SYMBOL_Q6_T16_DS4_F32_MMQ64X64_ROWVEC_BF16
             if tile_rows == 64
             else _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_ROWVEC_BF16
             if rowvec

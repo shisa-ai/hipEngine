@@ -1165,3 +1165,20 @@ should be boring.
   retaining the backend capability/default and the automatic safety
   fallbacks. Do not remove the source-qualified kernels: wrapped SWA and
   staged verifier transactions still require them.
+
+## Laguna Q6 qmicro resident-layout rollback
+
+- Added 2026-07-26 with the gfx1151 `LAGUNA_Q6_QMICRO` capability and optional
+  `q6_qmicro=False` resident-session rollback. Sparse `ffn_down_exps` Q6
+  payloads convert from the existing legacy cache once before upload; the
+  cache fingerprint, quant key, byte count, root lm-head, and other backends
+  stay unchanged.
+- The actual-weight leaf is BF16-byte exact and improves natural-M512
+  selected prefill **1.65%** plus top-10 exact decode **6.99%**. Keep the
+  explicit rollback through clean selector-unset 512/1K/4K publication and
+  one later selected-down checkpoint.
+- After both triggers pass, remove the public constructor override while
+  retaining the backend capability, legacy consumer instantiations required
+  by other backends, and the host legacy-to-qmicro cache adapter. If clean
+  publication regresses, disable the capability and remove the qmicro runtime
+  default before starting another selected-down premise.

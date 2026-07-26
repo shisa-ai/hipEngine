@@ -75,6 +75,11 @@ LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"
 # Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
 # scalar-staged, and exact routes remain rollbacks.
 LAGUNA_SELECTED_DOWN_MODE = "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+# Byte-neutral Q6 qmicro keeps the resident T16 metadata but groups each
+# four-column K4 quant quartet into one aligned 12-byte record. Exact c1 and
+# selected-prefill gates both improve on gfx1151; peer backends retain legacy
+# Q6 T16 bytes until independently measured.
+LAGUNA_Q6_QMICRO = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
@@ -314,6 +319,7 @@ __all__ = [
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
+    "LAGUNA_Q6_QMICRO",
     "LAGUNA_ROUTER_LOGITS_MODE",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",

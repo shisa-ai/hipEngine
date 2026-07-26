@@ -180737,3 +180737,33 @@ Vulkan local sizes verbatim will close the measured gap.
   no registry, materializer default, runtime dispatch, or production behavior
   changes in this checkpoint. Next: exact qmicro decode and selected-prefill
   consumers, then natural-shape performance gates.
+
+## 2026-07-26 — Retain exact Q6T16 qmicro candidate on gfx1151
+
+- Added exact direct, grouped-small-M, scalar/rowvec32/rowvec64 MMQ consumers
+  for the byte-neutral Q6 qmicro payload. RED first failed on the missing
+  wrappers/exports and materialization policy; GREEN passes the focused
+  repack, direct, grouped, MMQ, materializer, backend-policy, and
+  production-shape MoE gates. Qmicro and legacy outputs have zero BF16
+  mismatches.
+- Scoped resident promotion through the gfx1151 package capability. Only
+  sparse `ffn_down_exps` Q6 tensors convert after loading the existing legacy
+  repacked-cache payload; the cache identity, 3,360-byte tile, root Q6
+  lm-head, gfx1100, and unmeasured backends remain unchanged. An explicit
+  session rollback loads/consumes legacy bytes consistently.
+- The reproducible actual layer-1 leaf uses the 660,602,880-byte Q6 tensor,
+  natural M512 routing with 5,120 compact and 15,808 padded64 rows, 11
+  counter-rotated HIP-event samples, burst five for prefill and burst 20 for
+  decode. Selected prefill improves **5.156390 -> 5.071448 ms (-1.647%)**;
+  top-10 exact decode improves **0.090989 -> 0.084632 ms (-6.986%)**. Both
+  outputs are BF16-byte exact and tracked allocations return to zero.
+- Cached `rocprofv3 --kernel-trace` observes QMICRO=true selected prefill at
+  local128/VGPR88/SGPR128/LDS5,632B/scratch0 and exact decode at
+  local128/VGPR88/SGPR128/LDS512B/scratch0; legacy decode uses VGPR96. The
+  attribution-only profiled child had a noisy single prefill sample and is not
+  used for retention.
+- Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json`.
+  Current production remains the clean **526.451 tok/s** packet until this
+  candidate is committed and republished selector-unset. Next: clean
+  512/1K/4K, full Q6 trace, then rebuild the bottleneck table.
