@@ -1,0 +1,468 @@
+{
+  "baseline": {
+    "additional_h32_speedup_required_pct": 4.350869291461135,
+    "canonical_h16_decode_tok_s": 62.35358698325803,
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "canonical_h32_ms_per_token": 16.198963297077867,
+    "current_revision": "0c52eab4d6838e3aefee6c50f9e2157556829bef",
+    "dispatches_per_token": 723,
+    "matched_vulkan_h16_decode_tok_s": 64.24521685437571,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "matched_vulkan_h32_ms_per_token": 15.523553763440857,
+    "retained_revision": "8f8e64ea88cc886bffe600430d091d71b1774e6f",
+    "retained_short_q4_lmhead_ms_per_token": 0.385,
+    "retained_trace_note": "One raw-Q4_K BF16-to-F32 LM-head launch per decode token."
+  },
+  "builder_sha256": "39627b6bb233f3a6459fd01c66e19f3c80ddf3900e37df16b3b6586041c1411a",
+  "codegen_probe": {
+    "cache_only_trace": {
+      "candidate_allocated_sgpr": 128,
+      "candidate_allocated_vgpr": 72,
+      "candidate_duration_ns": 268442,
+      "candidate_grid_x": 1605632,
+      "candidate_lds_bytes": 0,
+      "candidate_scratch_bytes": 0,
+      "candidate_symbol_named": true,
+      "candidate_workgroup_x": 32,
+      "child_sha256": "5a8dd0b471f0c4eb2d77b467c9e98bfe2544badaf69bce417983c467e18f835e",
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-file /tmp/laguna-q4-lmhead-local32-fixed-trace/trace .venv/bin/python /tmp/trace_laguna_q4_lmhead_local32_fixed.py",
+      "finite_logits": true,
+      "harness_sha256": "d50c0e7d2277b349a0d7efaab9bc71e63952132adf12432b9b319fa76f02c4e1",
+      "no_compiler_under_profile": true,
+      "performance_interpretation": "None; one traced launch establishes symbol and resources only.",
+      "trace_sha256": "a8de8f680123a17bee68b47e0b5b7284ec458703a845e252c710baed609bf0b8"
+    },
+    "candidate_bf16_f32": {
+      "allocated_lds_bytes_trace": 0,
+      "allocated_sgpr_trace": 128,
+      "allocated_vgpr_trace": 72,
+      "ds_bpermute_b32": 40,
+      "dynamic_barriers_at_k3072": 0,
+      "local_size": 32,
+      "logical_sgpr": 61,
+      "logical_vgpr": 70,
+      "private_bytes": 0,
+      "scratch_bytes_trace": 0,
+      "spill_count": 0,
+      "static_barriers": 0,
+      "static_instructions": 443,
+      "static_lds_bytes": 0,
+      "text_bytes": 2520,
+      "wavefront_size": 32
+    },
+    "candidate_vs_control": {
+      "allocated_lds_delta_bytes": -1024,
+      "caveat": "VGPR increases; only the measured actual-weight win makes the candidate admissible.",
+      "dynamic_barrier_delta_at_k3072": -25,
+      "logical_sgpr_delta": 3,
+      "logical_vgpr_delta": 26,
+      "static_instruction_delta": -77,
+      "static_instruction_delta_pct": -14.807692307692308,
+      "text_byte_delta": -576,
+      "text_byte_delta_pct": -18.6046511627907
+    },
+    "control_bf16_f32": {
+      "allocated_lds_bytes_trace": 1024,
+      "allocated_sgpr_trace": 128,
+      "allocated_vgpr_trace": 48,
+      "ds_bpermute_b32": 40,
+      "dynamic_barriers_at_k3072": 25,
+      "local_size": 128,
+      "logical_sgpr": 58,
+      "logical_vgpr": 44,
+      "private_bytes": 0,
+      "scratch_bytes_trace": 0,
+      "spill_count": 0,
+      "static_barriers": 3,
+      "static_instructions": 520,
+      "static_lds_bytes": 640,
+      "text_bytes": 3096,
+      "wavefront_size": 32
+    }
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "implement RED-first exact c=1 Q4_K BF16-to-F32 local32 fixed-metadata sibling",
+    "canonical_h32_unchanged": 61.73234556191569,
+    "completion_claim": false,
+    "default_changed": false,
+    "reason": "The retained one-call Q4 LM head still pays 24 loop barriers plus one cross-wave barrier and rounded 1 KiB LDS while publishing coefficients for eight output rows. A one-wave output-pair owner preserves total threads, all four original K partitions, scalar FMA order, wave trees, and partition-add order, yet removes LDS/barriers. The actual 100352-way weight screen is bit-exact and improves both event and synchronized wall medians."
+  },
+  "frozen_gates": {
+    "actual_weight_precondition": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "prompt": "mixed_ja_en_review, 122 tokens, post-prefill position 123",
+      "requirement": "All 100352 F32 logits are bit-exact and both candidate event and wall medians improve; remove candidate on any failure.",
+      "shape": "rows1 K3072 N100352 raw-Q4_K BF16-to-F32",
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "warmups_per_mode": 50
+    },
+    "after_actual_weight_pass_only": [
+      "Add an explicit/default-off gfx1100 LM-head selector with retained local128 fallback; no default capability promotion yet.",
+      "Shared-weight 16-transition full logits/IDs, all 48 hidden and 47 routed boundaries, active K/V and every KVLiveSpans field, reset/re-prefill, ownership, and lifecycle identity.",
+      "Cached full-model trace proves one candidate LM-head call/token, zero retained LM-head calls when selected, unchanged 723 model kernels/token, admitted grid/resources, and no compiler under profiling.",
+      "Two process orders at short/512/1024/3968: Q4 LM-head and complete kernel sum improve in every order; span regression stays below 0.5%; equal-process child throughput stays above -0.5%; IDs/resources/lifecycle pass.",
+      "Both complete 18-prompt category process orders: pooled h16/h32 and every train/heldout category decode improve; E2E/prefill/TTFT/state/lifecycle guards pass before gfx1100 default promotion."
+    ],
+    "codegen": [
+      "Repository-built candidate is local32/wave32, logical VGPR <=70, allocated VGPR <=72, logical SGPR <=61, LDS0, private0, zero spills, and scratch0.",
+      "BF16-to-F32 body has <=443 static instructions, <=2520 text bytes, zero barriers, and exactly the unchanged 40 wave-shuffle instructions under the pinned Clang 22 decode profile.",
+      "Production grid is 1605632 total threads (50176 local32 workgroups), preserving 50176 physical waves.",
+      "A non-profiled require-cached warmup precedes rocprofv3; the trace names the sibling and no compiler executes under profiling."
+    ],
+    "failure_action": "Remove runtime selector/capability integration; retain the independently admitted exact primitive only if its primitive gate passes.",
+    "primitive_correctness": [
+      "Candidate F32 bytes match the retained local128 wrapper exactly at in_features 256/512/1024/3072 and output boundaries 8/16/24 plus production vocab 100352.",
+      "Cover zero/all-one/alternating/seeded packed scale-min bytes, minimum/maximum 6-bit coefficients, low/high nibbles, signed-zero/subnormal/finite-extreme BF16 activations, and K-block/output-pack boundaries.",
+      "CPU reference remains KL <=0.05 and top-1 >=90%; exact sibling comparison requires KL0, top-1 100%, and F32 bit identity.",
+      "Existing local128 wrapper/key and all BF16/BF16, FP16/FP16, FP16/F32, rows>1 behavior remain unchanged."
+    ],
+    "red": "Before production implementation, add failing coverage for the absent local32 BF16-to-F32 wrapper/key, rows=1-only contract, exact sibling corpus, and gfx1151 exclusion. No runtime selector or capability in this unit."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_q4_lmhead_local32_fixed_metadata_design",
+  "model": {
+    "activation_dtype": "bf16",
+    "hidden_size": 3072,
+    "lm_head_quant": "Q4_K",
+    "output_dtype": "f32",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "q4_blocks_per_output_row": 12,
+    "quant": "UD-Q2_K_XL",
+    "rows": 1,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "vocab_size": 100352
+  },
+  "out_of_tree_selection_probe": {
+    "actual_weight_result": {
+      "argmax_exact": true,
+      "candidate_library_sha256": "5a5f52b9a0e90a151ba04f9b2ef33a3c3158ac8e749e2130fe436228a397a1a6",
+      "candidate_source_sha256": "331c82f1a12f7146d2e06581a753c2072160e1771e96b7f606fe65ab4fca5da4",
+      "counterbalanced_repetitions": 15,
+      "event_delta_pct": -28.76563455756951,
+      "event_samples_us": {
+        "control": [
+          428.44730377197266,
+          473.8167190551758,
+          447.8064727783203,
+          478.34659576416016,
+          447.7346420288086,
+          473.9031982421875,
+          448.3388900756836,
+          473.49781036376953,
+          448.4659194946289,
+          469.49859619140625,
+          448.64524841308594,
+          471.05640411376953,
+          448.3949661254883,
+          470.09220123291016,
+          448.5015106201172
+        ],
+        "local32_fixed": [
+          310.3511047363281,
+          344.31346893310547,
+          319.58959579467773,
+          359.66522216796875,
+          315.95420837402344,
+          344.6681594848633,
+          313.20484161376953,
+          345.04615783691406,
+          313.2085990905762,
+          345.02716064453125,
+          309.6987724304199,
+          346.1903381347656,
+          311.5360450744629,
+          347.22400665283203,
+          311.9156074523926
+        ]
+      },
+      "event_us": {
+        "control": 448.64524841308594,
+        "local32_fixed": 319.58959579467773
+      },
+      "f32_bit_exact": true,
+      "harness_sha256": "ad0fed4f9774e91ff76cfd71bbea2c4d47aa97c748dcf23b0e6f136476a6c793",
+      "kind": "laguna_q2_xl_q4_lmhead_local32_fixed_metadata_selection_probe",
+      "launches_per_sample": 200,
+      "model": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "model_sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+      "position": 123,
+      "prompt_id": "mixed_ja_en_review",
+      "prompt_tokens": 122,
+      "schema": 1,
+      "shape": {
+        "in_features": 3072,
+        "out_features": 100352,
+        "rows": 1
+      },
+      "tracked_after": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 40070756404,
+        "peak_allocations": 1159,
+        "total_allocated_bytes": 40070756404,
+        "total_freed_bytes": 40070756404
+      },
+      "tracked_peak": {
+        "active_allocations": 1159,
+        "current_allocated_bytes": 40070756404,
+        "peak_allocated_bytes": 40070756404,
+        "peak_allocations": 1159,
+        "total_allocated_bytes": 40070756404,
+        "total_freed_bytes": 0
+      },
+      "tracked_returned_to_baseline": true,
+      "wall_delta_pct": -20.96674596135727,
+      "wall_samples_us": {
+        "control": [
+          452.66008004546165,
+          446.31541008129716,
+          448.90024000778794,
+          445.6063453108072,
+          448.7886850256473,
+          446.4283597189933,
+          448.6812849063426,
+          446.18155574426055,
+          448.66643962450325,
+          446.66841509751976,
+          448.6532905139029,
+          447.2314193844795,
+          449.091789778322,
+          447.3718744702637,
+          448.84484028443694
+        ],
+        "local32_fixed": [
+          349.90649088285863,
+          343.36206037551165,
+          371.34630023501813,
+          358.55714580975473,
+          354.5852948445827,
+          343.12675474211574,
+          354.8512503039092,
+          343.1504045147449,
+          355.6663601193577,
+          343.7913197558373,
+          355.67911458201706,
+          344.14127469062805,
+          356.48272023536265,
+          343.78711599856615,
+          355.7008597999811
+        ]
+      },
+      "wall_us": {
+        "control": 448.6532905139029,
+        "local32_fixed": 354.5852948445827
+      },
+      "warmups_per_mode": 50
+    },
+    "argmax_exact": true,
+    "candidate_hsaco_sha256": "377656a329df0fec1ecc21423bc6caf5dc1ad08a25a41135f4b21fa375496f89",
+    "candidate_library_sha256": "5a5f52b9a0e90a151ba04f9b2ef33a3c3158ac8e749e2130fe436228a397a1a6",
+    "candidate_objdump_sha256": "b516ec2b532bc3378afc45cfb3242406bdbfa1cec8e020cc47f55f74a63b1de3",
+    "candidate_readobj_sha256": "762de57bcd3022f5bab64b4b4464389e2ef7e118095b8f9464c9e2b8aefdfaf6",
+    "candidate_source": {
+      "caveat": "Temporary source globally substitutes all four instantiations; repository implementation must add only the separately named BF16-to-F32 sibling.",
+      "path": "/tmp/laguna-q4-lmhead-local32-fixed/gguf_q4_k_pack8_local32_fixed.hip",
+      "sha256": "331c82f1a12f7146d2e06581a753c2072160e1771e96b7f606fe65ab4fca5da4"
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python /tmp/bench_laguna_q4_lmhead_local32_fixed.py",
+    "control_objdump_sha256": "5c41d4fb7a45129b8e571b63ecc16d7f0e2d6c2ad27a841374cde48d1b6a56d2",
+    "event_delta_pct": -28.76563455756951,
+    "event_median_us": {
+      "control": 448.64524841308594,
+      "local32_fixed": 319.58959579467773
+    },
+    "f32_bit_exact_elements": 100352,
+    "harness_sha256": "ad0fed4f9774e91ff76cfd71bbea2c4d47aa97c748dcf23b0e6f136476a6c793",
+    "purpose": "Selection evidence only; repository RED/GREEN and all frozen gates remain mandatory.",
+    "raw_result_sha256": "3e7dfdc21ef0b0c5368771a6f903159bc25c3c1a0e233b589bd787eacc54e06f",
+    "stdout_sha256": "63df6bb4c6ca35bef4478dcc73614260b305804b2f52d5275664be6814051e2c",
+    "tracked_returned_to_baseline": true,
+    "wall_delta_pct": -20.96674596135727,
+    "wall_median_us": {
+      "control": 448.6532905139029,
+      "local32_fixed": 354.5852948445827
+    }
+  },
+  "pass": true,
+  "performance_claim": false,
+  "planning_ceiling_not_claim": {
+    "fraction_of_current_vulkan_wall_gap_pct": 13.927549284472462,
+    "isolated_wall_saving_ms_per_token": 0.09406799566932023,
+    "modeled_h32_ms_per_token_if_saving_transferred_whole": 16.104895301408547,
+    "modeled_h32_speedup_pct": 0.5840956672415798,
+    "modeled_h32_tok_s_if_saving_transferred_whole": 62.092921517629435,
+    "reason_not_claimed": "Isolated synchronized launch timing does not establish full-model span, category throughput, or default behavior."
+  },
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json",
+      "sha256": "e67aae92f2aa7d9c798d526a037926af507a13326fad82986d7cbf39b48cccc8"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json",
+      "sha256": "026d5cca5d5030d537215a1e97317fd55f2c2bae49d61ae87bd53ef224b603ba"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json",
+      "sha256": "2cff0ab5cdfc3f6fed2b3bd0a7f028f003981aef2718fb821de765c8f0793223"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json",
+      "sha256": "1dc79b2a6d4c18734f3b357ca9d912eb036d56c667a5e4540193c42e15e9da78"
+    }
+  ],
+  "rejected_q4_precursor": {
+    "library_sha256": "b923b18ab3f508686b53ad3ac9448c331cdf09df3b130c8593696c40d14abe21",
+    "logical_sgpr_bf16_f32": 26,
+    "logical_vgpr_bf16_f32": 84,
+    "name": "local128 four-wave private metadata broadcast",
+    "private_bytes": 0,
+    "reason": "Raises logical VGPR 44 to 84 before timing; fixed-coefficient broadcast is not selected.",
+    "source_sha256": "d294aba3c128a38b1e1877869ab50f94fb58f09753aadd0c1935ed895ef2d937",
+    "spill_count": 0
+  },
+  "rerank_and_exclusion_audit": {
+    "audited_not_selected": [
+      {
+        "reason": "Clang already emits one QH plus four QS byte loads per row/superblock; source hoisting is cosmetic and further sharing repeats rejected packing ownership.",
+        "surface": "Q5 attention output"
+      },
+      {
+        "reason": "A row-uniform rewrite becomes two VMEM loads, adds 9 instructions/32 bytes, and leaves logical VGPR75 unchanged; direct scale reads raise logical VGPR75 to 108 and add 143 instructions.",
+        "surface": "mixed local32 Q6 d coefficient"
+      },
+      {
+        "reason": "No-barrier repeated-exp is 51.24-51.46% slower, wave broadcast is about 16% slower, and packed 64-bit metadata is 22.1-22.6% slower; cached metadata is not the bottleneck.",
+        "surface": "global split reducer metadata"
+      },
+      {
+        "reason": "The first no-LDS form raises logical BF16/F32 VGPR44 to 84; it is rejected before timing.",
+        "surface": "Q4 local128 wave-private metadata"
+      }
+    ],
+    "closed_before_selection": [
+      "SWA local64 packed-dim2 runtime selection",
+      "IQ3 sign-bit runtime selection",
+      "persistent D11/wave-top10 router composition",
+      "unchanged output packing, heterogeneous IQ2/Q5 ownership, grouped-query attention, and launch-count-only fusion"
+    ],
+    "selected_surface": "one-call Q4_K LM head",
+    "source": "immutable retained post-local32 short/512/1024/3968 traces plus current repository ISA; no retained benchmark rerun"
+  },
+  "schema": 1,
+  "selection": {
+    "arithmetic_contract": "One wave owns adjacent output rows. Each lane reconstructs original local128 thread partitions lane+{0,32,64,96} in four independent accumulators per output, replays each partition's K and K+128 FMA order for every Q4_K superblock, applies the same five-stage wave tree, then adds partition totals in original 0,1,2,3 order before the same F32 store.",
+    "candidate": "exact Q4_K local32 fixed-address-metadata output-pair GEMV for c=1 BF16-to-F32 LM head",
+    "difference_from_closed_mechanisms": [
+      "No reduction reassociation: the four original local128 K partitions remain independent until the same ordered final add.",
+      "No wave/work contraction: total threads and physical wave count are unchanged, unlike rejected head/workgroup packing.",
+      "No activation quantization, dp4a, output packing, weight repack, sidecar, graph, packet, or launch-count change.",
+      "The selected Q5 fixed-metadata precedent is transferred to Q4 output pairs; this is not the rejected Q4 eight-row wave-private coefficient-broadcast form."
+    ],
+    "dispatches_per_token_delta": 0,
+    "four_axis_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q4_k",
+      "local32_fixed_meta_gemv_decode_bf16_f32_out"
+    ],
+    "geometry": {
+      "candidate": {
+        "local_size": 32,
+        "output_columns_per_workgroup": 2,
+        "total_threads": 1605632,
+        "total_waves": 50176,
+        "waves_per_workgroup": 1,
+        "workgroups": 50176
+      },
+      "control": {
+        "local_size": 128,
+        "output_columns_per_workgroup": 8,
+        "total_threads": 1605632,
+        "total_waves": 50176,
+        "waves_per_workgroup": 4,
+        "workgroups": 12544
+      },
+      "unchanged": "total threads, total physical waves, one final F32 value per vocabulary row, and one kernel dispatch"
+    },
+    "implementation_plan": [
+      "Add a sibling local32 fixed-metadata helper/kernel/export; do not alter the retained local128 kernel or existing wrappers.",
+      "Add one rows=1 BF16-to-F32 Python wrapper and separately registered gfx1100 four-axis key; explicitly exclude the key from gfx1151 aliases.",
+      "Do not add a runtime selector/capability until primitive, codegen, actual-weight, and cached symbol/resource gates pass.",
+      "If admitted, select the exact key only at Laguna's root lm_head through session/backend capability state, never through a quant/backend branch in engine or model dispatch."
+    ],
+    "metadata_contract": "For each of two output rows and each 256-K block, read uniform d/dmin plus the same three packed 32-bit scale/min words, decode the same eight six-bit scale/min pairs at fixed compile-time subblocks, and read the unchanged raw 4-bit payload. No repack or sidecar is introduced.",
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "scope": "Only rows=1 raw-Q4_K BF16-to-F32 Laguna LM-head selection. Existing local128 pack8 variants remain exact fallbacks for BF16/BF16, FP16/FP16, FP16/F32, rows>1, registry miss, rollback, and unsupported backends."
+  },
+  "source_audit": {
+    "current_in_tree": {
+      "mechanism_precedent_commit": "b271f1fdcfe14be893d6b91ef45321afacac0ffe",
+      "origin_commit": "4a6ed7a1c61c9518c3d839eefeafc357c4226654",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.hip",
+      "source_sha256": "0943b2a08745cbef90206a690d320b303f69e4e8e19c15113b37f61bcc20e25d",
+      "test_sha256": "83614a9e9574360a0e86e2ea041337287c986a9a970a02792059e95039ba263b",
+      "wrapper_sha256": "efa05a528b05be88ce8fd707ab8a3892f810e3e3a8eb6ab1dd73595f74723ed6"
+    },
+    "docs": {
+      "kernel_catalog_sha256": "59c9ad9cb9b3a792b90ce139f835f16b1b0e689e4a11b070b24c27d919b28d3c",
+      "laguna_plan_sha256_before_design": "b1513d3d1d0ec2581be227f539ccbf3e0ba1b577fedff92c03e29abf67c84289"
+    },
+    "lineage": {
+      "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+      "output_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+      "result": "only already-catalogued unrelated drift"
+    },
+    "llama_cpp_reference": {
+      "files": [
+        {
+          "path": "ggml/src/ggml-cuda/mmvq.cu",
+          "sha256": "19cec84e1c293c133b8101b142bb497c726023123deaca09b18e8d81b31f35e9"
+        },
+        {
+          "path": "ggml/src/ggml-cuda/mmvq.cuh",
+          "sha256": "b37f8359f519ba90ddecd9cb3ca5f8c2ae05685bfae6813d435d75763c2bb006"
+        },
+        {
+          "path": "ggml/src/ggml-cuda/vecdotq.cuh",
+          "sha256": "69ee2488c89da7e6d31a91d2f33f3312d7c66dbcb60b4c42f154bdf775c4436a"
+        },
+        {
+          "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec.comp",
+          "sha256": "d1375d407004ac5e2f7c590340be9aa7edcb203dd966ec3af29f807e5d866865"
+        },
+        {
+          "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq_funcs.glsl",
+          "sha256": "3fd3fb25cfdb3214eeb8659bbeaf0bc0f6d095d9314ca7536933d7cafd52bcf6"
+        },
+        {
+          "path": "ggml/src/ggml-vulkan/vulkan-shaders/types.glsl",
+          "sha256": "e63375daed0627b0e7d04a21ead2ad17106ee8296cecfbc9d0f6b7fa8e6bf7e9"
+        }
+      ],
+      "findings": [
+        "HIP mmvq consumes Q4_K through q8_1 vector-dot machinery; its RDNA3 nwarps=1 path does not provide this exact BF16/F32 partition-preserving sibling.",
+        "Vulkan mul_mat_vecq uses packed 32-bit raw-Q4 loads and dotPacked4x8EXT; that accuracy/schedule is not transplanted into this exact candidate.",
+        "The candidate is an in-tree specialization based on retained Q5 fixed-address metadata and is not a source port."
+      ],
+      "repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "reviewed_paths_clean": true,
+      "revision": "1ebf790cda38d827559548f67b0469189690cc8c"
+    }
+  },
+  "source_revision": "0c52eab4d6838e3aefee6c50f9e2157556829bef",
+  "status": "selected_design_not_implemented"
+}
