@@ -181190,3 +181190,35 @@ Vulkan local sizes verbatim will close the measured gap.
   and exact lifecycle. Current production is **546.100 tok/s**; the clean wall
   is **937.558 ms**, leaving **206.129 ms** to 700. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`.
+
+## 2026-07-26 — Reject and remove heavy-expert Q6 rows128
+
+- The refreshed production trace splits selected down into Q6
+  **123.181 ms**, Q4 **71.782 ms**, and the already-fused pack
+  **6.335 ms**. The next bounded premise kept Q6 qmicro bytes and arithmetic
+  unchanged but used a 64-column x 128-row/local256 body only for heavy
+  experts. This preserves 32 accumulators/lane while attempting to replace
+  multiple 64-row weight tiles. The required lineage audit was retried and
+  remains blocked only by the absent read-only path
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; ROCm/gfx1151 is healthy.
+- RED added a `rows128-qmicro` quality case and failed on the missing wrapper.
+  GREEN added the temporary local256 instantiation; the CPU-quality fixture
+  passed and actual rows64/rows128 output had zero BF16 mismatches. Cached
+  `rocprofv3` records local256/VGPR88/LDS8704B/scratch0; trace SHA-256 is
+  `9b1e8ca7...ba8a5`.
+- A valid standalone actual-layer-1 screen for all >=65-row experts collapsed
+  **32 -> 17** tiles but improved only
+  **1.355870 -> 1.338579 ms (-1.27%, 0.017291 ms)** before the required
+  second metadata schedule and launch. Raw SHA-256 is
+  `93f69b8c...1aff2a`. A valid serial tail screen using
+  `--heavy-min-rows 129 --samples 11 --warmups 3 --burst 7` collapsed
+  **14 -> 8** tiles yet regressed
+  **0.673548 -> 0.687981 ms (+2.14%)**; raw SHA-256 is
+  `7065ab34...ca3f4`. Two exploratory threshold runs were accidentally
+  overlapped on the same GPU, are explicitly invalid, and are excluded from
+  every decision and artifact claim.
+- The local256 occupancy cost erases the lower tile count and the maximum
+  valid saving cannot pay for runtime integration. Removed every kernel,
+  wrapper, test, and leaf-harness surface; production remains
+  **546.100 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json`.
