@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T18:51:56.219745+00:00",
+  "kind": "hipengine_laguna_q4_row64_local256_screen",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "ec11fa204262d0b938606773fff60ceeda30bc16",
+    "candidate_tracked_dirty": true,
+    "candidate_surfaces_removed": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "gate_up_resident_bytes": 931135488
+  },
+  "hypothesis": {
+    "production": "128 output columns x 32 routed rows, local128, four wave-column groups, direct T16 decode, activation double buffer",
+    "candidate": "128 output columns x 64 routed rows, local256, eight waves with 32 accumulators per lane",
+    "shared_weight_variant": "cooperatively reconstruct and stage one 128-column T16 weight tile in LDS for all 64 rows",
+    "direct_variant": "retain direct per-column T16 decode and pair two 32-row wave groups per column group so repeated weight loads may hit vector cache",
+    "resident_sidecar_bytes": 0,
+    "decode_change": false
+  },
+  "correctness": {
+    "fixture_counts": [
+      0,
+      7,
+      18,
+      65
+    ],
+    "candidate_vs_production_bf16_mismatches": 0,
+    "cpu_reference_kl_limit": 0.05,
+    "cpu_reference_top1_minimum": 0.9,
+    "result": "pass"
+  },
+  "protocol": {
+    "command_shared": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x64-d8-f32-sharedweight --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-row64-local256-actual.json",
+    "command_direct": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x64-d8-f32-wavecols-direct-doublebuf --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-row64-local256-direct-actual.json",
+    "timing": "counter-rotated HIP events; each sample is the mean of a three-launch burst",
+    "natural_routing_artifact": "/tmp/laguna-lap0-routing-8d26a9562.json",
+    "candidate_build_prebuilt": true,
+    "candidate_build_cached_only_during_timing": true
+  },
+  "results": {
+    "m256": {
+      "row32_tiles": 239,
+      "row64_tiles": 226,
+      "tile_change_percent": -5.4393305439330515,
+      "production_median_ms_shared_pair": 4.377382278442383,
+      "shared_weight_median_ms": 9.497846603393555,
+      "shared_weight_change_percent": 116.97548898501053,
+      "production_median_ms_direct_pair": 4.419996579488118,
+      "direct_decode_median_ms": 5.671227137247722,
+      "direct_decode_change_percent": 28.308405566786867
+    },
+    "m512": {
+      "row32_tiles": 297,
+      "row64_tiles": 247,
+      "tile_change_percent": -16.835016835016837,
+      "production_median_ms_shared_pair": 6.804435729980469,
+      "shared_weight_median_ms": 13.836392720540365,
+      "shared_weight_change_percent": 103.3437197382432,
+      "production_median_ms_direct_pair": 6.90199343363444,
+      "direct_decode_median_ms": 8.23309071858724,
+      "direct_decode_change_percent": 19.285693296463656
+    }
+  },
+  "source_runs": {
+    "shared_weight": {
+      "path": "/tmp/laguna-q4-row64-local256-actual.json",
+      "sha256": "731ef0b8764920d7dc0721efb970382f3015940442221677679651477c088efd"
+    },
+    "direct_decode": {
+      "path": "/tmp/laguna-q4-row64-local256-direct-actual.json",
+      "sha256": "8ef8bb7a5fe4efd5c9c4cd42bdd1fcb4efd7a9d97440bb88841a8c3adcfc3492"
+    }
+  },
+  "decision": {
+    "retain": false,
+    "reason": "local256 preserves the 32-accumulator footprint, but natural row64 padding removes only 5.44%/16.84% of M256/M512 tiles; shared reconstruction more than doubles time and direct decode still loses 28.31%/19.29%",
+    "production_512_tok_s": 632.6179846953831,
+    "next_action": "do not retry Q4 row64 without a variable-row or persistent cross-tile mechanism that avoids both per-expert row64 padding and local256 residency loss"
+  }
+}
