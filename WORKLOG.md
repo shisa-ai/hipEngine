@@ -182088,3 +182088,9 @@ Vulkan local sizes verbatim will close the measured gap.
 - This commit changes the default selector but makes no new production
   throughput claim. Clean selector-unset 512/1K/4K, full-state quality/
   lifecycle, and refreshed production tracing are the next publication gate.
+- Extended the one-owner A/B harness to hash logits, final hidden,
+  post-layer hidden, the complete KV state, next-token/logit, and cursor
+  outside the timed interval. Seven new counterbalanced pairs are exact for
+  every field and improve **558.736 -> 559.043 tok/s (+0.055%, 4/7 wins)**.
+  This is the required complete-state transfer gate; the earlier seven-pair
+  timing-only screen remains the stronger wall evidence.
