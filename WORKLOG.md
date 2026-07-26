@@ -183003,3 +183003,29 @@ Vulkan local sizes verbatim will close the measured gap.
   half-wave. This attacks 16-way duplicate LDS reads without the 24-scalar
   live-range growth of naive metadata prefetch. Remove it if shuffle cost
   loses the actual-weight gate.
+
+## 2026-07-26 — Reject Q6 WMMA result-metadata broadcast
+
+- RED added a production-shaped result-metadata broadcast parameter and failed
+  because the wrapper selector did not exist. GREEN loaded each result row's
+  FP32 scale plus packed int16 K16 sums in lanes 0/16 and used two wave32
+  shuffles to distribute them. The uneven/empty-expert CPU-reference case and
+  actual-weight BF16 equality both pass with checksum **509500838004**.
+- Twenty-one counter-rotated burst-seven actual layer-1 natural-M512 pairs
+  reject the premise decisively: current activation-hoist
+  **4.514944 ms**, broadcast **6.341836 ms (+40.463%, 0/21 wins)**.
+  Current/candidate ranges are **4.507931–4.559341 /
+  6.337072–6.351786 ms** and all tracked allocations return.
+- The first source arrangement moved the ordinary LDS reads above the
+  row-validity branch and perturbed false-specialization code generation.
+  Restoring the current branch literally inside the compile-time false arm
+  recovered the expected **4.515 ms** production leaf before the final paired
+  decision. No production regression remains.
+- Removed the candidate HIP template dimension/export, Python selector, test
+  parameter, and harness mode. The restored 13-case Q6 matrix plus two runtime
+  contracts pass (**15 passed**) from cache.
+- Rejection artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-wmma-result-metadata-broadcast-rejected.json`.
+  Next screen may join two K32 iterations only with the existing single-stage
+  LDS footprint and zero scratch; the already-rejected double-stage K64
+  schedule must not be repeated.

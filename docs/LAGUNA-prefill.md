@@ -2967,6 +2967,9 @@ Do not repeat:
   VGPR **88 -> 104** and regresses the actual gate/up leaf **6.885%**;
 - Q6 paired-scale metadata decode: removing the duplicate FP16 multiplier load
   leaves the traced family flat/slower, so metadata traffic is not the limiter;
+- Q6 WMMA result-metadata half-wave broadcast: replacing same-address LDS reads
+  with two wave shuffles per result row is exact but regresses the actual
+  natural-M512 leaf **4.5149 -> 6.3418 ms (+40.46%, 0/21 wins)**;
 - Q6 static-upper sentinel grids and launch-bounds occupancy hints: unused
   workgroups are effectively free, while `(128,2)` emits the same
   VGPR/LDS/scratch resources and no repeatable speed change as `(128,1)`;
