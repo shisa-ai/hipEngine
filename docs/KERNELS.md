@@ -160,6 +160,19 @@ remains within **4.10e-8** absolute error. All candidate code is removed.
 Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-replicated-heads-rejected.json`.
 
+The successor packs only the 4.7-MB F32 query/output tile into head-major
+order. K/V remains unreplicated, and one eight-way wide QK plus one wide PV
+batch replaces sixteen calls. All 32 zero-workspace algorithms were screened
+per shape. The qualified 48-layer leaf model improves **74.976 -> 71.169 ms
+(-5.08%)**, with 21/21 wins at every production context and at most
+**4.10e-8** absolute error. Seven pp512 pairs improve **621.806 -> 627.217
+tok/s (+0.870%, 6/7 wins)**. All-exact KL improves **0.002214 -> 0.002097**,
+production-vs-candidate KL is **0.000119**, and top-1 stays 2930. Cached
+tracing names the query-pack/output-unpack kernels at local256/VGPR24/SGPR128,
+zero LDS/scratch, around one QK and one PV contraction. gfx1151 enables the
+capability for clean selector-unset publication. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers

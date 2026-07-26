@@ -183197,3 +183197,33 @@ Vulkan local sizes verbatim will close the measured gap.
 - The next formulation keeps K/V unreplicated and packs only the 4.7-MB query
   and output tiles, allowing one eight-way wide-QK and one eight-way wide-PV
   batch with roughly one-eighth the extra staging traffic.
+
+## 2026-07-27 — Admit packed-query BLAS attention candidate
+
+- RED extended the CPU-reference route with `packed_queries=True` and failed
+  on the missing constructor option. GREEN adds local256 row/head transpose
+  kernels and one reusable 4.7-MB F32 head-major buffer. K/V stays in the
+  admitted unreplicated staging, QK becomes one eight-way batch over
+  `128 * q_group` columns, PV writes head-major output into the reused buffer,
+  and a second transpose restores the runtime row-major ABI.
+- All 32 zero-workspace algorithms were screened per QK/PV shape. The tuned
+  candidate wins **21/21** samples at every global/SWA context 256/384/512 and
+  improves the qualified 48-layer model **74.976 -> 71.169 ms (-5.08%)**.
+  Maximum absolute output error is **4.10e-8**; scratch grows only
+  **23,068,672 -> 27,787,264 bytes** and complete allocation recovery passes.
+- Seven counter-rotated one-owner pp512 pairs improve **621.806 -> 627.217
+  tok/s (+0.870%, 6/7 wins)**, save **7.416 ms** at the paired median and
+  **9.537 ms** at the paired mean, and retain token **2930**. Each mode is
+  deterministic. The wider F32 association changes complete-state hashes, so
+  the candidate uses the explicit distribution gate rather than exact-pair
+  admission.
+- Full pp512 logits pass: all-exact versus admitted production is KL
+  **0.00221391**, all-exact versus packed is lower at **0.00209662**, and
+  production versus packed is **0.000119045**. Every lane is finite and keeps
+  top-1 **2930**.
+- Cached `rocprofv3` tracing names query pack/output unpack at
+  local256/VGPR24/SGPR128/LDS0/scratch0 and **119.223/26.209 us** in the
+  fixture, around one QK and one PV contraction. Focused validation passes
+  **19 tests**. The gfx1151 capability is enabled only to obtain a clean
+  selector-unset revision; publication remains required. Candidate artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json`.

@@ -72,6 +72,9 @@ _SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_ONLINE = (
 _SYMBOL_DENSE_INITIAL_CACHE_BF16_TO_F32 = (
     "hipengine_laguna_dense_initial_cache_bf16_to_f32_spans"
 )
+_SYMBOL_DENSE_INITIAL_QUERY_HEAD_TRANSPOSE_F32 = (
+    "hipengine_laguna_dense_initial_query_head_transpose_f32"
+)
 _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_F32 = (
     "hipengine_laguna_dense_initial_causal_softmax_f32_spans"
 )
@@ -1804,6 +1807,48 @@ def laguna_dense_initial_cache_bf16_to_f32_spans(
     _check_launch(runtime, err)
 
 
+def laguna_dense_initial_query_head_transpose_f32(
+    input_ptr: int,
+    output_ptr: int,
+    rows: int,
+    num_q_heads: int,
+    head_dim: int,
+    *,
+    to_head_major: bool,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Transpose dense-initial F32 query/output rows around batched BLAS."""
+
+    if int(rows) <= 0 or int(rows) > 128:
+        raise ValueError("dense-initial BLAS rows must be within [1, 128]")
+    _check_laguna_attention_shape(
+        num_q_heads,
+        _LAGUNA_KV_HEADS,
+        head_dim,
+    )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DENSE_INITIAL_QUERY_HEAD_TRANSPOSE_F32)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 2
+        + [ctypes.c_int64] * 3
+        + [ctypes.c_int, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(input_ptr),
+        ctypes.c_void_p(output_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int(int(bool(to_head_major))),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_dense_initial_causal_softmax_f32_spans(
     scores_ptr: int,
     spans: KVLiveSpans,
@@ -2081,6 +2126,7 @@ __all__ = [
     "build_laguna_kv_attention",
     "laguna_dense_initial_cache_bf16_to_f32_spans",
     "laguna_dense_initial_causal_softmax_f32_spans",
+    "laguna_dense_initial_query_head_transpose_f32",
     "laguna_global_attention_decode_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",
     "laguna_global_attention_prefill_qrow2_online_bf16_spans",
