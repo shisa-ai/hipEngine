@@ -2,7 +2,7 @@
   "schema_version": 1,
   "date": "2026-07-26",
   "kind": "hipengine_laguna_q6_qmicro_planar_actual_leaf",
-  "status": "positive_candidate_trace_pending",
+  "status": "positive_candidate_integration_pending",
   "pass": true,
   "performance_claim": true,
   "performance_claim_scope": "actual layer-1 Q6 selected-down leaf with natural pp512 routing on gfx1151",
@@ -72,11 +72,30 @@
       "tests/test_gguf_t16_selected_gemv_decode.py::test_q6_t16_qmicro_direct_decode_matches_production_bits[1-8]",
       "tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate[rows64-qmicro-planar]"
     ],
-    "result": "6 passed"
+    "result": "6 passed",
+    "rocprof": {
+      "revision": "48079041e52b5889fd79501f9c227cb21cca727f",
+      "tracked_clean": true,
+      "prefill_template_tail": "true,true,true,true,false,true",
+      "prefill_duration_us": 4942.305,
+      "prefill_workgroup": 128,
+      "prefill_vgpr": 80,
+      "prefill_lds_bytes": 5120,
+      "prefill_scratch_bytes": 0,
+      "decode_template": "qk_t16_selected_direct_gemv_kernel<unsigned short,6,true,true>",
+      "decode_duration_us": 120.346,
+      "decode_vgpr": 80,
+      "decode_lds_bytes": 512,
+      "decode_scratch_bytes": 0,
+      "correctness_exact": true,
+      "child_exit_note": "The one-sample profiler child returns 1 only because profiler distortion violates historical intermediate-speed assertions; all planar and control BF16 checksums are exact.",
+      "child_sha256": "cfaa7f36a965857f96b66dd5f6c3b82bf602a395be14102689f61c2cb6362a5e",
+      "trace_sha256": "99f5e26abb25fff84d56a446d462e02c3148e4a5e720c9ea35d8b9ef7e93c6ba"
+    }
   },
   "raw": {
     "path": "/tmp/laguna-q6-qmicro-planar-leaf.json",
     "sha256": "67bad702e540d92e67d138c23dbe779b0efc290bfa9d9ae27c4c6cf6aa63b3b6"
   },
-  "next_gate": "clean cached rocprof specialization trace, then complete-state full-model A/B before resident-layout promotion"
+  "next_gate": "complete-state full-model A/B before resident-layout promotion"
 }

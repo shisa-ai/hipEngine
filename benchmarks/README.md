@@ -22,8 +22,9 @@ existing 12-byte qmicro record into direct `ql01`/`ql23`/`qh` dwords preserves
 every byte of resident capacity and every tested BF16 result. On the actual
 660.6-MB layer-1 tensor, 21 counter-rotated samples improve the current
 permute leaf **4.7718 -> 4.7568 ms (-0.314%)** and exact top-10 c1 decode
-**0.08564 -> 0.08415 ms (-1.736%)**. Clean tracing and complete-state
-full-model A/B remain promotion gates.
+**0.08564 -> 0.08415 ms (-1.736%)**. Clean tracing confirms the intended
+planar templates at local128/VGPR80/LDS5120B/scratch0; complete-state
+full-model A/B remains the promotion gate.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json).
 
 The byte-neutral Q4 qmicro passes exact c1/c2/c4/c8 decode, but its
