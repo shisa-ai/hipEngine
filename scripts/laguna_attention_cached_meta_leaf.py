@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark exact cached-metadata qrow4 attention on pp512 tile positions."""
+"""Benchmark exact cached-metadata qrow4/qrow6 attention on pp512 positions."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
     laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans,
     laguna_global_attention_prefill_qrow4_cached_online_bf16_spans,
+    laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans,
     laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans,
     laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans,
 )
@@ -41,7 +42,13 @@ HEAD_DIM = 128
 GLOBAL_HEADS = 48
 SWA_HEADS = 72
 STARTS = (0, 128, 256, 384)
-MODES = ("global_cached", "global_cached_meta", "swa_cached", "swa_cached_meta")
+MODES = (
+    "global_cached",
+    "global_cached_meta",
+    "global_qrow6_cached_meta",
+    "swa_cached",
+    "swa_cached_meta",
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -159,6 +166,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         global_candidate_out = malloc(
             ROWS * GLOBAL_HEADS * HEAD_DIM * 4, runtime=runtime
         )
+        global_qrow6_out = malloc(
+            ROWS * GLOBAL_HEADS * HEAD_DIM * 4, runtime=runtime
+        )
         swa_baseline_out = malloc(ROWS * SWA_HEADS * HEAD_DIM * 4, runtime=runtime)
         swa_candidate_out = malloc(ROWS * SWA_HEADS * HEAD_DIM * 4, runtime=runtime)
         allocations.extend(
@@ -169,6 +179,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 swa_query_device,
                 global_baseline_out,
                 global_candidate_out,
+                global_qrow6_out,
                 swa_baseline_out,
                 swa_candidate_out,
             )
@@ -247,6 +258,25 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     runtime=runtime,
                 )
 
+            def global_qrow6_cached_meta() -> None:
+                laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans(
+                    global_q_ptr,
+                    key_device.ptr + kv_offset,
+                    value_device.ptr + kv_offset,
+                    global_layer.key_cache.ptr,
+                    global_layer.value_cache.ptr,
+                    global_qrow6_out.ptr,
+                    global_layer.spans,
+                    ROWS,
+                    global_layer.capacity,
+                    GLOBAL_HEADS,
+                    KV_HEADS,
+                    HEAD_DIM,
+                    scale,
+                    library=library,
+                    runtime=runtime,
+                )
+
             def swa_cached() -> None:
                 laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans(
                     swa_q_ptr,
@@ -290,6 +320,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             functions = {
                 "global_cached": global_cached,
                 "global_cached_meta": global_cached_meta,
+                "global_qrow6_cached_meta": global_qrow6_cached_meta,
                 "swa_cached": swa_cached,
                 "swa_cached_meta": swa_cached_meta,
             }
@@ -320,6 +351,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 global_candidate_out,
                 (ROWS, GLOBAL_HEADS, HEAD_DIM),
             )
+            actual_global_qrow6 = _copy_f32(
+                runtime,
+                global_qrow6_out,
+                (ROWS, GLOBAL_HEADS, HEAD_DIM),
+            )
             expected_swa = _copy_f32(
                 runtime,
                 swa_baseline_out,
@@ -343,6 +379,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     / medians["global_cached_meta"],
                     "swa_speedup": medians["swa_cached"]
                     / medians["swa_cached_meta"],
+                    "global_qrow6_over_qrow4": medians["global_cached_meta"]
+                    / medians["global_qrow6_cached_meta"],
                     "global_f32_bit_mismatches": int(
                         np.count_nonzero(
                             expected_global.view(np.uint32)
@@ -353,6 +391,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         np.count_nonzero(
                             expected_swa.view(np.uint32)
                             != actual_swa.view(np.uint32)
+                        )
+                    ),
+                    "global_qrow6_f32_bit_mismatches": int(
+                        np.count_nonzero(
+                            actual_global.view(np.uint32)
+                            != actual_global_qrow6.view(np.uint32)
                         )
                     ),
                 }
@@ -373,6 +417,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         + 3.0 * float(row["medians_ms"]["swa_cached_meta"])
         for row in results
     )
+    total_qrow4_meta = sum(
+        float(row["medians_ms"]["global_cached_meta"])
+        + 3.0 * float(row["medians_ms"]["swa_cached_meta"])
+        for row in results
+    )
+    total_qrow6_policy = sum(
+        (
+            float(row["medians_ms"]["global_cached_meta"])
+            if int(row["start_position"]) == 0
+            else float(row["medians_ms"]["global_qrow6_cached_meta"])
+        )
+        + 3.0 * float(row["medians_ms"]["swa_cached_meta"])
+        for row in results
+    )
     return {
         "schema_version": 1,
         "kind": "laguna_attention_cached_meta_leaf",
@@ -386,7 +444,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "samples": args.samples,
             "warmups": args.warmups,
             "burst": args.burst,
-            "order": "four-mode counter-rotation",
+            "order": "five-mode counter-rotation",
         },
         "results": results,
         "weighted_pp512": {
@@ -394,11 +452,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "baseline_ms": total_baseline,
             "candidate_ms": total_candidate,
             "speedup": total_baseline / total_candidate,
+            "qrow4_cached_meta_ms": total_qrow4_meta,
+            "qrow6_qualified_policy_ms": total_qrow6_policy,
+            "qrow6_qualified_policy_speedup": (
+                total_qrow4_meta / total_qrow6_policy
+            ),
         },
         "correctness": {
             "pass": all(
                 int(row["global_f32_bit_mismatches"]) == 0
                 and int(row["swa_f32_bit_mismatches"]) == 0
+                and int(row["global_qrow6_f32_bit_mismatches"]) == 0
                 for row in results
             ),
             "tracked_current_bytes_before": before["current_allocated_bytes"],

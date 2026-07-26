@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_global_qrow6_cached_meta_screen",
+  "status": "candidate_primitive_retained",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "workload": "pp512 attention, M128 physical attention slices",
+    "heads": "global 48/8 GQA; SWA 72/8 GQA"
+  },
+  "candidate": {
+    "variant": "global_context_rows_qrow6_cached_meta_online_spans",
+    "scope": "complete preappended global M128 tiles at absolute start >= 128",
+    "geometry": "one wave32, six adjacent query rows, cached KVLiveSpans metadata",
+    "invariants": "unchanged visible-key order, wave32 reduction, online-softmax order, PV order, F32 output, resident BF16 KV, and span ABI",
+    "fallbacks": "qrow4 at global start 0, all SWA tiles, partial/wrapped/verifier transactions, and unmeasured backends"
+  },
+  "correctness": {
+    "red": "The focused registry/oracle test initially failed because the global qrow6 wrapper and variant did not exist.",
+    "green": "The production M128 cached-preappend fixture is F32 byte-identical to cached-metadata qrow4.",
+    "global_f32_bit_mismatches": 0,
+    "finite": true,
+    "focused_tests": "2 passed",
+    "swa_qrow6": "F32 byte-identical but rejected and removed after losing at every stable leaf position"
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_cached_meta_leaf.py --samples 11 --warmups 2 --burst 25 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-attention-global-qrow6-leaf.json",
+    "timing": "eleven counter-rotated HIP-event samples of burst 25 at absolute starts 0/128/256/384",
+    "global_qrow6_over_qrow4": {
+      "start_0": 0.9997682061100612,
+      "start_128": 1.202428054065603,
+      "start_256": 1.2617564180206837,
+      "start_384": 1.278447100716028
+    },
+    "qualified_qrow4_ms": 13.328053970336914,
+    "qualified_global_qrow6_ms": 12.821149253845213,
+    "qualified_speedup": 1.0395366052181065,
+    "projected_pp512_saving_ms": 6.082856597900408,
+    "raw_sha256": "769e32c089a07b9e3ded612d53d2f0d19f3f54251ea6957f964b26eb8a73822d"
+  },
+  "rejected_swa_sibling": {
+    "qrow6_over_qrow4": {
+      "start_0": 0.89082,
+      "start_128": 0.82734,
+      "start_256": 0.81639,
+      "start_384": 0.83715
+    },
+    "decision": "remove the HIP export, Python wrapper, registry variant, test surface, and harness mode"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-attention-qrow6-rocprof -- .venv/bin/python3 -u scripts/laguna_attention_cached_meta_leaf.py --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-attention-qrow6-rocprof-child.json",
+    "global_qrow4": {
+      "workgroup_size": 32,
+      "vgpr": 64,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "global_qrow6": {
+      "workgroup_size": 32,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "40012e7154be4cea5095a66eb2124f6d60a1650cf1dcb9cd6411e3abd48a5705"
+  },
+  "decision": {
+    "retained": "global primitive only",
+    "production_default_changed": false,
+    "next_gate": "gfx1151 runtime policy plus repeated complete-state pp512 A/B",
+    "reason": "global qrow6 is exact and saves 20-28% at every qualified nonzero position; start 0 is neutral and SWA qrow6 is decisively slower"
+  }
+}

@@ -181355,3 +181355,27 @@ Vulkan local sizes verbatim will close the measured gap.
 - Removed every candidate kernel, wrapper, test, and harness surface; tracked
   production code/tests are byte-identical to `0fd4982de`. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-wave-weight-prefetch-rejected.json`.
+
+## 2026-07-26 — Retain exact global qrow6 attention primitive
+
+- RED extended the cached-preappend production fixture and registry assertion
+  to a missing global qrow6 cached-metadata variant. GREEN adds a one-wave
+  six-query-row specialization and passes both focused tests. Its M128 output
+  is F32 byte-identical to cached-metadata qrow4. The implementation changes
+  no visibility, K order, reduction, online-softmax/PV order, KV bytes, or
+  `KVLiveSpans` ABI.
+- Eleven counter-rotated burst-25 HIP-event samples at absolute starts
+  0/128/256/384 measure qrow6/qrow4 global speedups
+  **0.9998/1.2024/1.2618/1.2784**. The qualified policy keeps qrow4 at start
+  0 and all SWA calls, moving the one-global/three-SWA weighted leaf
+  **13.328054 -> 12.821149 ms (1.03954x)**. Across the 12 global / 36 SWA
+  production split, that projects **6.083 ms** pp512 saving. Raw SHA-256 is
+  `769e32c089a07b9e3ded612d53d2f0d19f3f54251ea6957f964b26eb8a73822d`.
+- The exact SWA qrow6 sibling lost at every position
+  (**0.8908/0.8273/0.8164/0.8372x**) and is fully removed from HIP, Python,
+  registry, tests, and harness. Cached tracing confirms global qrow4/qrow6 at
+  local32, VGPR **64/88**, SGPR128, LDS0, scratch0; trace SHA-256 is
+  `40012e7154be4cea5095a66eb2124f6d60a1650cf1dcb9cd6411e3abd48a5705`.
+  Publish the compact candidate artifact, commit the primitive, then integrate
+  only complete preappended global M128 tiles at start >=128 and run a
+  repeated complete-state pp512 A/B.
