@@ -11,6 +11,7 @@ from scripts.laguna_matrix_chunk_bench import (
     _correctness,
     _decision,
     _mode_order,
+    _relative_quality,
 )
 
 
@@ -83,3 +84,46 @@ def test_laguna_matrix_chunk_gate_rejects_regressive_or_inexact_policy() -> None
     assert failed["pass"] is False
     assert "matrix_policy_outputs_or_state_not_exact" in failed["failed_checks"]
     assert "tracked_lifecycle_not_recovered" in failed["failed_checks"]
+
+
+def test_laguna_wide_matrix_quality_gates_full_logits() -> None:
+    matrix_rows = (512, 1024, 2048)
+    lengths = (512, 1024)
+    rows = []
+    logits = {
+        512: {
+            512: [4.0, 2.0, -1.0],
+            1024: [5.0, 1.0, -2.0],
+        },
+        1024: {
+            512: [4.0, 2.0, -1.0],
+            1024: [4.99, 1.01, -2.0],
+        },
+        2048: {
+            512: [4.0, 2.0, -1.0],
+            1024: [-2.0, 1.0, 5.0],
+        },
+    }
+    for repetition in range(2):
+        for mode in matrix_rows:
+            for length in lengths:
+                rows.append(
+                    {
+                        "matrix_rows": mode,
+                        "length": length,
+                        "repetition": repetition,
+                        "_logits": logits[mode][length],
+                    }
+                )
+
+    quality = _relative_quality(
+        rows,
+        matrix_rows=matrix_rows,
+        lengths=lengths,
+    )
+
+    assert quality["by_matrix_rows"]["512"]["pass"] is True
+    assert quality["by_matrix_rows"]["1024"]["pass"] is True
+    assert quality["by_matrix_rows"]["1024"]["top1_agreement"] == 1.0
+    assert quality["by_matrix_rows"]["2048"]["pass"] is False
+    assert quality["by_matrix_rows"]["2048"]["top1_agreement"] == 0.5
