@@ -75,7 +75,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-rows", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--moe-branch-concurrency", action="store_true")
+    parser.add_argument(
+        "--moe-branch-concurrency",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -157,6 +161,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     gpu_free_before, gpu_total = runtime.mem_get_info()
     tracked_before = memory_stats()
     owner: LagunaGGUFResidentSession | None = None
+    active_moe_branch_concurrency = False
     rows: list[dict[str, Any]] = []
     load_started = time.perf_counter()
     try:
@@ -173,6 +178,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.chunk_size,
             moe_branch_concurrency=args.moe_branch_concurrency,
         )
+        active_moe_branch_concurrency = owner.moe_branch_concurrency
         load_seconds = time.perf_counter() - load_started
         owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
         runtime.device_synchronize()
@@ -260,9 +266,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "context_length": args.context_length,
             "repetitions": args.repetitions,
             "warmup_rows": args.warmup_rows,
-            "moe_branch_concurrency": bool(
-                args.moe_branch_concurrency
-            ),
+            "moe_branch_concurrency": active_moe_branch_concurrency,
             "timed_order": "ascending then alternating direction by repetition",
             "timing_scope": "reset complete through synchronized first-token projection; load excluded",
             "prompt_suite": str(args.prompts.resolve()),

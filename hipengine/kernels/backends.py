@@ -32,11 +32,13 @@ HIP_TARGET_ARCH_BACKEND: dict[str, str] = {
     arch: backend for backend, arch in HIP_BACKEND_TARGET_ARCH.items()
 }
 # Process-start HIP runtime defaults are backend metadata, not dispatch logic.
-# ROCm's documented default is four hardware queues. Clean gfx1151 evidence
-# instead admits one queue until the related gfx11 scheduler/firmware issue is
-# fixed upstream. An explicit user value always wins.
+# ROCm's documented default is four hardware queues. Clean Laguna branch-
+# concurrency evidence admits two on gfx1151: it preserves complete state,
+# wins all seven matched pp512 pairs, and completes repeated load/reset/close
+# cycles without reproducing the earlier multi-queue wait. An explicit user
+# value always wins.
 HIP_BACKEND_PROCESS_ENV_DEFAULTS: dict[str, dict[str, str]] = {
-    "hip_gfx1151": {_ENV_GPU_MAX_HW_QUEUES: "1"},
+    "hip_gfx1151": {_ENV_GPU_MAX_HW_QUEUES: "2"},
 }
 
 _ARCH_PATTERN = re.compile(r"\bgfx[0-9a-fA-F]+(?:[-_:][^\s]*)?")
@@ -107,11 +109,11 @@ def configure_hip_process_environment(
 ) -> dict[str, str]:
     """Apply hardware-local HIP defaults before ``libamdhip64`` is loaded.
 
-    gfx1151 currently needs one hardware queue to avoid an intermittent
-    low-power, 100%-utilization wait in synchronous ``hipMemcpy``. The policy
-    is applied only when all recognized visible HIP architectures map to the
-    same backend. Existing environment values are never overwritten, so
-    ``GPU_MAX_HW_QUEUES=4`` restores ROCm's documented default for diagnosis.
+    gfx1151 uses two hardware queues for the admitted Laguna shared/routed MoE
+    overlap while remaining below ROCm's documented default of four. The
+    policy is applied only when all recognized visible HIP architectures map
+    to the same backend. Existing environment values are never overwritten,
+    so ``GPU_MAX_HW_QUEUES=1`` restores the prior single-queue fallback.
     """
 
     env_map = os.environ if env is None else env

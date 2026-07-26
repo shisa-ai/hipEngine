@@ -118,6 +118,11 @@ LAGUNA_Q6_SKIP_PADDED_ACTIVATION = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
+# The always-on shared expert is independent of router selection and routed
+# gate/up/down until the final combine. A nonblocking secondary stream plus
+# two dependency events overlaps 99.16% of its measured pp512 kernel time;
+# complete-state A/B is exact and wins all seven queue-matched pairs.
+LAGUNA_MOE_BRANCH_CONCURRENCY = True
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
@@ -357,6 +362,7 @@ __all__ = [
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
+    "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",

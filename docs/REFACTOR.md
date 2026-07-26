@@ -40,6 +40,11 @@ should be removed or collapsed.
   kernels while kernel span falls **12.727 ms**. Promote through the gfx1151
   capability and two-queue process policy; retain the explicit selector only
   through clean selector-unset publication and one later MoE checkpoint.
+- Promotion is complete in code: gfx1151 defaults the capability when at least
+  two process queues are available, the process default is now two, an
+  explicit one-queue override automatically selects the sequential fallback,
+  and constructor/CLI rollback remains. Clean selector-unset publication and
+  one later MoE checkpoint are the remaining removal triggers.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 

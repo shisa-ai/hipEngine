@@ -182220,3 +182220,29 @@ Vulkan local sizes verbatim will close the measured gap.
   The candidate remains default-off only while the gfx1151 capability and
   process queue policy are integrated. Selector-unset publication remains
   required before updating the production headline.
+
+## 2026-07-26 — Promote gfx1151 MoE concurrency and two queues
+
+- RED failed on the missing `LAGUNA_MOE_BRANCH_CONCURRENCY` package
+  capability and the old one-queue process-default assertions. GREEN exposes
+  the architecture capability, changes the gfx1151 process-start default from
+  `GPU_MAX_HW_QUEUES=1` to `2`, and makes the Laguna session consume the
+  capability only when automatic queue capacity is at least two. Explicit
+  constructor selection still wins; `GPU_MAX_HW_QUEUES=1` automatically
+  restores the sequential fallback.
+- The long-context harness now uses an optional boolean selector so an
+  unqualified invocation measures the package default and
+  `--no-moe-branch-concurrency` remains the explicit rollback. Its artifact
+  records the resolved session value, not merely the CLI input.
+- Focused GREEN validation passes **67** backend/session/profile tests plus the
+  production-style Q4_K GPU BF16 equality parameter. Python compilation and
+  diff checks pass. The session lifecycle test verifies stream destruction
+  before its output/input events.
+- Updated the benchmark protocol to record the new two-queue policy while
+  preserving the historical one-queue stability evidence. This is not a 128K
+  lifecycle admission: the existing repeated-128K production block remains,
+  and one queue remains the explicit process rollback.
+- This commit promotes policy but makes no new selector-unset production
+  throughput claim. The next gate is a clean no-selector 512/1K/4K run under
+  the automatic two-queue process environment, followed by refreshed tracing
+  and production publication.

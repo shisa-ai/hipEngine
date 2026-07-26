@@ -23,6 +23,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_hidden_tap,
     capture_laguna_routing_rows,
     resolve_laguna_eager_kernel_plan,
+    resolve_laguna_moe_branch_concurrency,
 )
 from tests._laguna_synthetic import make_laguna_info
 
@@ -58,6 +59,29 @@ class _FakeRuntime:
         stream: int,
     ) -> None:
         self.copies.append((int(dst), int(src), int(nbytes), kind, int(stream)))
+
+
+def test_laguna_moe_branch_concurrency_requires_two_automatic_queues() -> None:
+    assert resolve_laguna_moe_branch_concurrency(
+        "hip_gfx1151",
+        None,
+        environ={"GPU_MAX_HW_QUEUES": "2"},
+    )
+    assert not resolve_laguna_moe_branch_concurrency(
+        "hip_gfx1151",
+        None,
+        environ={"GPU_MAX_HW_QUEUES": "1"},
+    )
+    assert not resolve_laguna_moe_branch_concurrency(
+        "hip_gfx1100",
+        None,
+        environ={"GPU_MAX_HW_QUEUES": "2"},
+    )
+    assert resolve_laguna_moe_branch_concurrency(
+        "hip_gfx1151",
+        True,
+        environ={"GPU_MAX_HW_QUEUES": "1"},
+    )
 
 
 def _config():
@@ -690,6 +714,32 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
             del kwargs
             events.append(self.name)
 
+    class Runtime:
+        def __init__(self) -> None:
+            self.next_event = 102
+
+        def stream_create(self, *, nonblocking: bool = False) -> int:
+            assert nonblocking is True
+            return 101
+
+        def event_create(self, *, flags: int = 0) -> int:
+            assert flags == 0x2
+            event = self.next_event
+            self.next_event += 1
+            return event
+
+        def stream_destroy(self, stream: int) -> None:
+            assert stream == 101
+            events.append("moe_shared_stream")
+
+        def event_destroy(self, event: int) -> None:
+            events.append(
+                {
+                    102: "moe_shared_input_ready",
+                    103: "moe_shared_output_ready",
+                }[event]
+            )
+
     weights = Resource("weights")
     weights.config = config
     weights.backend = "hip_gfx1151"
@@ -790,7 +840,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     session = runner_module.LagunaGGUFResidentSession(
         "/synthetic/laguna.gguf",
         backend="hip_gfx1151",
-        runtime=SimpleNamespace(),
+        runtime=Runtime(),
         repacked_cache="/synthetic/laguna-repacked-v1",
         model_sha256="synthetic-sha256",
         safety_reserve_nbytes=4 * 2**30,
@@ -835,11 +885,15 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     session.set_f16_boundary_fusion(False)
     assert session.fuse_f16_boundaries is False
     assert session.group_compact_mode == "parallel"
+    assert session.moe_branch_concurrency is True
     assert session.verifier_scratch is None
     session.close()
     session.close()
 
     assert events == [
+        "moe_shared_stream",
+        "moe_shared_output_ready",
+        "moe_shared_input_ready",
         "rows_moe_scratch",
         "rows_scratch",
         "moe_scratch",

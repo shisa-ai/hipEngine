@@ -672,18 +672,22 @@ fixed-stack rerun condition. Discarded runs warm kernels eagerly. Every measured
 captures a fresh state-bound graph, excludes capture from decode timing, and
 destroys it before the next reset.
 
-On gfx1151, hipEngine applies `GPU_MAX_HW_QUEUES=1` before loading
-`libamdhip64`. This remains the risk-reducing process default after the clean
-matched 128K default-queue failure and one-queue completion recorded in
-`benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`,
-but it is **not** a repeated-128K lifecycle guarantee. Current production,
-router-rollback, and SDMA-disabled full gates later reproduce the same low-power
-measured-pass-1 stall; see
+On gfx1151, hipEngine applies `GPU_MAX_HW_QUEUES=2` before loading
+`libamdhip64`. The 2026-07-26 exact Laguna shared/routed MoE gate supersedes
+the one-queue short-context default: seven queue-matched complete-state pairs
+win, repeated load/reset/close gates through 4K complete, and cached tracing
+proves the secondary stream overlaps caller work. The original one-queue
+evidence remains the stability history in
+`benchmarks/results/2026-07-15-gfx1151-hip-one-queue-stability-promotion.json`.
+Neither policy is a repeated-128K lifecycle guarantee; current production,
+router-rollback, and SDMA-disabled gates reproduced the low-power
+measured-pass-1 stall even with one queue, so 128K remains blocked. See
 `benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json`.
-Artifact provenance must capture `GPU_MAX_HW_QUEUES`. For an explicit rollback
-or scheduler diagnostic, launch a fresh process with `GPU_MAX_HW_QUEUES=4`
-(ROCm's documented default); never compare queue policies inside one resident
-HIP process. gfx1100 and mixed recognized architecture sets remain unchanged.
+Artifact provenance must capture `GPU_MAX_HW_QUEUES`. Use
+`GPU_MAX_HW_QUEUES=1` for the prior single-queue rollback and `=4` only for the
+ROCm-default scheduler diagnostic. Never attribute a result across different
+queue policies without an explicit process-level comparison. gfx1100 and mixed
+recognized architecture sets remain unchanged.
 
 For a bounded 128K stall reproduction, add the default-off persistent prefill
 flight recorder to the same production command:
