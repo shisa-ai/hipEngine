@@ -180533,3 +180533,27 @@ Vulkan local sizes verbatim will close the measured gap.
   parameterization, and harness mode. Production remains **505.084 tok/s**.
   Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`.
+
+## 2026-07-26 — Correct selected-family traffic for route-tile rereads
+
+- Rebuilt the natural-M512 selected-weight ledger directly from all 47 routing
+  count arrays and the live repacked-cache manifest. The old 36.228-GB
+  gate/up figure counted each active expert once; production maps
+  **10,237 active expert groups to 14,034 row32 tiles**, rereading the complete
+  expert weight for every tile.
+- Gate/up therefore requests **49.666 GB source / 51.045 GB resident T16**,
+  not 36.228/37.235 GB. Against the retained **314.378 ms** family window,
+  that is **157.98/162.37 GB/s** and **73.47%** of the existing 221 GB/s
+  same-host read anchor. It already clears the interim 70% requested-byte
+  floor; another 2x body is not physically supported by the current schedule.
+- Production down uses row32 for 24 Q4 layers and row64 for 23 Q6 layers.
+  Its route grids request **27.176 GB source / 27.524 GB resident** across
+  12,759 tiles, or **133.40/135.11 GB/s** in **203.721 ms**, **61.13%** of
+  the anchor. Reaching 70% models only **25.81 ms** savings; the full anchor
+  is an unverified **79.18-ms** ceiling.
+- This is a schedule-correct requested-byte ledger, not a controller-counter
+  claim. It excludes cache-line replay, activation/output traffic, and in-load
+  clocks. LAP-BW0 still needs locked clocks and controller-derived bytes, but
+  optimization priority moves to the **219.709-ms attention** family, then
+  down. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-selected-weight-traffic-ledger.json`.

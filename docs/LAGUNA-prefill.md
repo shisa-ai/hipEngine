@@ -633,7 +633,7 @@ Current progress:
 | LAP-0 | Complete | Fresh measured bridge, cumulative quality, routing, activation proxies, and unchanged Vulkan identity published. |
 | LAP-1 | Complete | Direct resident-T16 MMQ32 is BF16-bit identical to X8, positive at all seven natural shapes, **2.502x/3.959x/5.502x** retained at M128/M256/M512, and within **4.66%/4.05%/3.02%** of X8 with no transpose or sidecar. |
 | LAP-2 primitive | Complete | Three-plane pack, direct/guarded T16 MMQ, bounded queue, and overflow-safe exact correction landed in `d9bb6ad88`; 35 focused tests and cached trace pass. |
-| LAP-BW0 / LAP-Q0 | LAP-Q0 complete; LAP-BW0 open | Direct production-versus-all-exact attribution exposed that the prior shipping-relative gate was insufficient: heuristic-4 production reaches max KL **0.0535024**. A shape-qualified hipBLASLt schedule keeps heuristic 4 except K3072xN72 SWA gate on heuristic 2 and passes the absolute 320-step gate at max KL **0.0495426**, **316/320** top-1. |
+| LAP-BW0 / LAP-Q0 | LAP-Q0 complete; LAP-BW0 requested-byte ledger complete, counters open | Direct production-versus-all-exact attribution exposed that the prior shipping-relative gate was insufficient: heuristic-4 production reaches max KL **0.0535024**. A shape-qualified hipBLASLt schedule keeps heuristic 4 except K3072xN72 SWA gate on heuristic 2 and passes the absolute 320-step gate at max KL **0.0495426**, **316/320** top-1. The schedule-correct natural-M512 ledger now puts gate/up at **162.37 GB/s / 73.47%** and down at **135.11 GB/s / 61.13%** of the existing 221 GB/s read anchor; fresh locked-clock controller counters remain open. |
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
@@ -679,11 +679,15 @@ The current trace gives concrete Amdahl checkpoints, not performance claims:
 - Combining **2x** selected experts with an **80 ms** attention window models
   to roughly **833 tok/s**. The 700 stretch is therefore inside the current
   measured Amdahl envelope, but requires both expert and attention wins.
-- The frozen routing byte lower bound makes the current gate/up window about
-  **114.0 GB/s encoded-weight-equivalent**, only **51.6%** of the existing
-  221 GB/s same-host read anchor. This is evidence of likely headroom, not a
-  controller-bandwidth claim; LAP-BW0 must replace it with encoded and physical
-  traffic plus in-load clocks.
+- The old active-expert-once lower bound made gate/up appear to sustain only
+  **115.24 GB/s**. Production rereads a full expert weight for every 32-row
+  route tile: **10,237 active groups become 14,034 row tiles**, so the
+  schedule-correct resident request is **51.045 GB** and the rate is
+  **162.37 GB/s / 73.47%** of the existing 221 GB/s anchor. Gate/up therefore
+  clears the interim 70% requested-byte floor. Down requests **27.524 GB**
+  across Q4 row32 and Q6 row64 grids and sustains **135.11 GB/s / 61.13%**.
+  These are requested-byte rates, not controller counters; locked-clock
+  physical traffic remains the final LAP-BW0 step.
 
 The quality contract remains binding. LAP-Q0 found that the prior
 **0.040724836** result compared current production with an already approximate
@@ -717,17 +721,20 @@ Immediate execution queue:
    production and closed. The subsequent exact activation-double-buffer
    publication is current at **505.084 tok/s** median and cuts traced gate/up
    **318.559 -> 314.378 ms**.
-2. Reopen the **219.709 ms attention** family only with a different premise
-   from the rejected qrow8, scalar key split, synchronous-LDS WMMA tiles,
+2. Reopen the **219.709 ms attention** family now: it is the largest family
+   that has not cleared a measured/requested roofline threshold. Use only a
+   different premise from the rejected qrow8, scalar key split,
+   synchronous-LDS WMMA tiles,
    single-wave two-head fusion, and nine-wave GQA workgroup sharing. The
    head-pair body was exact but regressed 512/1K/4K **1.81/2.25/2.42%**. The
    wider GQA body was F32-bit exact but its four pp512 slices totaled
    **4.633 -> 6.557 ms (0.706x)**. Candidate premises are now an async-copy
    pipeline or a supported library-class kernel around the existing
    `KVLiveSpans` ABI.
-3. Publish the post-admission LAP-BW0 ledger from the refreshed all-layer trace:
-   locked/recorded clocks, per-family encoded and physical bytes, and
-   counter-derived traffic. Retire the pre-admission **78.27 ms/layer versus
+3. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
+   The schedule-correct requested-byte ledger is published: gate/up is
+   **162.37 GB/s (73.47%)** and down **135.11 GB/s (61.13%)** against the
+   existing 221 GB/s anchor. Retire the pre-admission **78.27 ms/layer versus
    52.80 ms layer-1** bridge instead of scaling it into new forecasts.
 4. Do not retry 64-row expert accumulation. The routing-qualified hybrid
    completed its actual-weight leaf gate and regressed. Rework the 32-row body
@@ -2146,6 +2153,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-selected-weight-traffic-ledger.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-gate-dpp-pair-decode-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-swa-gqa-tiled-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`
