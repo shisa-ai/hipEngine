@@ -182094,3 +182094,34 @@ Vulkan local sizes verbatim will close the measured gap.
   every field and improve **558.736 -> 559.043 tok/s (+0.055%, 4/7 wins)**.
   This is the required complete-state transfer gate; the earlier seven-pair
   timing-only screen remains the stronger wall evidence.
+
+## 2026-07-26 — Publish exact source-F16 boundary fusion
+
+- Clean selector-unset revision `893b39197` measures
+  **559.554/523.912/440.809 tok/s** at 512/1K/4K versus the preceding
+  **559.290/523.090/439.044**, improving **0.047%/0.157%/0.402%**. All three
+  lengths select deterministic tokens 2930/95/7772, final positions are
+  exact, and tracked allocation state returns to zero.
+- Cached-only production tracing on tracked-clean `6f7cea1c0` reaches
+  **561.019 tok/s** at pp512. Dispatches fall **1,792 -> 1,696** exactly:
+  48 RMSNorm FP16-via-BF16 producers and 48 FP16-via-BF16 softplus-gate
+  producers replace the 96 standalone casts. The trace records zero
+  `bf16_to_fp16` calls. New producer resources are
+  local256/VGPR16/SGPR128/LDS0/scratch0 and
+  local256/VGPR24/SGPR128/LDS0/scratch0.
+- The refreshed pp512 trace is **909.598 ms** kernel span and **899.274 ms**
+  kernel sum. Family attribution is gate/up **314.560 ms**, selected down
+  **190.495 ms**, attention **142.033 ms**, source-F16 **126.079 ms**,
+  dense/shared **53.257 ms**, router **23.438 ms**, and remainder
+  **49.410 ms**.
+- Exact primitive composition plus seven complete-state matched pairs transfer
+  the absolute quality result unchanged: max KL **0.049542582**, **316/320**
+  top-1, minimum category top-1 **96.875%**, neutral decode, determinism, and
+  exact lifecycle. Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`.
+  Trace child/raw/summary SHA-256 values are `4b541602...ce879`,
+  `6ddd3744...f9c3`, and `15a00796...35ec`.
+- The clean pp512 wall is now **915.014 ms**; 700 tok/s requires another
+  **183.586 ms**. Standalone source-F16 boundary casts are closed. The next
+  bounded task returns to the **314.560-ms** Q4 gate/up family and requires a
+  physical-byte-removal premise.

@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_f16_boundary_fusion_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Laguna S 2.1 Q4_K_M matrix2048/attention128 prefill at 512/1K/4K on gfx1151 plus exact primitive composition, seven matched complete-state pairs, lifecycle recovery, absolute-quality transfer, and a cached all-family trace",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "production_capability_revision": "893b39197bcaf5015aeb7215fcf9d14d6316a423",
+    "complete_state_and_trace_revision": "6f7cea1c01d1b3f112827c92bb05908c5d4a7e5e",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_F16_BOUNDARY_FUSION=true",
+    "scope": "gfx1151 range-direct source-F16 prefill only",
+    "arithmetic": "the RMSNorm and softplus-gate producers write FP16(BF16(value)), preserving the prior BF16 boundary exactly",
+    "fallback": "session.set_f16_boundary_fusion(false) restores the separately registered BF16 producer plus BF16-to-FP16 cast chain",
+    "peer_backends": "unchanged"
+  },
+  "primitive_gate": {
+    "composition": {
+      "rmsnorm_fp16_bit_mismatches": 0,
+      "softplus_gate_fp16_bit_mismatches": 0
+    },
+    "m512_fifteen_sample_burst10": {
+      "rmsnorm_plus_cast_ms": 0.0404717,
+      "rmsnorm_fused_ms": 0.0215644,
+      "rmsnorm_speedup": 1.8768,
+      "softplus_gate_plus_cast_ms": 0.1926647,
+      "softplus_gate_fused_ms": 0.1352130,
+      "softplus_gate_speedup": 1.4249,
+      "modeled_48_layer_saving_ms": 3.665
+    }
+  },
+  "matched_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_boundary_ab.py --repetitions 7 --require-cached-build --output <tmp>",
+    "separate_cast_samples_tok_s": [
+      561.0363362872437,
+      559.1669641327808,
+      558.6175269592007,
+      556.3518431732278,
+      556.9459249325367,
+      558.7355562664818,
+      560.9725225865263
+    ],
+    "fused_boundary_samples_tok_s": [
+      562.1170590526757,
+      559.043084208414,
+      556.6886797785432,
+      553.1629863842201,
+      557.5864632487703,
+      561.4448199310017,
+      567.4008882004474
+    ],
+    "separate_cast_median_tok_s": 558.7355562664818,
+    "fused_boundary_median_tok_s": 559.043084208414,
+    "change_percent": 0.055039980628257545,
+    "candidate_wins": "4/7",
+    "complete_state_exact": true,
+    "exact_fields": [
+      "logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV cache",
+      "next token",
+      "next-token logit",
+      "cursor"
+    ],
+    "raw_sha256": "24fd7c1146224de8c2465fdd26ade856af79fb72ed599b3ef3225f526e3ddd65",
+    "note": "The earlier timing-only seven-pair admission was stronger at 554.909 -> 559.320 tok/s (+0.795%, 6/7 wins); this rerun adds complete-state hashes."
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>",
+    "pp512_samples_tok_s": [
+      573.7252666566742,
+      559.5540690172047,
+      557.1005981603513
+    ],
+    "pp512_median_tok_s": 559.5540690172047,
+    "pp1024_samples_tok_s": [
+      529.9086798039416,
+      523.911833117769,
+      523.2674358196995
+    ],
+    "pp1024_median_tok_s": 523.911833117769,
+    "pp4096_samples_tok_s": [
+      448.8086151004847,
+      440.80936601768923,
+      439.39286868995976
+    ],
+    "pp4096_median_tok_s": 440.80936601768923,
+    "previous_production": {
+      "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-dense-initial-production.json",
+      "pp512_tok_s": 559.2903240770585,
+      "pp1024_tok_s": 523.0902244247085,
+      "pp4096_tok_s": 439.0436077181147
+    },
+    "change_percent": {
+      "pp512": 0.04715707188058804,
+      "pp1024": 0.15706825604782093,
+      "pp4096": 0.4021828967632368
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "3dad6084077e41e2dcdf7777380efafb1baa83909be41e9173723bad77c2b779"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file f16-boundary-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/child.json",
+    "pp512_tok_s": 561.0187766365754,
+    "pp512_dispatches": 1696,
+    "previous_pp512_dispatches": 1792,
+    "dispatches_removed": 96,
+    "pp512_kernel_span_ms": 909.598454,
+    "pp512_kernel_sum_ms": 899.273713,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 314.560496,
+      "selected_q4_q6_down": 190.495436,
+      "global_plus_swa_attention": 142.032833,
+      "source_f16_projection": 126.079162,
+      "dense_shared_quant_projection": 53.257488,
+      "router": 23.438394,
+      "remainder": 49.409904
+    },
+    "fused_boundaries": {
+      "rmsnorm_calls": 48,
+      "rmsnorm_ms": 1.100984,
+      "rmsnorm_resources": "local256/VGPR16/SGPR128/LDS0/scratch0",
+      "softplus_gate_calls": 48,
+      "softplus_gate_ms": 6.034566,
+      "softplus_gate_resources": "local256/VGPR24/SGPR128/LDS0/scratch0",
+      "standalone_bf16_to_fp16_calls": 0
+    },
+    "child_sha256": "4b541602aaabb8e9f0bb241126fe9a704c174322b94ebb29389b9d31850ce879",
+    "trace_sha256": "6ddd37445d0976b44b490e3cbe3993886ba544ee2b1bed49377331bd38dcf9c3",
+    "summary_sha256": "15a0079658301b039e87d3a3d2242f185fb4e39ecabc9e2f06225b25483635ec"
+  },
+  "correctness": {
+    "transfer_basis": "Both fused primitive compositions are FP16-bit exact and seven full-model pairs preserve every output/state digest, so the admitted all-exact quality result transfers unchanged.",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "validation": {
+    "tests": "PYTHONPATH=. pytest -q tests/test_gfx1151_backend.py tests/test_laguna_gguf_runner.py tests/test_laguna_f16_boundary_fusion.py tests/test_laguna_f16_hipblaslt.py",
+    "result": "44 passed",
+    "cached_trace_expected_kernels_observed": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 559.5540690172047,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 183.58577365388282,
+    "next_measured_bottlenecks": [
+      "selected Q4 gate/up: 314.560 ms",
+      "selected Q4/Q6 down: 190.495 ms",
+      "global plus SWA attention: 142.033 ms",
+      "source-F16 projection: 126.079 ms"
+    ],
+    "next_premise": "The fused boundaries exhaust the exact standalone source-F16 cast launch win. Continue with a gate/up schedule that removes physical weight bytes; selected-down persistence and wider-row screens are closed."
+  }
+}

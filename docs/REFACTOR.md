@@ -1305,8 +1305,11 @@ should be boring.
   boundaries by **1.877x/1.425x**. Seven matched pp512 pairs improve
   **554.909 -> 559.320 tok/s (+0.795%, 6/7 wins)** with identical token and
   logit. The gfx1151 package capability now enables the exact path by default;
-  clean selector-unset 512/1K/4K, full state/quality/lifecycle, and refreshed
-  trace publication remain the immediate gate.
+  clean selector-unset publication passes at
+  **559.554/523.912/440.809 tok/s**. A second seven-pair gate preserves
+  logits, hidden states, complete KV, token/logit, and cursor exactly.
+  Cached tracing removes all **96** standalone pp512 casts and records
+  **1,696** dispatches.
 - After promotion and one later source-F16 checkpoint, remove the public
   setter and one-purpose A/B harness while retaining the backend capability,
   fused registered kernels, and registered unfused numerical fallback.

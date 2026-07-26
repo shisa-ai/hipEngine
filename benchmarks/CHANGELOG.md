@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna source-F16 boundary production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / producer-side `FP16(BF16(value))` stores remove **96 pp512 dispatches**, preserve complete production state exactly, and publish clean selector-unset **559.554/523.912/440.809 tok/s** versus **559.290/523.090/439.044**; cached tracing names 48 of each fused producer and zero standalone casts; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`.
+
 - [retained exact gfx1151 Laguna source-F16 boundary candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / producer-side FP16-via-BF16 stores remove 96 pp512 casts, preserve every primitive bit plus next token/logit, and improve matched rollback **554.909 -> 559.320 tok/s (+0.795%, 6/7 pair wins)**; default remains off pending clean production publication; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-candidate.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q4 selected-down rows64] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / natural pp512 layer 10 direct-decode MMQ64x64 regresses **2.951132 -> 3.790972 ms (+28.46%)**, and the padding-free full-64-row control still regresses **0.075383 -> 0.081069 ms (+7.54%)** with zero BF16 mismatches; all candidate surfaces are removed and production remains **559.290 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-rows64-rejected.json`.
