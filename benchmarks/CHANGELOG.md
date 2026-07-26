@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna cached-metadata attention production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset pp512 improves **530.447 -> 542.088 tok/s (+2.195%, minimum 542.022)**, 1K/4K improve **1.213%/1.665%**, and cached tracing observes the qualified 12-global-start0/36-global-metadata/144-SWA-metadata policy while cutting global+SWA attention **175.802 -> 160.123 ms (-8.92%, 15.679 ms saved)** with unchanged exact quality/lifecycle; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`.
+
 - [retained exact gfx1151 Laguna cached-metadata attention default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / qualified metadata-only qrow4 selects every safe SWA M128 tile and global tiles from position 128 while keeping global position 0 on the established body; matched seven-pair pp512 improves **533.507 -> 542.785 tok/s (+1.739%, 16.405 ms saved, 7/7 wins)** with identical logits/hidden/KV/token/cursor, so gfx1151 defaults to the policy pending clean publication; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json`.
 
 - [retained exact gfx1151 Laguna cached-metadata attention primitive] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / deriving qrow4 visibility solely from preappended `KVLiveSpans` preserves every F32 output bit; SWA improves **1.108–1.128x** at all four pp512 tiles, global improves **1.010–1.052x** from position 128 onward, and the qualified 12-full/36-SWA leaf model improves **14.6024 -> 13.3230 ms (1.096x, projected 15.353 ms pp512 saving)**; retained pending runtime integration while production remains **530.447 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`.
