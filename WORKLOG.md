@@ -182624,3 +182624,23 @@ Vulkan local sizes verbatim will close the measured gap.
   read-only `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. Next gate is
   a clean cached `rocprofv3` specialization trace, followed by complete-state
   full-model A/B before any resident-layout promotion.
+
+## 2026-07-26 — Trace planar-Q6 candidate specializations
+
+- Clean cached `rocprofv3 --kernel-trace` at revision `48079041e` executes the
+  intended selected-prefill template tail
+  `true,true,true,true,false,true`: qmicro, compact activation, half-row,
+  skip-padded, permute disabled, planar enabled.
+- The actual-weight planar prefill dispatch is **4,942.305 us**, local128,
+  VGPR80, LDS5120B, and scratch0. The exact direct decoder runs template
+  `<unsigned short,6,true,true>` at **120.346 us**, VGPR80, LDS512B, and
+  scratch0. Every planar/control BF16 checksum is exact.
+- The profiler child returns status 1 only because one-sample profiler
+  distortion violates historical intermediate-speed assertions; it reaches
+  the intended kernels, completes all correctness checks, and recovers every
+  allocation. Child/trace SHA-256:
+  `cfaa7f36a965857f96b66dd5f6c3b82bf602a395be14102689f61c2cb6362a5e` /
+  `99f5e26abb25fff84d56a446d462e02c3148e4a5e720c9ea35d8b9ef7e93c6ba`.
+- The new-kernel trace gate is satisfied. Next wire the planar conversion and
+  consumer selectors through a candidate-only resident session and require a
+  complete-state full-model A/B win before enabling the backend capability.

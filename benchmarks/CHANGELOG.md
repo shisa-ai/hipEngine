@@ -19,7 +19,7 @@ Examples:
 
 ## 2026-07-26
 
-- [positive exact gfx1151 Laguna planar-Q6 leaf] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral qmicro record reordering removes two prefill byte gathers while preserving exact c1/c2/c4/c8 decode; the actual 660.6-MB layer improves **4.7718 -> 4.7568 ms (-0.314%)** and c1 decode improves **0.08564 -> 0.08415 ms (-1.736%)**; clean trace and full-model gates remain; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`.
+- [positive exact gfx1151 Laguna planar-Q6 leaf] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral qmicro record reordering removes two prefill byte gathers while preserving exact c1/c2/c4/c8 decode; the actual 660.6-MB layer improves **4.7718 -> 4.7568 ms (-0.314%)**, c1 decode improves **0.08564 -> 0.08415 ms (-1.736%)**, and clean tracing confirms local128/VGPR80/LDS5120B/scratch0; full-model integration remains; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`.
 
 - [retained exact gfx1151 Laguna Q6 qmicro-permute production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / two byte gathers replace scalar quartet unpack without changing resident bytes or arithmetic; the actual leaf improves **4.872 -> 4.741 ms (-2.67%)**, tracing cuts the 115-call Q6 body **1.23%**, and selector-unset production improves **568.849/527.113/444.508 -> 571.415/529.870/445.164 tok/s (+0.451%/+0.523%/+0.147%)** with complete state exact; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`.
 
