@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_attention_cached_meta_default",
+  "status": "retained_default_candidate",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "prompt_tokens": 512,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "base_revision": "7cb04afb7a9dc0b51933ba2e6b6e4258a368ee04",
+    "tracked_clean": false,
+    "reason": "Matched A/B validated the runtime integration before its atomic commit."
+  },
+  "candidate": {
+    "capability": "LAGUNA_PREFILL_CACHED_META=true on gfx1151",
+    "global_policy": "metadata-only cached qrow4 for safe M128 tiles at start_position >=128; source-qualified cached qrow4 at position 0",
+    "swa_policy": "metadata-only cached qrow4 for every safe pre-wrap M128 tile",
+    "fallbacks": [
+      "explicit prefill_cached_meta=false",
+      "global start_position 0",
+      "partial tiles",
+      "wrapped SWA",
+      "staged verifier transactions",
+      "gfx1100 and unmeasured backends"
+    ]
+  },
+  "protocol": {
+    "repetitions": 7,
+    "order": "alternating rollback/candidate pairs on one borrowed resident-weight owner",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_cached_meta_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-attention-cached-meta-ab.json"
+  },
+  "performance": {
+    "source_qualified_rollback_samples_tok_s": [
+      533.9376011029611,
+      531.5171133533602,
+      533.5067385975204,
+      529.8133741734638,
+      531.0799258573797,
+      534.3992382855395,
+      539.8887195796156
+    ],
+    "cached_metadata_candidate_samples_tok_s": [
+      543.6709030969427,
+      543.2533805769211,
+      542.7853061619112,
+      540.47927734071,
+      539.5789131316287,
+      542.2737113534649,
+      544.548675812999
+    ],
+    "source_qualified_rollback_median_tok_s": 533.5067385975204,
+    "cached_metadata_candidate_median_tok_s": 542.7853061619112,
+    "throughput_change_percent": 1.7391659548260163,
+    "median_wall_savings_ms": 16.405251924879963,
+    "candidate_pair_wins": 7,
+    "pair_count": 7
+  },
+  "correctness": {
+    "complete_state_exact": true,
+    "next_token": 2930,
+    "next_token_logit_hex": "0x1.a856da0000000p+4",
+    "logits_sha256": "0014c1cbbf2aa19f24e4a354f0ef1593f818840677c000eb0423584a233446cb",
+    "final_hidden_sha256": "7f45e9925b176db56e5efad6fc49d5a399924f62f17c8678f59dfb485d9c2b7c",
+    "post_layer_hidden_sha256": "f7d73ad00f630ca6a55d1b004809e84088515ff2772f51b33180450d09fff2f8",
+    "kv_sha256": "aaa785452719e996b27e6929c83c0089f89d45f466a077da2336edc2c133748a",
+    "final_position": 511,
+    "quality_transfer": {
+      "max_kl_divergence": 0.04954258196634279,
+      "top1_agreement": "316/320",
+      "minimum_category_top1": 0.96875,
+      "basis": "The qualified candidate preserves every F32 attention output bit and all full-model output/state digests."
+    }
+  },
+  "validation": {
+    "red": "Backend capability, session propagation, and qualified variant-selection tests failed before runtime integration.",
+    "green_command": ".venv/bin/pytest -q tests/test_gfx1151_backend.py tests/test_laguna_gguf_runner.py tests/test_laguna_kv_attention.py",
+    "green_result": "52 passed",
+    "primitive_trace": {
+      "global_template": "laguna_global_attention_prefill_qrows_online_bf16_kernel<4,true,true>",
+      "swa_template": "laguna_swa_attention_prefill_qrows_online_bf16_kernel<4,true,true,true>",
+      "workgroup_size": 32,
+      "vgpr": 64,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "provenance": {
+    "raw_sha256": "4fca2adbfa95ac5435784c48bfc7d0bb6d3c6cdb28e8913d4612408c1f3be90d",
+    "primitive_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_package_default_changed": true,
+    "rollback": "LagunaGGUFResidentSession(..., prefill_cached_meta=false)",
+    "next_gate": "Commit, then run clean selector-unset 512/1K/4K production and cached full-family trace."
+  }
+}

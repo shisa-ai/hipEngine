@@ -25,6 +25,9 @@ _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
 _BASELINE_GLOBAL_PREFILL_VARIANT = "global_context_rows_spans"
 _CACHED_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_cached_online_spans"
+_CACHED_META_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_qrow4_cached_meta_online_spans"
+)
 _GLOBAL_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_GLOBAL_PREFILL_VARIANT,
@@ -42,6 +45,7 @@ _SWA_DECODE_VARIANTS = frozenset(
 )
 _BASELINE_SWA_PREFILL_VARIANT = "swa_context_rows_spans"
 _CACHED_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_cached_online_spans"
+_CACHED_META_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_cached_meta_online_spans"
 _SWA_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_SWA_PREFILL_VARIANT,
@@ -100,6 +104,7 @@ class LagunaKVCache:
         context_length: int,
         sliding_window: int,
         backend: str,
+        prefill_cached_meta: bool,
         row_position: DeviceBuffer,
         runtime: HipRuntime,
     ) -> None:
@@ -108,6 +113,7 @@ class LagunaKVCache:
         self.context_length = int(context_length)
         self.sliding_window = int(sliding_window)
         self.backend = str(backend)
+        self.prefill_cached_meta = bool(prefill_cached_meta)
         self._row_position = row_position
         self.runtime = runtime
         self.position = -1
@@ -459,11 +465,19 @@ class LagunaKVCache:
             rows=rows,
             row_positions_ptr=row_positions_ptr,
         )
-        variant = (
-            _CACHED_GLOBAL_PREFILL_VARIANT
-            if state.attention_type == FULL_ATTENTION
-            else _CACHED_SWA_PREFILL_VARIANT
-        )
+        start_position = int(self._pending_positions[int(row_offset)])
+        if state.attention_type == FULL_ATTENTION:
+            variant = (
+                _CACHED_META_GLOBAL_PREFILL_VARIANT
+                if self.prefill_cached_meta and start_position >= 128
+                else _CACHED_GLOBAL_PREFILL_VARIANT
+            )
+        else:
+            variant = (
+                _CACHED_META_SWA_PREFILL_VARIANT
+                if self.prefill_cached_meta
+                else _CACHED_SWA_PREFILL_VARIANT
+            )
         fn = self._resolve("laguna_attention_prefill", variant)
         common = (
             query_ptr,
@@ -495,7 +509,7 @@ class LagunaKVCache:
                 _LAGUNA_HEAD_DIM,
                 scale,
                 sliding_window=self.sliding_window,
-                start_position=int(self._pending_positions[int(row_offset)]),
+                start_position=start_position,
                 stream=stream,
                 library=library,
                 runtime=self.runtime,
@@ -679,6 +693,7 @@ def allocate_laguna_kv_cache(
     global_prefill_variant: str | None = None,
     swa_decode_variant: str | None = None,
     swa_prefill_variant: str | None = None,
+    prefill_cached_meta: bool = False,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -842,6 +857,7 @@ def allocate_laguna_kv_cache(
             context_length=context,
             sliding_window=sliding_window,
             backend=backend,
+            prefill_cached_meta=prefill_cached_meta,
             row_position=_buffer_for_tensor(row_position, buffers),
             runtime=runtime,
         )

@@ -27,7 +27,10 @@ byte-neutral Q6 qmicro layout is now production: pp512 reaches
 and cached all-family tracing complete. Exact cached-only qrow4 scheduling
 cuts traced attention **219.709 -> 176.580 ms (-19.63%)** and improves clean
 selector-unset pp512 **505.084 -> 526.451 tok/s (+4.230%)**. The 500 gate is
-closed; the campaign remains active toward the 700 stretch.
+closed. A subsequent exact cached-metadata policy is now the gfx1151 default
+candidate after matched pp512 improves **533.507 -> 542.785 tok/s (+1.739%,
+7/7 wins)** with complete output/state exactness; clean selector-unset
+publication is next. The campaign remains active toward the 700 stretch.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -43,7 +46,9 @@ The primary external control is the current local llama.cpp Vulkan build at
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
 The quality-admitted production default now measures **530.447 tok/s**
 selector-unset, **6.958x** the old row and **53.954%** above the Vulkan
-control.
+control. The next committed-default candidate measures **542.785 tok/s** in
+matched one-owner A/B; it is not the production headline until clean
+selector-unset publication completes.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
 Strix Halo has a **256 GB/s** theoretical LPDDR5X roof and the existing
@@ -644,7 +649,7 @@ Current progress:
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
-| LAP-7–LAP-8 | Exact cached-only scheduling admitted; cached-metadata primitive retained | Complete M128 tiles append before cached-only qrow4 while partial, wrapped SWA, verifier, and unmeasured paths retain attend-then-append. Attention falls **219.709 -> 176.580 ms (-19.63%)** with F32-byte-exact primitives and exact full-model state. The next exact cached-metadata leaf improves the qualified 12-full/36-SWA model **14.6024 -> 13.3230 ms (1.096x)** and is pending runtime integration. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, head2, qhead3, and nine-wave GQA sharing remain closed. |
+| LAP-7–LAP-8 | Exact cached-only scheduling admitted; cached-metadata policy is the gfx1151 default candidate | Complete M128 tiles append before cached-only qrow4 while partial, wrapped SWA, verifier, and unmeasured paths retain attend-then-append. The qualified metadata-only policy selects every safe SWA tile and global tiles from position 128 while retaining the established global start-0 body. Matched pp512 improves **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)**, saving **16.405 ms** with complete output/state exactness. Clean publication is next. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, head2, qhead3, and nine-wave GQA sharing remain closed. |
 
 ## Post-500 campaign — 700 production stretch
 
@@ -667,7 +672,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | --- | ---: | ---: | --- |
 | Selected D8 Q4 gate/up | **313.357 ms** | **33.28%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default and the corrected route-tile ledger puts it at **162.37 GB/s / 73.47%** of the existing read anchor. It clears the interim requested-byte floor; reopen only from counters or a new schedule. |
 | Selected D4 Q4/Q6 down | **200.510 ms** | **21.30%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. Requested-byte rate is now **137.27 GB/s / 62.11%** of the anchor. The fresh split is Q6 **123.473 ms**, Q4 **72.065 ms**, and packing **4.972 ms**. Q6 K64 staging remains closed after VGPR/LDS growth regressed the family **14.54%** and pp512 **1.81%**. |
-| Global + SWA attention | **175.802 ms** | **18.67%** | Exact cached-only M128 scheduling saves **43.129 ms / 19.63%** versus its source-qualified predecessor. Source-qualified qrow4 remains fallback for partial tiles, wrapped SWA, and verifier transactions. Scalar key splitting, tiled M16/M8 WMMA, single-wave two-head GQA reuse, and nine-wave/token8 shared-K/V remain closed. |
+| Global + SWA attention | **175.802 ms** | **18.67%** | This is the pre-cached-metadata production trace. The promoted candidate removes current/cache bookkeeping for qualified preappended tiles and saves **16.405 ms** in matched full-model wall. Source-qualified qrow4 remains fallback for global position 0, partial tiles, wrapped SWA, verifier transactions, and unmeasured backends. Scalar key splitting, tiled M16/M8 WMMA, single-wave two-head GQA reuse, and nine-wave/token8 shared-K/V remain closed. |
 | Static-range direct hipBLASLt source-F16 | **125.280 ms** | **13.31%** | All five contractions and direct boundary casts are included. Both scaled-row kernels are absent; source-F16 boundary work is closed. |
 | Q4/Q6 WMMA dense/shared | **52.952 ms** | **5.62%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
 | Router | **23.223 ms** | **2.47%** | Eight-token reuse is production and cuts the prior **30.658 ms** family. Tile 4 remains rollback; tile 16 is slower at every stable leaf shape. |
@@ -710,14 +715,15 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Keep exact cached-only M128 attention scheduling in production. Clean
-   selector-unset 512/1K/4K improve **4.230%/3.218%/5.701%** and every matched
-   full-model state is exact. The trace cuts attention **219.709 -> 176.580
-   ms (-19.63%)**. Integrate the retained cached-metadata primitive: SWA wins
-   **1.108–1.128x** at all four pp512 tiles, while global selects it only from
-   position 128 because position 0 regresses. The qualified leaf projects
-   **15.353 ms** pp512 saving with every F32 bit exact. The prior scalar-split,
-   tiled-WMMA, head-pair, qhead3, and nine-wave GQA bodies remain closed.
+1. Publish the exact cached-metadata attention default clean. The qualified
+   gfx1151 policy selects every safe SWA tile and global tiles from position
+   128 while keeping global position 0 on the established cached body. Matched
+   pp512 improves **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)**, saving
+   **16.405 ms** versus the leaf projection of **15.353 ms**; logits, hidden
+   states, KV, cursor, token, and every primitive F32 output bit are exact.
+   Run selector-unset 512/1K/4K plus a cached full-family trace, then rebuild
+   this table. The prior scalar-split, tiled-WMMA, head-pair, qhead3, and
+   nine-wave GQA bodies remain closed.
 2. Keep byte-neutral Q6 qmicro in production. Clean selector-unset
    512/1K/4K improves **0.759%/1.127%/0.918%**; Q6 falls
    **126.594 -> 123.473 ms (-2.465%)**, total selected down falls
@@ -1527,8 +1533,8 @@ Evidence:
 [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json) ·
 [`leaf`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json).
 
-Thirty-ninth post-350 screen: **exact cached-metadata qrow4 primitive
-retained pending runtime integration**. The planned three-wave GQA follow-up
+Thirty-ninth post-350 screen: **exact cached-metadata qrow4 policy retained as
+the gfx1151 default candidate**. The planned three-wave GQA follow-up
 was closed during source audit rather than implemented: it would combine the
 already-rejected serial multi-head register growth with already-rejected
 cross-wave synchronous sharing. The distinct retained premise starts after
@@ -1544,12 +1550,24 @@ regresses **0.897x** at position 0 but improves
 on the existing cached body. The qualified 12-full/36-SWA leaf model improves
 **14.6024 -> 13.3230 ms (1.096x)**, projecting **15.353 ms** pp512 saving.
 Cached tracing names global `<4,true,true>` and SWA `<4,true,true,true>` at
-local32/VGPR64/SGPR128/LDS0/scratch0. The full attention test file reports
-**11 passed** and tracked allocations recover to zero. Evidence:
-[`2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json).
+local32/VGPR64/SGPR128/LDS0/scratch0. Qualified runtime integration selects SWA
+for every safe pre-wrap M128 tile and global only from position 128. Seven
+alternating one-owner full-model pairs improve source-qualified rollback
+**533.507 -> 542.785 tok/s (+1.739%)**, all seven pairs win, and median wall
+falls **959.688 -> 943.283 ms**, a measured **16.405-ms** saving. All fourteen
+runs have identical logits, final/post-layer hidden state, KV, next token/logit,
+and cursor. The affected backend/runner/attention bundles report **52 passed**.
+Clean selector-unset publication remains next. Evidence:
+[`2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json) ·
+[`2026-07-26-gfx1151-laguna-attention-cached-meta-default.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json).
 
 Production evidence:
 
+- [`2026-07-26-gfx1151-laguna-attention-cached-meta-default.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json)
+  is the retained gfx1151 default candidate: matched pp512 improves
+  **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)** with complete output/state
+  exactness. It becomes the production headline only after clean selector-unset
+  512/1K/4K and tracing.
 - [`2026-07-26-gfx1151-laguna-q6-qmicro-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json)
   is current production: clean selector-unset median **530.447 tok/s**,
   minimum **525.864 tok/s**, cached trace **535.006 tok/s**, and unchanged
@@ -2095,8 +2113,9 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**530.447 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
-active targets.
+**530.447 tok/s**; the next committed-default candidate is **542.785 tok/s**
+in matched A/B pending clean publication. The 700 stretch and stronger
+streaming/roofline rows remain active targets.
 
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.

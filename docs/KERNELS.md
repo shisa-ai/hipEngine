@@ -56,9 +56,15 @@ every tile and global **1.010–1.052x** from position 128 onward; global
 position 0 retains the established cached body. The qualified 12-full/36-SWA
 model improves **14.6024 -> 13.3230 ms (1.096x)** and projects **15.353 ms**
 pp512 saving. Cached tracing names global `<4,true,true>` and SWA
-`<4,true,true,true>` at local32/VGPR64/SGPR128/LDS0/scratch0. Retained as an
-explicit primitive pending runtime integration and full-model gates:
-`benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`.
+`<4,true,true,true>` at local32/VGPR64/SGPR128/LDS0/scratch0. The gfx1151
+runtime policy now selects the candidate for every safe SWA tile and global
+tiles from position 128, retaining the established cached body for global
+position 0. Seven alternating one-owner pp512 pairs improve
+**533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)** with identical complete model
+state. The capability is the gfx1151 default candidate pending clean
+selector-unset publication; gfx1100 and unmeasured backends remain unchanged.
+Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-{candidate,default}.json`.
 
 ### Laguna gfx1151 exact router token reuse
 

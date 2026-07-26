@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna cached-metadata attention default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / qualified metadata-only qrow4 selects every safe SWA M128 tile and global tiles from position 128 while keeping global position 0 on the established body; matched seven-pair pp512 improves **533.507 -> 542.785 tok/s (+1.739%, 16.405 ms saved, 7/7 wins)** with identical logits/hidden/KV/token/cursor, so gfx1151 defaults to the policy pending clean publication; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json`.
+
 - [retained exact gfx1151 Laguna cached-metadata attention primitive] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / deriving qrow4 visibility solely from preappended `KVLiveSpans` preserves every F32 output bit; SWA improves **1.108–1.128x** at all four pp512 tiles, global improves **1.010–1.052x** from position 128 onward, and the qualified 12-full/36-SWA leaf model improves **14.6024 -> 13.3230 ms (1.096x, projected 15.353 ms pp512 saving)**; retained pending runtime integration while production remains **530.447 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-candidate.json`.
 
 - [retained exact gfx1151 Laguna Q6 qmicro production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / byte-neutral qmicro records preserve the 3,360-byte T16 tile and every BF16 result; clean selector-unset pp512 improves **526.451 -> 530.447 tok/s (+0.759%, minimum 525.864)**, 1K/4K improve **1.127%/0.918%**, and cached tracing cuts Q6 selected down **126.594 -> 123.473 ms (-2.465%)** plus total selected down **203.923 -> 200.510 ms (-1.673%)** with local128/VGPR88/LDS5,632B/scratch0; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json`.

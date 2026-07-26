@@ -1165,6 +1165,15 @@ should be boring.
   retaining the backend capability/default and the automatic safety
   fallbacks. Do not remove the source-qualified kernels: wrapped SWA and
   staged verifier transactions still require them.
+- The next exact checkpoint adds `LAGUNA_PREFILL_CACHED_META` and the optional
+  `prefill_cached_meta` session/cache rollback. It selects metadata-only qrow4
+  for every safe SWA tile and global tiles from position 128, retaining the
+  established cached body at global position 0. Matched seven-pair pp512
+  improves **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)** and every compared
+  output/state digest is exact. Remove the public positive selector after
+  clean selector-unset 512/1K/4K publication and one later attention-family
+  checkpoint; retain source-qualified registered fallbacks for global start 0,
+  partial tiles, wrapped SWA, verifier transactions, and unmeasured backends.
 
 ## Laguna Q6 qmicro resident-layout rollback
 
