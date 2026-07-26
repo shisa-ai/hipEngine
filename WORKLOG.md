@@ -182261,3 +182261,37 @@ Vulkan local sizes verbatim will close the measured gap.
 - `tests/test_laguna_long_context_profile.py` remains the focused gate. After
   commit, repeat the clean selector-unset 512/1K/4K run and require provenance
   to record `GPU_MAX_HW_QUEUES=2` before production publication.
+
+## 2026-07-26 — Publish exact MoE branch concurrency
+
+- Clean selector-unset revision `0cfe25bb7` records the automatically applied
+  `GPU_MAX_HW_QUEUES=2` policy and resolved branch concurrency. Three
+  repetitions publish **565.447/526.711/443.444 tok/s** at 512/1K/4K versus
+  prior production **559.554/523.912/440.809**, improving
+  **1.053%/0.534%/0.598%**. Tokens remain 2930/95/7772, positions are exact,
+  repeats deterministic, and all tracked allocations return to zero.
+- The refreshed no-selector cached trace reaches **569.556 tok/s**, records
+  **1,696** pp512 dispatches, and observes two queues/two streams. The 188
+  secondary-stream kernels total **77.763 ms**, of which **76.883 ms
+  (98.87%)** overlaps caller kernels. Kernel span falls from the prior
+  single-stream **909.598 -> 898.334 ms (-11.265 ms)**.
+- Inclusive two-stream kernel sum is **966.318 ms**, larger than span by
+  design. Current inclusive family durations are gate/up **322.200 ms**,
+  selected down **189.713 ms**, attention **143.608 ms**, source-F16
+  **124.818 ms**, dense/shared projection **71.340 ms**, router **44.075 ms**,
+  and remainder **70.563 ms**. These overlap and cannot be treated as additive
+  Amdahl savings.
+- Primitive BF16 equality and seven full-model complete-state pairs transfer
+  the absolute quality result unchanged: max KL **0.049542582**, **316/320**
+  top-1, minimum category top-1 **96.875%**, exact Poolside oracle, neutral
+  decode, determinism, and exact lifecycle through 4K. Repeated 128K remains
+  explicitly unadmitted.
+- Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json`.
+  The clean pp512 wall is now **905.478 ms**; 700 tok/s requires another
+  **174.050 ms**.
+- Next bounded screen: launch the shared branch after routed gate/up and
+  overlap it with selected down. Current eager overlap raises inclusive
+  gate/up **314.560 -> 322.200 ms** and router **23.438 -> 44.075 ms**; the
+  **189.713-ms** selected-down window, especially lower-bandwidth Q6, should
+  be a less destructive concurrency partner.
