@@ -1,0 +1,767 @@
+{
+  "admission_plan": {
+    "clean_and_category_adjudication": [
+      "Freeze both process orders at short/512/1024/3968. Every order must improve the combined three-family time and complete kernel sum, keep span <=+0.5%, child throughput >=-0.5%, and pass exact topology/resource/ID/finite/lifecycle checks. Stop on first failure; no third order or pooled waiver.",
+      "Only after all contexts pass, run both complete 18-prompt category/heldout orders. Require every category decode row positive, aggregate decode positive, E2E/prefill/TTFT inside 0.5% guards, and exact state/lifecycle before default promotion."
+    ],
+    "commit_boundaries": [
+      "Commit design before implementation.",
+      "Commit primitive correctness before runtime ownership.",
+      "Commit runtime correctness before clean measurement.",
+      "Commit retained default or mechanical rejection immediately after adjudication."
+    ],
+    "correctness_and_transfer": [
+      "Synthetic K256/512/1024/3072/6144/9216 covers Q5 qh/qs/scale/min extremes and BF16 signed-zero/subnormal/finite edges for BF16/F32 singleton/pair and mixed outputs; candidate/control bytes must match exactly and CPU KL/top-1 must pass.",
+      "All 47 attention-output, all 47 Q5/Q6 mixed, and all 46 shared-Q5 production boundaries must be byte-exact. Repeat the frozen first/last protocols once and require every event/wall row positive.",
+      "Repository codegen must stay local32/wave32, LDS/private/spills/scratch0, preserve load/permute/barrier counts, and meet each selected symbol ceiling from this artifact; cache-only tracing must name every sibling with allocated VGPR <=72 direct or <=80 mixed."
+    ],
+    "primitive_red_green": [
+      "Add a candidate-specific SWAR helper and sibling output, BF16 pair, F32 diagnostic pair, and mixed Q5/Q6 kernels/exports/wrappers/keys. Do not mutate or replace the retained fixed-metadata helper/symbols.",
+      "Freeze rows==1, K divisible by 256, positive even output widths, exact role tuple, local32, non-null validation before library load, and explicit gfx1151/cuda/cpu key exclusion.",
+      "Primitive admission adds no backend capability, runtime/session/CLI selector, allocation, workspace, launch, or default change."
+    ],
+    "runtime_after_primitive_commit": [
+      "Add one explicit/default-off gfx1100 capability that resolves all three candidate keys atomically; any disable, key/shape/backend miss, rows/prefill request, or layer47 retains all registered controls.",
+      "Shared-weight bulk prefill plus 16 decode transitions, reset, and re-prefill must preserve logits/IDs, all 48 hidden and 47 routed boundaries, active K/V and every KVLiveSpans field, positions, ownership, and lifecycle exactly.",
+      "A cache-only two-transition trace must record exactly 47 mixed + 47 output + 46 shared candidate calls/token (140 total), zero candidate prefill calls, one unchanged layer47 mixed path, and 723 model kernels/token with expected resources and no compiler."
+    ]
+  },
+  "baseline": {
+    "additional_h32_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "canonical_wall_ms_per_token": 16.131230401844086,
+    "commit": "3ab9eef7194e4324eb3a0c71f0c05571cbd2d08c",
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 723,
+    "note": "These immutable controls remain production-equivalent because the IQ2 owner was removed and no retained default changed after Q4 local32.",
+    "short_family_ms_per_token": {
+      "mixed_q5_q6_projection": 1.933541,
+      "shared_q5_gate_up_pair": 0.496336,
+      "standalone_q5_attention_output": 1.579843
+    },
+    "short_kernel_sum_ms_per_token": 12.896732535714285,
+    "source_processes": [
+      {
+        "path": "/tmp/laguna-q2-xl-iq2-local64-reduction-clean-109208676-short-control-a/trace_kernel_trace.csv",
+        "sha256": "58650c90d8be20cf263523fd2f1d0118de0291e8ad4d0910306bcbabc521e362"
+      },
+      {
+        "path": "/tmp/laguna-q2-xl-iq2-local64-reduction-clean-109208676-short-control-b/trace_kernel_trace.csv",
+        "sha256": "ded079e67fe03035704fbb7d7003515e38e64204c89595ac68b4c00d0a618820"
+      }
+    ],
+    "stable_samples": 28
+  },
+  "cache_only_trace": {
+    "compiler_allowed_under_profiler": false,
+    "device": "AMD Radeon Pro W7900",
+    "direct_roles": {
+      "candidate_calls": 6,
+      "db_path": "/tmp/laguna-q5-swar-pair-trace-3ab9eef71/laguna_q5_swar_pair_results.db",
+      "db_sha256": "712c22cb53d98fc17bd037e5b87639f3511d284d5f410eb500a8e5d48e9967df",
+      "harness_sha256": "40048fa88ff091d9cad859381dba40c1c46af86d06475246b7a82b6cc984f56c",
+      "kernel_rows": [
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 72,
+          "duration_ns": 35480,
+          "grid_x": 49152,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_k_wave32x2_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        },
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 72,
+          "duration_ns": 20800,
+          "grid_x": 49152,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_k_wave32x2_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        },
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 72,
+          "duration_ns": 38480,
+          "grid_x": 148608,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        },
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 72,
+          "duration_ns": 30000,
+          "grid_x": 148608,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        },
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 72,
+          "duration_ns": 16280,
+          "grid_x": 32768,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        },
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 72,
+          "duration_ns": 8120,
+          "grid_x": 32768,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_fixed_meta_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        }
+      ],
+      "note": "The first command omitted an explicit CSV format but emitted a valid ROCpd database; it is used only for name/resource/execution evidence.",
+      "stderr_sha256": "bba9ceeeca79449e7ba4ac6ce70fda3c1ce99ac856e5dc9f1f493842f4cf0f0d",
+      "stdout_sha256": "da2e11fc135632e84c1629561e5954200e44740995523e0a8176a3c2f26b541a"
+    },
+    "no_compiler_under_profiler": true,
+    "prebuilt_candidate_required": true,
+    "production_mixed": {
+      "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+      "all_outputs_f32_bit_exact_in_timing_probe": true,
+      "candidate_calls": 2,
+      "finite": true,
+      "harness_sha256": "481e45d7dfc3952124a78a8661108093ed928db079b2c9498aac6c7ec3339179",
+      "kernel_rows": [
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 80,
+          "duration_ns": 43200,
+          "grid_x": 181376,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        },
+        {
+          "allocated_lds_bytes": 0,
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 80,
+          "duration_ns": 57240,
+          "grid_x": 181376,
+          "kernel_name": "void (anonymous namespace)::gguf_q5_q6_mixed_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+          "scratch_bytes": 0,
+          "workgroup_x": 32
+        }
+      ],
+      "stderr_sha256": "851bcfbe6639cedef461c47d289bfca0706adf5fa53009e1d0b88973bf28b214",
+      "stdout_sha256": "5e14c691ba89c283868d4bbc47d67083a2f8ad8e4ac181d158bb15be6a7bdada",
+      "trace_path": "/tmp/laguna-q5-swar-mixed-trace-3ab9eef71/laguna_q5_swar_mixed_kernel_trace.csv",
+      "trace_sha256": "be673c5da676433ff5f307f32d28264993425023f5fc70e573fd088d077c506a"
+    },
+    "resource_interpretation": "rocprofv3 reports allocated VGPR72 for direct output/pairs and VGPR80 for the mixed production symbol, SGPR128, LDS0, scratch0, local32. ELF logical counts are lower."
+  },
+  "closed_before_selection": [
+    {
+      "candidate": "Q5 fixed-local32 permlanex16+DPP reduction",
+      "candidate_codegen": {
+        "output_bf16_dpp": 32,
+        "output_bf16_ds_bpermute": 0,
+        "output_bf16_instructions": 464,
+        "output_bf16_permlanex16": 8
+      },
+      "event_delta_range_pct": [
+        -0.2621930134717787,
+        2.957653593105203
+      ],
+      "harness_sha256": "3c1b647ee3893e3469ecea05c4dd3818c426a36859dbb306c14055ed07b7c353",
+      "raw_path": "/tmp/laguna-q5-dpp-reduce-actual.txt",
+      "raw_sha256": "5eb6f05f9ee751e42edaed1431561cee46af556649bccc9cfefc2aff973bc987",
+      "reason": "All eight rows are bit-exact and codegen removes all 40 ds_bpermutes, but every query/gate endpoint regresses event 1.166-2.958% and wall 0.956-2.120%; SWA output also has failed rows.",
+      "result": "reject before repository work",
+      "source_sha256": "9c6a6704fda185e22fa916987e0249fa5f58d0b416a590b21c0ccafdf467b5d4",
+      "wall_delta_range_pct": [
+        -1.4169940531699066,
+        2.1201797579975423
+      ]
+    },
+    {
+      "candidate": "ordinary per-byte Q5 load hoisting",
+      "reason": "Clang already hoists the ten unique qh/qs bytes for an output pair into five packed VGPR destinations; the selected design changes packed arithmetic, not memory traffic.",
+      "result": "closed by current codegen"
+    },
+    "Q5 local-size, output-ownership, T16/repack, LDS staging, heterogeneous Q5/Q6 activation reuse, and Vulkan-style reassociation premises remain closed by committed artifacts."
+  ],
+  "codegen": {
+    "candidate": {
+      "mixed_f32": {
+        "ds_bpermute": 96,
+        "global_loads": 40,
+        "instructions": 923,
+        "left_shifts": 30,
+        "logical_sgpr": 61,
+        "logical_vgpr": 75,
+        "masks": 44,
+        "ors": 31,
+        "right_shifts": 27,
+        "text_bytes": 5388,
+        "waits": 62
+      },
+      "output_bf16": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 470,
+        "left_shifts": 15,
+        "logical_sgpr": 69,
+        "logical_vgpr": 71,
+        "masks": 18,
+        "ors": 0,
+        "right_shifts": 8,
+        "text_bytes": 2688,
+        "waits": 28
+      },
+      "pair_bf16": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 478,
+        "left_shifts": 15,
+        "logical_sgpr": 70,
+        "logical_vgpr": 71,
+        "masks": 18,
+        "ors": 0,
+        "right_shifts": 8,
+        "text_bytes": 2724,
+        "waits": 31
+      },
+      "pair_f32": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 461,
+        "left_shifts": 17,
+        "logical_sgpr": 60,
+        "logical_vgpr": 71,
+        "masks": 16,
+        "ors": 0,
+        "right_shifts": 7,
+        "text_bytes": 2640,
+        "waits": 32
+      }
+    },
+    "candidate_hsaco_sha256": "ca073183a3958ee88a9aa30842bc66c6e5026d29417f68fd25831e528d17ecf4",
+    "candidate_objdump_sha256": "1e9e2731371e63a9a230f155d9599b0512ffc1b9f2e6c1c29b0710690b10c760",
+    "candidate_readobj_sha256": "80a1571f4075c9b169cd24a67f6acb58a510f965dd627faed17efb9ed0f612af",
+    "common": {
+      "barriers": 0,
+      "fixed_lds_bytes": 0,
+      "private_bytes": 0,
+      "sgpr_spills": 0,
+      "vgpr_spills": 0,
+      "wavefront_size": 32,
+      "workgroup_x": 32
+    },
+    "compiler": "same AMD Clang 22 gfx1100 decode profile",
+    "control": {
+      "mixed_f32": {
+        "ds_bpermute": 96,
+        "global_loads": 40,
+        "instructions": 947,
+        "left_shifts": 29,
+        "logical_sgpr": 61,
+        "logical_vgpr": 75,
+        "masks": 52,
+        "ors": 47,
+        "right_shifts": 34,
+        "text_bytes": 5640,
+        "waits": 65
+      },
+      "output_bf16": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 499,
+        "left_shifts": 17,
+        "logical_sgpr": 59,
+        "logical_vgpr": 73,
+        "masks": 26,
+        "ors": 16,
+        "right_shifts": 15,
+        "text_bytes": 2936,
+        "waits": 31
+      },
+      "pair_bf16": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 508,
+        "left_shifts": 17,
+        "logical_sgpr": 60,
+        "logical_vgpr": 73,
+        "masks": 26,
+        "ors": 16,
+        "right_shifts": 15,
+        "text_bytes": 2976,
+        "waits": 35
+      },
+      "pair_f32": {
+        "ds_bpermute": 40,
+        "global_loads": 18,
+        "instructions": 485,
+        "left_shifts": 16,
+        "logical_sgpr": 60,
+        "logical_vgpr": 73,
+        "masks": 24,
+        "ors": 16,
+        "right_shifts": 14,
+        "text_bytes": 2892,
+        "waits": 35
+      }
+    },
+    "control_hsaco_sha256": "b40d09d783b5dc84b80ad3f73c45807d351a59bcb35cf9a95f638b6a3a589c11",
+    "control_objdump_sha256": "f146d47db9c225c561467944150ea60f099f08c39440ab155ca0c14bd429371d",
+    "control_readobj_sha256": "a8a716a27a8abffb1b111638f9b3701b712558a39edb8eab4795535c4ca6cc6d",
+    "interpretation": "The candidate keeps all global-load and reduction-permute counts. The direct Q5 symbols contract 24-30 instructions, 248-252 text bytes, logical VGPR 73->71, and all 16 row-separate ORs; the mixed symbol contracts 24 instructions and 252 bytes at unchanged logical VGPR75."
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "select for repository RED/GREEN",
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "default_changed": false,
+    "next_action": "Commit this design record, then add repository RED before the separately registered primitive family."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation_status": {
+    "benchmark_changelog_update": false,
+    "benchmark_scoreboard_update": false,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "default": "unchanged retained fixed-metadata Q5 paths",
+    "repository_primitive": "not implemented",
+    "runtime_owner": "not implemented"
+  },
+  "kind": "hipengine_laguna_q2_xl_q5_swar_pair_design",
+  "model": {
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "q5_attention_output_layers": 47,
+    "q5_query_gate_mixed_layers": 47,
+    "q5_shared_gate_up_layers": 46,
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling": {
+    "canonical_h32_tok_s_before": 61.99155148671624,
+    "conservative_event_ratios": {
+      "mixed_q5_q6_projection": 0.06454949095131646,
+      "shared_q5_gate_up_pair": 0.05488506781694536,
+      "standalone_q5_attention_output": 0.07314153696445347
+    },
+    "family_savings_ms_per_token": {
+      "mixed_q5_q6_projection": 0.12480908728349938,
+      "shared_q5_gate_up_pair": 0.027241435019991392,
+      "standalone_q5_attention_output": 0.11555214518253307
+    },
+    "kernel_sum_ms_per_token_after": 12.629129868228262,
+    "kernel_sum_ms_per_token_before": 12.896732535714285,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "method": "Apply the smallest actual endpoint event improvement separately to immutable short mixed, output, and shared-Q5 family times; leave every other kernel and host interval unchanged.",
+    "modeled_h32_delta_pct": 1.686894523542315,
+    "modeled_h32_tok_s_after": 63.037283573804565,
+    "modeled_saving_ms_per_token": 0.26760266748602385,
+    "note": "The approximately 0.268-ms/token ceiling is a planning model, not retained/full-model throughput evidence.",
+    "performance_claim": false,
+    "remaining_gap_pct": 2.190696641371548
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "25efc65f39e50ac144192402b29a0e1490281d9acc9bcbb605e08ca78229b039",
+    "kernel_source_sha256": "12688abc783730b0aa91b17f6180500005959a376b0cf095a277fed897b7d711",
+    "kernel_wrapper_sha256": "9e673eead40ed35a0db3a13e721b937119bc410299b8396f338fbd45eeddc54d",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "schema": 1,
+  "selected_design": {
+    "description": "Keep each pair of Q5 qh/qs bytes packed in the low/high byte of one VGPR. For each subblock, perform the low-nibble operation once under mask 0x0F0F and the high-bit operation once under mask 0x0101, then extract the two unchanged uint8 quant values for the retained output-row arithmetic.",
+    "exact_arithmetic_invariants": [
+      "For each output row and subblock, the reconstructed unsigned Q5 value is exactly ql | (high << 4); SWAR changes only integer instruction sharing across the two rows.",
+      "All d/dmin and scale/min FP32 values, x loads, scale*q-min expressions, accumulator FMA order, four lane trees, final +0/group0/group1/group2/group3 association, and BF16/F32 stores are unchanged.",
+      "Q6 branches in the mixed projection are byte-for-byte unchanged; only Q5 workgroups invoke the sibling helper."
+    ],
+    "fallback": "The three retained fixed-metadata keys remain the exact unfused/control fallback on explicit disable, key/shape/backend miss, rows/prefill, and gfx1151.",
+    "name": "exact paired-output SWAR Q5 reconstruction",
+    "ownership_invariants": [
+      "One local32 wave still owns two adjacent output rows, with the same grid, wave count, raw weight addresses, activation addresses, and outputs.",
+      "No allocation, workspace, sidecar, copy, counter, launch, or prompt/token branch is added; model topology remains 723 kernels/token.",
+      "Layer 47 retains its registered Q6/Q8 projection, Q6 attention output, and Q6 shared-expert paths."
+    ],
+    "planned_keys": [
+      [
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out"
+      ],
+      [
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out"
+      ],
+      [
+        "hip_gfx1100",
+        "attention_projection_quad",
+        "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+        "mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out"
+      ]
+    ],
+    "why_distinct": "This contracts selector/nibble instruction work within the existing two-output owner. It changes neither local size nor output ownership, uses no sidecar/LDS/barrier, shares no activation with Q6, and preserves raw GGUF bytes."
+  },
+  "selection_probe": {
+    "all_actual_rows_improve_both_timers": true,
+    "all_outputs_bit_exact": true,
+    "candidate_library_sha256": "51a729f8e8eaeb7ed16921a9b5f38549fc008073ae6acd10f3bef8b94ffb6c04",
+    "candidate_source_path": "/tmp/laguna-q5-swar-pair-probe/gguf_k_gemv_q5_swar_pair.hip",
+    "candidate_source_sha256": "6002a9eae0209a41c72beed1c52873e5d4fb02eec34b9f051db6cb7c4c8d415d",
+    "control_library_sha256": "cbb92ec2984fe36b30531287a139cfba9cc84910dcc5491e17775e8f68f265cb",
+    "probe_builder_sha256": "af2f33009c9eaefe11d0b7d142624116c3570bb0e881e64d94ad2ddf5f34f4c6",
+    "production_mixed_q5_q6": {
+      "event_improvement_range_pct": [
+        6.454949095131646,
+        8.578971058746243
+      ],
+      "harness_sha256": "61fa39257472b4a78d121f1e6b918c7b2de63702cefb690134ec112b2dd12336",
+      "raw_path": "/tmp/laguna-q5-swar-mixed-actual.txt",
+      "raw_sha256": "ea9f3d80e3c69077cd8f92599652561025f82d2b53c9c229ed4af01449ee0ac5",
+      "rows": [
+        {
+          "all_four_outputs_f32_bit_exact": true,
+          "candidate_event_us": 28.8317608833313,
+          "candidate_wall_us": 29.00414983741939,
+          "control_event_us": 31.028175354003906,
+          "control_wall_us": 31.53273486532271,
+          "event_delta_pct": -7.078774196721104,
+          "features": [
+            6144,
+            1024,
+            1024,
+            48
+          ],
+          "layer_id": 0,
+          "role": "mixed_q5_q6_projection",
+          "wall_delta_pct": -8.018920777734584
+        },
+        {
+          "all_four_outputs_f32_bit_exact": true,
+          "candidate_event_us": 28.67978572845459,
+          "candidate_wall_us": 28.6250957287848,
+          "control_event_us": 30.940399169921875,
+          "control_wall_us": 31.019030138850212,
+          "event_delta_pct": -7.306348664256723,
+          "features": [
+            6144,
+            1024,
+            1024,
+            48
+          ],
+          "layer_id": 44,
+          "role": "mixed_q5_q6_projection",
+          "wall_delta_pct": -7.717631400303182
+        },
+        {
+          "all_four_outputs_f32_bit_exact": true,
+          "candidate_event_us": 37.98386573791504,
+          "candidate_wall_us": 38.01327547989786,
+          "control_event_us": 41.54828071594238,
+          "control_wall_us": 40.499860187992454,
+          "event_delta_pct": -8.578971058746243,
+          "features": [
+            9216,
+            1024,
+            1024,
+            72
+          ],
+          "layer_id": 1,
+          "role": "mixed_q5_q6_projection",
+          "wall_delta_pct": -6.1397365239098445
+        },
+        {
+          "all_four_outputs_f32_bit_exact": true,
+          "candidate_event_us": 39.34307098388672,
+          "candidate_wall_us": 39.83950475230813,
+          "control_event_us": 42.05788612365723,
+          "control_wall_us": 42.30808583088219,
+          "event_delta_pct": -6.454949095131646,
+          "features": [
+            9216,
+            1024,
+            1024,
+            72
+          ],
+          "layer_id": 46,
+          "role": "mixed_q5_q6_projection",
+          "wall_delta_pct": -5.834773732004095
+        }
+      ],
+      "wall_improvement_range_pct": [
+        5.834773732004095,
+        8.018920777734584
+      ]
+    },
+    "production_shared_q5": {
+      "event_improvement_range_pct": [
+        5.488506781694536,
+        5.786444831554494
+      ],
+      "harness_sha256": "f854d17424a9680697a45496055372a8d6d51aa57bfedf16edaca0390fa89145",
+      "raw_path": "/tmp/laguna-q5-swar-shared-actual.txt",
+      "raw_sha256": "949700cfdbb32ab5cdf207c78c2b7f9acab8f67e90824706a0c0797216f73263",
+      "rows": [
+        {
+          "bit_exact": true,
+          "candidate_event_us": 11.578655242919922,
+          "candidate_wall_us": 11.644159676507115,
+          "control_event_us": 12.251055240631104,
+          "control_wall_us": 12.320370879024267,
+          "event_delta_pct": -5.488506781694536,
+          "kl_max": 0.0,
+          "layer_id": 1,
+          "role": "shared_gate_up",
+          "shape": [
+            [
+              1024,
+              3072
+            ],
+            [
+              1024,
+              3072
+            ]
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -5.488562066491176
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 11.09447956085205,
+          "candidate_wall_us": 11.200605658814311,
+          "control_event_us": 11.775884628295898,
+          "control_wall_us": 11.851513991132379,
+          "event_delta_pct": -5.786444831554494,
+          "kl_max": 0.0,
+          "layer_id": 46,
+          "role": "shared_gate_up",
+          "shape": [
+            [
+              1024,
+              3072
+            ],
+            [
+              1024,
+              3072
+            ]
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -5.492195619944374
+        }
+      ],
+      "wall_improvement_range_pct": [
+        5.488562066491176,
+        5.492195619944374
+      ]
+    },
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "reruns": 0,
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "warmups": 50
+    },
+    "standalone_output_and_query_gate": {
+      "event_improvement_range_pct": [
+        7.314153696445347,
+        12.266629689187102
+      ],
+      "harness_sha256": "89088abeeb04a50a4daf8780474b6faf82b51e6a085d1a0fb479ce9a30036f3a",
+      "raw_path": "/tmp/laguna-q5-swar-pair-actual.txt",
+      "raw_sha256": "601c72bf5d8c975fa1037fe91ad095bb71fec886fe5e73e4b31fa83cd7290975",
+      "rows": [
+        {
+          "bit_exact": true,
+          "candidate_event_us": 21.635680198669434,
+          "candidate_wall_us": 21.596545120701194,
+          "control_event_us": 23.55346441268921,
+          "control_wall_us": 23.699775338172913,
+          "event_delta_pct": -8.142259586180401,
+          "kl_max": 0.0,
+          "layer_id": 0,
+          "role": "attention_output",
+          "shape": [
+            3072,
+            6144
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -8.874473227955349
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 20.39247989654541,
+          "candidate_wall_us": 20.342529751360416,
+          "control_event_us": 22.00171947479248,
+          "control_wall_us": 22.08219957537949,
+          "event_delta_pct": -7.314153696445347,
+          "kl_max": 0.0,
+          "layer_id": 44,
+          "role": "attention_output",
+          "shape": [
+            3072,
+            6144
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -7.878154610823806
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 30.01079559326172,
+          "candidate_wall_us": 30.437669483944774,
+          "control_event_us": 33.07701110839844,
+          "control_wall_us": 32.95004949904978,
+          "event_delta_pct": -9.269929211827089,
+          "kl_max": 0.0,
+          "layer_id": 1,
+          "role": "attention_output",
+          "shape": [
+            3072,
+            9216
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -7.624814084657028
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 30.254600048065186,
+          "candidate_wall_us": 30.149515951052308,
+          "control_event_us": 33.29267978668213,
+          "control_wall_us": 33.072554506361485,
+          "event_delta_pct": -9.125368573761516,
+          "kl_max": 0.0,
+          "layer_id": 46,
+          "role": "attention_output",
+          "shape": [
+            3072,
+            9216
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -8.838260602902427
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 20.642340183258057,
+          "candidate_wall_us": 20.839335629716516,
+          "control_event_us": 22.77435064315796,
+          "control_wall_us": 22.667410084977746,
+          "event_delta_pct": -9.361454441909267,
+          "kl_max": 0.0,
+          "layer_id": 0,
+          "role": "query_gate",
+          "shape": [
+            [
+              6144,
+              3072
+            ],
+            [
+              48,
+              3072
+            ]
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -8.064769854200238
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 20.729944705963135,
+          "candidate_wall_us": 20.795235177502036,
+          "control_event_us": 22.778561115264893,
+          "control_wall_us": 22.82151486724615,
+          "event_delta_pct": -8.993616405071748,
+          "kl_max": 0.0,
+          "layer_id": 44,
+          "role": "query_gate",
+          "shape": [
+            [
+              6144,
+              3072
+            ],
+            [
+              48,
+              3072
+            ]
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -8.878813266915376
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 28.570399284362793,
+          "candidate_wall_us": 29.00070045143366,
+          "control_event_us": 32.56503105163574,
+          "control_wall_us": 32.43824583478272,
+          "event_delta_pct": -12.266629689187102,
+          "kl_max": 0.0,
+          "layer_id": 1,
+          "role": "query_gate",
+          "shape": [
+            [
+              9216,
+              3072
+            ],
+            [
+              72,
+              3072
+            ]
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -10.597198753771908
+        },
+        {
+          "bit_exact": true,
+          "candidate_event_us": 28.76840591430664,
+          "candidate_wall_us": 29.1981000918895,
+          "control_event_us": 32.63643026351929,
+          "control_wall_us": 32.335190335288644,
+          "event_delta_pct": -11.851860996992336,
+          "kl_max": 0.0,
+          "layer_id": 46,
+          "role": "query_gate",
+          "shape": [
+            [
+              9216,
+              3072
+            ],
+            [
+              72,
+              3072
+            ]
+          ],
+          "top1_agreement": 1.0,
+          "wall_delta_pct": -9.70178375593328
+        }
+      ],
+      "wall_improvement_range_pct": [
+        7.624814084657028,
+        10.597198753771908
+      ]
+    }
+  },
+  "status": "candidate_selected"
+}
