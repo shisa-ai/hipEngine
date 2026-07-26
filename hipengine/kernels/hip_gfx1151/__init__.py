@@ -220,6 +220,12 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_f32_weight",
             "bf16_out_staged_f32_local256",
         ),
+        # IQ2 fixed-local64 DPP reduction is W7900-only pending an independent gate.
+        (
+            "moe_linear",
+            "gguf_iq2_xs",
+            "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out",
+        ),
         # IQ3 selected-down tiling is gfx1100-only pending independent gfx1151 gates.
         (
             "moe_linear",
