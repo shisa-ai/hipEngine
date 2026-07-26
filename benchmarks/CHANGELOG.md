@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna MoE branch-concurrency production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the automatic two-queue policy overlaps shared and routed MoE, publishing selector-unset **565.447/526.711/443.444 tok/s** versus **559.554/523.912/440.809 (+1.053%/+0.534%/+0.598%)**; cached tracing observes two queues, overlaps **76.883/77.763 ms (98.87%)** of secondary kernel time, and cuts kernel span **11.265 ms** with exact transferred quality/lifecycle; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json`.
+
 - [retained exact gfx1151 Laguna MoE branch-concurrency candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / a secondary stream overlaps the independent shared expert with routed MoE, improving queue-matched complete-state pp512 **560.837 -> 567.577 tok/s (+1.202%, 7/7 wins)** and clean candidate 512/1K/4K to **565.457/525.733/443.027 tok/s**; tracing overlaps **100.390/101.241 ms (99.16%)** of secondary kernel time and cuts kernel span **12.727 ms**; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-candidate.json`.
 
 - [retained exact gfx1151 Laguna source-F16 boundary production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / producer-side `FP16(BF16(value))` stores remove **96 pp512 dispatches**, preserve complete production state exactly, and publish clean selector-unset **559.554/523.912/440.809 tok/s** versus **559.290/523.090/439.044**; cached tracing names 48 of each fused producer and zero standalone casts; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`.

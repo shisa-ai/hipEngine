@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_branch_concurrency_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset exact Poolside Laguna S 2.1 Q4_K_M matrix2048/attention128 prefill at 512/1K/4K on gfx1151 with automatic two-queue policy, matched complete-state A/B, lifecycle recovery, and cached two-stream tracing",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "capability_revision": "6e58950e3574f4f65a3b7ffee770c0134eac8d7c",
+    "measurement_and_trace_revision": "0cfe25bb7707102e69cb8a58dc607fb72fb90169",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_MOE_BRANCH_CONCURRENCY=true",
+    "process_policy": "gfx1151 defaults GPU_MAX_HW_QUEUES to 2 before libamdhip64 initialization",
+    "scope": "Laguna rows greater than one when automatic queue capacity is at least two",
+    "schedule": "the shared expert runs on a nonblocking secondary stream while router selection and routed gate/up/down run on the caller stream",
+    "arithmetic": "unchanged; dependency events preserve the input producer and final combine boundaries",
+    "fallback": "GPU_MAX_HW_QUEUES=1 automatically selects sequential execution; --no-moe-branch-concurrency and the constructor override remain explicit rollback",
+    "peer_backends": "unchanged"
+  },
+  "matched_ab": {
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 in both arms",
+    "sequential_median_tok_s": 560.8371652832807,
+    "concurrent_median_tok_s": 567.5766145120086,
+    "change_percent": 1.201676644471994,
+    "candidate_wins": "7/7",
+    "complete_state_exact": true,
+    "exact_fields": [
+      "logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV cache",
+      "next token",
+      "next-token logit",
+      "cursor"
+    ],
+    "source_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-candidate.json"
+  },
+  "selector_unset": {
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>",
+    "resolved_queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "resolved_moe_branch_concurrency": true,
+    "pp512_samples_tok_s": [
+      567.0997597194845,
+      565.4470035777194,
+      565.0882422668592
+    ],
+    "pp512_median_tok_s": 565.4470035777194,
+    "pp1024_samples_tok_s": [
+      531.1993324241469,
+      526.7106792638224,
+      526.5652844338775
+    ],
+    "pp1024_median_tok_s": 526.7106792638224,
+    "pp4096_samples_tok_s": [
+      445.8773639565787,
+      443.4440131490211,
+      442.37751585610584
+    ],
+    "pp4096_median_tok_s": 443.4440131490211,
+    "previous_production": {
+      "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json",
+      "queue_policy": "GPU_MAX_HW_QUEUES=1",
+      "pp512_tok_s": 559.5540690172047,
+      "pp1024_tok_s": 523.911833117769,
+      "pp4096_tok_s": 440.80936601768923
+    },
+    "change_percent": {
+      "pp512": 1.053148370606083,
+      "pp1024": 0.534220830516019,
+      "pp4096": 0.5976840181808107
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "62c6de4145453ac089525f62e3b804dc88e466edaa0b515ebe271fbba8029468"
+  },
+  "rocprof": {
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file moe-concurrency-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/child.json",
+    "resolved_queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "resolved_moe_branch_concurrency": true,
+    "pp512_tok_s": 569.5557614574122,
+    "pp512_dispatches": 1696,
+    "pp512_kernel_span_ms": 898.333573,
+    "pp512_kernel_sum_ms": 966.317518,
+    "previous_queue1_kernel_span_ms": 909.598454,
+    "kernel_span_change_ms": -11.264881,
+    "queues_observed": 2,
+    "streams_observed": 2,
+    "secondary_stream_kernels": 188,
+    "secondary_stream_kernel_sum_ms": 77.763454,
+    "secondary_stream_overlap_with_caller_kernels_ms": 76.883283,
+    "secondary_stream_overlap_percent": 98.86814312543268,
+    "secondary_stream_unoverlapped_ms": 0.880171,
+    "pp512_inclusive_families_ms": {
+      "selected_q4_gate_up": 322.200212,
+      "selected_q4_q6_down": 189.712881,
+      "global_plus_swa_attention": 143.607805,
+      "source_f16_projection": 124.818347,
+      "dense_shared_quant_projection": 71.339554,
+      "router": 44.075382,
+      "remainder": 70.563337
+    },
+    "contention_note": "inclusive family durations overlap across streams and therefore exceed critical-path span; they must not be modeled as additive savings",
+    "child_sha256": "68538f06264b820eeca0ba521e9a42e614d3866994cbd5728e5db4ff6ac455af",
+    "trace_sha256": "3d6568b9f7686ec5189d226c7dd104d3396561091bf3e06257585441130c3986",
+    "summary_sha256": "5b969f64cfa1ed2bb4474e0c8251d3f989093cfda265f597931fb357c7c65812"
+  },
+  "correctness": {
+    "transfer_basis": "the production-style primitive is BF16-byte exact, seven full-model pairs preserve every output/state digest, and decode remains on the sequential rows=1 path",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true,
+    "repeated_128k_admission": false
+  },
+  "validation": {
+    "policy_session_profile_tests": 67,
+    "focused_q4_gpu_equality": true,
+    "python_compile": true,
+    "cached_trace_expected_queues_observed": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 565.4470035777194,
+    "clean_pp512_wall_ms": 905.4783149622381,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 174.04974353366666,
+    "next_premise": "delay the shared branch until routed gate/up completes, then overlap it with selected down to avoid contending with the controller-bound gate/up family"
+  }
+}

@@ -45,6 +45,13 @@ should be removed or collapsed.
   explicit one-queue override automatically selects the sequential fallback,
   and constructor/CLI rollback remains. Clean selector-unset publication and
   one later MoE checkpoint are the remaining removal triggers.
+- Clean selector-unset publication now passes at
+  **565.447/526.711/443.444 tok/s**. The production trace observes two
+  queues/two streams, overlaps **76.883/77.763 ms (98.87%)** of secondary
+  kernel time, and cuts the prior kernel span **11.265 ms**. Keep the explicit
+  constructor/CLI and one-queue rollbacks through the active delayed-launch
+  MoE checkpoint; after that, remove redundant public positive selection while
+  retaining the automatic sequential safety fallback.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 
