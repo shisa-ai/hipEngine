@@ -1401,6 +1401,25 @@ Immediate execution queue:
    64x64 contraction.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json).
+31. **Quality-pending candidate:** transfer one-scale-per-32 D4 arithmetic
+   into production's proven 128-column x 32-row/local128 direct-wave,
+   row-vector, activation-double-buffer body. This changes no resident bytes
+   and keeps D8 production as rollback. The complete 12-case CPU-reference
+   matrix passes. On actual layer-1 weights, producer-pack-inclusive timing is
+   neutral at M128, then improves M256 **4.406 -> 4.225 ms (-4.09%)** and
+   M512 **6.855 -> 6.008 ms (-12.36%)**. Five counterbalanced complete pp512
+   diagnostics improve **631.251 -> 665.020 tok/s (+5.350%)** and save
+   **41.187 ms** at the medians; every D4 sample is
+   **663.143–668.584 tok/s**. Cached tracing observes the intended local128,
+   16x297-workgroup specialization (rocprof thread grid 2048x297). This is
+   not production: direct
+   all-exact 320-step quality is still pending, and prior D4 arithmetic failed
+   the older relative lane at maximum KL **0.0767056**. Commit the default-off
+   candidate solely to run the canonical gate from a clean revision; promote
+   only if absolute KL is at most 0.05, otherwise repair selectively or remove
+   it.
+   Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json).
 
 Post-350 exclusions:
 

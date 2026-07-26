@@ -183428,3 +183428,31 @@ Vulkan local sizes verbatim will close the measured gap.
   removed; no retained-kernel trace is warranted. Production remains
   **632.618 tok/s**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json`.
+
+## 2026-07-27 — Add quality-pending Q4 D4 direct-wave gate/up
+
+- A control using the old `mmq64x32_d4_f32` body regressed current production
+  **609.424 -> 469.293 tok/s**. That body still used obsolete 64-column
+  shared-weight geometry, so it did not isolate D4 arithmetic.
+- RED added one-scale-per-32 D4 to the production 128-column direct-wave,
+  row-vector, activation-double-buffer test matrix and failed on the wrapper's
+  split16-only restriction. GREEN adds a distinct default-off export/session
+  mode. The complete **12-case** Q4 CPU-reference matrix and the mode resolver
+  pass.
+- On actual layer-1 natural routing, 21 counter-rotated pack-inclusive samples
+  are neutral at M128, improve M256 **4.4055 -> 4.2252 ms (-4.09%)**, and
+  improve M512 **6.8549 -> 6.0077 ms (-12.36%)**. No resident bytes or
+  sidecar are added.
+- Five counterbalanced one-owner complete pp512 diagnostics improve
+  **631.251 -> 665.020 tok/s (+5.350%)**, save **41.187 ms** at the medians,
+  and select token 2930 throughout. The candidate samples are tightly grouped
+  at **663.143–668.584 tok/s**. Each mode is deterministic; direct-wave D4
+  reproduces the old D4 mode's complete state exactly.
+- Cached `rocprofv3` tracing names
+  `gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32...<1,false,false,128,true,true,128,true,true>`
+  at local128 with 16x297 workgroups (rocprof thread grid 2048x297) and a
+  plausible **6.154-ms** body. Production remains D8 at **632.618 tok/s**.
+  The candidate is committed only so the canonical direct-all-exact 320-step
+  gate can run from a clean revision; prior D4 arithmetic warns at maximum KL
+  **0.0767056**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json`.

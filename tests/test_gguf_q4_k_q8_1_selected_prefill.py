@@ -2046,6 +2046,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         (1, True, True, True, False, False, False, False),
         (1, True, True, True, False, True, False, False),
         (1, True, True, True, False, True, True, False),
+        (1, False, True, True, False, True, True, False),
     ],
 )
 def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
@@ -2063,8 +2064,8 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     fixture = _build_compact_fixture(
         counts=[0, 7, 18, 33],
         in_features=512,
-        out_features_a=128 if split16 else 64,
-        out_features_b=128 if split16 else 64,
+        out_features_a=128 if split16 or wave_cols else 64,
+        out_features_b=128 if split16 or wave_cols else 64,
         dtype="bf16",
         seed=29,
     )
