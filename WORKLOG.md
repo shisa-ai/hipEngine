@@ -182666,3 +182666,12 @@ Vulkan local sizes verbatim will close the measured gap.
   hashes logits, both hidden snapshots, complete KV, next token/logit, and
   cursor. Production remains interleaved qmicro; the next action is its clean
   full-model comparison.
+
+## 2026-07-26 — Repair planar-Q6 A/B cache contract
+
+- The first A/B command stopped before model load or GPU measurement because
+  the harness combined a 512-token cache with the production 2,048-row matrix
+  policy. Laguna correctly rejects matrix capacity larger than context.
+- Set the harness context to the production 4,096-token cache while retaining
+  the 512-token timed prompt, matrix2048, and attention128. No measurement
+  from the failed launch is retained.
