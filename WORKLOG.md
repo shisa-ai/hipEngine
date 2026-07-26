@@ -181682,3 +181682,31 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-exact-decode-retained.json`,
   and leave materialization/runtime unchanged. The next gate is the
   actual-weight natural-M512 selected-prefill consumer.
+
+## 2026-07-26 — Reject Q4 qmicro selected-prefill consumer
+
+- RED failed on the missing Q4 qmicro MMQ32 wrapper. GREEN added a temporary
+  byte-neutral consumer and two actual GPU fixtures; both matched the existing
+  raw Q4_K MMQ32 BF16 output bit-for-bit.
+- The actual layer-1 K3072/N1024 dual gate/up leaf replays the recorded natural
+  M512 top-10 routing (228 active experts, 5,120 compact rows), includes the
+  BF16 producer-row DS4 pack, and uses 3 warmups plus 12 counter-rotated
+  three-launch samples.
+- Direct per-column packed metadata measures resident T16/qmicro
+  **9.402044/9.570781 ms (+1.795%)**. Loading each quartet once and
+  broadcasting its records across the wave worsens the delta to **+9.539%**.
+  A shuffle-free quartet owner that writes all four `dm` entries to LDS still
+  loses **+5.563%**. Every path produces the same
+  **-1534.5540234066139** checksum with zero BF16 mismatches.
+- The best body fails the mandatory positive natural-M512 gate. Remove the Q4
+  qmicro MMQ body, C/Python wrapper, fixtures, and benchmark mode. Retain only
+  the already-committed host roundtrip oracle and exact c1/c2/c4/c8 decoder;
+  no quant key, materializer, resident allocation, or runtime route exists.
+- Raw trial SHA-256 values are
+  `eb279a8f68f619aa6a2d58fc51c3dcc20c434d2ba9ebdcc4c1e21065b9f7d42d`,
+  `ccbfcfd1954eb6296c59de17214292b9672be1cbae3536f5832b0522b9aa5bcb`,
+  and `41a31e3da3b9701db542a88e3e254efaa7f1d4c882f6fdfcae7441e1c6d297e3`.
+  Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-prefill-rejected.json`;
+  production remains **551.459 tok/s**. The next premise must reduce
+  selected-weight route-tile rereads without a second resident view.

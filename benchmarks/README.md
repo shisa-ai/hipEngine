@@ -20,6 +20,15 @@ clean medians—not that trace—are the promotion evidence. Absolute maximum KL
 remains **0.049542582**. The active pp512 stretch target is 700 tok/s.
 [`candidate artifact`](results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-candidate.json).
 
+The byte-neutral Q4 qmicro passes exact c1/c2/c4/c8 decode, but its
+actual-weight natural-M512 selected-prefill gate is rejected and fully
+removed. Direct per-column packed metadata regresses resident T16
+**9.402044 -> 9.570781 ms (+1.795%)**; wave broadcast and a quartet-owned LDS
+writer regress **9.539%/5.563%**. All three candidates preserve every BF16
+bit. Only the host oracle and separately retained exact-decode primitive
+remain; production stays **551.459 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q4-k-qmicro-prefill-rejected.json).
+
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
 the range-safe down pack while explicitly preserving the BF16 boundary. Seven

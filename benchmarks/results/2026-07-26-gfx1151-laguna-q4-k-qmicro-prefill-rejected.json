@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T07:40:00+00:00",
+  "kind": "hipengine_laguna_q4_k_qmicro_prefill_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "gate_tensor": "blk.1.ffn_gate_exps.weight",
+    "up_tensor": "blk.1.ffn_up_exps.weight"
+  },
+  "workload": {
+    "producer_rows": 512,
+    "hidden": 3072,
+    "out_features_per_projection": 1024,
+    "experts": 256,
+    "top_k": 10,
+    "active_experts": 228,
+    "compact_rows": 5120,
+    "max_expert_rows": 232,
+    "timing": "counter-rotated HIP events",
+    "warmups": 3,
+    "samples": 12,
+    "burst": 3,
+    "inclusive": "BF16 producer-row DS4 pack plus one dual gate/up MMQ32 launch"
+  },
+  "layouts": {
+    "resident_t16_pair_bytes": 931135488,
+    "candidate_qmicro_pair_bytes": 905969664,
+    "candidate_delta_bytes": -25165824,
+    "candidate_delta_percent": -2.7777777778,
+    "sidecar_bytes": 0
+  },
+  "trials": {
+    "direct_per_column_metadata": {
+      "t16_median_ms": 9.40204397837321,
+      "qmicro_median_ms": 9.570781071980795,
+      "qmicro_delta_percent": 1.7946650497,
+      "checksum_f64": -1534.5540234066139,
+      "finite": true,
+      "bf16_exact": true,
+      "raw_sha256": "eb279a8f68f619aa6a2d58fc51c3dcc20c434d2ba9ebdcc4c1e21065b9f7d42d"
+    },
+    "wave_broadcast_metadata": {
+      "t16_median_ms": 9.38576857248942,
+      "qmicro_median_ms": 10.281055132548016,
+      "qmicro_delta_percent": 9.5387643165,
+      "checksum_f64": -1534.5540234066139,
+      "finite": true,
+      "bf16_exact": true,
+      "raw_sha256": "ccbfcfd1954eb6296c59de17214292b9672be1cbae3536f5832b0522b9aa5bcb"
+    },
+    "quartet_owned_lds_dm_writer": {
+      "t16_median_ms": 9.411383628845215,
+      "qmicro_median_ms": 9.93490219116211,
+      "qmicro_delta_percent": 5.5626056269,
+      "checksum_f64": -1534.5540234066139,
+      "finite": true,
+      "bf16_exact": true,
+      "raw_sha256": "41a31e3da3b9701db542a88e3e254efaa7f1d4c882f6fdfcae7441e1c6d297e3"
+    }
+  },
+  "correctness": {
+    "oracle": "existing raw Q4_K MMQ32 selected-dual BF16 output",
+    "focused_qmicro_fixtures": 2,
+    "focused_result": "2 passed",
+    "all_trials_same_checksum": true,
+    "bf16_mismatches": 0
+  },
+  "decision": {
+    "gate": "candidate must be positive on the actual-weight natural-M512 selected-prefill leaf before materialization/runtime integration",
+    "result": "fail",
+    "reason": "the best exact consumer regresses resident T16 by 1.795%; cooperative wave and quartet metadata expansion regress more",
+    "removed": [
+      "Q4 qmicro MMQ32 device body",
+      "Q4 qmicro MMQ32 C/Python wrappers",
+      "Q4 qmicro MMQ32 GPU fixtures",
+      "qmicro-mmq32 benchmark mode"
+    ],
+    "retained": [
+      "byte-neutral host qmicro oracle",
+      "exact qmicro c1/c2/c4/c8 decode primitive and benchmark evidence"
+    ],
+    "production_changed": false,
+    "production_pp512_tok_s": 551.459
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq32,qmicro-mmq32 --warmups 3 --samples 12 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <trial.json>",
+  "repo": {
+    "base_revision": "c0818491990d6c6c5d1a4780314a94af1b6bcead"
+  }
+}
