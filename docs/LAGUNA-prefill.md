@@ -717,8 +717,8 @@ and preserve K accumulation order.
 
 Immediate execution queue:
 
-1. Attack selected down next. It is **200.672 ms / 21.70%** of kernel sum and
-   sustains only **137.16 GB/s / 62.06%** of the existing read anchor. Keep
+1. Attack selected down next. It is **194.963 ms / 21.25%** of kernel sum and
+   sustains only **141.18 GB/s / 63.88%** of the existing read anchor. Keep
    byte-neutral Q6 qmicro and direct Q4 decode, then split the current trace by
    Q4/Q6 shape and pursue a counter-directed exact schedule that reduces Q6
    route-tile rereads without the rejected K64 LDS/VGPR growth. The exact MMQ
@@ -728,10 +728,12 @@ Immediate execution queue:
    Q6 128-column/local256 widening, Q4-down 128-column widening,
    static-upper sentinel grids, launch-bounds occupancy hints, duplicate-decode
    row halves, 64-row Q4 accumulation, paired-scale metadata, or F32 partial
-   spills. The exact fused selected-SiLU pack is now the default candidate:
-   seven complete-state pairs are exact, all seven win, and tracing removes
-   47 launches while cutting SiLU plus pack **10.301 -> 6.377 ms (-38.09%)**.
-   Clean selector-unset publication is next.
+   spills. The exact fused selected-SiLU pack is now clean production at
+   **546.100 tok/s**. A heavy-expert 64x128/local256 Q6 body is also closed:
+   the best valid actual-weight leaf saves only **0.017 ms** before its
+   required extra metadata schedule/launch, while the >=129-row tail regresses
+   **2.14%**. Pursue a different cross-tile/expert schedule rather than another
+   larger local256 row tile.
 2. Keep exact cached-metadata attention in production. Clean selector-unset
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
@@ -1698,6 +1700,24 @@ now **546.100 tok/s**, leaving **206.129 ms** to the 700 wall. Evidence:
 [`2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json).
 [`2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json).
 
+The first post-546 selected-down screen is rejected and fully removed. A
+64-column x 128-row/local256 Q6 qmicro body keeps **32 FP32 accumulators per
+lane** while attempting to reduce repeated weight tiles only for heavy routed
+experts. The CPU-quality fixture and actual rows64-versus-rows128 output are
+BF16-byte exact; tracing records local256/VGPR88/LDS8704B/scratch0.
+
+On the actual layer-1 weight and natural pp512 routing, the >=65-row subset
+collapses **32 -> 17** tiles but improves only
+**1.355870 -> 1.338579 ms (-1.27%, 0.017291 ms)** before the extra production
+metadata schedule and launch. The supposedly strongest >=129-row tail
+collapses **14 -> 8** tiles yet regresses
+**0.673548 -> 0.687981 ms (+2.14%)** in a valid serial run. The additional
+waves/occupancy cost erases the traffic reduction, so every kernel, wrapper,
+test, and harness surface was removed and production remains
+**546.100 tok/s**. Two overlapping exploratory GPU processes are explicitly
+excluded from the evidence. Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json)
@@ -2426,6 +2446,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-production.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-rows128-heavy-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`

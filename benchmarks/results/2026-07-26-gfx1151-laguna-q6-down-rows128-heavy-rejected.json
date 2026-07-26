@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_down_rows128_heavy_rejected",
+  "status": "rejected_removed",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1,
+    "weight": "blk.1.ffn_down_exps.weight",
+    "weight_quant": "Q6_K qmicro T16",
+    "weight_nbytes": 660602880,
+    "shape": "E256 K1024 N3072 natural pp512 routing"
+  },
+  "candidate": {
+    "geometry": "64 output columns x 128 routed rows",
+    "workgroup_size": 256,
+    "premise": "apply only to experts above a row threshold so one local256 workgroup replaces multiple production 64x64/local128 weight tiles while preserving 32 accumulators per lane",
+    "arithmetic": "unchanged one-plane Q8_1, qmicro Q6 decode, ordered K32 FP32 accumulation, and BF16 store",
+    "production_fallback": "64 output columns x 64 routed rows, local128"
+  },
+  "correctness": {
+    "cpu_quality_fixture_pass": true,
+    "rows64_vs_rows128_bf16_mismatches": 0,
+    "lifecycle_pass": true
+  },
+  "valid_serial_screens": {
+    "all_experts_ge_65_rows": {
+      "heavy_experts": 13,
+      "heavy_compact_rows": 1485,
+      "production_tiles": 32,
+      "candidate_tiles": 17,
+      "production_median_ms": 1.355869960784912,
+      "candidate_median_ms": 1.3385787963867188,
+      "candidate_over_production": 0.9872471808519282,
+      "saving_ms": 0.0172911643981932,
+      "raw_sha256": "93f69b8cfdabb934bda20f7d1593cf10fc54bbc34bde9bcb140c7552801aff2a"
+    },
+    "tail_experts_ge_129_rows": {
+      "heavy_experts": 4,
+      "heavy_compact_rows": 750,
+      "production_tiles": 14,
+      "candidate_tiles": 8,
+      "production_median_ms": 0.6735478809901646,
+      "candidate_median_ms": 0.6879807199750628,
+      "candidate_over_production": 1.0214280816438481,
+      "regression_percent": 2.14280816438481,
+      "raw_sha256": "7065ab34cd1024a1a6893f2ad58406a76cad341683cad5b50b5b78b190bca3f4"
+    }
+  },
+  "excluded_measurements": {
+    "reason": "two exploratory threshold processes overlapped on the same GPU and are invalid for performance evidence",
+    "used_for_decision": false
+  },
+  "rocprof": {
+    "kernel": "gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,true,false,256,128,true>",
+    "workgroup_size": 256,
+    "vgpr": 88,
+    "lds_bytes": 8704,
+    "scratch_bytes": 0,
+    "trace_sha256": "9b1e8ca79812300e88b52ed11d7e2075639382bab43f416e905fd47b924ba8a5"
+  },
+  "decision": {
+    "retained": false,
+    "production_default_changed": false,
+    "reason": "the best valid leaf saves only 17.3 microseconds before the required second metadata schedule and launch, while the highest-row tail regresses 2.14%; local256 occupancy erases the reduced weight-tile count",
+    "removed": [
+      "64x128 Q6 kernel instantiations and exports",
+      "Python wrapper symbols and tile_rows=128 route",
+      "CPU-quality parameter",
+      "heavy-expert leaf harness"
+    ],
+    "production_pp512_tok_s": 546.0998135944506
+  }
+}
