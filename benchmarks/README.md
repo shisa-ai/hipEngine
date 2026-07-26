@@ -3,16 +3,14 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-attention-preappend-production.json`](results/2026-07-26-gfx1151-laguna-attention-preappend-production.json).
-It binds matched A/B, clean selector-unset timing, complete-state exactness, and
-cached attribution to exact M128 cached-only qrow4 attention scheduling at
-revision `7b4f2ef82`. Conservative median pp512 is **526.451 tok/s**, every
-clean sample is at least **526.288 tok/s**, the independent cached trace is
-**532.101 tok/s**, and absolute maximum KL remains **0.049542582**. Clean
-selector-unset 512/1K/4K improve **4.230%/3.218%/5.701%** over the preceding
-production packet. Matched seven-pair A/B isolates the exact scheduling win at
-**507.391 -> 528.771 tok/s (+4.214%, 7/7 wins)**. The active stretch target is
-700 tok/s.
+[`2026-07-26-gfx1151-laguna-q6-qmicro-production.json`](results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json).
+It binds the byte-neutral exact Q6 qmicro payload to clean selector-unset
+timing and full-family cached attribution at revision `7aa0e0985`.
+Conservative median pp512 is **530.447 tok/s**, every clean sample is at least
+**525.864 tok/s**, the independent cached trace is **535.006 tok/s**, and
+absolute maximum KL remains **0.049542582**. Clean selector-unset 512/1K/4K
+improve **0.759%/1.127%/0.918%** over the preceding production packet.
+The active stretch target is 700 tok/s.
 
 Complete M128 tiles now append current F32 K/V through the existing BF16 cache
 writer before attention, then read prior and current K/V through one cached
@@ -23,12 +21,12 @@ Primitive and full-model state are exact. Cached pp512 attribution cuts
 global+SWA attention **219.709 -> 176.580 ms (-19.63%, 43.129 ms saved)**.
 [`candidate artifact`](results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json).
 
-The refreshed selected-down split is Q6 **126.594 ms**, Q4 **72.358 ms**, and
+The preceding selected-down split was Q6 **126.594 ms**, Q4 **72.358 ms**, and
 activation packing **4.970 ms**. A Q6 K64 stage that halves synchronization
 intervals is rejected and fully removed: it raises VGPR **88 -> 128**, doubles
 LDS **5,632 -> 11,264 B**, regresses the traced Q6 family
 **126.254 -> 144.607 ms (+14.54%)**, and regresses three-pair pp512
-**528.123 -> 518.568 tok/s (-1.81%, 0/3 wins)**. Production remains
+**528.123 -> 518.568 tok/s (-1.81%, 0/3 wins)**. Then-production remained
 **526.451 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json).
 
@@ -37,18 +35,20 @@ each FP16 block multiplier once per output column instead of once per
 column/scale-half leaves local128/VGPR88/LDS5632B unchanged. Five-pair pp512 is
 noise at **529.210 -> 529.334 tok/s (+0.023%, 3/5 wins)**, while the traced Q6
 family is slightly worse at **126.899 -> 126.947 ms (+0.038%)**. This rules
-out scale metadata as the Q6 limiter; production remains **526.451 tok/s**.
+out scale metadata as the Q6 limiter; then-production remained **526.451 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-paired-scales-rejected.json).
 
-The follow-up byte-neutral Q6 qmicro payload is retained as the gfx1151
-expert-down candidate pending clean production publication. It groups each
-four-column K4 quant quartet into one aligned 12-byte record while preserving
+The follow-up byte-neutral Q6 qmicro payload is retained in gfx1151 production.
+It groups each four-column K4 quant quartet into one aligned 12-byte record while preserving
 the **3,360-byte** T16 tile. Direct, grouped, and MMQ consumers are BF16-byte
 exact. On the actual layer-1 660.6 MB Q6 tensor, natural-M512 selected prefill
 improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves
-**0.0910 -> 0.0846 ms (-6.99%)**. The production headline remains
-**526.451 tok/s** until the clean committed selector-unset run.
-[`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json).
+**0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves
+**526.451 -> 530.447 tok/s (+0.759%)**; the traced Q6 family falls
+**126.594 -> 123.473 ms (-2.465%)**, and total selected down falls
+**203.923 -> 200.510 ms (-1.673%)**.
+[`production artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json) ·
+[`leaf artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-candidate.json).
 
 The first post-500 replacement-layout screen is closed. Q4_K T128 improves the
 exact actual layer-1 natural-M512 gate/up leaf **7.015 -> 6.157 ms (-12.23%,
@@ -817,7 +817,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M activation-double-buffer production prefill | 2026-07-26 | clean measured/default `647ac846c`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven matched pp512 A/B pairs, three selector-unset 512/1K/4K repetitions, and cached kernel trace | **Current retained quality-gated production default; 500 target passed**: gfx1151 ping-pongs the 1.5 KB gate/up activation tile and removes one of two barriers per K32 without changing resident bytes or arithmetic. Clean selector-unset pp512 is **505.084 tok/s** median and **504.984 tok/s** minimum; 1K/4K medians are **453.261/357.524 tok/s**. The unmatched checkpoint is flat **-0.020%** versus the preceding **505.185 tok/s** packet, while matched A/B isolates **505.970 -> 507.405 tok/s (+0.284%)** with complete-state exactness. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing reaches **509.777 tok/s** and cuts gate/up **318.559 -> 314.378 ms (-1.313%)** at local128/VGPR88/LDS3072B/scratch0. [`artifact`](results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json). | Yes, for selector-unset c=1 pp512 and the exact gate/up/retained direct all-exact quality scope | Continue toward 700 through selected experts and attention; rerun after arithmetic/layout, matrix/attention policy, model/quant/KV, compiler/runtime, or device/queue policy change. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M Q6-qmicro production prefill | 2026-07-26 | clean measured/default `7aa0e0985`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; three selector-unset 512/1K/4K repetitions and cached kernel trace | **Current retained quality-gated production default; 500 target passed, 700 active**: gfx1151 stores sparse expert Q6 payloads in byte-neutral 12-byte qmicro records while preserving the 3,360-byte T16 tile and every BF16 result. Clean selector-unset pp512 improves **526.451 -> 530.447 tok/s (+0.759%)**, with minimum **525.864 tok/s**; 1K/4K improve **467.846 -> 473.118 (+1.127%)** and **377.905 -> 381.375 tok/s (+0.918%)**. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing reaches **535.006 tok/s**, cuts Q6 selected down **126.594 -> 123.473 ms (-2.465%)**, and cuts total selected down **203.923 -> 200.510 ms (-1.673%)** at local128/VGPR88/LDS5632B/scratch0. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-qmicro-production.json). | Yes, for selector-unset c=1 pp512 and the exact qmicro/retained direct all-exact quality scope | Continue toward 700 through selected experts and attention; rerun after arithmetic/layout, matrix/attention policy, model/quant/KV, compiler/runtime, or device/queue policy change. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M eight-token router-logit production prefill | 2026-07-26 | clean measured/default `238eb28cd`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions, byte-exact router/MoE transfer, and cached all-family trace | **Superseded exact router production**: gfx1151 reuses each router hidden row across eight token reductions per workgroup while retaining the exact K traversal and reduction tree; token tile 4 remains rollback and the unmeasured-backend default. Clean matched pp512 improves tile-4 rollback **497.625 -> 503.349 tok/s (+1.150%)**, wins all seven pairs, places every production sample above 500 (**minimum 501.698 tok/s**), and selects token 2930 throughout. Direct all-exact quality transfers unchanged at max KL **0.049542582**, **316/320 (98.75%)** top-1, every category >=96.875%, deterministic repeats, Poolside exact top-1, neutral decode, and exact lifecycle. Cached tracing independently measures **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts the router family **30.658 -> 23.315 ms**. [`artifact`](results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json). | Superseded; exact router provenance | Use the activation-double-buffer row above for current production performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M stable parallel MoE-compaction production prefill | 2026-07-26 | clean measured/default `f91eccb5d`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions, byte-exact metadata/MoE transfer, and cached all-family trace | **Superseded exact MoE-scheduler production**: gfx1151 replaces one-workgroup serial stable compaction with per-expert count, prefix, and ballot-ordered scatter kernels; gfx1100 and the explicit serial rollback are unchanged. Clean matched pp512 improves serial rollback **490.824 -> 497.408 tok/s (+1.341%)**, wins all seven paired repetitions, and selects token 2930 throughout. Direct all-exact quality transfers unchanged at max KL **0.049542582** and **316/320 (98.75%)** top-1. Cached tracing independently measures **500.325/449.468/355.606 tok/s** at 512/1K/4K; the old **16.752 ms** serial compact window falls to **2.564 ms**. [`artifact`](results/2026-07-26-gfx1151-laguna-parallel-compact-production.json). | Superseded; exact parallel-compaction provenance | Use the router-token-tile row above for current production performance and correctness. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M 64-row Q6 selected-down production prefill | 2026-07-26 | clean measured/default `f9a39715b`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; one HIP queue; matrix512/attention128; seven paired pp512 repetitions, exact production-shape transfer, and cached all-family trace | **Superseded exact selected-down production**: gfx1151 uses one local128 64-column x 64-row body for Q6 selected down, reducing its runtime grid from 408 to 332 workgroups per output tile; Q4 selected down and gfx1100 are unchanged. Clean matched pp512 improves the explicit 32-row rollback **489.110 -> 492.640 tok/s (+0.722%)**, wins all seven paired repetitions, and selects token 2930 throughout. Direct all-exact quality transfers unchanged at max KL **0.049542582** and **316/320 (98.75%)** top-1. Cached tracing independently measures **493.509/443.214/351.871 tok/s** at 512/1K/4K; the 23 full-M512 Q6 calls fall **127.888 -> 126.040 ms**. [`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-rows64-production.json). | Superseded; exact Q6 selected-down provenance | Use the parallel-compaction row above for current production performance and correctness. |

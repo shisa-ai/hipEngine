@@ -1174,9 +1174,11 @@ should be boring.
   cache fingerprint, quant key, byte count, root lm-head, and other backends
   stay unchanged.
 - The actual-weight leaf is BF16-byte exact and improves natural-M512
-  selected prefill **1.65%** plus top-10 exact decode **6.99%**. Keep the
-  explicit rollback through clean selector-unset 512/1K/4K publication and
-  one later selected-down checkpoint.
+  selected prefill **1.65%** plus top-10 exact decode **6.99%**. Clean
+  selector-unset publication is now satisfied at **530.447 tok/s** median /
+  **525.864 tok/s** minimum, with 1K/4K at **473.118/381.375 tok/s** and
+  traced Q6 **126.594 -> 123.473 ms (-2.465%)**. Keep the explicit rollback
+  through one later selected-down checkpoint.
 - After both triggers pass, remove the public constructor override while
   retaining the backend capability, legacy consumer instantiations required
   by other backends, and the host legacy-to-qmicro cache adapter. If clean
