@@ -1986,6 +1986,11 @@ class LagunaGGUFResidentSession:
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
                 use_iq2_grid64=self.use_iq2_grid64,
             )
+            self.iq3_c1_down_schedule = getattr(
+                self.moe_plan,
+                "iq3_c1_down_schedule",
+                self.iq3_c1_down_schedule,
+            )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,

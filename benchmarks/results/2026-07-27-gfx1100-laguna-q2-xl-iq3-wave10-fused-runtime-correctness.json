@@ -1,0 +1,224 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 61.99155148671624,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 723,
+    "primitive_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-correctness.json",
+    "primitive_artifact_sha256": "b78013f6ec87cc10c3e2eb387395766be8127053a9605598dee53028a2098416",
+    "primitive_revision": "96a647d0f"
+  },
+  "builder_sha256": "1923a8be1c3078dae6da24e353c2d6e2319799f6d2c8db7b5d93d22f35f6f137",
+  "cached_full_model_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "analyzer_sha256": "ad2da178a084766483f8a0a2a76f1d031aecac3055d5a8ddd623d67b61adc9d9",
+    "analyzer_stdout_sha256": "af5579f5d042405a073f9f74034888f18e9b3fc63b6fe51c7a942414a5ba48ce",
+    "candidate_calls": 90,
+    "candidate_calls_per_token": 45,
+    "candidate_duration_ns": {
+      "max": 34760,
+      "median": 31200.5,
+      "min": 30080
+    },
+    "candidate_prefill_calls": 0,
+    "candidate_resources": {
+      "allocated_lds_bytes": 512,
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 88,
+      "grid_x": 983040,
+      "grid_y": 1,
+      "scratch_bytes": 0,
+      "workgroup_x": 320
+    },
+    "child_output_sha256": "d8d7222ecc9bca27a6971dd3806703d016ae5a7610d6cf5c940d4a462e0aa30b",
+    "child_sha256": "2cdb7d4c52fb74f4aba8d20c34dd14a6f9bc6ad49363e4c923e958fe9a073fb7",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq3-wave10-fused-runtime-trace-96a647d0f-a --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_iq3_wave10_fused_model.py",
+    "decode_transitions": 2,
+    "dispatch_id_stride": 683,
+    "finite_final_logits": true,
+    "first_candidate_dispatch_ids": [
+      1462,
+      2145
+    ],
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "model_kernels_per_token": 678,
+    "no_compiler_under_profiler": true,
+    "passed": true,
+    "profile_stderr_sha256": "9deecb60d025b197d0fe703d215f516b9629168602f03793f7d869697288ed5e",
+    "profile_stdout_sha256": "d8d7222ecc9bca27a6971dd3806703d016ae5a7610d6cf5c940d4a462e0aa30b",
+    "retained_iq3_prefill_calls": 45,
+    "retained_wave4_calls": 0,
+    "runtime_copy_calls_in_stride": 5,
+    "schema": 1,
+    "serial_weighted_calls": 0,
+    "trace_path": "/tmp/laguna-iq3-wave10-fused-runtime-trace-96a647d0f-a/trace_kernel_trace.csv",
+    "trace_rows": 2801,
+    "trace_sha256": "5302dafefbb9f632b5065f36579ae55143f3649c00041706123ec6c45d0e6ba1",
+    "tracked_returned_to_baseline": true,
+    "weighted_reducer_calls": 4,
+    "weighted_reducer_calls_per_token": 2,
+    "weighted_reducer_resources": {
+      "allocated_lds_bytes": 0,
+      "allocated_vgpr": 8,
+      "grid_x": 3072,
+      "scratch_bytes": 0,
+      "workgroup_x": 256
+    }
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_decode_tok_s_unchanged": 61.99155148671624,
+    "completion_claim": false,
+    "next_gate": "Commit runtime correctness, then run both frozen clean process orders at short/512/1K/near-4K. Every order must improve inclusive IQ3 and complete kernel sum, keep span <=+0.5%, child throughput >=-0.5%, and preserve exact 45/2/678 topology/resources/IDs/lifecycle. Categories remain forbidden until all eight rows pass.",
+    "retained_default_unchanged": true,
+    "runtime_admitted_default_off": true
+  },
+  "full_state_gate": {
+    "active_kv_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "candidate": "wave10_fused",
+    "candidate_borrows_weights": true,
+    "checkpoint_count": 17,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_iq3_wave10_fused_runtime_correctness.py",
+    "control": "wave4_reduce",
+    "control_owns_weights": true,
+    "decode_transitions": 16,
+    "final_kv_sha256": "a62f481c82cb6e079715dba11f133de003bf98d48ca162868b41b3555f8ce2b7",
+    "full_logits_and_ids_bit_exact": true,
+    "generated_token_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "harness_sha256": "247d45c9f5ac54cdab4d373725908ad72048ff31a661fee82c757240208c3e47",
+    "live_span_fields_exact": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true,
+    "prefill_kv_sha256": "82488fd827f4c18a4d72fd3a23051201a17e104b570380354ac12a3f17fdcb05",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "1e3beff5d2d9789e34c10b440852ebf7682e7e2af66170295e64723f800dafe2",
+    "reset_and_reprefill_exact": true,
+    "reset_kv_sha256": "388e741cf63a675aa17fc5fa7d391168f0b7d62ba8860c9ab1abc4c6db03521a",
+    "stdout_sha256": "c5e9590424e199c18a5ab11bf71ee946a3dcb0b919eb9e1ab4cbce827adcca45",
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_returned_to_baseline": true,
+    "weights_shared": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_wave10_fused_runtime_correctness",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "red_green": {
+    "coverage": [
+      "false gfx1100 capability and no-argument retained default",
+      "exact candidate weighted route and suppression of the producer-only c1 route",
+      "exact-key miss fallback to the backend's prior schedule",
+      "explicit benchmark CLI selection"
+    ],
+    "green_result": "2 passed",
+    "green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "red_command": "PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_gpu.py::test_laguna_iq3_wave10_fused_schedule_is_default_off_and_fail_closed tests/test_laguna_target_ar_bench.py::test_iq3_wave10_fused_schedule_cli_is_explicit_default_off",
+    "red_result": "2 failed only because the false capability/runtime route and CLI choice were absent",
+    "red_sha256": "863a72d92f49ac52355691e0b14b15170940d9ba835d4a1690e17d43a9096613"
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "reason": "default-off runtime correctness admission only; no clean full-model performance claim"
+  },
+  "runtime_selector": {
+    "benchmark_cli": "scripts/laguna_target_ar_bench.py --iq3-c1-down-schedule wave10_fused",
+    "candidate_schedule": "wave10_fused",
+    "candidate_variant": "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out",
+    "constructor": "LagunaGGUFResidentSession(..., iq3_c1_down_schedule='wave10_fused')",
+    "default_enabled": false,
+    "exact_key_miss_fails_closed": true,
+    "gfx1100_capability": "LAGUNA_IQ3_WAVE10_FUSED=False",
+    "gfx1151_candidate_alias_excluded": true,
+    "intended_dispatch_delta_per_token": -45,
+    "persistent_weight_copy_delta_bytes": 0,
+    "retained_fallback_schedule": "wave4_reduce",
+    "rows_and_prefill_unchanged": true,
+    "serial_fallback_schedule": "serial_weighted",
+    "workspace_delta_bytes": 0
+  },
+  "schema": 1,
+  "source_provenance": {
+    "files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "3543cf4cda250944daec9d0ab13acd294d0c3c5f1dedf3d02521f50e608d1ee1"
+      },
+      {
+        "path": "hipengine/runtime/laguna_moe.py",
+        "sha256": "5b374f1fd9e1b557355d2293bd24fd049128bf4434f6857e4ad01f08dd6fd4ed"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "41c44b980a0ae7d4f2e90aba49cee32d9202c304f67fd930c67123af3e53b231"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "438cd6b095ff3a77b640031f5bf35d6b9010337b5cd8ede6af13960ea6e33f4e"
+      },
+      {
+        "path": "tests/test_laguna_moe_gpu.py",
+        "sha256": "70c6b519755cdf1aee08e41f81cb288b3f197bc65294d6e1ffabd48053af4ab3"
+      },
+      {
+        "path": "tests/test_laguna_target_ar_bench.py",
+        "sha256": "942f524c3b143e846a60e454afd2f5a7514a038d1a99a9ce2c86857440bb4a82"
+      }
+    ]
+  },
+  "status": "runtime_admitted_default_off_pending_clean_context",
+  "validation": {
+    "adjacent_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_iq3_wave10_fused.py tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_laguna_target_ar_bench.py tests/test_laguna_poolside_ar_bench.py tests/test_kernel_registry.py tests/test_gfx1151_backend.py -k 'not test_gguf_fused_linear_matching_uses_resident_backend'",
+    "adjacent_result": "89 passed after excluding only the unchanged stale gfx1151 resolver test",
+    "adjacent_sha256": "6692934017b7c49d882f90bacacdf46a1fb73798aa5057b4c7edfb9fb4d213af",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "unfiltered_result": "89 passed, one unchanged stale resolver test failed because it omits three required keyword arguments",
+    "unfiltered_sha256": "e47157090fd6c2d62885c1fd37adfba48f66aa68d893077f93264e539697b730"
+  }
+}

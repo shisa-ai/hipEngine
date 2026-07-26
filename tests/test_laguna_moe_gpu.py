@@ -252,6 +252,50 @@ def test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes() -> None:
             resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", rejected)
 
 
+def test_laguna_iq3_wave10_fused_schedule_is_default_off_and_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.kernels.hip_gfx1100 as backend
+    import hipengine.runtime.laguna_moe as laguna_moe
+
+    assert backend.LAGUNA_IQ3_WAVE10_FUSED is False
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    candidate = laguna_moe.resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="wave10_fused",
+    )
+    assert candidate.iq3_c1_down_schedule == "wave10_fused"
+    assert not candidate.c1_selected_down_keys
+    assert candidate.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
+    )
+    assert candidate.selected_weighted_down_routes["gguf_iq3_xxs"].abi == (
+        "raw_iq_weighted"
+    )
+
+    candidate_variant = candidate.selected_weighted_down_keys[
+        "gguf_iq3_xxs"
+    ].variant
+    monkeypatch.setattr(
+        laguna_moe,
+        "is_registered",
+        lambda key: key.variant != candidate_variant,
+    )
+    fallback = laguna_moe.resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="wave10_fused",
+    )
+    assert fallback.iq3_c1_down_schedule == "wave4_reduce"
+    assert fallback.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_k1024_wave4_bf16_bf16_out"
+    )
+    assert fallback.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_weighted_down_gemv_decode_bf16_bf16_out"
+    )
+
+
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
