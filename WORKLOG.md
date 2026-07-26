@@ -181480,3 +181480,30 @@ Vulkan local sizes verbatim will close the measured gap.
   Promote `LAGUNA_Q6_COMPACT_ACTIVATION` as the gfx1151 package default with
   explicit session rollback, commit the logical unit, then run clean
   selector-unset 512/1K/4K publication.
+
+## 2026-07-26 — Publish compact Q6 activation production
+
+- Clean selector-unset revision `c1b557586` measures
+  **550.625/517.017/431.789 tok/s** median at 512/1K/4K, improving the
+  preceding global-qrow6 packet **0.651%/0.748%/0.737%**. All pp512 samples
+  are at least **550.319 tok/s**; all next tokens remain **2930/95/7772**,
+  positions/repeats are deterministic, and **78,777,775,764 tracked bytes**
+  return to zero. Raw SHA-256 is
+  `37599c803b55c726e4ae49642bf1d24aa3ae6124f4bbc430883fbe4139e92f5c`.
+- Cached production tracing independently reaches **553.512 tok/s** with
+  **910.671 ms** kernel sum and **921.031 ms** span across 1,792 dispatches.
+  Selected down is **191.025 ms**: 24 Q4 calls total **71.641 ms**, while
+  23 compact-Q6 calls total **119.384 ms** at
+  local128/VGPR88/SGPR128/LDS5120B/scratch0. The preceding trace measured
+  **196.157 ms** selected down; the matched candidate trace isolates
+  **125.380 -> 119.566 ms (-4.637%)** Q6.
+- Raw child/trace/summary SHA-256 values are
+  `1a018c25c4bc901b0742e10d8b8bac3ad89964bd00abb8ac51a7f9339b13df75`,
+  `c95fbcfffe78ba4a943f8e45209f4f0612799251bdfb5415e4bf72c27191bf25`,
+  and `e55e3d8d6f381ce1d1df2768adf3cf431d80947bd89fa80d730fe6a02d6fad0c`.
+- Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-compact-activation-production.json`
+  and refresh the active 700-target table. Clean wall is **929.853 ms**,
+  leaving **198.424 ms** to 700. The next bounded exact Q6 screen splits the
+  current 64-row activation load across all 128 workgroup threads to attack
+  its half-workgroup staging phase without changing bytes or arithmetic.

@@ -1240,6 +1240,10 @@ should be boring.
   cuts Q6 **125.380 -> 119.566 ms (-4.64%)**. Keep the explicit rollback
   through clean selector-unset publication and one later selected-down
   checkpoint.
+- Clean selector-unset publication is satisfied at
+  **550.625/517.017/431.789 tok/s**, and the production trace records
+  **119.384 ms** Q6 plus **71.641 ms** Q4. The one-later-selected-down
+  checkpoint trigger remains open.
 - After both triggers pass, remove the public constructor override and the
   one-purpose A/B harness. Retain the ordinary 48-byte activation cache only
   where other Q4/Q6 template instantiations or unmeasured backends require it.
