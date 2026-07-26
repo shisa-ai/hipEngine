@@ -23,6 +23,15 @@ Primitive and full-model state are exact. Cached pp512 attribution cuts
 global+SWA attention **219.709 -> 176.580 ms (-19.63%, 43.129 ms saved)**.
 [`candidate artifact`](results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json).
 
+The refreshed selected-down split is Q6 **126.594 ms**, Q4 **72.358 ms**, and
+activation packing **4.970 ms**. A Q6 K64 stage that halves synchronization
+intervals is rejected and fully removed: it raises VGPR **88 -> 128**, doubles
+LDS **5,632 -> 11,264 B**, regresses the traced Q6 family
+**126.254 -> 144.607 ms (+14.54%)**, and regresses three-pair pp512
+**528.123 -> 518.568 tok/s (-1.81%, 0/3 wins)**. Production remains
+**526.451 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json).
+
 The first post-500 replacement-layout screen is closed. Q4_K T128 improves the
 exact actual layer-1 natural-M512 gate/up leaf **7.015 -> 6.157 ms (-12.23%,
 1.139x)** with no byte growth versus current T16, but its best exact
