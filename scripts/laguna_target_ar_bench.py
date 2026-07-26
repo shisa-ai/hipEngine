@@ -70,6 +70,11 @@ def _parse_args() -> argparse.Namespace:
         help="roll back the exact expanded-magnitude IQ2 c=1 default",
     )
     parser.add_argument(
+        "--enable-iq2-local64-reduction",
+        action="store_true",
+        help="screen the exact fixed-local64 IQ2 c=1 reduction sibling",
+    )
+    parser.add_argument(
         "--disable-q5-fixed-meta-output",
         action="store_true",
         help="roll back exact fixed-metadata Q5 c=1 attention output",
@@ -233,6 +238,9 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         prefill_chunk_size=args.chunk_size,
         iq3_c1_down_schedule=args.iq3_c1_down_schedule,
         use_iq2_grid64=False if args.disable_iq2_grid64 else None,
+        use_iq2_local64_reduction=(
+            True if args.enable_iq2_local64_reduction else None
+        ),
         use_q5_fixed_meta_output=(
             False if args.disable_q5_fixed_meta_output else None
         ),
@@ -632,6 +640,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.chunk_size,
             iq3_c1_down_schedule=args.iq3_c1_down_schedule,
             use_iq2_grid64=False if args.disable_iq2_grid64 else None,
+            use_iq2_local64_reduction=(
+                True if args.enable_iq2_local64_reduction else None
+            ),
             use_q5_fixed_meta_output=(
                 False if args.disable_q5_fixed_meta_output else None
             ),
@@ -772,6 +783,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_swa_split_wave_local": owner.use_swa_split_wave_local,
             "use_head_kv_fusion": owner.use_head_kv_fusion,
             "use_iq2_grid64": owner.use_iq2_grid64,
+            "use_iq2_local64_reduction": owner.use_iq2_local64_reduction,
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
             "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,
             "use_q5_shared_fixed_meta": owner.use_q5_shared_fixed_meta,

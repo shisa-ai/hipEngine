@@ -41,6 +41,9 @@ LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
 LAGUNA_IQ2_GRID64 = True
+# The fixed-local64 DPP reduction is admitted only as an explicit W7900 c=1
+# screen. No-argument sessions retain the measured grid64 reduction owner.
+LAGUNA_IQ2_LOCAL64_REDUCTION = False
 # Clean P2.1 exact split profiles and the complete category/heldout gate admit
 # independent global/SWA crossovers. Registered single-block readers remain the
 # below-threshold and explicit-disable fallback on gfx1100; other backends do
@@ -125,6 +128,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ2_GRID64",
+    "LAGUNA_IQ2_LOCAL64_REDUCTION",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",

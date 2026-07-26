@@ -113,6 +113,9 @@ _Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
 _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
     "local32_fixed_meta_gemv_decode_bf16_f32_out"
 )
+_IQ2_LOCAL64_REDUCTION_VARIANT = (
+    "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out"
+)
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -1258,6 +1261,22 @@ def resolve_laguna_iq2_grid64(
     return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
 
 
+def resolve_laguna_iq2_local64_reduction(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the explicit gfx1100 fixed-local64 IQ2 c=1 screen."""
+
+    capability = backend_package_capability(
+        backend,
+        "LAGUNA_IQ2_LOCAL64_REDUCTION",
+        None,
+    )
+    if capability is None:
+        return False
+    return bool(capability) if requested is None else bool(requested)
+
+
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -1814,6 +1833,7 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
+        use_iq2_local64_reduction: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1901,6 +1921,10 @@ class LagunaGGUFResidentSession:
             self.backend,
             use_iq2_grid64,
         )
+        self.use_iq2_local64_reduction = resolve_laguna_iq2_local64_reduction(
+            self.backend,
+            use_iq2_local64_reduction,
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1985,6 +2009,16 @@ class LagunaGGUFResidentSession:
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
                 use_iq2_grid64=self.use_iq2_grid64,
+                use_iq2_local64_reduction=self.use_iq2_local64_reduction,
+            )
+            iq2_c1_route = getattr(
+                self.moe_plan,
+                "c1_selected_gate_up_routes",
+                {},
+            ).get("gguf_iq2_xs")
+            self.use_iq2_local64_reduction = bool(
+                iq2_c1_route is not None
+                and iq2_c1_route.key.variant == _IQ2_LOCAL64_REDUCTION_VARIANT
             )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
@@ -3786,6 +3820,7 @@ __all__ = [
     "resolve_laguna_eager_kernel_plan",
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",
+    "resolve_laguna_iq2_local64_reduction",
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
