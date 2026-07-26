@@ -1463,16 +1463,26 @@ Immediate execution queue:
    SiLU, so it receives the same complete gate before producer-row repair.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-gate-d4-up-d8-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d4-up-d8-absolute-rejected.json).
+35. **Rejected assignment:** D8 gate + D4 up keeps **317/320 (99.063%)**
+   suite top-1 and nine of ten prompts inside budget, but
+   `mixed_ja_en_review` reaches max KL **0.203467** at step 1. Poolside remains
+   exact top-1, category prefill is **4.442x** all-exact, decode is flat, and
+   lifecycle accounting returns to zero. Projection-wide D4 is therefore
+   closed in both roles. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-gate-d8-up-d4-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d8-up-d4-absolute-rejected.json).
 
 ### Next exact and quality-gated attacks
 
 The projection-role screen cleared its 10-ms economic gate. Its quality gate
 now decides whether repair work is needed:
 
-1. D4-gate/D8-up is rejected at max KL **0.061203**. Run the clean all-exact
-   versus D8-gate/D4-up 320-step category comparison. Promote only at
-   KL <=0.05 and top-1 >=90%.
-2. If the selected role split misses KL <=0.05, retain D8 and prototype a bounded
+1. Both projection-wide assignments are rejected. Because the role leaf
+   regresses at M128, is flat at M256, and wins only at M512, scope the next
+   candidate to **M512+** and leave smaller shapes on production D8. Validate
+   the accelerated shape with full logits from all canonical prompt streams
+   extended to 512 rows; the ordinary short-prompt category suite remains a
+   required no-change check, not the admission evidence for M512.
+2. If M512-wide D4 still misses KL <=0.05, retain D8 and prototype a bounded
    producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
    separately compacted risk-row kernel adds the D8-minus-D4 correction
    before the existing BF16 SiLU boundary, and overflow falls back to D8.
