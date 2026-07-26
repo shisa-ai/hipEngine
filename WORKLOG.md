@@ -183266,3 +183266,26 @@ Vulkan local sizes verbatim will close the measured gap.
   Attention is now fifth; the next material screen targets selected projection
   physical bytes or a different cross-tile schedule rather than another
   contraction-launch tweak.
+
+## 2026-07-27 — Reject mixed short-tail Q4 gate/up tiles
+
+- Rechecked ROCm before kernel work: `libamdhip64.so` loads and `rocminfo`
+  names gfx1151. `scripts/check_lineage.py --kind kernel --diff stat` remains
+  blocked because the configured read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+- RED imported a missing explicit-tail wrapper. GREEN added temporary 128x40
+  and 128x48 direct-T16 D8 variants plus mixed metadata that keeps production
+  row32 tiles and replaces only eligible final `32 + remainder` pairs. The
+  focused `[7,33,41,49,65]` fixture passed BF16 array equality.
+- The natural-M512 all-layer census looked attractive:
+  **14,034 -> 12,788 tiles (-8.88%)**, comprising 741 eligible row40 and 505
+  row48 pairs. Actual weights reject the schedule. Twenty-one
+  counter-rotated samples regress combined row40+row48 at M256
+  **4.3543 -> 4.6782 ms (+7.44%)** and M512
+  **6.6991 -> 7.0457 ms (+5.17%)**. Row40-only regresses
+  **2.10%/1.66%** and row48-only **3.92%/1.09%** at M256/M512.
+- Candidate and production actual-weight checksums agree, but added live
+  accumulators and tail launches cost more than avoided rereads. Every
+  temporary HIP/Python/harness/test surface was removed. Production remains
+  **629.101 tok/s**. Rejection artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json`.

@@ -21,6 +21,16 @@ packing change and removes 1,728 pp512 dispatches. The clean 700 target now
 requires another **82.431 ms** from the **813.860-ms** pp512 median wall.
 [`candidate`](results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json).
 
+The mixed short-tail Q4 gate/up schedule is rejected and fully removed.
+Replacing only eligible final `32 + remainder` pairs with 40/48-row tiles
+would reduce the natural-M512 47-layer grid **14,034 -> 12,788 (-8.88%)**,
+but the combined candidate regresses actual-weight M256/M512
+**4.3543 -> 4.6782 ms (+7.44%)** and **6.6991 -> 7.0457 ms (+5.17%)**.
+The isolated row40 and row48 variants also lose at both shapes. The fixture is
+BF16-bit exact and actual-weight checksums agree; all candidate surfaces are
+removed and production remains **629.101 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-q4-mixed-tail-rows-rejected.json).
+
 The byte-neutral Q4 qmicro passes exact c1/c2/c4/c8 decode, but its
 actual-weight natural-M512 selected-prefill gate is rejected and fully
 removed. Direct per-column packed metadata regresses resident T16
