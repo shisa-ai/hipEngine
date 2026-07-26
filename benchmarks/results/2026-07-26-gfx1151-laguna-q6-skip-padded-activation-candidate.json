@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T15:38:00+09:00",
+  "kind": "hipengine_laguna_q6_skip_padded_activation_candidate",
+  "status": "retained_candidate_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "repo": {
+    "base_revision": "f9d315ef48c13966f319e14eeadfb788f96dfd37",
+    "tracked_dirty_candidate": true
+  },
+  "candidate": {
+    "scope": "Q6 qmicro compact half-row activation staging only",
+    "production": "all 64 padded row slots write staged Q8 bytes and compute two K16 sums before the guarded dot loop",
+    "candidate": "write staged Q8 bytes and compute K16 sums only for valid routed rows; padded LDS entries are never consumed",
+    "natural_m512_q6_useful_rows": 117760,
+    "natural_m512_q6_padded_rows64": 362944,
+    "padded_fraction": 0.675539
+  },
+  "actual_layer1_leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-skip-padded-leaf-21.json",
+    "shape": "layer-1 E256/K1024/N3072 natural M512, 660602880 resident weight bytes",
+    "protocol": "21 counter-rotated burst-seven HIP-event samples; activation pack excluded",
+    "production_median_ms": 4.879004342215402,
+    "candidate_median_ms": 4.870544978550503,
+    "change_percent": -0.173382991109583,
+    "bf16_mismatches": 0,
+    "checksum": 509500838004,
+    "raw_sha256": "f85a79afc2a6f7bd2f60d9622a89630b7f4a5a7e393e80bb6b7fe9bf0e7f20c3"
+  },
+  "all_q6_layers": {
+    "layers": [1, 2, 3, 4, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 42, 43, 44, 45, 46, 47],
+    "protocol": "nine counter-rotated burst-five samples per layer with actual 660.6-MB weights and natural M512 routing",
+    "production_sum_of_layer_medians_ms": 112.0079948425293,
+    "candidate_sum_of_layer_medians_ms": 111.80624504089356,
+    "change_percent": -0.1801208939766985,
+    "median_layer_change_percent": -0.21787613144040874,
+    "layer_wins": 19,
+    "layer_count": 23,
+    "bf16_mismatches": 0,
+    "combined_raw_sha256": "5e753aa6a8987333b0cdd38f670e68723e6baaef50efa676ab776ec004cc4907"
+  },
+  "complete_pp512_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_skip_padded_activation_ab.py --repetitions 11 --require-cached-build --output /tmp/laguna-q6-skip-padded-ab.json",
+    "workload": "Poolside Laguna S 2.1 Q4_K_M pp512, matrix512, attention128, BF16 KV, one resident owner",
+    "production_median_tok_s": 552.9827773730989,
+    "candidate_median_tok_s": 553.5593554394384,
+    "change_percent": 0.10426691208693661,
+    "candidate_wins": 7,
+    "pairs": 11,
+    "complete_state_exact": true,
+    "next_token": 2930,
+    "raw_sha256": "7b27e0692682d358bd1bc353eb84b33bfdeeb7dcb20a7569026ecffa6884a519"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-skip-padded-rocprof -- .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 1 --warmups 0 --prefill-burst 1 --decode-burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-skip-padded-rocprof-child.json",
+    "qualification": "rocprof completed and emitted the expected specialization; child exit 1 reflects the one-sample harness speed assertion and is not used as performance evidence",
+    "kernel_template": "<1,true,false,128,64,true,true,true,true>",
+    "observed_dispatches": 2,
+    "duration_ms": [4.820317, 4.857263],
+    "workgroup_size": 128,
+    "vgpr": 88,
+    "sgpr": 128,
+    "lds_bytes": 5120,
+    "scratch_bytes": 0,
+    "kernel_trace_sha256": "1b47332f46e4ccd0f1e292d51141ce11e03125adf2adcaa21682fc576b3b03a4",
+    "agent_info_sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+  },
+  "validation": {
+    "red": "The new Q6 CPU-quality case failed on the missing skip_padded_activation wrapper argument; plan/session defaults failed on the missing capability state.",
+    "green": "All nine Q6 geometry cases plus the gfx1151 plan and resident-session tests pass.",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/pytest -q tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151 tests/test_laguna_gguf_runner.py::test_laguna_owned_session_close_frees_weights_and_is_idempotent 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate'",
+    "result": "11 passed",
+    "quality_transfer": "Every candidate Q6 output is BF16-byte exact to production, so the admitted max KL 0.04954258196634279 and 316/320 top-1 gate transfer unchanged."
+  },
+  "decision": {
+    "action": "Retain LAGUNA_Q6_SKIP_PADDED_ACTIVATION as the gfx1151 default with explicit resident-session rollback and require clean selector-unset publication.",
+    "reason": "The exact 23-layer sub-window and complete-state pp512 medians are both positive with unchanged resources.",
+    "limit": "The 0.180% Q6-family win confirms padded activation work is secondary; it does not materially close the 700 tok/s wall gap."
+  }
+}

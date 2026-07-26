@@ -287,6 +287,7 @@ class LagunaMoEKernelPlan:
     q6_qmicro: bool
     q6_compact_activation: bool
     q6_half_row_activation: bool
+    q6_skip_padded_activation: bool
     router_logits_key: KernelKey
     router_logits_keys: Mapping[str, KernelKey]
     router_select_key: KernelKey
@@ -484,6 +485,7 @@ def resolve_laguna_moe_plan(
     q6_qmicro: bool | None = None,
     q6_compact_activation: bool | None = None,
     q6_half_row_activation: bool | None = None,
+    q6_skip_padded_activation: bool | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -534,6 +536,23 @@ def resolve_laguna_moe_plan(
     if selected_q6_half_row_activation and not selected_q6_compact_activation:
         raise ValueError(
             "Q6 half-row activation staging requires compact activation"
+        )
+    selected_q6_skip_padded_activation = bool(
+        selected_q6_half_row_activation
+        and backend_package_capability(
+            backend,
+            "LAGUNA_Q6_SKIP_PADDED_ACTIVATION",
+            False,
+        )
+        if q6_skip_padded_activation is None
+        else q6_skip_padded_activation
+    )
+    if (
+        selected_q6_skip_padded_activation
+        and not selected_q6_half_row_activation
+    ):
+        raise ValueError(
+            "Q6 skipping padded activation rows requires half-row staging"
         )
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
@@ -815,6 +834,7 @@ def resolve_laguna_moe_plan(
         q6_qmicro=selected_q6_qmicro,
         q6_compact_activation=selected_q6_compact_activation,
         q6_half_row_activation=selected_q6_half_row_activation,
+        q6_skip_padded_activation=selected_q6_skip_padded_activation,
         router_logits_key=keys["router_logits"],
         router_logits_keys=router_logits_keys,
         router_select_key=keys["router_select"],
@@ -1683,6 +1703,9 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
                 "qmicro": plan.q6_qmicro,
                 "compact_activation": plan.q6_compact_activation,
                 "half_row_activation": plan.q6_half_row_activation,
+                "skip_padded_activation": (
+                    plan.q6_skip_padded_activation
+                ),
             }
             if plan.q6_qmicro and weight.spec.quant_key == "gguf_q6_k_t16_v1"
             else {}

@@ -658,6 +658,7 @@ Current progress:
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
 | Q6 compact activation cache | Admitted gfx1151 production default | Q6 never consumes Q8_1 sum metadata. Dropping that field and storing each bounded K16 quant sum as `int16` reduces activation staging **48 -> 40 bytes/row** and kernel LDS **5,632 -> 5,120 B** without changing dots or accumulation. The actual leaf improves **5.082 -> 4.911 ms (-3.36%)**; 15 complete-state pp512 pairs improve **550.584 -> 552.807 tok/s (+0.404%, 15/15 wins)**. Clean 512/1K/4K reaches **550.625/517.017/431.789 tok/s**. |
 | Q6 half-row activation staging | Admitted gfx1151 production default | Each of 128 threads stages one 16-byte activation half and one K16 sum instead of leaving half the workgroup idle while 64 threads stage complete rows. Resources stay local128/VGPR88/SGPR128/LDS5120B/scratch0. The actual layer-1 leaf improves **4.902 -> 4.885 ms (-0.351%, 16/21 wins)**; the all-Q6 screen improves **21/23** layers and **111.798 -> 111.490 ms (-0.276%)** with zero BF16 mismatches. Complete pp512 A/B is exact and positive at **552.562 -> 553.018 tok/s (+0.083%)**; clean headline publication is neutral. |
+| Q6 padded-activation elision | Admitted gfx1151 candidate default; clean publication pending | Natural M512 has **117,760 useful** versus **362,944 padded** Q6 row slots. Padded slots are never consumed by the guarded dot/store loops, so the candidate skips their zero LDS stores and K16 sum work. It improves **19/23** actual layers and **112.008 -> 111.806 ms (-0.180%)**, with zero BF16 mismatches and unchanged local128/VGPR88/SGPR128/LDS5120B/scratch0. Complete pp512 A/B is exact and positive at **552.983 -> 553.559 tok/s (+0.104%, 7/11 wins)**. |
 | LAP-7–LAP-8 | Exact cached-only scheduling and cached-metadata policy admitted | Complete M128 tiles append before cached-only qrow4 while partial, wrapped SWA, verifier, and unmeasured paths retain attend-then-append. The qualified metadata-only policy selects every safe SWA tile and global tiles from position 128 while retaining the established global start-0 body. Matched pp512 improves **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)**; clean publication reaches **542.088 tok/s** median, and tracing cuts attention **175.802 -> 160.123 ms (-8.92%)**. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, head2, qhead3, and nine-wave GQA sharing remain closed. |
 
 ## Post-500 campaign — 700 production stretch
@@ -727,6 +728,10 @@ Immediate execution queue:
    **118.568 ms Q6 + 72.406 ms Q4**. Half-row compact staging is clean
    production and the verified repeated Q6 sub-window improves **21/23**
    layers and **0.276%** in aggregate, although clean headline wall is neutral.
+   Padded-activation elision is the next exact candidate default: it improves
+   the full 23-layer Q6 sub-window only **0.180%** and complete pp512
+   **0.104%**, so publish it cleanly but do not mistake padding arithmetic for
+   the missing route-tile reuse architecture.
    Keep
    byte-neutral Q6 qmicro and direct Q4 decode, then split the current trace by
    Q4/Q6 shape and pursue a counter-directed exact schedule that reduces Q6

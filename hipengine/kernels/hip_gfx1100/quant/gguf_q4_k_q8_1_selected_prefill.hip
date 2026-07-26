@@ -3520,7 +3520,8 @@ template <
     int MMQ_N = 32,
     bool QMICRO = false,
     bool COMPACT_ACTIVATION_CACHE = false,
-    bool HALF_ROW_ACTIVATION_STAGE = false>
+    bool HALF_ROW_ACTIVATION_STAGE = false,
+    bool SKIP_PADDED_ACTIVATION_STAGE = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3554,6 +3555,9 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
           (ROWVEC_ACTIVATION_STAGE && COMPACT_ACTIVATION_CACHE &&
            QMICRO && MMQ_N == 64 && THREADS == 128),
       "half-row activation staging requires production Q6 qmicro geometry");
+  static_assert(
+      !SKIP_PADDED_ACTIVATION_STAGE || HALF_ROW_ACTIVATION_STAGE,
+      "skipping padded activation rows requires half-row staging");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -3752,37 +3756,42 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
           valid_row
               ? compact_base + tile_row_in_expert + row_offset
               : 0;
+      const bool stage_row =
+          !SKIP_PADDED_ACTIVATION_STAGE ||
+          (valid_row && compact_row < compact_rows);
+      if (stage_row) {
 #pragma unroll
-      for (int pass = 0; pass < ACTIVATION_PASSES; ++pass) {
-        float d = 0.0f;
-        int sum = 0;
-        mmq_i32x4_t packed = {0, 0, 0, 0};
-        if (valid_row && compact_row < compact_rows) {
-          const int64_t q8_index =
-              static_cast<int64_t>(pass) * plane_blocks +
-              compact_row * q8_blocks_per_row + (k32 >> 2);
-          const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
-          if (half == 0) {
-            d = xb.ds4[2 * (k32 & 3)];
+        for (int pass = 0; pass < ACTIVATION_PASSES; ++pass) {
+          float d = 0.0f;
+          int sum = 0;
+          mmq_i32x4_t packed = {0, 0, 0, 0};
+          if (valid_row && compact_row < compact_rows) {
+            const int64_t q8_index =
+                static_cast<int64_t>(pass) * plane_blocks +
+                compact_row * q8_blocks_per_row + (k32 >> 2);
+            const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
+            if (half == 0) {
+              d = xb.ds4[2 * (k32 & 3)];
+            }
+            const int8_t* __restrict__ qs =
+                xb.qs + (k32 & 3) * Q8_1_BLOCK + half * 16;
+            packed = *reinterpret_cast<const mmq_i32x4_t*>(qs);
           }
-          const int8_t* __restrict__ qs =
-              xb.qs + (k32 & 3) * Q8_1_BLOCK + half * 16;
-          packed = *reinterpret_cast<const mmq_i32x4_t*>(qs);
-        }
 #pragma unroll
-        for (int pack = 0; pack < 4; ++pack) {
-          const int32_t packed_qs = packed[pack];
-          activation_tile[pass][row_offset]
-                         .qs[half * 4 + pack] = packed_qs;
-          sum = gguf_q4_k_mmq_dp4a(
-              0x01010101u,
-              static_cast<uint32_t>(packed_qs),
-              sum);
-        }
-        activation_tile[pass][row_offset].sums[half] =
-            static_cast<int16_t>(sum);
-        if (half == 0) {
-          activation_tile[pass][row_offset].d = d;
+          for (int pack = 0; pack < 4; ++pack) {
+            const int32_t packed_qs = packed[pack];
+            activation_tile[pass][row_offset]
+                           .qs[half * 4 + pack] = packed_qs;
+            sum = gguf_q4_k_mmq_dp4a(
+                0x01010101u,
+                static_cast<uint32_t>(packed_qs),
+                sum);
+          }
+          activation_tile[pass][row_offset].sums[half] =
+              static_cast<int16_t>(sum);
+          if (half == 0) {
+            activation_tile[pass][row_offset].d = d;
+          }
         }
       }
     } else if constexpr (ROWVEC_ACTIVATION_STAGE) {
@@ -4008,7 +4017,8 @@ template <
     int MMQ_N = 32,
     bool QMICRO = false,
     bool COMPACT_ACTIVATION_CACHE = false,
-    bool HALF_ROW_ACTIVATION_STAGE = false>
+    bool HALF_ROW_ACTIVATION_STAGE = false,
+    bool SKIP_PADDED_ACTIVATION_STAGE = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -4043,7 +4053,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           MMQ_N,
           QMICRO,
           COMPACT_ACTIVATION_CACHE,
-          HALF_ROW_ACTIVATION_STAGE>),
+          HALF_ROW_ACTIVATION_STAGE,
+          SKIP_PADDED_ACTIVATION_STAGE>),
       grid,
       block,
       0,
@@ -5118,6 +5129,44 @@ hipengine_gguf_q6_k_t16_qmicro_half_row_activation_selected_q8_1_ds4_f32_mmq64x6
       false,
       128,
       64,
+      true,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_skip_padded_activation_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true,
       true,
       true,
       true>(

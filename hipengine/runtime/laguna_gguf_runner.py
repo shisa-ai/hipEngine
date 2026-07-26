@@ -1519,6 +1519,7 @@ class LagunaGGUFResidentSession:
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
+        q6_skip_padded_activation: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1622,6 +1623,23 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "Q6 half-row activation staging requires compact activation"
             )
+        self.q6_skip_padded_activation = bool(
+            self.q6_half_row_activation
+            and backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_SKIP_PADDED_ACTIVATION",
+                False,
+            )
+            if q6_skip_padded_activation is None
+            else q6_skip_padded_activation
+        )
+        if (
+            self.q6_skip_padded_activation
+            and not self.q6_half_row_activation
+        ):
+            raise ValueError(
+                "Q6 skipping padded activation rows requires half-row staging"
+            )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
         self.fuse_selected_silu_pack = bool(
@@ -1695,6 +1713,9 @@ class LagunaGGUFResidentSession:
                 q6_qmicro=self.q6_qmicro,
                 q6_compact_activation=self.q6_compact_activation,
                 q6_half_row_activation=self.q6_half_row_activation,
+                q6_skip_padded_activation=(
+                    self.q6_skip_padded_activation
+                ),
             )
             self.prefill_scratch_plan = LagunaPrefillScratchPlan.build(
                 config,

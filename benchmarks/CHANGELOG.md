@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna Q6 padded-activation elision candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / never-read padded Q6 activation slots skip zero LDS stores and K16 sum work; the actual 23-layer screen improves **112.008 -> 111.806 ms (-0.180%, 19/23 layers)** with zero BF16 mismatches, and complete-state pp512 A/B is exact at **552.983 -> 553.559 tok/s (+0.104%, 7/11 wins)** with unchanged local128/VGPR88/SGPR128/LDS5120B/scratch0; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-candidate.json`.
+
 - [retained exact-subwindow gfx1151 Laguna Q6 half-row production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset 512/1K/4K is **549.150/514.956/430.300 tok/s** (no headline speedup claimed), while the repeated 23-layer exact screen cuts Q6 **111.798 -> 111.490 ms (-0.276%, 21/23 layers)**, complete-state A/B is **552.562 -> 553.018 tok/s**, and the clean trace cuts Q6 **119.384 -> 118.568 ms (-0.684%)** with unchanged local128/VGPR88/SGPR128/LDS5120B/scratch0; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-half-row-activation-production.json`.
 
 - [retained exact gfx1151 Laguna Q6 half-row activation default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / all 128 threads now stage one 16-byte compact-Q6 activation half and one K16 sum; the actual 23-layer screen improves **21/23** layers and **111.798 -> 111.490 ms (-0.276%)** with zero BF16 mismatches, while complete pp512 A/B is exact and positive at **552.562 -> 553.018 tok/s (+0.083%)**; clean selector-unset publication is pending; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-half-row-activation-candidate.json`.
