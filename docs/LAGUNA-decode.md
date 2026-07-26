@@ -136,7 +136,13 @@ event / 2.45-5.43% wall**. A temporary default-off owner passes exact
 / 723-model-kernel** tracing, but the frozen short clean gate rejects it: order
 A regresses span **1.265%** and order B regresses child throughput **0.681%**.
 Runtime integration is removed, remaining contexts/categories are skipped, and
-the default/**61.992 tok/s** topline remain unchanged.
+the default/**61.992 tok/s** topline remain unchanged. Post-pair-reuse re-ranking
+selects the existing 48-call add+RMSNorm boundary: stage each already-computed
+unrounded F32 add in LDS and reuse it for the weighted norm output instead of
+reloading both BF16 inputs. All 48 actual boundaries are bit-exact and the
+complete event/wall window improves **3.46%/3.51%** out of tree. Repository
+RED/GREEN, runtime, clean-context, and category gates remain pending; no default
+or topline has changed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1628,6 +1634,63 @@ changelog changes. Evidence:
 [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-runtime-correctness.json),
 and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-rejected.json).
 
+Post-pair-reuse re-ranking excludes every now-closed runtime premise and returns
+to a distinct live boundary. The immutable short controls spend about **0.402
+ms/token** across **48** `add_rmsnorm` calls immediately after the Q5 attention
+output. The retained local256 body computes each BF16+BF16 add once for the RMS
+sum, then reloads both BF16 inputs and repeats the F32 add for the normalized
+output. A register-only one-wave contraction preserves every partition and tree
+but is **177.13%/177.34% slower** in event/wall because it removes useful
+wave-level parallelism; close it before actual-model work.
+
+The selected body keeps all eight waves and instead stages each first-pass
+**unrounded F32 add** in dynamic LDS. It writes the same RNE BF16 residual, keeps
+every per-thread square accumulation and the exact local256 reduction tree, and
+then reuses the staged F32 value for the unchanged `value * inv_rms * weight`
+chain. This intentionally differs from the rounded DFlash add+RMS boundary:
+Laguna normalizes the unrounded sum, and both selected outputs preserve that
+existing contract bit-for-bit. The residual store moves earlier only within the
+same kernel; its observable completion boundary does not move.
+
+At hidden 3072, each call avoids **12,288 bytes** of second-pass global BF16
+loads, or **589,824 bytes/token**, while dynamic LDS grows **1,024 -> 13,312
+bytes**. Dispatches, global outputs, weights, FMA/reduction order, buffers,
+workspace, and persistent allocations are unchanged; full-model topology stays
+**723 kernels/token**. The separately planned gfx1100 key is
+`add_rmsnorm/gguf_f32_weight/bf16_out_staged_f32_local256`; registered
+`bf16_out` remains the rows/prefill/shape/key/backend/explicit-disable fallback.
+
+The frozen synthetic hidden-3072 screen uses 50 warmups, 15 counterbalanced
+repetitions, and 1,000 launches/sample. Norm and residual outputs are BF16-bit
+exact; event improves **8.566652 -> 8.322392 us (-2.851%)** and synchronized
+wall **8.574057 -> 8.330484 us (-2.841%)**. More importantly, one real
+`code_merge_intervals` decode captures every layer boundary, replays the control
+exactly, and compares the candidate: all **48/48** boundaries and all **96
+combined norm/residual fields** match both ways. Under the same warmup/repetition structure
+and 100 complete 48-call windows/sample, event improves **322.784042 ->
+311.604481 us (-3.463%)** and wall **323.750039 -> 312.372281 us (-3.514%)**.
+Tracked ownership returns to baseline.
+
+Same-Clang-22 codegen is local256/wave32, logical/allocated VGPR **15/16** and
+SGPR **18/128**, dynamic LDS **13,312 bytes**, private/spills/scratch0, **360
+instructions / 1,384 bytes**. Its nine static barrier opcodes are not nine new
+synchronizations: the control's two static opcodes form a loop that executes the
+same nine dynamic synchronization points. Bounded fixed/static and compact-loop
+variants remain exact but improve only **2.76%** or about **1.29%**, so the
+unrolled dynamic-shape form is selected. A non-profiled build precedes
+`rocprofv3`; two cache-only candidate calls are exact/finite at grid/local
+**256/256**, VGPR16/SGPR128/scratch0, and no compiler runs under profiling.
+
+The actual-window wall saving is only **0.01138 ms/token**. Applied to the
+immutable short wall it models **62.035 tok/s (+0.071%)**, still **3.84%** below
+matched Vulkan; this is explicitly not a throughput/default claim. Freeze
+repository RED/GREEN, gfx1151 exclusion, synthetic/CPU/all-48 exactness, both
+repository event/wall protocols, and the codegen ceilings above. Only then may
+an explicit default-off c=1 owner enter 16-transition full-state, cache-only
+**48-candidate/723-model-kernel** tracing, both clean short/512/1K/near-4K
+orders, and both complete 18-prompt category orders. Evidence:
+[`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-design.json).
+
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
@@ -1643,9 +1706,10 @@ and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pa
 - **Wave64 as a blanket switch:** hipEngine's default is intentionally wave32;
   prior controlled wave64 probes were generally slower and Vulkan subgroup size
   alone is not a portable reason.
-- **LDS staging by default:** the successful D12 change removed LDS/barriers;
-  prior Qwen/Laguna evidence repeatedly shows occupancy and barrier cost can
-  exceed reuse.
+- **Broad LDS staging by default:** the successful D12 change removed LDS/
+  barriers, and prior Qwen/Laguna evidence repeatedly shows occupancy and
+  barrier cost can exceed reuse. The selected add+RMS boundary is the narrow
+  exception backed by all-48 actual evidence; do not generalize it.
 - **Launch-count-only fusion:** D11 and D13 are direct counterexamples.
 - **Single-prompt promotion:** all future acceptance remains the complete
   category/heldout suite under the repository anti-gaming rule.
@@ -1676,6 +1740,7 @@ and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pa
 | Does exact GQA3 value reuse accelerate the SWA reducer? | [`...swa-gqa3-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json): no. All F32 context and BF16 gated outputs are byte-exact, but reducing **72 -> 24** workgroups regresses every layer-1/46/47 live-70/128/257/512 row by **61.16-89.95%**; the candidate is removed before runtime integration. |
 | Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
 | Can one local32 wave reuse an activation register across exact Q5 and Q6 output pairs? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-rejected.json): primitive only after clean rejection. Exact 16-transition state and **47+1/723** tracing do not override order-A span **+1.265%** and order-B child throughput **-0.681%** failures. Runtime integration is removed; remaining contexts/categories are skipped and defaults/topline are unchanged. |
+| Can LDS-staged unrounded F32 sums accelerate Laguna add+RMSNorm exactly? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-design.json): selected for repository RED/GREEN. Every norm/residual output across all **48** actual boundaries is bit-exact, and the complete event/wall window improves **3.46%/3.51%**. No repository primitive, runtime owner, default, or throughput claim exists yet. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -1783,4 +1848,9 @@ state and cache-only **47 candidate + one unchanged layer-47 / 723-kernel**
 tracing, but the frozen short gate fails order A on span **+1.265%** and order B
 on child throughput **-0.681%**. Runtime integration is removed and remaining
 contexts/categories are skipped; the primitive remains diagnostic and canonical
-h32 stays **61.992 tok/s** versus Vulkan **64.418 tok/s**.
+h32 stays **61.992 tok/s** versus Vulkan **64.418 tok/s**. The next selected
+exact boundary reuses the already-computed unrounded F32 hidden+attention value
+inside each of 48 local256 add+RMSNorm calls. All actual norm/residual boundaries
+are bit-exact and the out-of-tree complete window improves **3.46%/3.51%**
+event/wall, but repository/runtime/full-model gates remain pending and no
+retained topline changes.

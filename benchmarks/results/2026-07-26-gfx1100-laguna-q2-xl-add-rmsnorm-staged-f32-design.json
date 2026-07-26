@@ -1,0 +1,333 @@
+{
+  "baseline": {
+    "canonical_h32_tok_s": 61.99155148671624,
+    "canonical_wall_ms_per_token": 16.131230401844086,
+    "commit": "d7a6ff8e5f5cf15c1d5298c24038ab0ce8f4136d",
+    "immutable_short_model_kernel_sum_ms_per_token": 12.868512892857144,
+    "immutable_trace_calls_per_token": 48,
+    "immutable_trace_family_ms_per_token": 0.402,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "prior_rejection": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-rejected.json",
+    "prior_rejection_sha256": "230fea588be309ee07b44ef8d79ebf0a2500c4b5e59c20e0e2e2fa5193c120c7",
+    "source_control_trace_a": "/tmp/laguna-q2-xl-mixed-pair-reuse-clean-bcebd6a54-short-control-a/trace_kernel_trace.csv",
+    "source_control_trace_b": "/tmp/laguna-q2-xl-mixed-pair-reuse-clean-bcebd6a54-short-control-b/trace_kernel_trace.csv"
+  },
+  "cache_only_trace": {
+    "candidate_calls": 2,
+    "child_sha256": "5ba9d5dd7b887257ba3f84236cd162103173337b553a060dbf18017f3817ae2f",
+    "compiler_under_profiler": false,
+    "finite": true,
+    "harness_sha256": "8601893272c0812e1f82261dc7ed9b630909766210f425d9b302f1b75591ba30",
+    "note": "rocprofv3 reports only fixed LDS metadata here; the wrapper launch contract supplies 13,312 dynamic bytes at hidden 3072.",
+    "outputs_exact": {
+      "norm": true,
+      "residual": true
+    },
+    "rows": [
+      {
+        "End_Timestamp": 1220858079397089,
+        "Grid_Size_X": 256,
+        "Kernel_Name": "laguna_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "LDS_Block_Size": 0,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "Start_Timestamp": 1220858079383929,
+        "VGPR_Count": 16,
+        "Workgroup_Size_X": 256
+      },
+      {
+        "End_Timestamp": 1220858079408889,
+        "Grid_Size_X": 256,
+        "Kernel_Name": "laguna_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "LDS_Block_Size": 0,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "Start_Timestamp": 1220858079403249,
+        "VGPR_Count": 16,
+        "Workgroup_Size_X": 256
+      }
+    ],
+    "stderr_sha256": "848299635210bd0e79ae99a260a768ac61a1d825f94a5e8677360f75368ac0a8",
+    "stdout_sha256": "7cf9992cd5e48339088ae9a55ca465de6bef1597d3dab883ef0190aec0a192b0",
+    "trace_sha256": "4dc24cafa9db09652429fc27faafc174c8814a66a21df04eb3fd535e5efc0684"
+  },
+  "closed_before_selection": [
+    "standalone Q6 local32 runtime owner",
+    "both compact and persistent router-selector runtime owners",
+    "weighted+routed/hidden split runtime owner",
+    "mixed Q5/Q6 activation-register pair-reuse runtime owner",
+    "one-wave register-only add+RMSNorm reduction",
+    "fixed/static and compact-loop staged variants that underperform the selected unrolled dynamic-LDS body",
+    "any prompt-conditioned, token-ID-conditioned, or candidate-rerank optimization"
+  ],
+  "codegen": {
+    "barrier_audit": "The control retains its eight-stage stride reduction as a loop, so two static s_barrier opcodes execute nine dynamic synchronizations. The selected candidate unrolls the same eight stages, so nine static opcodes execute the same nine dynamic synchronizations. Compact-loop candidates are exact but only about 1.3% faster, so unrolling is retained.",
+    "candidate": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 16,
+      "dynamic_lds_bytes_at_hidden3072": 13312,
+      "group_segment_fixed_size": 0,
+      "logical_sgpr": 18,
+      "logical_vgpr": 15,
+      "private_segment_bytes": 0,
+      "scratch_bytes": 0,
+      "sgpr_spills": 0,
+      "static_barrier_instruction_count": 9,
+      "static_instruction_count": 360,
+      "text_bytes": 1384,
+      "vgpr_spills": 0,
+      "wavefront_size": 32,
+      "workgroup_size": 256
+    },
+    "candidate_hsaco_sha256": "0a151b085451beb9073712a75c0bc3f5b62dec5a668a6608e0bf08f5ad31d334",
+    "candidate_library_path": "/tmp/hipengine-laguna-add-rms-staged-probe-cache/laguna_add_rms_staged_probe-bb905feedc049820/laguna_add_rms_staged_probe.so",
+    "candidate_library_sha256": "5a3f959b0d903a3805a970500c494fe5e0be6270c6192d9f5a83bbedcb76b0a7",
+    "candidate_objdump_sha256": "b1e526a4fd2c6596f43f3b07480f39464970cc25511f0ebe5c1793fa787f3e99",
+    "candidate_readobj_sha256": "7447f28e87854ca1199121008c04d8a9553b4b500c399b9558ba92153fdf3985",
+    "candidate_source_path": "/tmp/laguna_add_rms_staged_probe.hip",
+    "candidate_source_sha256": "621be6d6fcd953e12baee6490a38df7b3f493cc09bd6d62a5fac55e8c7bcfe92",
+    "control": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 24,
+      "dynamic_lds_bytes_at_hidden3072": 1024,
+      "logical_sgpr": 25,
+      "logical_vgpr": 18,
+      "private_segment_bytes": 0,
+      "scratch_bytes": 0,
+      "sgpr_spills": 0,
+      "static_barrier_instruction_count": 2,
+      "static_instruction_count": 243,
+      "text_bytes": 1200,
+      "vgpr_spills": 0,
+      "wavefront_size": 32,
+      "workgroup_size": 256
+    },
+    "control_hsaco_sha256": "b64e11183bbd75487d53661940556129cc4d53aec8e6491ee3bd940037c576a5",
+    "control_objdump_sha256": "88d870b02b1d5da64fcf74bdba3ef949f196fb22944333b58cc27bd5bf74ed5c",
+    "control_readobj_sha256": "b102123581d3a4fe106ceec7d5e5d8ebf22e511e30b9a1c75bc66834f81a2c96"
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "select for repository RED/GREEN",
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "default_changed": false,
+    "next_action": "Commit this design record, then add repository RED before the separately registered gfx1100 primitive.",
+    "why_distinct": "This removes the second pair of BF16 input loads/adds at the existing unrounded add+RMS boundary; it is not another projection rewrite, router owner, launch contraction, local-size sweep, or rounded residual fusion."
+  },
+  "frozen_gates": {
+    "primitive_correctness": [
+      "random plus BF16 signed-zero/subnormal/finite-edge inputs preserve norm and residual BF16 bytes against registered control",
+      "the independent CPU-reference gate requires KL <=0.05 and top-1 >=90%",
+      "all 48 actual Laguna boundaries preserve candidate/control and control/captured norm+residual bytes"
+    ],
+    "primitive_performance_and_resources": [
+      "repeat the repository-built synthetic 50-warmup/15-counterbalanced/1000-launch and all-48 50-warmup/15-counterbalanced/100-window protocols; both event and synchronized wall medians must improve",
+      "candidate remains local256/wave32, logical/allocated VGPR <=15/16, logical/allocated SGPR <=18/128, dynamic LDS exactly (hidden_size+256)*4, private/spills/scratch0, <=360 instructions, <=1384 text bytes, and <=9 static barrier opcodes",
+      "non-profiled cache warmup precedes rocprofv3, expected kernel is named, outputs are exact/finite, and no compiler runs under profiling"
+    ],
+    "primitive_red_green": [
+      "wrapper and exact four-axis key are absent before implementation",
+      "non-null pointers, rows==1, hidden_size<=4096, hidden_size divisible by 256, and fixed local256 validate before library load",
+      "gfx1151 and unsupported backends cannot alias the key"
+    ],
+    "runtime": [
+      "only explicit default-off gfx1100 c=1 calls select the candidate; rows/prefill, key miss, unsupported shape/backend, and default execution retain registered control",
+      "16-transition shared-weight full logits/IDs, all 48 hidden and 47 routed boundaries, active K/V and every KVLiveSpans field, reset/re-prefill, ownership, and teardown are exact",
+      "cache-only tracing records exactly 48 candidate calls/token, zero candidate prefill calls, and unchanged 723 model kernels/token",
+      "both clean short/512/1K/near-4K process orders improve add+RMSNorm and complete kernel sum, keep span below +0.5%, and child throughput above -0.5%",
+      "both complete 18-prompt category process orders pass every decode/E2E/prefill/TTFT and correctness guard before promotion"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_add_rmsnorm_staged_f32_design",
+  "model": {
+    "decode_calls_per_token": 48,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling_not_claim": {
+    "actual_wall_saving_ms_per_token": 0.011377758346498013,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "modeled_h32_tok_s": 62.03530653261766,
+    "modeled_kernel_sum_improvement_pct": 0.08841548702036428,
+    "modeled_remaining_to_vulkan_pct": 3.8412523906804052,
+    "modeled_short_kernel_sum_ms": 12.857135134510646,
+    "modeled_throughput_gain_pct": 0.07058227266791839,
+    "performance_claim": false,
+    "short_kernel_sum_ms": 12.868512892857144
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "1392fe55db440f80d5925f6a695f9e7328b941ebad9f6bd85b6e3f78b107aa7b",
+    "control_source_sha256": "40710cdcc0af6b4777648273b6e237e9f22e0a87d58b402596ede027e3f82e72",
+    "control_wrapper_sha256": "1facebefcb15c550eb2547e8d405ee5dc6b7ee2c792e271904f0f269972b4788",
+    "kernel_catalog_sha256": "55dae521b4383499019febe5c897c6b2050454f256455c0fe33dacc07cda4fa9",
+    "lineage_path": "/tmp/laguna-add-rms-staged-lineage.log",
+    "lineage_result": "only already-catalogued unrelated drift; selected staging premise is in-tree-derived",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "schema": 1,
+  "selected_design": {
+    "dataflow_contraction_at_hidden3072": {
+      "dispatch_delta_per_token": 0,
+      "dynamic_lds_bytes_candidate": 13312,
+      "dynamic_lds_bytes_control": 1024,
+      "dynamic_lds_delta_bytes": 12288,
+      "global_bf16_input_bytes_avoided_per_call": 12288,
+      "global_bf16_input_bytes_avoided_per_token": 589824,
+      "model_kernels_per_token": 723,
+      "persistent_allocation_delta_bytes": 0,
+      "workspace_delta_bytes": 0
+    },
+    "description": "Cache each existing unrounded BF16+BF16 F32 sum in dynamic LDS during the unchanged local256 RMS accumulation, store the same RNE BF16 residual, then reuse the cached F32 value for the normalized weighted output instead of reloading both BF16 inputs and adding them again.",
+    "exact_arithmetic": [
+      "the first-pass BF16 upcasts, F32 add, square accumulation, per-thread index order, and local256 reduction tree are unchanged",
+      "the residual store remains RNE BF16 of the unrounded F32 add",
+      "the normalized path consumes that same unrounded F32 add, preserving Laguna control semantics rather than the rounded DFlash residual boundary",
+      "inv_rms calculation and left-to-right value*inv_rms*weight operations are unchanged",
+      "only the time of the residual store moves earlier inside the same kernel; all outputs become observable at the same kernel-completion boundary"
+    ],
+    "fallback": "registered add_rmsnorm/gguf_f32_weight/bf16_out for rows, prefill, invalid/unsupported shape, explicit disable, key miss, gfx1151, and every unsupported backend",
+    "lineage": "in-tree DFlash dynamic-LDS staging pattern adapted to preserve Laguna control's unrounded F32 add/RMS boundary; no external kernel port",
+    "planned_registry_key": [
+      "hip_gfx1100",
+      "add_rmsnorm",
+      "gguf_f32_weight",
+      "bf16_out_staged_f32_local256"
+    ],
+    "planned_wrapper": "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
+    "scope": "rows=1, hidden_size positive and <=4096, hidden_size divisible by 256, local256, BF16 inputs/outputs, F32 weight, gfx1100 only"
+  },
+  "selection_probe": {
+    "all_actual_boundaries": {
+      "candidate_vs_control_exact_fields": 96,
+      "captured_boundaries": 48,
+      "control_replay_vs_capture_exact_fields": 96,
+      "event_delta_pct": -3.4634802678929155,
+      "event_us_per_48_call_window": {
+        "candidate_staged": 311.6044807434082,
+        "control_local256": 322.78404235839844
+      },
+      "generated_id": 2825,
+      "harness_sha256": "53c9d005564d4256b93257a63084eb38dc7d649f51cadeb12f779727c8157baf",
+      "path": "/tmp/laguna-add-rms-staged-actual.json",
+      "prompt_id": "code_merge_intervals",
+      "prompt_tokens": 69,
+      "protocol": {
+        "calls_per_window": 48,
+        "complete_windows_per_sample": 100,
+        "order": "counterbalanced",
+        "repetitions": 15,
+        "warmups": 50
+      },
+      "sha256": "6d3e2f25a007562b0c1467e881f66fe42dc84143992b5e072e3c4022a56323e5",
+      "stdout_sha256": "9ff6573a35c0f622da43f0411067d197f434e8337a09c24e49432f91b70bf15e",
+      "tracked_returned_to_baseline": true,
+      "wall_delta_pct": -3.5143650880276267,
+      "wall_us_per_48_call_window": {
+        "candidate_staged": 312.37228075042367,
+        "control_local256": 323.7500390969217
+      }
+    },
+    "bounded_variant_discriminator": {
+      "fixed3072_dynamic_lds_compact_loop": {
+        "decision": "reject: exact but materially smaller win",
+        "event_delta_pct": -1.2971266476546006,
+        "outputs_exact": true,
+        "result_path": "/tmp/laguna-add-rms-staged-compact-dynamic3072-synthetic.json",
+        "result_sha256": "c134ab82a2165efdbb01bc7eee25c6ed8a5bbf0250f11b53292df7c1174bf2cd",
+        "source_path": "/tmp/laguna_add_rms_staged_compact_dynamic3072_probe.hip",
+        "source_sha256": "f242c1f5a4f19b1ae19e5c3f40cf60ebc6a79c7d7710115e0edaa11ccc02ed92",
+        "wall_delta_pct": -1.269339491025534
+      },
+      "fixed3072_dynamic_lds_unrolled": {
+        "decision": "reject: exact but does not improve on selected measured row",
+        "event_delta_pct": -2.7648844253475025,
+        "outputs_exact": true,
+        "result_path": "/tmp/laguna-add-rms-staged-fixed3072-synthetic.json",
+        "result_sha256": "173a111888b0c3ad188de000475d79c6fb62527f8623867f81a1d87bcd6ef8ac",
+        "source_path": "/tmp/laguna_add_rms_staged_fixed3072_probe.hip",
+        "source_sha256": "a074fe5663ebdc91026e13930dad38254dd013a19a6778dabcca505cf175dcc8",
+        "wall_delta_pct": -2.758565907165267
+      },
+      "fixed3072_static_lds_compact_loop": {
+        "decision": "reject: exact but materially smaller win",
+        "event_delta_pct": -1.2936411633448497,
+        "outputs_exact": true,
+        "result_path": "/tmp/laguna-add-rms-staged-compact3072-synthetic.json",
+        "result_sha256": "de360e2bf99e962b35231fe71d20e0a458e70b631c47585c33260c7f1837abd4",
+        "source_path": "/tmp/laguna_add_rms_staged_compact3072_probe.hip",
+        "source_sha256": "175237534b883fb1bdb09aec35a34af71ac85b8a263877553cefc9565b051b42",
+        "wall_delta_pct": -1.288834488491264
+      },
+      "one_wave_register_only": {
+        "decision": "reject: exact but removes useful eight-wave parallelism",
+        "event_delta_pct": 177.12912148479444,
+        "outputs_exact": true,
+        "result_path": "/tmp/laguna-add-rms-local32-synthetic.json",
+        "result_sha256": "858b4a940ab5afea3afcb2fae400c887728c8d7b95b936d869578d0b70f754e9",
+        "source_path": "/tmp/laguna_add_rms_local32_probe.hip",
+        "source_sha256": "a9dfa76534ba0a20c2f85b40a7970fe06ec582373002052e285365b5551a37f3",
+        "wall_delta_pct": 177.34421651086282
+      },
+      "selected_dynamic_shape_unrolled": {
+        "decision": "select",
+        "event_delta_pct": -2.8512868947339953,
+        "outputs_exact": true,
+        "result_path": "/tmp/laguna-add-rms-staged-synthetic.json",
+        "result_sha256": "8cfee2af3f6d2b6fbf493e90722b36cac041832c1550c912ca10a729190e7fc9",
+        "source_path": "/tmp/laguna_add_rms_staged_probe.hip",
+        "source_sha256": "621be6d6fcd953e12baee6490a38df7b3f493cc09bd6d62a5fac55e8c7bcfe92",
+        "wall_delta_pct": -2.840810992574827
+      }
+    },
+    "synthetic": {
+      "event_delta_pct": -2.8512868947339953,
+      "event_us": {
+        "candidate_staged": 8.322392463684082,
+        "control_local256": 8.566652297973633
+      },
+      "harness_sha256": "e5923c5f0cba93991f2a26f43ee7f02d7f731ee1062d1666fdd5632ff6214a71",
+      "outputs": {
+        "norm": {
+          "exact": true,
+          "mismatches": 0
+        },
+        "residual": {
+          "exact": true,
+          "mismatches": 0
+        }
+      },
+      "path": "/tmp/laguna-add-rms-staged-synthetic.json",
+      "protocol": {
+        "launches_per_sample": 1000,
+        "order": "counterbalanced",
+        "repetitions": 15,
+        "warmups": 50
+      },
+      "sha256": "8cfee2af3f6d2b6fbf493e90722b36cac041832c1550c912ca10a729190e7fc9",
+      "shape": {
+        "eps": 1e-06,
+        "hidden_size": 3072,
+        "rows": 1
+      },
+      "stdout_sha256": "08eeceaf5a79b8799e61becda13c4acbef1f8999a850956fa3f549c07c8e4cd9",
+      "wall_delta_pct": -2.840810992574827,
+      "wall_us": {
+        "candidate_staged": 8.330484153702855,
+        "control_local256": 8.574056904762983
+      }
+    }
+  }
+}
