@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T16:09:45Z",
+  "kind": "hipengine_laguna_shared_pack8_dual_silu_screen",
+  "status": "rejected_and_removed",
+  "repo_revision": "99ab464fec830d79aae6f92d36d5792a44336796",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2; routed caller stream at priority 0; shared stream at priority +1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M with resident pack8 shared Q4_K",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "trace_motivation": {
+    "production_pp512_wall_ms": 884.986,
+    "production_kernel_span_ms": 884.129,
+    "production_kernel_sum_ms": 1200.196,
+    "caller_stream": {
+      "calls": 1508,
+      "span_ms": 884.129,
+      "sum_ms": 874.975,
+      "gap_ms": 9.154
+    },
+    "shared_stream": {
+      "calls": 188,
+      "span_ms": 853.985,
+      "sum_ms": 325.222,
+      "gap_ms": 528.764
+    },
+    "shared_silu_inclusive_ms": 240.447,
+    "shared_dense_projection_inclusive_ms": 84.775,
+    "interpretation": "The secondary shared stream begins 23.609 ms after the caller stream and ends 6.535 ms before it. Its 325.222-ms inclusive sum is almost completely hidden. Optimizing this branch can win wall only through reduced contention or caller-stream recovery, not by its isolated duration."
+  },
+  "candidate": {
+    "scope": "shared-expert Q4_K pack8 gate/up plus SiLU at M512 x K3072 x N1024",
+    "premise": "one wave computes 32 matching gate/up columns, reads the activation once, preserves both existing BF16 projection boundaries, applies SiLU, and writes the BF16 intermediate directly",
+    "resident_delta_bytes": 0,
+    "scratch_delta_bytes": 0,
+    "launch_delta_per_layer": -2,
+    "unfused_fallback": "two retained 64x16 pack8 WMMA projections plus silu_mul_separate_out_bf16"
+  },
+  "correctness": {
+    "red": "The direct exact-boundary test initially failed because the fused wrapper/export did not exist.",
+    "green": "The fused leaf reproduced the split gate BF16, up BF16, and final BF16 SiLU-product boundaries byte-for-byte.",
+    "actual_weight_bf16_mismatches": 0,
+    "actual_weight_checksum": 16953730723,
+    "full_model_exact_pairs": 7,
+    "full_model_pairs": 7,
+    "full_model_fields": [
+      "next_token",
+      "next_token_logit",
+      "full_logits",
+      "final_hidden",
+      "post_layer_hidden",
+      "complete_kv",
+      "final_position"
+    ],
+    "memory_returned": true,
+    "peak_tracked_bytes": 77286612572
+  },
+  "actual_weight_layer1_leaf": {
+    "shape": {
+      "rows": 512,
+      "in_features": 3072,
+      "out_features_per_projection": 1024
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_shared_dual_silu_leaf.py",
+    "timing": "HIP events; three warmups; 21 counter-rotated pairs; actual resident layer-1 shared gate/up weights; deterministic random BF16 activations",
+    "production_median_ms": 0.5018301963806152,
+    "candidate_median_ms": 0.4287409782409668,
+    "change_percent": -14.564531721445794,
+    "candidate_wins": 21,
+    "pairs": 21,
+    "raw_sha256": "aadfd6626cb568969ff8f15e5417ec578824e49b729d92f2c0873141a77c41f7"
+  },
+  "full_model_pp512": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_shared_dual_silu_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-shared-dual-silu-ab-7-v2.json",
+    "timing": "synchronized wall; one M128 warmup per arm; seven counter-rotated complete-state pairs in one resident owner",
+    "production_samples_tok_s": [
+      580.9236959142912,
+      581.5747055633053,
+      580.0482890137233,
+      576.7958278152406,
+      579.1324210482406,
+      580.3944650100866,
+      581.7490528750051
+    ],
+    "candidate_samples_tok_s": [
+      577.6760710860112,
+      577.4772804932592,
+      577.374247064109,
+      576.4030519888568,
+      577.1108161483754,
+      575.8056195637207,
+      583.2959036218408
+    ],
+    "production_median_tok_s": 580.3944650100866,
+    "candidate_median_tok_s": 577.374247064109,
+    "production_median_wall_ms": 882.1586539270356,
+    "candidate_median_wall_ms": 886.773184989579,
+    "paired_median_wall_delta_ms": 4.088053945451975,
+    "paired_mean_wall_delta_ms": 3.3839448587968946,
+    "paired_geometric_speedup": 0.9961847795827229,
+    "change_percent_at_medians": -0.5203729660612807,
+    "candidate_wins": 1,
+    "pairs": 7,
+    "raw_sha256": "ee66a035b0740cc76d8450d2ae5c7385185224b0198e94b2e0120d4562bb28c9"
+  },
+  "resource_trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-file shared-dual-silu -- HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_wmma_prefill.py::test_gguf_q4_k_pack8_dual_silu_wmma_is_exact_to_split_boundary",
+    "purpose": "kernel-identity and resource proof on the direct RED/GREEN fixture; durations are not the actual-weight performance gate",
+    "candidate": {
+      "kernel": "gguf_q4_k_pack8_prefill_dual_silu_wmma_kernel<unsigned short,16>",
+      "duration_us": 58.91,
+      "local_size": 32,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "rollback_projection": {
+      "kernel": "gguf_q4_k_pack8_prefill_wmma_kernel<unsigned short,unsigned short,64,16>",
+      "durations_us": [
+        12.022,
+        11.261
+      ],
+      "local_size": 32,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "rollback_silu_us": 6.212,
+    "raw_sha256": "872dfd27c60b68dcc690402944f1323a177500efe8176aa9f835af099c5c3db3"
+  },
+  "decision": {
+    "result": "reject and remove all candidate kernel, wrapper, registry, runtime-mode, and test surfaces",
+    "reason": "The exact leaf removes isolated work from a secondary branch that is already hidden. It loses production wall by 4.088 ms at the paired median and wins only one of seven pairs, so it cannot be retained under the wall-first policy.",
+    "closed_work": "Do not retry shared gate/up or gate/up+SiLU fusion while the shared branch remains fully hidden, unless a trace first proves shared spill or a new schedule reduces caller-stream contention."
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked before comparison because the configured read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout is absent"
+  }
+}

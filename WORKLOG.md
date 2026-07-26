@@ -183055,3 +183055,38 @@ Vulkan local sizes verbatim will close the measured gap.
   Q6-local metadata screens are now frozen; the next action is current-trace
   critical-path analysis for a wall-level physical-byte, scheduling, or
   fusion mechanism.
+
+## 2026-07-26 — Reject exact shared pack8 gate/up+SiLU fusion
+
+- The refreshed two-queue production trace resolves the inclusive-family
+  ambiguity. The caller stream spans **884.129 ms** with **874.975 ms** of
+  kernels and **9.154 ms** of gaps. The secondary shared stream carries
+  **325.222 ms** of kernels, including **240.447 ms** of standalone shared
+  SiLU, but starts **23.609 ms** after and ends **6.535 ms** before the caller
+  stream. Shared duration is already hidden rather than an additive wall
+  ceiling.
+- RED added a direct boundary-exact fixture and initially failed because the
+  fused wrapper/export did not exist. GREEN used one wave to compute 32
+  matching resident-pack8 gate/up columns, rounded both projections to their
+  existing BF16 boundaries, applied SiLU, and wrote the BF16 intermediate.
+  The actual layer-1 M512xK3072xN1024 leaf improves
+  **0.501830 -> 0.428741 ms (-14.565%, 21/21 wins)** with zero BF16
+  mismatches and checksum **16953730723**. All **77,286,612,572** tracked
+  bytes return after owner close.
+- Seven counter-rotated full-model pairs are exact for next token/logit, full
+  logits, final and post-layer hidden, complete KV, and cursor. Production
+  nevertheless regresses **580.394 -> 577.374 tok/s (-0.520%)**, adds
+  **4.088 ms** at the paired median wall, and wins only **1/7**. The leaf win
+  perturbs contention on a deliberately deprioritized branch without
+  shortening the caller stream.
+- Cached `rocprofv3 --kernel-trace` names the intended fused specialization at
+  local32/VGPR80/SGPR128/LDS0/scratch0. Removed every candidate HIP kernel,
+  export, Python wrapper/registry entry, runtime mode, and test surface;
+  production files are byte-for-byte restored.
+- Rejection artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-shared-pack8-dual-silu-rejected.json`.
+  Do not revisit shared fusion from a leaf result while the branch remains
+  fully hidden. The next screen must attack caller-stream attention,
+  selected-down physical bytes, or another measured critical-path mechanism.
+- The required lineage check remains unavailable because the configured
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.

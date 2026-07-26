@@ -774,7 +774,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Selected D4 Q4/Q6 down | **180.656 ms** | **15.05%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Activation-fragment reuse cuts pp512 Q6 **109.290 -> 108.233 ms (-0.97%)** and the 115-call 512/1K/4K Q6 window **792.625 -> 779.709 ms (-1.63%)**. Result-metadata broadcast and compact shared weight metadata both regress decisively; Q6-local metadata work is frozen. The remaining down opportunity requires fewer physical weight bytes or a different cross-tile schedule. |
 | Global + SWA attention | **143.669 ms** | **11.97%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
 | Static-range direct hipBLASLt source-F16 | **124.185 ms** | **10.35%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
-| Q4/Q6 WMMA dense/shared | **94.565 ms** | **7.88%** | This inclusive family overlaps routed work. The retained least-priority shared schedule keeps nearly all of it off the critical path. |
+| Q4/Q6 WMMA dense/shared | **94.565 ms** | **7.88%** | This inclusive family overlaps routed work. The secondary stream carries **325.222 ms** total including **240.447 ms** of shared SiLU, but ends **6.535 ms before** the caller stream. An exact shared gate/up+SiLU leaf improved **14.56%** yet regressed production **0.52%**; this family is closed until a trace shows spill or caller-stream relief. |
 | Router | **23.376 ms** | **1.95%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
 | Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **292.733 ms** | **24.39%** | This includes slowed secondary shared work and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
 
@@ -791,6 +791,17 @@ below is a retained performance claim:
   selected-down traffic, then a new gate/up architecture, must compound with
   any additional attention win. The measured source-F16 grouping ceiling
   cannot materially close the gap.
+- Queue-exclusive attribution closes the apparent shared-expert ceiling.
+  The caller stream spans **884.129 ms** with **874.975 ms** of kernels and
+  only **9.154 ms** of gaps. The secondary shared stream contains
+  **325.222 ms** of kernels but is wholly nested inside the caller stream:
+  it starts **23.609 ms** later and ends **6.535 ms** earlier. Its
+  **240.447-ms** standalone SiLU cost is therefore not an Amdahl saving.
+  The exact dual-pack8 gate/up+SiLU leaf cut its actual-weight operation
+  **0.50183 -> 0.42874 ms (-14.56%)**, then lost the complete pp512 wall
+  **580.394 -> 577.374 tok/s (-0.52%, 1/7 wins)**. Shared work is frozen
+  unless a new trace shows unhidden spill or reduced caller-stream
+  contention.
 - The old active-expert-once lower bound made gate/up appear to sustain only
   **115.24 GB/s**. Production rereads a full expert weight for every 32-row
   route tile: **10,237 active groups become 14,034 row tiles**, so the
@@ -1213,6 +1224,19 @@ Immediate execution queue:
    planar K32 records are independent, so a loop-only K64 form cannot reuse
    quant bytes or remove either synchronization boundary. Resume this family
    only with a physical-byte or cross-tile reuse mechanism.
+22. **Rejected and removed:** fuse the two resident-pack8 shared Q4 gate/up
+   projections with SiLU while preserving both existing BF16 projection
+   boundaries. The actual layer-1 M512xK3072xN1024 operation improves
+   **0.501830 -> 0.428741 ms (-14.565%, 21/21 wins)** with zero BF16
+   mismatches, local32/VGPR80/LDS0/scratch0, and complete 77.287-GB owner
+   recovery. Production rejects it: seven complete-state-exact pp512 pairs
+   move **580.394 -> 577.374 tok/s (-0.520%)**, add **4.088 ms** at the
+   paired median wall, and win only **1/7**. The refreshed queue ledger
+   explains the result: all **325.222 ms** of secondary-stream work is already
+   nested inside the caller-stream span and ends **6.535 ms** early. Every
+   candidate kernel, wrapper, registry, runtime-mode, and test surface is
+   removed. Evidence:
+   [`2026-07-26-gfx1151-laguna-shared-pack8-dual-silu-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-shared-pack8-dual-silu-rejected.json).
 
 Post-350 exclusions:
 
@@ -1230,6 +1254,9 @@ Post-350 exclusions:
   weight-sharing mechanism or physical cache-counter evidence;
 - do not claim 500 or 700 from a leaf, explicit session selector, dirty tree,
   single sample, or incomplete quality lane.
+- do not retry shared gate/up or gate/up+SiLU fusion from an isolated leaf
+  win while the least-priority secondary stream remains fully hidden; require
+  a current trace proving shared spill or caller-stream recovery first.
 
 The current campaign authority is the retained production packet and trace
 below. Every new modeled table is rebuilt from the most recently promoted
@@ -2988,6 +3015,10 @@ Do not repeat:
 - Q6 static-upper sentinel grids and launch-bounds occupancy hints: unused
   workgroups are effectively free, while `(128,2)` emits the same
   VGPR/LDS/scratch resources and no repeatable speed change as `(128,1)`;
+- shared pack8 gate/up+SiLU fusion: the exact actual-weight leaf improves
+  **14.56%**, but the already-hidden low-priority branch regresses pp512
+  **580.394 -> 577.374 tok/s (-0.52%, 1/7 wins)** and adds **4.088 ms** at
+  the paired median wall;
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - single-wave qrow4 two-head GQA fusion; exact K/V reuse regresses all measured
   512/1K/4K diagnostic lengths;
