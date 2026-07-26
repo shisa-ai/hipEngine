@@ -3,15 +3,25 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json`](results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json).
+[`2026-07-26-gfx1151-laguna-attention-preappend-production.json`](results/2026-07-26-gfx1151-laguna-attention-preappend-production.json).
 It binds matched A/B, clean selector-unset timing, complete-state exactness, and
-cached attribution to the exact one-barrier-per-K32 gate/up body at revision
-`647ac846c`. Conservative median pp512 is **505.084 tok/s**, every clean sample
-is at least **504.984 tok/s**, the independent cached trace is
-**509.777 tok/s**, and absolute maximum KL remains **0.049542582**. Matched
-seven-pair A/B isolates the exact body at **505.970 -> 507.405 tok/s
-(+0.284%)**. The declared 500 tok/s production gate is closed; the active
-stretch target is 700 tok/s.
+cached attribution to exact M128 cached-only qrow4 attention scheduling at
+revision `7b4f2ef82`. Conservative median pp512 is **526.451 tok/s**, every
+clean sample is at least **526.288 tok/s**, the independent cached trace is
+**532.101 tok/s**, and absolute maximum KL remains **0.049542582**. Clean
+selector-unset 512/1K/4K improve **4.230%/3.218%/5.701%** over the preceding
+production packet. Matched seven-pair A/B isolates the exact scheduling win at
+**507.391 -> 528.771 tok/s (+4.214%, 7/7 wins)**. The active stretch target is
+700 tok/s.
+
+Complete M128 tiles now append current F32 K/V through the existing BF16 cache
+writer before attention, then read prior and current K/V through one cached
+source. Global storage is overwrite-safe; SWA uses the ordering only before
+its first 512-slot ring wrap. Partial tiles, wrapped SWA, staged verifier
+transactions, gfx1100, and unmeasured backends keep attend-then-append.
+Primitive and full-model state are exact. Cached pp512 attribution cuts
+global+SWA attention **219.709 -> 176.580 ms (-19.63%, 43.129 ms saved)**.
+[`candidate artifact`](results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json).
 
 The first post-500 replacement-layout screen is closed. Q4_K T128 improves the
 exact actual layer-1 natural-M512 gate/up leaf **7.015 -> 6.157 ms (-12.23%,
@@ -83,6 +93,8 @@ regresses **508.788 -> 508.023 tok/s (-0.150%, +1.515 ms)** and wins only
 [`artifact`](results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json).
 
 Latest retained hipEngine revisions in this scoreboard:
+`7b4f2ef82` for exact cached-only M128 qrow4 attention scheduling in gfx1151
+Laguna production,
 `647ac846c` for exact activation-double-buffer gate/up production,
 `7ecd940b9` for exact static-range direct F16 boundaries in Laguna production,
 `1bac6ead5` for the exact direct attention-norm cast in Laguna production,

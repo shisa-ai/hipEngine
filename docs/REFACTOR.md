@@ -1157,6 +1157,10 @@ should be boring.
   (**507.391 -> 528.771 tok/s, +4.214%**) and at 1K/4K
   (**1.103x/1.047x**). Keep the explicit rollback through clean
   selector-unset publication and one later attention-family checkpoint.
+- Clean selector-unset publication is now satisfied at **526.451 tok/s**
+  median / **526.288 tok/s** minimum; 1K/4K improve **3.218%/5.701%**, and
+  cached tracing cuts attention **219.709 -> 176.580 ms (-19.63%)**.
+  The one-later-attention-checkpoint trigger remains open.
 - After both triggers pass, remove the public constructor override while
   retaining the backend capability/default and the automatic safety
   fallbacks. Do not remove the source-qualified kernels: wrapped SWA and

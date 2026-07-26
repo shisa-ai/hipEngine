@@ -180607,3 +180607,53 @@ Vulkan local sizes verbatim will close the measured gap.
   screen; commit the validated unit, then run a clean selector-unset pp512
   publication. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`.
+
+## 2026-07-26 — Publish exact cached-only qrow4 attention production
+
+- Ran the clean committed revision
+  `7b4f2ef82118a17a8a9e2eb92a836c8d529ce453` selector-unset with:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_long_context_profile.py
+  --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build
+  --output /tmp/laguna-preappend-production-clean.json`.
+- Clean pp512 samples are **531.230/526.288/526.451 tok/s**, median
+  **526.451 tok/s**, minimum **526.288 tok/s**. This improves the preceding
+  **505.084 tok/s** production row by **4.230%**. Clean 1K is
+  **467.846 tok/s (+3.218%)** and 4K is **377.905 tok/s (+5.701%)**.
+  Tokens remain 2930/95/7772, repeats and final positions are exact, and all
+  tracked allocations/bytes return to zero. Raw SHA-256 is
+  `125cff72bef240a0862f1c4c6cea29704897d9358be075b29a0bcb577ae7f22c`.
+- Prebuilt outside profiling, then ran:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=.
+  rocprofv3 --kernel-trace --output-format csv
+  -d /tmp/laguna-preappend-production-rocprof --
+  .venv/bin/python3 -u scripts/laguna_long_context_profile.py
+  --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build
+  --output /tmp/laguna-preappend-production-rocprof.json`.
+  The trace child reaches **532.101 tok/s** at pp512 with 1,886 dispatches,
+  **958.197 ms** kernel span, and **947.513 ms** kernel sum. Global attention
+  is **33.399 ms** and SWA **143.180 ms**: combined attention falls
+  **219.709 -> 176.580 ms (-19.63%, 43.129 ms saved)**. Gate/up is
+  **314.555 ms**, selected down **203.923 ms**, source-F16 **124.792 ms**,
+  dense/shared **53.272 ms**, and router **23.625 ms**.
+- Trace-child, trace-CSV, and summary SHA-256 are respectively
+  `f0e205913c4c887be9c23e3f84b6f4c1a59a529c05f06abd15af30728cd34c20`,
+  `51e9e5474fb79c99f88a2dd4b783500f431da4362251cac90313d2b2e5b96430`,
+  and `d2f540ea0140ead224a1131d81920b513e56d0f7c7b8e12df545c04ef16da710`.
+  The existing exact primitive/full-state proof transfers the admitted
+  absolute quality gate: max KL **0.049542582**, top-1 **316/320**, category
+  minimum **96.875%**, Poolside/decode/determinism/lifecycle pass.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
+  and refreshed the benchmark rollup, changelog, refactor trigger, and
+  `docs/LAGUNA-prefill.md`. Current production is **526.451 tok/s**; selected
+  down at **203.923 ms** and about **61.1%** of the requested-byte read anchor
+  is the next measured optimization target.
