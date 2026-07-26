@@ -26,6 +26,26 @@ See also:
 
 This is the authoritative list of kernels/oracles that exist in this repo today. Empty backend family packages under `hipengine/kernels/hip_gfx1100/*/` are placeholders, not implemented kernels.
 
+### Laguna gfx1151 exact cached-only qrow4 prefill
+
+The global/SWA `laguna_attention_prefill` family now registers cached-only
+qrow4 variants that consume complete `KVLiveSpans` after the existing writer
+has rounded and appended one M128 K/V tile. The gfx1151 scheduler pre-appends
+all complete global tiles and only pre-wrap SWA tiles; partial tiles, wrapped
+SWA, staged verifier transactions, gfx1100, and unmeasured backends retain
+attend-then-append. This avoids destroying SWA keys that remain visible across
+a ring wrap.
+
+The M128 GPU fixture is F32 byte-identical to production qrow4 for both layer
+types. Cached tracing names global `<4,true>` and SWA `<4,true,true>` at
+local32, VGPR64, SGPR128, zero LDS, and zero scratch. The implementation-tree
+screen improves global **1.305x** and SWA **1.142–1.186x** across pp512 tile
+positions. Seven paired full-model runs improve **507.391 -> 528.771 tok/s
+(1.042x)** with every pair positive and complete output/state exactness; 1K
+and 4K diagnostics remain exact at **1.103x/1.047x**. Clean selector-unset
+publication remains the production-claim gate. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers

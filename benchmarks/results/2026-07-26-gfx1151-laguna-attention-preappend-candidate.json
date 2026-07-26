@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_attention_preappend_candidate",
+  "status": "implementation_retained_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "hardware": "AMD Radeon 8060S Graphics",
+    "model": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "schedule": "append complete M128 tile before qrow4 attention",
+    "global_scope": "all complete M128 tiles",
+    "swa_scope": "complete M128 tiles whose end does not exceed the 512-slot ring capacity",
+    "fallbacks": [
+      "partial attention tiles",
+      "wrapped SWA tiles",
+      "staged verifier transactions",
+      "unmeasured backends"
+    ],
+    "arithmetic": "unchanged qrow4 dot, online softmax, PV order, and F32 output; current F32 K/V is rounded once by the existing BF16 append writer and then read from the cache"
+  },
+  "leaf": {
+    "protocol": "nine counter-rotated burst-25 HIP-event samples after one cached build",
+    "start_0": {
+      "global_production_ms": 0.2433342742919922,
+      "global_cached_ms": 0.18643596649169922,
+      "global_speedup": 1.3051895450807571,
+      "swa_production_ms": 0.36020843505859373,
+      "swa_cached_ms": 0.3154498863220215,
+      "swa_speedup": 1.141887984993221
+    },
+    "start_384": {
+      "global_production_ms": 1.5606013488769532,
+      "global_cached_ms": 1.1958455657958984,
+      "global_speedup": 1.305019137515713,
+      "swa_production_ms": 1.9668614196777343,
+      "swa_cached_ms": 1.6583244323730468,
+      "swa_speedup": 1.1860534532818612
+    }
+  },
+  "full_model_pp512": {
+    "protocol": "one-load, seven paired counter-rotated implementation-worktree runs; synchronized prefill wall excludes model load",
+    "production_samples_tok_s": [
+      507.39080204934595,
+      507.6408746508846,
+      507.3486197237073,
+      504.15787268628316,
+      506.90703554792714,
+      509.7867968250999,
+      508.42713005020914
+    ],
+    "production_median_tok_s": 507.39080204934595,
+    "production_min_tok_s": 504.15787268628316,
+    "preappend_samples_tok_s": [
+      528.5270182206377,
+      528.771062477596,
+      527.7520524930546,
+      527.3666509901093,
+      533.6015392770638,
+      529.9464549492512,
+      529.143319625109
+    ],
+    "preappend_median_tok_s": 528.771062477596,
+    "preappend_min_tok_s": 527.3666509901093,
+    "speedup": 1.042137658668418,
+    "candidate_pair_wins": 7,
+    "pairs": 7
+  },
+  "long_context_diagnostic": {
+    "1024": {
+      "production_tok_s": 427.69768717174315,
+      "preappend_tok_s": 471.74031009436607,
+      "speedup": 1.1029760605297299,
+      "exact": true
+    },
+    "4096": {
+      "production_tok_s": 360.5634370963298,
+      "preappend_tok_s": 377.44268854854755,
+      "speedup": 1.0468135415730138,
+      "exact": true
+    }
+  },
+  "correctness": {
+    "red": "registry test failed import before cached-only wrappers existed",
+    "primitive": "global and SWA M128 candidate outputs are F32 byte-identical to production qrow4",
+    "full_model": "every pp512 pair plus 1K and 4K match token, next-logit bits, full-logits SHA-256, final-hidden SHA-256, post-layer-hidden SHA-256, and final cursor",
+    "focused_tests": "50 passed across Laguna KV, resident runner, and gfx1151 backend tests",
+    "lifecycle": "all full-model diagnostics returned tracked allocations and bytes to zero"
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-preappend-trace.kSaYNl --output-file preappend -- env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_preappend_cached_qrow4_matches_current_source_qrow4",
+    "csv_sha256": "8b11bf9f9090feac62a5e7f51ce7e7bc31f068f904ad15e40a14aa03dd4c5e4c",
+    "global_cached": {
+      "duration_us": 266.46,
+      "workgroup": 32,
+      "vgpr": 64,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "swa_cached": {
+      "duration_us": 324.57,
+      "workgroup": 32,
+      "vgpr": 64,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "commands": {
+    "focused": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_gguf_runner.py tests/test_gfx1151_backend.py",
+    "full_model": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u - <same-load paired LagunaGGUFResidentSession benchmark shown in WORKLOG.md>"
+  },
+  "decision": "Retain the implementation and gfx1151 package default, then require a clean selector-unset pp512 publication before making a production performance claim."
+}
