@@ -181580,3 +181580,34 @@ Vulkan local sizes verbatim will close the measured gap.
   The small magnitude confirms padded activation arithmetic is secondary;
   clean publication is required, then the campaign returns to a new
   cross-tile/expert reuse architecture.
+
+## 2026-07-26 — Publish exact Q6 padded-activation production
+
+- Clean selector-unset revision `fe105632c` measures
+  **551.459/517.307/432.099 tok/s** median at 512/1K/4K, improving the
+  preceding half-row packet **0.420%/0.456%/0.418%**. Every expected next
+  token remains **2930/95/7772**, final positions/repeats are deterministic,
+  and all **78,777,775,764 tracked bytes** return to zero. Raw SHA-256 is
+  `cfd317201355f24e2c28d6a492eed1fb640db2a7c0c3f8a8d8bc3e2aaff6bde1`.
+- Cached production tracing independently measures **552.796 tok/s**,
+  **912.568 ms** kernel sum, and **922.756 ms** span across 1,792 dispatches.
+  The intended Q6 template `<1,true,false,128,64,true,true,true,true>` runs
+  23 times at local128/VGPR88/SGPR128/LDS5120B/scratch0. Total selected down
+  is **190.363 ms**: **71.561 ms** Q4 plus **118.802 ms** Q6.
+- The single Q6 trace is **0.198%** slower than the preceding trace and is
+  explicitly treated as noise, not promotion evidence. Retention rests on the
+  exact repeated 23-layer screen (**112.008 -> 111.806 ms, -0.180%,
+  19/23 wins**), exact eleven-pair complete-state A/B
+  (**552.983 -> 553.559 tok/s, +0.104%**), and positive clean medians at all
+  three lengths.
+- Raw child/trace/summary SHA-256 values are
+  `ebc2a4c20dabca19ab2fee572e8aec9a6325d1ba1b4e919f59fbb37497ee4e6c`,
+  `c1100dc7c1ebcad97d39b2180160f955af0b99b7a79a091f65ba38bff752a4e0`,
+  and `6b9bc348f9f2b97f3e81a5950914ee6915e834ac97961da0ee5733fbd60486f9`.
+- Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-production.json`
+  and refresh the 700-target family table. Clean wall is **928.447 ms**,
+  leaving **197.018 ms** to 700. Padded activation work is now closed as a
+  material lever; the next bounded screen is the remaining sole-resident,
+  byte-neutral X16 or genuinely different Q4 microtile premise, with exact
+  c1 decode before prefill integration.
