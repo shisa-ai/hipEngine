@@ -28,6 +28,9 @@ _CACHED_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_cached_online_spans"
 _CACHED_META_GLOBAL_PREFILL_VARIANT = (
     "global_context_rows_qrow4_cached_meta_online_spans"
 )
+_CACHED_META_GLOBAL_QROW6_PREFILL_VARIANT = (
+    "global_context_rows_qrow6_cached_meta_online_spans"
+)
 _GLOBAL_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_GLOBAL_PREFILL_VARIANT,
@@ -105,6 +108,7 @@ class LagunaKVCache:
         sliding_window: int,
         backend: str,
         prefill_cached_meta: bool,
+        prefill_global_qrow6: bool,
         row_position: DeviceBuffer,
         runtime: HipRuntime,
     ) -> None:
@@ -114,6 +118,7 @@ class LagunaKVCache:
         self.sliding_window = int(sliding_window)
         self.backend = str(backend)
         self.prefill_cached_meta = bool(prefill_cached_meta)
+        self.prefill_global_qrow6 = bool(prefill_global_qrow6)
         self._row_position = row_position
         self.runtime = runtime
         self.position = -1
@@ -471,11 +476,14 @@ class LagunaKVCache:
         )
         start_position = int(self._pending_positions[int(row_offset)])
         if state.attention_type == FULL_ATTENTION:
-            variant = (
-                _CACHED_META_GLOBAL_PREFILL_VARIANT
-                if self.prefill_cached_meta and start_position >= 128
-                else _CACHED_GLOBAL_PREFILL_VARIANT
-            )
+            if self.prefill_cached_meta and start_position >= 128:
+                variant = (
+                    _CACHED_META_GLOBAL_QROW6_PREFILL_VARIANT
+                    if self.prefill_global_qrow6
+                    else _CACHED_META_GLOBAL_PREFILL_VARIANT
+                )
+            else:
+                variant = _CACHED_GLOBAL_PREFILL_VARIANT
         else:
             variant = (
                 _CACHED_META_SWA_PREFILL_VARIANT
@@ -707,6 +715,7 @@ def allocate_laguna_kv_cache(
     swa_decode_variant: str | None = None,
     swa_prefill_variant: str | None = None,
     prefill_cached_meta: bool = False,
+    prefill_global_qrow6: bool = False,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -871,6 +880,7 @@ def allocate_laguna_kv_cache(
             sliding_window=sliding_window,
             backend=backend,
             prefill_cached_meta=prefill_cached_meta,
+            prefill_global_qrow6=prefill_global_qrow6,
             row_position=_buffer_for_tensor(row_position, buffers),
             runtime=runtime,
         )

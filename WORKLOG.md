@@ -181379,3 +181379,25 @@ Vulkan local sizes verbatim will close the measured gap.
   Publish the compact candidate artifact, commit the primitive, then integrate
   only complete preappended global M128 tiles at start >=128 and run a
   repeated complete-state pp512 A/B.
+
+## 2026-07-26 — Admit qualified global qrow6 on gfx1151
+
+- RED changed the backend capability import, session/cache propagation, and
+  cached-policy expectations before implementation. GREEN adds
+  `LAGUNA_PREFILL_GLOBAL_QROW6`, propagates the optional
+  `prefill_global_qrow6` rollback through the torch-free session/KV owner, and
+  selects qrow6 only for complete preappended global M128 tiles at absolute
+  start >=128. Global start 0, every SWA tile, unsafe/residual/verifier
+  transactions, gfx1100, and unmeasured backends retain qrow4. The complete
+  gfx1151/runner/KV bundle reports **52 passed**.
+- One-load, seven-pair counterbalanced pp512 admission measures qrow4
+  **546.056 tok/s** median and qrow6 **548.774 tok/s (+0.498%)**. The
+  candidate wins **7/7** and saves **4.645 ms** at the median. All fourteen
+  runs select token 2930; next-logit, full logits, final/post-layer hidden,
+  complete KV, and cursor hashes are identical. Raw SHA-256 is
+  `f29094d0a8c715029bcd5324368dddedbd2ae7bbb8548b6b8d1e3373ca0bbde5`.
+- Retain qrow6 as the gfx1151 package default and qrow4 as explicit rollback.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-default.json`.
+  Commit the integration, then run clean selector-unset 512/1K/4K production
+  plus a cached full-family trace before updating the production headline.

@@ -65,6 +65,10 @@ LAGUNA_PREFILL_KV_PREAPPEND = True
 # slice on the source-qualified cached kernel while enabling metadata-only SWA
 # and global tiles beginning at position 128.
 LAGUNA_PREFILL_CACHED_META = True
+# Exact global-only qrow6 reuses each streamed BF16 K/V row across six adjacent
+# queries. Leaf admission is limited to complete preappended global M128 tiles
+# beginning at position 128; global start 0 and every SWA tile retain qrow4.
+LAGUNA_PREFILL_GLOBAL_QROW6 = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps

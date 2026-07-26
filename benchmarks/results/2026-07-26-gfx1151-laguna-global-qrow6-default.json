@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_global_qrow6_default",
+  "status": "retained_default_candidate",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "prompt_tokens": 512,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "repo": {
+    "base_revision": "87e132fdb",
+    "tracked_clean": false,
+    "reason": "Matched A/B validated the runtime integration before its atomic commit."
+  },
+  "candidate": {
+    "capability": "LAGUNA_PREFILL_GLOBAL_QROW6=true on gfx1151",
+    "policy": "cached-metadata global qrow6 for safe complete M128 tiles at start_position >=128",
+    "fallbacks": [
+      "explicit prefill_global_qrow6=false",
+      "global start_position 0",
+      "all SWA tiles",
+      "partial tiles",
+      "wrapped SWA",
+      "staged verifier transactions",
+      "gfx1100 and unmeasured backends"
+    ]
+  },
+  "protocol": {
+    "repetitions": 7,
+    "order": "alternating qrow4/qrow6 pairs on one borrowed resident-weight owner",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_global_qrow6_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-attention-global-qrow6-ab.json"
+  },
+  "performance": {
+    "global_qrow4_rollback_samples_tok_s": [
+      546.0556629710333,
+      547.1367839759503,
+      546.5522343123021,
+      543.3748150259045,
+      540.8442201682255,
+      543.7462016595673,
+      552.3409301030504
+    ],
+    "global_qrow6_candidate_samples_tok_s": [
+      549.9459806022946,
+      547.9811051564309,
+      547.4243620644623,
+      549.4671819367649,
+      548.7742863517556,
+      547.7458691167418,
+      554.2946962640102
+    ],
+    "global_qrow4_rollback_median_tok_s": 546.0556629710333,
+    "global_qrow6_candidate_median_tok_s": 548.7742863517556,
+    "throughput_change_percent": 0.49786561427282994,
+    "median_wall_savings_ms": 4.645028035156429,
+    "candidate_pair_wins": 7,
+    "pair_count": 7
+  },
+  "correctness": {
+    "complete_state_exact": true,
+    "next_token": 2930,
+    "next_token_logit_hex": "0x1.a856da0000000p+4",
+    "logits_sha256": "0014c1cbbf2aa19f24e4a354f0ef1593f818840677c000eb0423584a233446cb",
+    "final_hidden_sha256": "7f45e9925b176db56e5efad6fc49d5a399924f62f17c8678f59dfb485d9c2b7c",
+    "post_layer_hidden_sha256": "f7d73ad00f630ca6a55d1b004809e84088515ff2772f51b33180450d09fff2f8",
+    "kv_sha256": "aaa785452719e996b27e6929c83c0089f89d45f466a077da2336edc2c133748a",
+    "final_position": 511,
+    "quality_transfer": {
+      "max_kl_divergence": 0.04954258196634279,
+      "top1_agreement": "316/320",
+      "minimum_category_top1": 0.96875,
+      "basis": "The candidate preserves every F32 attention output bit and all compared full-model output/state digests."
+    }
+  },
+  "validation": {
+    "red": "Backend capability import, session propagation, and qualified variant-selection tests failed before runtime integration.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_laguna_gguf_runner.py tests/test_laguna_kv_attention.py --tb=short",
+    "green_result": "52 passed",
+    "primitive_trace": {
+      "template": "laguna_global_attention_prefill_qrows_online_bf16_kernel<6,true,true>",
+      "workgroup_size": 32,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "provenance": {
+    "raw_sha256": "f29094d0a8c715029bcd5324368dddedbd2ae7bbb8548b6b8d1e3373ca0bbde5",
+    "primitive_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-candidate.json"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_package_default_changed": true,
+    "rollback": "LagunaGGUFResidentSession(..., prefill_global_qrow6=false)",
+    "next_gate": "Commit, then run clean selector-unset 512/1K/4K production and cached full-family trace."
+  }
+}

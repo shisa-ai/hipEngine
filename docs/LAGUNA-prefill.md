@@ -745,9 +745,11 @@ Immediate execution queue:
    new exact global-only qrow6 primitive is the active bounded screen:
    qrow4 -> qrow6 improves **1.202x/1.262x/1.278x** at global starts
    128/256/384, is neutral at start 0, and models **6.083 ms** pp512 saving.
-   Its SWA sibling lost **10.9–18.4%** and is removed. Integrate only the
-   qualified global positions, then require repeated complete-state pp512 A/B
-   before making it the gfx1151 default.
+   Its SWA sibling lost **10.9–18.4%** and is removed. The qualified global
+   policy now passes its repeated complete-state gate:
+   **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** with every compared
+   output/state digest exact. It is the gfx1151 default with explicit qrow4
+   rollback, pending clean selector-unset 512/1K/4K publication and tracing.
 3. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
    The schedule-correct requested-byte ledger is published: gate/up is
    **162.15 GB/s (73.37%)** and down **137.16 GB/s (62.06%)** against the

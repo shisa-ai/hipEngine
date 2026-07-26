@@ -800,7 +800,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.prefill_attention_chunk_size == 128
     assert session.prefill_kv_preappend is True
     assert session.prefill_cached_meta is True
+    assert session.prefill_global_qrow6 is True
     assert kv_kwargs["prefill_cached_meta"] is True
+    assert kv_kwargs["prefill_global_qrow6"] is True
     assert session.prefill_scratch_plan.total_nbytes == 1_755_275_296
     assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
     assert (
