@@ -52,6 +52,13 @@ should be removed or collapsed.
   constructor/CLI and one-queue rollbacks through the active delayed-launch
   MoE checkpoint; after that, remove redundant public positive selection while
   retaining the automatic sequential safety fallback.
+- The delayed-launch checkpoint temporarily adds
+  `moe_shared_launch_phase={eager,before_down}` at the row launcher, session,
+  and long-profile CLI. `eager` remains production while `before_down` records
+  the dependency event after selected gate/up and overlaps only the selected
+  down window. Remove the losing phase and its public selector immediately
+  after the queue-matched A/B and trace; if `before_down` wins, collapse it into
+  the gfx1151 schedule and retain only the sequential one-queue fallback.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 

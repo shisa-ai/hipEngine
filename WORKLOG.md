@@ -182295,3 +182295,24 @@ Vulkan local sizes verbatim will close the measured gap.
   gate/up **314.560 -> 322.200 ms** and router **23.438 -> 44.075 ms**; the
   **189.713-ms** selected-down window, especially lower-bandwidth Q6, should
   be a less destructive concurrency partner.
+
+## 2026-07-26 — Add exact delayed shared-launch candidate
+
+- RED first failed collection because the requested shared-launch phase
+  resolver did not exist. GREEN adds the explicit
+  `eager`/`before_down` schedule at the MoE row launcher, resident session, and
+  long-context harness while leaving current production on `eager`.
+- `before_down` records the existing caller-to-secondary dependency event only
+  after selected gate/up is enqueued. The secondary stream therefore cannot
+  begin shared work until gate/up completes; it then runs alongside selected
+  down and still joins the caller only at the exact final combine. Kernels,
+  buffers, arithmetic, queue count, and lifecycle resources are unchanged.
+- The production-style Q4_K GPU fixture is BF16-byte exact against both the
+  sequential and eager-concurrent schedules. The full affected
+  runner/profile bundle passes **45 tests**; Python compilation and diff
+  checks pass. The existing Q6 parameter remains outside this focused gate
+  because its baseline compact-activation selector fails before branch
+  concurrency, as already recorded under the focused-repair rule.
+- This is default-off diagnostic surface only. Next run one resident,
+  queue-matched, counterbalanced seven-pair pp512 A/B with complete-state
+  digests, then trace only if the delayed phase wins materially.

@@ -934,6 +934,33 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(concurrent_actual),
             _f32_to_bf16_u16(fused_silu_pack_actual),
         )
+        delayed_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            concurrent_scratch,
+            rows=3,
+            selected_gate_up_mode=(
+                "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+            ),
+            selected_down_mode=(
+                "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+            ),
+            fuse_selected_silu_pack=True,
+            shared_launch_phase="before_down",
+            shared_stream=concurrent_stream,
+            shared_input_ready_event=concurrent_input_ready,
+            shared_output_ready_event=concurrent_output_ready,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        delayed_actual = _read_bf16(
+            delayed_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(delayed_actual),
+            _f32_to_bf16_u16(fused_silu_pack_actual),
+        )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
