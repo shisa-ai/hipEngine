@@ -62,12 +62,13 @@ boundary fusion now publishes clean selector-unset
 **559.554/523.912/440.809 tok/s** and removes **96** pp512 dispatches while
 preserving complete state exactly. Selected-down persistence and row64
 screens are closed. Exact shared/routed MoE branch concurrency now supersedes
-that packet, and the exact after-router schedule now publishes
-**566.839/527.381/444.447 tok/s**. The automatic two-queue policy protects
-router selection before releasing shared work and cuts pp512 kernel span
-**898.334 -> 898.024 ms** versus eager overlap. Moving shared work after
-gate/up is rejected; the next bounded screen gives the secondary shared stream
-lower priority so routed gate/up can retain bandwidth.
+that packet. The exact after-router, least-priority shared schedule now
+publishes **568.849/527.113/444.508 tok/s**. The automatic two-queue policy
+protects router selection before releasing shared work and cuts pp512 kernel
+span **898.024 -> 890.769 ms** versus priority-0 after-router overlap. Moving
+shared work after gate/up is rejected. The next bounded screen holds priority
++1 constant and tests whether eager release can eliminate the remaining
+**0.853-ms** secondary spill without reintroducing router contention.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -81,8 +82,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **566.839 tok/s**
-selector-unset, **7.436x** the old row and **64.511%** above the Vulkan
+The quality-admitted production default now measures **568.849 tok/s**
+selector-unset, **7.463x** the old row and **65.094%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -723,7 +724,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | Clean revision `764de3fc4` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Exact after-router shared/routed concurrency publishes **566.839/527.381/444.447 tok/s** at 512/1K/4K. Seven queue-matched pairs preserve complete state; cached tracing reaches **569.763 tok/s**, observes two queues/two streams, protects router selection, and records **1,696** pp512 dispatches. |
+| Production publication | Complete/current | Clean revision `a63a503b3` retains the direct all-exact gate at max KL **0.049542582**, **316/320** top-1, neutral decode, deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Exact after-router, least-priority shared/routed concurrency publishes **568.849/527.113/444.508 tok/s** at 512/1K/4K. Seven queue-matched pairs preserve complete state; cached tracing reaches **574.011 tok/s**, observes two queues/two streams, protects routed gate/up, and records **1,696** pp512 dispatches. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -735,12 +736,12 @@ Current progress:
 ## Post-500 campaign — 700 production stretch
 
 The 350 and 500 tok/s milestones prove the compounded production package, but
-they are not roofline results. Current clean production measures **0.903255
+they are not roofline results. Current clean production measures **0.900063
 seconds** synchronized pp512 wall. The cached attribution run measures
-**0.898619 seconds** wall, **0.898024 seconds** kernel span, and **1.157790
+**0.891968 seconds** wall, **0.890769 seconds** kernel span, and **1.218893
 seconds** inclusive kernel sum. The sum now exceeds span because two streams
 overlap; inclusive family durations are no longer additive Amdahl savings.
-Only **0.595 ms** of traced wall lies outside the kernel span, so graphs,
+Only **1.199 ms** of traced wall lies outside the kernel span, so graphs,
 Python removal, and submission tuning remain explicitly closed.
 
 The achieved 500 gate required at least three clean selector-unset pp512
@@ -752,22 +753,22 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | Inclusive pp512 kernel time | Inclusive-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **344.619 ms** | **29.77%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Protecting router shifts shared contention here and adds **22.418 ms** versus eager overlap. Lower-priority shared scheduling is the next bounded screen. |
-| Selected D4 Q4/Q6 down | **190.880 ms** | **16.49%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. Q4 physically fetches **13.405 GB / 72.195 ms (185.68 GB/s)**; Q6 reaches only **123.99 GB/s**. This long window is available to hide lower-priority shared work. |
-| Global + SWA attention | **143.852 ms** | **12.42%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
-| Static-range direct hipBLASLt source-F16 | **124.841 ms** | **10.78%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
-| Q4/Q6 WMMA dense/shared | **97.125 ms** | **8.39%** | This inclusive family overlaps routed work. The full secondary branch totals **269.084 ms** under contention and overlaps **268.439 ms (99.76%)**; only its critical-path spill matters. |
-| Router | **23.356 ms** | **2.02%** | The after-router boundary recovers **20.720 ms** and is production. Eight-token reuse remains retained; keep shared work behind this exact prefix. |
-| Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **233.118 ms** | **20.13%** | This includes the heavily slowed secondary shared SiLU and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
+| Selected D8 Q4 gate/up | **337.502 ms** | **27.69%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Least-priority shared scheduling recovers **7.116 ms** versus priority 0, but this remains the largest inclusive family. |
+| Selected D4 Q4/Q6 down | **190.799 ms** | **15.65%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. Q4 physically fetches **13.405 GB / 72.195 ms (185.68 GB/s)**; Q6 reaches only **123.99 GB/s**. This long window hides lower-priority shared work. |
+| Global + SWA attention | **143.121 ms** | **11.74%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
+| Static-range direct hipBLASLt source-F16 | **124.629 ms** | **10.22%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
+| Q4/Q6 WMMA dense/shared | **94.228 ms** | **7.73%** | This inclusive family overlaps routed work. The full secondary branch totals **337.239 ms** at least priority and overlaps **336.386 ms (99.75%)**; only its **0.853-ms** critical-path spill matters. |
+| Router | **23.191 ms** | **1.90%** | The after-router boundary remains production. Eight-token reuse is retained; the next bounded screen tests whether least-priority scheduling alone protects this prefix under eager release. |
+| Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **305.422 ms** | **25.06%** | This includes the heavily slowed secondary shared SiLU and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
 
 The current trace gives concrete Amdahl checkpoints, not performance claims:
 
-- The clean production median is **566.839 tok/s**, and cached attribution
-  independently measures **569.763 tok/s**. The declared 500 gate is closed.
+- The clean production median is **568.849 tok/s**, and cached attribution
+  independently measures **574.011 tok/s**. The declared 500 gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
-- The clean wall must fall from **903.255 ms** to **731.429 ms** for 700 tok/s,
-  a further **171.827 ms**. Attention-only tuning cannot supply that result;
+- The clean wall must fall from **900.063 ms** to **731.429 ms** for 700 tok/s,
+  a further **168.634 ms**. Attention-only tuning cannot supply that result;
   selected-down traffic, then a new gate/up architecture, must compound with
   any additional attention win. The measured source-F16 grouping ceiling
   cannot materially close the gap.
@@ -1025,7 +1026,7 @@ Immediate execution queue:
    **0.310-ms** kernel-span win. The gfx1151 capability and clean
    selector-unset publication now pass at **566.839/527.381/444.447 tok/s**.
    Do not model this verified micro-win as material progress toward 700.
-11. **Active next screen:** create the after-router secondary stream at the
+11. **Retained production:** create the after-router secondary stream at the
    device's lowest scheduling priority, if gfx1151 exposes a non-degenerate
    priority range. The current trace slows secondary work to **269.084 ms** and
    raises gate/up **22.418 ms**, while more than **500 ms** of routed gate/up
@@ -1036,8 +1037,15 @@ Immediate execution queue:
    (+0.494%, 6/7 wins)**. Tracing recovers gate/up **344.619 -> 337.502 ms**
    and cuts kernel span **898.024 -> 890.769 ms (-7.255 ms)**. Shared work
    slows **269.084 -> 337.239 ms**, but **99.75%** remains hidden and only
-   **0.853 ms** is unoverlapped. Promote through a gfx1151 capability and
-   require clean selector-unset publication.
+   **0.853 ms** is unoverlapped. The gfx1151 capability and clean
+   selector-unset publication pass at **568.849/527.113/444.508 tok/s**.
+12. **Active next screen:** hold the shared stream at priority +1 in both arms
+   and compare eager release against the retained after-router boundary.
+   Earlier release restores the longest possible overlap window and may remove
+   the remaining **0.853-ms** shared spill; priority protection may be enough
+   to keep router and gate/up on the critical path. Require seven
+   counterbalanced complete-state-exact pairs and trace only if eager release
+   is positive. No new production surface is needed for this screen.
 
 Post-350 exclusions:
 
@@ -2104,8 +2112,14 @@ qualified 12/36/144 dense-initial launch mix. Evidence:
 
 Production evidence:
 
-- [`2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json)
+- [`2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json)
   is current production: clean selector-unset medians are
+  **568.849/527.113/444.508 tok/s** at 512/1K/4K. Seven matched pairs
+  preserve logits, both hidden snapshots, complete KV, token/logit, and cursor
+  exactly. Cached tracing reaches **574.011 tok/s**, recovers **7.116 ms** of
+  gate/up, and cuts kernel span **7.255 ms**.
+- [`2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json)
+  is the superseded source-F16 boundary packet: clean selector-unset medians are
   **559.554/523.912/440.809 tok/s** at 512/1K/4K. Seven matched pairs
   preserve logits, both hidden snapshots, complete KV, token/logit, and cursor
   exactly. Cached tracing reaches **561.019 tok/s**, removes 96 standalone
@@ -2706,7 +2720,7 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**566.839 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+**568.849 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
 active targets.
 
 All headline rows also report canonical category-weighted prefill and

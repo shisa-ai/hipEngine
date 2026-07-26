@@ -182470,3 +182470,28 @@ Vulkan local sizes verbatim will close the measured gap.
   pass.
 - This commit promotes policy only. Clean selector-unset 512/1K/4K medians
   remain required before updating the production headline.
+
+## 2026-07-26 — Publish low-priority shared-stream production
+
+- Clean selector-unset revision `a63a503b3` records automatic queue2,
+  after-router release, low-priority capability, and the actual `(least=+1,
+  greatest=-1)` range. Three repetitions publish
+  **568.849/527.113/444.508 tok/s** at 512/1K/4K versus
+  **566.839/527.381/444.447**, changing **+0.355%/-0.051%/+0.014%**. The
+  1K/4K rows are flat within ordinary run variance.
+- Tokens remain 2930/95/7772, positions are exact, repeats deterministic, and
+  tracked allocations return to zero. Priority-1 primitive equality and seven
+  complete-state pairs transfer max KL **0.049542582**, **316/320** top-1,
+  decode neutrality, and admitted lifecycle through 4K unchanged.
+- Cached tracing reaches **574.011 tok/s** and cuts kernel span
+  **898.024 -> 890.769 ms (-7.255 ms)** while recovering **7.116 ms** from
+  gate/up. The slower shared branch remains **99.75%** hidden.
+- Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json`.
+  Raw selector-unset SHA-256:
+  `8ea2c6dd43b0836128dd978e7a78b994c89f191ce9cb89c1824a7cb86e29afe8`.
+  Clean pp512 wall is **900.063 ms**; 700 requires another **168.634 ms**.
+- Next bounded screen requires no new code: under priority +1 in both arms,
+  compare eager shared release against the current after-router boundary.
+  Priority should protect router work while the earlier release may eliminate
+  the remaining **0.853-ms** secondary spill.

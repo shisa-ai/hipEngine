@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna low-priority shared-stream production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / selector-unset priority +1 publishes **568.849/527.113/444.508 tok/s** versus **566.839/527.381/444.447 (+0.355%/-0.051%/+0.014%; 1K/4K flat)**; matched complete state is exact and tracing cuts kernel span **7.255 ms**; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json`.
+
 - [retained exact gfx1151 Laguna low-priority shared-stream candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / moving the after-router shared stream from HIP priority **0 -> +1** improves matched pp512 **568.106 -> 570.914 tok/s (+0.494%, 6/7 wins)** with complete state exact; tracing recovers **7.116 ms** of gate/up and cuts kernel span **898.024 -> 890.769 ms (-7.255 ms)** while keeping **99.75%** of the slowed shared branch hidden; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-candidate.json`.
 
 - [retained exact gfx1151 Laguna after-router shared schedule production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the selector-unset gfx1151 capability publishes **566.839/527.381/444.447 tok/s** versus **565.447/526.711/443.444 (+0.246%/+0.127%/+0.226%)**; all pp512 samples exceed the old median, complete state is exact, and tracing verifies the retained **0.310-ms** kernel-span reduction; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json`.

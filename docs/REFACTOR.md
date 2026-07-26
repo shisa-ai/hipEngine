@@ -86,6 +86,11 @@ should be removed or collapsed.
   package. `--no-moe-shared-low-priority` and an explicit constructor false
   remain exact priority-0 rollback. Clean selector-unset 512/1K/4K publication
   is the remaining promotion gate.
+- Clean selector-unset publication passes at
+  **568.849/527.113/444.508 tok/s**; 1K/4K are flat within
+  **-0.051%/+0.014%**. Keep explicit priority-0 rollback through the active
+  eager-priority1 versus after-router-priority1 checkpoint, then collapse
+  redundant positive selection.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 
