@@ -72,6 +72,7 @@ from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_iq3_c1_down_schedule,
     resolve_laguna_moe_plan,
+    resolve_laguna_router_selector_compact_wave32,
     resolve_laguna_selected_down_mode,
     run_laguna_moe_c1_components,
     run_laguna_moe_rows,
@@ -1811,6 +1812,7 @@ class LagunaGGUFResidentSession:
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
         use_q4_lm_head_local32_fixed_meta: bool | None = None,
+        use_router_selector_compact_wave32: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1891,6 +1893,12 @@ class LagunaGGUFResidentSession:
             _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT
             if self.use_q4_lm_head_local32_fixed_meta
             else None
+        )
+        self.use_router_selector_compact_wave32 = (
+            resolve_laguna_router_selector_compact_wave32(
+                self.backend,
+                use_router_selector_compact_wave32,
+            )
         )
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
@@ -1985,7 +1993,20 @@ class LagunaGGUFResidentSession:
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
                 use_iq2_grid64=self.use_iq2_grid64,
+                use_router_selector_compact_wave32=(
+                    self.use_router_selector_compact_wave32
+                ),
             )
+            c1_router_select_key = getattr(
+                self.moe_plan,
+                "c1_router_select_key",
+                None,
+            )
+            router_select_key = getattr(self.moe_plan, "router_select_key", None)
+            if c1_router_select_key is not None and router_select_key is not None:
+                self.use_router_selector_compact_wave32 = (
+                    c1_router_select_key != router_select_key
+                )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,
@@ -3792,4 +3813,5 @@ __all__ = [
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",
+    "resolve_laguna_router_selector_compact_wave32",
 ]
