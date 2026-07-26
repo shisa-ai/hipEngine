@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q4_k_qmicro_direct_wave_screen",
+  "status": "rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "weights": "blk.1.ffn_gate_exps.weight + blk.1.ffn_up_exps.weight"
+  },
+  "candidate": {
+    "geometry": "production 128 output columns x 32 routed rows, local128, direct per-column wave decode, D8 activation double buffer",
+    "premise": "combine the byte-neutral Q4 qmicro resident layout with the production direct-wave register schedule",
+    "distinction": "the prior qmicro rejection used the older shared-MMQ32 consumer; this screen uses the admitted direct-wave body",
+    "layout_bytes": {
+      "resident_t16_gate_up_pair": 931135488,
+      "qmicro_gate_up_pair": 905969664,
+      "saved": 25165824,
+      "saved_percent": 2.7777777778,
+      "sidecar": 0
+    }
+  },
+  "correctness": {
+    "red": "The production-shape uneven/empty-expert case initially failed because the wrapper had no qmicro direct-wave selector.",
+    "green": "All 12 focused Q4 selected-prefill CPU-reference quality cases passed, including counts [0,7,18,33], K512/N128.",
+    "candidate_bf16_bit_identical_to_production": true,
+    "actual_layer_checksum_f64": 1114.1769413301445,
+    "finite": true
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,qmicro-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-qmicro-direct-wave-leaf.json",
+    "timing": "counter-rotated HIP events; each mode includes the unchanged D8 activation pack",
+    "initial_unaligned_dword_metadata_load": {
+      "m256": {
+        "production_median_ms": 4.355746905008952,
+        "candidate_median_ms": 4.570041656494141,
+        "candidate_regression_percent": 4.9198164209
+      },
+      "m512": {
+        "production_median_ms": 6.670250574747722,
+        "candidate_median_ms": 7.081542332967122,
+        "candidate_regression_percent": 6.1660615836
+      },
+      "raw_sha256": "936645acd34925e75ac9d3b37a08b93666c4be3eb353eb326a63f877f870cfd5"
+    },
+    "explicit_three_byte_metadata_load": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,qmicro-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-qmicro-direct-wave-byte-loads-leaf.json",
+      "production_median_ms": 6.860525131225586,
+      "candidate_median_ms": 7.087357838948567,
+      "candidate_regression_percent": 3.306346138,
+      "raw_sha256": "351c3842f89c6fbe088885935919326d2cadca31d746488ef34f19476618681a"
+    }
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q4-qmicro-byte-trace -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,qmicro-mmq128x32-d8-f32-wavecols-direct-doublebuf --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-qmicro-byte-trace-child.json",
+    "production": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroup_size": 128,
+      "vgpr": 120,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "39bfe3f96baeebaeec7c10319b63b4ad0f67e6fd59d4174cc1373302b28c9ce1",
+    "child_sha256": "9da8ac8659d2d3bc09c43aaf7a904dd4ad5fbfeaf6bea5216af54dc42a61e209"
+  },
+  "decision": {
+    "gate": "BF16 identity plus a positive actual-weight natural-M512 leaf before materialization or runtime integration",
+    "result": "fail",
+    "reason": "packed 6-bit scale/min extraction raises VGPR 88 -> 120; replacing the unaligned load with explicit byte loads does not recover resources and the best M512 leaf remains 3.31% slower",
+    "removed": [
+      "Q4 qmicro direct-wave HIP body and export",
+      "Python wrapper selector",
+      "CPU-reference fixture parameter",
+      "leaf benchmark mode"
+    ],
+    "retained": [
+      "byte-neutral host qmicro oracle",
+      "exact qmicro c1/c2/c4/c8 decode primitive and evidence"
+    ],
+    "materializer_changed": false,
+    "runtime_dispatch_changed": false,
+    "production_changed": false,
+    "production_pp512_tok_s": 573.3541789
+  },
+  "repo": {
+    "base_revision": "8c6c78cc9058d9568ff7ab76ebcdd7127fc3591d"
+  }
+}
