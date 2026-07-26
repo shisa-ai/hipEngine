@@ -170,8 +170,13 @@ tok/s (+0.870%, 6/7 wins)**. All-exact KL improves **0.002214 -> 0.002097**,
 production-vs-candidate KL is **0.000119**, and top-1 stays 2930. Cached
 tracing names the query-pack/output-unpack kernels at local256/VGPR24/SGPR128,
 zero LDS/scratch, around one QK and one PV contraction. gfx1151 enables the
-capability for clean selector-unset publication. Evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-candidate.json`.
+capability. Clean selector-unset 512/1K/4K improves
+**623.050/563.399/462.430 -> 629.101/566.858/463.903 tok/s
+(+0.971%/+0.614%/+0.318%)**. The committed all-family trace cuts pp512
+attention **82.763 -> 73.330 ms (-11.40%)** and dispatches
+**4,145 -> 2,417**, with query-pack/output-unpack still local256/VGPR24/
+SGPR128/LDS0/scratch0. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-{candidate,production}.json`.
 
 ### Laguna gfx1151 exact router token reuse
 

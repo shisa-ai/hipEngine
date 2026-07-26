@@ -183240,3 +183240,29 @@ Vulkan local sizes verbatim will close the measured gap.
   composite to global/SWA from the cache-widen specialization.
 - Validation: `tests/test_laguna_long_context_profile.py` passes **29 tests**;
   `git diff --check` passes.
+
+## 2026-07-27 — Publish packed-query BLAS attention
+
+- Clean selector-unset revision `b988eb75a` measures
+  **629.101/566.858/463.903 tok/s** at 512/1K/4K versus the prior production
+  **623.050/563.399/462.430** (**+0.971%/+0.614%/+0.318%**). The pp512 median
+  wall is **813.860 ms**, leaving **82.431 ms** to the 700-tok/s wall.
+  Tokens **2930/95/7772**, final positions, deterministic repeats, and full
+  allocation recovery pass on the clean tracked tree.
+- Route quality remains inside the direct all-exact gate: pp512 KL improves
+  **0.00221391 -> 0.00209662**, production-to-production KL is
+  **0.000119045**, and top-1 remains 2930. The unchanged short-prompt
+  compounded schedule retains category max KL **0.049542582** and
+  **316/320** top-1.
+- Cached selector-unset trace revision `f28932f52` reports pp512 attention
+  **82.763 -> 73.330 ms (-11.40%)**, dispatches **4,145 -> 2,417**, kernel
+  span **889.546 ms**, and inclusive kernel sum **1,140.942 ms**. The new
+  query-pack/output-unpack kernels run at local256/VGPR24/SGPR128/LDS0/
+  scratch0. The refreshed inclusive leaders are gate/up **339.336 ms**, down
+  **181.211 ms**, source-F16 **123.832 ms**, dense/shared **93.049 ms**, and
+  attention **73.330 ms**.
+- Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-packed-query-production.json`.
+  Attention is now fifth; the next material screen targets selected projection
+  physical bytes or a different cross-tile schedule rather than another
+  contraction-launch tweak.
