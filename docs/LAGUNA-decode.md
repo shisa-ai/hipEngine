@@ -96,14 +96,14 @@ train/heldout category positive, so local32 is now the gfx1100 default and
 explicit local128 remains rollback. Canonical h32 improves **61.732 -> 61.992
 tok/s (+0.420%)** but still needs **3.91%** to match Vulkan.
 
-The post-Q4 exact screen now has a primitive plus default-off runtime owner: the
-already-retained local32 Q6 output-pair helper has a standalone c=1 BF16/BF16
-wrapper and four-axis key. Synthetic boundaries and all **50** actual runtime
-Q6 weights are BF16-bit exact. The repository symbol improves six repeated
-actual-weight endpoints by **11.42-22.32% event** and **11.46-20.51% wall**.
-Shared-weight 16-transition full state and cached **50-call/723-kernel** tracing
-also pass exactly with no candidate prefill calls. Clean contexts and categories
-remain required, so the default and **61.992 tok/s** canonical row are unchanged.
+The post-Q4 exact screen leaves a diagnostic primitive only: the already-
+retained local32 Q6 output-pair helper has a standalone c=1 BF16/BF16 wrapper
+and four-axis key. Synthetic boundaries and all **50** actual runtime Q6 weights
+are BF16-bit exact, and repeated endpoints improve **11.42-22.32% event** and
+**11.46-20.51% wall**. A temporary default-off owner passed 16-transition state
+and cached **50-call/723-kernel** tracing, but failed the frozen short clean gate
+on kernel-sum/span/child guards. Runtime integration is removed and categories
+are skipped; the default and **61.992 tok/s** canonical row remain unchanged.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -1295,7 +1295,7 @@ BF16/BF16 projections through the generic local128 pack8 body: one dense down,
 default-selected family is context-flat at **0.592-0.612 ms/token** and uses
 local128/VGPR72/rounded LDS1024/scratch0. The retained heterogeneous attention
 quad already contained a Q6 local32 fixed-metadata helper; the standalone
-wrapper/key now has a separate explicit, default-off gfx1100 runtime owner.
+wrapper/key remains separately admitted as a runtime-unselected diagnostic.
 
 The repository primitive gives each local32 wave two output rows while carrying
 the four original local128 partitions independently. It preserves all
@@ -1310,28 +1310,29 @@ and synchronized wall **11.46-20.51%**. Cached tracing names
 local32/grid49152/VGPR80/LDS0/scratch0 at 11.000 us with no compiler under the
 profiler.
 
-This is not the rejected Q6 attention-pair lane: that candidate retained
+This is not the earlier rejected Q6 attention-pair lane: that candidate retained
 local128 ownership, fused F32 attention pairs, and failed short child throughput
-by 0.951%. The admitted sibling is separately registered only on gfx1100. A
-false backend capability plus explicit constructor/CLI opt-in now selects only
-c=1 BF16 raw single-linears; attention-output variants are registry-resolved
-once per session. F32 mixed attention, rows/prefill, Q4/Q5/Q8, gfx1151, and key
-misses retain existing routes, and no allocation, weight copy, dispatch, or
-default changes.
+by 0.951%. This local32 sibling is separately registered only on gfx1100 and a
+temporary default-off owner selected only c=1 BF16 raw single-linears. Shared-
+weight 16-transition state is exact for full logits/IDs, all **48 hidden + 47
+routed boundaries**, active K/V and every `KVLiveSpans` field, reset/re-prefill,
+ownership, and teardown (`KL=0`, top-1 100%). Cache-only tracing records exactly
+**50 candidate calls/token**, zero candidate prefill calls, local32/VGPR80/LDS0/
+scratch0, and unchanged **723 model kernels/token**.
 
-The shared-weight 16-transition gate is exact for full logits/IDs, all **48
-hidden + 47 routed boundaries**, active K/V and every `KVLiveSpans` field,
-reset/re-prefill, ownership, and teardown (`KL=0`, top-1 100%). Cache-only
-full-model tracing records exactly **50 candidate calls/token**, zero retained
-standalone Q6 decode calls, no candidate prefill calls, local32/VGPR80/LDS0/
-scratch0, and unchanged **723 model kernels/token**. The original **0.192-ms**
-isolated ceiling remains a planning model, not a throughput claim. Both clean
-context orders and both complete category orders remain mandatory before any
-promotion. Evidence:
+The frozen short clean gate nevertheless rejects the owner without rerun. Q6-
+family time improves **12.436%/13.261%** in orders A/B, but order A regresses
+complete kernel sum **0.153%** and span **2.092%**; order B regresses profiled-
+child throughput **0.642%**. Pooled rows cannot waive per-order guards, so 512/
+1K/near-4K and categories are skipped. Runtime capability/session/CLI/library
+selection is removed; F32 mixed attention, rows/prefill, Q4/Q5/Q8, gfx1151, and
+key misses retain existing routes. The **0.192-ms** isolated ceiling remains a
+rejected planning model, not a throughput claim. Evidence:
 [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json),
 [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-correctness.json),
+[`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json),
 and
-[`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json).
+[`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json).
 
 ## 9. Do not chase without new evidence
 
@@ -1384,7 +1385,7 @@ and
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
 | Is the post-router Q4 LM-head local32 design implemented or retained? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json), and [`retained`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json): yes. Production logits and default-vs-rollback state are bit-exact; every clean order improves LM-head and kernel-sum time; both category orders move h32 **61.675 -> 61.992 tok/s (+0.512%)** with all category decode rows positive. gfx1100 defaults local32 at unchanged 723 kernels/token. |
-| Is the post-Q4 Q6 local32 standalone design implemented? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-correctness.json), and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json): primitive plus default-off runtime owner. Synthetic/all-50 actual weights, 16-transition full state, and cached **50-call/723-kernel** tracing pass exactly; clean contexts and categories remain pending, so no default/topline change exists yet. |
+| Is the post-Q4 Q6 local32 standalone design implemented? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q6-local32-standalone-rejected.json): primitive only after clean rejection. Exact state/trace and 12.44-13.26% Q6-family wins do not override order-A kernel/span or order-B child failures. Runtime integration is removed; categories are skipped and the topline is unchanged. |
 | Does retained hipEngine beat Vulkan under matched natural completion? | No. The retained Q4 category gate measures hipEngine **62.638/61.992 tok/s** versus device-pinned Vulkan **64.245/64.418 tok/s** h16/h32; another **2.57%/3.91%** is required. The prior [post-local32 audit](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-vulkan-matched-completion-post-local32.json) remains the pinned Vulkan source. |
 | Can a one-doorbell native AQL owner remove the queue gap? | No. [`...p4-aql-submission-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json) measures correctness-fenced direct AQL **0.560-0.758% slower** than HIP across five 820-dispatch processes. |
 

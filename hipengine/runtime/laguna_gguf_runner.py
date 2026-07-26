@@ -113,9 +113,6 @@ _Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
 _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
     "local32_fixed_meta_gemv_decode_bf16_f32_out"
 )
-_Q6_LOCAL32_STANDALONE_VARIANT = (
-    "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
-)
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -697,9 +694,6 @@ class LagunaEagerLibraries:
             "gguf_q6_k": self.q6_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": self.q6_decode_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_f32_out": self.q6_decode_linear,
-            "gguf_q6_k:standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out": (
-                self.q6_linear
-            ),
             "gguf_q8_0": self.q6_linear,
             "gguf_q8_0:pack8_gemv_decode_bf16_bf16_out": self.q8_decode_linear,
             "gguf_q8_0:pack8_gemv_decode_bf16_f32_out": self.q8_decode_linear,
@@ -799,23 +793,6 @@ def launch_laguna_weight_linear(
         runtime=runtime,
         registered_variant=registered_variant,
     )
-
-
-def _resolve_laguna_decode_linear_variant(
-    weight,
-    *,
-    backend: str,
-    variants: Sequence[str | None],
-) -> str | None:
-    """Return the first registered same-ABI decode sibling for one weight."""
-
-    for variant in variants:
-        if variant is None:
-            continue
-        key = KernelKey(backend, "linear", weight.spec.quant_key, variant)
-        if is_registered(key):
-            return variant
-    return None
 
 
 def _launch_laguna_f16_qkv(
@@ -1359,22 +1336,6 @@ def resolve_laguna_q4_lm_head_local32_fixed_meta(
     return bool(capability) if requested is None else bool(requested)
 
 
-def resolve_laguna_q6_local32_standalone(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the gfx1100-only standalone Q6 local32 runtime screen."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_Q6_LOCAL32_STANDALONE",
-        None,
-    )
-    if capability is None:
-        return False
-    return bool(capability) if requested is None else bool(requested)
-
-
 def resolve_laguna_q5_shared_fixed_meta(
     backend: str,
     requested: bool | None = None,
@@ -1850,7 +1811,6 @@ class LagunaGGUFResidentSession:
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
         use_q4_lm_head_local32_fixed_meta: bool | None = None,
-        use_q6_local32_standalone: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
@@ -1932,16 +1892,6 @@ class LagunaGGUFResidentSession:
             if self.use_q4_lm_head_local32_fixed_meta
             else None
         )
-        self.use_q6_local32_standalone = resolve_laguna_q6_local32_standalone(
-            self.backend,
-            use_q6_local32_standalone,
-        )
-        self._q6_local32_standalone_variant = (
-            _Q6_LOCAL32_STANDALONE_VARIANT
-            if self.use_q6_local32_standalone
-            else None
-        )
-        self._attention_output_decode_variants: tuple[str | None, ...] = ()
         self.iq3_selected_down_tile = int(iq3_selected_down_tile)
         self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
             self.backend,
@@ -2037,22 +1987,6 @@ class LagunaGGUFResidentSession:
                 use_iq2_grid64=self.use_iq2_grid64,
             )
             self._validate_resident_weights()
-            attention_output_variants = (
-                self._q5_output_variant,
-                self._q6_local32_standalone_variant,
-            )
-            self._attention_output_decode_variants = (
-                tuple(
-                    _resolve_laguna_decode_linear_variant(
-                        self.weights.layer(layer_id).weight("attn_output"),
-                        backend=self.backend,
-                        variants=attention_output_variants,
-                    )
-                    for layer_id in range(config.block_count)
-                )
-                if any(attention_output_variants)
-                else (None,) * config.block_count
-            )
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,
                 config.full_rope,
@@ -3266,7 +3200,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
-            registered_variant=self._attention_output_decode_variants[layer_id],
+            registered_variant=self._q5_output_variant,
         )
         self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,
@@ -3342,7 +3276,6 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             use_wmma_prefill=False,
             use_gemv_decode=True,
-            registered_variant=self._q6_local32_standalone_variant,
         )
         self.kernel_plan.add(
             scratch.post_attention.ptr,
@@ -3374,7 +3307,6 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             libraries=self.libraries.moe,
             shared_pair_decode_variant=self._q5_shared_pair_variant,
-            shared_single_decode_variant=self._q6_local32_standalone_variant,
         )
         config = self.weights.config
         if layer_id + 1 < config.block_count:
@@ -3860,5 +3792,4 @@ __all__ = [
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",
-    "resolve_laguna_q6_local32_standalone",
 ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from inspect import signature
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +14,6 @@ from hipengine.kernels.registry import KernelKey
 from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16, LAYOUT_RAW_GGUF
 from hipengine.runtime import laguna_gguf_runner as runner_module
-from hipengine.runtime import laguna_moe as moe_module
 from hipengine.runtime.laguna_gguf_runner import (
     LAGUNA_DFLASH_CAPTURE_DEPTHS,
     LagunaEagerLibraries,
@@ -32,7 +32,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_mixed_q6_fixed_meta_attention,
     resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
-    resolve_laguna_q6_local32_standalone,
     resolve_laguna_q5_wave32x2_variants,
 )
 from tests._laguna_synthetic import make_laguna_info
@@ -168,17 +167,11 @@ def test_laguna_q4_lm_head_local32_fixed_metadata_defaults_on_with_rollback() ->
     assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1151", True)
 
 
-def test_laguna_q6_local32_standalone_is_default_off_gfx1100_only() -> None:
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_Q6_LOCAL32_STANDALONE", None
-    ) is False
-    assert backend_package_capability(
-        "hip_gfx1151", "LAGUNA_Q6_LOCAL32_STANDALONE", None
-    ) is None
-    assert not resolve_laguna_q6_local32_standalone("hip_gfx1100")
-    assert resolve_laguna_q6_local32_standalone("hip_gfx1100", True)
-    assert not resolve_laguna_q6_local32_standalone("hip_gfx1100", False)
-    assert not resolve_laguna_q6_local32_standalone("hip_gfx1151", True)
+def test_laguna_q6_local32_standalone_runtime_selection_is_removed() -> None:
+    assert not hasattr(runner_module, "resolve_laguna_q6_local32_standalone")
+    assert "use_q6_local32_standalone" not in signature(
+        runner_module.LagunaGGUFResidentSession
+    ).parameters
 
 
 def test_laguna_q5_shared_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
@@ -547,196 +540,6 @@ def test_laguna_hidden_taps_are_caller_owned_exact_bf16_depths() -> None:
             hidden_size=hidden_size,
             runtime=runtime,
         )
-
-
-def test_laguna_q6_local32_standalone_uses_gguf_k_gemv_library() -> None:
-    libraries = LagunaEagerLibraries(
-        **{
-            field: object()
-            for field in LagunaEagerLibraries.__dataclass_fields__
-        }
-    )
-
-    assert libraries.linear[
-        "gguf_q6_k:standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
-    ] is libraries.q6_linear
-
-
-def test_laguna_q6_local32_standalone_variant_resolution_is_registry_driven() -> None:
-    q5_variant = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
-    q6_variant = "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
-
-    def weight(quant: str):
-        return SimpleNamespace(spec=SimpleNamespace(quant_key=quant))
-
-    assert runner_module._resolve_laguna_decode_linear_variant(
-        weight("gguf_q5_k"),
-        backend="hip_gfx1100",
-        variants=(q6_variant, q5_variant),
-    ) == q5_variant
-    assert runner_module._resolve_laguna_decode_linear_variant(
-        weight("gguf_q6_k"),
-        backend="hip_gfx1100",
-        variants=(q5_variant, q6_variant),
-    ) == q6_variant
-    for quant in ("gguf_q4_k", "gguf_q8_0"):
-        assert runner_module._resolve_laguna_decode_linear_variant(
-            weight(quant),
-            backend="hip_gfx1100",
-            variants=(q6_variant,),
-        ) is None
-    assert runner_module._resolve_laguna_decode_linear_variant(
-        weight("gguf_q6_k"),
-        backend="hip_gfx1151",
-        variants=(q6_variant,),
-    ) is None
-    assert runner_module._resolve_laguna_decode_linear_variant(
-        weight("gguf_q6_k"),
-        backend="hip_gfx1100",
-        variants=(None,),
-    ) is None
-
-
-def test_laguna_q6_local32_standalone_dense_down_is_decode_only(monkeypatch) -> None:
-    candidate = "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
-    calls: list[tuple[str, int, str | None]] = []
-    weights = {
-        slot: SimpleNamespace(spec=SimpleNamespace(name=slot))
-        for slot in ("ffn_gate", "ffn_up", "ffn_down")
-    }
-    layer = SimpleNamespace(weight=lambda slot: weights[slot])
-
-    def launch(weight, _x, _out, rows, *args, **kwargs) -> None:
-        del args
-        calls.append((weight.spec.name, rows, kwargs.get("registered_variant")))
-
-    monkeypatch.setattr(runner_module, "launch_gguf_linear", launch)
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.weights = SimpleNamespace(
-        config=SimpleNamespace(hidden_size=3072, feed_forward_length=12288)
-    )
-    session.scratch = SimpleNamespace(
-        norm=SimpleNamespace(ptr=10),
-        dense_gate=SimpleNamespace(ptr=11),
-        dense_up=SimpleNamespace(ptr=12),
-        dense_intermediate=SimpleNamespace(ptr=13),
-        dense_output=SimpleNamespace(ptr=14),
-        post_attention=SimpleNamespace(ptr=15),
-        hidden=SimpleNamespace(ptr=16),
-    )
-    session.rows_scratch = session.scratch
-    session.kernel_plan = SimpleNamespace(
-        dense_silu=lambda *args, **kwargs: None,
-        add=lambda *args, **kwargs: None,
-    )
-    session.libraries = SimpleNamespace(
-        linear={}, dense_silu=object(), gguf_ops=object()
-    )
-    session.runtime = object()
-    session.backend = "hip_gfx1100"
-    session._q6_local32_standalone_variant = candidate
-
-    session._run_dense_ffn(layer, stream=0)
-    assert calls == [
-        ("ffn_gate", 1, None),
-        ("ffn_up", 1, None),
-        ("ffn_down", 1, candidate),
-    ]
-
-    calls.clear()
-    session._run_dense_ffn_rows(layer, rows=3, stream=0)
-    assert calls == [
-        ("ffn_gate", 3, None),
-        ("ffn_up", 3, None),
-        ("ffn_down", 3, None),
-    ]
-
-
-def test_laguna_q6_local32_standalone_shared_singletons_are_decode_only(
-    monkeypatch,
-) -> None:
-    candidate = "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
-    calls: list[tuple[str, str | None]] = []
-
-    def buffer(ptr: int):
-        return SimpleNamespace(ptr=ptr)
-
-    plan = SimpleNamespace(
-        backend="hip_gfx1100",
-        hidden_size=3072,
-        expert_count=256,
-        top_k=10,
-        shared_ffn_size=1024,
-        routed_scaling_factor=1.0,
-        router_logits=lambda *args, **kwargs: None,
-        router_select=lambda *args, **kwargs: None,
-        shared_silu=lambda *args, **kwargs: None,
-    )
-    scratch = SimpleNamespace(
-        plan=plan,
-        max_rows=1,
-        router_logits=buffer(10),
-        routing_scores=buffer(11),
-        selection_scores=buffer(12),
-        selected_experts=buffer(13),
-        routing_weights=buffer(14),
-        scaled_routing_weights=buffer(15),
-        routed_output=buffer(16),
-        shared_gate=buffer(17),
-        shared_up=buffer(18),
-        shared_intermediate=buffer(19),
-        shared_output=buffer(20),
-    )
-    weights = {
-        name: SimpleNamespace(
-            spec=SimpleNamespace(name=name),
-            allocation=lambda _kind: SimpleNamespace(tensor=buffer(100)),
-        )
-        for name in (
-            "ffn_gate_inp",
-            "exp_probs_b",
-            "ffn_gate_shexp",
-            "ffn_up_shexp",
-            "ffn_down_shexp",
-        )
-    }
-    layer = SimpleNamespace(weight=lambda name: weights[name])
-
-    monkeypatch.setattr(moe_module, "validate_laguna_moe_layer", lambda *args: None)
-    monkeypatch.setattr(moe_module, "_launch_selected_gate_up", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        moe_module,
-        "_launch_weighted_selected_down",
-        lambda *args, **kwargs: True,
-    )
-    monkeypatch.setattr(
-        moe_module,
-        "launch_gguf_linear_pair",
-        lambda *args, **kwargs: False,
-    )
-
-    def launch(weight, *args, **kwargs) -> None:
-        del args
-        calls.append((weight.spec.name, kwargs.get("registered_variant")))
-
-    monkeypatch.setattr(moe_module, "launch_gguf_linear", launch)
-    routed, shared = moe_module.run_laguna_moe_c1_components(
-        1,
-        layer,
-        scratch,
-        shared_single_decode_variant=candidate,
-    )
-
-    assert routed is scratch.routed_output
-    assert shared is scratch.shared_output
-    assert calls == [
-        ("ffn_gate_shexp", candidate),
-        ("ffn_up_shexp", candidate),
-        ("ffn_down_shexp", candidate),
-    ]
-    assert "shared_single_decode_variant" not in (
-        moe_module.run_laguna_moe_rows.__annotations__
-    )
 
 
 def test_laguna_q4_local32_lm_head_uses_pack8_library() -> None:

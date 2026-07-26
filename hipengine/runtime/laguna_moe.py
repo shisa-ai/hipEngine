@@ -1194,7 +1194,6 @@ def run_laguna_moe_c1_components(
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
-    shared_single_decode_variant: str | None = None,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -1305,7 +1304,6 @@ def run_laguna_moe_c1_components(
             libraries=libraries,
             use_wmma_prefill=False,
             use_gemv_decode=True,
-            registered_variant=shared_single_decode_variant,
         )
         launch_gguf_linear(
             shared_up,
@@ -1320,7 +1318,6 @@ def run_laguna_moe_c1_components(
             libraries=libraries,
             use_wmma_prefill=False,
             use_gemv_decode=True,
-            registered_variant=shared_single_decode_variant,
         )
     plan.shared_silu(
         scratch.shared_gate.ptr,
@@ -1343,7 +1340,6 @@ def run_laguna_moe_c1_components(
         libraries=libraries,
         use_wmma_prefill=False,
         use_gemv_decode=True,
-        registered_variant=shared_single_decode_variant,
     )
     return scratch.routed_output, scratch.shared_output
 
@@ -1357,7 +1353,6 @@ def run_laguna_moe_c1(
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
-    shared_single_decode_variant: str | None = None,
 ) -> DeviceBuffer:
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
@@ -1369,7 +1364,6 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         shared_pair_decode_variant=shared_pair_decode_variant,
-        shared_single_decode_variant=shared_single_decode_variant,
     )
     scratch.plan.add(
         routed.ptr,
