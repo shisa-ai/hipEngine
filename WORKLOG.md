@@ -182246,3 +182246,18 @@ Vulkan local sizes verbatim will close the measured gap.
   throughput claim. The next gate is a clean no-selector 512/1K/4K run under
   the automatic two-queue process environment, followed by refreshed tracing
   and production publication.
+
+## 2026-07-26 — Repair Laguna queue-policy provenance ordering
+
+- The first selector-unset production timing completed and resolved MoE
+  concurrency, but its artifact recorded `GPU_MAX_HW_QUEUES=null`. Root cause:
+  the long-context harness collected provenance before `get_hip_runtime()`;
+  the latter then correctly applied the backend process default immediately
+  before loading `libamdhip64`. The timing used the default, but the artifact
+  could not prove which queue policy HIP consumed.
+- Moved first runtime initialization ahead of provenance capture. No measured
+  region, model path, session policy, or arithmetic changes. The first
+  selector-unset timing is diagnostic only and will not be published.
+- `tests/test_laguna_long_context_profile.py` remains the focused gate. After
+  commit, repeat the clean selector-unset 512/1K/4K run and require provenance
+  to record `GPU_MAX_HW_QUEUES=2` before production publication.
