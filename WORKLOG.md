@@ -183577,3 +183577,12 @@ Vulkan local sizes verbatim will close the measured gap.
   product, so it gets the same complete quality gate before producer-row
   repair. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d4-up-d8-absolute-rejected.json`.
+
+## 2026-07-27 — Add D8-gate/D4-up absolute lane
+
+- RED failed collection because the category harness exposed only the
+  rejected D4-gate/D8-up assignment. GREEN adds a distinct
+  `q4_up_role_split_absolute` lane that changes only selected gate/up to
+  D8-gate/D4-up on the complete current attention-hipBLASLt production stack.
+- All **22** focused category-harness tests pass; `py_compile` and
+  `git diff --check` are clean. The next action is the clean 320-step run.
