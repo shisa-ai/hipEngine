@@ -183456,3 +183456,15 @@ Vulkan local sizes verbatim will close the measured gap.
   gate can run from a clean revision; prior D4 arithmetic warns at maximum KL
   **0.0767056**. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json`.
+
+## 2026-07-27 — Add isolated D4 direct-wave absolute-quality lane
+
+- RED added a category-harness contract for `d4_direct_wave_absolute` and
+  failed because no such comparison existed. GREEN adds the clean
+  `all_exact` versus `d4_direct_wave_candidate` cumulative comparison.
+- The candidate lane copies the complete current attention-hipBLASLt
+  production configuration and changes only selected gate/up from D8 to D4.
+  It disables the relative performance gate so the next clean 320-step run
+  reports the absolute KL/top-1 decision without conflating it with timing.
+- Validation: all **21** focused category-harness tests pass, both changed
+  Python files compile, and the diff check is clean.
