@@ -37,6 +37,14 @@ They reduce the frozen 47-layer route grid **14,034 -> 12,866/12,189
 than the avoided weight rereads; production stays **551.459 tok/s**.
 [`artifact`](results/2026-07-26-gfx1151-laguna-q4-gate-rows40-48-rejected.json).
 
+The exact qrow3 attention interpolation is rejected and fully removed. It
+beats cached-metadata qrow4 on global tiles but loses at every SWA position;
+the weighted pp512 leaf regresses **13.3577 -> 13.7874 ms (+3.22%)** and loses
+**7.31%** to the qualified production qrow6 policy. At global start 0 it only
+ties the actual non-metadata production body (**0.18634 vs 0.18580 ms**).
+Production stays **551.459 tok/s**.
+[`artifact`](results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json).
+
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into
 the range-safe down pack while explicitly preserving the BF16 boundary. Seven

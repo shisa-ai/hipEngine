@@ -46,8 +46,11 @@ gain closes activation-stage padding as a useful local lever. The byte-neutral
 Q4 qmicro subsequently passed exact decode but failed its actual-weight M512
 prefill gate; all prefill candidate surfaces were removed. The next screen
 tested 40/48-row direct-wave gate/up tiles; both were exact but slower and
-were removed. The active bounded screen therefore shifts to a different
-single-wave attention query-reuse point.
+were removed. A three-query single-wave attention point was also exact, but it
+lost **3.22%** to qrow4 on the weighted mix and **7.31%** to the qualified
+production policy; every candidate surface was removed. The active bounded
+screen now returns to a traced production family with a new architectural
+premise rather than another query-row interpolation.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -812,7 +815,12 @@ Immediate execution queue:
    rollback. Clean selector-unset 512/1K/4K reaches
    **547.064/513.180/428.628 tok/s**, and tracing cuts attention
    **158.702 -> 152.406 ms (-3.97%)** while observing the exact qualified
-   12-qrow4/36-qrow6/144-SWA-qrow4 pp512 launch mix.
+   12-qrow4/36-qrow6/144-SWA-qrow4 pp512 launch mix. Qrow3 is now closed:
+   although it is F32-bit exact and beats cached-metadata qrow4 on global
+   tiles, it loses every SWA position and measures **13.7874 ms** versus
+   **13.3577 ms** for weighted qrow4 and **12.8481 ms** for the qualified
+   production policy. Its global-start0 result merely ties the actual
+   non-metadata production body (**0.18634 vs 0.18580 ms**).
 3. Complete LAP-BW0 with locked/recorded clocks and controller-derived traffic.
    The schedule-correct requested-byte ledger is published: gate/up is
    **162.15 GB/s (73.37%)** and down **137.16 GB/s (62.06%)** against the
@@ -848,6 +856,8 @@ Post-350 exclusions:
   decode to buy prefill;
 - do not retry 40/48/64-row Q4 gate/up accumulation without a new mechanism
   that avoids the additional live accumulator cost;
+- do not retry qrow3 attention without a mechanism that changes the SWA
+  K/V-reuse or accumulator-cost tradeoff;
 - do not claim 500 or 700 from a leaf, explicit session selector, dirty tree,
   single sample, or incomplete quality lane.
 
@@ -2597,6 +2607,7 @@ Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-fused-silu-pack-candidate.json`

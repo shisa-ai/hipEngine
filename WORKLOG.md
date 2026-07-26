@@ -181734,3 +181734,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rows40-48-rejected.json`.
   Production remains **551.459 tok/s**; the next bounded screen shifts to a
   single-wave attention query-reuse point.
+
+## 2026-07-26 — Reject exact qrow3 cached attention
+
+- RED failed on missing global/SWA cached-metadata qrow3 wrappers. GREEN
+  instantiated the existing single-wave online templates at three adjacent
+  queries and matched production qrow4 F32 output bit-for-bit at global and
+  SWA start 0. The full leaf then reported zero F32-bit mismatches at starts
+  0/128/256/384 for both attention types.
+- Eleven counter-rotated burst-25 samples measure the weighted
+  `sum(global + 3*swa)` pp512 leaf at **13.357659 ms** for cached-metadata
+  qrow4 and **13.787448 ms** for qrow3, a **3.22% regression**. The qualified
+  qrow6 production policy is faster again at **12.848139 ms**, leaving qrow3
+  **7.31% slower**.
+- Qrow3 improves cached-metadata global qrow4 at every position, but loses
+  every SWA position. At global start 0 it measures **0.186339 ms** versus
+  **0.185803 ms** for the actual non-metadata production qrow4 body, so there
+  is no isolated dispatch-policy win.
+- Remove both device specializations, Python wrappers, fixture additions, and
+  benchmark modes. Raw SHA-256 is
+  `dbbfee2cfb7fbe082563f1ff883a4b56d6dccdb0166ce9605004da44bf9bcbdb`.
+  Publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-qrow3-rejected.json`;
+  production remains **551.459 tok/s**.

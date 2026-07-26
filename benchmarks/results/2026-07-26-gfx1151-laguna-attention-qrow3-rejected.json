@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T16:56:32+09:00",
+  "kind": "hipengine_laguna_attention_qrow3_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "workload": {
+    "rows_per_tile": 128,
+    "context": 512,
+    "starts": [0, 128, 256, 384],
+    "global_q_heads": 48,
+    "swa_q_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "timing": "counter-rotated HIP events",
+    "warmups": 2,
+    "samples": 11,
+    "burst": 25,
+    "weighted_formula": "sum(global + 3*swa) across four M128 positions"
+  },
+  "results": {
+    "weighted": {
+      "qrow4_cached_meta_ms": 13.357658882141113,
+      "qrow3_cached_meta_ms": 13.78744800567627,
+      "qrow3_over_qrow4_speedup": 0.9688275072110362,
+      "qrow3_delta_percent": 3.217524,
+      "production_qrow6_qualified_policy_ms": 12.848139266967774,
+      "qrow3_delta_vs_production_percent": 7.310853
+    },
+    "global_start0": {
+      "production_qrow4_cached_ms": 0.1858029556274414,
+      "qrow3_cached_meta_ms": 0.1863385581970215,
+      "qrow3_delta_percent": 0.288264
+    },
+    "global_qrow3_over_qrow4_cached_meta_speedup_by_start": [
+      1.1101395392827909,
+      1.176379677248818,
+      1.1825470846768626,
+      1.1769254308347152
+    ],
+    "swa_qrow3_over_qrow4_cached_meta_speedup_by_start": [
+      0.9864111543597852,
+      0.9309862860182758,
+      0.9226177328606396,
+      0.9204992201947151
+    ]
+  },
+  "correctness": {
+    "oracle": "production cached qrow4 output",
+    "focused_result": "1 passed",
+    "global_f32_bit_mismatches_by_start": [0, 0, 0, 0],
+    "swa_f32_bit_mismatches_by_start": [0, 0, 0, 0]
+  },
+  "decision": {
+    "gate": "positive weighted pp512 attention mix before runtime integration",
+    "result": "fail",
+    "reason": "three-query reuse reduces global cached-metadata time but loses on every SWA position, ties rather than beats the actual global-start0 production body, and loses to the qualified qrow6 global policy",
+    "removed": [
+      "global and SWA qrow3 device launch specializations",
+      "Python symbols and wrappers",
+      "qrow3 GPU fixture coverage",
+      "qrow3 benchmark modes"
+    ],
+    "production_changed": false,
+    "production_pp512_tok_s": 551.459
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_cached_meta_leaf.py --samples 11 --warmups 2 --burst 25 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/2026-07-26-gfx1151-laguna-attention-qrow3-leaf.json",
+  "raw_sha256": "dbbfee2cfb7fbe082563f1ff883a4b56d6dccdb0166ce9605004da44bf9bcbdb",
+  "repo": {
+    "base_revision": "e97e9b4f9e88ef9c8837c9af3435f2f4a4b60f69"
+  }
+}
