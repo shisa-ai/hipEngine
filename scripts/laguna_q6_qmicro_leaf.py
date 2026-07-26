@@ -144,6 +144,7 @@ def main() -> int:
         "prefill_qmicro": [],
         "prefill_qmicro_compact_activation": [],
         "prefill_qmicro_half_row_activation": [],
+        "prefill_qmicro_skip_padded_activation": [],
         "decode_legacy": [],
         "decode_qmicro": [],
     }
@@ -167,6 +168,10 @@ def main() -> int:
             prefill_out_nbytes,
             runtime=runtime,
         )
+        prefill_qmicro_skip_padded_activation_out = malloc(
+            prefill_out_nbytes,
+            runtime=runtime,
+        )
         decode_legacy_out = malloc(decode_out_nbytes, runtime=runtime)
         decode_qmicro_out = malloc(decode_out_nbytes, runtime=runtime)
         buffers.extend(
@@ -184,6 +189,7 @@ def main() -> int:
                 prefill_qmicro_out,
                 prefill_qmicro_compact_activation_out,
                 prefill_qmicro_half_row_activation_out,
+                prefill_qmicro_skip_padded_activation_out,
                 decode_legacy_out,
                 decode_qmicro_out,
             )
@@ -203,6 +209,7 @@ def main() -> int:
             *,
             compact_activation: bool = False,
             half_row_activation: bool = False,
+            skip_padded_activation: bool = False,
         ) -> None:
             gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
                 q8_dev.ptr,
@@ -211,7 +218,9 @@ def main() -> int:
                 tile_expert_dev.ptr,
                 qmicro_dev.ptr if qmicro else legacy_dev.ptr,
                 (
-                    prefill_qmicro_half_row_activation_out.ptr
+                    prefill_qmicro_skip_padded_activation_out.ptr
+                    if skip_padded_activation
+                    else prefill_qmicro_half_row_activation_out.ptr
                     if half_row_activation
                     else prefill_qmicro_compact_activation_out.ptr
                     if compact_activation
@@ -230,6 +239,7 @@ def main() -> int:
                 qmicro=qmicro,
                 compact_activation=compact_activation,
                 half_row_activation=half_row_activation,
+                skip_padded_activation=skip_padded_activation,
                 library=prefill_library,
                 runtime=runtime,
             )
@@ -265,6 +275,15 @@ def main() -> int:
                 ),
                 args.prefill_burst,
             ),
+            "prefill_qmicro_skip_padded_activation": (
+                lambda: prefill(
+                    True,
+                    compact_activation=True,
+                    half_row_activation=True,
+                    skip_padded_activation=True,
+                ),
+                args.prefill_burst,
+            ),
             "decode_legacy": (lambda: decode(False), args.decode_burst),
             "decode_qmicro": (lambda: decode(True), args.decode_burst),
         }
@@ -284,6 +303,12 @@ def main() -> int:
             True,
             compact_activation=True,
             half_row_activation=True,
+        )
+        prefill(
+            True,
+            compact_activation=True,
+            half_row_activation=True,
+            skip_padded_activation=True,
         )
         decode(False)
         decode(True)
@@ -306,6 +331,11 @@ def main() -> int:
         prefill_qmicro_half_row_activation_host = _read_bf16(
             runtime,
             prefill_qmicro_half_row_activation_out,
+            (compact_rows, OUT_FEATURES),
+        )
+        prefill_qmicro_skip_padded_activation_host = _read_bf16(
+            runtime,
+            prefill_qmicro_skip_padded_activation_out,
             (compact_rows, OUT_FEATURES),
         )
         decode_legacy_host = _read_bf16(
@@ -339,6 +369,12 @@ def main() -> int:
         np.count_nonzero(
             prefill_qmicro_half_row_activation_host
             != prefill_qmicro_compact_activation_host
+        )
+    )
+    prefill_skip_padded_activation_mismatches = int(
+        np.count_nonzero(
+            prefill_qmicro_skip_padded_activation_host
+            != prefill_qmicro_half_row_activation_host
         )
     )
     decode_mismatches = int(
@@ -375,7 +411,7 @@ def main() -> int:
             "warmups": args.warmups,
             "prefill_burst": args.prefill_burst,
             "decode_burst": args.decode_burst,
-            "order": "counter-rotated over six modes",
+            "order": "counter-rotated over seven modes",
             "timing": "HIP events; prefill activation pack excluded",
         },
         "samples_ms": samples,
@@ -397,6 +433,12 @@ def main() -> int:
                 - 1.0
             )
             * 100.0,
+            "prefill_skip_padded_activation": (
+                medians["prefill_qmicro_skip_padded_activation"]
+                / medians["prefill_qmicro_half_row_activation"]
+                - 1.0
+            )
+            * 100.0,
             "decode": (
                 medians["decode_qmicro"] / medians["decode_legacy"] - 1.0
             )
@@ -410,6 +452,9 @@ def main() -> int:
             "prefill_half_row_activation_bf16_mismatches": (
                 prefill_half_row_activation_mismatches
             ),
+            "prefill_skip_padded_activation_bf16_mismatches": (
+                prefill_skip_padded_activation_mismatches
+            ),
             "decode_bf16_mismatches": decode_mismatches,
             "prefill_checksum": int(prefill_qmicro_host.sum(dtype=np.uint64)),
             "decode_checksum": int(decode_qmicro_host.sum(dtype=np.uint64)),
@@ -422,12 +467,15 @@ def main() -> int:
             prefill_mismatches == 0
             and prefill_compact_activation_mismatches == 0
             and prefill_half_row_activation_mismatches == 0
+            and prefill_skip_padded_activation_mismatches == 0
             and decode_mismatches == 0
             and medians["prefill_qmicro"] < medians["prefill_legacy"]
             and medians["prefill_qmicro_compact_activation"]
             < medians["prefill_qmicro"]
             and medians["prefill_qmicro_half_row_activation"]
             < medians["prefill_qmicro_compact_activation"]
+            and medians["prefill_qmicro_skip_padded_activation"]
+            < medians["prefill_qmicro_half_row_activation"]
             and medians["decode_qmicro"] < medians["decode_legacy"]
             and tracked_before["current_allocated_bytes"]
             == tracked_after["current_allocated_bytes"]

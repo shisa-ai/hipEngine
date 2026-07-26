@@ -122,6 +122,7 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.q6_qmicro
     assert plan.q6_compact_activation
     assert plan.q6_half_row_activation
+    assert plan.q6_skip_padded_activation
     assert not resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1151",
@@ -137,6 +138,21 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         backend="hip_gfx1151",
         q6_compact_activation=False,
     ).q6_half_row_activation
+    assert not resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1151",
+        q6_half_row_activation=False,
+    ).q6_skip_padded_activation
+    assert resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1151",
+        q6_skip_padded_activation=True,
+    ).q6_skip_padded_activation
+    assert not resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1151",
+        q6_skip_padded_activation=False,
+    ).q6_skip_padded_activation
     assert resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1151",
@@ -159,6 +175,10 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         config,
         backend="hip_gfx1100",
     ).q6_half_row_activation
+    assert not resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+    ).q6_skip_padded_activation
     with pytest.raises(
         ValueError,
         match="half-row activation staging requires compact activation",
@@ -168,6 +188,16 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
             backend="hip_gfx1151",
             q6_compact_activation=False,
             q6_half_row_activation=True,
+        )
+    with pytest.raises(
+        ValueError,
+        match="skipping padded activation rows requires half-row staging",
+    ):
+        resolve_laguna_moe_plan(
+            config,
+            backend="hip_gfx1151",
+            q6_half_row_activation=False,
+            q6_skip_padded_activation=True,
         )
     assert plan.router_select_key.layer == "laguna_sigmoid_router_topk"
     assert set(plan.router_logits_keys) == {

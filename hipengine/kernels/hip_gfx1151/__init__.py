@@ -106,6 +106,9 @@ LAGUNA_Q6_COMPACT_ACTIVATION = True
 # stage one 16-byte half and one K16 quant sum. The exact all-layer screen
 # improves 21/23 real Q6 layers without changing resources or output bytes.
 LAGUNA_Q6_HALF_ROW_ACTIVATION = True
+# Padded rows are never consumed by the guarded dot/store loops. Avoid writing
+# zero Q8 bytes and recomputing zero K16 sums for those slots.
+LAGUNA_Q6_SKIP_PADDED_ACTIVATION = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"

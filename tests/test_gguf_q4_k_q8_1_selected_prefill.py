@@ -1706,18 +1706,22 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
         "qmicro",
         "compact_activation",
         "half_row_activation",
+        "skip_padded_activation",
     ),
     [
-        (1, False, 32, False, False, False),
-        (1, True, 32, False, False, False),
-        (1, True, 64, False, False, False),
-        pytest.param(1, True, 64, True, False, False, id="rows64-qmicro"),
+        (1, False, 32, False, False, False, False),
+        (1, True, 32, False, False, False, False),
+        (1, True, 64, False, False, False, False),
+        pytest.param(
+            1, True, 64, True, False, False, False, id="rows64-qmicro"
+        ),
         pytest.param(
             1,
             True,
             64,
             True,
             True,
+            False,
             False,
             id="rows64-qmicro-compact-activation",
         ),
@@ -1728,10 +1732,21 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             True,
             True,
             True,
+            False,
             id="rows64-qmicro-half-row-activation",
         ),
-        (2, False, 32, False, False, False),
-        (3, False, 32, False, False, False),
+        pytest.param(
+            1,
+            True,
+            64,
+            True,
+            True,
+            True,
+            True,
+            id="rows64-qmicro-skip-padded-activation",
+        ),
+        (2, False, 32, False, False, False, False),
+        (3, False, 32, False, False, False, False),
     ],
 )
 def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1741,6 +1756,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     qmicro: bool,
     compact_activation: bool,
     half_row_activation: bool,
+    skip_padded_activation: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from tests.test_gguf_k_t16_selected_wmma_prefill import (
@@ -1838,6 +1854,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             qmicro=qmicro,
             compact_activation=compact_activation,
             half_row_activation=half_row_activation,
+            skip_padded_activation=skip_padded_activation,
             library=library,
             runtime=runtime,
         )

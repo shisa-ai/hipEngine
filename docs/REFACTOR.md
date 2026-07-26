@@ -1264,3 +1264,17 @@ should be boring.
   **549.150/514.956/430.300 tok/s**; it is headline-neutral, while the clean
   trace preserves the Q6 sub-window win at **119.384 -> 118.568 ms (-0.684%)**.
   The one-later-selected-down checkpoint remains open.
+
+## Laguna Q6 padded-activation rollback
+
+- Added 2026-07-26 with gfx1151
+  `LAGUNA_Q6_SKIP_PADDED_ACTIVATION` and optional
+  `q6_skip_padded_activation=False` session rollback. It is constrained to
+  the exact qmicro/compact/half-row/64-row Q6 body.
+- The candidate skips only LDS stores and K16 sums for padded slots that the
+  guarded dot and output loops never consume. The actual 23-layer screen is
+  exact and improves **112.008 -> 111.806 ms (-0.180%, 19/23 layers)**;
+  complete pp512 is exact at **552.983 -> 553.559 tok/s (+0.104%)**.
+- Keep the rollback through clean selector-unset publication and one later
+  selected-down checkpoint. Then remove the constructor override and
+  one-purpose A/B harness while retaining the backend default.

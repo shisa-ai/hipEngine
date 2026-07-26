@@ -2,6 +2,17 @@
 
 Last updated: **2026-07-26**
 
+The next exact Laguna Q6 candidate skips activation-cache stores and K16 sum
+work for padded row slots that the guarded dot/store loops never read. Across
+all 23 actual Q6 layers it improves **19/23** and
+**112.008 -> 111.806 ms (-0.180%)** with zero BF16 mismatches. Eleven
+complete-state pp512 pairs are exact and move
+**552.983 -> 553.559 tok/s (+0.104%, 7/11 wins)**. Resources remain
+local128/VGPR88/SGPR128/LDS5120B/scratch0. It is retained as the gfx1151
+default pending clean publication, but the small magnitude confirms padded
+activation work is not the missing path to 700 tok/s.
+[`candidate artifact`](results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-candidate.json).
+
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-26-gfx1151-laguna-q6-half-row-activation-production.json`](results/2026-07-26-gfx1151-laguna-q6-half-row-activation-production.json).
 Q6 selected down uses the 40-byte compact cache and splits every staged row

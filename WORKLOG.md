@@ -181555,3 +181555,28 @@ Vulkan local sizes verbatim will close the measured gap.
   The clean wall leaves **200.921 ms** to 700; the refreshed table still
   requires a materially larger selected-down, attention, gate/up, or
   source-F16 design.
+
+## 2026-07-26 — Admit exact Q6 padded-activation elision
+
+- Natural M512 routing across the 23 Q6 layers contains **117,760 useful**
+  rows but **362,944 row64 slots**, so **67.6%** of the activation-stage slots
+  are padding. The dot/store loops already reject them, but half-row staging
+  still wrote zero Q8 bytes and computed zero K16 sums for every slot/K32.
+- RED failed on the missing `skip_padded_activation` wrapper and missing
+  plan/session capability state. GREEN adds a specialization constrained to
+  qmicro + compact cache + half-row + row64/local128 and reports **11 passed**
+  across all Q6 geometries plus plan/session seams.
+- The actual layer-1 21-sample leaf is BF16 exact and improves
+  **4.879005 -> 4.870545 ms (-0.173%)**. The decisive all-Q6 screen improves
+  **19/23** layers and the sum of layer medians
+  **112.007995 -> 111.806245 ms (-0.180%)**, with zero BF16 mismatches.
+- Eleven complete-state pp512 pairs are exact and positive at
+  **552.983 -> 553.559 tok/s (+0.104%, 7/11 wins)**. Cached tracing observes
+  the intended `<1,true,false,128,64,true,true,true,true>` body at
+  local128/VGPR88/SGPR128/LDS5120B/scratch0.
+- Retain `LAGUNA_Q6_SKIP_PADDED_ACTIVATION` as the gfx1151 default with
+  explicit session rollback and publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-skip-padded-activation-candidate.json`.
+  The small magnitude confirms padded activation arithmetic is secondary;
+  clean publication is required, then the campaign returns to a new
+  cross-tile/expert reuse architecture.
