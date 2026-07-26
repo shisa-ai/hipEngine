@@ -29,9 +29,6 @@ LAGUNA_MIXED_Q6_FIXED_METADATA = True
 # clean context orders, and both complete category orders. Explicit disable
 # restores the retained local128 fixed-Q6 mixed projection; layer 47 stays there.
 LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
-# The separately registered paired-SWAR sibling is screened only for the 47
-# c=1 attention-output calls. Mixed/shared/query-gate owners stay unchanged.
-LAGUNA_Q5_SWAR_OUTPUT = False
 # The exact Q4_K c=1 BF16-to-F32 LM-head sibling passes production bits,
 # full state, cached one-call tracing, both clean context orders, and both
 # complete category process orders. Explicit False restores registered local128.
@@ -140,7 +137,6 @@ __all__ = [
     "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
-    "LAGUNA_Q5_SWAR_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SPLIT_GATE_FUSION",

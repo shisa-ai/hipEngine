@@ -110,9 +110,6 @@ _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT = (
     "wave32x2_fixed_meta_gemv_decode_bf16_f32_out"
 )
 _Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
-_Q5_SWAR_PAIR_OUTPUT_VARIANT = (
-    "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out"
-)
 _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
     "local32_fixed_meta_gemv_decode_bf16_f32_out"
 )
@@ -1356,32 +1353,6 @@ def resolve_laguna_q5_shared_fixed_meta(
     )
 
 
-def resolve_laguna_q5_swar_output(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the gfx1100-only direct-BF16 Q5 SWAR output owner."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_Q5_SWAR_OUTPUT",
-        None,
-    )
-    if capability is None:
-        return False
-    enabled = bool(capability) if requested is None else bool(requested)
-    if not enabled:
-        return False
-    return is_registered(
-        KernelKey(
-            backend,
-            "linear",
-            "gguf_q5_k",
-            _Q5_SWAR_PAIR_OUTPUT_VARIANT,
-        )
-    )
-
-
 def resolve_laguna_q5_wave32x2_variants(
     backend: str,
     *,
@@ -1839,7 +1810,6 @@ class LagunaGGUFResidentSession:
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
-        use_q5_swar_output: bool | None = None,
         use_q4_lm_head_local32_fixed_meta: bool | None = None,
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
@@ -1888,12 +1858,6 @@ class LagunaGGUFResidentSession:
         self.use_q5_fixed_meta_query_gate = (
             self._q5_query_gate_variant == _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
         )
-        self.use_q5_swar_output = resolve_laguna_q5_swar_output(
-            self.backend,
-            use_q5_swar_output,
-        ) and self.use_q5_fixed_meta_output
-        if self.use_q5_swar_output:
-            self._q5_output_variant = _Q5_SWAR_PAIR_OUTPUT_VARIANT
         self.use_q5_shared_fixed_meta = resolve_laguna_q5_shared_fixed_meta(
             self.backend,
             use_q5_shared_fixed_meta,
@@ -3832,6 +3796,5 @@ __all__ = [
     "resolve_laguna_mixed_q6_fixed_meta_attention",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
-    "resolve_laguna_q5_swar_output",
     "resolve_laguna_q5_wave32x2_variants",
 ]
