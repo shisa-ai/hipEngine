@@ -1278,3 +1278,7 @@ should be boring.
 - Keep the rollback through clean selector-unset publication and one later
   selected-down checkpoint. Then remove the constructor override and
   one-purpose A/B harness while retaining the backend default.
+- Clean selector-unset publication is satisfied at
+  **551.459/517.307/432.099 tok/s**. The repeated 23-layer and complete-state
+  A/B evidence remains positive; the one-later-selected-down checkpoint is
+  still open.
