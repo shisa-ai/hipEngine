@@ -188,9 +188,11 @@ class LagunaEagerKernelPlan:
 
     backend: str
     rmsnorm_key: KernelKey
+    rmsnorm_fp16_via_bf16_key: KernelKey
     add_rmsnorm_key: KernelKey
     add_key: KernelKey
     attention_gate_key: KernelKey
+    attention_gate_fp16_via_bf16_key: KernelKey
     dense_silu_key: KernelKey
     argmax_key: KernelKey
     f16_triple_key: KernelKey
@@ -198,9 +200,11 @@ class LagunaEagerKernelPlan:
     f16_bf16_key: KernelKey
     rope_key: KernelKey
     rmsnorm: Callable
+    rmsnorm_fp16_via_bf16: Callable
     add_rmsnorm: Callable
     add: Callable
     attention_gate: Callable
+    attention_gate_fp16_via_bf16: Callable
     dense_silu: Callable
     argmax: Callable
 
@@ -208,9 +212,11 @@ class LagunaEagerKernelPlan:
     def kernel_keys(self) -> tuple[KernelKey, ...]:
         return (
             self.rmsnorm_key,
+            self.rmsnorm_fp16_via_bf16_key,
             self.add_rmsnorm_key,
             self.add_key,
             self.attention_gate_key,
+            self.attention_gate_fp16_via_bf16_key,
             self.dense_silu_key,
             self.argmax_key,
             self.f16_triple_key,
@@ -1259,10 +1265,22 @@ def resolve_laguna_eager_kernel_plan(
     load_backend_kernel_package(backend)
     keys = {
         "rmsnorm": KernelKey(backend, "rmsnorm", "gguf_f32_weight", "bf16_out"),
+        "rmsnorm_fp16_via_bf16": KernelKey(
+            backend,
+            "rmsnorm",
+            "gguf_f32_weight",
+            "fp16_via_bf16_out",
+        ),
         "add_rmsnorm": KernelKey(backend, "add_rmsnorm", "gguf_f32_weight", "bf16_out"),
         "add": KernelKey(backend, "elementwise", "bf16", "add"),
         "attention_gate": KernelKey(
             backend, "attention_gate", "f32", "softplus_broadcast_bf16_out"
+        ),
+        "attention_gate_fp16_via_bf16": KernelKey(
+            backend,
+            "attention_gate",
+            "f32",
+            "softplus_broadcast_fp16_via_bf16_out",
         ),
         "dense_silu": KernelKey(backend, "silu_mul_separate", "bf16", "out"),
         "argmax": KernelKey(backend, "argmax", "f32", "top1_i64"),
@@ -1280,9 +1298,13 @@ def resolve_laguna_eager_kernel_plan(
     return LagunaEagerKernelPlan(
         backend=backend,
         rmsnorm_key=keys["rmsnorm"],
+        rmsnorm_fp16_via_bf16_key=keys["rmsnorm_fp16_via_bf16"],
         add_rmsnorm_key=keys["add_rmsnorm"],
         add_key=keys["add"],
         attention_gate_key=keys["attention_gate"],
+        attention_gate_fp16_via_bf16_key=keys[
+            "attention_gate_fp16_via_bf16"
+        ],
         dense_silu_key=keys["dense_silu"],
         argmax_key=keys["argmax"],
         f16_triple_key=keys["f16_triple"],
@@ -1290,9 +1312,13 @@ def resolve_laguna_eager_kernel_plan(
         f16_bf16_key=keys["f16_bf16"],
         rope_key=keys["rope"],
         rmsnorm=functions["rmsnorm"],
+        rmsnorm_fp16_via_bf16=functions["rmsnorm_fp16_via_bf16"],
         add_rmsnorm=functions["add_rmsnorm"],
         add=functions["add"],
         attention_gate=functions["attention_gate"],
+        attention_gate_fp16_via_bf16=functions[
+            "attention_gate_fp16_via_bf16"
+        ],
         dense_silu=functions["dense_silu"],
         argmax=functions["argmax"],
     )
@@ -1663,6 +1689,7 @@ class LagunaGGUFResidentSession:
         self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(self.backend)
         self.group_compact_mode = resolve_laguna_group_compact_mode(self.backend)
         self.f16_prefill_mode = resolve_laguna_f16_prefill_mode(self.backend)
+        self.fuse_f16_boundaries = False
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1891,6 +1918,11 @@ class LagunaGGUFResidentSession:
                     f"finite FP16 bound; bound={bound}"
                 )
         self.f16_prefill_mode = selected
+
+    def set_f16_boundary_fusion(self, enabled: bool) -> None:
+        """Fuse exact BF16-to-FP16 boundaries in range-direct prefill."""
+
+        self.fuse_f16_boundaries = bool(enabled)
 
     def set_dense_q4_prefill_mode(self, mode: str) -> None:
         """Select the explicit dense/shared Q4 rows>1 projection route."""
@@ -2544,14 +2576,18 @@ class LagunaGGUFResidentSession:
         }
         row_scales_ptr = scratch.token_ids.ptr
         if direct_norm:
-            bf16_to_fp16(
-                scratch.norm.ptr,
-                scratch.gated_context.ptr,
-                rows * config.hidden_size,
-                stream=stream,
-                library=self.libraries.cast,
-                runtime=self.runtime,
-            )
+            if (
+                self.f16_prefill_mode != "hipblaslt_range_direct"
+                or not self.fuse_f16_boundaries
+            ):
+                bf16_to_fp16(
+                    scratch.norm.ptr,
+                    scratch.gated_context.ptr,
+                    rows * config.hidden_size,
+                    stream=stream,
+                    library=self.libraries.cast,
+                    runtime=self.runtime,
+                )
         else:
             bf16_to_fp16_scaled_rows(
                 scratch.norm.ptr,
@@ -2620,7 +2656,7 @@ class LagunaGGUFResidentSession:
         route = self._ensure_f16_hipblaslt()
         direct_output = self.f16_prefill_mode == "hipblaslt_range_direct"
         row_scales_ptr = scratch.token_ids.ptr
-        if direct_output:
+        if direct_output and not self.fuse_f16_boundaries:
             bf16_to_fp16(
                 scratch.gated_context.ptr,
                 scratch.gated_context.ptr,
@@ -2629,7 +2665,7 @@ class LagunaGGUFResidentSession:
                 library=self.libraries.cast,
                 runtime=self.runtime,
             )
-        else:
+        elif not direct_output:
             bf16_to_fp16_scaled_rows(
                 scratch.gated_context.ptr,
                 scratch.gated_context.ptr,
@@ -2693,17 +2729,33 @@ class LagunaGGUFResidentSession:
         q_width = heads * config.key_length
         kv_width = config.head_count_kv * config.key_length
 
-        self.kernel_plan.rmsnorm(
-            scratch.hidden.ptr,
-            layer.weight("attn_norm").allocation("raw").tensor.ptr,
-            scratch.norm.ptr,
-            rows,
-            config.hidden_size,
-            config.rms_norm_eps,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
-        )
+        if (
+            self.f16_prefill_mode == "hipblaslt_range_direct"
+            and self.fuse_f16_boundaries
+        ):
+            self.kernel_plan.rmsnorm_fp16_via_bf16(
+                scratch.hidden.ptr,
+                layer.weight("attn_norm").allocation("raw").tensor.ptr,
+                scratch.gated_context.ptr,
+                rows,
+                config.hidden_size,
+                config.rms_norm_eps,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
+        else:
+            self.kernel_plan.rmsnorm(
+                scratch.hidden.ptr,
+                layer.weight("attn_norm").allocation("raw").tensor.ptr,
+                scratch.norm.ptr,
+                rows,
+                config.hidden_size,
+                config.rms_norm_eps,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
         self._launch_attention_projections_rows(
             layer,
             scratch,
@@ -2818,7 +2870,15 @@ class LagunaGGUFResidentSession:
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 stream,
             )
-        self.kernel_plan.attention_gate(
+        attention_gate = (
+            self.kernel_plan.attention_gate_fp16_via_bf16
+            if (
+                self.f16_prefill_mode == "hipblaslt_range_direct"
+                and self.fuse_f16_boundaries
+            )
+            else self.kernel_plan.attention_gate
+        )
+        attention_gate(
             scratch.context.ptr,
             scratch.gate_logits.ptr,
             scratch.gated_context.ptr,

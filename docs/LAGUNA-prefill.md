@@ -739,7 +739,7 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 | Selected D8 Q4 gate/up | **314.920 ms** | **34.95%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters now measure **1.326 GB/layer**, **195.88 GB/s / 88.64%** of the stream anchor, **80.89%** memory-unit busy, **95.77%** occupancy, and **1.38%** LDS stall. Reopen only with a schedule that removes physical bytes. |
 | Selected D4 Q4/Q6 down | **191.098 ms** | **21.21%** | Direct Q4 decode and byte-neutral qmicro Q6 are retained. Q4 physically fetches **13.405 GB / 72.195 ms (185.68 GB/s)** and is the bandwidth-bound priority; its row grid rereads weights **1.378x**. Q6 fetches **14.740 GB / 118.888 ms (123.99 GB/s)** with only **1.113x** reread and substantial decode/latency cost. |
 | Global + SWA attention | **141.846 ms** | **15.74%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 calls. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
-| Static-range direct hipBLASLt source-F16 | **125.250 ms** | **13.90%** | All five contractions and direct boundary casts are included. Concatenated QKV has only a **2.891-ms** modeled ceiling before restride; layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. Freeze this family pending a different library/runtime capability. |
+| Static-range direct hipBLASLt source-F16 | **125.250 ms** | **13.90%** | All five contractions and direct boundary casts are included. Concatenated QKV has only a **2.891-ms** modeled ceiling before restride; layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. Exact producer-side BF16-to-FP16 boundary fusion is retained as a default-off candidate after **554.909 -> 559.320 tok/s (+0.795%, 6/7 pair wins)**; clean publication remains. |
 | Q4/Q6 WMMA dense/shared | **53.271 ms** | **5.91%** | Q6 16x32 and the exact Q4 64x16/64x32/32x32 shape policy are production. Preserve their existing exact rollback paths. |
 | Router | **23.554 ms** | **2.61%** | Eight-token reuse is production and cuts the prior **30.658 ms** family. Tile 4 remains rollback; tile 16 is slower at every stable leaf shape. |
 | Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **51.239 ms** | **5.69%** | MMQ grouped-combine reuse and the fused selected-SiLU pack each remove 47 launches and a routed intermediate. The one-block prefix and parallel compaction remain retained. Touch a residual family only with a named exact fusion/data-movement premise. |
@@ -907,6 +907,14 @@ Immediate execution queue:
    64-MiB workspace on gfx1151. Do not add concatenated resident weights or a
    restride kernel for this ceiling; reopen only if the installed library
    gains a viable grouped algorithm or consumers accept the combined stride.
+   A distinct boundary-fusion premise is positive and retained as a
+   default-off candidate: RMSNorm and softplus gating now emit the exact FP16
+   representation of their existing BF16 output, removing 96 casts at pp512.
+   Primitive shapes improve **0.040472 -> 0.021564 ms** and
+   **0.192665 -> 0.135213 ms**; seven matched full-model pairs improve
+   **554.909 -> 559.320 tok/s (+0.795%, 6/7 wins)** with identical token and
+   logit. Promote only after clean selector-unset publication, full state /
+   quality / lifecycle gates, and trace confirmation.
 4. **Complete:** LAP-BW0 physical counters classify gate/up and Q4 down as
    controller-bound at **195.88/185.68 GB/s**. Q6 down reaches only
    **123.99 GB/s**, but scheduled weights already explain **99.28%** of its

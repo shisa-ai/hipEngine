@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna source-F16 boundary candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / producer-side FP16-via-BF16 stores remove 96 pp512 casts, preserve every primitive bit plus next token/logit, and improve matched rollback **554.909 -> 559.320 tok/s (+0.795%, 6/7 pair wins)**; default remains off pending clean production publication; `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-candidate.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q4 selected-down rows64] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / natural pp512 layer 10 direct-decode MMQ64x64 regresses **2.951132 -> 3.790972 ms (+28.46%)**, and the padding-free full-64-row control still regresses **0.075383 -> 0.081069 ms (+7.54%)** with zero BF16 mismatches; all candidate surfaces are removed and production remains **559.290 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-rows64-rejected.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q4 selected-down persistence] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / natural pp512 layer 10 preserves every BF16 bit but regresses the production consumer **2.872974 -> 18.455975 ms (6.424x slower)** because full-output FP32 partial and repeated activation traffic exceed the removed weight rereads; all candidate surfaces are removed and production remains **559.290 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-persistent-k256-rejected.json`.

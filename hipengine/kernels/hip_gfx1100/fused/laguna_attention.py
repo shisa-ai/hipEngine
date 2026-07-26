@@ -149,6 +149,36 @@ def laguna_softplus_head_gate_f32_bf16_out(
     )
 
 
+def laguna_softplus_head_gate_f32_fp16_via_bf16_out(
+    context_ptr,
+    gate_ptr,
+    out_ptr,
+    rows,
+    heads,
+    head_dim,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    """Gate directly to the FP16 representation of the BF16 boundary."""
+
+    _launch(
+        "hipengine_laguna_softplus_head_gate_f32_fp16_via_bf16_out",
+        context_ptr,
+        gate_ptr,
+        out_ptr,
+        rows,
+        heads,
+        head_dim,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_laguna_attention_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "attention_gate", "f32", "softplus_broadcast_f32_out"),
@@ -160,6 +190,16 @@ def register_laguna_attention_kernels(*, replace: bool = True) -> None:
         laguna_softplus_head_gate_f32_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_gate",
+            "f32",
+            "softplus_broadcast_fp16_via_bf16_out",
+        ),
+        laguna_softplus_head_gate_f32_fp16_via_bf16_out,
+        replace=replace,
+    )
 
 
 register_laguna_attention_kernels()
@@ -167,6 +207,7 @@ register_laguna_attention_kernels()
 __all__ = [
     "build_laguna_attention",
     "laguna_softplus_head_gate_f32_bf16_out",
+    "laguna_softplus_head_gate_f32_fp16_via_bf16_out",
     "laguna_softplus_head_gate_f32_out",
     "plan_laguna_attention_build",
     "register_laguna_attention_kernels",

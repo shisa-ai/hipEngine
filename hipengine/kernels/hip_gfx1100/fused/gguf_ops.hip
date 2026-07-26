@@ -4,6 +4,8 @@
 
 #include <cstdint>
 
+using half_t = _Float16;
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -59,6 +61,41 @@ __global__ void gguf_rmsnorm_bf16_f32_weight_kernel(
   for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
     const float value = bf16_bits_to_float(x[row_base + idx]) * inv_rms * weight[idx];
     out[row_base + idx] = float_to_bf16_bits(value);
+  }
+}
+
+__global__ void
+gguf_rmsnorm_bf16_f32_weight_out_fp16_via_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const float* __restrict__ weight,
+    half_t* __restrict__ out,
+    float eps,
+    int64_t hidden_size) {
+  extern __shared__ float partial[];
+  const int64_t tid = threadIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * hidden_size;
+  float sum = 0.0f;
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value = bf16_bits_to_float(x[row_base + idx]);
+    sum += value * value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms =
+      rsqrtf(partial[0] / static_cast<float>(hidden_size) + eps);
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value =
+        bf16_bits_to_float(x[row_base + idx]) *
+        inv_rms *
+        weight[idx];
+    out[row_base + idx] = static_cast<half_t>(
+        bf16_bits_to_float(float_to_bf16_bits(value)));
   }
 }
 
@@ -541,6 +578,30 @@ extern "C" int hipengine_gguf_rmsnorm_bf16_f32_weight(
     threads = 256;
   }
   gguf_rmsnorm_bf16_f32_weight_kernel<<<
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(x, weight, out, eps, hidden_size);
+  return hipGetLastError();
+}
+
+extern "C" int
+hipengine_gguf_rmsnorm_bf16_f32_weight_out_fp16_via_bf16(
+    const uint16_t* x,
+    const float* weight,
+    half_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_rmsnorm_bf16_f32_weight_out_fp16_via_bf16_kernel<<<
       static_cast<unsigned int>(rows),
       static_cast<unsigned int>(threads),
       static_cast<size_t>(threads) * sizeof(float),
