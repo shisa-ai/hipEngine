@@ -183468,3 +183468,23 @@ Vulkan local sizes verbatim will close the measured gap.
   reports the absolute KL/top-1 decision without conflating it with timing.
 - Validation: all **21** focused category-harness tests pass, both changed
   Python files compile, and the diff check is clean.
+
+## 2026-07-27 — Reject unqualified D4 on the absolute category gate
+
+- Ran the clean, cached, one-owner `d4_direct_wave_absolute` comparison at
+  revision `9968555cb`: ten canonical prompts, all four categories, three
+  balanced repetitions, h16/h32, and 32 teacher-forced steps per prompt.
+- D4 keeps **315/320 (98.438%)** suite top-1 and eight of ten prompts are
+  inside the KL budget. It nevertheless fails the absolute contract:
+  `mixed_ja_en_translate` reaches maximum KL **0.127536** at step 13 and
+  `mixed_ja_en_review` reaches **0.050942** at step 1. The mixed category is
+  **61/64** top-1 with maximum KL **0.127536**.
+- Timing confirms the candidate is worth repairing rather than immediately
+  deleting: across the category prompts it is **4.537x** the all-exact
+  prefill lane, with h16/h32 E2E speedups **1.988x/1.555x** and identical
+  decode throughput. This timing is diagnostic because quality failed.
+- Production remains D8 at **632.618 tok/s**. Unqualified D4 is rejected.
+  The only retained next screen is a globally data-dependent per-K32 D4/D8
+  choice in the existing 160-byte activation block; prompt-, token-, and
+  arbitrary-layer-specific selection are forbidden. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json`.

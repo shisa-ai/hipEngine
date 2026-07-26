@@ -1401,7 +1401,8 @@ Immediate execution queue:
    64x64 contraction.
    Evidence:
    [`2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-integer-wmma-row64-rejected.json).
-31. **Quality-pending candidate:** transfer one-scale-per-32 D4 arithmetic
+31. **Rejected as an unqualified production route; selective repair
+   pending:** transfer one-scale-per-32 D4 arithmetic
    into production's proven 128-column x 32-row/local128 direct-wave,
    row-vector, activation-double-buffer body. This changes no resident bytes
    and keeps D8 production as rollback. The complete 12-case CPU-reference
@@ -1412,14 +1413,17 @@ Immediate execution queue:
    **41.187 ms** at the medians; every D4 sample is
    **663.143–668.584 tok/s**. Cached tracing observes the intended local128,
    16x297-workgroup specialization (rocprof thread grid 2048x297). This is
-   not production: direct
-   all-exact 320-step quality is still pending, and prior D4 arithmetic failed
-   the older relative lane at maximum KL **0.0767056**. Commit the default-off
-   candidate solely to run the canonical gate from a clean revision; promote
-   only if absolute KL is at most 0.05, otherwise repair selectively or remove
-   it.
+   not production. The clean direct-all-exact 320-step gate keeps strong
+   **315/320 (98.438%)** top-1, and eight of ten prompts pass, but maximum KL
+   reaches **0.127536** on `mixed_ja_en_translate`; the mixed category fails
+   the 0.05 contract. Unqualified D4 therefore cannot ship. Keep the
+   default-off surface only for one globally data-dependent per-K32 D4/D8
+   repair screen using the existing 160-byte activation block; no prompt,
+   token, or arbitrary-layer selection is admissible. Remove it if that
+   repair does not preserve a positive complete wall.
    Evidence:
-   [`2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json).
+   [`2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-quality-pending.json),
+   [`2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-d4-direct-wave-absolute-rejected.json).
 
 Post-350 exclusions:
 

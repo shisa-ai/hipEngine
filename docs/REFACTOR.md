@@ -1506,10 +1506,12 @@ should be boring.
 - The complete 12-case CPU-reference matrix passes. Actual M512 leaf timing
   improves **6.855 -> 6.008 ms (-12.36%)**; five counterbalanced complete
   pp512 diagnostics improve **631.251 -> 665.020 tok/s (+5.350%)**.
-- Keep this default-off mode only through the clean direct all-exact
-  320-step/category quality gate. If max KL exceeds 0.05, either land a
-  globally defined selective repair that retains a positive complete wall or
-  remove the HIP export, Python symbol/selector, runtime mode, leaf harness
-  mode, and added test cases. If the gate passes, promote through the normal
-  clean production protocol and retain D8 as the numerical rollback until one
-  later quality checkpoint.
+- The clean direct all-exact 320-step/category gate rejected unqualified D4:
+  top-1 remains **315/320**, but maximum KL is **0.127536** in the mixed
+  Japanese-English category. Keep this surface only through one globally
+  data-dependent per-K32 D4/D8 repair screen using the existing activation
+  block. If that screen fails quality or loses the complete wall win, remove
+  the HIP export, Python symbol/selector, runtime mode, leaf harness mode,
+  category comparison, and added test cases. If a repair passes, promote
+  through the normal clean production protocol and retain D8 as the numerical
+  rollback until one later quality checkpoint.
