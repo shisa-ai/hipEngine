@@ -1192,6 +1192,79 @@ __global__ void gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel(
   }
 }
 
+__launch_bounds__(320, 1)
+__global__ void gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const float* __restrict__ routing_weights,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int num_experts,
+    int out_features) {
+  constexpr int TOP_K = 10;
+  constexpr int IN_FEATURES = 1024;
+  constexpr int BLOCKS = IN_FEATURES / QK_K;
+  constexpr int ROW_BYTES = BLOCKS * IQ3_XXS_BLOCK_BYTES;
+  const int out_col = blockIdx.x;
+  const int route = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  if (out_col >= out_features) return;
+
+  const int64_t expert_id = selected[route];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * ROW_BYTES;
+  const uint8_t* __restrict__ weight_row = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * ROW_BYTES
+      : qweight;
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(route) * IN_FEATURES;
+
+  // Preserve the retained wave4 producer exactly inside each of ten route
+  // waves. Only the workgroup grouping and producer/reducer boundary change.
+  float partials[BLOCKS] = {0.0f, 0.0f, 0.0f, 0.0f};
+  if (valid_expert) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      const int x_offset = block_idx * QK_K + lane * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const uint8_t* __restrict__ block =
+          weight_row + static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+      partials[block_idx] = iq3_xxs_group_dot(block, lane, x_values);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      partials[block_idx] += __shfl_down(partials[block_idx], offset);
+    }
+  }
+
+  __shared__ uint16_t route_values[TOP_K];
+  if (lane == 0) {
+    float route_total = 0.0f;
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      route_total += partials[block_idx];
+    }
+    route_values[route] = float_to_bf16_bits(route_total);
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    // Replay weighted_sum_out_kernel from +0.0 in original route-slot order.
+    float total = 0.0f;
+#pragma unroll
+    for (int slot = 0; slot < TOP_K; ++slot) {
+      total = fmaf(
+          bf16_bits_to_float(route_values[slot]), routing_weights[slot], total);
+    }
+    out[out_col] = float_to_bf16_bits(total);
+  }
+}
+
 __launch_bounds__(256, 2)
 __global__ void gguf_iq3_xxs_selected_gemv_kernel(
     const uint16_t* __restrict__ x,
@@ -1841,6 +1914,38 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local6
       static_cast<int>(rows),
       static_cast<int>(num_experts),
       static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const float* routing_weights,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || routing_weights == nullptr ||
+      qweight == nullptr || out == nullptr || tokens != 1 || top_k != 10 ||
+      num_experts <= 0 || in_features != 1024 || out_features <= 0 ||
+      threads != 320) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(320U);
+  const dim3 grid(static_cast<unsigned int>(out_features));
+  gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      routing_weights,
+      qweight,
+      out,
+      static_cast<int>(num_experts),
       static_cast<int>(out_features));
   return static_cast<int>(hipGetLastError());
 }
