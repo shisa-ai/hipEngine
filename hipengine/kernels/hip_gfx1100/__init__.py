@@ -41,9 +41,6 @@ LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
 # clean-context, and both complete 18-prompt category orders. Explicit wave4
 # or serial requests and exact-key misses retain the registered unfused chain.
 LAGUNA_IQ3_WAVE10_FUSED = True
-# The existing exact IQ4 weighted composite is Laguna top-10/K1024 certified.
-# Keep runtime ownership default-off until full-state and clean/category gates.
-LAGUNA_IQ4_WEIGHTED_COMPOSITE = False
 # The exact expanded-magnitude IQ2 grid contracts selector reconstruction and
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
@@ -134,7 +131,6 @@ __all__ = [
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_IQ3_WAVE10_FUSED",
-    "LAGUNA_IQ4_WEIGHTED_COMPOSITE",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
