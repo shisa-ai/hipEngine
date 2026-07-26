@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna Q6 qmicro-permute production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / two byte gathers replace scalar quartet unpack without changing resident bytes or arithmetic; the actual leaf improves **4.872 -> 4.741 ms (-2.67%)**, tracing cuts the 115-call Q6 body **1.23%**, and selector-unset production improves **568.849/527.113/444.508 -> 571.415/529.870/445.164 tok/s (+0.451%/+0.523%/+0.147%)** with complete state exact; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`.
+
 - [rejected exact gfx1151 Laguna eager least-priority shared release] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / with priority +1 fixed in both arms, moving shared release before router selection regresses matched pp512 **570.796 -> 569.666 tok/s (-0.198%, 1/7 wins)** despite complete-state equality; no trace or code change retained; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-eager-low-priority-rejected.json`.
 
 - [retained exact gfx1151 Laguna low-priority shared-stream production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / selector-unset priority +1 publishes **568.849/527.113/444.508 tok/s** versus **566.839/527.381/444.447 (+0.355%/-0.051%/+0.014%; 1K/4K flat)**; matched complete state is exact and tracing cuts kernel span **7.255 ms**; `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-production.json`.

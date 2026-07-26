@@ -182573,3 +182573,30 @@ Vulkan local sizes verbatim will close the measured gap.
 - This logical unit promotes dispatch only. A clean selector-unset
   three-repeat 512/1K/4K publication remains required before changing the
   production headline.
+
+## 2026-07-26 — Publish Q6 qmicro permute production
+
+- Clean selector-unset revision `5316d924e` resolves
+  `LAGUNA_Q6_QMICRO_PERMUTE=true`, automatic `GPU_MAX_HW_QUEUES=2`,
+  after-router shared release, and least HIP priority +1. Three alternating
+  repetitions publish **571.415/529.870/445.164 tok/s** at 512/1K/4K versus
+  **568.849/527.113/444.508**, improving
+  **+0.451%/+0.523%/+0.147%**.
+- All nine samples retain tokens 2930/95/7772, exact final positions,
+  deterministic repeats, and zero live tracked allocations after close.
+  Primitive BF16 identity, the actual-weight zero-mismatch leaf, seven exact
+  complete-state pairs, and decode-neutral dispatch transfer the unchanged
+  max KL **0.049542582**, **316/320** top-1, and lifecycle-through-4K gate.
+- Production artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`.
+  Raw selector-unset SHA-256:
+  `e3f94db4cbb168d4e00d57e76b70d91a4dfe4eeb6f04d421512dca4f24038166`.
+  Clean pp512 wall is **896.021 ms**; 700 requires another **164.592 ms**.
+- `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and
+  `docs/LAGUNA-prefill.md` now identify the new production row and refresh the
+  inclusive family table from the candidate-equivalent cached trace.
+- Next bounded screen is a byte-neutral qmicro-planar ordering: store four
+  `ql01` bytes and four `ql23` bytes as directly loadable dwords beside the
+  unchanged four high-bit bytes. If exact decode and prefill retain the same
+  arithmetic, this removes the two now-proven byte gathers with no resident
+  traffic increase or sidecar.
