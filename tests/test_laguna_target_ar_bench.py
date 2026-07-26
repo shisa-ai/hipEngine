@@ -147,6 +147,18 @@ def test_iq3_signbit_schedule_cli_is_removed_after_clean_rejection(
         benchmark._parse_args()
 
 
+def test_persistent_wave_top10_router_cli_is_explicit_opt_in(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().enable_persistent_router_wave_top10
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--enable-persistent-router-wave-top10"],
+    )
+    assert benchmark._parse_args().enable_persistent_router_wave_top10
+
+
 def test_iq2_grid64_cli_is_defaults_on_with_explicit_disable(monkeypatch) -> None:
     monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
     assert not benchmark._parse_args().disable_iq2_grid64

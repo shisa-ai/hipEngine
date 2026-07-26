@@ -65,6 +65,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument(
+        "--enable-persistent-router-wave-top10",
+        action="store_true",
+        help="enable the default-off exact persistent wave-top10 c=1 router",
+    )
+    parser.add_argument(
         "--disable-iq2-grid64",
         action="store_true",
         help="roll back the exact expanded-magnitude IQ2 c=1 default",
@@ -228,6 +233,9 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         prefill_chunk_size=args.chunk_size,
         iq3_c1_down_schedule=args.iq3_c1_down_schedule,
         use_iq2_grid64=False if args.disable_iq2_grid64 else None,
+        use_persistent_router_wave_top10=(
+            args.enable_persistent_router_wave_top10
+        ),
         use_q5_fixed_meta_output=(
             False if args.disable_q5_fixed_meta_output else None
         ),
