@@ -560,6 +560,66 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
   }
 }
 
+template <int residual_passes>
+__launch_bounds__(128, 1)
+__global__ void gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel(
+    const uint16_t* __restrict__ gate_up,
+    block_q8_1_mmq_ds4_f32* __restrict__ out,
+    int64_t rows,
+    int64_t hidden) {
+  const int64_t q8_block = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int ds4_idx = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  if (row >= rows || q8_block >= blocks_per_row) return;
+
+  const int64_t col = q8_block * Q8_1_MMQ_BLOCK + tid;
+  const int64_t row_base = row * hidden * 2;
+  const float gate = bf16_bits_to_float(gate_up[row_base + col]);
+  const float up = bf16_bits_to_float(gate_up[row_base + hidden + col]);
+  const float sig = 1.0f / (1.0f + expf(-gate));
+  // Preserve the standalone SiLU kernel's BF16 output boundary before
+  // quantization. This makes the fused body byte-identical to
+  // silu_mul_dual_out_bf16 followed by the ordinary FP32-metadata packer.
+  float residual =
+      bf16_bits_to_float(float_to_bf16_bits(gate * sig * up));
+
+  __shared__ float scale_shared[4];
+  __shared__ float sum_shared[4];
+#pragma unroll
+  for (int pass = 0; pass < residual_passes; ++pass) {
+    const float sum = wave32_sum(residual);
+    const float max_abs = wave32_max(fabsf(residual));
+    if (lane == 0) {
+      scale_shared[ds4_idx] = max_abs / 127.0f;
+      sum_shared[ds4_idx] = sum;
+    }
+    __syncthreads();
+
+    const float scale = scale_shared[ds4_idx];
+    int q = 0;
+    if (scale > 0.0f) {
+      const float qf =
+          fminf(127.0f, fmaxf(-127.0f, rintf(residual / scale)));
+      q = static_cast<int>(qf);
+    }
+
+    const int64_t plane_blocks = rows * blocks_per_row;
+    block_q8_1_mmq_ds4_f32* __restrict__ out_block =
+        out + static_cast<int64_t>(pass) * plane_blocks +
+        row * blocks_per_row + q8_block;
+    out_block->qs[tid] = static_cast<int8_t>(q);
+    if (lane == 0) {
+      out_block->ds4[2 * ds4_idx + 0] = scale;
+      out_block->ds4[2 * ds4_idx + 1] = sum_shared[ds4_idx];
+    }
+    residual = fmaf(-static_cast<float>(q), scale, residual);
+    __syncthreads();
+  }
+}
+
 __launch_bounds__(128, 1)
 __global__ void gguf_q8_1_mmq_ds8_f32_pack_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -2377,6 +2437,32 @@ int launch_q8_1_mmq_ds4_f32_pack_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+template <int residual_passes>
+int launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16(
+    const uint16_t* gate_up,
+    block_q8_1_mmq_ds4_f32* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (!valid_q8_1_mmq_ds4_pack(gate_up, out, rows, hidden)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  hipLaunchKernelGGL(
+      (gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel<residual_passes>),
+      dim3(
+          static_cast<unsigned int>(blocks_per_row),
+          static_cast<unsigned int>(rows)),
+      dim3(128),
+      0,
+      stream,
+      gate_up,
+      out,
+      rows,
+      hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_q8_1_mmq_ds8_f32_pack_bf16(
     const uint16_t* x,
     block_q8_1_mmq_ds4_f32* out,
@@ -4116,6 +4202,48 @@ extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
     hipStream_t stream) {
   return launch_q8_1_mmq_ds4_f32_pack_bf16<3>(
       x,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
+    const uint16_t* gate_up,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16<3>(
+      gate_up,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4(
+    const uint16_t* gate_up,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16<1>(
+      gate_up,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x2(
+    const uint16_t* gate_up,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16<2>(
+      gate_up,
       reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
       rows,
       hidden,

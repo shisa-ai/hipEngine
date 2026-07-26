@@ -50,6 +50,11 @@ _SYMBOL_DS4_F32_PACK_BF16 = {
     2: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x2",
     3: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3",
 }
+_SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16 = {
+    1: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4",
+    2: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x2",
+    3: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3",
+}
 _SYMBOL_DS8_F32_PACK_BF16 = (
     "hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16"
 )
@@ -329,6 +334,50 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
     fn.restype = ctypes.c_int
     err = fn(
         ctypes.c_void_p(x_bf16_ptr),
+        ctypes.c_void_p(out_q8_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
+    gate_up_bf16_ptr: int,
+    out_q8_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    residual_passes: int = 3,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Preserve BF16 SiLU output semantics while directly packing dual rows."""
+
+    _check_positive(rows, "rows")
+    _check_positive(hidden, "hidden")
+    if hidden % _Q8_1_MMQ_BLOCK != 0:
+        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    if residual_passes not in _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16:
+        raise ValueError("residual_passes must be 1, 2, or 3")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16[residual_passes],
+    )
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(gate_up_bf16_ptr),
         ctypes.c_void_p(out_q8_ptr),
         ctypes.c_int64(rows),
         ctypes.c_int64(hidden),
@@ -1676,6 +1725,16 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
             variant="bf16",
         ),
         gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="silu_mul_dual+activation_quant",
+            quant="q8_1_ds4x3_f32",
+            variant="bf16",
+        ),
+        gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3,
         replace=replace,
     )
     register(

@@ -181106,3 +181106,27 @@ Vulkan local sizes verbatim will close the measured gap.
   and exact lifecycle. Current production is **543.807 tok/s**; the clean wall
   is **941.510 ms**, leaving **210.081 ms** to 700. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`.
+
+## 2026-07-26 — Add exact dual-SiLU range-safe pack primitive
+
+- Audited the active MMQ boundary after the 543.807 tok/s publication. Sparse
+  gate/up writes **62.9 MB** of packed BF16 gate/up, a separate 47-call SiLU
+  pass materializes **31.5 MB** of BF16 intermediate, and the range-safe down
+  pack reads that intermediate. Existing scratch is sufficient for an exact
+  fusion without capacity growth: the **73.4 MB** selected-down output can
+  temporarily hold packed gate/up while the current gate/up allocation becomes
+  the Q8 destination.
+- RED added a registry contract and deterministic residual-pass 1/3 comparison
+  and failed on the missing fused wrapper. GREEN adds the four-axis
+  `silu_mul_dual+activation_quant/q8_1_ds4x3_f32/bf16` primitive. It evaluates
+  the same SiLU expression as the standalone kernel, explicitly preserves its
+  BF16 boundary, then runs the unchanged FP32-metadata residual pack. Both
+  fixtures are byte-identical to standalone SiLU followed by the ordinary
+  pack; the registered primitive chain remains the unfused fallback.
+- Cached gfx1151 tracing names the intended fused `<1>` and `<3>` kernels at
+  local128, LDS512B, scratch0, and VGPR16/24 with tiny-fixture durations
+  **1.402/8.375 us**. ROCm/gfx1151 is healthy. The required lineage audit is
+  still blocked only by the pre-existing absent read-only checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external tree was modified.
+  Runtime scratch reuse, complete MoE CPU-reference equality, and pp512
+  performance remain the next logical unit.
