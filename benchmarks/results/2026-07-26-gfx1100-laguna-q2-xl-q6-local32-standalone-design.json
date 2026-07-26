@@ -344,10 +344,12 @@
     "source_revision": "2191db96b276a448c44274e967fde1bab85606cf"
   },
   "provenance": {
-    "builder_sha256": "ec7d553fc5b9942ee235fb7ada8fb4ea5cf4ef23370f9bef9832f3f285c39dc4",
+    "builder_sha256": "46c8a3bd17498db741dc656a4c69c594e826102e0e04f9673e3aee8febf056cb",
     "dirty_files_at_build": [
-      " M WORKLOG.md",
-      " M docs/LAGUNA-decode.md"
+      " M docs/KERNELS.md",
+      " M hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+      " M hipengine/kernels/hip_gfx1151/__init__.py",
+      " M tests/test_gguf_q6_k_local32_standalone.py"
     ],
     "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
     "lineage_result": "only already-catalogued unrelated drift",
@@ -356,11 +358,11 @@
     "sources": [
       {
         "path": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip",
-        "sha256": "591eee1790fb66bd5227cd52990bb68f947dce7c690fa4ac645b3f581f02263c"
+        "sha256": "9abc7ef022b739dcac260b2acc8357bbadba2601ad073a355c897e137036205b"
       },
       {
         "path": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
-        "sha256": "e6669560d5330973e807e3c55397d575fb0ca4011d67105553b6d82e17277f94"
+        "sha256": "bfab50f09e92f19a4bc0fee9110027654d84b7f3884ea36fef222b10aaec7a03"
       },
       {
         "path": "hipengine/runtime/gguf_linear.py",
@@ -372,11 +374,11 @@
       },
       {
         "path": "docs/KERNELS.md",
-        "sha256": "4093af4fbde64d65e0fc9d98df90b8f9c8e80995635b7594db7175e5265806af"
+        "sha256": "f90f486878ec12023c7ce6f59c553e7131ed9baed39e3864658f69a8f9199df8"
       },
       {
         "path": "docs/LAGUNA-decode.md",
-        "sha256": "9f2c97419f70c4646f66ae528b5c64bdfdbb568ed29bae6b7646864336c40ec6"
+        "sha256": "52fb2d06b8ee89dfc670fc87062f3b13e6182f477ee49cbc5e08cbfdaccd700f"
       },
       {
         "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json",
@@ -426,7 +428,7 @@
       "hip_gfx1100",
       "linear",
       "gguf_q6_k",
-      "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+      "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
     ],
     "geometry": {
       "candidate": "N/2 local32 workgroups, one wave32/workgroup",
@@ -446,7 +448,7 @@
       "unchanged": "16*N total threads and N/2 physical waves per rows=1 projection, one dispatch, raw weights, output bytes, and persistent workspace"
     },
     "persistent_weight_copy_delta_bytes": 0,
-    "runtime_plan": "Pass one backend-capability-resolved same-ABI variant request through every c=1 raw BF16 single-linear call. Exact four-axis lookup selects only registered Q6 keys; Q4/Q5/Q8 misses retain their current routes without quant/backend branches in runner or model code.",
+    "runtime_plan": "Pass one backend-capability-resolved Q6-unique same-ABI variant request through every c=1 raw BF16 single-linear call. Exact four-axis lookup selects only the registered Q6 key; Q4/Q5/Q8 misses retain their current routes without quant/backend branches in runner or model code.",
     "scope": {
       "excluded": [
         "F32 attention Q/K/V mixed projections",
@@ -482,6 +484,7 @@
         ]
       ]
     },
+    "variant_collision_guard": "The standalone_ prefix is required because the unprefixed fixed-metadata variant is already the retained Q5 output request; reusing it would select layer-47 Q6 before the default-off owner is admitted.",
     "workspace_delta_bytes": 0
   },
   "status": "candidate_selected"
