@@ -183557,3 +183557,23 @@ Vulkan local sizes verbatim will close the measured gap.
   ten-prompt, four-category, 320-step run reports the absolute KL/top-1
   decision. Its focused configuration test passes; `py_compile` and
   `git diff --check` are clean.
+
+## 2026-07-27 — Reject D4-gate/D8-up on absolute quality
+
+- The clean `q4_role_split_absolute` run at revision `09805f96c` covers all
+  ten canonical prompts, four categories, three balanced repetitions,
+  h16/h32, and 32 teacher-forced steps per prompt.
+- D4-gate/D8-up keeps **317/320 (99.063%)** suite top-1 and improves the
+  earlier all-D4 maximum KL **0.127536 -> 0.061203**, but fails the 0.05
+  contract. `mixed_ja_en_translate` reaches **0.061203** at step 31 and
+  `mixed_ja_en_review` reaches **0.053487** at step 1; the other eight prompts
+  pass.
+- Poolside remains exact top-1. Category prefill is **4.432x** all-exact,
+  h16/h32 E2E improve **1.977x/1.550x**, decode is flat, and all
+  **109,859,542,160** tracked bytes return to zero. Production remains D8 at
+  **632.618 tok/s**.
+- The alternate D8-gate/D4-up assignment retains essentially the same
+  12-ms leaf economics but changes where approximation enters the SiLU
+  product, so it gets the same complete quality gate before producer-row
+  repair. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d4-up-d8-absolute-rejected.json`.

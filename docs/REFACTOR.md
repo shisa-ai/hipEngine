@@ -1507,10 +1507,12 @@ should be boring.
   preserves the established BF16 boundary.
 - D4-gate/D8-up clears the economic gate at **15.329 ms** saved in seven
   paired complete pp512 medians and reproduces its unfused complete-state
-  hashes. Keep both role modes only through the clean 320-step comparison.
-- If D4-gate/D8-up passes, promote it for gfx1151 and remove the unselected
-  D8-gate/D4-up runtime/leaf surface after one clean selector-unset
-  publication. If it fails and no bounded producer-row repair is retained,
-  remove both role exports, the separate fused pack, plan fields, runtime
-  modes, leaf modes, and their focused tests. Retain the generic multi-arm
-  harness only if it is reused by another selected-projection comparison.
+  hashes. Its clean 320-step comparison is rejected at max KL **0.061203**
+  despite **317/320** top-1. Keep both role modes only through the alternate
+  D8-gate/D4-up clean comparison.
+- If D8-gate/D4-up passes, promote it for gfx1151 and remove the rejected
+  D4-gate/D8-up runtime/leaf surface after one clean selector-unset
+  publication. If it also fails and no bounded producer-row repair is
+  retained, remove both role exports, the separate fused pack, plan fields,
+  runtime modes, leaf modes, and their focused tests. Retain the generic
+  multi-arm harness only if another selected-projection comparison reuses it.
