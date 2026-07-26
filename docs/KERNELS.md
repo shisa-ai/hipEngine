@@ -151,6 +151,15 @@ cached attribution measures **82.763 ms** total pp512 attention versus
 improves **0.003246 -> 0.002214** with top-1 2930. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-{candidate,production}.json`.
 
+Replicating the eight widened KV heads into 48/72 query-head-major scratch is
+closed. It permits one QK and one PV call, but raises route scratch
+**23.1 -> 56.6 MB**. All 32 zero-workspace heuristics per contraction were
+swept; the best qualified 48-layer model regresses **75.380 -> 105.483 ms
+(+39.94%)**, with zero wins at contexts 256/384/512. The CPU-reference route
+remains within **4.10e-8** absolute error. All candidate code is removed.
+Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-replicated-heads-rejected.json`.
+
 ### Laguna gfx1151 exact router token reuse
 
 The shared `moe/router.hip` family now registers

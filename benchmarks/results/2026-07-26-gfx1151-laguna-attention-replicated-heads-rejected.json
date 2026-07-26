@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T17:27:24+00:00",
+  "kind": "hipengine_laguna_attention_replicated_heads_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "5a23bf6df1ac4f3814c897e86278fd04434ad796",
+    "tracked_clean_after_removal": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "mechanism": "replicate each of eight widened KV heads into query-head-major scratch so one strided-batch QK and one PV call replace eight plus eight calls",
+    "production_scratch_nbytes": 23068672,
+    "candidate_scratch_nbytes": 56623104,
+    "zero_workspace_algorithms_swept_per_contraction": 32,
+    "correctness": {
+      "cpu_reference_fixture_passed": true,
+      "maximum_absolute_output_error": 4.0978193283081055e-08,
+      "finite": true,
+      "complete_allocation_recovery": true
+    }
+  },
+  "leaf": {
+    "rows": 128,
+    "repetitions": 21,
+    "burst": 10,
+    "qualified_shapes": {
+      "global_context_256": {
+        "production_ms": 0.2833154916763306,
+        "candidate_ms": 0.29529800415039065,
+        "regression_percent": 4.2293883765979645,
+        "candidate_wins": 0,
+        "best_qk_algorithm_index": 31,
+        "best_pv_algorithm_index": 0
+      },
+      "swa_context_256": {
+        "production_ms": 0.3626844882965088,
+        "candidate_ms": 0.4338019847869873,
+        "regression_percent": 19.608640232867415,
+        "candidate_wins": 0,
+        "best_qk_algorithm_index": 26,
+        "best_pv_algorithm_index": 3
+      },
+      "global_context_384": {
+        "production_ms": 0.34312779903411866,
+        "candidate_ms": 0.4456923007965088,
+        "regression_percent": 29.891049938565793,
+        "candidate_wins": 0,
+        "best_qk_algorithm_index": 31,
+        "best_pv_algorithm_index": 0
+      },
+      "swa_context_384": {
+        "production_ms": 0.45752248764038084,
+        "candidate_ms": 0.6953688144683838,
+        "regression_percent": 51.985712889145155,
+        "candidate_wins": 0,
+        "best_qk_algorithm_index": 30,
+        "best_pv_algorithm_index": 3
+      },
+      "global_context_512": {
+        "production_ms": 0.434948205947876,
+        "candidate_ms": 0.6805810928344727,
+        "regression_percent": 56.47405450294769,
+        "candidate_wins": 0,
+        "best_qk_algorithm_index": 8,
+        "best_pv_algorithm_index": 25
+      },
+      "swa_context_512": {
+        "production_ms": 0.5928325176239013,
+        "candidate_ms": 1.0257328033447266,
+        "regression_percent": 73.02235839827217,
+        "candidate_wins": 0,
+        "best_qk_algorithm_index": 16,
+        "best_pv_algorithm_index": 20
+      }
+    },
+    "modeled_48_layer_ms": {
+      "production": 75.38014698028564,
+      "candidate": 105.48329014778137,
+      "regression_percent": 39.93510808007403
+    }
+  },
+  "source_run": {
+    "path": "/tmp/laguna-attention-hipblaslt-replicated-algorithm-sweep.jsonlog",
+    "sha256": "adc294daefeef3e0170c1883d9fed2195bd304f29b5fc02da862b5e88f6b31e6",
+    "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -u /tmp/laguna_attention_hipblaslt_leaf.py"
+  },
+  "decision": {
+    "rejected": true,
+    "reason": "The candidate is correct but loses every qualified production shape after exhaustive zero-workspace heuristic selection; duplicating 8 KV heads into 48/72 query heads raises staging from 23.1 MB to 56.6 MB and overwhelms the call-count reduction.",
+    "removed": true,
+    "next_action": "pack only the query and output tiles, then test one eight-way wide-QK and one eight-way wide-PV batch without replicated KV traffic"
+  }
+}

@@ -183175,3 +183175,25 @@ Vulkan local sizes verbatim will close the measured gap.
   The next bounded screen replicates KV heads into query-head-major scratch so
   one QK and one PV strided-batch contraction replace the current eight plus
   eight library calls per qualified tile.
+
+## 2026-07-27 — Reject replicated-head BLAS attention
+
+- RED extended the dense-initial BLAS CPU-reference fixture with a
+  query-head-replicated route and failed on the missing constructor flag.
+  GREEN widened and replicated BF16 K/V into query-head-major F32 scratch and
+  changed QK/PV from eight calls each to one 48/72-way strided batch each.
+  The focused fixture passed within **4.10e-8** maximum absolute error.
+- The first heuristic-0 screen won only at context 128 and lost every
+  qualified production shape. A complete sweep of all 32 zero-workspace
+  algorithms for each QK/PV shape did not rescue it: global/SWA regressions
+  are **4.23%/19.61%** at context 256, **29.89%/51.99%** at 384, and
+  **56.47%/73.02%** at 512, all **0/21 wins**. The qualified 48-layer model
+  moves **75.380 -> 105.483 ms (+39.94%)**.
+- Replication raises scratch **23,068,672 -> 56,623,104 bytes** and makes K/V
+  staging scale with query heads. Every candidate HIP kernel, export, Python
+  wrapper, route, and test surface was removed; tracked production is restored
+  exactly. Rejection artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-replicated-heads-rejected.json`.
+- The next formulation keeps K/V unreplicated and packs only the 4.7-MB query
+  and output tiles, allowing one eight-way wide-QK and one eight-way wide-PV
+  batch with roughly one-eighth the extra staging traffic.
