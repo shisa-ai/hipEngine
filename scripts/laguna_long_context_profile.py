@@ -134,6 +134,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not repo["tracked_clean"]:
         raise RuntimeError("retained Laguna LPF-5 profiling requires a clean tracked worktree")
 
+    # Runtime initialization applies backend process defaults such as
+    # GPU_MAX_HW_QUEUES before libamdhip64 is loaded. Do it before provenance
+    # capture so the artifact records the policy the measurement actually used.
+    runtime = get_hip_runtime()
     provenance = collect_artifact_provenance(
         repo_root=ROOT,
         configured_backend=args.backend,
@@ -157,7 +161,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     prompts = _load_prompts(args.prompts, tokenizer)
     token_stream, token_source = _profile_token_stream(prompts, max(lengths))
 
-    runtime = get_hip_runtime()
     gpu_free_before, gpu_total = runtime.mem_get_info()
     tracked_before = memory_stats()
     owner: LagunaGGUFResidentSession | None = None
