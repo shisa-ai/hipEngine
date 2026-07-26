@@ -1529,6 +1529,8 @@ should be boring.
   failing streams. The M512 runtime selector plus its short/long category
   comparisons, lane, and selector-specific tests are removed. Keep the shared
   role kernels, activation packs, exact separate-input fused boundary, and
-  generic long-prompt extension helper only because the next bounded repair
-  consumes them; remove those too if the repair screen has no economically
-  viable risk-row operating point.
+  generic long-prompt extension helper only because the bounded off-path
+  `laguna_q4_role_risk_calibration.py` screen consumes them. Remove the role
+  primitives, separate fused boundary, extension helper, and calibration
+  harness if its global activation-only sweep has no economically viable
+  operating point at no more than **25%** repaired producer rows.
