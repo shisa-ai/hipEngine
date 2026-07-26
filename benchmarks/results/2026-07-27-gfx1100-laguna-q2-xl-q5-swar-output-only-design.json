@@ -1,0 +1,690 @@
+{
+  "admitted_primitive": {
+    "actual_event_improvement_range_pct": [
+      7.92,
+      10.11
+    ],
+    "actual_wall_improvement_range_pct": [
+      7.63,
+      9.52
+    ],
+    "all_actual_attention_output_weights_exact": 47,
+    "correctness_artifact": {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-correctness.json",
+      "sha256": "f7b407cde6a42fff7d72fe5d6eaca34e03ee1e24061efb091df0aeec60580824"
+    },
+    "description": "exact paired-output SWAR reconstruction for the direct BF16 Q5 attention-output role",
+    "new_primitive_required": false,
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q5_k",
+      "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out"
+    ],
+    "resources": {
+      "allocated_vgpr": 72,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "workgroup": 32
+    }
+  },
+  "baseline": {
+    "additional_speedup_required_pct": 1.8144711534139333,
+    "h32_decode_tok_s": 63.27021934907704,
+    "h32_ms_per_token": 15.805224168463194,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "measurement_revision": "5a0463c71a198d1fbb1caf8ee632d29b337c5a94",
+    "model_kernels_per_token": 678,
+    "retained_artifact": {
+      "path": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json",
+      "sha256": "f1fd3c7d9f8d881d5699e1a77bfdf6fcbedb0322f2186b54d27642bf61a96ee2"
+    },
+    "retained_commit": "7f1d77ab6"
+  },
+  "builder_sha256": "19953cc4fc37413cfca265ab9eaf48878eb70a16ff88b4afb8a1c6c69e8cbbf9",
+  "conservative_screen_model": {
+    "additional_speedup_to_vulkan_after_model_pct": 1.6186572897920248,
+    "current_attention_output_ms_per_token": 1.55760375,
+    "interpretation": "Planning ceiling from immutable profiled family evidence only; not a throughput claim.",
+    "modeled_h32_delta_pct": 0.1926947952711755,
+    "modeled_h32_tok_s": 63.39213776871937,
+    "modeled_saving_ms_per_token": 0.03039727039561647,
+    "smaller_full_model_family_improvement_pct": 1.9515406531100399
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "action": "gate the already-admitted Q5 paired-SWAR primitive as an output-only default-off owner",
+    "completion_claim": false,
+    "reason": "It is the largest surviving independently positive admitted role after post-wave10 re-ranking; both immutable full-model orders improve it while the rejected bundle regressions are excluded."
+  },
+  "fresh_closed_discriminator": {
+    "all_outputs_bit_exact": true,
+    "candidate": "SWA local32 packed-dim4 wave-local reducer",
+    "codegen": {
+      "logical_sgpr": 50,
+      "logical_vgpr": 31,
+      "private_bytes": 0,
+      "sgpr_spills": 0,
+      "vgpr_spills": 0,
+      "wavefront": 32,
+      "workgroup": 32
+    },
+    "decision": "reject out of tree; nine of twelve required rows regress both timers",
+    "event_delta_range_pct": [
+      -10.072143503766263,
+      1.2445949604337647
+    ],
+    "harness": {
+      "path": "/tmp/bench_laguna_swa_dim4_actual.py",
+      "sha256": "373a53b6717c383fc8cccdaecb598493e834097e5caa25ca38de0aa8295ff053"
+    },
+    "hsaco": {
+      "path": "/tmp/laguna-swa-dim4.hsaco",
+      "sha256": "ebf0c589bdfad277dc779ec0e78880b6d5bfe8fe0c23d729037bbdb47d695153"
+    },
+    "raw": {
+      "path": "/tmp/laguna-swa-dim4-actual.json",
+      "sha256": "62cbce4d19d8e4f522fecdeb3e6b91eb00604913de743a7781eb78892ab8087f"
+    },
+    "readobj": {
+      "path": "/tmp/laguna-swa-dim4-hsaco-readobj.txt",
+      "sha256": "5d4f26ea1a7361338747cbba9b2d1f0d58ae4d097d18c86a783be3d760c71e6f"
+    },
+    "reason_screened": "Retains all 72 query-head workgroups while reducing local64/dim2 softmax-state replicas from two to one; this exact dim4 ownership had not been tested.",
+    "required_rows": 12,
+    "rows_regressing_both_event_and_wall": 9,
+    "source": {
+      "path": "/tmp/laguna_kv_attention_local32_dim4.hip",
+      "sha256": "17c4e008cbcbdafb3dc8e87d922e677aa2b5a4a2315f873e85fb21c02b9f1dd7"
+    },
+    "wall_delta_range_pct": [
+      -8.035323436692988,
+      1.448131625275706
+    ]
+  },
+  "frozen_next_gates": {
+    "cached_trace": [
+      "Exactly 47 direct-BF16 SWAR output calls/token and zero SWAR mixed/shared/query-gate calls.",
+      "Exactly 678 model kernels/token, local32/VGPR72/LDS0/scratch0, finite logits, lifecycle, and no compiler under profiling."
+    ],
+    "category": [
+      "Only after all clean orders pass, run both complete 18-prompt train+heldout process orders at h16/h32.",
+      "Require aggregate and every category decode positive at both horizons, category E2E >= -0.5%, aggregate prefill >= -0.5%, aggregate TTFT <= +0.5%, exact IDs/quality/lifecycle, and no third order or waiver."
+    ],
+    "clean_profiles": [
+      "Two process orders at short/512/1K/near-4K with no rerun or pooled waiver.",
+      "Every order must improve the attention-output family and complete kernel sum, keep span below +0.5%, child throughput above -0.5%, and pass exact topology/ID/resource/lifecycle checks."
+    ],
+    "full_state": [
+      "No-argument control versus explicit output-only candidate over bulk prefill, all 48 hidden and 47 routed boundaries, 16 decode transitions, active K/V and every span field, reset/re-prefill, ownership, and teardown.",
+      "Full logits/IDs exact at KL <= 0.05 and top-1 >= 90%; expected result is byte equality."
+    ],
+    "red_first_owner": [
+      "Add a false gfx1100 capability and explicit default-off session/benchmark selector only after tests fail on absence.",
+      "Require the admitted direct-BF16 key and retained fixed-metadata output prerequisites; exact-key miss fails closed.",
+      "Assert mixed projection, shared pair, query/gate pair, rows/prefill, gfx1151, and unsupported routes are unchanged."
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_q5_swar_output_only_design",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "pass": true,
+  "performance_claim": false,
+  "post_wave10_residual": {
+    "analyzer": {
+      "path": "/tmp/analyze_laguna_post_wave10_residual.py",
+      "sha256": "5ee8b1c08b4c8c847ecc4687810adfd84390880960c102a2dc1a432ca6acecf5"
+    },
+    "contexts": {
+      "1024": {
+        "families_ms_per_token": {
+          "add_rmsnorm": 0.3912539166666667,
+          "global_attention": 4.657596833333334,
+          "head_kv_global": 0.07455158333333332,
+          "head_kv_swa": 0.17772975,
+          "iq2_selected": 1.8912404166666665,
+          "iq3_wave10": 1.3956818333333334,
+          "mixed_projection": 1.9375583333333335,
+          "moe_tail_next_rms": 0.38860883333333335,
+          "other": 0.4787935,
+          "q4_lm_head": 0.26691058333333334,
+          "q5_attention_output": 1.5587353333333334,
+          "q5_query_gate": 0.4911905833333333,
+          "q6_standalone": 0.5919240833333334,
+          "router_projection": 0.3251759166666667,
+          "router_select": 0.39391183333333335,
+          "swa_reduce": 8.71231725,
+          "swa_score": 0.7807728333333334
+        },
+        "kernel_sum_ms_per_token": 24.513953416666666,
+        "model_kernels_per_token": 678,
+        "provenance": [
+          {
+            "bench_sha256": "64ace352a5240d677fe47f804582c8f9107628788699864d1da1a7eb1a50cfbe",
+            "order": "a",
+            "trace_sha256": "e654a3de71f15ecec2668c0e3cebf099b5bf6bd51c40ee952baf934f4f608df0"
+          },
+          {
+            "bench_sha256": "2d3223802d3352a2e1477bfdd5681744c9a001ac0923a59b776e49c2865c156e",
+            "order": "b",
+            "trace_sha256": "e0bdc283be0c2e4656f3bf21aea577dcd2911d5b6c60e3a57255e46d4eb4334c"
+          }
+        ],
+        "ranked_families": [
+          {
+            "family": "swa_reduce",
+            "ms_per_token": 8.71231725
+          },
+          {
+            "family": "global_attention",
+            "ms_per_token": 4.657596833333334
+          },
+          {
+            "family": "mixed_projection",
+            "ms_per_token": 1.9375583333333335
+          },
+          {
+            "family": "iq2_selected",
+            "ms_per_token": 1.8912404166666665
+          },
+          {
+            "family": "q5_attention_output",
+            "ms_per_token": 1.5587353333333334
+          },
+          {
+            "family": "iq3_wave10",
+            "ms_per_token": 1.3956818333333334
+          },
+          {
+            "family": "swa_score",
+            "ms_per_token": 0.7807728333333334
+          },
+          {
+            "family": "q6_standalone",
+            "ms_per_token": 0.5919240833333334
+          },
+          {
+            "family": "q5_query_gate",
+            "ms_per_token": 0.4911905833333333
+          },
+          {
+            "family": "other",
+            "ms_per_token": 0.4787935
+          },
+          {
+            "family": "router_select",
+            "ms_per_token": 0.39391183333333335
+          },
+          {
+            "family": "add_rmsnorm",
+            "ms_per_token": 0.3912539166666667
+          },
+          {
+            "family": "moe_tail_next_rms",
+            "ms_per_token": 0.38860883333333335
+          },
+          {
+            "family": "router_projection",
+            "ms_per_token": 0.3251759166666667
+          },
+          {
+            "family": "q4_lm_head",
+            "ms_per_token": 0.26691058333333334
+          },
+          {
+            "family": "head_kv_swa",
+            "ms_per_token": 0.17772975
+          },
+          {
+            "family": "head_kv_global",
+            "ms_per_token": 0.07455158333333332
+          }
+        ],
+        "stable_samples": 12
+      },
+      "3968": {
+        "families_ms_per_token": {
+          "add_rmsnorm": 0.39198275000000005,
+          "global_attention": 17.782228666666665,
+          "head_kv_global": 0.07377816666666667,
+          "head_kv_swa": 0.1668460833333333,
+          "iq2_selected": 1.8825661666666669,
+          "iq3_wave10": 1.3988123333333333,
+          "mixed_projection": 1.9216960833333332,
+          "moe_tail_next_rms": 0.3856923333333333,
+          "other": 0.47254366666666664,
+          "q4_lm_head": 0.26638066666666665,
+          "q5_attention_output": 1.5279164166666666,
+          "q5_query_gate": 0.4730235833333333,
+          "q6_standalone": 0.5960938333333334,
+          "router_projection": 0.32141149999999996,
+          "router_select": 0.39700266666666667,
+          "swa_reduce": 8.701945916666666,
+          "swa_score": 0.7881591666666666
+        },
+        "kernel_sum_ms_per_token": 37.54808,
+        "model_kernels_per_token": 678,
+        "provenance": [
+          {
+            "bench_sha256": "1602a9f638d269b8979c0d1e604e5ae8ad3145ad3bf1856b17fa205da5d155aa",
+            "order": "a",
+            "trace_sha256": "4a50bcdf733183376d1c52605758cc5f52525d6c8ee72610c4dd3f30c6844fdd"
+          },
+          {
+            "bench_sha256": "540f6a143b041b53b3d84f88cda55eec17aded2f3724c648996c80cf06f32c58",
+            "order": "b",
+            "trace_sha256": "c6aa59dbd3b3a95349413e7494271429f4987d3c342f7068cb0478fe29762f31"
+          }
+        ],
+        "ranked_families": [
+          {
+            "family": "global_attention",
+            "ms_per_token": 17.782228666666665
+          },
+          {
+            "family": "swa_reduce",
+            "ms_per_token": 8.701945916666666
+          },
+          {
+            "family": "mixed_projection",
+            "ms_per_token": 1.9216960833333332
+          },
+          {
+            "family": "iq2_selected",
+            "ms_per_token": 1.8825661666666669
+          },
+          {
+            "family": "q5_attention_output",
+            "ms_per_token": 1.5279164166666666
+          },
+          {
+            "family": "iq3_wave10",
+            "ms_per_token": 1.3988123333333333
+          },
+          {
+            "family": "swa_score",
+            "ms_per_token": 0.7881591666666666
+          },
+          {
+            "family": "q6_standalone",
+            "ms_per_token": 0.5960938333333334
+          },
+          {
+            "family": "q5_query_gate",
+            "ms_per_token": 0.4730235833333333
+          },
+          {
+            "family": "other",
+            "ms_per_token": 0.47254366666666664
+          },
+          {
+            "family": "router_select",
+            "ms_per_token": 0.39700266666666667
+          },
+          {
+            "family": "add_rmsnorm",
+            "ms_per_token": 0.39198275000000005
+          },
+          {
+            "family": "moe_tail_next_rms",
+            "ms_per_token": 0.3856923333333333
+          },
+          {
+            "family": "router_projection",
+            "ms_per_token": 0.32141149999999996
+          },
+          {
+            "family": "q4_lm_head",
+            "ms_per_token": 0.26638066666666665
+          },
+          {
+            "family": "head_kv_swa",
+            "ms_per_token": 0.1668460833333333
+          },
+          {
+            "family": "head_kv_global",
+            "ms_per_token": 0.07377816666666667
+          }
+        ],
+        "stable_samples": 12
+      },
+      "512": {
+        "families_ms_per_token": {
+          "add_rmsnorm": 0.3914515833333333,
+          "global_attention": 2.3850153333333335,
+          "head_kv_global": 0.07332725,
+          "head_kv_swa": 0.17663875,
+          "iq2_selected": 1.8721553333333334,
+          "iq3_wave10": 1.40090025,
+          "mixed_projection": 1.9320231666666667,
+          "moe_tail_next_rms": 0.38581466666666664,
+          "other": 0.47237933333333326,
+          "q4_lm_head": 0.26669275,
+          "q5_attention_output": 1.5601725,
+          "q5_query_gate": 0.4915163333333333,
+          "q6_standalone": 0.5932201666666667,
+          "router_projection": 0.32383383333333327,
+          "router_select": 0.3888084166666667,
+          "swa_reduce": 8.686780916666667,
+          "swa_score": 0.8000525
+        },
+        "kernel_sum_ms_per_token": 22.200783083333334,
+        "model_kernels_per_token": 678,
+        "provenance": [
+          {
+            "bench_sha256": "6e1ca1d25b7480b50af6d3ccfcae0fad5d4e5e1e57968b3601c14636a8b4a4b4",
+            "order": "a",
+            "trace_sha256": "3f8adc765e35f603d2643d3bec8b17215f076f825072e3822d9b33cefc5f503f"
+          },
+          {
+            "bench_sha256": "4caeaa7d955db5cee2cf27b2fa1c53eaa9cf5e384f1ae35f9cef3e06c0ec21b4",
+            "order": "b",
+            "trace_sha256": "e72864035977f2adaf310e96d85400bb1d3aaeead7930e1d4b85c761f92fe9e5"
+          }
+        ],
+        "ranked_families": [
+          {
+            "family": "swa_reduce",
+            "ms_per_token": 8.686780916666667
+          },
+          {
+            "family": "global_attention",
+            "ms_per_token": 2.3850153333333335
+          },
+          {
+            "family": "mixed_projection",
+            "ms_per_token": 1.9320231666666667
+          },
+          {
+            "family": "iq2_selected",
+            "ms_per_token": 1.8721553333333334
+          },
+          {
+            "family": "q5_attention_output",
+            "ms_per_token": 1.5601725
+          },
+          {
+            "family": "iq3_wave10",
+            "ms_per_token": 1.40090025
+          },
+          {
+            "family": "swa_score",
+            "ms_per_token": 0.8000525
+          },
+          {
+            "family": "q6_standalone",
+            "ms_per_token": 0.5932201666666667
+          },
+          {
+            "family": "q5_query_gate",
+            "ms_per_token": 0.4915163333333333
+          },
+          {
+            "family": "other",
+            "ms_per_token": 0.47237933333333326
+          },
+          {
+            "family": "add_rmsnorm",
+            "ms_per_token": 0.3914515833333333
+          },
+          {
+            "family": "router_select",
+            "ms_per_token": 0.3888084166666667
+          },
+          {
+            "family": "moe_tail_next_rms",
+            "ms_per_token": 0.38581466666666664
+          },
+          {
+            "family": "router_projection",
+            "ms_per_token": 0.32383383333333327
+          },
+          {
+            "family": "q4_lm_head",
+            "ms_per_token": 0.26669275
+          },
+          {
+            "family": "head_kv_swa",
+            "ms_per_token": 0.17663875
+          },
+          {
+            "family": "head_kv_global",
+            "ms_per_token": 0.07332725
+          }
+        ],
+        "stable_samples": 12
+      },
+      "short": {
+        "families_ms_per_token": {
+          "add_rmsnorm": 0.40451325,
+          "global_attention": 0.5235786785714286,
+          "head_kv_global": 0.07729103571428571,
+          "head_kv_swa": 0.16356132142857144,
+          "iq2_selected": 1.895596107142857,
+          "iq3_wave10": 1.4411954285714286,
+          "mixed_projection": 1.9301922857142857,
+          "moe_tail_next_rms": 0.4024834285714286,
+          "other": 0.5268005357142856,
+          "q4_lm_head": 0.26696807142857143,
+          "q5_attention_output": 1.55760375,
+          "q5_query_gate": 0.4739502142857143,
+          "q6_standalone": 0.6052325357142857,
+          "router_projection": 0.32719685714285707,
+          "router_select": 0.41114728571428566,
+          "swa_reduce": 1.4917229285714286,
+          "swa_score": 0.23793335714285715
+        },
+        "kernel_sum_ms_per_token": 12.736967071428571,
+        "model_kernels_per_token": 678,
+        "provenance": [
+          {
+            "bench_sha256": "827670370d23198e362d8cbe14f078afd2ca72a03186ecd322c762881a27626f",
+            "order": "a",
+            "trace_sha256": "0f2c6144d330cc8cac476bfce577568859ed3a5539b83e57d4b297e6f429e76c"
+          },
+          {
+            "bench_sha256": "e38ba9ab5ef87bb47bce6eb2aeb495ae9cd9b86017c48a301fbdbb21d4604e4f",
+            "order": "b",
+            "trace_sha256": "b5acc864074ef613d4a4f43f5d30091421f54ae0e6b8b2d31275e12e755e8c95"
+          }
+        ],
+        "ranked_families": [
+          {
+            "family": "mixed_projection",
+            "ms_per_token": 1.9301922857142857
+          },
+          {
+            "family": "iq2_selected",
+            "ms_per_token": 1.895596107142857
+          },
+          {
+            "family": "q5_attention_output",
+            "ms_per_token": 1.55760375
+          },
+          {
+            "family": "swa_reduce",
+            "ms_per_token": 1.4917229285714286
+          },
+          {
+            "family": "iq3_wave10",
+            "ms_per_token": 1.4411954285714286
+          },
+          {
+            "family": "q6_standalone",
+            "ms_per_token": 0.6052325357142857
+          },
+          {
+            "family": "other",
+            "ms_per_token": 0.5268005357142856
+          },
+          {
+            "family": "global_attention",
+            "ms_per_token": 0.5235786785714286
+          },
+          {
+            "family": "q5_query_gate",
+            "ms_per_token": 0.4739502142857143
+          },
+          {
+            "family": "router_select",
+            "ms_per_token": 0.41114728571428566
+          },
+          {
+            "family": "add_rmsnorm",
+            "ms_per_token": 0.40451325
+          },
+          {
+            "family": "moe_tail_next_rms",
+            "ms_per_token": 0.4024834285714286
+          },
+          {
+            "family": "router_projection",
+            "ms_per_token": 0.32719685714285707
+          },
+          {
+            "family": "q4_lm_head",
+            "ms_per_token": 0.26696807142857143
+          },
+          {
+            "family": "swa_score",
+            "ms_per_token": 0.23793335714285715
+          },
+          {
+            "family": "head_kv_swa",
+            "ms_per_token": 0.16356132142857144
+          },
+          {
+            "family": "head_kv_global",
+            "ms_per_token": 0.07729103571428571
+          }
+        ],
+        "stable_samples": 28
+      }
+    },
+    "report": {
+      "path": "/tmp/laguna-post-wave10-residual.json",
+      "sha256": "123481869b6f173fd0121e6cd9b71543a13257c33f39c83eec7ded82b95a87a2"
+    },
+    "short_rank": [
+      {
+        "family": "mixed_projection",
+        "ms_per_token": 1.9301922857142857
+      },
+      {
+        "family": "iq2_selected",
+        "ms_per_token": 1.895596107142857
+      },
+      {
+        "family": "q5_attention_output",
+        "ms_per_token": 1.55760375
+      },
+      {
+        "family": "swa_reduce",
+        "ms_per_token": 1.4917229285714286
+      },
+      {
+        "family": "iq3_wave10",
+        "ms_per_token": 1.4411954285714286
+      },
+      {
+        "family": "q6_standalone",
+        "ms_per_token": 0.6052325357142857
+      },
+      {
+        "family": "other",
+        "ms_per_token": 0.5268005357142856
+      },
+      {
+        "family": "global_attention",
+        "ms_per_token": 0.5235786785714286
+      },
+      {
+        "family": "q5_query_gate",
+        "ms_per_token": 0.4739502142857143
+      },
+      {
+        "family": "router_select",
+        "ms_per_token": 0.41114728571428566
+      },
+      {
+        "family": "add_rmsnorm",
+        "ms_per_token": 0.40451325
+      },
+      {
+        "family": "moe_tail_next_rms",
+        "ms_per_token": 0.4024834285714286
+      },
+      {
+        "family": "router_projection",
+        "ms_per_token": 0.32719685714285707
+      },
+      {
+        "family": "q4_lm_head",
+        "ms_per_token": 0.26696807142857143
+      },
+      {
+        "family": "swa_score",
+        "ms_per_token": 0.23793335714285715
+      },
+      {
+        "family": "head_kv_swa",
+        "ms_per_token": 0.16356132142857144
+      },
+      {
+        "family": "head_kv_global",
+        "ms_per_token": 0.07729103571428571
+      }
+    ]
+  },
+  "schema": 1,
+  "selection": {
+    "calls_per_token": 47,
+    "candidate": "Q5 attention-output-only paired-SWAR runtime owner",
+    "difference_from_rejected_all_owner": {
+      "all_owner_rejection_artifact": {
+        "path": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-rejected.json",
+        "sha256": "9925465de622091d870f9fc46456b553bec79d3c157339eace1e5f321d7535ff"
+      },
+      "all_owner_runtime_artifact": {
+        "path": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-runtime-correctness.json",
+        "sha256": "9c73a4a189b7a1cc8ff4c89d81068bc4403418e21ef400c9d87a99d92e1caa6e"
+      },
+      "attention_output_order_improvement_pct": [
+        1.9515406531100399,
+        2.0464091402367934
+      ],
+      "immutable_clean_report_sha256": "7a955b51614434a33f009b1b27a74c66da027296ee649be418eb357fd95b207a",
+      "immutable_clean_summary_sha256": "2f40e4c5f83b8b80409dbd47664cea4c009afada1077d42144e9e34214f329c8",
+      "interpretation": "The rejected bundle changed three independently registered roles. Attention output improved in both orders; mixed and shared reversed. The selected owner excludes both regressors.",
+      "mixed_projection_order_regression_pct": [
+        2.2775612118340227,
+        1.694499381409309
+      ],
+      "shared_gate_up_order_regression_pct": [
+        0.90248925308547,
+        0.43914117602656955
+      ]
+    },
+    "dispatches_per_token": {
+      "candidate": 678,
+      "control": 678,
+      "removed": 0
+    },
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "scope": "Select only the 47 c=1 attention-output direct-BF16 calls. Keep all 47 mixed Q5/Q6 projections, 46 shared-Q5 pairs, query/gate pairs, rows/prefill, and unsupported backends on their retained registered controls."
+  },
+  "status": "selected_design"
+}
