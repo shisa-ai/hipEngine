@@ -8,6 +8,7 @@ import pytest
 
 import scripts.laguna_grouped_down_category_bench as benchmark
 from scripts.laguna_grouped_down_category_bench import (
+    ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
     CUMULATIVE_CONTROL_COMPARISON,
     F16_WMMA_COMP_SWA_COMPARISON,
     GLOBAL_QROW2_ONLINE_COMPARISON,
@@ -41,14 +42,41 @@ def test_production_absolute_comparison_uses_current_defaults() -> None:
     ]
     assert (
         lane.selected_gate_up_mode
-        == "mmq128x32_d8_f32_wavecols_direct"
+        == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
     )
     assert (
         lane.selected_down_mode
-        == "mmq64x32_d4_f32_wavecols_direct_q4"
+        == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
     )
-    assert lane.f16_projection_mode == "hipblaslt_scaled"
+    assert (
+        lane.global_prefill_variant
+        == "global_context_rows_qrow4_m128_online_spans"
+    )
+    assert (
+        lane.swa_prefill_variant
+        == "swa_context_rows_qrow4_m128_online_spans"
+    )
+    assert lane.f16_projection_mode == "hipblaslt_range_direct"
     assert lane.dense_q4_prefill_mode == "wmma_pack8"
+
+
+def test_attention_hipblaslt_comparison_adds_only_attention_candidate() -> None:
+    assert ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON.modes == (
+        "all_exact",
+        "attention_hipblaslt_candidate",
+    )
+    lane = benchmark._PREFILL_LANE_CONFIGURATIONS[
+        "attention_hipblaslt_candidate"
+    ]
+    production = benchmark._PREFILL_LANE_CONFIGURATIONS[
+        "production_absolute_candidate"
+    ]
+    assert not production.attention_hipblaslt
+    assert lane.attention_hipblaslt
+    assert lane.selected_gate_up_mode == production.selected_gate_up_mode
+    assert lane.selected_down_mode == production.selected_down_mode
+    assert lane.f16_projection_mode == production.f16_projection_mode
+    assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
 
 
 def _rows(
@@ -356,6 +384,9 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
         def set_dense_q4_prefill_mode(self, mode: str) -> None:
             self.row["dense_q4_prefill_mode"] = mode
 
+        def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
+            self.row["attention_hipblaslt"] = enabled
+
         def prefill(self, _token_ids, *, use_bulk: bool):
             self.row["f16_prefill_mode"] = benchmark.os.environ.get(
                 "HIPENGINE_LAGUNA_F16_PREFILL"
@@ -401,6 +432,7 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
             "selected_down_mode": "adaptive_grouped_smallm_fused",
             "f16_projection_mode": "retained",
             "dense_q4_prefill_mode": "retained",
+            "attention_hipblaslt": False,
             "f16_prefill_mode": "tiled",
             "use_bulk": True,
         },
@@ -411,6 +443,7 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
             "selected_down_mode": "adaptive_grouped_smallm_fused",
             "f16_projection_mode": "retained",
             "dense_q4_prefill_mode": "retained",
+            "attention_hipblaslt": False,
             "f16_prefill_mode": "wmma_comp_swa",
             "use_bulk": True,
         },
@@ -464,7 +497,7 @@ def test_cumulative_control_reports_performance_without_gating_it() -> None:
 
 def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
-    configured: list[tuple[str, str]] = []
+    configured: list[tuple[str, object]] = []
 
     class FakeSession:
         def set_selected_gate_up_mode(self, mode: str) -> None:
@@ -478,6 +511,9 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
 
         def set_dense_q4_prefill_mode(self, mode: str) -> None:
             configured.append(("dense_q4", mode))
+
+        def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
+            configured.append(("attention_hipblaslt", enabled))
 
     def fake_oracle(_owner, _args, **kwargs):
         configurator = kwargs.pop("session_configurator")
@@ -512,6 +548,7 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
         ("selected_down", "adaptive_grouped_smallm_fused"),
         ("f16_projection", "retained"),
         ("dense_q4", "retained"),
+        ("attention_hipblaslt", False),
     ]
     assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
 
@@ -536,6 +573,9 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
 
         def set_dense_q4_prefill_mode(self, mode: str) -> None:
             self.row["dense_q4_prefill_mode"] = mode
+
+        def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
+            self.row["attention_hipblaslt"] = enabled
 
         def prefill(self, _token_ids, *, use_bulk: bool):
             self.row["retained_f16_strategy"] = benchmark.os.environ.get(
@@ -587,6 +627,7 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
             "selected_down_mode": "adaptive_grouped_smallm_fused",
             "f16_projection_mode": "retained",
             "dense_q4_prefill_mode": "retained",
+            "attention_hipblaslt": False,
         },
         {
             **common,
@@ -594,13 +635,14 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
             "selected_down_mode": "mmq64x32_d4_f32",
             "f16_projection_mode": "hipblaslt_scaled",
             "dense_q4_prefill_mode": "wmma_pack8",
+            "attention_hipblaslt": False,
         },
     ]
     assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
 
 
 def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> None:
-    configured: list[tuple[str, str]] = []
+    configured: list[tuple[str, object]] = []
     oracle_kwargs: list[dict[str, object]] = []
 
     class FakeSession:
@@ -615,6 +657,9 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
 
         def set_dense_q4_prefill_mode(self, mode: str) -> None:
             configured.append(("dense_q4", mode))
+
+        def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
+            configured.append(("attention_hipblaslt", enabled))
 
     def fake_oracle(_owner, _args, **kwargs):
         configurator = kwargs.pop("session_configurator")
@@ -642,6 +687,7 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
         ("selected_down", "mmq64x32_d4_f32"),
         ("f16_projection", "hipblaslt_scaled"),
         ("dense_q4", "wmma_pack8"),
+        ("attention_hipblaslt", False),
     ]
     assert oracle_kwargs == [
         {

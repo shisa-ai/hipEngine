@@ -81,6 +81,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_MOE_GROUP_COMPACT_MODE,
     LAGUNA_MOE_SHARED_AFTER_ROUTER,
     LAGUNA_MOE_SHARED_LOW_PRIORITY,
+    LAGUNA_PREFILL_ATTENTION_HIPBLASLT,
     LAGUNA_PREFILL_CACHED_META,
     LAGUNA_PREFILL_GLOBAL_QROW6,
     LAGUNA_PREFILL_KV_PREAPPEND,
@@ -237,6 +238,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_MOE_BRANCH_CONCURRENCY is True
     assert LAGUNA_MOE_SHARED_AFTER_ROUTER is True
     assert LAGUNA_MOE_SHARED_LOW_PRIORITY is True
+    assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT is True
     assert LAGUNA_MOE_GROUP_COMPACT_MODE == "parallel"
     assert LAGUNA_ROUTER_LOGITS_MODE == "token_tile_8"
     assert (
@@ -306,6 +308,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_MOE_SHARED_LOW_PRIORITY", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None
     ) is None
     assert (
         backend_package_capability(
