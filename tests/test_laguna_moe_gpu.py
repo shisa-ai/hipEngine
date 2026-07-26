@@ -123,8 +123,8 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.q6_compact_activation
     assert plan.q6_half_row_activation
     assert plan.q6_skip_padded_activation
-    assert plan.q6_qmicro_permute
-    assert not plan.q6_qmicro_planar
+    assert not plan.q6_qmicro_permute
+    assert plan.q6_qmicro_planar
     planar = resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1151",
@@ -132,6 +132,13 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     )
     assert planar.q6_qmicro_planar
     assert not planar.q6_qmicro_permute
+    interleaved = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1151",
+        q6_qmicro_planar=False,
+    )
+    assert not interleaved.q6_qmicro_planar
+    assert interleaved.q6_qmicro_permute
     assert not resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1151",

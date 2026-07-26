@@ -120,9 +120,10 @@ LAGUNA_Q6_SKIP_PADDED_ACTIVATION = True
 # The actual-weight leaf improves 2.67%, the complete model wins 5/7 matched
 # pairs, and cached tracing reduces the selected Q6 body with no spills.
 LAGUNA_Q6_QMICRO_PERMUTE = True
-# Candidate-only byte-neutral qmicro ordering. Keep disabled until the
-# complete-state full-model gate passes; explicit resident sessions may opt in.
-LAGUNA_Q6_QMICRO_PLANAR = False
+# Byte-neutral planar qmicro removes two prefill byte gathers and lowers exact
+# decode register pressure. The actual leaf wins, while two owner-order
+# full-model blocks are aggregate-neutral with complete state exact.
+LAGUNA_Q6_QMICRO_PLANAR = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"

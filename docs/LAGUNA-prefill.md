@@ -1075,7 +1075,7 @@ Immediate execution queue:
    **1,138.893 -> 1,124.852 ms (-1.23%)** with VGPR **88 -> 80**, unchanged
    LDS, and zero scratch. Clean publication reaches
    **571.415/529.870/445.164 tok/s**.
-14. **Positive leaf and trace; integration active:** make the same 12-byte
+14. **Retained candidate; publication active:** make the same 12-byte
    qmicro record planar:
    store its four `ql01` bytes in the first dword, four `ql23` bytes in the
    second, and retain the four high-bit bytes in the third. This is
@@ -1093,10 +1093,13 @@ Immediate execution queue:
    decode **0.08564 -> 0.08415 ms (-1.736%)**, with zero BF16 mismatches.
    Clean cached tracing executes the intended planar prefill and decode
    templates at local128/VGPR80/LDS5120B/scratch0; complete-state full-model
-   A/B remains mandatory before changing the resident layout. Candidate-only
-   resident materialization and all Q6 consumer selectors are now wired
-   behind disabled-by-default `LAGUNA_Q6_QMICRO_PLANAR`; the production
-   capability remains interleaved qmicro until that A/B passes.
+   A/B uses two opposite resident-owner-order blocks because the byte layouts
+   cannot share one 77.4-GB owner. Across 14 samples per arm, planar is
+   **+0.013% by mean / +0.139% by median**, and the order-adjusted median
+   delta is **+0.010 tok/s**: aggregate-neutral, with complete state exact.
+   The verified leaf/decode sub-window wins therefore retain and enable
+   `LAGUNA_Q6_QMICRO_PLANAR`; clean selector-unset 512/1K/4K publication is
+   now mandatory.
 
 Post-350 exclusions:
 
@@ -2934,6 +2937,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-leaf.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-permute-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`

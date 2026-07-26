@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_qmicro_planar_candidate",
+  "status": "retained_candidate_publication_pending",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "exact byte-neutral planar Q6 selected-down on Radeon 8060S gfx1151, actual leaf plus two opposite owner-order pp512 blocks",
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 78777775764,
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "kernel_revision": "48079041e52b5889fd79501f9c227cb21cca727f",
+    "integration_revision": "52139cf84",
+    "tracked_clean_for_full_model_runs": true
+  },
+  "leaf": {
+    "shape": "layer-1 660.6 MB Q6, natural pp512 routes, K1024, N3072, 256 experts",
+    "samples": 21,
+    "current_permute_ms": 4.771810913085938,
+    "planar_ms": 4.756837463378906,
+    "prefill_change_percent": -0.3137896697869902,
+    "current_decode_ms": 0.08564065098762512,
+    "planar_decode_ms": 0.08415395021438599,
+    "decode_change_percent": -1.7359755631165874,
+    "bf16_mismatches": 0
+  },
+  "full_model": {
+    "protocol": "two seven-repetition pp512 blocks with opposite resident-owner order; matrix2048/attention128; load excluded; one 77.4 GB owner at a time",
+    "current_samples_tok_s": [
+      573.8031893766705,
+      572.3507984728516,
+      572.7546685661018,
+      572.1393984361648,
+      573.5633421796905,
+      573.0429286334131,
+      571.1564956872537,
+      576.3579662457145,
+      573.5175759427104,
+      575.883624564423,
+      574.6438919685381,
+      573.3927641665349,
+      575.66779098934,
+      575.8512497857917
+    ],
+    "planar_samples_tok_s": [
+      574.2876535548836,
+      577.2840408110571,
+      575.6927365823044,
+      574.473275987762,
+      575.555833422342,
+      571.6333156262709,
+      570.9600471127153,
+      576.525914366539,
+      574.3918525792453,
+      576.1629046446525,
+      572.373194172625,
+      573.9700377484187,
+      569.7528196638332,
+      572.1378908748128
+    ],
+    "current_combined_median_tok_s": 573.5404590612004,
+    "planar_combined_median_tok_s": 574.3397530670645,
+    "combined_median_change_percent": 0.13936139870105446,
+    "current_combined_mean_tok_s": 573.8661203582285,
+    "planar_combined_mean_tok_s": 573.942965510533,
+    "combined_mean_change_percent": 0.013390780458788498,
+    "order_adjusted_median_delta_tok_s": 0.01042709036943279,
+    "complete_state_exact": true,
+    "deterministic": true,
+    "memory_recovered": true
+  },
+  "correctness": {
+    "byte_neutral": true,
+    "exact_decode_shapes": [1, 2, 4, 8],
+    "prefill_cpu_reference_gate": true,
+    "logits_exact": true,
+    "final_hidden_exact": true,
+    "post_layer_hidden_exact": true,
+    "complete_kv_exact": true,
+    "next_token_and_logit_exact": true,
+    "cursor_exact": true
+  },
+  "raw": {
+    "current_first_sha256": "55d309e673b680123dee84164e9c9f1e465c31d7aec807785eea113f49dcff0c",
+    "planar_first_sha256": "107884af6536ece042d3cde0732eb164b414ec72e9dff15434fe2e77059b0564"
+  },
+  "retention_basis": "verified exact leaf and decode subwindow wins; aggregate full-model timing is order-noise-flat and non-regressive",
+  "next_gate": "clean selector-unset 512/1K/4K publication"
+}

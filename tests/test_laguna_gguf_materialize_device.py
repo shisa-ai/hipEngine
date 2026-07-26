@@ -126,6 +126,7 @@ def test_laguna_materialize_spec_copies_dense_and_raw_source_bytes() -> None:
     rng = np.random.default_rng(19)
     raw = rng.integers(0, 256, size=(2, 16, 210), dtype=np.uint8)
     expected_legacy = repack_gguf_q6_k_tile16(raw).tiles
+    expected_interleaved = repack_gguf_q6_k_tile16_qmicro(raw).tiles
     expected_planar = repack_gguf_q6_k_tile16_qmicro_planar(raw).tiles
     runtime = FakeRuntime()
     weight = _materialize_spec(
@@ -138,6 +139,23 @@ def test_laguna_materialize_spec_copies_dense_and_raw_source_bytes() -> None:
         q6_qmicro_planar=True,
     )
     assert _device_bytes(weight, runtime, "tiles") == expected_planar.tobytes()
+    weight.free(runtime=runtime)
+    assert runtime.buffers == {}
+
+    runtime = FakeRuntime()
+    weight = _materialize_spec(
+        _spec_for_tensor("layers.1.ffn_down_exps", tensor),
+        _ArrayReader(tensor.name, raw),
+        device=None,
+        runtime=runtime,
+        backend="hip_gfx1151",
+        q6_qmicro=True,
+        q6_qmicro_planar=False,
+    )
+    assert (
+        _device_bytes(weight, runtime, "tiles")
+        == expected_interleaved.tobytes()
+    )
     weight.free(runtime=runtime)
     assert runtime.buffers == {}
 
@@ -180,7 +198,7 @@ def test_laguna_materialize_spec_matches_pack8_and_t16_repack_payloads() -> None
             "layers.1.ffn_down_exps",
             tensor_info("q6_t16", (2, 16, 256), GGMLQuantizationType.Q6_K),
             rng.integers(0, 256, size=(2, 16, 210), dtype=np.uint8),
-            repack_gguf_q6_k_tile16_qmicro,
+            repack_gguf_q6_k_tile16_qmicro_planar,
             ("tiles",),
         ),
     )
