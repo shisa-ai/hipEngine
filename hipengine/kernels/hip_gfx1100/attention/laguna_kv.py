@@ -18,6 +18,9 @@ _SYMBOL_SWA_HEAD_KV = "hipengine_laguna_swa_head_rmsnorm_rope_write_kv_f32_bf16_
 _SYMBOL_GLOBAL_WRITE = "hipengine_laguna_global_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_WRITE_ROWS = "hipengine_laguna_global_write_kv_rows_f32_bf16_spans"
 _SYMBOL_GLOBAL_ATTENTION = "hipengine_laguna_global_attention_decode_bf16_spans"
+_SYMBOL_GLOBAL_ATTENTION_SINGLE_PAGE = (
+    "hipengine_laguna_global_attention_decode_single_page_bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT = (
     "hipengine_laguna_global_attention_decode_split_exact_bf16_spans"
 )
@@ -369,6 +372,91 @@ def laguna_global_attention_decode_bf16_spans(
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_GLOBAL_ATTENTION)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_decode_single_page_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact scalar global GQA when the live span fits physical page zero."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    if int(max_context_len) != capacity:
+        raise ValueError("max_context_len must equal the global span capacity")
+    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
+        raise ValueError("eager Laguna global attention currently supports at most 4096 tokens")
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    if int(num_q_heads) != 48:
+        raise ValueError("num_q_heads must be 48 for Laguna global attention")
+    assert spans.token_positions is not None
+    assert spans.evict_mask is not None
+    assert spans.row_positions is not None
+    _check_nonzero_device_pointers(
+        ("query_ptr", query_ptr),
+        ("key_cache_ptr", key_cache_ptr),
+        ("value_cache_ptr", value_cache_ptr),
+        ("out_ptr", out_ptr),
+        ("base_offsets_ptr", spans.base_offsets.ptr),
+        ("live_counts_ptr", spans.live_counts.ptr),
+        ("token_positions_ptr", spans.token_positions.ptr),
+        ("evict_mask_ptr", spans.evict_mask.ptr),
+        ("row_positions_ptr", spans.row_positions.ptr),
+    )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_ATTENTION_SINGLE_PAGE)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -1452,6 +1540,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_single_page_spans",
+            laguna_global_attention_decode_single_page_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_split_exact_spans",
             laguna_global_attention_decode_split_exact_bf16_spans,
         ),
@@ -1589,6 +1682,12 @@ def _check_split_scan_slots(scan_slots: int, capacity: int) -> int:
     return parsed
 
 
+def _check_nonzero_device_pointers(*pointers: tuple[str, int]) -> None:
+    for name, pointer in pointers:
+        if int(pointer) == 0:
+            raise ValueError(f"{name} must be non-zero")
+
+
 def _check_laguna_kv_shape(num_kv_heads: int, head_dim: int) -> None:
     if int(num_kv_heads) != _LAGUNA_KV_HEADS:
         raise ValueError(f"num_kv_heads must be {_LAGUNA_KV_HEADS} for Laguna")
@@ -1632,6 +1731,7 @@ register_laguna_kv_attention_kernels()
 __all__ = [
     "build_laguna_kv_attention",
     "laguna_global_attention_decode_bf16_spans",
+    "laguna_global_attention_decode_single_page_bf16_spans",
     "laguna_global_attention_decode_split_exact_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",
