@@ -183841,3 +183841,34 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-candidate.json`.
   Clean selector-unset matrix2048/attention128 publication remains required
   before changing the **632.617985 tok/s** production headline.
+
+## 2026-07-27 — Publish Q6 WMMA next-weight prefetch production
+
+- Clean tracked revision `b58461a5e` ran the canonical selector-unset
+  matrix2048/attention128 three-repetition protocol. pp512 improves the prior
+  production median **632.617985 -> 636.073231 tok/s (+0.5462%)**, with
+  **804.939 ms** synchronized wall and **73.510 ms** left to 700 tok/s.
+  The 1K/4K continuity rows move less than run variance at
+  **568.765/464.061 tok/s (-0.014%/-0.117%)**. Tokens remain
+  **2930/95/7772**, positions and repeats are deterministic, and all
+  **78,805,563,028** tracked bytes return to zero. Raw SHA-256 is
+  `6e8d0b1cbda0170ce87d06475c231309ce2bb19892ce0c6fd486012d4cbc6076`.
+- A clean cached two-queue trace independently reaches **590.516 tok/s**.
+  The exact 23-call pp512 Q6 specialization falls
+  **112.745839 -> 101.962530 ms (-9.5643%)**, matching the leaf result.
+  Combined selected down is **175.326 ms**, and the complete pp512 trace keeps
+  **2,417** dispatches with **862.496 ms** kernel span. The intended template
+  is local128/VGPR104/SGPR128/LDS5120B/scratch0. Child/raw/summary SHA-256
+  values are
+  `a96cd24cf1a8af983dd50085c3507125cc73aec1553a2b3bc65ee5038432637e`,
+  `8ef13fda2bd4307183c3d0d60d2b64f039d85095ab120a33a3b5d9889302912c`,
+  and
+  `a9e8b8b67594417c1e5d57917af4bad6ebc944fb9c174aa6b870cd1145dcccbd`.
+- Published
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-production.json`
+  and advanced the benchmark rollup/plan/kernel/refactor records. The exact
+  BF16 equality and 14-run complete-state gate transfer the unchanged
+  absolute category result: max KL **0.049542582**, **316/320** top-1, every
+  category at least **96.875%**. Next rebuild the critical-path bridge from
+  this trace and attack the largest family with a new physical-byte,
+  cross-tile-reuse, or measured latency-overlap mechanism.
