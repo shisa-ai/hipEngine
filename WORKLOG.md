@@ -183586,3 +183586,20 @@ Vulkan local sizes verbatim will close the measured gap.
   D8-gate/D4-up on the complete current attention-hipBLASLt production stack.
 - All **22** focused category-harness tests pass; `py_compile` and
   `git diff --check` are clean. The next action is the clean 320-step run.
+
+## 2026-07-27 — Reject D8-gate/D4-up on absolute quality
+
+- The clean `q4_up_role_split_absolute` run at revision `9701b688c` uses the
+  same ten-prompt/four-category/three-repetition/320-step protocol.
+- D8-gate/D4-up keeps **317/320 (99.063%)** suite top-1 and nine of ten prompts
+  inside budget, but `mixed_ja_en_review` reaches max KL **0.203467** at step
+  1. Projection-wide D4 is now rejected in both roles.
+- Poolside remains exact top-1. Category prefill is **4.442x** all-exact,
+  h16/h32 E2E improve **1.976x/1.549x**, decode is flat, and all
+  **109,859,542,160** tracked bytes return to zero. Production remains D8 at
+  **632.618 tok/s**.
+- Economics constrain the next screen: role-split M128 regresses, M256 is
+  flat, and M512 wins. Scope fast arithmetic to M512+ and validate full logits
+  on all canonical prompt streams extended to 512 rows; do not infer quality
+  from the unchanged short-prompt route. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d8-up-d4-absolute-rejected.json`.
