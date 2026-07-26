@@ -720,8 +720,9 @@ Immediate execution queue:
    route-tile rereads without the rejected K64 LDS/VGPR growth. Do not repeat
    Q4 activation double buffering, Q6 local64/local256 workgroup changes,
    Q6 128-column/local256 widening, Q4-down 128-column widening,
-   duplicate-decode row halves, 64-row Q4 accumulation, paired-scale metadata,
-   or F32 partial spills.
+   static-upper sentinel grids, launch-bounds occupancy hints, duplicate-decode
+   row halves, 64-row Q4 accumulation, paired-scale metadata, or F32 partial
+   spills.
 2. Keep exact cached-metadata attention in production. Clean selector-unset
    512/1K/4K improves **2.195%/1.213%/1.665%**; traced attention falls
    **175.802 -> 160.123 ms (-8.92%)** with the qualified 12-global-start0,
@@ -1608,6 +1609,26 @@ negative, so every candidate surface was removed and production remains
 64-column/local64. Evidence:
 [`2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json).
 
+Forty-third post-350 screen: **Q6 grid and launch-bounds scheduler controls
+rejected and removed**. Two remaining no-math-change premises were measured
+before changing architecture. First, the production body launched the runtime
+upper grid of 332 row tiles and used `-1` sentinels for the 85 entries above
+layer 1's actual 247 tiles. Eleven counter-rotated samples are timing-equivalent
+to the exact grid at **5.0896 -> 5.0785 ms (-0.22%)**: empty sentinel
+workgroups return cheaply, so host grid construction is not material.
+
+Second, the exact production 64-column/64-row qmicro body changed only from
+`__launch_bounds__(128, 1)` to `(128, 2)`. The CPU-reference gate and actual
+BF16 byte comparison pass, and the leaf reports a nominal
+**5.0759 -> 5.0635 ms (-0.24%, 7/11 wins)**. Cached tracing, however, emits
+identical local128/VGPR88/SGPR128/LDS5,632B/scratch0 resources and launch
+geometry; its isolated candidate call is slightly slower at
+**5.204 -> 5.254 ms**. The compiler hint did not change the machine schedule,
+so the sub-quarter-percent delta is noise. Both harness modes and every lb2
+candidate surface were removed. Production remains **542.088 tok/s**.
+Evidence:
+[`2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json).
+
 Production evidence:
 
 - [`2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json)
@@ -2245,6 +2266,9 @@ Do not repeat:
   **88 -> 128**, doubles LDS, and regresses the traced family **14.54%**;
 - Q6 paired-scale metadata decode: removing the duplicate FP16 multiplier load
   leaves the traced family flat/slower, so metadata traffic is not the limiter;
+- Q6 static-upper sentinel grids and launch-bounds occupancy hints: unused
+  workgroups are effectively free, while `(128,2)` emits the same
+  VGPR/LDS/scratch resources and no repeatable speed change as `(128,1)`;
 - qgroup9, paired-row exact attention, or row2 score materialization;
 - single-wave qrow4 two-head GQA fusion; exact K/V reuse regresses all measured
   512/1K/4K diagnostic lengths;
@@ -2319,6 +2343,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`
+- `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-cols128-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-local256-rejected.json`
 - `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-k64-stage-rejected.json`

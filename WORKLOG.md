@@ -181016,3 +181016,29 @@ Vulkan local sizes verbatim will close the measured gap.
   before runtime integration. Production remains **542.088 tok/s** with Q4
   down at 64 columns/local64. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-cols128-rejected.json`.
+
+## 2026-07-26 — Reject Q6 selected-down scheduler-only controls
+
+- Closed the remaining no-math-change Q6 scheduling controls before moving to
+  a new architecture. Launching the production qmicro body over the runtime
+  upper grid of 332 row tiles with `-1` sentinels for the 85 entries above
+  layer 1's actual 247 tiles is timing-equivalent:
+  **5.089648 -> 5.078491 ms (-0.219%)** across eleven counter-rotated
+  burst-five samples. Raw SHA-256 is
+  `c1f777c2d14fd85ec08cc74d5a9402741df4d4df6a064c9577142b9e37ac32f1`.
+- RED added a rows64/qmicro/lb2 quality case and failed on the missing
+  launch-bounds specialization. GREEN changed only
+  `__launch_bounds__(128,1)` to `(128,2)`, passed the uneven/empty-expert
+  CPU-reference gate, and produced zero actual-layer BF16 mismatches with
+  checksum **509500838004**.
+- Eleven counter-rotated samples give a nominal
+  **5.075930 -> 5.063530 ms (-0.244%, 7/11 wins)**. Raw SHA-256 is
+  `dcd6665ecefeba24560a776d40c0acfd168f593781d930e84b4465941bc38ff8`.
+  Cached tracing shows both bodies at local128/VGPR88/SGPR128/LDS5632B/
+  scratch0 with identical launch geometry, and the isolated candidate is
+  slightly slower at **5.204 -> 5.254 ms**. Trace SHA-256 is
+  `2241d693207cc7b3de2b57270551df7a10a645fda6345788f8aed9acff5a38c3`.
+- The compiler occupancy hint is a machine-level no-op and the sentinel tail
+  is effectively free; removed both harness controls plus every lb2 export,
+  wrapper, and test surface. Production remains **542.088 tok/s**. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`.
