@@ -157,7 +157,10 @@ known two waves. First/last actual IQ2 layers are BF16-bit exact and improve
 primitive now passes RED/GREEN, CPU, all-46-layer, codegen, repeated endpoint,
 and cache-only trace gates. A temporary explicit/default-off owner also passes
 exact 16-transition state and cache-only **46-candidate/723-model-kernel**
-tracing. Clean-context and category gates remain pending; no default or topline
+tracing, but the frozen clean short gate rejects it: both orders regress the IQ2
+family **0.366%/2.742%**, order A regresses child throughput **0.634%**, and
+order B regresses kernel sum **1.180%** plus span **9.707%**. Runtime integration
+is removed, remaining contexts/categories are skipped, and no default or topline
 has changed.
 
 Scope: resident batch-1 autoregressive decode of
@@ -1899,6 +1902,23 @@ near-4K remain mandatory before either complete 18-prompt category order.
 Evidence:
 [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-runtime-correctness.json).
 
+The frozen two-order short gate rejects runtime selection on its first run. The
+IQ2 family regresses **0.366%/2.742%** in orders A/B. Order A improves kernel
+sum/span **0.429%/2.686%** but regresses profiled-child throughput **0.634%**,
+outside the -0.5% guard. Order B improves child throughput **0.013%** but
+regresses kernel sum **1.180%** and median span **9.707%**. Pooled family/kernel/
+span/child changes are **+1.547%/+0.372%/+6.833%/-0.362%**; pooling cannot waive
+any per-order failure. Exact IDs, finite logits, lifecycle, 46 calls, 723 model
+kernels/token, local64/VGPR112/LDS512/scratch0 resources, and no-compiler checks
+pass.
+
+Stop before 512/1K/near-4K and both complete 18-prompt category orders; no third
+order or favorable rerun is allowed. Remove the capability, plan/session route,
+benchmark CLI, and temporary refactor entry. Production backend/MoE/runner/
+benchmark files again match primitive commit `2c1946c47`; retain only the exact
+diagnostic primitive. Evidence:
+[`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-rejected.json).
+
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
@@ -1953,7 +1973,7 @@ Evidence:
 | Does all-local32 ownership improve the mixed Q5/Q6 projection? | [`...mixed-local32-projection-retained.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json): yes. Exact local32 Q5/Q6 pair owners preserve total threads/waves and full state, improve clean projection work **7.00-8.12%**, and move complete-suite h32 decode **60.900 -> 61.732 tok/s (+1.367%)** at unchanged 723 dispatches/token. |
 | Can one local32 wave reuse an activation register across exact Q5 and Q6 output pairs? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-rejected.json): primitive only after clean rejection. Exact 16-transition state and **47+1/723** tracing do not override order-A span **+1.265%** and order-B child throughput **-0.681%** failures. Runtime integration is removed; remaining contexts/categories are skipped and defaults/topline are unchanged. |
 | Can LDS-staged unrounded F32 sums accelerate Laguna add+RMSNorm exactly? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-rejected.json): primitive only after clean rejection. Actual 48-boundary, CPU, 16-transition state, and 48/723 trace gates pass; the family improves **2.549%/2.501%**, but order A kernel sum regresses **0.340%** and order B span regresses **0.528%**. Runtime integration is removed; remaining contexts/categories are skipped and defaults/topline are unchanged. |
-| Can a fixed-two-wave DPP reduction accelerate the retained IQ2 grid64 body exactly? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-correctness.json), and [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-runtime-correctness.json): explicit/default-off runtime admitted pending clean adjudication. Synthetic/CPU/all-46-layer bytes and exact 16-transition state pass; repeated endpoints improve **1.27-1.64% event / 1.15-1.45% wall**; codegen and **46-candidate/723-kernel** trace meet every frozen ceiling. No default or throughput claim exists yet. |
+| Can a fixed-two-wave DPP reduction accelerate the retained IQ2 grid64 body exactly? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-rejected.json): primitive only after clean rejection. Synthetic/CPU/all-46-layer bytes, exact 16-transition state, and **46-candidate/723-kernel** tracing pass, but both short orders regress IQ2 **0.366%/2.742%**; order A also fails child and order B fails kernel/span guards. Runtime integration is removed and later contexts/categories are skipped. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -2077,6 +2097,8 @@ permutations at unchanged logical VGPR110 and scratch0. The separately
 registered repository primitive now passes RED/GREEN, CPU, all-46-layer,
 repeated-endpoint, codegen, and distinct-symbol trace gates. Its temporary
 explicit/default-off owner also passes full-state and cache-only
-**46-candidate/723-model-kernel** admission. Both clean context orders and both
-complete category orders remain pending, so canonical h32 stays **61.992 tok/s**
-versus Vulkan **64.418 tok/s**.
+**46-candidate/723-model-kernel** admission, but both clean short orders regress
+the IQ2 family and fail additional child or kernel/span guards. Runtime
+integration is removed and later contexts/categories are skipped; the primitive
+remains diagnostic and canonical h32 stays **61.992 tok/s** versus Vulkan
+**64.418 tok/s**.
