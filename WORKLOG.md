@@ -182195,3 +182195,28 @@ Vulkan local sizes verbatim will close the measured gap.
   a cached trace proving overlap if wall time is positive. Perfectly hiding
   the entire shared family would move **559.554 -> 594.1 tok/s**, so a win
   cannot close the 700 target alone.
+
+## 2026-07-26 — Retain exact MoE branch concurrency for promotion
+
+- A one-owner, counterbalanced A/B used `GPU_MAX_HW_QUEUES=2` for both arms
+  and created a fresh child session per sample. Seven pp512 pairs improve
+  sequential **560.837 -> 567.577 tok/s (+1.202%, 7/7 wins)**. Every pair
+  matches logits, final hidden, post-layer hidden, the complete KV cache,
+  next token/logit, and cursor exactly.
+- Clean tracked revision `b9d326ed1` with explicit candidate selection reaches
+  **565.457/525.733/443.027 tok/s** at 512/1K/4K, improving the current
+  queue-one production packet **1.055%/0.348%/0.503%**. All three lengths are
+  deterministic at tokens 2930/95/7772, positions are exact, and tracked
+  allocations return to zero.
+- Cached tracing proves real concurrency rather than a queue-count artifact.
+  The pp512 request places **188** kernels on the secondary stream and overlaps
+  **100.390 of 101.241 ms (99.16%)** of their kernel time with caller-stream
+  kernels. Contention enlarges summed family durations, so those sums are not
+  additive critical-path time; the measured kernel span still falls
+  **909.598 -> 896.871 ms (-12.727 ms)** and traced throughput reaches
+  **570.447 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-candidate.json`.
+  The candidate remains default-off only while the gfx1151 capability and
+  process queue policy are integrated. Selector-unset publication remains
+  required before updating the production headline.

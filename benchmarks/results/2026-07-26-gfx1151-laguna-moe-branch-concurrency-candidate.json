@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_branch_concurrency_candidate",
+  "status": "retained_default_off_candidate",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "exact Poolside Laguna S 2.1 Q4_K_M pp512 shared/routed MoE overlap on gfx1151 with GPU_MAX_HW_QUEUES=2, plus clean 512/1K/4K candidate measurements",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "candidate_queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "production_comparator_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "revision": "b9d326ed13e67fc99043b9f21300c221a427d666",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "candidate": {
+    "default": false,
+    "scope": "rows greater than one only",
+    "schedule": "the shared expert runs on a nonblocking secondary stream while router selection and routed gate/up/down run on the caller stream",
+    "dependencies": "one timing-disabled input-ready event and one timing-disabled shared-output-ready event",
+    "fallback": "the established sequential single-stream branch remains unchanged"
+  },
+  "matched_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_moe_branch_ab.py --repetitions 7 --output <tmp>",
+    "sequential_samples_tok_s": [
+      559.5882840885834,
+      561.5154769109699,
+      560.312196955063,
+      561.4598745601937,
+      560.8371652832807,
+      559.1882483731686,
+      565.8009785275977
+    ],
+    "concurrent_samples_tok_s": [
+      567.5766145120086,
+      568.2242508479371,
+      566.9307623565858,
+      566.6430821483973,
+      567.7514511713366,
+      567.3943457420427,
+      575.5583380015086
+    ],
+    "sequential_median_tok_s": 560.8371652832807,
+    "concurrent_median_tok_s": 567.5766145120086,
+    "change_percent": 1.201676644471994,
+    "candidate_wins": "7/7",
+    "complete_state_exact": true,
+    "exact_fields": [
+      "logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV cache",
+      "next token",
+      "next-token logit",
+      "cursor"
+    ],
+    "raw_sha256": "9a15effa99968a3c2e23915665e9cbc17a4ceda806255e7af9d8a1e44d26e085"
+  },
+  "clean_candidate": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-branch-concurrency --output <tmp>",
+    "pp512_samples_tok_s": [
+      569.8289641979682,
+      564.7942510396882,
+      565.4566393142463
+    ],
+    "pp512_median_tok_s": 565.4566393142463,
+    "pp1024_samples_tok_s": [
+      530.940740695191,
+      525.7326040344336,
+      525.1619905529029
+    ],
+    "pp1024_median_tok_s": 525.7326040344336,
+    "pp4096_samples_tok_s": [
+      445.94571158181964,
+      443.0266696895661,
+      441.86495649997863
+    ],
+    "pp4096_median_tok_s": 443.0266696895661,
+    "previous_queue1_production_tok_s": {
+      "pp512": 559.5540690172047,
+      "pp1024": 523.911833117769,
+      "pp4096": 440.80936601768923
+    },
+    "change_percent_vs_queue1_production": {
+      "pp512": 1.0548704091114525,
+      "pp1024": 0.3475338409192563,
+      "pp4096": 0.5030073865962104
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "9adb913317b4a84d3b2a946c29eb65ef78ee62c62e9e18cd07bca0927ca78d86"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file moe-concurrent -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-branch-concurrency --output <tmp>/child.json",
+    "pp512_tok_s": 570.4471680477399,
+    "pp512_dispatches": 1696,
+    "pp512_kernel_span_ms": 896.87132,
+    "previous_queue1_kernel_span_ms": 909.598454,
+    "kernel_span_change_ms": -12.727134,
+    "secondary_stream_kernels": 188,
+    "secondary_stream_kernel_sum_ms": 101.24066,
+    "secondary_stream_overlap_with_caller_kernels_ms": 100.390028,
+    "secondary_stream_overlap_percent": 99.15979212304622,
+    "secondary_stream_unoverlapped_ms": 0.850632,
+    "contention_note": "overlapped family durations are not additive critical-path time; concurrent dense/shared and router classifications grow while wall span falls",
+    "child_sha256": "7e87ac656abe19a4e9a597dfdbcef624eb03a89f0e6651046e6ab304ce630cf9",
+    "trace_sha256": "2ae27f56303d35d94439179d1b5499ba15527bea68c28297018a812c72bfb9d6",
+    "summary_sha256": "db744ffc383648f4ae262c9803be0ed1aff74c0a0983e4a34678c2be71dc1013"
+  },
+  "correctness": {
+    "production_style_q4_gpu_bf16_mismatches": 0,
+    "complete_state_exact": true,
+    "absolute_quality_transfer": "the concurrent schedule preserves every full-model output/state digest and does not change kernel arithmetic",
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "validation": {
+    "gpu_test": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle -k Q4_K",
+    "profile_tests": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_long_context_profile.py",
+    "result": "1 focused GPU parameter and 27 profile tests passed",
+    "python_compile": true,
+    "diff_check": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": false,
+    "reason": "the exact queue-matched A/B wins 7/7 and the trace proves real overlap, but production promotion still requires architecture capability and process queue-policy integration",
+    "candidate_pp512_tok_s": 565.4566393142463,
+    "next_target_tok_s": 700.0
+  }
+}

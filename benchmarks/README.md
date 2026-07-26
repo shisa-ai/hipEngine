@@ -2,6 +2,18 @@
 
 Last updated: **2026-07-26**
 
+An exact default-off shared/routed MoE concurrency candidate is retained for
+production promotion. Under the same two-queue policy in both arms, seven
+complete-state pp512 pairs improve **560.837 -> 567.577 tok/s (+1.202%, 7/7
+wins)**. Clean candidate 512/1K/4K medians are
+**565.457/525.733/443.027 tok/s**. Cached tracing proves that
+**100.390/101.241 ms (99.16%)** of secondary-stream shared-expert kernel time
+overlaps caller-stream kernels and cuts total kernel span
+**909.598 -> 896.871 ms (-12.727 ms)**. The current production default remains
+the boundary-fusion packet below until the gfx1151 capability and two-queue
+process policy pass selector-unset publication.
+[`candidate artifact`](results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-candidate.json).
+
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json`](results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-production.json).
 Exact RMSNorm and softplus-gate producers now write
