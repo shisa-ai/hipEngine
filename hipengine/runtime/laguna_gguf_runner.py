@@ -71,6 +71,7 @@ from hipengine.runtime.laguna_moe import (
     LagunaMoEScratch,
     allocate_laguna_moe_scratch,
     resolve_laguna_iq3_c1_down_schedule,
+    resolve_laguna_iq4_weighted_composite,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
     run_laguna_moe_c1_components,
@@ -1814,6 +1815,7 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
+        use_iq4_weighted_composite: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1901,6 +1903,10 @@ class LagunaGGUFResidentSession:
             self.backend,
             use_iq2_grid64,
         )
+        self.use_iq4_weighted_composite = resolve_laguna_iq4_weighted_composite(
+            self.backend,
+            use_iq4_weighted_composite,
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1985,11 +1991,17 @@ class LagunaGGUFResidentSession:
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
                 use_iq2_grid64=self.use_iq2_grid64,
+                use_iq4_weighted_composite=self.use_iq4_weighted_composite,
             )
             self.iq3_c1_down_schedule = getattr(
                 self.moe_plan,
                 "iq3_c1_down_schedule",
                 self.iq3_c1_down_schedule,
+            )
+            self.use_iq4_weighted_composite = getattr(
+                self.moe_plan,
+                "use_iq4_weighted_composite",
+                False,
             )
             self._validate_resident_weights()
             self.full_rope = materialize_laguna_rope_tables(
