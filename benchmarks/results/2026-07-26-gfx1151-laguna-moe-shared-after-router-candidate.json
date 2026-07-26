@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_shared_after_router",
+  "status": "retained_candidate",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "queue-matched exact Poolside Laguna S 2.1 Q4_K_M pp512 scheduling screen and cached trace on gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 in both arms",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "candidate_revision": "a9883e6fafcef173d33375dc856c8f424275cd47",
+    "tracked_clean_during_measurement": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "candidate": {
+    "baseline_schedule": "launch shared branch eagerly before router logits and selection",
+    "candidate_schedule": "enqueue router logits and selection alone, record the dependency event, then overlap shared work with routed gate/up and down",
+    "arithmetic": "unchanged",
+    "buffers": "unchanged",
+    "dependency_contract": "same input-ready and output-ready events; caller joins only before exact final combine"
+  },
+  "matched_ab": {
+    "command": "env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_moe_branch_ab.py --repetitions 7 --output <tmp>/result.json",
+    "resident_weight_owners": 1,
+    "child_session_per_arm": true,
+    "order": "counterbalanced eager/after_router by repetition",
+    "eager_samples_tok_s": [
+      567.7672488994715,
+      569.2081684941878,
+      566.459379875644,
+      567.3631900100795,
+      566.4187317502117,
+      568.1371481210497,
+      568.1418725999808
+    ],
+    "eager_median_tok_s": 567.7672488994715,
+    "after_router_samples_tok_s": [
+      568.1811170020119,
+      567.9803531903377,
+      570.2187511344695,
+      570.0250463639965,
+      567.3027689932682,
+      565.8824634753823,
+      575.1418528966927
+    ],
+    "after_router_median_tok_s": 568.1811170020119,
+    "change_percent": 0.07289397254641727,
+    "candidate_wins": "5/7",
+    "complete_state_exact": true,
+    "exact_fields": [
+      "logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV cache",
+      "next token",
+      "next-token logit",
+      "cursor"
+    ],
+    "raw_sha256": "f1a2e070aab6e6042d39e685d0a76bb5a1dd68eb8886c0b065d0582974a0d4bf"
+  },
+  "rocprof": {
+    "command": "env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file after-router -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-shared-after-router --output <tmp>/child.json",
+    "pp512_tok_s": 569.762992660539,
+    "pp512_dispatches": 1696,
+    "pp512_kernel_span_ms": 898.023983,
+    "pp512_kernel_sum_ms": 1157.789872,
+    "previous_eager_kernel_span_ms": 898.333573,
+    "kernel_span_change_ms": -0.30959,
+    "queues_observed": 2,
+    "streams_observed": 2,
+    "secondary_stream_kernels": 188,
+    "secondary_stream_kernel_sum_ms": 269.084439,
+    "secondary_stream_overlap_with_caller_kernels_ms": 268.439389,
+    "secondary_stream_overlap_percent": 99.76027970907676,
+    "secondary_stream_unoverlapped_ms": 0.64505,
+    "router_ms": 23.355791,
+    "previous_eager_router_ms": 44.075382,
+    "router_change_ms": -20.719591,
+    "selected_gate_up_ms": 344.618575,
+    "previous_eager_selected_gate_up_ms": 322.200212,
+    "selected_gate_up_change_ms": 22.418363,
+    "selected_down_ms": 190.8796,
+    "attention_ms": 143.852271,
+    "source_f16_ms": 124.840594,
+    "dense_shared_quant_projection_ms": 97.124744,
+    "contention_note": "protecting router works, but secondary work slows from 77.763 to 269.084 ms and gate/up grows 22.418 ms; only the measured 0.310-ms span reduction is retainable",
+    "child_sha256": "67cfd6c70206e71276c38b6c4080e4ea1109dc92853c268e11e8a9cb943aed1b",
+    "trace_sha256": "4d4b1835f30ae4346da71b446f86e9072685a4f6fea492f9b30b54ed19902651",
+    "summary_sha256": "d929b8349e13aae985082edcc2f53148fdda38f199317c0a0d94f49886338814"
+  },
+  "correctness": {
+    "primitive_q4_bf16_exact": true,
+    "complete_state_exact": true,
+    "decode_neutral": true,
+    "quality_transfer": "arithmetic and every state digest are unchanged from the admitted production packet"
+  },
+  "validation": {
+    "red_first": "missing session after-router scheduling property",
+    "host_session_profile_tests": 44,
+    "focused_q4_gpu_bf16_exact": true,
+    "python_compile": true,
+    "cached_trace_expected_queues_observed": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": false,
+    "reason": "exact 5/7 matched improvement plus an independently measured 0.310-ms kernel-span reduction",
+    "production_unmodified_tok_s": 565.4470035777194,
+    "next_step": "promote through a gfx1151 capability, then require selector-unset 512/1K/4K publication"
+  }
+}

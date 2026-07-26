@@ -182355,3 +182355,23 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next gate: one resident owner, two fixed queues, seven counterbalanced pp512
   pairs, and complete-state digests. Trace only if the median and pair wins
   establish a real improvement over eager production.
+
+## 2026-07-26 — Retain exact after-router shared-launch candidate
+
+- Seven queue-matched, counterbalanced pp512 pairs improve eager
+  **567.767 -> 568.181 tok/s (+0.073%, 5/7 wins)**. Every logits, hidden,
+  complete-KV, token/logit, and cursor digest is exact.
+- Cached tracing reaches **569.763 tok/s**, records **1,696** dispatches, and
+  observes two queues/two streams. Router recovers **44.075 -> 23.356 ms
+  (-20.720 ms)**, proving the intended protected prefix. Shared contention
+  shifts into selected gate/up **322.200 -> 344.619 ms (+22.418 ms)**, so
+  kernel span improves only **898.334 -> 898.024 ms (-0.310 ms)**.
+- The 188 secondary kernels total **269.084 ms** under the new contention
+  pattern and overlap caller kernels for **268.439 ms (99.76%)**. Inclusive
+  kernel sum is **1,157.790 ms** and is not an additive wall model.
+- Retain as an exact verified scheduling micro-win under the repository policy
+  that cycle-wall and verified sub-window reductions compound. Do not present
+  it as material 700 progress. Next promote through a gfx1151 capability, then
+  require a clean selector-unset 512/1K/4K publication.
+- Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-candidate.json`.

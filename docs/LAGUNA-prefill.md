@@ -1015,12 +1015,14 @@ Immediate execution queue:
    **2/7** pairs, and produced a **535.465 tok/s** low tail. No trace was
    warranted and every launch-phase selector was removed. Do not retry this
    short overlap window.
-10. **Active next screen:** preserve the long gate/up-plus-down overlap window
-   but place the dependency event after router selection. The eager production
-   trace raises inclusive router **23.438 -> 44.075 ms** under shared-branch
-   contention. An after-router boundary can protect that serial prefix while
-   retaining more than **500 ms** of routed work in which to hide the shared
-   branch. Require the same seven-pair complete-state gate before tracing.
+10. **Retained candidate:** preserve the long gate/up-plus-down overlap window
+   but place the dependency event after router selection. Seven exact
+   complete-state pairs improve **567.767 -> 568.181 tok/s (+0.073%, 5/7
+   wins)**. Tracing proves router recovers **44.075 -> 23.356 ms**, but shared
+   contention moves into gate/up **322.200 -> 344.619 ms**, leaving only a
+   **0.310-ms** kernel-span win. Promote this verified micro-win through a
+   gfx1151 capability and require clean selector-unset publication; do not
+   model it as material progress toward 700.
 
 Post-350 exclusions:
 
