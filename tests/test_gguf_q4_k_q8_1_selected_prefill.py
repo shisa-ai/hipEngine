@@ -1699,22 +1699,39 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("residual_passes", "rowvec", "tile_rows", "qmicro", "compact_activation"),
+    (
+        "residual_passes",
+        "rowvec",
+        "tile_rows",
+        "qmicro",
+        "compact_activation",
+        "half_row_activation",
+    ),
     [
-        (1, False, 32, False, False),
-        (1, True, 32, False, False),
-        (1, True, 64, False, False),
-        pytest.param(1, True, 64, True, False, id="rows64-qmicro"),
+        (1, False, 32, False, False, False),
+        (1, True, 32, False, False, False),
+        (1, True, 64, False, False, False),
+        pytest.param(1, True, 64, True, False, False, id="rows64-qmicro"),
         pytest.param(
             1,
             True,
             64,
             True,
             True,
+            False,
             id="rows64-qmicro-compact-activation",
         ),
-        (2, False, 32, False, False),
-        (3, False, 32, False, False),
+        pytest.param(
+            1,
+            True,
+            64,
+            True,
+            True,
+            True,
+            id="rows64-qmicro-half-row-activation",
+        ),
+        (2, False, 32, False, False, False),
+        (3, False, 32, False, False, False),
     ],
 )
 def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1723,6 +1740,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     tile_rows: int,
     qmicro: bool,
     compact_activation: bool,
+    half_row_activation: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from tests.test_gguf_k_t16_selected_wmma_prefill import (
@@ -1819,6 +1837,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             tile_rows=tile_rows,
             qmicro=qmicro,
             compact_activation=compact_activation,
+            half_row_activation=half_row_activation,
             library=library,
             runtime=runtime,
         )

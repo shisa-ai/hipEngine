@@ -102,6 +102,10 @@ LAGUNA_Q6_QMICRO = True
 # quant sum to int16, reducing the production 64-row kernel's LDS footprint
 # from 5,632 to 5,120 bytes without changing dot or accumulation order.
 LAGUNA_Q6_COMPACT_ACTIVATION = True
+# Split each compact Q6 activation row across two threads so all 128 threads
+# stage one 16-byte half and one K16 quant sum. The exact all-layer screen
+# improves 21/23 real Q6 layers without changing resources or output bytes.
+LAGUNA_Q6_HALF_ROW_ACTIVATION = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
