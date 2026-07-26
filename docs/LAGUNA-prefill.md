@@ -1482,17 +1482,24 @@ Immediate execution queue:
    is deterministically extended to exactly 512 rows while attention remains
    tiled at 128. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-m512-role-split-quality-pending.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-quality-pending.json).
+37. **Short no-change gate passed:** the clean 128-row category run reproduces
+   production's admitted **316/320 (98.75%)** top-1 and max KL
+   **0.049542582** exactly, with every category inside contract, Poolside
+   exact top-1, deterministic repeats, and complete lifecycle recovery.
+   Diagnostic prefill is **4.505x** all-exact and decode is flat. This proves
+   the M512 selector is invisible below its threshold; it does not admit the
+   accelerated branch. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-m512-role-split-short-absolute-passed.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-short-absolute-passed.json).
 
 ### Next exact and quality-gated attacks
 
 The projection-role screen cleared its 10-ms economic gate. Its quality gate
 now decides whether repair work is needed:
 
-1. The M512-scoped selector and both quality lanes are implemented. Run the
-   clean ordinary short-prompt category suite first as the exact-fallback
-   no-change check, then run full logits on all canonical prompt streams
-   extended to exactly 512 rows. The long lane uses matrix chunk 512 and
-   independently retains attention tiles of 128.
+1. The M512-scoped selector's short no-change gate is complete. Run the clean
+   long lane with full logits on all canonical prompt streams extended to
+   exactly 512 rows. It uses matrix chunk 512 and independently retains
+   attention tiles of 128.
 2. If M512-wide D4 still misses KL <=0.05, retain D8 and prototype a bounded
    producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
    separately compacted risk-row kernel adds the D8-minus-D4 correction

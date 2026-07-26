@@ -1519,8 +1519,9 @@ should be boring.
   another selected-projection comparison reuses it.
 - The default-off M512 bucket now keeps production D8 below 512 rows and
   selects D4-gate/D8-up only at M512+. Its seven-pair pp512 median saves
-  **13.676 ms**. Keep the selector and two category-harness lanes only through
-  the clean short no-change and extended-512 full-logit gates. On rejection,
-  remove the M512 selector and both lanes before starting producer-row repair;
-  on admission, remove both projection-wide runtime modes and collapse the
-  M512 selector into the gfx1151 backend capability after clean publication.
+  **13.676 ms**. The short no-change gate passes at the exact production
+  **316/320** top-1 and max KL **0.049542582**. Keep the selector and category
+  lanes only through the extended-512 full-logit gate. On rejection, remove
+  the M512 selector and both lanes before starting producer-row repair; on
+  admission, remove both projection-wide runtime modes and collapse the M512
+  selector into the gfx1151 backend capability after clean publication.
