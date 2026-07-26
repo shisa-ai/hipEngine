@@ -180557,3 +180557,53 @@ Vulkan local sizes verbatim will close the measured gap.
   optimization priority moves to the **219.709-ms attention** family, then
   down. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-selected-weight-traffic-ledger.json`.
+
+## 2026-07-26 — Retain exact cached-only qrow4 attention scheduling
+
+- Reopened the 219.709-ms attention family with a distinct dataflow premise:
+  append one complete M128 tile through the existing F32-to-BF16 KV writer,
+  then read both prior and current K/V from the cache. Global storage never
+  overwrites a live row. SWA uses this ordering only while the initial
+  512-slot ring is filling; wrapped SWA, partial tiles, staged verifier
+  transactions, gfx1100, and unmeasured backends retain attend-then-append.
+- Followed RED/GREEN. The registry test first failed on the absent cached-only
+  wrappers. The new M128 GPU fixture then proved global and SWA F32 output
+  byte-identical to production qrow4 after pre-append. The full focused bundle
+  (`HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q
+  tests/test_laguna_kv_attention.py tests/test_laguna_gguf_runner.py
+  tests/test_gfx1151_backend.py`) reports **50 passed**; `py_compile` and
+  `git diff --check` pass.
+- Nine counter-rotated burst-25 HIP-event leaf medians at start 0 improve
+  global **0.243334 -> 0.186436 ms (1.305x)** and SWA
+  **0.360208 -> 0.315450 ms (1.142x)**. At start 384 they improve global
+  **1.560601 -> 1.195846 ms (1.305x)** and SWA
+  **1.966861 -> 1.658324 ms (1.186x)**.
+- A one-load, seven-pair, counter-rotated pp512 implementation-tree screen
+  used resident Poolside Laguna S 2.1 Q4_K_M weights, matrix512/attention128,
+  synchronized prefill wall, and excluded model load. Production measured
+  **507.391 tok/s median / 504.158 minimum**; pre-append measured
+  **528.771 median / 527.367 minimum (+4.214%; 7/7 wins)**. Every pair has
+  identical token 2930, next-logit bits, full-logits SHA-256, final-hidden
+  SHA-256, post-layer-hidden SHA-256, and cursor 511.
+- Separate same-load wrap/long-context diagnostics are also exact:
+  **427.698 -> 471.740 tok/s (1.103x)** at 1K and
+  **360.563 -> 377.443 tok/s (1.047x)** at 4K. All three full-model screens
+  return tracked allocations/bytes to zero. The exact commands instantiate
+  paired `LagunaGGUFResidentSession` owners with
+  `prefill_kv_preappend={False,True}` under
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1 PYTHONPATH=.`; the complete inline benchmark and hashes
+  are recorded in the candidate artifact.
+- After prebuilding outside the profiler with
+  `/tmp/hipengine-hipcc-version.txt`, cached-only `rocprofv3 --kernel-trace`
+  names global `<4,true>` at **266.460 us** and SWA `<4,true,true>` at
+  **324.570 us**, both local32/VGPR64/SGPR128/LDS0/scratch0. Trace CSV SHA-256
+  is `8b11bf9f...dd4c5e4c`. The first cache-only trace attempt failed before
+  kernel launch because it lacked the fixed compiler-version key; the
+  corrected rerun passed.
+- Promoted `LAGUNA_PREFILL_KV_PREAPPEND=True` as the gfx1151 capability.
+  Production performance is not yet claimed from this dirty implementation
+  screen; commit the validated unit, then run a clean selector-unset pp512
+  publication. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json`.

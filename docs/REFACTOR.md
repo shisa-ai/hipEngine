@@ -1144,3 +1144,20 @@ should be boring.
   Remove the redundant positive selector and one-purpose A/B harness in the
   next cleanup unit; keep the direct synchronization rollback until the next
   retained expert-family checkpoint.
+
+## Laguna cached-only attention scheduling rollback
+
+- Added 2026-07-26 with the gfx1151
+  `LAGUNA_PREFILL_KV_PREAPPEND` capability and the optional
+  `prefill_kv_preappend` session override. Complete M128 global tiles and
+  pre-wrap SWA tiles append before cached-only qrow4 attention; partial,
+  wrapped, verifier, gfx1100, and unmeasured paths preserve the established
+  attend-then-append sequence.
+- The implementation-tree gate is exact and positive at pp512
+  (**507.391 -> 528.771 tok/s, +4.214%**) and at 1K/4K
+  (**1.103x/1.047x**). Keep the explicit rollback through clean
+  selector-unset publication and one later attention-family checkpoint.
+- After both triggers pass, remove the public constructor override while
+  retaining the backend capability/default and the automatic safety
+  fallbacks. Do not remove the source-qualified kernels: wrapped SWA and
+  staged verifier transactions still require them.

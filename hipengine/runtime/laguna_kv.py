@@ -24,6 +24,7 @@ _GLOBAL_BLOCK_SIZE = 256
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
 _BASELINE_GLOBAL_PREFILL_VARIANT = "global_context_rows_spans"
+_CACHED_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_cached_online_spans"
 _GLOBAL_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_GLOBAL_PREFILL_VARIANT,
@@ -40,6 +41,7 @@ _SWA_DECODE_VARIANTS = frozenset(
     }
 )
 _BASELINE_SWA_PREFILL_VARIANT = "swa_context_rows_spans"
+_CACHED_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_cached_online_spans"
 _SWA_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_SWA_PREFILL_VARIANT,
@@ -369,6 +371,100 @@ class LagunaKVCache:
             row_positions_ptr=row_positions_ptr,
         )
         fn = self._resolve("laguna_attention_prefill", state.attention_prefill_variant)
+        common = (
+            query_ptr,
+            current_key_ptr,
+            current_value_ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            out_ptr,
+            spans,
+            int(rows),
+        )
+        if state.attention_type == FULL_ATTENTION:
+            fn(
+                *common,
+                self.context_length,
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        else:
+            fn(
+                *common,
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                sliding_window=self.sliding_window,
+                start_position=int(self._pending_positions[int(row_offset)]),
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+
+    def can_preappend_prefill(
+        self,
+        layer_id: int,
+        rows: int,
+        *,
+        row_offset: int = 0,
+    ) -> bool:
+        """Return whether one M128 tile can be cached before causal attention."""
+
+        state = self.layer(layer_id)
+        offset = int(row_offset)
+        count = int(rows)
+        if (
+            count != 128
+            or not self._pending_positions
+            or offset < 0
+            or offset + count > len(self._pending_positions)
+        ):
+            return False
+        start_position = self._pending_positions[offset]
+        return start_position + count <= state.capacity
+
+    def attend_prefill_cached(
+        self,
+        layer_id: int,
+        query_ptr: int,
+        current_key_ptr: int,
+        current_value_ptr: int,
+        out_ptr: int,
+        rows: int,
+        *,
+        row_offset: int = 0,
+        row_positions_ptr: int | None = None,
+        scale: float = _LAGUNA_HEAD_DIM**-0.5,
+        stream: int = 0,
+        library=None,
+    ) -> None:
+        """Run qrow4 causal attention after a safe M128 tile was appended."""
+
+        state = self.layer(layer_id)
+        if not self.can_preappend_prefill(
+            layer_id,
+            rows,
+            row_offset=row_offset,
+        ):
+            raise ValueError("cached Laguna prefill requires one safe M128 tile")
+        spans = self._bulk_slice_spans(
+            state.spans,
+            row_offset=row_offset,
+            rows=rows,
+            row_positions_ptr=row_positions_ptr,
+        )
+        variant = (
+            _CACHED_GLOBAL_PREFILL_VARIANT
+            if state.attention_type == FULL_ATTENTION
+            else _CACHED_SWA_PREFILL_VARIANT
+        )
+        fn = self._resolve("laguna_attention_prefill", variant)
         common = (
             query_ptr,
             current_key_ptr,

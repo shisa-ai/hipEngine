@@ -86,6 +86,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_global_attention_decode_bf16_spans,
         laguna_global_attention_prefill_bf16_spans,
         laguna_global_attention_prefill_qrow2_online_bf16_spans,
+        laguna_global_attention_prefill_qrow4_cached_online_bf16_spans,
         laguna_global_attention_prefill_qrow4_m128_online_bf16_spans,
         laguna_global_attention_prefill_qrow4_online_bf16_spans,
         laguna_global_write_kv_rows_f32_spans,
@@ -95,6 +96,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_swa_attention_prefill_qrow2_m128_c128_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow2_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow2_online_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_m128_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans,
@@ -186,6 +188,15 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             backend="hip_gfx1151",
             layer="laguna_attention_prefill",
             quant="bf16",
+            variant="global_context_rows_qrow4_cached_online_spans",
+        )
+        is laguna_global_attention_prefill_qrow4_cached_online_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
             variant="global_context_rows_qrow4_m128_online_spans",
         )
         is laguna_global_attention_prefill_qrow4_m128_online_bf16_spans
@@ -243,6 +254,15 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             variant="swa_context_rows_qrow4_sourcequal_online_spans",
         )
         is laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_qrow4_cached_online_spans",
+        )
+        is laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans
     )
     assert (
         resolve(
@@ -553,6 +573,9 @@ def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
     positions_ptr = 0x71000000
     try:
         cache.prepare_rows(tuple(range(256)))
+        assert cache.can_preappend_prefill(0, 128, row_offset=0)
+        assert cache.can_preappend_prefill(1, 128, row_offset=128)
+        assert not cache.can_preappend_prefill(1, 64, row_offset=0)
         cache.attend_prefill(
             1,
             0x1000,
@@ -590,6 +613,11 @@ def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
                 row_offset=128,
                 row_positions_ptr=positions_ptr + 128 * 8,
             )
+        cache.discard_rows()
+        cache.position = 511
+        cache.prepare_rows(tuple(range(512, 640)))
+        assert cache.can_preappend_prefill(0, 128)
+        assert not cache.can_preappend_prefill(1, 128)
         cache.discard_rows()
     finally:
         cache.free()
@@ -888,6 +916,200 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
         cache.free()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+        laguna_global_attention_prefill_qrow4_cached_online_bf16_spans,
+        laguna_global_attention_prefill_qrow4_online_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans,
+    )
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    config = SimpleNamespace(
+        block_count=2,
+        layer_types=(FULL_ATTENTION, SLIDING_ATTENTION),
+        head_counts=(48, 72),
+        head_count_kv=8,
+        key_length=128,
+        value_length=128,
+        sliding_window=512,
+    )
+    baseline = allocate_laguna_kv_cache(
+        config,
+        context_length=512,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    cached = allocate_laguna_kv_cache(
+        config,
+        context_length=512,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    rows = 128
+    rng = np.random.default_rng(20260726)
+    keys = rng.normal(0.0, 0.12, size=(rows, 8, 128)).astype(np.float32)
+    values = rng.normal(0.0, 0.12, size=(rows, 8, 128)).astype(np.float32)
+    query_global = rng.normal(0.0, 0.12, size=(rows, 48, 128)).astype(np.float32)
+    query_swa = rng.normal(0.0, 0.12, size=(rows, 72, 128)).astype(np.float32)
+    allocations = []
+    try:
+        key_rows = malloc(keys.nbytes, runtime=runtime)
+        value_rows = malloc(values.nbytes, runtime=runtime)
+        global_query_rows = malloc(query_global.nbytes, runtime=runtime)
+        swa_query_rows = malloc(query_swa.nbytes, runtime=runtime)
+        global_baseline_out = malloc(query_global.nbytes, runtime=runtime)
+        global_cached_out = malloc(query_global.nbytes, runtime=runtime)
+        swa_baseline_out = malloc(query_swa.nbytes, runtime=runtime)
+        swa_cached_out = malloc(query_swa.nbytes, runtime=runtime)
+        allocations.extend(
+            (
+                key_rows,
+                value_rows,
+                global_query_rows,
+                swa_query_rows,
+                global_baseline_out,
+                global_cached_out,
+                swa_baseline_out,
+                swa_cached_out,
+            )
+        )
+        for buffer, array in (
+            (key_rows, keys),
+            (value_rows, values),
+            (global_query_rows, query_global),
+            (swa_query_rows, query_swa),
+        ):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes, runtime=runtime)
+
+        positions = tuple(range(rows))
+        baseline.prepare_rows(positions)
+        global_layer = baseline.layer(0)
+        laguna_global_attention_prefill_qrow4_online_bf16_spans(
+            global_query_rows.ptr,
+            key_rows.ptr,
+            value_rows.ptr,
+            global_layer.key_cache.ptr,
+            global_layer.value_cache.ptr,
+            global_baseline_out.ptr,
+            global_layer.spans,
+            rows,
+            global_layer.capacity,
+            global_layer.q_heads,
+            config.head_count_kv,
+            config.key_length,
+            config.key_length**-0.5,
+            library=library,
+            runtime=runtime,
+        )
+        swa_layer = baseline.layer(1)
+        laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans(
+            swa_query_rows.ptr,
+            key_rows.ptr,
+            value_rows.ptr,
+            swa_layer.key_cache.ptr,
+            swa_layer.value_cache.ptr,
+            swa_baseline_out.ptr,
+            swa_layer.spans,
+            rows,
+            swa_layer.q_heads,
+            config.head_count_kv,
+            config.key_length,
+            config.key_length**-0.5,
+            sliding_window=config.sliding_window,
+            start_position=0,
+            library=library,
+            runtime=runtime,
+        )
+
+        cached.prepare_rows(positions)
+        for layer_id in range(2):
+            cached.append_rows(
+                layer_id,
+                key_rows.ptr,
+                value_rows.ptr,
+                rows,
+                library=library,
+            )
+        global_layer = cached.layer(0)
+        laguna_global_attention_prefill_qrow4_cached_online_bf16_spans(
+            global_query_rows.ptr,
+            key_rows.ptr,
+            value_rows.ptr,
+            global_layer.key_cache.ptr,
+            global_layer.value_cache.ptr,
+            global_cached_out.ptr,
+            global_layer.spans,
+            rows,
+            global_layer.capacity,
+            global_layer.q_heads,
+            config.head_count_kv,
+            config.key_length,
+            config.key_length**-0.5,
+            library=library,
+            runtime=runtime,
+        )
+        swa_layer = cached.layer(1)
+        laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans(
+            swa_query_rows.ptr,
+            key_rows.ptr,
+            value_rows.ptr,
+            swa_layer.key_cache.ptr,
+            swa_layer.value_cache.ptr,
+            swa_cached_out.ptr,
+            swa_layer.spans,
+            rows,
+            swa_layer.q_heads,
+            config.head_count_kv,
+            config.key_length,
+            config.key_length**-0.5,
+            sliding_window=config.sliding_window,
+            start_position=0,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        actual_global = np.empty_like(query_global)
+        expected_global = np.empty_like(query_global)
+        actual_swa = np.empty_like(query_swa)
+        expected_swa = np.empty_like(query_swa)
+        for output, buffer in (
+            (expected_global, global_baseline_out),
+            (actual_global, global_cached_out),
+            (expected_swa, swa_baseline_out),
+            (actual_swa, swa_cached_out),
+        ):
+            copy_device_to_host(
+                host_array_ptr(output),
+                buffer,
+                output.nbytes,
+                runtime=runtime,
+            )
+        np.testing.assert_array_equal(actual_global, expected_global)
+        np.testing.assert_array_equal(actual_swa, expected_swa)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        cached.free()
+        baseline.free()
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

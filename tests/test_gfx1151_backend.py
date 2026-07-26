@@ -77,6 +77,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_F16_PREFILL_STRATEGY,
     LAGUNA_GLOBAL_PREFILL_VARIANT,
     LAGUNA_MOE_GROUP_COMPACT_MODE,
+    LAGUNA_PREFILL_KV_PREAPPEND,
     LAGUNA_PREFILL_MATRIX_ROWS,
     LAGUNA_ROUTER_LOGITS_MODE,
     LAGUNA_SELECTED_DOWN_MODE,
@@ -237,6 +238,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
     )
     assert LAGUNA_PREFILL_MATRIX_ROWS == 512
+    assert LAGUNA_PREFILL_KV_PREAPPEND is True
     assert (
         LAGUNA_GLOBAL_PREFILL_VARIANT
         == "global_context_rows_qrow4_m128_online_spans"
@@ -265,6 +267,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_PREFILL_KV_PREAPPEND", None
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_PREFILL_KV_PREAPPEND", None
     ) is None
     assert (
         backend_package_capability(

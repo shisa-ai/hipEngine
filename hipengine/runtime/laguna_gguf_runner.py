@@ -1511,6 +1511,7 @@ class LagunaGGUFResidentSession:
         global_prefill_variant: str | None = None,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
+        prefill_kv_preappend: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1547,6 +1548,15 @@ class LagunaGGUFResidentSession:
         self.swa_prefill_variant = resolve_laguna_swa_prefill_variant(
             self.backend,
             swa_prefill_variant,
+        )
+        self.prefill_kv_preappend = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_KV_PREAPPEND",
+                False,
+            )
+            if prefill_kv_preappend is None
+            else prefill_kv_preappend
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
@@ -2622,18 +2632,16 @@ class LagunaGGUFResidentSession:
                 if sliced
                 else {}
             )
-            self.kv_cache.attend_prefill(
-                layer_id,
-                scratch.query_rotated.ptr + q_offset,
-                scratch.key_rotated.ptr + kv_offset,
-                scratch.value.ptr + kv_offset,
-                scratch.context.ptr + q_offset,
-                attention_rows,
-                stream=stream,
-                library=self.libraries.kv_attention,
-                **slice_kwargs,
+            preappend = (
+                self.prefill_kv_preappend
+                and not stage_verifier_kv
+                and self.kv_cache.can_preappend_prefill(
+                    layer_id,
+                    attention_rows,
+                    row_offset=row_offset,
+                )
             )
-            if not stage_verifier_kv:
+            if preappend:
                 self.kv_cache.append_rows(
                     layer_id,
                     scratch.key_rotated.ptr + kv_offset,
@@ -2643,6 +2651,39 @@ class LagunaGGUFResidentSession:
                     library=self.libraries.kv_attention,
                     **slice_kwargs,
                 )
+                self.kv_cache.attend_prefill_cached(
+                    layer_id,
+                    scratch.query_rotated.ptr + q_offset,
+                    scratch.key_rotated.ptr + kv_offset,
+                    scratch.value.ptr + kv_offset,
+                    scratch.context.ptr + q_offset,
+                    attention_rows,
+                    stream=stream,
+                    library=self.libraries.kv_attention,
+                    **slice_kwargs,
+                )
+            else:
+                self.kv_cache.attend_prefill(
+                    layer_id,
+                    scratch.query_rotated.ptr + q_offset,
+                    scratch.key_rotated.ptr + kv_offset,
+                    scratch.value.ptr + kv_offset,
+                    scratch.context.ptr + q_offset,
+                    attention_rows,
+                    stream=stream,
+                    library=self.libraries.kv_attention,
+                    **slice_kwargs,
+                )
+                if not stage_verifier_kv:
+                    self.kv_cache.append_rows(
+                        layer_id,
+                        scratch.key_rotated.ptr + kv_offset,
+                        scratch.value.ptr + kv_offset,
+                        attention_rows,
+                        stream=stream,
+                        library=self.libraries.kv_attention,
+                        **slice_kwargs,
+                    )
         if stage_verifier_kv:
             assert self.verifier_scratch is not None
             row_nbytes = rows * kv_width * _F32_NBYTES
