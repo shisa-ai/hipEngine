@@ -1,8 +1,10 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-26**
+Last reviewed: **2026-07-27**
 
 Latest retained hipEngine revisions in this scoreboard:
+`5a0463c71a198d1fbb1caf8ee632d29b337c5a94` for the exact W7900 Laguna
+IQ3 ten-wave fused measurement/runtime packet promoted by this update,
 `b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2` for the clean gfx1151 Laguna
 source-F16 rocBLAS/hipBLASLt matrix ceiling,
 `fe59e77d065c7bf88cfa1635d71cd64b0e415005` for exact Laguna native
@@ -1234,17 +1236,18 @@ blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-26
+### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-27
 
-Last updated: **2026-07-26**.
+Last updated: **2026-07-27**.
 
-**Status: exact dense decode, P0 IQ3 wave4 route/output ownership, P2 exact
-split attention plus SWA tile16 scores, P4.1 split-reducer+gate, current-P4 head
-RMSNorm+RoPE+BF16-KV, wave-local exact SWA split reduction, expanded-magnitude
-IQ2 gate/up, raw-Q5 wave32x2 fixed-metadata loads, all-local32 Q5/Q6 plus
-retained local128 Q6/Q8 attention-projection quads, exact local32 Q4 LM head,
-token4 SWA, raw-Q6 attention pairing, and aggregate MoE-tail plus next-RMS are
-the retained W7900 target-only AR default.**
+**Status: exact dense decode, IQ3 ten-wave fused weighted-down ownership with
+wave4 fallback, P2 exact split attention plus SWA tile16 scores, P4.1
+split-reducer+gate, current-P4 head RMSNorm+RoPE+BF16-KV, wave-local exact SWA
+split reduction, expanded-magnitude IQ2 gate/up, raw-Q5 wave32x2 fixed-metadata
+loads, all-local32 Q5/Q6 plus retained local128 Q6/Q8 attention-projection
+quads, exact local32 Q4 LM head, token4 SWA, raw-Q6 attention pairing, and
+aggregate MoE-tail plus next-RMS are the retained W7900 target-only AR
+default.**
 The exact D10 token8 SWA candidate improved every clean mechanical profile and
 h32 decode but failed aggregate/every-category h16 non-regression. The exact
 D11 persistent router removed 47 launches/token and improved isolated router/
@@ -1338,6 +1341,9 @@ slot-order reducer.
 | Local128 Q4 LM-head matched control | 42.893 | 1.941 s | 61.675 | 7.055 | 12.650 |
 | Exact local32 Q4 LM head | **42.804** | **1.941 s** | **61.992** | **7.046** | **12.642** |
 | Local32 Q4 LM-head change vs matched control | **-0.208%** | **+0.028%** | **+0.512%** | **-0.131%** | **-0.066%** |
+| IQ3 wave4 + weighted-reducer matched control | 42.961 | 1.935 s | 62.318 | 7.073 | 12.692 |
+| Exact IQ3 wave10-fused weighted down | **42.880** | **1.937 s** | **63.270** | **7.073** | **12.711** |
+| Wave10-fused change vs matched wave4 | **-0.189%** | **+0.105%** | **+1.528%** | **-0.008%** | **+0.145%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
 P0 also pools two complete process-order pairs. Every category improves h16/h32
@@ -2051,6 +2057,35 @@ required. `use_q4_lm_head_local32_fixed_meta=False` /
 [Primitive artifact](results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-correctness.json),
 [runtime artifact](results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-runtime-correctness.json),
 and [retained artifact](results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json).
+
+##### Laguna Q2 XL IQ3 ten-wave fused weighted down (retained gfx1100 default)
+
+One local320 workgroup now owns one output column and keeps all ten exact
+route-parallel wave32 IQ3 projections live. Each route preserves the retained
+K1024 dot, shuffle tree, partition addition, and BF16 boundary; thread 0 then
+replays the registered F32-weight reducer from `+0.0` in slot order. Explicit
+`wave4_reduce`, exact-key miss, rows/prefill, and unsupported backends retain the
+registered producer-plus-reducer fallback.
+
+All **45/45** actual layer outputs and the no-argument-default versus explicit
+wave4 trajectory are byte exact through bulk prefill, all 48 hidden/47 routed
+boundaries, 16 decode transitions, active KV and every `KVLiveSpans` field,
+reset, shared ownership, and teardown. Cached tracing contracts **723 -> 678
+model kernels/token** with 45 fused calls plus two unchanged reducers; the
+candidate runs local320/VGPR88/LDS512/scratch0 and adds no allocation.
+
+Both clean process orders pass at short/512/1K/near-4K: inclusive IQ3 improves
+**9.71-11.90%**, kernel sum **0.398-1.082%**, dispatch span **0.813-1.998%**,
+and profiled-child throughput stays within the guard (**-0.005% to +2.751%**).
+The frozen counterbalanced 18-prompt gate moves h16/h32 decode **62.972/62.318
+-> 63.951/63.270 tok/s (+1.554%/+1.528%)**. Every train/heldout category
+improves at both horizons; aggregate h16/h32 E2E changes **-0.008%/+0.145%**,
+prefill **-0.189%**, and TTFT **+0.105%**, all within guard. Relative to the
+prior retained row, h32 improves **61.992 -> 63.270 tok/s (+2.063%)** to
+**15.805 ms/token**. Pinned Vulkan remains **64.418 tok/s**, so another
+**1.81%** is required. [Primitive artifact](results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-correctness.json),
+[runtime artifact](results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-runtime-correctness.json),
+and [retained artifact](results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json).
 
 A clean post-P4.1 short trace then measures **820 dispatches/token**, **15.676
 ms** of kernels, **18.760 ms** median dispatch span, and a **3.213 ms**

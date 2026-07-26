@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-27
+
+- [retained gfx1100 Laguna Q2 XL exact IQ3 ten-wave fused weighted down] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained wave4 producer plus slot-order reducer -> exact local320 ten-wave fused owner moves the matched two-order 18-prompt h32 row **62.318 -> 63.270 tok/s (+1.528%)**, or prior retained **61.992 -> 63.270 (+2.063%)**; every train/heldout category improves at both horizons, all clean orders improve inclusive IQ3/kernel/span with non-regressive child throughput, full state/default-vs-wave4 is exact, and model kernels contract **723 -> 678/token**. Pinned Vulkan remains faster at **64.418 tok/s**, requiring another **1.81%**; `benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json`.
+
 ## 2026-07-26
 
 - [retained gfx1100 Laguna Q2 XL exact local32 Q4 LM head] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained local128 Q4 LM head -> exact local32 fixed-metadata output-pair owner moves two-order 18-prompt h32 decode **61.675 -> 61.992 tok/s (+0.512%)**, or prior retained **61.732 -> 61.992 (+0.420%)**; every train/heldout category decode improves, both clean orders improve LM-head/kernel-sum time **29.07-30.79% / 0.34-1.10%**, full state/default-vs-rollback remains exact, and dispatches stay 723/token. Pinned Vulkan remains faster at **64.418 tok/s**, requiring another **3.91%**; `benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json`.

@@ -33,14 +33,14 @@ LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
 # full state, cached one-call tracing, both clean context orders, and both
 # complete category process orders. Explicit False restores registered local128.
 LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = True
-# Clean P0 leaf/full-state/context/category evidence admits one exact local32
-# wave per (route, output), followed by the registered slot-order reducer.
-# Other backends retain the serial weighted composite.
+# The registered wave4 producer plus slot-order reducer remains the explicit
+# rollback and exact-key-miss fallback for the retained fused schedule below.
+# Other backends retain their independently selected schedules.
 LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
-# Default-off admission for the exact local320 ten-wave IQ3 producer/reducer
-# composite. The retained wave4 plus registered reducer remains the default
-# until full-state, clean-context, and complete-category gates pass.
-LAGUNA_IQ3_WAVE10_FUSED = False
+# Exact local320 ten-wave IQ3 producer/reducer fusion passes full-state,
+# clean-context, and both complete 18-prompt category orders. Explicit wave4
+# or serial requests and exact-key misses retain the registered unfused chain.
+LAGUNA_IQ3_WAVE10_FUSED = True
 # The exact expanded-magnitude IQ2 grid contracts selector reconstruction and
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.

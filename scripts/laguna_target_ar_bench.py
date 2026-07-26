@@ -63,6 +63,7 @@ def _parse_args() -> argparse.Namespace:
         "--iq3-c1-down-schedule",
         choices=("serial_weighted", "wave4_reduce", "wave10_fused"),
         default=None,
+        help="override the backend default; wave4_reduce is the gfx1100 rollback",
     )
     parser.add_argument(
         "--disable-iq2-grid64",
