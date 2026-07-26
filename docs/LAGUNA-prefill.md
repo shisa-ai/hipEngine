@@ -753,11 +753,11 @@ Current progress:
 
 The 350 and 500 tok/s milestones prove the compounded production package, but
 they are not roofline results. Current clean production measures **0.886740
-seconds** synchronized pp512 wall. The preceding cached integer-WMMA
-attribution measures **0.883469 seconds** wall, **0.882726 seconds** kernel
-span, and **1.217231 seconds** inclusive kernel sum. The sum exceeds span
+seconds** synchronized pp512 wall. The refreshed cached integer-WMMA
+attribution measures **0.884986 seconds** wall, **0.884129 seconds** kernel
+span, and **1.200196 seconds** inclusive kernel sum. The sum exceeds span
 because two streams overlap; inclusive family durations are no longer
-additive Amdahl savings. Only **0.743 ms** of traced wall lies outside the
+additive Amdahl savings. Only **0.857 ms** of traced wall lies outside the
 kernel span, so graphs, Python removal, and submission tuning remain
 explicitly closed.
 
@@ -770,20 +770,20 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | Inclusive pp512 kernel time | Inclusive-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **339.302 ms** | **27.87%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters already reach **195.88 GB/s / 88.64%** of the read anchor; this remains the largest inclusive family but needs a physical-byte architecture, not another local decode tweak. |
-| Selected D4 Q4/Q6 down | **181.583 ms** | **14.92%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. The prior body cut this family **189.049 -> 181.583 ms (-3.95%)** and its 115-call 512/1K/4K Q6 window **1,124.852 -> 792.625 ms (-29.54%)**. Exact activation-fragment hoisting is now additionally retained; refresh this row before selecting result-metadata prefetch or a WMMA-specific K64 schedule. |
-| Global + SWA attention | **143.092 ms** | **11.76%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
-| Static-range direct hipBLASLt source-F16 | **124.420 ms** | **10.22%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
-| Q4/Q6 WMMA dense/shared | **93.845 ms** | **7.71%** | This inclusive family overlaps routed work. The retained least-priority shared schedule keeps nearly all of it off the critical path. |
-| Router | **23.306 ms** | **1.91%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
-| Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **311.683 ms** | **25.61%** | This includes slowed secondary shared work and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
+| Selected D8 Q4 gate/up | **341.011 ms** | **28.41%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters already reach **195.88 GB/s / 88.64%** of the read anchor; this remains the largest inclusive family but needs a physical-byte architecture, not another local decode tweak. |
+| Selected D4 Q4/Q6 down | **180.656 ms** | **15.05%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Activation-fragment reuse cuts pp512 Q6 **109.290 -> 108.233 ms (-0.97%)** and the 115-call 512/1K/4K Q6 window **792.625 -> 779.709 ms (-1.63%)**. Exact result-metadata lane broadcast is the next bounded screen before a WMMA-specific K64 schedule. |
+| Global + SWA attention | **143.669 ms** | **11.97%** | Dense-initial metadata elision is production for safe initial tiles; tracing observes the established 12 global-qrow4 / 36 global-qrow6 / 144 SWA-qrow4 policy. Partial, wrapped, explicitly evicted, verifier, and unmeasured routes retain exact fallbacks. |
+| Static-range direct hipBLASLt source-F16 | **124.185 ms** | **10.35%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
+| Q4/Q6 WMMA dense/shared | **94.565 ms** | **7.88%** | This inclusive family overlaps routed work. The retained least-priority shared schedule keeps nearly all of it off the critical path. |
+| Router | **23.376 ms** | **1.95%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
+| Activation/reduce/residual, norms/RoPE/gates, metadata, KV/tails | **292.733 ms** | **24.39%** | This includes slowed secondary shared work and therefore overlaps other families. MMQ grouped-combine reuse and fused selected-SiLU pack remain retained exact composites. |
 
 The current trace gives concrete Amdahl checkpoints; the clean publication
 below is a retained performance claim:
 
-- The clean production median is now **577.396 tok/s**. The preceding cached
-  attribution measured **579.534 tok/s** before activation-fragment hoisting
-  and must be refreshed. The declared 500 gate is closed.
+- The clean production median is now **577.396 tok/s**. Refreshed cached
+  attribution measures **578.540 tok/s** and confirms the intended 115 Q6
+  launches. The declared 500 gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
 - The clean wall must fall from **886.740 ms** to **731.429 ms** for 700 tok/s,
@@ -1194,12 +1194,14 @@ Immediate execution queue:
    positions, and complete allocation return. Evidence:
    [`2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json).
    [`production`](../benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-production.json).
-20. **Active next screen:** refresh the selected-down trace, then choose
-   between an exact result-metadata prefetch screen and a new WMMA-specific
-   K64 screen. Do not inherit the rejected scalar K64 schedule blindly: the
-   next candidate must preserve zero scratch and avoid increasing VGPR above
-   the current 96 unless its measured traffic reduction pays for the occupancy
-   loss.
+20. **Active next screen:** broadcast each result row's invariant `d` and two
+   K16 sums from the two owning lanes across each 16-lane half-wave instead of
+   having all 16 column lanes reread identical LDS metadata. Keep the exact
+   WMMA fragments, corrections, scale multiplication, and FP32 K32 order.
+   Gate on the 13-case CPU oracle, cached resources, and the 21-pair actual
+   leaf. Remove it if shuffle cost outweighs the LDS reduction. Only then
+   consider a WMMA-specific K64 screen; do not inherit the rejected scalar K64
+   schedule blindly or accept scratch/VGPR growth without measured payoff.
 
 Post-350 exclusions:
 

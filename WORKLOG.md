@@ -182974,3 +182974,32 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next action is a cached all-family trace at this clean production revision.
   Use the new Q6 family/resource attribution to choose between exact result
   metadata prefetch and a WMMA-specific zero-scratch K64 schedule.
+
+## 2026-07-26 — Refresh activation-hoist all-family attribution
+
+- Cached `rocprofv3 --kernel-trace` at clean revision `76c963f2a` covers the
+  required 512/1K/4K matrix2048/attention128 sequence under the production
+  two-queue policy. Traced throughput is
+  **578.540/545.753/461.174 tok/s** with tokens **2930/95/7772** and complete
+  allocation return.
+- At pp512, **1,696** dispatches have **1,200.196 ms** inclusive kernel sum,
+  **884.129 ms** kernel span, and **884.986 ms** synchronized wall. Only
+  **0.857 ms** lies outside the kernel span. Gate/up is **341.011 ms**,
+  selected Q4/Q6 down **180.656 ms**, attention **143.669 ms**, source-F16
+  **124.185 ms**, dense/shared **94.565 ms**, and router **23.376 ms**.
+- The intended Q6 template ending `<...,false,true,true,true>` runs 23 times
+  at pp512 for **108.233 ms**, down from **109.290 ms (-0.97%)**. Across
+  512/1K/4K, all **115** calls improve
+  **792.625 -> 779.709 ms (-1.63%, -12.917 ms)** while retaining
+  local128/VGPR96/SGPR128/LDS5120B/scratch0.
+- Child/raw/summary SHA-256 values are
+  `616f7d0eac0f9394a2455af65d693e3240d11505d22fdedb1a55228c4258b5e4`,
+  `f1ff68a7d59ecdaaf7406bc51db9c1e5fbe9ae86f2174158f14939da696a119c`,
+  and
+  `b0a1d54cfa4e66e079c02d101a6271606a2bba461b5cf884bbd85289e116de2a`.
+  Compact trace fields are attached to the production artifact.
+- The next bounded exact Q6 screen broadcasts each result row's invariant
+  `d` and two K16 sums from two owning lanes across the corresponding
+  half-wave. This attacks 16-way duplicate LDS reads without the 24-scalar
+  live-range growth of naive metadata prefetch. Remove it if shuffle cost
+  loses the actual-weight gate.

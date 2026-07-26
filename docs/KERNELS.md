@@ -911,6 +911,11 @@ clean 512/1K/4K publication improves
 (+0.218%/+0.396%/+0.144%)**, with deterministic tokens, exact positions, and
 complete allocation return
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-production.json`).
+Cached all-family tracing at the published revision cuts the 115-call
+512/1K/4K Q6 window **792.625 -> 779.709 ms (-1.63%)** and pp512 Q6
+**109.290 -> 108.233 ms (-0.97%)**. The intended template remains
+local128/VGPR96/SGPR128/LDS5120B/scratch0; the complete pp512 kernel span is
+**884.129 ms** with only **0.857 ms** outside it.
 
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate
