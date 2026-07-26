@@ -68,9 +68,13 @@ the full `KVLiveSpans` ABI and physical base-offset mapping while removing
 per-token position/eviction reads. All outputs are F32-bit exact. The
 qualified global-qrow4/qrow6 plus SWA-qrow4 policy improves
 **12.8348 -> 11.8695 ms (1.0813x)** per four-layer pattern, modeling
-**11.584 ms** pp512 saving. Production remains **551.459 tok/s** until the
-strict runtime qualification and complete-state full-model gate pass.
-[`artifact`](results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json).
+**11.584 ms** pp512 saving. Strict runtime qualification is now the gfx1151
+default with explicit rollback: seven matched complete-state pairs improve
+cached metadata **552.144 -> 559.539 tok/s (+1.339%)**, save **12.255 ms** at
+the medians, and preserve every output/state digest. The clean published
+topline remains **551.459 tok/s** until the selector-unset gate runs.
+[`default artifact`](results/2026-07-26-gfx1151-laguna-attention-dense-initial-default.json) ·
+[`leaf artifact`](results/2026-07-26-gfx1151-laguna-attention-dense-initial-candidate.json).
 
 The exact production path temporarily writes packed gate/up BF16 into the
 larger selected-down allocation, then folds the standalone sparse SiLU into

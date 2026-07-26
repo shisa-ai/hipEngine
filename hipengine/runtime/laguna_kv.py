@@ -31,6 +31,12 @@ _CACHED_META_GLOBAL_PREFILL_VARIANT = (
 _CACHED_META_GLOBAL_QROW6_PREFILL_VARIANT = (
     "global_context_rows_qrow6_cached_meta_online_spans"
 )
+_DENSE_INITIAL_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_qrow4_dense_initial_online_spans"
+)
+_DENSE_INITIAL_GLOBAL_QROW6_PREFILL_VARIANT = (
+    "global_context_rows_qrow6_dense_initial_online_spans"
+)
 _GLOBAL_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_GLOBAL_PREFILL_VARIANT,
@@ -49,6 +55,9 @@ _SWA_DECODE_VARIANTS = frozenset(
 _BASELINE_SWA_PREFILL_VARIANT = "swa_context_rows_spans"
 _CACHED_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_cached_online_spans"
 _CACHED_META_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_cached_meta_online_spans"
+_DENSE_INITIAL_SWA_PREFILL_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_online_spans"
+)
 _SWA_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_SWA_PREFILL_VARIANT,
@@ -109,6 +118,7 @@ class LagunaKVCache:
         backend: str,
         prefill_cached_meta: bool,
         prefill_global_qrow6: bool,
+        prefill_dense_initial: bool,
         row_position: DeviceBuffer,
         runtime: HipRuntime,
     ) -> None:
@@ -119,10 +129,12 @@ class LagunaKVCache:
         self.backend = str(backend)
         self.prefill_cached_meta = bool(prefill_cached_meta)
         self.prefill_global_qrow6 = bool(prefill_global_qrow6)
+        self.prefill_dense_initial = bool(prefill_dense_initial)
         self._row_position = row_position
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
+        self._dense_initial_metadata_valid = True
         self._closed = False
 
     @property
@@ -250,6 +262,7 @@ class LagunaKVCache:
                 spans.evict_mask.numel * spans.evict_mask.dtype.itemsize,
             )
         self.position = -1
+        self._dense_initial_metadata_valid = True
 
     def append(
         self,
@@ -444,6 +457,33 @@ class LagunaKVCache:
         start_position = self._pending_positions[offset]
         return start_position + count <= state.capacity
 
+    def can_dense_initial_prefill(
+        self,
+        layer_id: int,
+        rows: int,
+        *,
+        row_offset: int = 0,
+    ) -> bool:
+        """Return whether cached metadata still has its initial dense identity."""
+
+        if (
+            not self._dense_initial_metadata_valid
+            or not self.can_preappend_prefill(
+                layer_id,
+                rows,
+                row_offset=row_offset,
+            )
+        ):
+            return False
+        offset = int(row_offset)
+        count = int(rows)
+        start_position = self._pending_positions[offset]
+        return (
+            start_position >= 0
+            and self._pending_positions[offset : offset + count]
+            == tuple(range(start_position, start_position + count))
+        )
+
     def attend_prefill_cached(
         self,
         layer_id: int,
@@ -475,8 +515,22 @@ class LagunaKVCache:
             row_positions_ptr=row_positions_ptr,
         )
         start_position = int(self._pending_positions[int(row_offset)])
+        dense_initial = (
+            self.prefill_dense_initial
+            and self.can_dense_initial_prefill(
+                layer_id,
+                rows,
+                row_offset=row_offset,
+            )
+        )
         if state.attention_type == FULL_ATTENTION:
-            if self.prefill_cached_meta and start_position >= 128:
+            if dense_initial:
+                variant = (
+                    _DENSE_INITIAL_GLOBAL_QROW6_PREFILL_VARIANT
+                    if self.prefill_global_qrow6 and start_position >= 128
+                    else _DENSE_INITIAL_GLOBAL_PREFILL_VARIANT
+                )
+            elif self.prefill_cached_meta and start_position >= 128:
                 variant = (
                     _CACHED_META_GLOBAL_QROW6_PREFILL_VARIANT
                     if self.prefill_global_qrow6
@@ -486,7 +540,9 @@ class LagunaKVCache:
                 variant = _CACHED_GLOBAL_PREFILL_VARIANT
         else:
             variant = (
-                _CACHED_META_SWA_PREFILL_VARIANT
+                _DENSE_INITIAL_SWA_PREFILL_VARIANT
+                if dense_initial
+                else _CACHED_META_SWA_PREFILL_VARIANT
                 if self.prefill_cached_meta
                 else _CACHED_SWA_PREFILL_VARIANT
             )
@@ -502,6 +558,7 @@ class LagunaKVCache:
             int(rows),
         )
         if state.attention_type == FULL_ATTENTION:
+            extra = {"start_position": start_position} if dense_initial else {}
             fn(
                 *common,
                 self.context_length,
@@ -509,6 +566,7 @@ class LagunaKVCache:
                 _LAGUNA_KV_HEADS,
                 _LAGUNA_HEAD_DIM,
                 scale,
+                **extra,
                 stream=stream,
                 library=library,
                 runtime=self.runtime,
@@ -549,6 +607,7 @@ class LagunaKVCache:
             1,
             HipMemcpyKind.HOST_TO_DEVICE,
         )
+        self._dense_initial_metadata_valid = False
 
     def evict_swa_position(self, layer_id: int, position: int) -> None:
         """Mark one currently addressable absolute SWA position invisible."""
@@ -716,6 +775,7 @@ def allocate_laguna_kv_cache(
     swa_prefill_variant: str | None = None,
     prefill_cached_meta: bool = False,
     prefill_global_qrow6: bool = False,
+    prefill_dense_initial: bool = False,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -881,6 +941,7 @@ def allocate_laguna_kv_cache(
             backend=backend,
             prefill_cached_meta=prefill_cached_meta,
             prefill_global_qrow6=prefill_global_qrow6,
+            prefill_dense_initial=prefill_dense_initial,
             row_position=_buffer_for_tensor(row_position, buffers),
             runtime=runtime,
         )

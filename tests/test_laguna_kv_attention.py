@@ -700,7 +700,7 @@ def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
         cache.free()
 
 
-def test_laguna_cached_metadata_policy_qualifies_swa_and_later_global_tiles() -> None:
+def test_laguna_dense_initial_policy_qualifies_complete_unmodified_tiles() -> None:
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
     runtime = _FakeRuntime()
@@ -711,13 +711,19 @@ def test_laguna_cached_metadata_policy_qualifies_swa_and_later_global_tiles() ->
         runtime=runtime,
         prefill_cached_meta=True,
         prefill_global_qrow6=True,
+        prefill_dense_initial=True,
     )
     variants: list[str] = []
+    starts: list[int] = []
 
     def resolve(layer: str, variant: str):
         assert layer == "laguna_attention_prefill"
         variants.append(variant)
-        return lambda *args, **kwargs: None
+
+        def record(*args, **kwargs):
+            starts.append(int(kwargs["start_position"]))
+
+        return record
 
     cache._resolve = resolve
     try:
@@ -734,10 +740,51 @@ def test_laguna_cached_metadata_policy_qualifies_swa_and_later_global_tiles() ->
                 row_positions_ptr=0x5000 + row_offset * DType.INT64.itemsize,
             )
         assert variants == [
-            "global_context_rows_qrow4_cached_online_spans",
+            "global_context_rows_qrow4_dense_initial_online_spans",
+            "global_context_rows_qrow6_dense_initial_online_spans",
+            "swa_context_rows_qrow4_dense_initial_online_spans",
+            "swa_context_rows_qrow4_dense_initial_online_spans",
+        ]
+        assert starts == [0, 128, 0, 128]
+    finally:
+        cache.free()
+
+
+def test_laguna_dense_initial_policy_falls_back_after_explicit_eviction() -> None:
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = _FakeRuntime()
+    cache = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=512,
+        backend="hip_gfx1151",
+        runtime=runtime,
+        prefill_cached_meta=True,
+        prefill_global_qrow6=True,
+        prefill_dense_initial=True,
+    )
+    variants: list[str] = []
+
+    def resolve(layer: str, variant: str):
+        assert layer == "laguna_attention_prefill"
+        variants.append(variant)
+        return lambda *args, **kwargs: None
+
+    cache._resolve = resolve
+    try:
+        cache.position = 127
+        cache.evict_position(0, 0)
+        cache.prepare_rows(tuple(range(128, 256)))
+        cache.attend_prefill_cached(
+            0,
+            0x1000,
+            0x2000,
+            0x3000,
+            0x4000,
+            128,
+        )
+        assert variants == [
             "global_context_rows_qrow6_cached_meta_online_spans",
-            "swa_context_rows_qrow4_cached_meta_online_spans",
-            "swa_context_rows_qrow4_cached_meta_online_spans",
         ]
     finally:
         cache.free()
@@ -754,6 +801,7 @@ def test_laguna_cached_metadata_policy_has_explicit_full_rollback() -> None:
         runtime=runtime,
         prefill_cached_meta=False,
         prefill_global_qrow6=False,
+        prefill_dense_initial=False,
     )
     variants: list[str] = []
 
