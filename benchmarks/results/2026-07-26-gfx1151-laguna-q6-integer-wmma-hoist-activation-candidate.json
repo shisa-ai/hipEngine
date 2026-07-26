@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T15:09:28+00:00",
+  "kind": "hipengine_laguna_q6_integer_wmma_hoist_activation_candidate",
+  "status": "admitted_gfx1151_default_pending_clean_publication",
+  "repo_revision": "a0f4ed437b413989ab5fab475f1a4904608e8583",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy_leaf": "GPU_MAX_HW_QUEUES=1",
+    "queue_policy_runtime": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M with resident planar-qmicro Q6_K selected down",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "implementation": {
+    "scope": "production Q6 planar-qmicro integer-WMMA selected down; D4 activation; 64 output columns x 64 routed rows; local128",
+    "change": "construct each wave's two invariant K16 activation vectors once per K32 outside the four 16-column-fragment loop",
+    "arithmetic": "weight fragments, WMMA calls, two Q6 scales, -32*sum(x) correction, ordered FP32 K32 accumulation, and BF16 stores are unchanged",
+    "resident_delta_bytes": 0,
+    "runtime_policy": "unspecified wmma_hoist_activation follows the already-constrained integer_wmma production specialization; explicit false preserves the A/B comparator"
+  },
+  "correctness": {
+    "red": "The production-shaped uneven/empty-expert case failed because the wmma_hoist_activation wrapper selector did not exist.",
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate' tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151 tests/test_laguna_moe_gpu.py::test_laguna_mmq_selected_down_reuses_exact_grouped_combine",
+    "focused_result": "15 passed",
+    "lifecycle_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_gguf_runner.py::test_laguna_owned_session_close_frees_weights_and_is_idempotent",
+    "lifecycle_result": "1 passed",
+    "actual_weight_bf16_mismatches": 0,
+    "actual_weight_checksum": 509500838004,
+    "memory_returned": true
+  },
+  "actual_weight_layer1_leaf": {
+    "shape": {
+      "natural_prompt_rows": 512,
+      "compact_routed_rows": 5120,
+      "padded_rows64": 15808,
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "resident_weight_bytes": 660602880
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-int-wmma-hoist-a-leaf-21.json",
+    "timing": "HIP events; activation packing excluded; 21 counter-rotated burst-seven pairs",
+    "current_integer_wmma_median_ms": 4.564451490129743,
+    "hoisted_activation_median_ms": 4.512614386422293,
+    "change_percent": -1.1356699445605467,
+    "candidate_wins": 20,
+    "pairs": 21,
+    "current_range_ms": [
+      4.55400276184082,
+      4.662635803222656
+    ],
+    "candidate_range_ms": [
+      4.505476542881557,
+      4.562476021902902
+    ],
+    "raw_sha256": "73b22ee59de11a04c48d414035f9fbb3b3aba1c5b82f35db3814324717f9f143"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file q6-hoist-leaf -- env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 1 --warmups 0 --prefill-burst 1 --decode-burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-hoist-trace-child.json",
+    "current_integer_wmma": {
+      "template_tail": "false,true,true,false",
+      "local_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "hoisted_activation": {
+      "template_tail": "false,true,true,true",
+      "local_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "csv_sha256": "699726376b0688b05a3f5f242650ce6eea1286aa7f9d6e678a6ce97f044af7ff",
+    "child_sha256": "b63a1bb5f7c4a3b543da73a4a76d0223ba164549056723165b62fb1d131db762"
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "mechanically blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "gate": {
+    "leaf_admitted": true,
+    "production_publication_pending": true,
+    "headline_tok_s_claimed": false
+  }
+}

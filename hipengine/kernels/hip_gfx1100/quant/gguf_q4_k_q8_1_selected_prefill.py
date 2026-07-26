@@ -114,6 +114,11 @@ _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X6
     "hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_skip_padded_activation_"
     "selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
 )
+_SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_"
+    "skip_padded_activation_selected_q8_1_ds4_f32_mmq64x64_rowvec_"
+    "prefill_compact64_bf16_bf16_out"
+)
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
         "hipengine_gguf_q4_k_t16_selected_dual_q8_1_"
@@ -434,6 +439,7 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     qmicro_permute: bool = False,
     qmicro_planar: bool = False,
     integer_wmma: bool | None = None,
+    wmma_hoist_activation: bool | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -501,12 +507,20 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
         integer_wmma = qmicro_planar
     if integer_wmma and not qmicro_planar:
         raise ValueError("integer_wmma requires qmicro_planar=True")
+    if wmma_hoist_activation is None:
+        wmma_hoist_activation = integer_wmma
+    if wmma_hoist_activation and not integer_wmma:
+        raise ValueError(
+            "wmma_hoist_activation requires integer_wmma=True"
+        )
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
         (
-            _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
+            _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
+            if wmma_hoist_activation
+            else _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
             if integer_wmma
             else _SYMBOL_Q6_T16_QMICRO_PLANAR_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
             if qmicro_planar

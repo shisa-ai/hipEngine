@@ -1713,16 +1713,18 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
         "qmicro_permute",
         "qmicro_planar",
         "integer_wmma",
+        "wmma_hoist_activation",
     ),
     [
-        (1, False, 32, False, False, False, False, False, False, False),
-        (1, True, 32, False, False, False, False, False, False, False),
-        (1, True, 64, False, False, False, False, False, False, False),
+        (1, False, 32, False, False, False, False, False, False, False, False),
+        (1, True, 32, False, False, False, False, False, False, False, False),
+        (1, True, 64, False, False, False, False, False, False, False, False),
         pytest.param(
             1,
             True,
             64,
             True,
+            False,
             False,
             False,
             False,
@@ -1742,6 +1744,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             False,
             False,
             False,
+            False,
             id="rows64-qmicro-compact-activation",
         ),
         pytest.param(
@@ -1751,6 +1754,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             True,
             True,
             True,
+            False,
             False,
             False,
             False,
@@ -1768,6 +1772,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             False,
             False,
             False,
+            False,
             id="rows64-qmicro-skip-padded-activation",
         ),
         pytest.param(
@@ -1779,6 +1784,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             True,
             True,
             True,
+            False,
             False,
             False,
             id="rows64-qmicro-permute",
@@ -1794,6 +1800,7 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             False,
             True,
             False,
+            False,
             id="rows64-qmicro-planar",
         ),
         pytest.param(
@@ -1807,10 +1814,25 @@ def test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_referenc
             False,
             True,
             True,
+            False,
             id="rows64-qmicro-planar-integer-wmma",
         ),
-        (2, False, 32, False, False, False, False, False, False, False),
-        (3, False, 32, False, False, False, False, False, False, False),
+        pytest.param(
+            1,
+            True,
+            64,
+            True,
+            True,
+            True,
+            True,
+            False,
+            True,
+            True,
+            True,
+            id="rows64-qmicro-planar-integer-wmma-hoist-activation",
+        ),
+        (2, False, 32, False, False, False, False, False, False, False, False),
+        (3, False, 32, False, False, False, False, False, False, False, False),
     ],
 )
 def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
@@ -1824,6 +1846,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
     qmicro_permute: bool,
     qmicro_planar: bool,
     integer_wmma: bool,
+    wmma_hoist_activation: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from tests.test_gguf_k_t16_selected_wmma_prefill import (
@@ -1927,6 +1950,7 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
             qmicro_permute=qmicro_permute,
             qmicro_planar=qmicro_planar,
             integer_wmma=integer_wmma,
+            wmma_hoist_activation=wmma_hoist_activation,
             library=library,
             runtime=runtime,
         )

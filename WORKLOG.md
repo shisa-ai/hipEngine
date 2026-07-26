@@ -182914,3 +182914,35 @@ Vulkan local sizes verbatim will close the measured gap.
   fragments outside the four-column-fragment loop. It is source-exact and
   targets repeated LDS reads; remove it if the compiler already performs the
   hoist or the actual-weight leaf is not faster.
+
+## 2026-07-26 — Admit Q6 integer-WMMA activation-fragment hoist
+
+- RED added a `wmma_hoist_activation` dimension to the production-shaped
+  uneven/empty-expert Q6 CPU-reference fixture and initially failed because
+  the wrapper contract did not exist. GREEN adds a dedicated exact
+  specialization and selector. Each wave now builds its two K16 activation
+  vectors once per K32 outside the four-column-fragment loop; weight
+  fragments, both Q6 scales, `-32*sum(x)` correction, FP32 K32 order, and
+  BF16 stores are unchanged.
+- Twenty-one counter-rotated burst-seven actual layer-1 natural-M512 pairs
+  improve the current integer-WMMA leaf **4.564451 -> 4.512614 ms
+  (-1.1357%, 20/21 wins)**. Current/candidate ranges are
+  **4.554003–4.662636 / 4.505477–4.562476 ms**. BF16 mismatches are zero,
+  checksum remains **509500838004**, and all **2,295,263,256** tracked bytes
+  return.
+- Cached `rocprofv3 --kernel-trace` names the candidate template ending
+  `<...,false,true,true,true>` at
+  local128/VGPR96/SGPR128/LDS5120B/scratch0, identical to the current
+  `<...,false,true,true,false>` integer-WMMA resource footprint. Trace/raw
+  SHA-256 values are
+  `699726376b0688b05a3f5f242650ce6eea1286aa7f9d6e678a6ce97f044af7ff` /
+  `73b22ee59de11a04c48d414035f9fbb3b3aba1c5b82f35db3814324717f9f143`.
+- The 13-case Q6 CPU-reference/quality matrix plus two Laguna runtime cases
+  pass (**15 passed**); the production two-queue ownership lifecycle passes
+  separately (**1 passed**). An unspecified selector promotes the hoist only
+  inside the already-constrained planar-qmicro/integer-WMMA row64 route.
+  Explicit `False` remains the temporary A/B comparator.
+- Candidate artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-integer-wmma-hoist-activation-candidate.json`.
+  No production throughput is claimed until the tracked tree is committed and
+  a clean selector-unset 512/1K/4K run completes.
