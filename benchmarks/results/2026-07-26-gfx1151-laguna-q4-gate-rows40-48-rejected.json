@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-26T07:47:00+00:00",
+  "kind": "hipengine_laguna_q4_gate_intermediate_row_tiles_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1
+  },
+  "workload": {
+    "producer_rows": 512,
+    "hidden": 3072,
+    "out_features_per_projection": 1024,
+    "experts": 256,
+    "top_k": 10,
+    "active_experts": 228,
+    "compact_rows": 5120,
+    "max_expert_rows": 232,
+    "timing": "counter-rotated HIP events",
+    "warmups": 3,
+    "samples": 12,
+    "burst": 3,
+    "inclusive": "D8 BF16 activation pack plus one dual gate/up launch"
+  },
+  "route_tiles_all_47_sparse_layers": {
+    "rows32": 14034,
+    "rows40": 12866,
+    "rows40_delta_percent": -8.322644,
+    "rows48": 12189,
+    "rows48_delta_percent": -13.146644
+  },
+  "results": {
+    "rows40": {
+      "production_rows32_median_ms": 6.851841926574707,
+      "candidate_median_ms": 7.016510645548503,
+      "candidate_delta_percent": 2.403286,
+      "checksum_f64": 1114.1769413301445,
+      "bf16_exact": true,
+      "raw_sha256": "91e6d3134db00ee2547eef37e211160ca192e0b012a0b03139eca2898440ba54"
+    },
+    "rows48": {
+      "production_rows32_median_ms": 6.824465751647949,
+      "candidate_median_ms": 6.941420873006185,
+      "candidate_delta_percent": 1.713755,
+      "checksum_f64": 1114.1769413301445,
+      "bf16_exact": true,
+      "raw_sha256": "941ef4600295387fb73e322dbc50a048da366be7825c627599540bf8fbab3250"
+    }
+  },
+  "correctness": {
+    "fixture_counts": [0, 7, 18, 33],
+    "in_features": 512,
+    "out_features_per_projection": 128,
+    "oracle": "production 128x32 direct-wave double-buffered D8 output",
+    "focused_result": "2 passed",
+    "bf16_mismatches": 0
+  },
+  "decision": {
+    "gate": "positive actual-weight natural-M512 leaf before runtime integration",
+    "result": "fail",
+    "reason": "even eight additional live row accumulators cost more than the saved route-tile rereads",
+    "removed": [
+      "128x40 and 128x48 device specializations",
+      "Python symbols and tile-row selector",
+      "40/48-row benchmark metadata and modes",
+      "40/48-row GPU fixtures"
+    ],
+    "production_changed": false,
+    "production_pp512_tok_s": 551.459
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,<rows40-or-rows48> --warmups 3 --samples 12 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <trial.json>",
+  "repo": {
+    "base_revision": "dacd45961310b7e14cbcb6b8090200dabb37b6e4"
+  }
+}

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [rejected and removed exact gfx1151 Laguna Q4 gate/up rows40/48] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / frozen route tiles fall **14,034 -> 12,866/12,189 (-8.32%/-13.15%)**, but BF16-exact actual-weight natural-M512 leaves regress rows32 **6.851842 -> 7.016511 ms (+2.40%)** and **6.824466 -> 6.941421 ms (+1.71%)**; all candidate surfaces are removed and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-gate-rows40-48-rejected.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q4_K qmicro prefill] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / direct packed metadata regresses actual-weight natural-M512 T16 **9.402044 -> 9.570781 ms (+1.795%)**, while wave broadcast and quartet-owned LDS expansion regress **9.539%/5.563%**; all paths are BF16-bit exact, the MMQ candidate surfaces are removed, and production remains **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-prefill-rejected.json`.
 
 - [retained exact gfx1151 Laguna Q4_K qmicro decode primitive] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the byte-neutral T16-local-Q/four-column-metadata layout reduces the actual gate/up pair **931,135,488 -> 905,969,664 bytes (-2.778%)**, preserves every BF16 bit, and improves balanced c1/c2/c4/c8 exact decode **4.929%/0.781%/3.691%/4.633%** at local128/VGPR192/SGPR128/LDS1536B/scratch0; retained before selected-prefill qualification, with production unchanged at **551.459 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q4-k-qmicro-exact-decode-retained.json`.
