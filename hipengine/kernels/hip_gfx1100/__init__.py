@@ -33,6 +33,9 @@ LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
 # full state, cached one-call tracing, both clean context orders, and both
 # complete category process orders. Explicit False restores registered local128.
 LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = True
+# The staged unrounded-F32 add+RMSNorm sibling is admitted as an explicit
+# W7900 c=1 screen only. No-argument sessions retain the registered control.
+LAGUNA_ADD_RMSNORM_STAGED_F32 = False
 # Clean P0 leaf/full-state/context/category evidence admits one exact local32
 # wave per (route, output), followed by the registered slot-order reducer.
 # Other backends retain the serial weighted composite.
@@ -122,6 +125,7 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
+    "LAGUNA_ADD_RMSNORM_STAGED_F32",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ2_GRID64",
