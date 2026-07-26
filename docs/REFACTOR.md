@@ -1293,3 +1293,19 @@ should be boring.
   **551.459/517.307/432.099 tok/s**. The repeated 23-layer and complete-state
   A/B evidence remains positive; the one-later-selected-down checkpoint is
   still open.
+
+## Laguna source-F16 boundary-fusion rollback
+
+- Added 2026-07-26 with session-local
+  `set_f16_boundary_fusion(...)`. The exact range-direct specialization folds
+  each separate BF16-to-FP16 cast into its RMSNorm or softplus-gate producer
+  while preserving the BF16 rounding boundary bit-for-bit. The registered
+  unfused primitives remain the required fallback.
+- Primitive composition is exact and improves the two production M512
+  boundaries by **1.877x/1.425x**. Seven matched pp512 pairs improve
+  **554.909 -> 559.320 tok/s (+0.795%, 6/7 wins)** with identical token and
+  logit. Keep the candidate default-off until clean selector-unset
+  512/1K/4K, full state/quality/lifecycle, and refreshed trace gates pass.
+- After promotion and one later source-F16 checkpoint, remove the public
+  setter and one-purpose A/B harness while retaining the backend capability,
+  fused registered kernels, and registered unfused numerical fallback.

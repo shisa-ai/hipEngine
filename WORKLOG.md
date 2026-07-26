@@ -182050,3 +182050,28 @@ Vulkan local sizes verbatim will close the measured gap.
   Production remains **559.290 tok/s**. Selected-down persistence and row64
   scheduling are closed; return to the **314.920-ms** gate/up family and
   require a byte model that avoids full-output partial traffic.
+
+## 2026-07-26 — Retain exact source-F16 boundary fusion candidate
+
+- The current range-direct hipBLASLt route still launched two full-row
+  BF16-to-FP16 casts per layer: after attention RMSNorm and after softplus
+  head gating. RED failed on the missing fused producer symbols. GREEN adds
+  separately registered RMSNorm and softplus-gate variants that first round
+  each value to the production BF16 boundary, convert that exact value to
+  FP16, and write the projection input directly.
+- The focused GPU composition fixture has zero FP16-bit mismatches for both
+  boundaries. At production M512 shapes, fifteen counter-rotated burst-ten
+  samples improve RMSNorm+cast **0.040472 -> 0.021564 ms (1.877x)** and
+  softplus-gate+cast **0.192665 -> 0.135213 ms (1.425x)**, modeling
+  **3.665 ms** over 48 layers and removing 96 pp512 launches.
+- Seven counterbalanced one-owner pp512 pairs improve separate-cast rollback
+  **554.909 -> 559.320 tok/s (+0.795%, 6/7 wins)**. Every run selects token
+  **2930** with exactly the same **26.521203995** logit. The candidate remains
+  default-off through clean selector-unset 512/1K/4K, full state/quality/
+  lifecycle, and refreshed trace gates.
+- Focused `rocprofv3` observes both expected kernels: RMSNorm is
+  local256/VGPR16/SGPR128/LDS0/scratch0; softplus gate is
+  local256/VGPR24/SGPR128/LDS0/scratch0. Trace SHA-256:
+  `014680b444668007c340e28d06a73b782538128eff1931145cc50f2ce57c872b`.
+  Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-f16-boundary-fusion-candidate.json`.
