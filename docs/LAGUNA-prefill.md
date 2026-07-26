@@ -848,6 +848,11 @@ Immediate execution queue:
    **13.3577 ms** for weighted qrow4 and **12.8481 ms** for the qualified
    production policy. Its global-start0 result merely ties the actual
    non-metadata production body (**0.18634 vs 0.18580 ms**).
+   SWA qrow5 is also closed: it is F32-bit exact but regresses qrow4 by
+   **1.66%/3.92%/5.00%/3.21%** at starts 0/128/256/384. The complete
+   production-shaped policy moves **11.8174 -> 12.1906 ms (+3.16%)**.
+   Together with the larger qrow6 losses, this closes wider SWA adjacent-row
+   accumulation without a new state-compression mechanism.
    The next exact dense-initial leaf is positive and retained for immediate
    runtime qualification. Before the first wrap, complete preappended tiles
    have identity token positions and no eviction, allowing the global/SWA

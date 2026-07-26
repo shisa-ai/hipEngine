@@ -181917,3 +181917,22 @@ Vulkan local sizes verbatim will close the measured gap.
   the extra activation/LDS cost of the transposed geometry itself. Candidate
   code was again removed byte-for-byte and the same rejection artifact now
   includes the control.
+
+## 2026-07-26 — Reject dense-initial SWA qrow5
+
+- Built the only unscreened adjacent-query width between retained qrow4 and
+  rejected qrow6. The diagnostic dense-initial qrow5 body preserves every
+  query's ordered dot, online-softmax, and PV sequence while reducing SWA row
+  groups by 16.7%.
+- RED failed on the missing wrapper/registry symbol. GREEN passes the focused
+  registry test and the complete M128 GPU fixture; qrow5 is F32-bit identical
+  to production qrow4 and tracked allocations return.
+- Eleven counter-rotated burst-25 medians reject qrow5 at every natural start:
+  it regresses **1.66%/3.92%/5.00%/3.21%** at 0/128/256/384. The complete
+  production-shaped global+3xSWA policy regresses
+  **11.817385 -> 12.190558 ms (+3.1578%)**.
+- Removed the HIP export, wrapper, registry key, test fixture extension, and
+  harness mode; production sources are restored byte-for-byte. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-swa-qrow5-rejected.json`.
+  Production remains **559.290 tok/s**. Wider SWA query-row accumulation is
+  closed without a new state-compression mechanism.
