@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-26T09:20:00+00:00",
+  "kind": "hipengine_laguna_swa_qrow5_dense_initial_screen",
+  "status": "rejected",
+  "performance_claim": false,
+  "repo_revision": "4a3a6b586560ffc62dec1a27dfc416045f2507d0",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "workload": {
+    "rows": 128,
+    "starts": [0, 128, 256, 384],
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "window": 512,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "query_rows_per_wave": 5,
+    "base": "dense-initial preappended qrow4 online softmax",
+    "math": "identical ordered dot, online softmax, and PV accumulation per query",
+    "premise": "Reduce SWA row groups by 16.7% while staying below the rejected qrow6 state width."
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_cached_meta_leaf.py --samples 11 --warmups 2 --burst 25 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-qrow5.json",
+    "samples": 11,
+    "warmups": 2,
+    "burst": 25,
+    "order": "nine-mode counter-rotation",
+    "timing": "HIP events"
+  },
+  "results": {
+    "positions": [
+      {"start": 0, "qrow4_ms": 0.24785179138183594, "qrow5_ms": 0.25195907592773437, "regression_percent": 1.6571534637693341},
+      {"start": 128, "qrow4_ms": 0.6227331924438476, "qrow5_ms": 0.6471165466308594, "regression_percent": 3.9155379033710913},
+      {"start": 256, "qrow4_ms": 1.010499267578125, "qrow5_ms": 1.0610677337646484, "regression_percent": 5.0043050805688605},
+      {"start": 384, "qrow4_ms": 1.4112432861328126, "qrow5_ms": 1.4565751647949219, "regression_percent": 3.2121944605547625}
+    ],
+    "production_policy_qrow4_ms": 11.81738489151001,
+    "candidate_policy_qrow5_ms": 12.190557842254638,
+    "candidate_policy_regression_percent": 3.157830215149615,
+    "candidate_policy_speed_ratio": 0.9693883614209069,
+    "f32_bit_mismatches": 0,
+    "tracked_allocations_returned": true
+  },
+  "decision": {
+    "retain": false,
+    "reason": "Qrow5 regresses every natural SWA position and the weighted production policy. The additional per-wave query state costs more than the reduced row-group count.",
+    "cleanup": "Candidate HIP export, wrapper, registry key, GPU fixture, and harness mode removed; production sources restored byte-for-byte."
+  }
+}
