@@ -1,0 +1,527 @@
+{
+  "actual_all_layer_probe": {
+    "all_47_layers_all_six_fields_bit_exact": true,
+    "candidate_vs_old_d11_event_pct": -4.808418770262324,
+    "candidate_vs_old_d11_wall_pct": -4.8204216430800635,
+    "candidate_vs_split_event_pct": -22.450517040582994,
+    "candidate_vs_split_wall_pct": -22.42724014254015,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_router_persistent_wave_top10_actual.py",
+    "counter_self_rearmed": true,
+    "event_samples_ms": {
+      "control": [
+        0.8004665374755859,
+        0.8011856842041015,
+        0.8008413696289063,
+        0.8011194610595703,
+        0.8014250946044922,
+        0.8009799957275391,
+        0.8008169555664062,
+        0.8000200653076172,
+        0.8010802459716797,
+        0.801044921875,
+        0.8011507415771484,
+        0.821259994506836,
+        0.8211885833740235,
+        0.821361083984375,
+        0.8207948303222656
+      ],
+      "persistent_old": [
+        0.6526459503173828,
+        0.6522830963134766,
+        0.6522077941894531,
+        0.6526873016357422,
+        0.6527515411376953,
+        0.6526217651367188,
+        0.6524994659423828,
+        0.6527820587158203,
+        0.6525581359863282,
+        0.6524041748046875,
+        0.6525260925292968,
+        0.6548193359375,
+        0.662014389038086,
+        0.6619583129882812,
+        0.661980209350586
+      ],
+      "persistent_wave_top10": [
+        0.6211548614501953,
+        0.620889892578125,
+        0.6213240051269531,
+        0.6212639999389649,
+        0.6211920928955078,
+        0.6212472152709961,
+        0.6307334136962891,
+        0.6307169342041016,
+        0.6212960052490234,
+        0.6209603881835938,
+        0.6212443161010742,
+        0.6210147094726562,
+        0.6305754470825196,
+        0.6305451202392578,
+        0.6309231567382813
+      ]
+    },
+    "median_ms_per_47_layer_window": {
+      "control": 0.8011194610595703,
+      "persistent_old": 0.6526459503173828,
+      "persistent_wave_top10": 0.6212639999389649
+    },
+    "protocol": {
+      "counterbalanced": true,
+      "iterations": 100,
+      "layers_per_iteration": 47,
+      "repetitions": 15,
+      "warmups": 10
+    },
+    "us_per_layer": {
+      "control": 17.04509491616107,
+      "persistent_old": 13.886084049306017,
+      "persistent_wave_top10": 13.218382977424785
+    },
+    "wall_median_ms_per_47_layer_window": {
+      "control": 0.8012782619334757,
+      "persistent_old": 0.6530535989440978,
+      "persistent_wave_top10": 0.6215736619196832
+    },
+    "wall_samples_ms": {
+      "control": [
+        0.8010296593420208,
+        0.8010828588157892,
+        0.8013399597257376,
+        0.8012782619334757,
+        0.8009205502457917,
+        0.8012521592900157,
+        0.8006428484804928,
+        0.8006728487089276,
+        0.8007286512292922,
+        0.8021253696642816,
+        0.8029670803807676,
+        0.820964730810374,
+        0.8211901318281889,
+        0.8214150415733457,
+        0.8215185394510627
+      ],
+      "persistent_old": [
+        0.6524976901710033,
+        0.6527047883719206,
+        0.6525827897712588,
+        0.6526489905081689,
+        0.6530726002529263,
+        0.6529173906892538,
+        0.658037958201021,
+        0.6531314994208515,
+        0.6525972788222134,
+        0.6528705894015729,
+        0.6530535989440978,
+        0.6623936304822564,
+        0.6622474198229611,
+        0.6626688316464424,
+        0.6622552196495235
+      ],
+      "persistent_wave_top10": [
+        0.6213516602292657,
+        0.6213418510742486,
+        0.6213074596598744,
+        0.6218787701800466,
+        0.6216276600025594,
+        0.6215736619196832,
+        0.6310821906663477,
+        0.6237463909201324,
+        0.6211538589559495,
+        0.6211783504113555,
+        0.621301750652492,
+        0.6212283601053059,
+        0.6308004818856716,
+        0.6309658894315362,
+        0.6312596891075373
+      ]
+    },
+    "wall_us_per_layer": {
+      "control": 17.048473658159057,
+      "persistent_old": 13.894757424342506,
+      "persistent_wave_top10": 13.224971530206027
+    }
+  },
+  "baseline": {
+    "additional_speedup_required_pct": 4.350869291461135,
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "canonical_h32_ms_per_token": 16.198963297077867,
+    "dispatches_per_token": 723,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "matched_vulkan_h32_ms_per_token": 15.523553763440857,
+    "short_kernel_sum_ms_per_token": 12.951632392857142,
+    "short_split_router_ms_per_token": 0.7169346785714286,
+    "split_router_launches_per_token": 94
+  },
+  "builder_sha256": "7443fb87ae9b23564ffa26a19865855c18b2357dc5bdab4953f52b5d5de4ebda",
+  "candidate": {
+    "dispatch_projection_if_admitted": {
+      "candidate": 676,
+      "control": 723,
+      "delta": -47
+    },
+    "four_axis_key": [
+      "hip_gfx1100",
+      "laguna_router_topk",
+      "f32",
+      "bf16_hidden_correction_bias_persistent_wave_top10"
+    ],
+    "name": "exact persistent BF16-hidden/F32-weight router with per-wave top-10 and register-resident wave-0 merge",
+    "other_workspace_delta_bytes": 0,
+    "persistent_counter_bytes": 4,
+    "persistent_weight_copy_delta_bytes": 0,
+    "projection": "unchanged 256 expert blocks, scalar F32 projection order, shared stride-128..1 reduction, logit store, threadfence, last-block atomic election, self-resetting four-byte counter",
+    "runtime_scope": "gfx1100 c=1 E256/top-10 only; rows>1, unsupported shape/backend, registry miss, and explicit rollback use registered split projection+selector",
+    "selector": "each of eight wave32s selects stable lower-ID-tie local top-10; wave 0 merges the sufficient 80 candidates held up to three per lane in registers and emits the identical global order",
+    "source_lineage": "reintroduce exact persistent projection/counter from c7466339703a711515f5e508321e2d3ac1a8d8b4; replace only its selector",
+    "unchanged_boundaries": [
+      "stable sigmoid branch",
+      "correction-only selection score",
+      "routing probability",
+      "lower-ID tie break",
+      "selected order",
+      "denominator sum order",
+      "normalization",
+      "2.5 scale",
+      "all six output buffers"
+    ]
+  },
+  "codegen_probe": {
+    "interpretation": "Unrolling expands code and logical VGPR 26->64, but removes dynamic repeated block barriers/shared-score rounds and wins actual event/wall. No private allocation or spills are introduced.",
+    "old_d11": {
+      "isa": {
+        "ds_bpermute_b32": 20,
+        "global_atomic_add": 1,
+        "instructions": 847,
+        "s_barrier_static": 6,
+        "s_delay_alu": 100
+      },
+      "metadata": {
+        "logical_sgpr": 44,
+        "logical_vgpr": 26,
+        "private_bytes": 0,
+        "sgpr_spills": 0,
+        "static_lds_bytes": 132,
+        "vgpr_spills": 0,
+        "wavefront": 32
+      }
+    },
+    "selected_register_merge": {
+      "dynamic_projection_lds_bytes": 1024,
+      "isa": {
+        "ds_bpermute_b32": 218,
+        "global_atomic_add": 1,
+        "instructions": 2797,
+        "s_barrier_static": 4,
+        "s_delay_alu": 349
+      },
+      "metadata": {
+        "logical_sgpr": 42,
+        "logical_vgpr": 64,
+        "private_bytes": 0,
+        "sgpr_spills": 0,
+        "static_lds_bytes": 680,
+        "vgpr_spills": 0,
+        "wavefront": 32
+      }
+    }
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "select for separate RED/GREEN implementation; do not promote or claim throughput",
+    "canonical_h32_unchanged": 61.73234556191569,
+    "completion_claim": false,
+    "default_changed": false,
+    "next_action": "Implement one separately registered default-off sibling, commit primitive/runtime correctness only after actual/state/trace gates, then run frozen clean contexts before categories."
+  },
+  "frozen_admission": {
+    "actual_weight_gate": {
+      "counterbalanced_repetitions": 15,
+      "layers": "all 47 sparse layers",
+      "require_event_improves_vs_split_and_old_d11": true,
+      "require_wall_improves_vs_split_and_old_d11": true,
+      "warmups": 10,
+      "windows_per_sample": 100
+    },
+    "category_gate": [
+      "both complete 18-prompt/two-repetition process orders",
+      "every train/heldout category h16/h32 decode positive",
+      "E2E/prefill/TTFT inside frozen guards",
+      "full correctness/lifecycle"
+    ],
+    "clean_gate": [
+      "two process orders each at short/512/1024/3968",
+      "router family improves every order",
+      "kernel sum and span each below +0.5% every order",
+      "profiled-child throughput above -0.5% every order",
+      "exact IDs/resources/lifecycle"
+    ],
+    "codegen_limits": {
+      "dynamic_projection_lds_bytes": 1024,
+      "local_size": 256,
+      "logical_sgpr_max": 42,
+      "logical_vgpr_max": 64,
+      "private_bytes": 0,
+      "scratch_bytes": 0,
+      "spill_count": 0,
+      "static_lds_max_bytes": 680,
+      "wavefront": 32
+    },
+    "correctness_gate": {
+      "exact_sibling_required": true,
+      "kl_max": 0.05,
+      "top1_min": 0.9
+    },
+    "failure_action": "remove runtime selector/counter integration; retain independently admitted exact primitive only if its own gate passes",
+    "primitive_correctness": [
+      "random, all-tie, finite-extreme, and cross-wave-tie E256/top-10 fixtures",
+      "synthetic hidden-17 and hidden-3072 split equivalence",
+      "all 47 actual router weights/correction biases",
+      "all logits, routing/selection scores, selected IDs, normalized/scaled weights, and repeated counter state byte-exact"
+    ],
+    "red_first": true,
+    "runtime_correctness": [
+      "default-off selector only",
+      "16 transitions with full logits/IDs, 48 hidden, 47 routed, active K/V and all KVLiveSpans fields, reset/re-prefill, ownership/lifecycle exact",
+      "cached trace: 47 candidate calls, zero split router calls, 676 model kernels/token, local256/VGPR64/no spills, no compiler or counter fill"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_persistent_router_wave_top10_design",
+  "model": {
+    "experts": 256,
+    "hidden_size": 3072,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47,
+    "top_k": 10
+  },
+  "performance_claim": false,
+  "planning_ceiling_not_claim": {
+    "fraction_of_current_vulkan_wall_gap_pct": 26.606760944889523,
+    "isolated_wall_saving_ms_per_token": 0.17970460001379251,
+    "modeled_h32_ms_per_token_if_saving_transferred_whole": 16.019258697064075,
+    "modeled_h32_tok_s_if_saving_transferred_whole": 62.42486115685707,
+    "reason_not_claimed": "isolated same-state router timing does not establish complete model span, category throughput, or default behavior"
+  },
+  "provenance": {
+    "actual_probe_harness_sha256": "0c2885f3f9a797bb63e8e49ec46a5dc6c5496bbca5fdf83619e24161f35e00e6",
+    "actual_probe_raw_sha256": "32f66b375874297c6dd6bac0feddf57c1bb13e3e6f49591c3002a87bf88d9d98",
+    "candidate_hsaco_sha256": "8f8635461f2f0bee2f7d88ef8b9e25395d36f9735928c7a74d4cee7fa5bf0e0b",
+    "candidate_library_sha256": "e6b14d96131bba907f9fb1e2357869f1e4961cbd56ccde218ccfb1ac217b3acf",
+    "candidate_objdump_sha256": "239397caaa9db27fec881e2790ec04a5d8da18470b2f40cfb5916e00a1408a0f",
+    "candidate_readobj_sha256": "b313e07e384eea34fb1c9c765cc59ee8780382d2c1ab73560986de173d21cfce",
+    "candidate_source_sha256": "fa85e65c7e86c56870eff52af066a5516ff2fb8fb5e5c43f9c580f57c661236d",
+    "current_source_files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/moe/laguna_router.hip",
+        "sha256": "2a398a182f887f8e32382c59d825330cec439b56387bdf720123981a646d2959"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/moe/laguna_router.py",
+        "sha256": "9126f7f380e741f99ca9648c019eb697af4ecf79ed1d16fbdda5fde86a116924"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "aa56abe9f10ed4f5d046359406c2aca8dd77e20462fccd27ec898f0b0095d7b4"
+      }
+    ],
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "old_d11_hsaco_sha256": "1867ff5b0f285852e38bb1a643ae6f2394d7a714e35dade987b3233a173c6e27",
+    "old_d11_source_sha256": "23eb42d62aad5fb84f262cfb8c4bfb22ab810807e54272e983e3bb86bd8661db",
+    "prior_evidence": [
+      {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-design.json",
+        "sha256": "13e53160e9bb135594539379a96acb06ec32a4b3a9de61130a41deb746553f3f"
+      },
+      {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-correctness.json",
+        "sha256": "a0d3ddada1aa26585ccb81e89c989493e4cf41c4a5d9b2e6bad6836fc43378bf"
+      },
+      {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-rejected.json",
+        "sha256": "f9f6898acf6ea425585fe5623479511115e208168395e7afe72f68748a0ceb80"
+      },
+      {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json",
+        "sha256": "2cff0ab5cdfc3f6fed2b3bd0a7f028f003981aef2718fb821de765c8f0793223"
+      }
+    ],
+    "selector_probe_harness_sha256": "cd293eaac6feb85ed5cbd382ad7a11c5211929667bed6e9b5a9e14d0a1e37882",
+    "selector_probe_raw_sha256": "5c63f848965cb8ffeafbf603f2e7cab653615d3f2d093f90bea72c1a48e2bf05"
+  },
+  "rejected_probe_forms": {
+    "nounrolled_low_vgpr": {
+      "candidate_vs_old_d11_event_pct": 29.429899177992347,
+      "metadata": {
+        "logical_sgpr": 40,
+        "logical_vgpr": 26,
+        "private_bytes": 0,
+        "sgpr_spills": 0,
+        "static_lds_bytes": 684,
+        "vgpr_spills": 0,
+        "wavefront": 32
+      },
+      "result": "exact but slower than old D11"
+    },
+    "shared_reload_merge": {
+      "candidate_vs_old_d11_event_pct": 0.979261796481179,
+      "metadata": {
+        "logical_sgpr": 42,
+        "logical_vgpr": 62,
+        "private_bytes": 0,
+        "sgpr_spills": 0,
+        "static_lds_bytes": 684,
+        "vgpr_spills": 0,
+        "wavefront": 32
+      },
+      "result": "exact but slower than old D11"
+    }
+  },
+  "rerank": {
+    "analyzer_sha256": "7c0f743bbe1e10241b9424035b35962f5226e799660e2b6d23d9a6a3c058688c",
+    "closed_mechanisms": [
+      "unchanged output/workgroup packing",
+      "SWA local64 dim2",
+      "IQ3 sign-bit insertion",
+      "unchanged D11 repeated block-wide selector",
+      "launch-count-only fusion"
+    ],
+    "residual_sha256": "8ba2dc0ae899c3bfd3b04e275c5c28dc193af3714099c9dedf15c27838edbc5f",
+    "source": "immutable two-order post-local32 retained traces; no GPU rerun",
+    "top_short_families_ms_per_token": {
+      "iq2_selected": 1.868013857142857,
+      "iq3_down": 1.4606495714285714,
+      "mixed_projection": 1.9661940357142857,
+      "q5_attention_output": 1.5581423214285715,
+      "router_split": 0.7169346785714286,
+      "swa_total": 1.7049256785714286
+    }
+  },
+  "schema": 1,
+  "selection_only_probe": {
+    "cases": [
+      {
+        "byte_exact_fields": [
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "name": "random_actual_bias_64",
+        "selected_first": [
+          36,
+          44,
+          84,
+          201,
+          19,
+          2,
+          239,
+          212,
+          58,
+          224
+        ],
+        "tokens": 64
+      },
+      {
+        "byte_exact_fields": [
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "name": "all_ties",
+        "selected_first": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "tokens": 4
+      },
+      {
+        "byte_exact_fields": [
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "name": "finite_extremes",
+        "selected_first": [
+          6,
+          7,
+          14,
+          15,
+          22,
+          23,
+          30,
+          31,
+          38,
+          39
+        ],
+        "tokens": 2
+      },
+      {
+        "byte_exact_fields": [
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "name": "cross_wave_ties",
+        "selected_first": [
+          4,
+          1,
+          138,
+          145,
+          176,
+          39,
+          62,
+          140,
+          229,
+          244
+        ],
+        "tokens": 32
+      }
+    ],
+    "event_delta_pct": -7.830908169531425,
+    "event_us": {
+      "candidate": 9.893832206726074,
+      "control": 10.73443603515625
+    },
+    "note": "This isolates the selector mechanism; the composite all-layer gate below is decisive.",
+    "protocol": {
+      "counterbalanced": true,
+      "launches_per_sample": 1000,
+      "pool": 64,
+      "repetitions": 15,
+      "warmups": 100
+    },
+    "wall_delta_pct": -7.669762768213384,
+    "wall_us": {
+      "candidate": 9.933823952451348,
+      "control": 10.759014869108796
+    }
+  },
+  "source_revision": "7975772c19f621e6226f87e2fe22fd627c9a5524",
+  "status": "selected_design_not_implemented"
+}
