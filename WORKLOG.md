@@ -183677,3 +183677,20 @@ Vulkan local sizes verbatim will close the measured gap.
 - All **25** focused category-harness plus resolver/fusion tests pass;
   `py_compile`, source-tree removal search, and `git diff --check` pass.
   Production dispatch remains same-byte D8 at **632.618 tok/s**.
+
+## 2026-07-27 — Add real-input Q4 producer-row risk calibration
+
+- Added `scripts/laguna_q4_role_risk_calibration.py`. It runs the admitted
+  production D8 MoE first so model state remains unchanged, then launches the
+  existing D4-gate/D8-up and D8-gate/D4-up role bodies off-path on each real
+  512-row layer input.
+- The diagnostic copies no resident weights and conditions on no prompt,
+  token, layer, output column, or K block. It aggregates compact top-10 route
+  error back to the producer row, weights the SiLU-product error by exact
+  routing weight, and sweeps global activation-only features against repair
+  fraction, error-mass coverage, and severe-row coverage. Prompt IDs declare
+  calibration/heldout data only; they are not candidate policy inputs.
+- The economic screen is bounded at **25% repaired producer rows**. Five pure
+  RED/GREEN tests cover BF16 conversion, half-scale risk, compact aggregation,
+  threshold coverage, and declared calibration subsets. `py_compile` and
+  `git diff --check` pass. No production dispatch changed.

@@ -1517,7 +1517,13 @@ now decides whether repair work is needed:
    before the existing BF16 SiLU boundary, and overflow falls back to D8.
    Risk classification may use activation statistics only. No per-K32 branch,
    output-conditioned policy, global partial spill, or resident weight
-   sidecar is allowed.
+   sidecar is allowed. The first gate is now implemented as an off-path
+   calibration harness: production D8 preserves every hidden state, then D4
+   and D8 role projections are compared on the real 512-row layer inputs.
+   It reports global threshold sweeps in repair-row fraction, weighted SiLU
+   error-mass coverage, and severe-row coverage. Proceed to a GPU repair
+   candidate only if one activation-only threshold captures useful error at
+   no more than **25%** repaired producer rows.
 3. Remeasure a clean production trace after candidate cleanup. Reopen another
    exact family only if the trace gives it at least a **5% perfect-removal
    ceiling** or a newly supported hipBLASLt/grouped-contraction algorithm
