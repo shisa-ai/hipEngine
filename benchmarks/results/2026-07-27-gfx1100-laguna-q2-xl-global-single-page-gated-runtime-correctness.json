@@ -1,0 +1,373 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "primitive_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-correctness.json",
+    "primitive_artifact_sha256": "12f2a98b732be4f62416e7c323ed8ba78d3e07168b1397491d07041f0ab8ddb0",
+    "primitive_commit": "b49250b570c8566191211940506fce35e41c73c4"
+  },
+  "builder_sha256": "a9d4b322ad3dc1dccd222e0ee4adb108890e91b2707ce08a713df9b137bd9b4e",
+  "cached_full_model_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "analyzer_sha256": "2e5a36a429de8c0396de8479629a78687b3c93202433e47b97c89997a57dab1d",
+    "analyzer_stdout_sha256": "b6a0465f406991131e189ea7d1027593a8d39f98bcd29a7bcd4db8a3876d8822",
+    "candidate_calls": 48,
+    "candidate_calls_per_token": 12,
+    "candidate_dispatch_id_strides": [
+      671,
+      671,
+      671,
+      671
+    ],
+    "candidate_duration_ns": {
+      "max": 63241,
+      "median": 56260.0,
+      "min": 54600
+    },
+    "candidate_live_counts": [
+      123,
+      124,
+      125,
+      126
+    ],
+    "candidate_model_kernels_per_token": 666,
+    "candidate_prefill_calls": 0,
+    "candidate_resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 32,
+      "dynamic_lds_bytes_at_capacity_4096": 16928,
+      "grid_x": 12288,
+      "grid_y": 1,
+      "reported_static_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "workgroup_x": 256
+    },
+    "candidate_result_positions": [
+      122,
+      123,
+      124,
+      125
+    ],
+    "candidate_transitions": 4,
+    "child_sha256": "a9fa02f1a6217ee13a2339d24b13bde58e0b3ecda7384f870cdea9d9b5c03683",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-single-page-gated-runtime-trace --output-file trace -- uv run python -u /tmp/trace_laguna_global_single_page_gated_model.py",
+    "decode_transitions": 7,
+    "finite_final_logits": true,
+    "generated_token_ids": [
+      82,
+      524,
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914
+    ],
+    "global_split_calls_per_split_token": {
+      "gated_reduce": 12,
+      "score": 12
+    },
+    "global_split_gated_reduce_duration_ns": {
+      "max": 51241,
+      "median": 49760.0,
+      "min": 48760
+    },
+    "global_split_resources": {
+      "gated_reduce": {
+        "allocated_vgpr": 24,
+        "grid_x": 12288,
+        "reported_lds_bytes": 512,
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      },
+      "score": {
+        "allocated_vgpr": 8,
+        "grid_x": 1536,
+        "grid_y": [
+          127,
+          128,
+          129
+        ],
+        "reported_lds_bytes": 0,
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      }
+    },
+    "global_split_score_duration_ns": {
+      "max": 18120,
+      "median": 7460.0,
+      "min": 6960
+    },
+    "interpretation": "The first four decode windows replace 12 scalar global plus 12 standalone-gate launches with 12 composites, yielding 666 model kernels/token. Starting at live127, split selection wins first and preserves 12 score + 12 gated-reducer calls and 678 kernels/token.",
+    "iq3_wave10_calls_per_token": 45,
+    "no_compiler_under_profiler": true,
+    "passed": true,
+    "preflight_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/trace_laguna_global_single_page_gated_model.py",
+    "preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preflight_stdout_sha256": "e0bb3d7326b15e5c4c976f84a6ad37dd34cf3da04b0cca74dc5c107f2c5c1a93",
+    "profile_stderr_sha256": "1e0cb48d6cdb30c2acc11633f93fccb318f0bab843dbcd2f50b9ff39578f47d7",
+    "profile_stdout_sha256": "321974b0d5daa46d0fd27afd2e38d61b4667d950e70d2476eb30e1173341e9b8",
+    "runtime_copy_calls_per_window": 5,
+    "scalar_global_decode_calls": 0,
+    "schema": 1,
+    "single_page_ungated_decode_calls": 0,
+    "split_dispatch_id_strides": [
+      683,
+      683
+    ],
+    "split_fallback_model_kernels_per_token": 678,
+    "split_fallback_transitions": 3,
+    "split_live_counts": [
+      127,
+      128,
+      129
+    ],
+    "split_result_positions": [
+      126,
+      127,
+      128
+    ],
+    "standalone_gate_decode_calls": 0,
+    "standalone_gate_prefill_calls": 48,
+    "summary_sha256": "b6a0465f406991131e189ea7d1027593a8d39f98bcd29a7bcd4db8a3876d8822",
+    "swa_reduce_calls_per_token": 36,
+    "swa_reduce_resources": {
+      "allocated_vgpr": 24,
+      "grid_x": 9216,
+      "reported_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "workgroup_x": 128
+    },
+    "swa_score_calls_per_token": 36,
+    "swa_score_resources": {
+      "allocated_vgpr": 8,
+      "grid_x": 2304,
+      "reported_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "workgroup_x": 32
+    },
+    "trace_path": "/tmp/laguna-global-single-page-gated-runtime-trace/trace_kernel_trace.csv",
+    "trace_rows": 6168,
+    "trace_sha256": "20bd52db01f35ed2c239568526ea64ff18ac700c1765e271b60718c03675b66d",
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_decode_tok_s_unchanged": 63.27021934907704,
+    "completion_claim": false,
+    "next_gate": "Commit this runtime-correctness unit, then run both frozen clean process orders at short/512/1K/3968 with exact topology/resources/IDs/lifecycle/no-compiler checks. Categories remain forbidden until every required clean row passes; no rerun or pooled waiver is allowed.",
+    "retained_default_unchanged": true,
+    "runtime_admitted_default_off": true
+  },
+  "full_state_gate": {
+    "active_kv_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "allocation_peak_matches_prior_address_only_screen": true,
+    "candidate": "global_single_page_softplus_gate_below_127",
+    "candidate_borrows_weights": true,
+    "candidate_live_counts": [
+      123,
+      124,
+      125,
+      126
+    ],
+    "candidate_result_positions": [
+      122,
+      123,
+      124,
+      125
+    ],
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_global_single_page_gated_runtime_correctness.py",
+    "control": "retained_scalar_global_below_127",
+    "control_owns_weights": true,
+    "decode_transitions": 16,
+    "final_kv_sha256": "a62f481c82cb6e079715dba11f133de003bf98d48ca162868b41b3555f8ce2b7",
+    "full_logits_ids_hidden_routed_exact": true,
+    "generated_token_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "harness_sha256": "993d514870bce5888436d0416f33bfa9ef1ce4200d3973597fdf18be013b0d5b",
+    "live_span_fields_exact": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true,
+    "prefill_kv_sha256": "82488fd827f4c18a4d72fd3a23051201a17e104b570380354ac12a3f17fdcb05",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "2b075ed927cf334b82ae09513c6e266fafb8bca92fc7be1edcbe9f6dee5bd16f",
+    "reset_and_reprefill_exact": true,
+    "reset_kv_sha256": "388e741cf63a675aa17fc5fa7d391168f0b7d62ba8860c9ab1abc4c6db03521a",
+    "split_fallback_live_counts_start": 127,
+    "split_fallback_result_positions": [
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137
+    ],
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "97f4ef3e19711566dd7e23394de42f9101bace6a186ec1a03148ca6ab32e5d5f",
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_returned_to_baseline": true,
+    "weights_shared": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_global_single_page_gated_runtime_correctness",
+  "model": {
+    "block_size": 256,
+    "context_length": 4096,
+    "global_layers": 12,
+    "global_query_heads": 48,
+    "head_dim": 128,
+    "id": "Poolside Laguna S 2.1",
+    "kv_heads": 8,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "red_green": {
+    "coverage": [
+      "false gfx1100 capability, explicit enable/disable, gfx1151 exclusion",
+      "exact four-axis key admission and registry-miss fail-closed behavior",
+      "full-attention live<=126 composite only after split selection is false",
+      "live127 retained split-gated precedence and unchanged SWA/rows/prefill/no-gate/disabled routes",
+      "session, allocator, benchmark CLI, and telemetry handoff"
+    ],
+    "green_result": "4 passed",
+    "green_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "red_command": "PYTHONPATH=. uv run pytest -q tests/test_laguna_global_single_page_gated_runtime.py",
+    "red_commit": "b49250b570c8566191211940506fce35e41c73c4",
+    "red_result": "4 failed solely on absent false capability, exact-key resolver, KV route/constructor option, and benchmark flag",
+    "red_sha256": "505246de533b2c4a63016df4e23b233783e00161dd06185c10fdfacb0f250d9f",
+    "test_sha256": "3003e12160ccd1dda98fa20ff9fccd191c8f1212aa058d390cff21dea8e923f3"
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "reason": "default-off runtime correctness admission only; clean full-model performance is unmeasured"
+  },
+  "runtime_selector": {
+    "allocator": "allocate_laguna_kv_cache(..., use_global_single_page_gated_attention=True)",
+    "benchmark_cli": "scripts/laguna_target_ar_bench.py --enable-global-single-page-gated-attention",
+    "candidate_model_kernels_per_token": 666,
+    "constructor": "LagunaGGUFResidentSession(..., use_global_single_page_gated_attention=True)",
+    "default_enabled": false,
+    "eligibility": "full-attention c=1, live_count<=126, split selection false, paired gate/gated-output pointers, exact key present",
+    "exact_key_miss_fails_closed": true,
+    "four_axis_key": [
+      "hip_gfx1100",
+      "laguna_attention_decode+attention_gate",
+      "bf16",
+      "global_single_page_softplus_bf16_spans"
+    ],
+    "gfx1100_capability": "LAGUNA_GLOBAL_SINGLE_PAGE_GATED_ATTENTION=False",
+    "gfx1151_cuda_cpu_aliases": false,
+    "global_scalar_control_unchanged_when_disabled": true,
+    "kernel_or_code_object_changed": false,
+    "live127_split_precedence": true,
+    "persistent_allocation_delta_bytes": 0,
+    "required_primitive_unfused_fallback": [
+      "laguna_attention_decode/bf16/global_context_single_page_spans",
+      "attention_gate/f32/softplus_broadcast_bf16_out"
+    ],
+    "rows_prefill_unchanged": true,
+    "runtime_control": [
+      "laguna_attention_decode/bf16/global_context_spans",
+      "attention_gate/f32/softplus_broadcast_bf16_out"
+    ],
+    "split_fallback_model_kernels_per_token": 678,
+    "swa_unchanged": true,
+    "workspace_delta_bytes": 0
+  },
+  "schema": 1,
+  "source_provenance": {
+    "files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "bc49b4194cc62421d573672844c9a4eb776875ee7c54513eb19deeddd56ccd99"
+      },
+      {
+        "path": "hipengine/runtime/laguna_kv.py",
+        "sha256": "791ad5e2ae2383cd1eb8faf49337a098c5902135c6f3c8178150ff1987852671"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "7253d730f874536b1a4b8d16a71a8f188d2a8b3ff9cf102d25ea1fb0f06e3b73"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "aca3fd4b6915c654ee4c4afacde5043a724b470ba13ab446dd8808916a5cdf95"
+      },
+      {
+        "path": "tests/test_laguna_global_single_page_gated_attention.py",
+        "sha256": "2bb4b60295c9e24793d95fdc1965e1115fd9b20e5f3d14fcd9f87be32711aa89"
+      },
+      {
+        "path": "tests/test_laguna_global_single_page_gated_runtime.py",
+        "sha256": "3003e12160ccd1dda98fa20ff9fccd191c8f1212aa058d390cff21dea8e923f3"
+      }
+    ],
+    "kernel_body_changed": false,
+    "primitive_hsaco_sha256": "eac62b7fb474214086dfb0bac987545b02a919a4df24381207ffc2ccf2dd5ac4",
+    "primitive_library_sha256": "5a3fe61777da15dd27caea28fef3309a1711350a8770bad2423cc4be7c743a97"
+  },
+  "status": "runtime_admitted_default_off_pending_clean_context",
+  "validation": {
+    "adjacent_filtered_result": "138 passed after excluding exactly that stale resolver node",
+    "adjacent_filtered_sha256": "794c997781bf26fe8e79d1dee9b0aa803c98e00f49a8d8c0cf6ca062b4657ac4",
+    "adjacent_unfiltered_result": "138 passed plus one documented unchanged stale gfx1151 resolver failure",
+    "adjacent_unfiltered_sha256": "16a3c2d5dd73e7eaf1a85aef760256526b9fb2b46e9192fe12385f307cbca807",
+    "cpu_registry_build_result": "25 passed",
+    "cpu_registry_build_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "fixtures_passed": true,
+    "fixtures_sha256": "fec7a60788a7feec6ada8becc5e66bc4dc32cc4a6b9fb299a7305a8713e7766b",
+    "focused_result": "15 passed across base primitive, gated primitive, permanent base-owner rejection, and gated runtime owner",
+    "focused_sha256": "511fb971caf59261241ec2a3919d9d10c7dcb9ec044ee07d50b2db465184f057",
+    "lineage_note": "Only already-catalogued unrelated external drift; this runtime unit does not change a kernel body.",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "registry_smoke_passed": true,
+    "registry_smoke_sha256": "159c48de9337ea6a260024b63a5eac9a158602ab443d94038d9938b29d538311",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "52d0e97c80633e774ad18be0ec9a19b15e3b2ff360cf58aecea25a4c1d44591e"
+  }
+}

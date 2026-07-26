@@ -16,7 +16,7 @@ from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
@@ -31,6 +31,9 @@ _SWA_DECODE_VARIANTS = frozenset(
     }
 )
 _BASELINE_SWA_PREFILL_VARIANT = "swa_context_rows_spans"
+_GLOBAL_SINGLE_PAGE_GATED_LAYER = "laguna_attention_decode+attention_gate"
+_GLOBAL_SINGLE_PAGE_GATED_VARIANT = "global_single_page_softplus_bf16_spans"
+_GLOBAL_SINGLE_PAGE_GATED_MAX_LIVE = 126
 _SWA_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_SWA_PREFILL_VARIANT,
@@ -91,6 +94,7 @@ class LagunaKVCache:
         swa_split_tile16_min_live: int | None,
         split_gate_fusion: bool,
         swa_split_wave_local: bool,
+        use_global_single_page_gated_attention: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -106,6 +110,9 @@ class LagunaKVCache:
         self.swa_split_tile16_min_live = swa_split_tile16_min_live
         self.split_gate_fusion = bool(split_gate_fusion)
         self.swa_split_wave_local = bool(swa_split_wave_local)
+        self.use_global_single_page_gated_attention = bool(
+            use_global_single_page_gated_attention
+        )
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -396,6 +403,33 @@ class LagunaKVCache:
                 )
             return use_gated
 
+        use_single_page_gated = (
+            self.use_global_single_page_gated_attention
+            and state.attention_type == FULL_ATTENTION
+            and live_count <= _GLOBAL_SINGLE_PAGE_GATED_MAX_LIVE
+            and gate_ptr is not None
+        )
+        if use_single_page_gated:
+            fn = self._resolve(
+                _GLOBAL_SINGLE_PAGE_GATED_LAYER,
+                _GLOBAL_SINGLE_PAGE_GATED_VARIANT,
+            )
+            fn(
+                *common,
+                int(gate_ptr),
+                int(gated_out_ptr),
+                state.spans,
+                self.context_length,
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+            return True
+
         fn = self._resolve("laguna_attention_decode", state.attention_variant)
         fallback_common = (*common, state.spans)
         if state.attention_type == FULL_ATTENTION:
@@ -603,6 +637,38 @@ def resolve_laguna_swa_prefill_variant(
     return parsed
 
 
+def resolve_laguna_global_single_page_gated_attention(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the explicit gated page-zero screen when its exact key exists."""
+
+    selected = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_SINGLE_PAGE_GATED_ATTENTION",
+            False,
+        )
+        if requested is None
+        else requested
+    )
+    if not selected:
+        return False
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
+
+    register_laguna_kv_attention_kernels()
+    return is_registered(
+        KernelKey(
+            backend,
+            _GLOBAL_SINGLE_PAGE_GATED_LAYER,
+            "bf16",
+            _GLOBAL_SINGLE_PAGE_GATED_VARIANT,
+        )
+    )
+
+
 def resolve_laguna_split_thresholds(
     backend: str,
     *,
@@ -693,6 +759,7 @@ def allocate_laguna_kv_cache(
     use_split_attention: bool | None = None,
     use_split_gate_fusion: bool | None = None,
     use_swa_split_wave_local: bool | None = None,
+    use_global_single_page_gated_attention: bool | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -706,6 +773,12 @@ def allocate_laguna_kv_cache(
     parsed_swa_prefill_variant = resolve_laguna_swa_prefill_variant(
         backend,
         swa_prefill_variant,
+    )
+    selected_global_single_page_gated = (
+        resolve_laguna_global_single_page_gated_attention(
+            backend,
+            use_global_single_page_gated_attention,
+        )
     )
     runtime = runtime or get_hip_runtime()
     device = device or Device("hip", 0)
@@ -963,6 +1036,9 @@ def allocate_laguna_kv_cache(
             swa_split_tile16_min_live=parsed_swa_tile16,
             split_gate_fusion=(selected_split_gate_fusion and split_enabled),
             swa_split_wave_local=(selected_swa_split_wave_local and split_enabled),
+            use_global_single_page_gated_attention=(
+                selected_global_single_page_gated
+            ),
             runtime=runtime,
         )
     except Exception:
@@ -1106,6 +1182,7 @@ __all__ = [
     "LagunaKVCache",
     "LagunaKVLayerState",
     "allocate_laguna_kv_cache",
+    "resolve_laguna_global_single_page_gated_attention",
     "resolve_laguna_split_thresholds",
     "resolve_laguna_swa_decode_variant",
     "resolve_laguna_swa_split_tile16_threshold",
