@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_moe_shared_low_priority_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset exact Poolside Laguna S 2.1 Q4_K_M matrix2048/attention128 prefill at 512/1K/4K on gfx1151 with automatic two-queue after-router priority-1 shared scheduling",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2",
+    "stream_priority_range": {
+      "least": 1,
+      "greatest": -1
+    },
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "candidate_revision": "d2426ede296958a687e5b1beaf4a737a8a76e820",
+    "capability_and_measurement_revision": "a63a503b33090d5c21df12846ba078f2b8b5729c",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capabilities": [
+      "LAGUNA_MOE_BRANCH_CONCURRENCY=true",
+      "LAGUNA_MOE_SHARED_AFTER_ROUTER=true",
+      "LAGUNA_MOE_SHARED_LOW_PRIORITY=true"
+    ],
+    "scope": "gfx1151 Laguna rows greater than one with automatic queue capacity at least two and a non-degenerate HIP priority range",
+    "schedule": "router selection completes on the caller stream, then the shared branch runs on a least-priority nonblocking secondary stream while routed gate/up and down continue",
+    "priority": 1,
+    "arithmetic": "unchanged",
+    "fallback": "--no-moe-shared-low-priority and constructor false restore priority 0; one queue restores fully sequential MoE",
+    "peer_backends": "unchanged"
+  },
+  "selector_unset": {
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>/result.json",
+    "resolved_queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "resolved_moe_branch_concurrency": true,
+    "resolved_moe_shared_after_router": true,
+    "resolved_moe_shared_low_priority": true,
+    "resolved_priority_range": [
+      1,
+      -1
+    ],
+    "pp512_samples_tok_s": [
+      571.5759883090299,
+      568.3256554093165,
+      568.8490308767773
+    ],
+    "pp512_median_tok_s": 568.8490308767773,
+    "pp1024_samples_tok_s": [
+      532.1111272692215,
+      527.1091011353122,
+      527.1131244916564
+    ],
+    "pp1024_median_tok_s": 527.1131244916564,
+    "pp4096_samples_tok_s": [
+      447.1864238041392,
+      444.5083726727479,
+      442.282357650865
+    ],
+    "pp4096_median_tok_s": 444.5083726727479,
+    "previous_production": {
+      "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-after-router-production.json",
+      "pp512_tok_s": 566.838551353783,
+      "pp1024_tok_s": 527.3808119074912,
+      "pp4096_tok_s": 444.44661536765545
+    },
+    "change_percent": {
+      "pp512": 0.35468291953548725,
+      "pp1024": -0.05075789823800747,
+      "pp4096": 0.013895325773005673
+    },
+    "long_context_interpretation": "1K and 4K are flat within run variance; the retained paired pp512 and traced cycle-wall gates establish the win",
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "8ea2c6dd43b0836128dd978e7a78b994c89f191ce9cb89c1824a7cb86e29afe8"
+  },
+  "matched_ab": {
+    "default_priority_median_tok_s": 568.1055552933344,
+    "low_priority_median_tok_s": 570.9135532427916,
+    "change_percent": 0.4942739818848185,
+    "candidate_wins": "6/7",
+    "complete_state_exact": true,
+    "source_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-candidate.json"
+  },
+  "rocprof": {
+    "source": "benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-candidate.json",
+    "pp512_tok_s": 574.011442297738,
+    "pp512_dispatches": 1696,
+    "pp512_kernel_span_ms": 890.769321,
+    "pp512_kernel_sum_ms": 1218.893478,
+    "previous_priority0_kernel_span_ms": 898.023983,
+    "kernel_span_change_ms": -7.254662,
+    "selected_gate_up_ms": 337.502409,
+    "previous_selected_gate_up_ms": 344.618575,
+    "secondary_stream_kernel_sum_ms": 337.239193,
+    "secondary_stream_overlap_ms": 336.385826,
+    "secondary_stream_overlap_percent": 99.74695497507017,
+    "secondary_stream_unoverlapped_ms": 0.853367
+  },
+  "correctness": {
+    "transfer_basis": "the priority-1 production-style primitive is BF16-byte exact, seven full-model pairs preserve every output/state digest, and decode remains on the sequential rows=1 path",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true,
+    "repeated_128k_admission": false
+  },
+  "validation": {
+    "backend_hip_session_profile_tests": 72,
+    "focused_q4_gpu_equality_at_priority1": true,
+    "python_compile": true,
+    "selector_unset_publication_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 568.8490308767773,
+    "clean_pp512_wall_ms": 900.0630610389634,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 168.63448961039194,
+    "next_premise": "with priority protection active, compare eager priority-1 release against after-router priority-1 to recover the remaining 0.853-ms shared spill without reintroducing router contention"
+  }
+}
