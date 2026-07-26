@@ -183029,3 +183029,29 @@ Vulkan local sizes verbatim will close the measured gap.
   Next screen may join two K32 iterations only with the existing single-stage
   LDS footprint and zero scratch; the already-rejected double-stage K64
   schedule must not be repeated.
+
+## 2026-07-26 — Reject Q6 WMMA compact shared weight metadata
+
+- RED added a production-shaped compact-weight-metadata parameter and failed
+  because the wrapper selector did not exist. GREEN staged each column's
+  eight quant dwords plus source FP16 `d` and two int8 scales in **36 bytes**
+  instead of eight quant dwords plus two combined FP32 scales in **40 bytes**.
+  Reconstructing the same combined FP32 scales preserves the CPU-reference
+  fixture and actual-weight BF16 output exactly: zero mismatches, checksum
+  **509500838004**, and all **2,326,720,536** tracked bytes return.
+- Twenty-one counter-rotated burst-seven actual layer-1 natural-M512 pairs
+  reject the candidate: current activation-hoist **4.513654 ms**, compact
+  metadata **4.822101 ms (+6.834%, 0/21 wins)**. Current/candidate ranges are
+  **4.504081–4.522367 / 4.814630–4.880142 ms**.
+- Cached tracing names the intended production/candidate specializations at
+  **4.498239 / 4.804895 ms**. Although the logical shared tile shrinks
+  **5,120 -> 4,864 bytes**, both code objects report
+  local128/VGPR96/SGPR128/LDS5120B/scratch0, so allocation rounding buys no
+  occupancy. Candidate code grows **10,716 -> 12,104 bytes**.
+- Removed the candidate HIP specialization/export, Python selector, test
+  parameter, and harness mode. The restored 13-case Q6 matrix plus two runtime
+  contracts pass (**15 passed**) from cache. Rejection artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-wmma-compact-weight-metadata-rejected.json`.
+  Q6-local metadata screens are now frozen; the next action is current-trace
+  critical-path analysis for a wall-level physical-byte, scheduling, or
+  fusion mechanism.
