@@ -85,7 +85,11 @@ def _parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=None,
     )
-    parser.add_argument("--moe-shared-low-priority", action="store_true")
+    parser.add_argument(
+        "--moe-shared-low-priority",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

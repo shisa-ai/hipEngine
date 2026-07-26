@@ -182455,3 +182455,18 @@ Vulkan local sizes verbatim will close the measured gap.
   512/1K/4K publication.
 - Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-moe-shared-low-priority-candidate.json`.
+
+## 2026-07-26 — Promote gfx1151 low-priority shared stream
+
+- RED failed collection on the missing gfx1151 capability. GREEN adds
+  `LAGUNA_MOE_SHARED_LOW_PRIORITY=true`; the resident session resolves it
+  through backend metadata and peer backends remain unchanged.
+- The long-profile selector is now optional boolean. Unqualified gfx1151 runs
+  create the shared stream at the device's least priority, while
+  `--no-moe-shared-low-priority` and explicit constructor false preserve the
+  priority-0 rollback.
+- **72** gfx1151/HIP/session/profile tests pass plus the production Q4_K GPU
+  BF16 equality parameter at priority +1. Python compilation and diff checks
+  pass.
+- This commit promotes policy only. Clean selector-unset 512/1K/4K medians
+  remain required before updating the production headline.

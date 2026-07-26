@@ -1578,7 +1578,7 @@ class LagunaGGUFResidentSession:
         q6_skip_padded_activation: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
-        moe_shared_low_priority: bool = False,
+        moe_shared_low_priority: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1741,7 +1741,15 @@ class LagunaGGUFResidentSession:
             if moe_shared_after_router is None
             else moe_shared_after_router
         )
-        self.moe_shared_low_priority = bool(moe_shared_low_priority)
+        self.moe_shared_low_priority = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_MOE_SHARED_LOW_PRIORITY",
+                False,
+            )
+            if moe_shared_low_priority is None
+            else moe_shared_low_priority
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None

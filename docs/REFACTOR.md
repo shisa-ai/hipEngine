@@ -82,6 +82,10 @@ should be removed or collapsed.
   capability. After clean selector-unset publication, remove redundant
   positive CLI/session selection while retaining explicit priority-0 rollback
   through one later scheduling checkpoint.
+- Promotion now resolves `LAGUNA_MOE_SHARED_LOW_PRIORITY` from the gfx1151
+  package. `--no-moe-shared-low-priority` and an explicit constructor false
+  remain exact priority-0 rollback. Clean selector-unset 512/1K/4K publication
+  is the remaining promotion gate.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 
