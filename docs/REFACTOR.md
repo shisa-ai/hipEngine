@@ -56,6 +56,12 @@ should be removed or collapsed.
   state but regressed **566.394 -> 565.011 tok/s (-0.244%, 2/7 wins)** and
   introduced a **535.465 tok/s** low tail. Its row-launcher, session, CLI, and
   test selectors are removed; no temporary phase-selection debt remains.
+- The follow-up after-router checkpoint temporarily adds
+  `moe_shared_after_router` at the row launcher, session, and long-profile
+  CLI. It records the secondary dependency after router selection while
+  retaining gate/up-plus-down overlap. Remove this selector if the seven-pair
+  gate fails; if it wins and traces as intended, collapse the boundary into
+  the gfx1151 schedule before selector-unset publication.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 

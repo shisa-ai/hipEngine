@@ -182337,3 +182337,21 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next bounded schedule screen: record the secondary dependency after router
   selection, retaining the full gate/up-plus-down overlap window while
   protecting the router prefix from the eager trace's contention.
+
+## 2026-07-26 — Add exact after-router shared-launch candidate
+
+- RED first failed on the missing session scheduling property. GREEN adds a
+  default-off `moe_shared_after_router` selector at the MoE row launcher,
+  resident session, and long-context harness.
+- The candidate enqueues router logits and selection alone, records the
+  existing dependency event, then starts the secondary shared branch while
+  the caller proceeds through selected gate/up and down. The exact
+  output-ready join remains immediately before the final combine. Kernel
+  arithmetic, buffers, stream/event ownership, and eager production are
+  unchanged.
+- The production-style Q4_K GPU fixture is BF16-byte exact against sequential
+  and eager-concurrent output. The complete affected runner/profile bundle
+  passes **44 tests**; Python compilation and diff checks pass.
+- Next gate: one resident owner, two fixed queues, seven counterbalanced pp512
+  pairs, and complete-state digests. Trace only if the median and pair wins
+  establish a real improvement over eager production.

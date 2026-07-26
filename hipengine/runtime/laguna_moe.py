@@ -2085,6 +2085,7 @@ def run_laguna_moe_rows(
     dense_q4_prefill_mode: str = "retained",
     group_compact_mode: str = "serial",
     fuse_selected_silu_pack: bool = False,
+    shared_after_router: bool = False,
     shared_stream: int = 0,
     shared_input_ready_event: int = 0,
     shared_output_ready_event: int = 0,
@@ -2144,7 +2145,9 @@ def run_laguna_moe_rows(
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
     active_runtime = (runtime or get_hip_runtime()) if shared_concurrent else None
 
-    if shared_concurrent:
+    def launch_concurrent_shared() -> None:
+        """Launch shared work after its selected caller-stream boundary."""
+
         assert active_runtime is not None
         active_runtime.event_record(shared_input_ready_event, stream)
         active_runtime.stream_wait_event(
@@ -2165,6 +2168,9 @@ def run_laguna_moe_rows(
             shared_output_ready_event,
             shared_stream,
         )
+
+    if shared_concurrent and not shared_after_router:
+        launch_concurrent_shared()
 
     plan.router_logits_functions[router_logits_mode](
         hidden_bf16_ptr,
@@ -2189,6 +2195,8 @@ def run_laguna_moe_rows(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
+    if shared_concurrent and shared_after_router:
+        launch_concurrent_shared()
     compact_gate_up = False
     use_fused_selected_silu_pack = _should_fuse_selected_silu_pack(
         requested=fuse_selected_silu_pack,
