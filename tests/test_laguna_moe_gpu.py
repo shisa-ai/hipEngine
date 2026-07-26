@@ -280,15 +280,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.activation_quant_key == KernelKey(
         "hip_gfx1151", "activation_quant", "q8_1_ds4x3", "bf16"
     )
-    assert plan.selected_gate_up_role_prefill_f32_key == KernelKey(
-        "hip_gfx1151",
-        "moe_linear",
-        "gguf_q4_k_t16_v1",
-        (
-            "selected_q8_1_ds4_f32_mmq128x32_wavecols_direct_"
-            "doublebuf_prefill_compact32_bf16_bf16_out"
-        ),
-    )
     assert plan.grouped_compact_source_rows_key.variant == (
         "active_experts_source_rows"
     )
@@ -308,12 +299,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.fused_selected_silu_pack_key == KernelKey(
         "hip_gfx1151",
         "silu_mul_dual+activation_quant",
-        "q8_1_ds4x3_f32",
-        "bf16",
-    )
-    assert plan.fused_selected_separate_silu_pack_key == KernelKey(
-        "hip_gfx1151",
-        "silu_mul_separate+activation_quant",
         "q8_1_ds4x3_f32",
         "bf16",
     )
@@ -405,23 +390,6 @@ def test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified() -> None:
         ),
     }
     assert should_fuse(requested=True, **production)
-    assert should_fuse(
-        requested=True,
-        selected_gate_up_mode="mmq128x32_role_gate_d4_up_d8",
-        selected_down_mode=production["selected_down_mode"],
-    )
-    assert should_fuse(
-        requested=True,
-        selected_gate_up_mode="mmq128x32_role_gate_d8_up_d4",
-        selected_down_mode=production["selected_down_mode"],
-    )
-    assert should_fuse(
-        requested=True,
-        selected_gate_up_mode=(
-            "mmq128x32_absmax2_layer_gate_d4_up_d8"
-        ),
-        selected_down_mode=production["selected_down_mode"],
-    )
     assert not should_fuse(requested=False, **production)
     assert not should_fuse(
         requested=True,
@@ -527,27 +495,6 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
             "mmq128x32_d8_f32_wavecols_direct_doublebuf",
         )
         == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
-    )
-    assert (
-        resolve_laguna_selected_gate_up_mode(
-            "hip_gfx1151",
-            "mmq128x32_role_gate_d4_up_d8",
-        )
-        == "mmq128x32_role_gate_d4_up_d8"
-    )
-    assert (
-        resolve_laguna_selected_gate_up_mode(
-            "hip_gfx1151",
-            "mmq128x32_role_gate_d8_up_d4",
-        )
-        == "mmq128x32_role_gate_d8_up_d4"
-    )
-    assert (
-        resolve_laguna_selected_gate_up_mode(
-            "hip_gfx1151",
-            "mmq128x32_absmax2_layer_gate_d4_up_d8",
-        )
-        == "mmq128x32_absmax2_layer_gate_d4_up_d8"
     )
     with pytest.raises(ValueError, match="unsupported Laguna selected gate/up mode"):
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unsafe")

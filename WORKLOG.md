@@ -183774,3 +183774,34 @@ Vulkan local sizes verbatim will close the measured gap.
   remains independently tiled at 128, and admission requires the existing
   three-repetition/320-step absolute KL/top-1 contract. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-quality-pending.json`.
+
+## 2026-07-27 — Reject and remove activation-only Q4 role repair
+
+- The clean extended-M512 absolute gate rejects the whole-layer risk
+  candidate at max KL **1.265491863** despite **314/320 (98.125%)** top-1.
+  Every category exceeds 0.05 KL: code **1.265492**, general English
+  **0.212004**, general Japanese **0.655027**, and mixed Japanese/English
+  **0.293393**. Poolside remains exact top-1 and lifecycle accounting returns
+  to zero.
+- Candidate aggregate prefill is **617.422817 tok/s** versus diagnostic
+  all-exact **57.864339 tok/s**. The prior seven-pair candidate saving
+  (**3.426 ms**) is not retainable because the numerical contract fails.
+  Raw output:
+  `/tmp/laguna-q4-layer-risk-absolute.json`, SHA-256
+  `0e00cfd3cb767e1bce856d699938ba8681ff18f36918d3404b0d4edc3e01496b`.
+- Removed the risk pack, conditional specialized MMQs and fused pack, both
+  D4/D8 role modes and single-role exports, separate-input fused pack,
+  category lanes/extension helper, calibration harness, and focused tests.
+  The generic multi-arm pp512 A/B harness remains. Production dispatch is
+  restored byte-for-byte to the pre-role-repair implementation and remains
+  **632.617985 tok/s / 809.335 ms** pending a fresh post-cleanup trace.
+- Compact rejection evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-absolute-rejected.json`.
+- Cleanup validation reports **90 passed / 2 skipped** across the Q4 kernel,
+  Laguna runtime, and category-harness files before one isolated Q6 runtime
+  assertion fails. The Q6 node fails identically on the untouched clean
+  `fbc1c8e6d` worktree (**9,088/9,216** mismatched BF16 elements between the
+  Q6 row64 and row32 runtime outputs), proving it predates and is independent
+  of this cleanup. A focused rerun reproduces it; per the focused-repair rule,
+  no broad rerun or unrelated Q6 change is included here. All Q4
+  CPU-reference, registry, resolver, fusion, and category-harness checks pass.

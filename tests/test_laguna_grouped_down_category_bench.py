@@ -16,13 +16,9 @@ from scripts.laguna_grouped_down_category_bench import (
     MODES,
     PREFILL_350_COMPARISON,
     PRODUCTION_ABSOLUTE_COMPARISON,
-    Q4_LAYER_RISK_ABSOLUTE_COMPARISON,
-    Q4_ROLE_SPLIT_ABSOLUTE_COMPARISON,
-    Q4_UP_ROLE_SPLIT_ABSOLUTE_COMPARISON,
     SWA_QROW2_COMPARISON,
     SWA_QROW2_ONLINE_COMPARISON,
     _aggregate,
-    _extend_prompt_streams,
     _load_shape_screen,
     _mode_order,
     _oracle_for_candidate,
@@ -81,117 +77,6 @@ def test_attention_hipblaslt_comparison_adds_only_attention_candidate() -> None:
     assert lane.selected_down_mode == production.selected_down_mode
     assert lane.f16_projection_mode == production.f16_projection_mode
     assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
-
-
-def test_q4_role_split_comparison_changes_only_selected_gate_up() -> None:
-    assert Q4_ROLE_SPLIT_ABSOLUTE_COMPARISON.modes == (
-        "all_exact",
-        "q4_role_split_candidate",
-    )
-    lane = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "q4_role_split_candidate"
-    ]
-    production = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "attention_hipblaslt_candidate"
-    ]
-    assert (
-        lane.selected_gate_up_mode
-        == "mmq128x32_role_gate_d4_up_d8"
-    )
-    assert lane.selected_down_mode == production.selected_down_mode
-    assert lane.f16_projection_mode == production.f16_projection_mode
-    assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
-    assert lane.global_prefill_variant == production.global_prefill_variant
-    assert lane.swa_prefill_variant == production.swa_prefill_variant
-    assert lane.attention_hipblaslt == production.attention_hipblaslt
-
-
-def test_q4_up_role_split_comparison_changes_only_selected_gate_up() -> None:
-    assert Q4_UP_ROLE_SPLIT_ABSOLUTE_COMPARISON.modes == (
-        "all_exact",
-        "q4_up_role_split_candidate",
-    )
-    lane = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "q4_up_role_split_candidate"
-    ]
-    production = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "attention_hipblaslt_candidate"
-    ]
-    assert (
-        lane.selected_gate_up_mode
-        == "mmq128x32_role_gate_d8_up_d4"
-    )
-    assert lane.selected_down_mode == production.selected_down_mode
-    assert lane.f16_projection_mode == production.f16_projection_mode
-    assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
-    assert lane.global_prefill_variant == production.global_prefill_variant
-    assert lane.swa_prefill_variant == production.swa_prefill_variant
-    assert lane.attention_hipblaslt == production.attention_hipblaslt
-
-
-def test_q4_layer_risk_comparison_uses_extended_m512_quality_gate() -> None:
-    assert Q4_LAYER_RISK_ABSOLUTE_COMPARISON.modes == (
-        "all_exact",
-        "q4_layer_risk_candidate",
-    )
-    assert Q4_LAYER_RISK_ABSOLUTE_COMPARISON.required_chunk_size == 512
-    assert Q4_LAYER_RISK_ABSOLUTE_COMPARISON.prompt_token_target == 512
-    lane = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "q4_layer_risk_candidate"
-    ]
-    production = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "attention_hipblaslt_candidate"
-    ]
-    assert (
-        lane.selected_gate_up_mode
-        == "mmq128x32_absmax2_layer_gate_d4_up_d8"
-    )
-    assert lane.selected_down_mode == production.selected_down_mode
-    assert lane.f16_projection_mode == production.f16_projection_mode
-    assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
-    assert lane.global_prefill_variant == production.global_prefill_variant
-    assert lane.swa_prefill_variant == production.swa_prefill_variant
-    assert lane.attention_hipblaslt == production.attention_hipblaslt
-
-
-def test_prompt_extension_cycles_every_stream_from_each_prompt() -> None:
-    prompts = [
-        {
-            "id": "a",
-            "category": "code",
-            "token_ids": (1, 2),
-            "token_ids_sha256": "old-a",
-            "prompt_tokens": 2,
-        },
-        {
-            "id": "b",
-            "category": "general_en",
-            "token_ids": (3,),
-            "token_ids_sha256": "old-b",
-            "prompt_tokens": 1,
-        },
-        {
-            "id": "c",
-            "category": "general_ja",
-            "token_ids": (4, 5, 6),
-            "token_ids_sha256": "old-c",
-            "prompt_tokens": 3,
-        },
-    ]
-
-    extended = _extend_prompt_streams(prompts, 8)
-
-    assert [row["token_ids"] for row in extended] == [
-        (1, 2, 3, 4, 5, 6, 1, 2),
-        (3, 4, 5, 6, 1, 2, 3, 4),
-        (4, 5, 6, 1, 2, 3, 4, 5),
-    ]
-    assert all(row["prompt_tokens"] == 8 for row in extended)
-    assert all(
-        row["token_ids_sha256"] != prompts[index]["token_ids_sha256"]
-        for index, row in enumerate(extended)
-    )
-    assert [row["token_ids"] for row in prompts] == [(1, 2), (3,), (4, 5, 6)]
 
 
 def _rows(

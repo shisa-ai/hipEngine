@@ -65,8 +65,6 @@ class CategoryComparison:
     screen_candidate_variant: str | None = None
     require_shape_screen: bool = True
     require_performance_gate: bool = True
-    required_chunk_size: int = 128
-    prompt_token_target: int = 0
 
 
 @dataclass(frozen=True)
@@ -202,50 +200,6 @@ ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON = CategoryComparison(
     require_shape_screen=False,
     require_performance_gate=False,
 )
-Q4_ROLE_SPLIT_ABSOLUTE_COMPARISON = CategoryComparison(
-    name="q4_role_split_absolute",
-    modes=("all_exact", "q4_role_split_candidate"),
-    aggregate_key="q4_role_split_candidate_vs_all_exact",
-    screen_kind="not_applicable",
-    screen_status="not_applicable",
-    screen_decision_key="not_applicable",
-    require_positive_wall=False,
-    execution_mode="cumulative_prefill",
-    require_exact_free_running=False,
-    screen_requires_model=False,
-    require_shape_screen=False,
-    require_performance_gate=False,
-)
-Q4_UP_ROLE_SPLIT_ABSOLUTE_COMPARISON = CategoryComparison(
-    name="q4_up_role_split_absolute",
-    modes=("all_exact", "q4_up_role_split_candidate"),
-    aggregate_key="q4_up_role_split_candidate_vs_all_exact",
-    screen_kind="not_applicable",
-    screen_status="not_applicable",
-    screen_decision_key="not_applicable",
-    require_positive_wall=False,
-    execution_mode="cumulative_prefill",
-    require_exact_free_running=False,
-    screen_requires_model=False,
-    require_shape_screen=False,
-    require_performance_gate=False,
-)
-Q4_LAYER_RISK_ABSOLUTE_COMPARISON = CategoryComparison(
-    name="q4_layer_risk_absolute",
-    modes=("all_exact", "q4_layer_risk_candidate"),
-    aggregate_key="q4_layer_risk_candidate_vs_all_exact",
-    screen_kind="not_applicable",
-    screen_status="not_applicable",
-    screen_decision_key="not_applicable",
-    require_positive_wall=False,
-    execution_mode="cumulative_prefill",
-    require_exact_free_running=False,
-    screen_requires_model=False,
-    require_shape_screen=False,
-    require_performance_gate=False,
-    required_chunk_size=512,
-    prompt_token_target=512,
-)
 _GLOBAL_PREFILL_VARIANTS = {
     "global_exact": "global_context_rows_spans",
     "global_qrow2_online": "global_context_rows_qrow2_online_spans",
@@ -300,38 +254,6 @@ _PREFILL_LANE_CONFIGURATIONS = {
         dense_q4_prefill_mode="wmma_pack8",
         attention_hipblaslt=True,
     ),
-    "q4_role_split_candidate": PrefillLaneConfiguration(
-        f16_prefill_mode="wmma_comp_swa",
-        global_prefill_variant="global_context_rows_qrow4_m128_online_spans",
-        swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
-        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
-        selected_gate_up_mode="mmq128x32_role_gate_d4_up_d8",
-        f16_projection_mode="hipblaslt_range_direct",
-        dense_q4_prefill_mode="wmma_pack8",
-        attention_hipblaslt=True,
-    ),
-    "q4_up_role_split_candidate": PrefillLaneConfiguration(
-        f16_prefill_mode="wmma_comp_swa",
-        global_prefill_variant="global_context_rows_qrow4_m128_online_spans",
-        swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
-        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
-        selected_gate_up_mode="mmq128x32_role_gate_d8_up_d4",
-        f16_projection_mode="hipblaslt_range_direct",
-        dense_q4_prefill_mode="wmma_pack8",
-        attention_hipblaslt=True,
-    ),
-    "q4_layer_risk_candidate": PrefillLaneConfiguration(
-        f16_prefill_mode="wmma_comp_swa",
-        global_prefill_variant="global_context_rows_qrow4_m128_online_spans",
-        swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
-        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
-        selected_gate_up_mode=(
-            "mmq128x32_absmax2_layer_gate_d4_up_d8"
-        ),
-        f16_projection_mode="hipblaslt_range_direct",
-        dense_q4_prefill_mode="wmma_pack8",
-        attention_hipblaslt=True,
-    ),
 }
 _COMPARISONS = {
     comparison.name: comparison
@@ -346,9 +268,6 @@ _COMPARISONS = {
         PREFILL_350_COMPARISON,
         PRODUCTION_ABSOLUTE_COMPARISON,
         ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
-        Q4_ROLE_SPLIT_ABSOLUTE_COMPARISON,
-        Q4_UP_ROLE_SPLIT_ABSOLUTE_COMPARISON,
-        Q4_LAYER_RISK_ABSOLUTE_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -381,7 +300,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--chunk-size", type=int, default=128)
-    parser.add_argument("--prompt-token-target", type=int, default=0)
     parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
@@ -410,40 +328,6 @@ def _mode_order(
         if (int(prompt_index) + int(repetition)) % 2 == 0
         else tuple(reversed(modes))
     )
-
-
-def _extend_prompt_streams(
-    prompts: Sequence[Mapping[str, Any]],
-    target_tokens: int,
-) -> list[dict[str, Any]]:
-    """Cycle canonical token streams from each prompt to one exact row count."""
-
-    target = int(target_tokens)
-    if target < 0:
-        raise ValueError("prompt token target must be nonnegative")
-    rows = [dict(prompt) for prompt in prompts]
-    if target == 0:
-        return rows
-    streams = [tuple(int(token) for token in prompt["token_ids"]) for prompt in rows]
-    if not streams or any(not stream for stream in streams):
-        raise ValueError("prompt extension requires nonempty canonical token streams")
-    for prompt_index, row in enumerate(rows):
-        extended: list[int] = []
-        source_index = prompt_index
-        while len(extended) < target:
-            extended.extend(streams[source_index])
-            source_index = (source_index + 1) % len(streams)
-        token_ids = tuple(extended[:target])
-        row["token_ids"] = token_ids
-        row["token_ids_sha256"] = _sha256_bytes(
-            json.dumps(
-                token_ids,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        )
-        row["prompt_tokens"] = len(token_ids)
-    return rows
 
 
 @contextmanager
@@ -1088,16 +972,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(
             f"retained {comparison.name} gate requires at least three repetitions"
         )
-    if args.chunk_size != comparison.required_chunk_size:
-        raise ValueError(
-            f"retained {comparison.name} gate requires chunk size "
-            f"{comparison.required_chunk_size}"
-        )
-    if args.prompt_token_target != comparison.prompt_token_target:
-        raise ValueError(
-            f"retained {comparison.name} gate requires prompt token target "
-            f"{comparison.prompt_token_target}"
-        )
+    if args.chunk_size != 128:
+        raise ValueError(f"retained {comparison.name} gate requires chunk size 128")
     if args.teacher_forced_tokens != max(RETAINED_HORIZONS):
         raise ValueError(
             f"retained {comparison.name} gate requires 32 teacher-forced tokens"
@@ -1141,7 +1017,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     reader = GGUFReader(args.model)
     tokenizer = LagunaGGUFTokenizer.from_gguf_info(reader.info)
     prompts = _load_prompts(args.prompts, tokenizer)
-    prompts = _extend_prompt_streams(prompts, args.prompt_token_target)
 
     runtime = get_hip_runtime()
     gpu_free_before, gpu_total = runtime.mem_get_info()
@@ -1295,12 +1170,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "comparison": comparison.name,
             "modes": list(comparison.modes),
             "chunk_size": args.chunk_size,
-            "prompt_token_target": args.prompt_token_target,
-            "prompt_extension_policy": (
-                "cycle all canonical token streams in suite order from each prompt"
-                if args.prompt_token_target
-                else "none"
-            ),
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmup_output_tokens_per_mode": args.warmup_output_tokens,
