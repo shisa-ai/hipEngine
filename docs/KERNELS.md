@@ -61,10 +61,12 @@ runtime policy now selects the candidate for every safe SWA tile and global
 tiles from position 128, retaining the established cached body for global
 position 0. Seven alternating one-owner pp512 pairs improve
 **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)** with identical complete model
-state. The capability is the gfx1151 default candidate pending clean
-selector-unset publication; gfx1100 and unmeasured backends remain unchanged.
-Evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-{candidate,default}.json`.
+state. Clean selector-unset production reaches **542.088 tok/s** median and
+**542.022 tok/s** minimum; cached tracing observes 12 global start-0, 36 global
+metadata-only, and 144 SWA metadata-only calls while cutting attention
+**175.802 -> 160.123 ms (-8.92%)**. gfx1100 and unmeasured backends remain
+unchanged. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-{candidate,default,production}.json`.
 
 ### Laguna gfx1151 exact router token reuse
 

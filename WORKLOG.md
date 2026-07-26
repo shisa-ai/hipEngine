@@ -180892,3 +180892,51 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-default.json`.
   Current clean production remains **530.447 tok/s** until committed
   selector-unset 512/1K/4K and cached full-family tracing complete.
+
+## 2026-07-26 — Publish cached-metadata attention production
+
+- On clean committed revision
+  `53e3c24681719dd8fb9e06b49c57aac8c70c16c3`, ran:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  GPU_MAX_HW_QUEUES=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  .venv/bin/python3 -u scripts/laguna_long_context_profile.py
+  --lengths 512,1024,4096 --chunk-size 512 --repetitions 3
+  --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build
+  --output /tmp/laguna-attention-cached-meta-production-clean.json`.
+- Clean pp512 samples are **547.059/542.022/542.088 tok/s**, median
+  **542.088 tok/s**, minimum **542.022 tok/s**. This improves prior production
+  **530.447 -> 542.088 tok/s (+2.195%)**. Clean 1K is
+  **478.856 tok/s (+1.213%)** and 4K is
+  **387.725 tok/s (+1.665%)**. Tokens remain 2930/95/7772, repeats and final
+  positions are exact, and all tracked allocations/bytes recover to zero.
+  Raw SHA-256 is
+  `053fa83e96200d9324f43f7eeef2df22b9d0fb64a56b49a1dd8f9b4766955325`.
+- Prebuilt outside profiling and ran the same one-repeat 512/1K/4K command
+  under `rocprofv3 --kernel-trace`, with child output
+  `/tmp/laguna-attention-cached-meta-production-rocprof.json` and trace
+  `/tmp/laguna-attention-cached-meta-production-rocprof/gfx1151/1328703_kernel_trace.csv`.
+  The pp512 child reaches **534.814 tok/s** with 1,886 dispatches,
+  **952.168 ms** kernel span, and **940.849 ms** kernel sum. The trace observes
+  12 global start-0 calls, 36 global metadata-only calls, and 144 SWA
+  metadata-only calls. Attention falls
+  **175.802 -> 160.123 ms (-8.92%, 15.679 ms saved)**.
+- The refreshed pp512 families are gate/up **323.422 ms**, selected down
+  **203.087 ms**, attention **160.123 ms**, source-F16 **125.764 ms**,
+  dense/shared **53.486 ms**, router **23.767 ms**, and all other work
+  **51.201 ms**. Child, raw trace, and attached-summary SHA-256 values are
+  `cf6ca9dee8a915d1a8d419fbd45a350d5b84d365eb8b9bce55a56a30173c9095`,
+  `bf951e07dd3d9f3251fdc9fc356026b840ae1b5f2bb68547e897baab99809384`,
+  and `363f8e46727b506152033456ffc30144bf20c74076fc73e299a39c52baf7b539`.
+- Published
+  `benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json`
+  and refreshed the rollup, changelog, kernel catalog, refactor trigger, and
+  Laguna plan. Exact full-model A/B transfers maximum KL **0.049542582**,
+  **316/320** top-1, category minimum **96.875%**, Poolside/decode/
+  determinism/lifecycle. Current production is **542.088 tok/s**; reaching
+  700 requires **213.067 ms** from the clean wall. Selected down is next at
+  **203.087 ms / 21.59%** and **135.53 GB/s / 61.32%** of the existing
+  read anchor.
