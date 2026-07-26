@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_mmq_combine_production",
+  "status": "retained_production",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 77461325460
+  },
+  "repo": {
+    "revision": "b6bfc4a0b502a5a711c6a8264199b45b956867ab",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "route": "active compact MMQ selected down",
+    "combine": "exact sorted-lane weighted sum plus shared BF16 add composite",
+    "arithmetic": "ten slot-order F32 FMAs, selected BF16 rounding, shared BF16 add, final BF16 rounding",
+    "physical_change": "remove one 512x3072 routed-output BF16 round trip and one launch per sparse layer",
+    "fallback": "registered weighted-lanes sum and BF16 add primitive chain"
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-mmq-combine-production-clean.json",
+    "pp512_samples_tok_s": [
+      556.2371966398485,
+      543.8073200104417,
+      541.4852688781576
+    ],
+    "pp512_median_tok_s": 543.8073200104417,
+    "pp512_min_tok_s": 541.4852688781576,
+    "pp1024_samples_tok_s": [
+      490.6351776023233,
+      480.01729846872183,
+      479.6384125849029
+    ],
+    "pp1024_median_tok_s": 480.01729846872183,
+    "pp4096_samples_tok_s": [
+      394.95340541256655,
+      388.5945851750391,
+      387.32225219824204
+    ],
+    "pp4096_median_tok_s": 388.5945851750391,
+    "previous_production": {
+      "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-cached-meta-production.json",
+      "pp512_tok_s": 542.0882597787222,
+      "pp1024_tok_s": 478.8556065018387,
+      "pp4096_tok_s": 387.72492023435575
+    },
+    "change_percent": {
+      "pp512": 0.3171181446396165,
+      "pp1024": 0.24259754947209,
+      "pp4096": 0.224299469881295
+    },
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "load_seconds_excluded": 81.0787707810523,
+    "raw_sha256": "b23384604d660aa6a23bc4cfb9f10ebabc3ca3c532d81c702b5bd99ee6d53009"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-mmq-combine-production-rocprof -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 512 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-mmq-combine-production-rocprof.json",
+    "pp512_tok_s": 544.994334702413,
+    "pp512_dispatches": 1839,
+    "pp512_synchronized_wall_ms": 939.459307002835,
+    "pp512_kernel_span_ms": 935.414868,
+    "pp512_kernel_sum_ms": 924.795917,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 314.810801,
+      "selected_q4_q6_down": 200.671698,
+      "global_attention": 32.302228,
+      "swa_attention": 126.779225,
+      "source_f16_projection": 123.310314,
+      "dense_shared_quant_projection": 53.011618,
+      "router": 23.705768,
+      "activation_reduce_residual": 17.220928,
+      "norm_rope_gate": 24.771455,
+      "other": 5.249571,
+      "prefill_kv_write": 1.766988,
+      "lm_head_argmax": 1.158013,
+      "embedding": 0.03731
+    },
+    "combine": {
+      "weighted_inverse_calls": 47,
+      "weighted_inverse_ms": 0.094096,
+      "weighted_sum_shared_add_calls": 47,
+      "weighted_sum_shared_add_ms": 9.613561,
+      "remaining_bf16_add_calls": 48,
+      "remaining_bf16_add_ms": 1.669979,
+      "weighted_sum_shared_add_resources": {
+        "workgroup_size": 128,
+        "vgpr": 8,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    },
+    "previous_production": {
+      "dispatches": 1886,
+      "kernel_span_ms": 952.168216,
+      "kernel_sum_ms": 940.848702,
+      "activation_reduce_residual_ms": 17.914361
+    },
+    "change": {
+      "dispatches": -47,
+      "kernel_span_ms": -16.753348,
+      "kernel_span_percent": -1.759494563931141,
+      "kernel_sum_ms": -16.052785,
+      "kernel_sum_percent": -1.706202598342954,
+      "activation_reduce_residual_ms": -0.693433,
+      "activation_reduce_residual_percent": -3.8708218506928516
+    },
+    "child_sha256": "94f3213f3d89c0694e98dd55783faf2a3dae897b15637a81ea698331396b0f2d",
+    "trace_sha256": "52ddff8f5e41bb4315d7a72a46a6392d799999552e96556265f2dc617ee6e4a6",
+    "summary_sha256": "42cf79e1d1a1e79214a7a4cbfebf1e2c980a2da9a0aafc7132e259ebb0580bf6"
+  },
+  "correctness": {
+    "transfer_basis": "The composite preserves the established unfused BF16 boundaries; actual production-shape Q4_K and Q6_K MoE outputs are byte-identical, seven complete-state A/B pairs are exact, and the prior composite category gate reports KL 0 and 100% top-1 between modes.",
+    "candidate_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json",
+    "prior_composite_category_artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-retained.json",
+    "absolute_max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "minimum_category_top1": 0.96875,
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "production_pp512_tok_s": 543.8073200104417,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 210.08137365670078,
+    "next_measured_bottlenecks": [
+      "selected Q4 gate/up: 314.811 ms",
+      "selected Q4/Q6 down: 200.672 ms",
+      "global plus SWA attention: 159.081 ms",
+      "source-F16 projection: 123.310 ms"
+    ]
+  }
+}

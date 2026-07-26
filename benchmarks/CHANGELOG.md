@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-26
 
+- [retained exact gfx1151 Laguna MMQ grouped-combine production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / clean selector-unset 512/1K/4K improves **542.088 -> 543.807 (+0.317%)**, **478.856 -> 480.017 (+0.243%)**, and **387.725 -> 388.595 tok/s (+0.224%)**; cached tracing removes **47 dispatches** and cuts activation/reduce/residual **17.914 -> 17.221 ms (-3.87%)** with unchanged absolute quality/lifecycle, making **543.807 tok/s** current production; `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`.
+
 - [retained exact gfx1151 Laguna MMQ grouped-combine candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / reusing the registered exact sorted-lane weighted-sum plus shared-add composite on the active MMQ route preserves all seven complete-state pairs, improves paired geometric pp512 throughput **0.302%**, removes **47 launches**, and cuts traced kernel span **943.200 -> 936.635 ms (-0.696%, -6.565 ms)**; retained as default pending clean publication while the production headline remains **542.088 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q6-down scheduler controls] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the runtime-upper sentinel grid is timing-equivalent to the actual row-tile grid at **5.0896 -> 5.0785 ms (-0.22%)**, while `__launch_bounds__(128,2)` is nominally **5.0759 -> 5.0635 ms (-0.24%, 7/11 wins)** but emits identical VGPR88/LDS5,632B/scratch0 resources and is slower in the isolated trace, so the no-op/noise controls are removed and production remains **542.088 tok/s**; `benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-scheduler-controls-rejected.json`.

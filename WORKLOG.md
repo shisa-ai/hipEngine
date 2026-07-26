@@ -181078,3 +181078,31 @@ Vulkan local sizes verbatim will close the measured gap.
   the next publication unit, so production stays **542.088 tok/s** in this
   candidate commit. Evidence:
   `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-candidate.json`.
+
+## 2026-07-26 — Publish MMQ grouped-combine production at 543.807 tok/s
+
+- Clean committed revision `b6bfc4a0b502a5a711c6a8264199b45b956867ab`
+  ran the canonical selector-unset matrix512/attention128 packet with cached
+  builds and one queue. Three 512/1K/4K repetitions improve the preceding
+  production medians **542.088260 -> 543.807320 tok/s (+0.317%)**,
+  **478.855607 -> 480.017298 (+0.243%)**, and
+  **387.724920 -> 388.594585 tok/s (+0.224%)**. pp512 samples are
+  **556.237197/543.807320/541.485269 tok/s**. All lengths keep their expected
+  next tokens and final positions; repeats are deterministic and tracked
+  ownership returns to zero. Raw SHA-256 is
+  `b23384604d660aa6a23bc4cfb9f10ebabc3ca3c532d81c702b5bd99ee6d53009`.
+- The clean cached all-family trace independently reaches
+  **544.994 tok/s**. Against the preceding production trace, pp512 dispatches
+  fall **1,886 -> 1,839**, activation/reduce/residual falls
+  **17.914 -> 17.221 ms (-3.87%)**, kernel span is **935.415 ms**, and kernel
+  sum **924.796 ms**. It names exactly 47
+  `weighted_lanes_sum_shared_add` calls at local128/VGPR8/LDS0/scratch0, 47
+  inverse-map calls, and only the 48 non-MoE BF16 adds. Trace/child/summary
+  SHA-256 values are `52ddff8f...e6e4a6`, `94f3213f...6b0f2d`, and
+  `42cf79e1...580bf6`.
+- The path is exact, so the established absolute gate transfers unchanged:
+  maximum KL **0.049542582**, **316/320** top-1, every category at least
+  **96.875%**, Poolside exact top-1, neutral decode, deterministic execution,
+  and exact lifecycle. Current production is **543.807 tok/s**; the clean wall
+  is **941.510 ms**, leaving **210.081 ms** to 700. Evidence:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-mmq-combine-production.json`.
