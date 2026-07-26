@@ -182675,3 +182675,29 @@ Vulkan local sizes verbatim will close the measured gap.
 - Set the harness context to the production 4,096-token cache while retaining
   the 512-token timed prompt, matrix2048, and attention128. No measurement
   from the failed launch is retained.
+
+## 2026-07-26 — Retain planar-Q6 resident candidate
+
+- Two clean seven-repetition pp512 blocks reverse the required resident-owner
+  order. Current-first measures current **572.755** versus planar
+  **574.473 tok/s (+0.300%)**; planar-first measures planar **573.970**
+  versus current **575.668 tok/s (-0.295%)**. The second owner is consistently
+  faster, exposing an order confound larger than the expected aggregate gain.
+- Across all 14 samples per arm, planar is **+0.013% by combined mean** and
+  **+0.139% by combined median**; averaging the two order-specific median
+  deltas leaves **+0.010 tok/s**. This is aggregate-neutral, not a headline
+  throughput claim.
+- All 28 runs select token 2930 and preserve next-token logit, complete
+  logits, both hidden snapshots, complete KV, cursor, and deterministic
+  repeats exactly. Both 77.4-GB owners return tracked allocations to zero.
+- The actual-weight leaf remains a measured **-0.314%** and exact c1 decode
+  remains **-1.736%**. Per the repository rule that exact verified sub-window
+  reductions are retained even when aggregate AR variance hides them, enable
+  gfx1151 `LAGUNA_Q6_QMICRO_PLANAR`; default plan resolution disables the
+  obsolete permute consumer while explicit interleaved rollback remains.
+- Candidate artifact:
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-qmicro-planar-candidate.json`.
+  Raw current-first / planar-first SHA-256:
+  `55d309e673b680123dee84164e9c9f1e465c31d7aec807785eea113f49dcff0c` /
+  `107884af6536ece042d3cde0732eb164b414ec72e9dff15434fe2e77059b0564`.
+  Next gate is clean selector-unset 512/1K/4K publication.

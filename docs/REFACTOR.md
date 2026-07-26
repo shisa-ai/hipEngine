@@ -1391,13 +1391,15 @@ should be boring.
 
 ## Laguna Q6 planar-qmicro candidate rollback
 
-- Added 2026-07-26 with disabled-by-default gfx1151
+- Added 2026-07-26 with gfx1151
   `LAGUNA_Q6_QMICRO_PLANAR` plus the temporary
   `q6_qmicro_planar=True` session/profile selector. It changes only the
   byte order inside each existing 12-byte qmicro record and selects matching
   prefill, direct-decode, and grouped-small-M consumers.
-- Remove the public selector and candidate capability if the complete-state
-  full-model gate is non-positive. If retained, enable the capability, keep
+- The exact actual-weight leaf is positive. Two opposite owner-order
+  complete-state blocks are aggregate-neutral (+0.013% combined mean,
+  +0.139% combined median) with exact logits/hidden/KV/token/cursor, so the
+  repo's verified-subwindow rule retains and enables the capability. Keep
   `q6_qmicro_planar=False` only through clean selector-unset publication and
   one later selected-down checkpoint, then remove the constructor/profile
   override and obsolete production permute selector. Preserve legacy and
