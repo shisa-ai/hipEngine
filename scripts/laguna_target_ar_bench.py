@@ -101,11 +101,6 @@ def _parse_args() -> argparse.Namespace:
         help="restore the exact local128 fixed-Q6 Q5/Q6 projection quad",
     )
     parser.add_argument(
-        "--enable-q5-swar-output",
-        action="store_true",
-        help="screen paired-SWAR only for exact c=1 Q5 attention output",
-    )
-    parser.add_argument(
         "--disable-q4-lm-head-local32-fixed-meta",
         action="store_true",
         help="restore the registered exact local128 Q4_K c=1 LM head",
@@ -257,7 +252,6 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_mixed_local32_fixed_meta_attention=(
             False if args.disable_mixed_local32_fixed_meta_attention else None
         ),
-        use_q5_swar_output=True if args.enable_q5_swar_output else None,
         use_q4_lm_head_local32_fixed_meta=(
             False if args.disable_q4_lm_head_local32_fixed_meta else None
         ),
@@ -657,7 +651,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_mixed_local32_fixed_meta_attention=(
                 False if args.disable_mixed_local32_fixed_meta_attention else None
             ),
-            use_q5_swar_output=True if args.enable_q5_swar_output else None,
             use_q4_lm_head_local32_fixed_meta=(
                 False if args.disable_q4_lm_head_local32_fixed_meta else None
             ),
@@ -790,7 +783,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_mixed_local32_fixed_meta_attention": (
                 owner.use_mixed_local32_fixed_meta_attention
             ),
-            "use_q5_swar_output": owner.use_q5_swar_output,
             "use_q4_lm_head_local32_fixed_meta": (
                 owner.use_q4_lm_head_local32_fixed_meta
             ),
