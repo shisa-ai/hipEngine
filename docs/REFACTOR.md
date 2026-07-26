@@ -59,9 +59,10 @@ should be removed or collapsed.
 - The follow-up after-router checkpoint temporarily adds
   `moe_shared_after_router` at the row launcher, session, and long-profile
   CLI. It records the secondary dependency after router selection while
-  retaining gate/up-plus-down overlap. Remove this selector if the seven-pair
-  gate fails; if it wins and traces as intended, collapse the boundary into
-  the gfx1151 schedule before selector-unset publication.
+  retaining gate/up-plus-down overlap. The gate passes at **+0.073%, 5/7
+  wins**, and tracing verifies a **0.310-ms** span reduction. Promote through
+  a gfx1151 capability, then collapse redundant positive selection after clean
+  selector-unset publication.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 
