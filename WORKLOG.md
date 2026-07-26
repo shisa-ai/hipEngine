@@ -181242,3 +181242,24 @@ Vulkan local sizes verbatim will close the measured gap.
   package default changed. Commit this bounded substrate, then run the clean
   two-repeat M512/M1024/M2048 screen at exact 512/1K/4K lengths before any
   default promotion.
+
+## 2026-07-26 — Decouple wide matrix transactions from the SWA ring
+
+- The first clean wide screen reached valid pp512 controls at
+  **542.947/546.381/526.477 tok/s** for M512/M1024/M2048, then correctly
+  stopped before the 1K sample: `LagunaKVCache.prepare_rows()` still rejected
+  a transaction wider than the physical 512-token SWA ring. No wide result
+  from that incomplete run is retained.
+- RED changed the KV ownership contract to accept one 2048-position matrix
+  transaction and failed on that blanket cap. GREEN permits a wide pending
+  transaction while moving the safety boundary to each physical KV operation:
+  every attention/write slice remains at most 512 rows, and transactions wider
+  than the ring must provide the resident row-position view. The production
+  runner already issues independent 128-row attention/write slices, so no
+  kernel body or attention tile changes.
+- The gfx1151 oracle now compares one 640-row pending transaction against five
+  separately committed 128-row transactions across multiple SWA wraps. Context
+  outputs, final BF16 K/V ring bytes, live counts, token positions, eviction
+  mask, and cursor are byte-exact. The full KV/runner/matrix bundle reports
+  **32 passed**; `py_compile` and `git diff --check` pass. Package default
+  remains M512; rerun the clean M512/M1024/M2048 model screen next.

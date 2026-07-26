@@ -164,7 +164,13 @@ class LagunaKVCache:
         self.position = parsed
 
     def prepare_rows(self, positions: Sequence[int]) -> None:
-        """Publish one bounded consecutive chunk without committing its final position."""
+        """Publish one consecutive matrix chunk without committing its final position.
+
+        A matrix transaction may span more rows than the SWA ring, provided
+        every attention/write operation consumes a resident-position-backed
+        slice no larger than the ring. This keeps projection/MoE batching
+        independent from the physical KV window.
+        """
 
         self._check_open()
         if self._pending_positions:
@@ -172,8 +178,6 @@ class LagunaKVCache:
         parsed = tuple(int(position) for position in positions)
         if not parsed:
             raise ValueError("Laguna KV bulk positions must be non-empty")
-        if len(parsed) > self.sliding_window:
-            raise ValueError("Laguna KV bulk rows cannot exceed the SWA ring capacity")
         expected_start = self.position + 1
         if parsed != tuple(range(expected_start, expected_start + len(parsed))):
             raise ValueError(
@@ -602,6 +606,15 @@ class LagunaKVCache:
         count = int(rows)
         if offset < 0 or count <= 0 or offset + count > len(self._pending_positions):
             raise ValueError("bulk KV slice must fit the prepared position count")
+        if count > self.sliding_window:
+            raise ValueError("bulk KV operations must fit the SWA ring capacity")
+        if (
+            len(self._pending_positions) > self.sliding_window
+            and row_positions_ptr is None
+        ):
+            raise ValueError(
+                "wide bulk KV operations require a resident row_positions_ptr"
+            )
         if offset == 0 and count == len(self._pending_positions) and row_positions_ptr is None:
             return spans
         if row_positions_ptr is None:
