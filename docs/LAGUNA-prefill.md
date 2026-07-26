@@ -1104,15 +1104,32 @@ Immediate execution queue:
    **573.354/530.351/446.189 tok/s**, improving all lengths
    **0.339%/0.091%/0.230%** with deterministic tokens, exact positions, and
    full allocation recovery.
-15. **Active next screen:** build a cooperative Q4 gate/up
+15. **Rejected and removed:** build a cooperative Q4 gate/up
    **128-column x 64-row/local256** body as two independent 128-thread row32
    teams. Decode and stage each T16 weight tile once for both teams, but keep
    each lane at the production 32 FP32 accumulators. This directly targets the
    measured **1.3026x** Q4 route-tile reread without repeating the rejected
    local128 row64 body (64 accumulators/lane), 64-column row64 body (duplicate
    activation loads), or 256-column row32 body (10,240-byte weight tile).
-   Gate on the uneven/empty-expert CPU oracle, actual layer-1 natural routing,
-   and physical requested bytes before full-model integration.
+   The uneven/empty-expert CPU oracle passes and the candidate is BF16-bit
+   identical to production. The fully padded body nevertheless regresses
+   actual layer-1 M256/M512 **38.07%/53.69%**. Pairing only adjacent complete
+   row32 tiles and leaving odd tails on production removes padding
+   amplification but still regresses **22.36%/34.39%**. Cached tracing shows
+   local256/VGPR96/LDS8192B/scratch0; broadcasting the 5,120-byte decoded
+   weight tile through LDS costs more than rereading compact T16 into
+   per-wave registers. Every candidate surface is removed. Evidence:
+   [`2026-07-26-gfx1151-laguna-q4-cooperative-row64-rejected.json`](../benchmarks/results/2026-07-26-gfx1151-laguna-q4-cooperative-row64-rejected.json).
+16. **Active next screen:** combine two independently positive premises:
+   the byte-neutral Q4 qmicro layout already improves exact c1/c2/c4/c8
+   decode and removes **25,165,824 bytes** from the actual gate/up pair, while
+   production direct-wave T16 decode removed pair shuffle and cut the family
+   **18.51%**. Build a qmicro consumer around the production
+   **128-column x 32-row/local128** register schedule, extracting only packed
+   scale/min metadata per lane while retaining direct per-column quant decode.
+   This is distinct from the removed shared-MMQ32 qmicro body measured at
+   9.57 ms. Gate on exact BF16 identity and the actual natural-M512 leaf
+   before any materializer or runtime integration.
 
 Post-350 exclusions:
 

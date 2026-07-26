@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q4_cooperative_row64_rejected",
+  "status": "rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "layer": 1,
+    "gate_up_resident_t16_bytes": 931135488
+  },
+  "candidate": {
+    "geometry": "128 columns x 64 rows, local256",
+    "mapping": "two independent four-wave row32 teams",
+    "weight_stage": "one decoded 5120-byte Q4 tile shared through LDS",
+    "activation_stage_bytes": 3072,
+    "resident_growth_bytes": 0,
+    "arithmetic": "unchanged D8 split16 FP32 accumulation",
+    "per_lane_accumulators": 32
+  },
+  "correctness": {
+    "cpu_reference_fixture": "counts=[0,7,18,33], K512, gate/up N128",
+    "cpu_gate": "KL <= 0.05 and top-1 >= 90%",
+    "bf16_exact_vs_production": true,
+    "actual_weight_checksums_identical": true,
+    "finite": true
+  },
+  "actual_leaf": {
+    "scope": "producer pack plus actual layer-1 gate/up with natural routing",
+    "protocol": "3 warmups, 21 counter-rotated samples, burst 3",
+    "fully_padded_row64": {
+      "m256": {
+        "production_ms": 4.347516059875488,
+        "candidate_ms": 6.002688725789388,
+        "candidate_change_percent": 38.071686064370816
+      },
+      "m512": {
+        "production_ms": 6.687320073445638,
+        "candidate_ms": 10.278006871541342,
+        "candidate_change_percent": 53.69395749956387
+      },
+      "raw_sha256": "93aef593ad53618fe62240a22796730f92c60d05b43dc473d99c3d481f84b164"
+    },
+    "pair_only_plus_row32_tails": {
+      "description": "Only adjacent complete row32 pairs use the cooperative body; every odd expert tail uses unchanged production, eliminating row64 padding amplification.",
+      "m256": {
+        "production_ms": 4.341411590576172,
+        "candidate_ms": 5.312353134155273,
+        "candidate_change_percent": 22.364650835841225,
+        "cooperative_pair_tiles": 13,
+        "row32_tail_tiles": 213
+      },
+      "m512": {
+        "production_ms": 6.680949529012044,
+        "candidate_ms": 8.978619893391928,
+        "candidate_change_percent": 34.39137437578661,
+        "cooperative_pair_tiles": 50,
+        "row32_tail_tiles": 197
+      },
+      "raw_sha256": "e487c650f32a973bf2a73e7f28a77729ecdd1dc3e82bba71ca551f4e64e4e6ba"
+    }
+  },
+  "trace": {
+    "candidate_template": "<1,false,true,128,true,true,256,true,false,true>",
+    "candidate_workgroup": 256,
+    "candidate_vgpr": 96,
+    "candidate_lds_bytes": 8192,
+    "candidate_scratch_bytes": 0,
+    "candidate_pair_tile_dispatch_ms": 5.509782,
+    "candidate_pair_tile_grid_y": 50,
+    "production_template": "<1,false,true,128,true,true,128,true,true,false>",
+    "production_workgroup": 128,
+    "production_vgpr": 88,
+    "production_lds_bytes": 3072,
+    "production_scratch_bytes": 0,
+    "production_full_dispatch_ms": 6.69074,
+    "production_full_grid_y": 297,
+    "csv_sha256": "84829d8cd9f880f5ae94220eef10b3f5a4c6f3cc94202076305dc7693dfcefd7",
+    "child_sha256": "c41b864230d8d9f0e3db3ec652fe6d4c785cacdb9c7508d94abfc765d1bd5ef9"
+  },
+  "decision": {
+    "result": "reject",
+    "reason": "decoded-weight LDS broadcast and local256 residency cost more than rereading the compact T16 tile into per-wave registers; removing padding does not rescue the architecture",
+    "production_changed": false,
+    "candidate_code_removed": true,
+    "do_not_retry": "decoded 5120-byte Q4 weight broadcast across two row teams without a materially cheaper compressed or hardware multicast primitive"
+  },
+  "commands": {
+    "leaf": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-grouped-exact,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x64-d8-f32-coop-pairs --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-coop-pairs-leaf.json",
+    "trace": "rocprofv3 --kernel-trace -f csv -d /tmp/laguna-q4-coop-pairs-trace.VbPE3s -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x64-d8-f32-coop-pairs --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build"
+  },
+  "repo": {
+    "base_revision": "e35c16c9e4fba5f1b314b78787a2c5c333b1901d",
+    "lineage_check": "blocked before implementation because /home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "next_gate": "byte-neutral Q4 qmicro metadata consumed by the production direct-wave 128x32 body; retain only if actual M512 beats resident T16"
+}
