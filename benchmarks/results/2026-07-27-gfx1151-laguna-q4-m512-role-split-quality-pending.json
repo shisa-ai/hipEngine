@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T06:20:31+09:00",
+  "kind": "hipengine_laguna_q4_m512_role_split_candidate",
+  "status": "quality_pending_candidate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "766c47279bd15b232beb0fce7df11388c18631d2",
+    "candidate_tracked_dirty": true,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "selected_runtime_mode": "mmq128x32_m512_role_gate_d4_up_d8",
+    "rows_below_512": "production D8 dual gate/up plus exact dual fused SiLU/D4 pack",
+    "rows_512_and_above": "D4 gate plus D8 up plus exact separate-input fused SiLU/D4 pack",
+    "resident_sidecar_bytes": 0,
+    "policy_scope": "one global matrix-row bucket; no prompt, token, layer, output, or K-block selection",
+    "production_rollback": "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+  },
+  "correctness": {
+    "red": "the gfx1151 selected gate/up resolver rejected the M512-scoped mode",
+    "green": "the resolver/fusion contract and short-row Q4 production-shape GPU oracle pass",
+    "short_row_fallback_matches_production_bf16_bits": true,
+    "full_model_next_token_id_both_modes": 2930,
+    "absolute_short_category_quality": "pending clean revision",
+    "absolute_m512_category_quality": "pending clean revision"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --require-cached-build --mode retained=mmq128x32_d8_f32_wavecols_direct_doublebuf --mode m512_role=mmq128x32_m512_role_gate_d4_up_d8 --output /tmp/laguna-q4-m512-role-split-production-ab.json",
+    "timing": "one resident owner, mode warmup, seven alternating synchronized pp512 repetitions",
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "activation_pack_included": true,
+    "resident_model_load_excluded": true
+  },
+  "results": {
+    "production_d8_samples_tok_s": [
+      600.5223180976186,
+      623.5395048362709,
+      621.6344799243285,
+      609.0968195998427,
+      619.7817673962755,
+      619.5650254055474,
+      620.9321470638123
+    ],
+    "m512_role_samples_tok_s": [
+      633.0627088978869,
+      628.7903470302575,
+      625.3472929783582,
+      631.2381718832872,
+      629.2380728098016,
+      630.2147896917191,
+      631.6669516164475
+    ],
+    "production_d8_median_tok_s": 619.7817673962755,
+    "m512_role_median_tok_s": 630.2147896917191,
+    "throughput_change_percent": 1.6833380464341685,
+    "production_d8_median_wall_ms": 826.0972279822454,
+    "m512_role_median_wall_ms": 812.4214289709926,
+    "median_wall_saved_ms": 13.67579901125282,
+    "next_token_id": 2930,
+    "candidate_logits_sha256": "1957551cbfecc73c5f3134a96b38bf5e5c7ad08bee4a82efdc0d8f1f345c8405",
+    "candidate_final_hidden_sha256": "a7a75f80733fb5742b4e4557847d5ec3bc3837d7677448f2dcdd60552ed45b80",
+    "candidate_kv_sha256": "c818780b9376a560cc48d69b8da2499abecae1d1a838eb52a0298719463aa989"
+  },
+  "quality_protocol": {
+    "short_comparison": "q4_m512_role_split_short_absolute",
+    "short_matrix_rows": 128,
+    "short_prompt_extension": "none; candidate must take the bit-exact production fallback",
+    "long_comparison": "q4_m512_role_split_long_absolute",
+    "long_matrix_rows": 512,
+    "long_attention_rows": 128,
+    "long_prompt_extension": "each canonical stream is extended to exactly 512 tokens by cycling all ten canonical streams in suite order from that prompt",
+    "gate": "KL <= 0.05 and top-1 agreement >= 90% suite-wide and per category"
+  },
+  "trace": {
+    "new_kernel": false,
+    "evidence": "reuses the traced role body and exact separate-input fused pack from 2026-07-27-gfx1151-laguna-q4-role-split-quality-pending.json"
+  },
+  "validation": {
+    "focused_tests_passed": 27,
+    "commands": [
+      "PYTHONPATH=. .venv/bin/pytest -q tests/test_laguna_grouped_down_category_bench.py tests/test_laguna_moe_gpu.py::test_laguna_selected_gate_up_default_is_backend_qualified tests/test_laguna_moe_gpu.py::test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified 'tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle[GGMLQuantizationType.Q4_K]'",
+      "python3 -m py_compile scripts/laguna_grouped_down_category_bench.py hipengine/runtime/laguna_moe.py",
+      "git diff --check"
+    ],
+    "unrelated_existing_failure": "the Q6_K parameter of the broad MoE oracle fails at its pre-existing Q6-vs-Q4 down-route equality assertion before reaching the new short-row fallback assertion"
+  },
+  "source_run": {
+    "path": "/tmp/laguna-q4-m512-role-split-production-ab.json",
+    "sha256": "10bf60ef128169c005d50ea4f1b028dab61ca2a13dbb43d5f882512fb127f73c"
+  },
+  "decision": {
+    "retain_candidate_surface": true,
+    "promote": false,
+    "reason": "the shape-scoped mode preserves the M512 wall win without exposing D4 at smaller rows, but only the clean short no-change and 512-row full-logit gates can admit it",
+    "next_action": "commit the default-off selector, run both clean category gates, and promote only if both pass"
+  }
+}

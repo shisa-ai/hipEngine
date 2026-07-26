@@ -415,6 +415,11 @@ def test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified() -> None:
         selected_gate_up_mode="mmq128x32_role_gate_d8_up_d4",
         selected_down_mode=production["selected_down_mode"],
     )
+    assert should_fuse(
+        requested=True,
+        selected_gate_up_mode="mmq128x32_m512_role_gate_d4_up_d8",
+        selected_down_mode=production["selected_down_mode"],
+    )
     assert not should_fuse(requested=False, **production)
     assert not should_fuse(
         requested=True,
@@ -534,6 +539,13 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
             "mmq128x32_role_gate_d8_up_d4",
         )
         == "mmq128x32_role_gate_d8_up_d4"
+    )
+    assert (
+        resolve_laguna_selected_gate_up_mode(
+            "hip_gfx1151",
+            "mmq128x32_m512_role_gate_d4_up_d8",
+        )
+        == "mmq128x32_m512_role_gate_d4_up_d8"
     )
     with pytest.raises(ValueError, match="unsupported Laguna selected gate/up mode"):
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unsafe")
@@ -993,6 +1005,27 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         np.testing.assert_array_equal(
             _f32_to_bf16_u16(fused_silu_pack_actual),
             _f32_to_bf16_u16(down_q6_rows64_actual),
+        )
+        shape_role_split_fallback_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            down_rowvec_scratch,
+            rows=3,
+            selected_gate_up_mode=(
+                "mmq128x32_m512_role_gate_d4_up_d8"
+            ),
+            selected_down_mode=(
+                "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+            ),
+            fuse_selected_silu_pack=True,
+        )
+        shape_role_split_fallback_actual = _read_bf16(
+            shape_role_split_fallback_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(shape_role_split_fallback_actual),
+            _f32_to_bf16_u16(fused_silu_pack_actual),
         )
         runtime = _runtime()
         concurrent_scratch = allocate_laguna_moe_scratch(

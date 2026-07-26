@@ -1470,18 +1470,29 @@ Immediate execution queue:
    lifecycle accounting returns to zero. Projection-wide D4 is therefore
    closed in both roles. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-gate-d8-up-d4-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-gate-d8-up-d4-absolute-rejected.json).
+36. **Quality-pending shape candidate:** the new global matrix-row bucket keeps
+   production D8 and the existing dual fused boundary below 512 rows, then
+   selects D4-gate/D8-up and the exact separate-input fused boundary at
+   M512+. Seven paired complete pp512 medians improve
+   **619.782 -> 630.215 tok/s (+1.683%)**, saving **13.676 ms** with token
+   2930 throughout. The selector adds no kernel, resident sidecar, or
+   prompt/token/layer policy. The short-row Q4 production-shape GPU oracle is
+   BF16-bit exact. Admission now requires both the ordinary short category
+   no-change gate and a full-logit gate where every canonical prompt stream
+   is deterministically extended to exactly 512 rows while attention remains
+   tiled at 128. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-m512-role-split-quality-pending.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-m512-role-split-quality-pending.json).
 
 ### Next exact and quality-gated attacks
 
 The projection-role screen cleared its 10-ms economic gate. Its quality gate
 now decides whether repair work is needed:
 
-1. Both projection-wide assignments are rejected. Because the role leaf
-   regresses at M128, is flat at M256, and wins only at M512, scope the next
-   candidate to **M512+** and leave smaller shapes on production D8. Validate
-   the accelerated shape with full logits from all canonical prompt streams
-   extended to 512 rows; the ordinary short-prompt category suite remains a
-   required no-change check, not the admission evidence for M512.
+1. The M512-scoped selector and both quality lanes are implemented. Run the
+   clean ordinary short-prompt category suite first as the exact-fallback
+   no-change check, then run full logits on all canonical prompt streams
+   extended to exactly 512 rows. The long lane uses matrix chunk 512 and
+   independently retains attention tiles of 128.
 2. If M512-wide D4 still misses KL <=0.05, retain D8 and prototype a bounded
    producer-row repair: a uniform fast D4 primary writes F32 gate/up, a
    separately compacted risk-row kernel adds the D8-minus-D4 correction
