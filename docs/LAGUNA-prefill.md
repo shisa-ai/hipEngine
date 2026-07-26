@@ -992,6 +992,15 @@ Immediate execution queue:
    clean counterbalanced A/B with `GPU_MAX_HW_QUEUES=2` in both arms, require
    complete-state equality, and retain only if a cached trace proves real
    overlap without slowing the controller-bound routed families.
+   The candidate passes that gate. Seven queue-matched pp512 pairs improve
+   **560.837 -> 567.577 tok/s (+1.202%, 7/7 wins)** with every full-state
+   digest exact. Clean default-off 512/1K/4K reaches
+   **565.457/525.733/443.027 tok/s**. Cached tracing places **188** shared
+   kernels on the secondary stream and overlaps **100.390/101.241 ms
+   (99.16%)** with caller-stream kernels; despite contention, total kernel span
+   falls **909.598 -> 896.871 ms (-12.727 ms)**. Promote through a gfx1151
+   capability and two-queue process policy, then publish selector-unset before
+   treating this as production.
 
 Post-350 exclusions:
 

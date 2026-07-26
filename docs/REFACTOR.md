@@ -33,6 +33,13 @@ should be removed or collapsed.
   architecture capability only after complete-state/quality/lifecycle and
   traced-overlap gates; then remove the explicit positive selector after clean
   publication while retaining the required sequential fallback.
+- The candidate trigger passes: seven queue-matched complete-state pairs move
+  **560.837 -> 567.577 tok/s (+1.202%, 7/7 wins)**, clean default-off
+  512/1K/4K reaches **565.457/525.733/443.027 tok/s**, and tracing proves
+  **100.390/101.241 ms (99.16%)** of secondary kernel time overlaps caller
+  kernels while kernel span falls **12.727 ms**. Promote through the gfx1151
+  capability and two-queue process policy; retain the explicit selector only
+  through clean selector-unset publication and one later MoE checkpoint.
 
 ## Laguna selected one-plane FP32-scale MMQ modes
 
