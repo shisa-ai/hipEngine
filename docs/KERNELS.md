@@ -142,9 +142,14 @@ stays 2930. Cached tracing names the widen kernel at local256/VGPR24/LDS0 and
 the causal-softmax kernel at local256/VGPR16/LDS32; both use SGPR128 and zero
 scratch, followed by eight QK and eight PV library contractions. The route
 owns **23,068,672 bytes** of scratch and no library workspace. gfx1151 now
-selects it by capability with an explicit session rollback; clean
-selector-unset publication remains the retained-performance gate. Evidence:
-`benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json`.
+selects it by capability with an explicit session rollback. Clean
+selector-unset publication reaches **623.050/563.399/462.430 tok/s** at
+512/1K/4K, improving the prior production **7.907%/3.307%/0.590%**. Corrected
+cached attribution measures **82.763 ms** total pp512 attention versus
+**143.669 ms** before the route. The complete category lane remains max KL
+**0.049542582**, **316/320** top-1; the route-specific pp512 all-exact KL
+improves **0.003246 -> 0.002214** with top-1 2930. Evidence:
+`benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-{candidate,production}.json`.
 
 ### Laguna gfx1151 exact router token reuse
 
