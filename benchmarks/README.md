@@ -3,22 +3,17 @@
 Last updated: **2026-07-26**
 
 The current Laguna arithmetic-prefill production packet is
-[`2026-07-26-gfx1151-laguna-q6-compact-activation-production.json`](results/2026-07-26-gfx1151-laguna-q6-compact-activation-production.json).
-Q6 selected down now omits unused Q8 sum metadata and stores its bounded K16
-quant sums as int16, reducing activation staging **48 -> 40 bytes/row** and
-kernel LDS **5,632 -> 5,120 B** without changing arithmetic or resident bytes.
+[`2026-07-26-gfx1151-laguna-q6-half-row-activation-production.json`](results/2026-07-26-gfx1151-laguna-q6-half-row-activation-production.json).
+Q6 selected down uses the 40-byte compact cache and splits every staged row
+across two threads, so all 128 threads load one 16-byte half and one K16 sum.
+Weights, dots, accumulation, resident bytes, and BF16 output are unchanged.
 Clean selector-unset 512/1K/4K medians are
-**550.625/517.017/431.789 tok/s**, improving the preceding global-qrow6 packet
-by **0.651%/0.748%/0.737%**. Fifteen matched pp512 pairs win **15/15** with
-identical logits, hidden state, KV, token/logit, and cursor. Cached tracing cuts
-Q6 **125.380 -> 119.566 ms (-4.64%)** and total selected down
-**196.157 -> 191.025 ms (-2.62%)**. Absolute maximum KL remains
-**0.049542582**. The active pp512 stretch target is 700 tok/s.
-[`candidate artifact`](results/2026-07-26-gfx1151-laguna-q6-compact-activation-candidate.json).
-The next exact gfx1151 default splits each compact Q6 activation row across
-two threads. Its 23-layer actual-weight screen improves **21/23** layers and
-cuts the sum of layer medians **111.798 -> 111.490 ms (-0.276%)** with exact
-BF16 output; clean selector-unset publication is pending.
+**549.150/514.956/430.300 tok/s**, neutral-to-negative within cross-run spread,
+so no new headline speedup is claimed. The retained exact sub-window improves
+**21/23** actual Q6 layers and **111.798 -> 111.490 ms (-0.276%)**; eleven
+complete-state pp512 pairs are exact and positive **552.562 -> 553.018 tok/s**.
+The clean trace cuts Q6 **119.384 -> 118.568 ms (-0.684%)**. Absolute maximum
+KL remains **0.049542582**. The active pp512 stretch target is 700 tok/s.
 [`half-row candidate`](results/2026-07-26-gfx1151-laguna-q6-half-row-activation-candidate.json).
 
 The exact production path temporarily writes packed gate/up BF16 into the

@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q6_half_row_activation_production",
+  "status": "retained_production_exact_subwindow",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 78777775764
+  },
+  "repo": {
+    "revision": "155b1c604089799f76cc993ae24c927c94082338",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_Q6_HALF_ROW_ACTIVATION=true",
+    "policy": "two threads stage each compact Q6 activation row as independent 16-byte halves on the existing local128 qmicro body",
+    "fallback": "explicit q6_half_row_activation=false resident-session rollback",
+    "arithmetic": "identical activation and weight bytes, ordered K32 integer dots, F32 accumulation, output ownership, and BF16 stores"
+  },
+  "selector_unset": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/2026-07-26-gfx1151-laguna-q6-half-row-production-clean.json",
+    "pp512_samples_tok_s": [
+      563.1697970328115,
+      548.904680711987,
+      549.1504137913926
+    ],
+    "pp512_median_tok_s": 549.1504137913926,
+    "pp1024_samples_tok_s": [
+      519.2788771557429,
+      514.796133493563,
+      514.955900429196
+    ],
+    "pp1024_median_tok_s": 514.955900429196,
+    "pp4096_samples_tok_s": [
+      438.4926316069646,
+      430.29972589061913,
+      429.0234999313195
+    ],
+    "pp4096_median_tok_s": 430.29972589061913,
+    "previous_production": {
+      "pp512_tok_s": 550.6246318991352,
+      "pp1024_tok_s": 517.0173436359551,
+      "pp4096_tok_s": 431.7886604309477
+    },
+    "change_percent": {
+      "pp512": -0.267735590152951,
+      "pp1024": -0.3987183857821486,
+      "pp4096": -0.3448294679259334
+    },
+    "interpretation": "clean headline is neutral-to-negative within cross-run spread; retention is based on exact same-session model A/B and repeated all-layer event timing",
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "f4c30f4b1b47ff5439bcd63899a0596f90718f6ad3a36cbd429d3a64b77c832e"
+  },
+  "retained_subwindow": {
+    "all_q6_layers": 23,
+    "improved_layers": 21,
+    "production_sum_of_layer_medians_ms": 111.79828872680663,
+    "candidate_sum_of_layer_medians_ms": 111.48960494995117,
+    "change_percent": -0.27610778337562314,
+    "bf16_mismatches": 0,
+    "complete_pp512_ab_tok_s": {
+      "production": 552.5617530681874,
+      "candidate": 553.0178277724733,
+      "change_percent": 0.08253823246966441,
+      "candidate_wins": "7/11",
+      "complete_state_exact": true
+    },
+    "candidate_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-q6-half-row-activation-candidate.json"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q6-half-row-production-rocprof -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-half-row-production-rocprof-child.json",
+    "pp512_tok_s": 551.4240461533244,
+    "pp512_dispatches": 1792,
+    "pp512_synchronized_wall_ms": 928.5050290636718,
+    "pp512_kernel_span_ms": 923.63964,
+    "pp512_kernel_sum_ms": 912.980472,
+    "pp512_families_ms": {
+      "selected_q4_gate_up": 315.440647,
+      "selected_q4_q6_down": 190.973547,
+      "global_attention": 25.944613,
+      "swa_attention": 127.312244,
+      "source_f16_projection": 124.361493,
+      "dense_shared_quant_projection": 53.445776,
+      "router": 23.635476,
+      "remainder": 51.866676
+    },
+    "selected_down": {
+      "previous_total_ms": 191.024835,
+      "current_total_ms": 190.973547,
+      "change_percent": -0.02684886496564509,
+      "q4_calls": 24,
+      "q4_ms": 72.405921,
+      "q6_calls": 23,
+      "q6_previous_ms": 119.383924,
+      "q6_ms": 118.567626,
+      "q6_change_percent": -0.6837587278501478,
+      "q6_median_call_ms": 5.163049,
+      "q6_resources": {
+        "workgroup_size": 128,
+        "vgpr": 88,
+        "sgpr": 128,
+        "lds_bytes": 5120,
+        "scratch_bytes": 0
+      }
+    },
+    "child_sha256": "87ff6844e9ec92734f8978b0c3a348936d09bbe11cbe0e422f7686b4ddd65659",
+    "trace_sha256": "e951e60212d9fb762d2a45e97e5bd6d808978aaeb8ef6906f1d5934f4661c4e2",
+    "summary_sha256": "04317b05abe06ac2fd4799d27292541eb96276305e68579567d7a4cdff60142b"
+  },
+  "correctness": {
+    "transfer_basis": "The primitive and all 23 actual-weight leaf screens are BF16-byte exact; eleven matched full-model A/B pairs preserve logits, hidden state, KV, next token/logit, and cursor.",
+    "max_kl_divergence": 0.04954258196634279,
+    "top1_agreement": "316/320",
+    "poolside_oracle_pass": true,
+    "decode_neutral": true,
+    "deterministic": true,
+    "lifecycle_pass": true
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "retention_basis": "exact repeated Q6 sub-window improvement plus positive same-session complete-model A/B; no headline speedup claimed",
+    "production_pp512_tok_s": 549.1504137913926,
+    "next_target_tok_s": 700.0,
+    "wall_ms_to_700": 200.92072148208638,
+    "next_measured_bottlenecks": [
+      "selected Q4 gate/up: 315.441 ms",
+      "selected Q4/Q6 down: 190.974 ms",
+      "global plus SWA attention: 153.257 ms",
+      "source-F16 projection: 124.361 ms"
+    ]
+  }
+}

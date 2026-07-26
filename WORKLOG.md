@@ -181532,3 +181532,26 @@ Vulkan local sizes verbatim will close the measured gap.
   session rollback and publish
   `benchmarks/results/2026-07-26-gfx1151-laguna-q6-half-row-activation-candidate.json`.
   Run clean selector-unset 512/1K/4K next.
+
+## 2026-07-26 — Publish exact-subwindow Q6 half-row production
+
+- Clean tracked revision `155b1c604` measures
+  **549.150/514.956/430.300 tok/s** median at 512/1K/4K. This is
+  **-0.268%/-0.399%/-0.345%** versus the preceding clean packet and within
+  its cross-run spread, so no headline speedup is claimed. Tokens remain
+  **2930/95/7772**, positions/repeats are exact, and all
+  **78,777,775,764 tracked bytes** return to zero. Raw SHA-256 is
+  `f4c30f4b1b47ff5439bcd63899a0596f90718f6ad3a36cbd429d3a64b77c832e`.
+- Cached selector-unset tracing independently measures **551.424 tok/s**,
+  **912.980 ms** kernel sum, and **923.640 ms** span across 1,792 dispatches.
+  The 23 half-row Q6 calls total **118.568 ms** versus the preceding clean
+  trace's **119.384 ms (-0.684%)**, with unchanged
+  local128/VGPR88/SGPR128/LDS5120B/scratch0. Q4 variation leaves total selected
+  down essentially flat at **190.974 ms**. Trace SHA-256 is
+  `e951e60212d9fb762d2a45e97e5bd6d808978aaeb8ef6906f1d5934f4661c4e2`.
+- Retain the exact default under the repository's verified-subwindow rule and
+  publish
+  `benchmarks/results/2026-07-26-gfx1151-laguna-q6-half-row-activation-production.json`.
+  The clean wall leaves **200.921 ms** to 700; the refreshed table still
+  requires a materially larger selected-down, attention, gate/up, or
+  source-F16 design.
