@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-26",
+  "status": "rejected_and_decoder_removed",
+  "pass": false,
+  "performance_claim": false,
+  "system": {
+    "device": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queues": 1
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "weight_shape": "actual layer-1 K3072/N1024 gate+up"
+  },
+  "layout": {
+    "name": "Q4_K X16",
+    "description": "[expert,out_pack16,k_block,16 raw Q4_K blocks]",
+    "pair_bytes": {
+      "x16": 905969664,
+      "x8": 905969664,
+      "t16": 931135488
+    },
+    "sidecar_bytes": 0,
+    "temporary_comparison_peak_bytes": 2743452288,
+    "temporary_comparison_after_bytes": 0
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_x8_exact_decode_bench.py --producer-rows 1,2,4,8 --warmups 3 --samples 11 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/2026-07-26-gfx1151-laguna-q4-k-x16-exact-decode-screen.json",
+    "producer_rows": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "topk": 10,
+    "warmups": 3,
+    "samples": 11,
+    "burst": 5,
+    "schedule": "counter-rotated T16/X8/X16"
+  },
+  "results": {
+    "c1": {
+      "t16_ms": 0.163258004,
+      "x8_ms": 0.178726804,
+      "x16_ms": 0.175753200,
+      "x16_over_t16": 1.0765365,
+      "x16_vs_t16_percent": 7.65365,
+      "bf16_mismatches": 0
+    },
+    "c2": {
+      "t16_ms": 0.352933407,
+      "x8_ms": 0.361749792,
+      "x16_ms": 0.359698009,
+      "x16_over_t16": 1.0191668,
+      "x16_vs_t16_percent": 1.91668,
+      "bf16_mismatches": 0
+    },
+    "c4": {
+      "t16_ms": 0.691071606,
+      "x8_ms": 0.689380407,
+      "x16_ms": 0.683010197,
+      "x16_over_t16": 0.9883349,
+      "x16_vs_t16_percent": -1.16651,
+      "bf16_mismatches": 0
+    },
+    "c8": {
+      "t16_ms": 1.368045425,
+      "x8_ms": 1.347623444,
+      "x16_ms": 1.329821968,
+      "x16_over_t16": 0.9720598,
+      "x16_vs_t16_percent": -2.79402,
+      "bf16_mismatches": 0
+    }
+  },
+  "gate": {
+    "bf16_exact_all_shapes": true,
+    "all_shapes_x16_over_t16_lte_1_02": false,
+    "failure": "c1 is 7.65365% slower than resident T16"
+  },
+  "decision": {
+    "runtime_or_kernel_retained": false,
+    "host_roundtrip_oracle_retained": true,
+    "prefill_screen_run": false,
+    "production_unchanged_tok_s": 551.459,
+    "next_premise": "T16-local Q payload plus cooperative 4-column/3-byte 6-bit metadata records"
+  },
+  "raw_result_sha256": "c039cfc173845abcdde0678a480d9f057ba261e23a9d4a2f138641d49bf0fcae"
+}
