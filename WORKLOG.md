@@ -185379,3 +185379,71 @@ Vulkan local sizes verbatim will close the measured gap.
   attention kernels/oracles, and resident runtime ownership. JSON, Python
   compilation, and `git diff --check` pass. LC-2 is closed; LC-3 attention
   query-chunk widening is next.
+
+## 2026-07-28 — Promote LC-3 global M2048 attention queries
+
+- The required broad lineage audit could not start because
+  `docs/source_lineage.json` still names missing read-only repository
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. The Laguna-specific kernel
+  filter selected zero external sources, consistent with this being an
+  in-tree extension rather than a port.
+- RED extended the SWA shape contract to M256/M2048 and the bulk-cache
+  contract to require a legal M2048 global preappend while preserving the SWA
+  ring's >512-row rejection. GREEN parameterizes packed hipBLASLt query rows,
+  descriptor strides, bounded scratch, transpose/softmax/merge launches, and
+  global preappend metadata through M2048.
+- Exhaustive 32-QK x 32-PV screens at one 4K K/V block measure global
+  inclusive per-row cost at
+  **43.309/35.008/32.123/28.329/26.382 us** for
+  M128/M256/M512/M1024/M2048. M2048 is **39.09%** below M128, selecting
+  QK15/PV2 with maximum absolute **3.446e-8** and
+  **1,796,734,976 bytes** bounded scratch. The first 2K block selects
+  QK15/PV1 with maximum absolute **4.284e-8**. Raw SHA-256 by ascending
+  width:
+  `6ce3915fc8e7c43a949526dd151242f30b13d6d228f0771f468ea49c9cb2652c`,
+  `21c342729fe33c012e9aac666ddae57694c33356652a37e1e02da0cdccf92856`,
+  `c6973a7c3893c9c2b9ba08085df272f2f56b2e532c1d84bd68844cb0a9f116e8`,
+  `9f2de19742ec7ca791f587b8959a36c198b2ccef0595b09e63e7a3ccc46922d3`,
+  `6a19b205e0bf192a24b674c6a79ae3e35eb6e729de8a99d05eac2f1b016f2f2b`;
+  2K-block SHA-256:
+  `333dc2ea1af47c0863555ee95ce3658874a146fd8ea002e42cb57bb5a6cfb495`.
+- The same width screen rejects SWA above M128. Its `511 + M` union spends
+  increasing work on masked query/current pairs, so inclusive per-row cost
+  rises **5.370/7.875/11.123/12.439/21.124 us**. M128/M256/M512 compare
+  directly to qrow2 within maximum absolute **5.215e-8**; M1024/M2048 are
+  capacity/performance diagnostics because the retained physical-ring API
+  correctly refuses a single slice above 512. Raw SHA-256 by ascending width:
+  `e72a8e7149b658af45cab37dc1ac673af4337fa24b9a98e2a64d95fdfe602ed9`,
+  `c4bcfdac781df1d4e46439a33614a939fb2dbf89de25fe8faf80c15ac4168ac6`,
+  `007eab215d57e67ebe030352dcc257b9403396113c02d7c0af1aaafc2d180fea`,
+  `51d4f78fd7147af78cd99c5f846cc132b12e73666116d25096dc756b45cc1a7a`,
+  `a01decb044738bdfbcc03eb1e07529457e9fef9f97e91d4724dfdd4b444bd9cc`.
+- Complete-model gates improve retained LC-2
+  **579.269 -> 611.795 tok/s (+5.615%)** at 4K,
+  **392.424 -> 472.766 (+20.473%)** at 16K, and
+  **177.222 -> 246.537 (+39.112%)** at 64K. Mandatory 128K improves
+  **103.520263 -> 149.684132 tok/s (+44.594%)** and
+  **1,266.148257 -> 875.657283 seconds**, saving **390.490974 seconds**.
+  This is **+107.494%** versus original LC-0 and **+128.233%** versus
+  same-GGUF Vulkan. Tokens 7772/81/69407/22746, positions, finite output, and
+  lifecycle pass. Short/directional/128K raw SHA-256:
+  `bbf8467dd805ce4c1423e1d622973ecfd955e057c7e589c85e7d477d728d4ecd`,
+  `97435027ec340d697b337acefb2774dec0aa586efe50824243b279c3c670b241`,
+  `6d36c1843d9e16a28ca67d867caacf99d4b3cde9912202bd449514dc0259a3bb`.
+- Cached M2048/4K tracing names query transpose and tile merge at
+  local256/VGPR24/SGPR128, block widen at local256/VGPR24/SGPR128, and tile
+  softmax at local32/VGPR16/SGPR128; all report LDS0/scratch0. Trace/child
+  SHA-256:
+  `6db309ecc09d64998f2085971663a95b21c961c9fcba826733526b01413dd105` /
+  `fd5af75c7e1b97486cb6ed33cc6fb6cf5884faecf3b4d221b8199b201f42b470`.
+- Promoted gfx1151
+  `LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS=2048`. Selector-unset 512/1K/4K
+  reports global rows 2048, SWA rows 128, exact tokens, and
+  **626.642/672.274/611.795 tok/s**. The expanded diagnostic bundle first had
+  **60/61 pass** with one stale constructor-bypass stub; adding its explicit
+  M128 field repaired the isolated node. Wider SWA launch support was then
+  removed after its measured rejection. Because shared promotion wiring
+  changed afterward, the final retained affected bundle was rerun and passes
+  **60/60**. JSON, Python compilation, and `git diff --check` pass. Accepted artifact:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-lc3-global-m2048-production.json`.
+  LC-3 is closed; LC-4 dense contiguous-cache specialization is next.

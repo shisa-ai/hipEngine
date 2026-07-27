@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -16,7 +17,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from hipengine.core.hip import get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -48,9 +49,19 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument(
+        "--rows",
+        type=int,
+        choices=(128, 256, 512, 1024, 2048),
+        default=128,
+    )
     parser.add_argument("--screen-algorithms", action="store_true")
     parser.add_argument("--block-context", type=int)
     parser.add_argument("--only-128k", action="store_true")
+    parser.add_argument(
+        "--contexts",
+        help="comma-separated context lengths; overrides the default sweep",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -91,8 +102,8 @@ def _time_ms(runtime, fn) -> float:
         runtime.event_destroy(start)
 
 
-def _copy_f32(runtime, buffer) -> np.ndarray:
-    host = np.empty((ROWS, Q_HEADS, HEAD_DIM), dtype=np.float32)
+def _copy_f32(runtime, buffer, rows: int) -> np.ndarray:
+    host = np.empty((rows, Q_HEADS, HEAD_DIM), dtype=np.float32)
     copy_device_to_host(
         host_array_ptr(host),
         buffer,
@@ -144,14 +155,15 @@ def _append_rows(
 def run(args: argparse.Namespace) -> dict[str, object]:
     if args.samples <= 0 or args.warmups < 0:
         raise ValueError("samples must be positive and warmups non-negative")
+    if args.only_128k and args.contexts:
+        raise ValueError("--only-128k and --contexts are mutually exclusive")
+    query_rows = int(args.rows)
     if args.block_context is not None and (
         args.block_context < ROWS
         or args.block_context % ROWS != 0
-        or args.screen_algorithms
     ):
         raise ValueError(
-            "block-context must be an M128 multiple and cannot screen "
-            "whole-context algorithms"
+            "block-context must be an M128 multiple"
         )
     tracked = _tracked_status()
     if tracked and not args.allow_dirty:
@@ -160,7 +172,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
             args.compiler_version_file
         )
-    contexts = (CONTEXT_128K,) if args.only_128k else CONTEXTS
+    if args.contexts:
+        contexts = tuple(int(value) for value in args.contexts.split(","))
+        if (
+            not contexts
+            or any(context < query_rows for context in contexts)
+            or tuple(sorted(set(contexts))) != contexts
+        ):
+            raise ValueError(
+                "contexts must be unique ascending integers >= rows"
+            )
+    else:
+        contexts = (CONTEXT_128K,) if args.only_128k else CONTEXTS
 
     before = memory_stats()
     runtime = get_hip_runtime()
@@ -187,17 +210,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         runtime=runtime,
         packed_queries=True,
         wave_rows_softmax=True,
-        max_context=contexts[-1],
+        max_context=max(contexts[-1], args.block_context or 0),
         max_q_heads=Q_HEADS,
         block_context=args.block_context,
+        query_rows=query_rows,
     )
     scratch_nbytes = route.scratch_nbytes
     allocations = []
     results: list[dict[str, object]] = []
     rng = np.random.default_rng(20260727)
     try:
-        kv_bytes = FILL_ROWS * KV_HEADS * HEAD_DIM * 4
-        output_bytes = ROWS * Q_HEADS * HEAD_DIM * 4
+        kv_bytes = max(FILL_ROWS, query_rows) * KV_HEADS * HEAD_DIM * 4
+        output_bytes = query_rows * Q_HEADS * HEAD_DIM * 4
         key_device = malloc(kv_bytes, runtime=runtime)
         value_device = malloc(kv_bytes, runtime=runtime)
         query_device = malloc(output_bytes, runtime=runtime)
@@ -208,7 +232,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )
 
         for context in contexts:
-            final_start = context - ROWS
+            final_start = context - query_rows
             while cache.position + 1 < final_start:
                 start = cache.position + 1
                 rows = min(FILL_ROWS, final_start - start)
@@ -223,18 +247,28 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     rows=rows,
                 )
                 cache.commit_rows()
-            _append_rows(
-                cache=cache,
-                library=library,
-                runtime=runtime,
-                rng=rng,
-                key_device=key_device,
-                value_device=value_device,
-                start=final_start,
-                rows=ROWS,
+            for row_offset in range(0, query_rows, FILL_ROWS):
+                current_rows = min(FILL_ROWS, query_rows - row_offset)
+                _append_rows(
+                    cache=cache,
+                    library=library,
+                    runtime=runtime,
+                    rng=rng,
+                    key_device=key_device,
+                    value_device=value_device,
+                    start=final_start + row_offset,
+                    rows=current_rows,
+                )
+                cache.commit_rows()
+            row_position = ctypes.c_int64(final_start)
+            runtime.memcpy(
+                cache.layer(0).spans.row_positions.ptr,
+                ctypes.addressof(row_position),
+                ctypes.sizeof(row_position),
+                HipMemcpyKind.HOST_TO_DEVICE,
             )
             query = rng.normal(
-                0.0, 0.12, size=(ROWS, Q_HEADS, HEAD_DIM)
+                0.0, 0.12, size=(query_rows, Q_HEADS, HEAD_DIM)
             ).astype(np.float32)
             copy_host_to_device(
                 query_device,
@@ -256,7 +290,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     layer.value_cache.ptr,
                     qrow6_out.ptr,
                     layer.spans,
-                    ROWS,
+                    query_rows,
                     layer.capacity,
                     Q_HEADS,
                     KV_HEADS,
@@ -273,7 +307,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     layer.value_cache.ptr,
                     blas_out.ptr,
                     layer.spans,
-                    rows=ROWS,
+                    rows=query_rows,
                     start_position=final_start,
                     num_q_heads=Q_HEADS,
                     num_kv_heads=KV_HEADS,
@@ -290,9 +324,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             }
             qk_screen: list[dict[str, object]] = []
             pv_screen: list[dict[str, object]] = []
+            algorithm_context = args.block_context or context
             qk_count, pv_count = route.algorithm_counts(
                 num_q_heads=Q_HEADS,
-                context=context,
+                context=algorithm_context,
             )
             if args.screen_algorithms and context > 512:
                 for index in range(qk_count):
@@ -347,8 +382,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             for mode in MODES:
                 functions[mode]()
             runtime.device_synchronize()
-            expected = _copy_f32(runtime, qrow6_out)
-            actual = _copy_f32(runtime, blas_out)
+            expected = _copy_f32(runtime, qrow6_out, query_rows)
+            actual = _copy_f32(runtime, blas_out, query_rows)
             delta = np.abs(expected - actual)
             medians = {
                 mode: statistics.median(values)
@@ -378,7 +413,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     "finite": bool(np.isfinite(actual).all()),
                 }
             )
-            cache.commit_rows()
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
@@ -395,15 +429,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "command": " ".join(shlex.quote(value) for value in sys.argv),
         "protocol": {
             "contexts": contexts,
-            "rows": ROWS,
+            "rows": query_rows,
             "samples": args.samples,
             "warmups": args.warmups,
             "order": "two-mode alternating counter-rotation",
             "cache_capacity": contexts[-1],
             "score_scratch": (
-                "F32 [48,128,block_context]"
+                f"F32 [48,{query_rows},block_context]"
                 if args.block_context is not None
-                else "F32 [48,128,max_context]"
+                else f"F32 [48,{query_rows},max_context]"
             ),
             "block_context": args.block_context,
             "inclusive_candidate": "BF16 cache widen + query transpose + F32 QK + wave-row softmax + F32 PV + output transpose",

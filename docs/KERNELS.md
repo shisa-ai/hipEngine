@@ -233,6 +233,22 @@ improves **99.100 -> 103.520 tok/s (+4.460%)** with exact state and
 `LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT`. Evidence:
 `benchmarks/results/2026-07-28-gfx1151-laguna-lc2-swa-hipblaslt-production.json`.
 
+LC-3 keeps SWA at M128 and widens only complete global matrix chunks. At one
+4K K/V block, exhaustive M128/M256/M512/M1024/M2048 screens reduce inclusive
+global cost per row **43.309 -> 35.008 -> 32.123 -> 28.329 -> 26.382 us**;
+M2048 selects QK15/PV2, uses **1,796,734,976 bytes** bounded scratch, and
+stays within maximum absolute **4.284e-8** of qrow6. The companion 2K-context
+screen selects QK15/PV1. SWA widening is rejected because the `511 + M` union
+increasingly computes masked query/current pairs: per-row cost rises
+**5.370 -> 21.124 us** from M128 to M2048. The gfx1151 capability
+`LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS=2048` therefore applies only to complete
+global M2048 chunks; SWA, partial tails, verifier, decode, evicted, and
+unmeasured paths remain M128. Complete 4K/16K/64K improves
+**5.615%/20.473%/39.112%** and mandatory 128K improves
+**103.520 -> 149.684 tok/s (+44.594%)**, with exact tokens/cursors and full
+lifecycle recovery. Evidence:
+`benchmarks/results/2026-07-28-gfx1151-laguna-lc3-global-m2048-production.json`.
+
 The subsequent Q4 row64/local256 screen is rejected and removed. Eight waves
 split 64 routed rows while preserving 32 FP32 accumulators/lane. Natural
 routing nevertheless reduces M256/M512 tiles only **5.44%/16.84%**.

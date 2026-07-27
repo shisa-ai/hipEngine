@@ -4131,14 +4131,39 @@ Evidence:
 
 #### LC-3 — widen the attention query chunk
 
-- Screen attention rows **256/512/1,024/2,048** independently of matrix rows.
-  llama.cpp's comparator uses ubatch 512; hipEngine currently slices every
-  matrix chunk into 128-row attention transactions.
-- Widen only after LC-1/LC-2 can reuse query and K/V tiles. Merely placing more
-  independent scalar Q-row workgroups in one launch is not an architectural
-  win.
-- Gate pending-position views, preappend ordering, dense initial state, partial
-  tails, and final cache/cursor equivalence at every admitted query size.
+- **Closed and retained for global attention at M2,048.** Exhaustive
+  zero-workspace algorithm screens at a 4K K/V block measure inclusive global
+  cost per row at **43.309/35.008/32.123/28.329/26.382 us** for
+  M128/M256/M512/M1,024/M2,048. M2,048 is **39.09%** below M128 per row;
+  QK15/PV1 serves the first 2K context and QK15/PV2 serves full 4K blocks.
+  Maximum absolute error across the screened global shapes is **4.284e-8**.
+- The production selector lets each complete M2,048 matrix chunk feed one
+  global-attention transaction on the 12 full-attention layers. It preserves
+  the exact 4K-block online state and bounded BF16-to-F32 cache widen from
+  LC-1. Partial matrix tails, verifier, decode, eviction, and unmeasured
+  backends retain the established M128 routes.
+- **SWA widening is rejected.** Its union QK multiplies M queries by
+  `511 + M` keys even though every row sees only 512 keys, so masked
+  query/current work grows with the tile. Inclusive cost per row rises
+  **5.370 -> 7.875 -> 11.123 -> 12.439 -> 21.124 us** from M128 through
+  M2,048. M128/M256/M512 remain within maximum absolute **5.215e-8** of the
+  retained qrow2 oracle. Production SWA therefore remains M128.
+- Complete-model gates improve retained LC-2
+  **579.269 -> 611.795 tok/s (+5.615%)** at 4K,
+  **392.424 -> 472.766 (+20.473%)** at 16K, and
+  **177.222 -> 246.537 (+39.112%)** at 64K. Mandatory 128K improves
+  **103.520 -> 149.684 tok/s (+44.594%)** and
+  **1,266.148 -> 875.657 seconds**, saving **390.491 seconds**. This is
+  **+107.494%** versus original LC-0 and **+128.233%** versus same-GGUF
+  llama.cpp Vulkan. Tokens 7772/81/69407/22746, final positions, finite
+  output, and lifecycle all pass.
+- Selector-unset validation reports global attention rows **2,048**, SWA rows
+  **128**, and **611.795 tok/s** at 4K. gfx1151 promotes
+  `LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS=2048`. LC-4 dense contiguous-cache
+  specialization is next.
+
+Evidence:
+[`global-M2048 production`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc3-global-m2048-production.json).
 
 #### LC-4 — dense-initial contiguous cache specialization
 

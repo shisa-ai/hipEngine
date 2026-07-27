@@ -442,13 +442,19 @@ class LagunaKVCache:
         *,
         row_offset: int = 0,
     ) -> bool:
-        """Return whether one M128 tile can be cached before causal attention."""
+        """Return whether one bounded tile can be cached before causal attention."""
 
         state = self.layer(layer_id)
         offset = int(row_offset)
         count = int(rows)
         if (
-            count != 128
+            (
+                count != 128
+                and not (
+                    state.attention_type == FULL_ATTENTION
+                    and count in {256, 512, 1_024, 2_048}
+                )
+            )
             or not self._pending_positions
             or offset < 0
             or offset + count > len(self._pending_positions)
@@ -753,8 +759,17 @@ class LagunaKVCache:
         count = int(rows)
         if offset < 0 or count <= 0 or offset + count > len(self._pending_positions):
             raise ValueError("bulk KV slice must fit the prepared position count")
-        if count > self.sliding_window:
+        if (
+            spans.spans_mode == "sliding_ring"
+            and count > self.sliding_window
+        ):
             raise ValueError("bulk KV operations must fit the SWA ring capacity")
+        if (
+            offset == 0
+            and count == len(self._pending_positions)
+            and row_positions_ptr is None
+        ):
+            return spans
         if (
             len(self._pending_positions) > self.sliding_window
             and row_positions_ptr is None
@@ -762,8 +777,6 @@ class LagunaKVCache:
             raise ValueError(
                 "wide bulk KV operations require a resident row_positions_ptr"
             )
-        if offset == 0 and count == len(self._pending_positions) and row_positions_ptr is None:
-            return spans
         if row_positions_ptr is None:
             raise ValueError("bulk KV slice requires a resident row_positions_ptr")
         assert spans.row_positions is not None

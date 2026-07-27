@@ -39,6 +39,7 @@ _PRODUCTION_MAX_CONTEXT = 512
 _MAX_Q_HEADS = 72
 _KV_HEADS = 8
 _HEAD_DIM = 128
+_WIDE_QUERY_ROWS = (128, 256, 512, 1024, 2048)
 
 # Best zero-workspace heuristic indices from the bounded gfx1151 F32
 # contraction screen. Keys are (query heads, context, QK/PV).
@@ -84,6 +85,13 @@ _PACKED_ALGORITHM_INDEX = {
     (48, 4096, "pv"): 25,
 }
 
+_WIDE_PACKED_ALGORITHM_INDEX = {
+    (2_048, 48, 2_048, "qk"): 15,
+    (2_048, 48, 2_048, "pv"): 1,
+    (2_048, 48, 4_096, "qk"): 15,
+    (2_048, 48, 4_096, "pv"): 2,
+}
+
 # Robust context bands from the gfx1151 LC-1 packed-F32 screens. The production
 # loop visits every M128 context, so use algorithms that stayed near the winner
 # across adjacent anchor shapes rather than overfitting exact benchmark points.
@@ -98,12 +106,21 @@ _LONG_PACKED_ALGORITHM_BANDS = (
 
 def _preferred_algorithm_index(
     *,
+    query_rows: int,
     query_heads: int,
     context: int,
     operation: str,
     packed_queries: bool,
 ) -> int:
     key = (int(query_heads), int(context), str(operation))
+    wide_key = (
+        int(query_rows),
+        int(query_heads),
+        int(context),
+        str(operation),
+    )
+    if packed_queries and wide_key in _WIDE_PACKED_ALGORITHM_INDEX:
+        return int(_WIDE_PACKED_ALGORITHM_INDEX[wide_key])
     table = _PACKED_ALGORITHM_INDEX if packed_queries else _ALGORITHM_INDEX
     selected = table.get(key)
     if selected is not None:
@@ -327,15 +344,22 @@ class LagunaAttentionHipblasLt:
         max_context: int = _PRODUCTION_MAX_CONTEXT,
         max_q_heads: int = _MAX_Q_HEADS,
         block_context: int | None = None,
+        query_rows: int = _ROWS,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.packed_queries = bool(packed_queries)
         self.wave_rows_softmax = bool(wave_rows_softmax)
         self.max_context = int(max_context)
         self.max_q_heads = int(max_q_heads)
+        self.query_rows = int(query_rows)
         self.block_context = (
             None if block_context is None else int(block_context)
         )
+        if self.query_rows not in _WIDE_QUERY_ROWS:
+            raise ValueError(
+                "Laguna attention query_rows must be one of "
+                "128/256/512/1024/2048"
+            )
         if (
             self.max_context < _PRODUCTION_MAX_CONTEXT
             or self.max_context > 131072
@@ -370,14 +394,16 @@ class LagunaAttentionHipblasLt:
                 scratch_context * _KV_HEADS * _HEAD_DIM * 4
             )
             self.scores_f32 = self._allocate(
-                self.max_q_heads * _ROWS * scratch_context * 4
+                self.max_q_heads * self.query_rows * scratch_context * 4
             )
             self.head_major_f32 = (
-                self._allocate(self.max_q_heads * _ROWS * _HEAD_DIM * 4)
+                self._allocate(
+                    self.max_q_heads * self.query_rows * _HEAD_DIM * 4
+                )
                 if self.packed_queries
                 else None
             )
-            blocked_rows = self.max_q_heads * _ROWS
+            blocked_rows = self.max_q_heads * self.query_rows
             self.tile_output_f32 = (
                 self._allocate(blocked_rows * _HEAD_DIM * 4)
                 if self.block_context is not None
@@ -449,7 +475,7 @@ class LagunaAttentionHipblasLt:
             )
         context = int(start_position) + int(rows)
         return (
-            int(rows) == _ROWS
+            int(rows) == self.query_rows
             and _ROWS <= context <= self.max_context
             and context % _ROWS == 0
             and int(num_q_heads) in {48, 72}
@@ -466,7 +492,11 @@ class LagunaAttentionHipblasLt:
         q_heads, parsed_context = key
         q_group = q_heads // _KV_HEADS
         batch_count = _KV_HEADS if self.packed_queries else q_group
-        wide_rows = _ROWS * q_group if self.packed_queries else _ROWS
+        wide_rows = (
+            self.query_rows * q_group
+            if self.packed_queries
+            else self.query_rows
+        )
         query_leading = _HEAD_DIM if self.packed_queries else q_heads * _HEAD_DIM
         query_batch_stride = (
             wide_rows * _HEAD_DIM if self.packed_queries else _HEAD_DIM
@@ -507,6 +537,7 @@ class LagunaAttentionHipblasLt:
             ),
             preferred_index=(
                 _preferred_algorithm_index(
+                    query_rows=self.query_rows,
                     query_heads=q_heads,
                     context=parsed_context,
                     operation="qk",
@@ -550,6 +581,7 @@ class LagunaAttentionHipblasLt:
                 ),
                 preferred_index=(
                     _preferred_algorithm_index(
+                        query_rows=self.query_rows,
                         query_heads=q_heads,
                         context=parsed_context,
                         operation="pv",
@@ -614,6 +646,8 @@ class LagunaAttentionHipblasLt:
                 kv_library=kv_library,
                 query_is_packed=query_is_packed,
                 unpack_output=unpack_output,
+                qk_algorithm_index=qk_algorithm_index,
+                pv_algorithm_index=pv_algorithm_index,
             )
             return
         q_heads = int(num_q_heads)
@@ -663,7 +697,7 @@ class LagunaAttentionHipblasLt:
                     int(query_ptr)
                     + kv_head * q_group * _HEAD_DIM * 4,
                     self.scores_f32.ptr
-                    + kv_head * q_group * _ROWS * context * 4,
+                    + kv_head * q_group * self.query_rows * context * 4,
                     stream=stream,
                     algorithm_index=qk_algorithm_index,
                 )
@@ -719,7 +753,7 @@ class LagunaAttentionHipblasLt:
                 problems.pv.launch(
                     self.value_f32.ptr + kv_head * _HEAD_DIM * 4,
                     self.scores_f32.ptr
-                    + kv_head * q_group * _ROWS * context * 4,
+                    + kv_head * q_group * self.query_rows * context * 4,
                     int(out_ptr)
                     + kv_head * q_group * _HEAD_DIM * 4,
                     stream=stream,
@@ -744,6 +778,8 @@ class LagunaAttentionHipblasLt:
         kv_library,
         query_is_packed: bool,
         unpack_output: bool,
+        qk_algorithm_index: int | None,
+        pv_algorithm_index: int | None,
     ) -> None:
         assert self.block_context is not None
         assert self.head_major_f32 is not None
@@ -793,6 +829,7 @@ class LagunaAttentionHipblasLt:
                 query_head_major_ptr,
                 self.scores_f32.ptr,
                 stream=stream,
+                algorithm_index=qk_algorithm_index,
             )
             laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans(
                 self.scores_f32.ptr,
@@ -816,6 +853,7 @@ class LagunaAttentionHipblasLt:
                 self.scores_f32.ptr,
                 self.tile_output_f32.ptr,
                 stream=stream,
+                algorithm_index=pv_algorithm_index,
             )
             final_output_ptr = (
                 self.accum_head_major_f32.ptr

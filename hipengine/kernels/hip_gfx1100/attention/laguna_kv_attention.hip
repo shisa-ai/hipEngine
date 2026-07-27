@@ -2458,7 +2458,7 @@ extern "C" int hipengine_laguna_dense_initial_query_head_transpose_f32(
     int64_t head_dim,
     int to_head_major,
     hipStream_t stream) {
-  if (input == nullptr || output == nullptr || rows <= 0 || rows > 128 ||
+  if (input == nullptr || output == nullptr || rows <= 0 || rows > 2048 ||
       (num_q_heads != 48 && num_q_heads != 72) || head_dim != 128 ||
       (to_head_major != 0 && to_head_major != 1)) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -2508,7 +2508,7 @@ extern "C" int hipengine_laguna_dense_initial_causal_softmax_f32_spans(
     hipStream_t stream) {
   if (scores == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
-      row_positions == nullptr || rows <= 0 || rows > 128 ||
+      row_positions == nullptr || rows <= 0 || rows > 2048 ||
       context <= 0 || context > 512 || num_q_heads <= 0 ||
       start_position < 0 || start_position + rows != context) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -2547,7 +2547,7 @@ hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
     hipStream_t stream) {
   if (scores == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
-      row_positions == nullptr || rows <= 0 || rows > 128 ||
+      row_positions == nullptr || rows <= 0 || rows > 2048 ||
       context <= 0 || num_q_heads <= 0 ||
       start_position < 0 || start_position + rows != context) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -2592,7 +2592,7 @@ hipengine_laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans(
   if (scores == nullptr || row_max == nullptr || row_sum == nullptr ||
       merge_scales == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
-      row_positions == nullptr || rows <= 0 || rows > 128 ||
+      row_positions == nullptr || rows <= 0 || rows > 2048 ||
       tile_start < 0 || tile_count <= 0 ||
       tile_start + tile_count > context || context <= 0 ||
       num_q_heads <= 0 || start_position < 0 ||
@@ -2664,7 +2664,7 @@ extern "C" int hipengine_laguna_dense_initial_attention_tile_merge_f32(
     hipStream_t stream) {
   if (accumulator == nullptr || tile_output == nullptr ||
       final_output == nullptr || row_sum == nullptr ||
-      merge_scales == nullptr || rows <= 0 || rows > 128 ||
+      merge_scales == nullptr || rows <= 0 || rows > 2048 ||
       num_q_heads <= 0 || head_dim != 128 ||
       (first_tile != 0 && first_tile != 1) ||
       (final_tile != 0 && final_tile != 1)) {
