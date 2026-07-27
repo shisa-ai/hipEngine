@@ -8,6 +8,7 @@ owned scratch, greedy top-1, and caller-owned DFlash hidden taps.
 from __future__ import annotations
 
 import ctypes
+import mmap
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -240,6 +241,89 @@ class LagunaEagerKernelPlan:
 
 
 @dataclass
+class LagunaPinnedArgmaxReadback:
+    """Pinned non-mapped host staging for two async scalar D2H copies."""
+
+    runtime: HipRuntime
+    host_nbytes: int
+    host_ptr: int
+    _mapping: mmap.mmap | None
+    _host_view: object | None
+    _registered: bool = True
+    _closed: bool = False
+
+    @classmethod
+    def allocate(cls, *, runtime: HipRuntime) -> "LagunaPinnedArgmaxReadback":
+        host_nbytes = mmap.PAGESIZE
+        mapping = mmap.mmap(-1, host_nbytes)
+        host_view = (ctypes.c_ubyte * host_nbytes).from_buffer(mapping)
+        host_ptr = ctypes.addressof(host_view)
+        try:
+            runtime.host_register(host_ptr, host_nbytes, flags=0)
+        except BaseException:
+            host_view = None
+            mapping.close()
+            raise
+        return cls(
+            runtime=runtime,
+            host_nbytes=host_nbytes,
+            host_ptr=host_ptr,
+            _mapping=mapping,
+            _host_view=host_view,
+        )
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def read(
+        self,
+        argmax_id: DeviceBuffer,
+        argmax_value: DeviceBuffer,
+        *,
+        stream: int,
+    ) -> tuple[int, float]:
+        if self._closed or self._mapping is None:
+            raise RuntimeError("pinned Laguna argmax readback is closed")
+        self.runtime.memcpy_async(
+            self.host_ptr,
+            argmax_id.ptr,
+            _I64_NBYTES,
+            HipMemcpyKind.DEVICE_TO_HOST,
+            int(stream),
+        )
+        self.runtime.memcpy_async(
+            self.host_ptr + _I64_NBYTES,
+            argmax_value.ptr,
+            _F32_NBYTES,
+            HipMemcpyKind.DEVICE_TO_HOST,
+            int(stream),
+        )
+        if stream:
+            self.runtime.stream_synchronize(int(stream))
+        else:
+            self.runtime.device_synchronize()
+        token_id = ctypes.c_int64.from_buffer(self._mapping, 0).value
+        value = ctypes.c_float.from_buffer(self._mapping, _I64_NBYTES).value
+        return int(token_id), float(value)
+
+    def free(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        mapping = self._mapping
+        self._mapping = None
+        try:
+            if self._registered:
+                self.runtime.host_unregister(self.host_ptr)
+                self._registered = False
+        finally:
+            self._host_view = None
+            if mapping is not None:
+                mapping.close()
+
+
+@dataclass
 class LagunaEagerScratch:
     """Deterministic c=1 scratch owner sized for Laguna's widest layer."""
 
@@ -269,6 +353,7 @@ class LagunaEagerScratch:
     argmax_block_indices: DeviceBuffer
     argmax_id: DeviceBuffer
     argmax_value: DeviceBuffer
+    pinned_argmax_readback: LagunaPinnedArgmaxReadback | None = None
     _closed: bool = False
 
     @classmethod
@@ -276,6 +361,7 @@ class LagunaEagerScratch:
         cls,
         config: LagunaGGUFConfig,
         *,
+        pinned_async_argmax_readback: bool = False,
         runtime: HipRuntime | None = None,
     ) -> "LagunaEagerScratch":
         max_heads = max(int(value) for value in config.head_counts)
@@ -312,13 +398,25 @@ class LagunaEagerScratch:
             _F32_NBYTES,
         )
         buffers: list[DeviceBuffer] = []
+        pinned: LagunaPinnedArgmaxReadback | None = None
         try:
             buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
-        except Exception:
+            if pinned_async_argmax_readback:
+                pinned = LagunaPinnedArgmaxReadback.allocate(
+                    runtime=runtime or get_hip_runtime()
+                )
+        except BaseException:
+            if pinned is not None:
+                pinned.free()
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
             raise
-        return cls(max_query_width, max_heads, *buffers)
+        return cls(
+            max_query_width,
+            max_heads,
+            *buffers,
+            pinned_argmax_readback=pinned,
+        )
 
     @property
     def buffers(self) -> tuple[DeviceBuffer, ...]:
@@ -357,8 +455,12 @@ class LagunaEagerScratch:
         if self._closed:
             return
         self._closed = True
-        for buffer in reversed(self.buffers):
-            free(buffer, runtime=runtime)
+        try:
+            for buffer in reversed(self.buffers):
+                free(buffer, runtime=runtime)
+        finally:
+            if self.pinned_argmax_readback is not None:
+                self.pinned_argmax_readback.free()
 
 
 @dataclass
@@ -1269,6 +1371,22 @@ def resolve_laguna_head_kv_fusion(
     return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
 
 
+def resolve_laguna_pinned_async_argmax_readback(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the measured backend's default-off pinned async readback."""
+
+    capability = backend_package_capability(
+        backend,
+        "LAGUNA_PINNED_ASYNC_ARGMAX_READBACK",
+        None,
+    )
+    if capability is None:
+        return False
+    return bool(capability) if requested is None else bool(requested)
+
+
 def resolve_laguna_mixed_attention_projections(
     backend: str,
     requested: bool | None = None,
@@ -1802,6 +1920,7 @@ class LagunaGGUFResidentSession:
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_head_kv_fusion: bool | None = None,
+        use_pinned_async_argmax_readback: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
@@ -1835,6 +1954,12 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.use_swa_split_wave_local = use_swa_split_wave_local
+        self.use_pinned_async_argmax_readback = (
+            resolve_laguna_pinned_async_argmax_readback(
+                self.backend,
+                use_pinned_async_argmax_readback,
+            )
+        )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -2038,7 +2163,11 @@ class LagunaGGUFResidentSession:
             )
             self.use_split_gate_fusion = self.kv_cache.split_gate_fusion
             self.use_swa_split_wave_local = self.kv_cache.swa_split_wave_local
-            self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
+            self.scratch = LagunaEagerScratch.allocate(
+                config,
+                pinned_async_argmax_readback=self.use_pinned_async_argmax_readback,
+                runtime=self.runtime,
+            )
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
                 runtime=self.runtime,
@@ -2985,15 +3114,16 @@ class LagunaGGUFResidentSession:
             library=self.libraries.argmax,
             runtime=self.runtime,
         )
-        if stream:
-            self.runtime.stream_synchronize(stream)
-        else:
-            self.runtime.device_synchronize()
+        next_id, next_value = _read_laguna_argmax_result(
+            self.scratch,
+            self.runtime,
+            stream=stream,
+        )
         result = LagunaEagerTokenResult(
             position=int(position),
             input_token_id=int(input_token_id),
-            next_token_id=_read_i64(self.scratch.argmax_id, self.runtime),
-            next_token_logit=_read_f32(self.scratch.argmax_value, self.runtime),
+            next_token_id=next_id,
+            next_token_logit=next_value,
             logits=_buffer_view(scratch.logits, 0, config.vocab_size * _F32_NBYTES),
             final_hidden=_buffer_view(scratch.final_norm, 0, hidden_nbytes),
             post_layer_hidden=_buffer_view(scratch.hidden, int(row_index) * hidden_nbytes, hidden_nbytes),
@@ -3390,12 +3520,11 @@ class LagunaGGUFResidentSession:
             library=self.libraries.argmax,
             runtime=self.runtime,
         )
-        if stream:
-            self.runtime.stream_synchronize(stream)
-        else:
-            self.runtime.device_synchronize()
-        next_id = _read_i64(scratch.argmax_id, self.runtime)
-        next_value = _read_f32(scratch.argmax_value, self.runtime)
+        next_id, next_value = _read_laguna_argmax_result(
+            scratch,
+            self.runtime,
+            stream=stream,
+        )
         return LagunaEagerTokenResult(
             position=position,
             input_token_id=input_token_id,
@@ -3696,6 +3825,29 @@ def _read_f32_rows(
         HipMemcpyKind.DEVICE_TO_HOST,
     )
     return tuple(float(value) for value in host)
+
+
+def _read_laguna_argmax_result(
+    scratch: LagunaEagerScratch,
+    runtime: HipRuntime,
+    *,
+    stream: int,
+) -> tuple[int, float]:
+    pinned = getattr(scratch, "pinned_argmax_readback", None)
+    if pinned is not None:
+        return pinned.read(
+            scratch.argmax_id,
+            scratch.argmax_value,
+            stream=stream,
+        )
+    if stream:
+        runtime.stream_synchronize(int(stream))
+    else:
+        runtime.device_synchronize()
+    return (
+        _read_i64(scratch.argmax_id, runtime),
+        _read_f32(scratch.argmax_value, runtime),
+    )
 
 
 def _read_i64(buffer: DeviceBuffer, runtime: HipRuntime) -> int:

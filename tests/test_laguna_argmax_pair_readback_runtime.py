@@ -44,12 +44,16 @@ def test_argmax_pair_benchmark_opt_in_is_removed(
         benchmark._parse_args()
 
 
-def test_scalar_sampling_sites_restore_separate_reads() -> None:
+def test_scalar_sampling_sites_keep_separate_read_fallback() -> None:
     for method in (
         LagunaGGUFResidentSession._project_rows_last,
         LagunaGGUFResidentSession._project_and_sample,
     ):
         source = inspect.getsource(method)
         assert "_read_argmax_pair" not in source
-        assert "_read_i64" in source
-        assert "_read_f32" in source
+        assert source.count("_read_laguna_argmax_result") == 1
+
+    helper_source = inspect.getsource(runner._read_laguna_argmax_result)
+    assert "_read_argmax_pair" not in helper_source
+    assert "_read_i64" in helper_source
+    assert "_read_f32" in helper_source
