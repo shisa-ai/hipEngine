@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_q4_qmicro_metadata_lds_screen",
+  "status": "rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1,
+    "weights": "blk.1.ffn_gate_exps.weight + blk.1.ffn_up_exps.weight"
+  },
+  "candidate": {
+    "geometry": "production 128 output columns x 32 routed rows, local128, direct wave-column decode, D8 activation double buffer",
+    "layout": "byte-neutral Q4 qmicro: T16-local nibbles plus four-column 24-bit scale/min records",
+    "mechanism": "each wave expands its own 32 columns of packed scale/min records into a 2048-byte LDS byte plane once per K256; the next plane is expanded after subblock 7",
+    "distinction": "the earlier quartet-owned LDS trial reconstructed combined FP32 dm every K32 in the old shared-MMQ32 body; this trial expands coefficient bytes once per K256 inside the production direct-wave body",
+    "layout_bytes": {
+      "resident_t16_gate_up_pair": 931135488,
+      "qmicro_gate_up_pair": 905969664,
+      "saved": 25165824,
+      "saved_percent": 2.7777777778,
+      "sidecar": 0
+    }
+  },
+  "correctness": {
+    "red": "The production-shaped qmicro metadata-LDS fixture initially failed because the wrapper selector did not exist.",
+    "green": "The uneven/empty-expert K512/N128 CPU-reference KL and top-1 gate passed.",
+    "actual_outputs_bf16_bit_identical": true,
+    "m256_checksum_f64": -2296.515208721219,
+    "m512_checksum_f64": 1114.1769413301445,
+    "finite": true
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 256,512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,qmicro-mmq128x32-d8-f32-wavecols-direct-doublebuf-metadata-lds --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-qmicro-metadata-lds-rolled-leaf.json",
+    "timing": "counter-rotated HIP events; both modes include the unchanged D8 activation pack",
+    "fully_unrolled_expansion": {
+      "m256": {
+        "production_median_ms": 4.3849722544,
+        "candidate_median_ms": 5.2533330917,
+        "candidate_regression_percent": 19.8031090487
+      },
+      "m512": {
+        "production_median_ms": 6.8010298411,
+        "candidate_median_ms": 7.9158668518,
+        "candidate_regression_percent": 16.3921793721
+      },
+      "candidate_vgpr": 152,
+      "raw_sha256": "96eea791044e61a62a0336e80900dd883e14cc7d8aa409db5af5aeffd9a08d95",
+      "trace_sha256": "9c4a96f13aee6d6f1e69466e9875de70670fe26dd4dc7f00a66a28e740e533b1"
+    },
+    "rolled_expansion": {
+      "m256": {
+        "production_median_ms": 4.3936697642,
+        "candidate_median_ms": 4.9404271444,
+        "candidate_regression_percent": 12.444207451
+      },
+      "m512": {
+        "production_median_ms": 6.7933362325,
+        "candidate_median_ms": 7.3851121267,
+        "candidate_regression_percent": 8.7111232819
+      },
+      "production_resources": {
+        "workgroup_size": 128,
+        "vgpr": 88,
+        "sgpr": 128,
+        "lds_bytes": 3072,
+        "scratch_bytes": 0
+      },
+      "candidate_resources": {
+        "workgroup_size": 128,
+        "vgpr": 120,
+        "sgpr": 128,
+        "lds_bytes": 5120,
+        "scratch_bytes": 0
+      },
+      "raw_sha256": "d5e49385a51b1cd34dc145ef936ed3618ddbafa86c112e95ffd389205cc31e0f",
+      "trace_sha256": "dd63748737288e7f3b499b342be428a4020bba13827d51ba7ac63ea57824312d"
+    }
+  },
+  "decision": {
+    "gate": "BF16 identity plus a positive actual-weight M256 and M512 leaf before materialization or runtime integration",
+    "result": "fail",
+    "reason": "rolling the metadata expansion recovers VGPR 152 to 120 but not the production 88-VGPR footprint; the final exact leaf remains 12.44%/8.71% slower",
+    "removed": [
+      "Q4 qmicro metadata-LDS HIP specialization and export",
+      "Python wrapper selector",
+      "CPU-reference fixture parameter",
+      "leaf benchmark mode"
+    ],
+    "retained": [
+      "existing byte-neutral host qmicro oracle",
+      "existing exact qmicro c1/c2/c4/c8 decode primitive and evidence"
+    ],
+    "materializer_changed": false,
+    "runtime_dispatch_changed": false,
+    "production_changed": false,
+    "production_pp512_tok_s": 639.113740923285
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked",
+    "reason": "/home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "repo": {
+    "base_revision": "bb795b30be1627182dbd610ce4c9a999a5ea0a9e"
+  }
+}

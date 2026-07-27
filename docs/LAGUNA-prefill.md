@@ -1603,6 +1603,23 @@ Immediate execution queue:
    are closed unless an accompanying mechanism removes equivalent weight
    traffic. Evidence:
    [`2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json).
+47. **Rejected and removed before integration:** expand qmicro's packed
+   scale/min records cooperatively into LDS once per K256 inside production's
+   direct-wave Q4 body. This is distinct from the old quartet-owned FP32-`dm`
+   writer: each wave owns exactly the 32 columns it expands and reads, and the
+   quant payload plus D8 arithmetic remain unchanged. The CPU-reference gate
+   and actual BF16 identity pass. Fully unrolled expansion raises VGPR
+   **88 -> 152** and regresses M256/M512 **19.80%/16.39%**. A deliberately
+   rolled correction recovers VGPR to **120** but still grows LDS
+   **3,072 -> 5,120 bytes** and regresses the paired leaf
+   **4.394 -> 4.940 ms (+12.44%)** at M256 and
+   **6.793 -> 7.385 ms (+8.71%)** at M512. The physical layout would save
+   **25,165,824 bytes (2.778%)**, but its coefficient decode remains more
+   expensive than those bytes. All candidate surfaces are removed; do not
+   reopen packed Q4 metadata inside the current 32-accumulator direct-wave
+   body without a mechanism that preserves the production VGPR class.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1613,7 +1630,8 @@ has cleared leaf plus complete-state A/B:
 1. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Extend the Q6 register-overlap lesson only
-   where it does not repeat the rejected decoded-Q4 prefetch schedule.
+   where it does not repeat the rejected decoded-Q4 prefetch or packed-metadata
+   schedules.
 2. Reopen a closed family only if the new trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
@@ -3477,6 +3495,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-absolute-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-quality-pending.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-role-risk-calibration-heldout.json`

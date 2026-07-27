@@ -183991,3 +183991,45 @@ Vulkan local sizes verbatim will close the measured gap.
   kernel, wrapper, harness, and test surface was removed. Production remains
   **639.114 tok/s**. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json`.
+
+## 2026-07-27 — Reject Q4 qmicro metadata-LDS expansion
+
+- Rechecked ROCm before kernel work: `libamdhip64.so` loads and `rocminfo`
+  names gfx1151. The required
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` audit remains
+  mechanically blocked because the configured read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+- Audited prior Q4 qmicro attempts before implementation. The new screen is
+  distinct from the rejected old shared-MMQ32 quartet-owned FP32-`dm` writer
+  and the direct per-lane packed decoder: it expands the 24-bit coefficient
+  records once per K256 into a 2,048-byte LDS byte plane while retaining the
+  production 128-column x 32-row direct-wave D8 body. Each wave writes only
+  the 32 columns it subsequently reads, avoiding a workgroup barrier or
+  cross-wave metadata race.
+- RED added the production-shaped qmicro metadata-LDS fixture and failed on
+  the missing wrapper selector. GREEN passes the uneven/empty-expert
+  K512/N128 CPU-reference KL/top-1 gate. Actual M256/M512 outputs are
+  BF16-identical to production with checksums
+  **-2296.515208721219 / 1114.1769413301445**.
+- Twenty-one counter-rotated burst-three actual layer-1 samples reject the
+  fully unrolled implementation at M256
+  **4.384972 -> 5.253333 ms (+19.803%)** and M512
+  **6.801030 -> 7.915867 ms (+16.392%)**. Tracing explains the failure:
+  production is local128/VGPR88/SGPR128/LDS3072B/scratch0, while the candidate
+  is VGPR152/LDS5120B.
+- A bounded code-generation correction deliberately rolled the 16-record
+  expansion loop. It recovers VGPR **152 -> 120**, but the decisive paired
+  leaf remains negative: M256 **4.393670 -> 4.940427 ms (+12.444%)** and
+  M512 **6.793336 -> 7.385112 ms (+8.711%)**. Candidate LDS remains 5,120
+  bytes and scratch remains zero. The byte-neutral layout's
+  **25,165,824-byte / 2.778%** gate/up saving cannot pay for packed
+  coefficient expansion in this 32-accumulator body.
+- Removed the candidate HIP specialization/export, Python selector,
+  CPU-reference parameter, and leaf mode. The existing host qmicro oracle and
+  exact c1/c2/c4/c8 decoder remain; no materializer or runtime route changed.
+  Production remains **639.114 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`.
+  Rolled raw/trace SHA-256:
+  `d5e49385a51b1cd34dc145ef936ed3618ddbafa86c112e95ffd389205cc31e0f` /
+  `dd63748737288e7f3b499b342be428a4020bba13827d51ba7ac63ea57824312d`.
