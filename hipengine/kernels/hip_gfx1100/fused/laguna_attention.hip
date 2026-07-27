@@ -73,13 +73,10 @@ __global__ void laguna_softplus_head_gate_packed_tiles_kernel(
     int64_t packed_end) {
   constexpr int64_t kTileRows = 128;
   const int64_t row = static_cast<int64_t>(blockIdx.y);
-  const int64_t within_row =
-      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  const int64_t row_width = heads * head_dim;
-  if (row >= rows || within_row >= row_width) return;
-  const int64_t head = within_row / head_dim;
-  const int64_t element = within_row - head * head_dim;
-  const int64_t idx = row * row_width + within_row;
+  const int64_t head = static_cast<int64_t>(blockIdx.x);
+  const int64_t element = static_cast<int64_t>(threadIdx.x);
+  if (row >= rows || head >= heads || element >= head_dim) return;
+  const int64_t idx = ((row * heads + head) * head_dim) + element;
   int64_t context_idx = idx;
   if (row >= packed_begin && row < packed_end) {
     const int64_t tile_begin = (row / kTileRows) * kTileRows;
@@ -137,16 +134,15 @@ int launch_packed_tiles(
   if (rows <= 0 || heads <= 0 || head_dim <= 0 ||
       packed_begin < 0 || packed_begin >= packed_end || packed_end > rows ||
       packed_begin % 128 != 0 || packed_end % 128 != 0 ||
-      threads <= 0 || threads > 256 || threads % 32) {
+      threads != head_dim || threads <= 0 || threads > 256 ||
+      threads % 32) {
     return hipErrorInvalidValue;
   }
-  const int64_t row_width = heads * head_dim;
-  const int64_t blocks = (row_width + threads - 1) / threads;
   hipLaunchKernelGGL(
       HIP_KERNEL_NAME(
           laguna_softplus_head_gate_packed_tiles_kernel<out_t, VIA_BF16>),
       dim3(
-          static_cast<unsigned int>(blocks),
+          static_cast<unsigned int>(heads),
           static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,

@@ -199,26 +199,30 @@ def _dense_initial_blas_attention_families(
             in str(rows[index + 1]["Kernel_Name"])
         )
         if packed_query:
-            final_index = index + 5
-            if final_index >= len(rows):
+            pv_index = index + 4
+            if pv_index >= len(rows):
                 raise ValueError(
                     "packed-query dense-initial BLAS attention trace is truncated"
                 )
             qk_name = str(rows[index + 2]["Kernel_Name"])
             softmax_name = str(rows[index + 3]["Kernel_Name"])
-            pv_name = str(rows[index + 4]["Kernel_Name"])
-            unpack_name = str(rows[index + 5]["Kernel_Name"])
+            pv_name = str(rows[pv_index]["Kernel_Name"])
             if (
                 not qk_name.startswith("Cijk_")
                 or not _is_dense_initial_causal_softmax(softmax_name)
                 or not pv_name.startswith("Cijk_")
-                or "laguna_dense_initial_query_head_transpose_f32_kernel<false>"
-                not in unpack_name
             ):
                 raise ValueError(
                     "packed-query dense-initial BLAS attention trace does not "
-                    "match widen + pack + QK + softmax + PV + unpack"
+                    "match widen + pack + QK + softmax + PV"
                 )
+            final_index = pv_index
+            if (
+                index + 5 < len(rows)
+                and "laguna_dense_initial_query_head_transpose_f32_kernel<false>"
+                in str(rows[index + 5]["Kernel_Name"])
+            ):
+                final_index = index + 5
             for target in range(index, final_index + 1):
                 if target in families:
                     raise ValueError(
