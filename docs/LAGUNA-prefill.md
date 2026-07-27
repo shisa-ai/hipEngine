@@ -1646,6 +1646,17 @@ Immediate execution queue:
    and all **78,805,563,028** tracked bytes are recovered. Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json),
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json).
+49. **Rejected and removed before integration:** extend retained P8 with the
+   next K32 interval's `d/dmin` FP16 bits and scale/min bytes packed into two
+   additional registers. The CPU-reference gate and actual BF16 identity
+   pass, but the candidate restores the rejected full-prefetch resource class:
+   VGPR rises **96 -> 104** with LDS3072B/scratch0 unchanged. Forty-one
+   counter-rotated M512 samples regress
+   **6.7265 -> 7.0330 ms (+4.556%)**. No full-model run is warranted and
+   every metadata-prefetch surface is removed. Retained P8's successful
+   payload-only register set is the ceiling for this one-interval schedule.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1653,11 +1664,12 @@ The activation-only Q4 repair branch is exhausted and removed. Raw-nibble P8
 prefetch is now exact Q4 gate/up production:
 
 1. Refresh caller-stream attribution from the P8 production commit.
+   **Complete:** selected Q4 gate/up falls
+   **337.395 -> 333.701 ms (-1.095%)**.
 2. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
-   synchronization/latency limiter. Extend the Q6 register-overlap lesson only
-   where it does not repeat the rejected decoded-Q4 prefetch or packed-metadata
-   schedules.
+   synchronization/latency limiter. Payload-only P8 is retained; decoded,
+   metadata-carrying, and packed-metadata schedules are now rejected.
 3. Reopen a closed family only if the new trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
@@ -3521,6 +3533,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`

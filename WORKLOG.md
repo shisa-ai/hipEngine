@@ -184124,3 +184124,27 @@ Vulkan local sizes verbatim will close the measured gap.
   pipeline with only the next K32 `d`/scale/min metadata. It must stay below
   the rejected complete decoded-record prefetch's register cost and beat P8
   on the actual M512 leaf before any complete-model run.
+
+## 2026-07-27 — Reject Q4 P8 metadata prefetch
+
+- RED added a production-shaped `raw_weight_prefetch_metadata` fixture and
+  failed on the absent wrapper selector. GREEN packed the next K32
+  `d/dmin` FP16 bits plus scale/min bytes into two registers beside retained
+  P8, passed the uneven/empty-expert CPU-reference gate, and matched actual
+  BF16 checksum **1114.1769413301445**.
+- Forty-one counter-rotated burst-seven actual layer-1 M512 samples reject
+  the candidate: retained P8 measures **6.726498 ms**, while P8+metadata
+  measures **7.032972 ms (+4.5562%)**. Raw SHA-256:
+  `7dec7a2edb9f62330a1cbb36808977ca1f633932ea124fa23b8d0a1f255595ce`.
+- Cached tracing explains the regression. Retained P8 is
+  local128/**VGPR96**/SGPR128/LDS3072B/scratch0; two packed metadata
+  registers raise the candidate to **VGPR104**, the same resource class as
+  the previously rejected complete decoded-record prefetch. Child/raw trace
+  SHA-256 values:
+  `b51718e64b6c3182890458413456c0539b80f544e797d56c26c626c0b30978ee`
+  and
+  `e142904b470d4df4bddc0cfa4530260659c3233479662fbef61277c1e1592e4f`.
+- No full-model screen is warranted. Removed the metadata template branch,
+  export, Python selector, leaf mode, and fixture parameter; retained
+  production P8 is unchanged at **643.554 tok/s**. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`.

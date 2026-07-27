@@ -1608,3 +1608,7 @@ should be boring.
   confirmed. Keep the explicit old/new symbols only through the immediately
   following compact-metadata-prefetch A/B; then collapse the winning >=512
   shape policy as described above.
+- Compact metadata prefetch is rejected and fully removed at
+  **6.7265 -> 7.0330 ms (+4.556%)**, so that bisection dependency is closed.
+  Collapse the retained P8/non-P8 shape capability in the next cleanup unit;
+  preserve the non-P8 specialization below 512 because it is measured faster.

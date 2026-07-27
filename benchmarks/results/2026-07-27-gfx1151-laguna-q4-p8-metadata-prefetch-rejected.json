@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_q4_p8_metadata_prefetch_rejected",
+  "status": "rejected_removed",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "candidate": {
+    "baseline": "production raw-nibble P8 at M512",
+    "mechanism": "carry the next K32 d/dmin FP16 bits and scale/min bytes in two additional packed registers beside the eight raw T16 nibble words",
+    "resident_bytes_added": 0,
+    "lds_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "arithmetic_change": false,
+    "bf16_output_change": false
+  },
+  "correctness": {
+    "red": "The production-shaped metadata parameter initially failed because the wrapper selector did not exist.",
+    "green": "The uneven/empty-expert K512/N128 CPU-reference KL and top-1 gate passed.",
+    "actual_layer_bf16_identical": true,
+    "checksum_f64": 1114.1769413301445,
+    "finite": true,
+    "max_abs": 6.6875
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-metadata --warmups 5 --samples 41 --burst 7 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-p8-metadata-prefetch-screen.json",
+    "timing": "counter-rotated HIP events; both modes include the unchanged D8 activation pack",
+    "production_p8_median_ms": 6.726498195103237,
+    "metadata_prefetch_median_ms": 7.032971518380301,
+    "metadata_prefetch_regression_percent": 4.556209105953091,
+    "samples_per_mode": 41,
+    "raw_sha256": "7dec7a2edb9f62330a1cbb36808977ca1f633932ea124fa23b8d0a1f255595ce"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-p8-metadata-prefetch-trace --output-file p8-metadata -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-metadata --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-p8-metadata-prefetch-trace/child.json",
+    "production": {
+      "workgroup_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroup_size": 128,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "child_sha256": "b51718e64b6c3182890458413456c0539b80f544e797d56c26c626c0b30978ee",
+    "trace_sha256": "e142904b470d4df4bddc0cfa4530260659c3233479662fbef61277c1e1592e4f"
+  },
+  "decision": {
+    "result": "reject and remove candidate",
+    "reason": "Two compact metadata registers restore the rejected full-prefetch VGPR104 class and regress the decisive actual M512 leaf by 4.556%.",
+    "full_model_run_warranted": false,
+    "candidate_surfaces_removed": true,
+    "production_unchanged_tok_s": 643.5535247748338
+  },
+  "repo": {
+    "base_revision": "8f6664302c87795f49dd4a7bbb2368b3124c36a1"
+  }
+}
