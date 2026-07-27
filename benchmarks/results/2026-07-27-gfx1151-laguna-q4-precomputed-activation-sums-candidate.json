@@ -21,7 +21,7 @@
   },
   "leaf_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-precomputed-sums --samples 41 --warmups 4 --burst 3 --require-cached-build --output /tmp/laguna-q4-precomputed-sums-leaf.json",
   "leaf": {
-    "shape": "layer 1, natural routing, K3072, N2368x2, E256",
+    "shape": "layer 1, natural routing, K3072, N1024x2, E256",
     "samples": 41,
     "m256": {
       "production_inclusive_ms": 4.426142692565918,
@@ -71,6 +71,13 @@
     {
       "path": "/tmp/laguna-q4-precomputed-sums-full-ab.json",
       "sha256": "c540ab058cbe9c9079ee4cd5cc9bad0d856e6f2806ff3c7a77d4e5518bcdcad2"
+    }
+  ],
+  "derived_artifact_repairs": [
+    {
+      "kind": "correct_shape_label",
+      "measurement_values_changed": false,
+      "detail": "Corrected N2368x2 to N1024x2; 2368 is the byte size of one T16 tile record, not the output width."
     }
   ],
   "decision": "Retained and published as the gfx1151 M512+ default. The clean trace cuts selected Q4 gate/up 334.229 -> 330.720 ms, clean pp512 reaches 649.791 tok/s, and same-process 1K A/B saves 4.428 ms at the paired median. This reopens the old widened-block screen only because the intervening P8 body and a separate sidecar change the measured result: the new candidate wins 9/11 pp512 complete-state pairs and saves 2.491 ms at the paired median, versus the old screen's 3/6 wins and 0.339 ms."

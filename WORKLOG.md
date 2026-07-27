@@ -184546,3 +184546,10 @@ Vulkan local sizes verbatim will close the measured gap.
   `8b07f3a2...0e56`; trace SHA-256: `422e7a1c...da0e`; summary SHA-256:
   `ea5dd661...d4a3`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-production.json`.
+
+## 2026-07-27 — Correct Q4 candidate shape label
+
+- Source audit corrected the candidate artifact's leaf label from
+  `K3072, N2368x2` to `K3072, N1024x2`. The value 2,368 is the byte size of
+  one T16 tile record, not the projection width. No command, measurement,
+  correctness result, or production decision changes.
