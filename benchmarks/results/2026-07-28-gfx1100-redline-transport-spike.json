@@ -165,13 +165,116 @@
   },
   "lifecycle_blocker": {
     "reproduced": true,
-    "broad_process_completed_rows": 48,
-    "next_row": "serial_latency/packed-dot/q8_signed/groups16/n32768/body64/wg64",
-    "failure": "Memory access fault by GPU node-1 on address (nil): page not present or supervisor privilege",
-    "isolated_family_processes": "all filters exited 0; deduplicated matrix passed 240/240",
-    "fresh_packed_dot_process": "16/16 correctness rows passed",
-    "assessment": "Evidence indicates a cross-family or repeated resource-lifecycle defect rather than packed-dot math. Root ownership is not yet proven between Redline core, its Hipfire/hipEngine adapters, and ROCr.",
-    "policy": "Process isolation is a benchmark workaround only. Do not silently monkeypatch or default-enable Redline; minimize and seek an upstream lifecycle fix."
+    "canonical_full_process": {
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPFIRE_BENCH_ARCH=gfx1100 /home/lhl/redline/target/hipengine-w7900-gfx1100/release/hipfire-6409-bench --matrix hipengine --backends redline,hip,vulkan --wave-policy radiowave --redline-queues auto --scheduler-profile default --redline-rmw radiowave-vmem --warmups 3 --samples 7 --out /tmp/hipengine-redline-w7900-20260728/hipfire-same-hsaco/results.json",
+      "completed_rows": 48,
+      "completed_family_prefix": [
+        "dispatch-grid",
+        "geometry",
+        "reduction",
+        "memory-waitcnt"
+      ],
+      "next_row": "serial_latency/packed-dot/variant=q8_signed,groups=16,n=32768,body=64,wg=64;hip-wave=32",
+      "next_backend_order": [
+        "redline",
+        "hip",
+        "vulkan"
+      ],
+      "redline_result_emitted_for_next_row": false,
+      "failure": "Memory access fault by GPU node-1 on address (nil): page not present or supervisor privilege",
+      "process_exit": "SIGABRT / 134",
+      "stdout_sha256": "bb6d1c0d45ece5a856f49237fac61c6f493e05ba6ce9cd249bedd83daf0ecf13",
+      "stderr_sha256": "8859d2d1883cc930568c1f2f5c7de449441cca0721dd12278f790f435039e73e"
+    },
+    "controls": {
+      "fresh_packed_dot": {
+        "status": "pass",
+        "correctness_rows": 16,
+        "redline_first_rows": 14,
+        "result_sha256": "1c81b3bc8f0725075d50c3ccf073789bf3e9b1e1bd38b9f9f2edff843cc27a3c",
+        "stdout_sha256": "c324a6abc955ade54ad788ba876b1fd63e6a799575b4bc784d513120ff878a01",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "family_isolation": {
+        "status": "pass",
+        "processes": 10,
+        "all_exit_zero": true,
+        "deduplicated_correctness_rows": 240,
+        "status_tsv_sha256": "8c0a8943235a8eda86d28d83417ec2e1ead508f396fdbfa2cb1e5da312a17e36"
+      },
+      "source_matched_three_warmup_reproduction": {
+        "status": "fault",
+        "failure_family": "serial packed-dot q8_signed",
+        "log_sha256": "fef5b84342dca982562a63c3e006bee076462e76523e04e8c6c75558b637be74",
+        "interpretation": "The same address-zero signature occurs in a second orchestration, but its fresh-family-child and code-object lifecycle differ from the canonical same-process run. It is supporting evidence, not the same-HSACO performance denominator or proof of the same trigger."
+      },
+      "strict_hipgraph_foundational": "pass: two kernels, four fresh-input BF16-bit-exact PM4 replays",
+      "qwen_graph_abba": "pass: two Redline processes, 256 strict PM4 launches, 627 captured nodes, bit-identical logits and IDs, zero fallback",
+      "qwen_graph_persistent": "pass: one graph, four reset/prefill/warmup/d128 cycles, 512 strict PM4 launches, exact output and tracked memory recovery"
+    },
+    "pinned_source_lifetime_audit": {
+      "source_paths_at_redline_commit": [
+        "examples/hipfire-6409/src/redline_backend.rs",
+        "crates/redline-dispatch/src/aql/replay.rs",
+        "crates/redline-rocr/src/runtime.rs"
+      ],
+      "persistent": [
+        "public-ROCr Runtime and selected GpuDevice",
+        "wave32/wave64 Executables for every scheduler profile loaded at backend construction",
+        "one KernargPool"
+      ],
+      "per_serial_measurement": [
+        "HIP buffers",
+        "kernarg buffers",
+        "one unprofiled single-queue ownership/acquire IB",
+        "one profiled single-queue retained IB with completion, indirect command buffer, and 16-byte timestamp buffer"
+      ],
+      "explicit_release_order": [
+        "profiled IB",
+        "ownership IB",
+        "kernargs",
+        "HIP buffers"
+      ],
+      "inferred_before_failure": {
+        "single_queue_ib_objects_created_and_dropped": 96,
+        "successful_queue_submissions": 960,
+        "approximate_profiled_kernel_dispatches": 53560,
+        "warning": "Counts are inferred from pinned source and the completed protocol, not emitted runtime counters. The current log does not identify ownership IB versus timestamp prologue/kernel/epilogue as the faulting stage."
+      }
+    },
+    "ruled_out_or_disfavored": [
+      "packed-dot math or a deterministically invalid packed-dot HSACO",
+      "a universal packed-dot variant/workgroup defect",
+      "simple lack of warmup",
+      "replay-count exhaustion alone",
+      "per-row executable/module accumulation in the canonical Hipfire backend"
+    ],
+    "open_hypotheses": [
+      "queue create/inactivate/destroy churn or silent teardown failure",
+      "completion-signal lifetime",
+      "freed kernarg/indirect/timestamp address reuse before complete ROCr/CP quiescence",
+      "separate ownership and profiled queue topology",
+      "GPU timestamp PM4 prologue/epilogue",
+      "HIP allocation/reset interoperation with direct public-ROCr submission",
+      "Vulkan coexistence or backend order",
+      "a predecessor-family poison rather than a pure churn threshold",
+      "ROCr or amdgpu driver ownership rather than Redline core"
+    ],
+    "next_diagnostics": [
+      "128+ recreate-per-cycle tiny-IB stress with queue/destroy/address ledger",
+      "reuse-versus-recreate control",
+      "create/drop without submission",
+      "unprofiled-versus-profiled control",
+      "one queue versus separate ownership/profile queues",
+      "Redline-only then HIP then Vulkan backend subtraction",
+      "predecessor-family and count-threshold bisection",
+      "fail-loud teardown status and queue-index instrumentation",
+      "kernel VM-fault PID/PASID/VMID correlation",
+      "1000-cycle plus original-matrix post-fix stress"
+    ],
+    "assessment": "The strongest current hypothesis is direct-ROCr queue/IB/signal or GPU-visible allocation create/drop churn, because fresh packed-dot passes and a one-graph Qwen soak survives more dispatches while avoiding repeated graph construction. The fault signature has appeared in two orchestrations, but exact-command repeatability and a fixed threshold are not yet established. Root ownership is not yet proven between Redline core, Hipfire adapters, ROCr, and amdgpu.",
+    "policy": "Process isolation is a benchmark workaround only. Do not silently monkeypatch, retry after a page fault, accept native-shadow fallback, or default-enable Redline; minimize and seek an upstream lifecycle fix.",
+    "dossier": "docs/REDLINE.md"
   },
   "external_sanity_check": {
     "source": "https://github.com/ROCm/ROCm/issues/6409#issuecomment-5061942739",

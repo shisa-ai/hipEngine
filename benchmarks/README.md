@@ -3502,7 +3502,9 @@ benchmark workaround, not a production fix. The narrow GGUF graph gate is now
 positive, but the lifecycle defect must be minimized and fixed upstream
 (ownership is not yet proven between Redline, adapters, and ROCr), followed by
 natural-prompt/category, 4K-context, concurrency, cancellation, and server
-lifecycle validation before any package-default promotion.
+lifecycle validation before any package-default promotion. The full failure
+signature, run ledger, lifetime audit, ruled-out hypotheses, raw hashes, and
+next minimization matrix are maintained in [`docs/REDLINE.md`](../docs/REDLINE.md).
 
 The retained synthetic Laguna-shape IQ2_XS primitive packet is
 [`2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).

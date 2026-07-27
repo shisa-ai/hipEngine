@@ -237,9 +237,13 @@ raw hashes are in
 This admits a same-HSACO **microbenchmark transport claim only**. A broad
 long-lived process faulted at address zero on row 49 after 48 passing rows;
 family-isolated processes completed the deduplicated matrix. Process isolation
-is a benchmark workaround, not a runtime fix. Redline remains default-off and
-unvendored until the lifecycle fault is minimized and fixed upstream and a
-strict hipEngine decode-graph replay passes bit-exact and end-to-end gates.
+is a benchmark workaround, not a runtime fix. The subsequent narrow Qwen3.6
+p512/d128 strict graph gate is bit-identical and +8.129% decode, including a
+stable 512-launch persistent soak, but it does not reproduce direct-ROCr
+create/drop churn. Redline remains default-off and unvendored until the
+lifecycle fault is minimized and fixed upstream and the broader model/server
+gates pass. See [`docs/REDLINE.md`](../../docs/REDLINE.md) for the complete
+fault/test ledger, lifetime audit, raw hashes, and next diagnostic matrix.
 
 ## Paired Runner Inventory
 
