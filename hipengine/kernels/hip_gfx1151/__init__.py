@@ -111,8 +111,11 @@ LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"
 # The post-350 down screen maps Q4 output columns across two wave32s and lets
 # the Q6 row-vector consumer reuse one decoded tile across 64 routed rows.
 # Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
-# scalar-staged, and exact routes remain rollbacks.
-LAGUNA_SELECTED_DOWN_MODE = "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+# scalar-staged, and exact routes remain rollbacks. At producer rows >=512,
+# Q4 down also carries the next K32 raw nibble payload in registers.
+LAGUNA_SELECTED_DOWN_MODE = (
+    "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
+)
 # Exact scratch reuse writes packed gate/up into the larger selected-down
 # output allocation, then folds the standalone BF16 SiLU boundary into the
 # range-safe down pack. Seven paired pp512 runs are exact and win 7/7; the

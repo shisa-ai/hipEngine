@@ -255,7 +255,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert (
         LAGUNA_SELECTED_DOWN_MODE
-        == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+        == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     )
     assert LAGUNA_PREFILL_MATRIX_ROWS == 2048
     assert LAGUNA_PREFILL_CACHED_META is True

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_q4_down_raw_prefetch_p8_candidate",
+  "status": "candidate_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "two queues; shared branch after router at least priority"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "change": {
+    "summary": "Carry only the next K32 interval's eight resident-T16 Q4 nibble words in registers during current selected-down packed-dot compute.",
+    "shape_policy": "enable only for producer rows >= 512; retain the prior body below 512",
+    "resident_bytes_added": 0,
+    "lds_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "arithmetic_reordered": false,
+    "bf16_boundary_changed": false
+  },
+  "correctness": {
+    "red": "The production-shaped runtime selector initially failed because the selected-down prefetch mode was absent.",
+    "green": [
+      "The direct single-output P8 kernel passes the uneven/empty-expert CPU-reference quality gate and is BF16-identical to the retained single-output body.",
+      "The Q4 production-shape runtime oracle is BF16-identical.",
+      "All fourteen complete pp512 runs agree on token, next-token logit bits, full logits, final hidden, post-layer hidden, complete KV, and final cursor."
+    ],
+    "next_token": 2930,
+    "complete_state_pairs": 7,
+    "complete_state_exact": true,
+    "known_unrelated_failure": "The older Q6 row64-versus-row32 assertion remains reproducibly unequal after the new Q4 candidate comparison passes; it is not used as candidate evidence."
+  },
+  "complete_state_ab": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --require-cached-build --mode current=selected_down:mmq64x64_d4_f32_q6_wavecols_direct_q4 --mode candidate=selected_down:mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512 --output /tmp/laguna-q4-down-p8-fullstate-ab.json",
+    "workload": "pp512, BF16 KV, matrix512, attention128",
+    "production_median_tok_s": 639.5739966014988,
+    "candidate_median_tok_s": 643.1660993239026,
+    "candidate_change_percent": 0.5616398949130241,
+    "production_median_wall_ms": 800.5328589351848,
+    "candidate_median_wall_ms": 796.0618579527362,
+    "median_wall_saved_ms": 4.47100098244857,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "raw_sha256": "4d01d2dfc69a09ffa0e12e7aca31e0b0cddb06b8ff8f6d938dff441aa56aea48"
+  },
+  "kernel_trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-down-p8-profile --output-file q4-down-p8 -- .venv/bin/python3 -u scripts/laguna_q6_rows64_ab.py --repetitions 3 --require-cached-build --output /tmp/laguna-q4-down-p8-profile-child.json",
+    "m512_dispatches_per_arm": 72,
+    "production_q4_down_total_ms": 217.415652,
+    "candidate_q4_down_total_ms": 212.08994,
+    "change_percent": -2.4495531720043706,
+    "modeled_wall_saved_ms_per_pp512": 1.7752373333333271,
+    "m128_warmup_production_total_ms": 38.825349,
+    "m128_warmup_candidate_total_ms": 38.747923,
+    "production_resources": {
+      "workgroup_size": 64,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "candidate_resources": {
+      "workgroup_size": 64,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "8686a369679ef3951d2cc5b06ff1bd8b2af9886990452f129a44d683245cd0ec",
+    "child_sha256": "a5c613eb70470b848dc0c56f8f7952bd285bc10ee3fde015079a4c8fa2436cf1"
+  },
+  "decision": {
+    "result": "admit candidate",
+    "gfx1151_default": "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512",
+    "rollback": "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+    "clean_selector_unset_publication_pending": true,
+    "production_claim_pending": true,
+    "production_pp512_before_tok_s": 643.5535247748338
+  },
+  "lineage_audit": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked",
+    "reason": "Read-only reference checkout /home/lhl/amd-gpu-tuning/reference/atlas is absent."
+  },
+  "repo": {
+    "base_revision": "2599f7c73a540c369cd87d120c9b50eee933cbdd"
+  }
+}

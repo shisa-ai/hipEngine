@@ -120,7 +120,12 @@ def _apply_mode(
     session: LagunaGGUFResidentSession,
     runtime_mode: str,
 ) -> None:
-    if runtime_mode == "q6_wmma_current":
+    selected_down_prefix = "selected_down:"
+    if runtime_mode.startswith(selected_down_prefix):
+        session.set_selected_down_mode(
+            runtime_mode.removeprefix(selected_down_prefix)
+        )
+    elif runtime_mode == "q6_wmma_current":
         session.set_q6_wmma_prefetch_activation(False)
         session.set_q6_wmma_prefetch_weight(False)
     elif runtime_mode == "q6_wmma_prefetch":

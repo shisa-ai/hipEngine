@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-27
 
+- [retained exact gfx1151 Laguna Q4 selected-down raw-nibble-P8 candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / carry only the next K32 interval's eight raw T16 nibble words in the 64x32/local64 Q4-down body for producer rows >=512; tracing cuts 72 M512 launches **217.416 -> 212.090 ms (-2.450%)**, and seven complete-state pp512 pairs improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)** with identical state; the gfx1151 default is updated pending clean selector-unset publication; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q4 P8 non-temporal loads] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / bypassing cache only for next-K32 raw-nibble P8 preserves BF16 and the local128/VGPR96/LDS3072B/scratch0 resource tuple but regresses the actual M512 leaf **6.5634 -> 6.9727 ms (+6.236%)**; every candidate surface is removed and production remains **643.554 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`.
 
 - [rejected and removed exact gfx1151 Laguna Q4 P8 metadata prefetch] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / carrying next-K32 `d/dmin` plus scale/min beside retained raw-nibble P8 is BF16-identical but raises VGPR **96 -> 104** and regresses the actual M512 leaf **6.7265 -> 7.0330 ms (+4.556%)**; every candidate surface is removed and production remains **643.554 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`.

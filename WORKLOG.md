@@ -184172,3 +184172,38 @@ Vulkan local sizes verbatim will close the measured gap.
   wrapper selector, leaf mode, and fixture parameter. Production remains
   **643.554 tok/s**. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`.
+
+## 2026-07-27 — Admit Q4 selected-down raw-nibble P8 prefetch
+
+- Transferred the exact payload-only next-K32 P8 pipeline from Q4 gate/up to
+  the 64x32/local64 single-output Q4 selected-down body. The route is
+  shape-qualified at producer rows >=512 and leaves resident bytes, D4
+  activation staging, LDS1536B, scratch, metadata loads, packed-dot/K order,
+  and BF16 boundary unchanged.
+- RED failed on the absent selected-down selector. GREEN passes the direct
+  uneven/empty-expert CPU-reference parameter and the Q4 production-shape
+  runtime oracle with BF16 identity. The older Q6 row64-versus-row32
+  assertion remains reproducibly unequal after the new Q4 comparison passes;
+  it is not candidate evidence.
+- Seven alternating complete pp512 pairs improve
+  **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)**. All fourteen runs agree
+  on token 2930, next-token logit bits, full logits, final/post-layer hidden,
+  complete KV, and cursor.
+- Cached tracing over three arms cuts the 72 natural-M512 Q4-down launches
+  **217.416 -> 212.090 ms (-2.450%)**, or **1.775 ms** per pp512. Resources
+  move local64/VGPR88/SGPR128/LDS1536B/scratch0 to
+  local64/VGPR96/SGPR128/LDS1536B/scratch0. The M128 warmup is neutral
+  (**38.825 -> 38.748 ms**), so the previous body stays below 512.
+- Full-state/trace child/trace SHA-256 values:
+  `4d01d2dfc69a09ffa0e12e7aca31e0b0cddb06b8ff8f6d938dff441aa56aea48`,
+  `a5c613eb70470b848dc0c56f8f7952bd285bc10ee3fde015079a4c8fa2436cf1`,
+  and
+  `8686a369679ef3951d2cc5b06ff1bd8b2af9886990452f129a44d683245cd0ec`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json`.
+  The gfx1151 default is updated; clean selector-unset publication is next.
+- Validation reports **43 passed** across the direct kernel gate, Q4 runtime
+  oracle, gfx1151 defaults, and runner lifecycle/default coverage;
+  `py_compile`, JSON parsing, and diff checks pass. The required lineage audit
+  remains blocked because the read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.

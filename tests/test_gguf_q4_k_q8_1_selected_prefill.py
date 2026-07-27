@@ -2088,21 +2088,26 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         "double_buffer_activation",
         "single_direct_wave_decode",
         "raw_weight_prefetch_packs",
+        "single_raw_weight_prefetch_packs",
     ),
     [
-        (1, False, False, False, False, False, False, False, 0),
-        (2, False, False, False, False, False, False, False, 0),
-        (3, False, False, False, False, False, False, False, 0),
-        (1, False, True, False, False, False, False, False, 0),
-        (1, False, True, False, True, False, False, False, 0),
-        (1, False, True, False, True, False, False, True, 0),
-        (1, True, False, False, False, False, False, False, 0),
-        (1, True, True, False, False, False, False, False, 0),
-        (1, True, True, True, False, False, False, False, 0),
-        (1, True, True, True, False, True, False, False, 0),
-        (1, True, True, True, False, True, True, False, 0),
+        (1, False, False, False, False, False, False, False, 0, 0),
+        (2, False, False, False, False, False, False, False, 0, 0),
+        (3, False, False, False, False, False, False, False, 0, 0),
+        (1, False, True, False, False, False, False, False, 0, 0),
+        (1, False, True, False, True, False, False, False, 0, 0),
+        (1, False, True, False, True, False, False, True, 0, 0),
         pytest.param(
-            1, True, True, True, False, True, True, False, 8,
+            1, False, True, False, True, False, False, True, 0, 8,
+            id="single-raw-weight-prefetch-p8",
+        ),
+        (1, True, False, False, False, False, False, False, 0, 0),
+        (1, True, True, False, False, False, False, False, 0, 0),
+        (1, True, True, True, False, False, False, False, 0, 0),
+        (1, True, True, True, False, True, False, False, 0, 0),
+        (1, True, True, True, False, True, True, False, 0, 0),
+        pytest.param(
+            1, True, True, True, False, True, True, False, 8, 0,
             id="raw-weight-prefetch-p8",
         ),
     ],
@@ -2117,6 +2122,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     double_buffer_activation: bool,
     single_direct_wave_decode: bool,
     raw_weight_prefetch_packs: int,
+    single_raw_weight_prefetch_packs: int,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -2284,7 +2290,12 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
                 rowvec=True,
                 wave_cols=single_wave_cols,
                 **(
-                    {"direct_wave_decode": True}
+                    {
+                        "direct_wave_decode": True,
+                        "raw_weight_prefetch_packs": (
+                            single_raw_weight_prefetch_packs
+                        ),
+                    }
                     if single_direct_wave_decode
                     else {}
                 ),

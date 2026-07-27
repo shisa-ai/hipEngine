@@ -960,6 +960,18 @@ measures **481.997/435.961/346.675 tok/s** at 512/1K/4K and cuts the Q4-down
 consumer **90.280 -> 71.378 ms (-20.94%)**. The pair-decode mode remains
 explicit rollback through cleanup
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q4-down-direct-wavecols-production.json`).
+The raw-nibble P8 pipeline is now also retained for Q4 selected down when
+producer rows are at least 512. The 64x32/local64 body carries only the next
+K32 interval's eight resident-T16 nibble words; it leaves D4 activation
+staging, metadata loads, packed dots, K order, BF16 output, resident bytes,
+LDS1536B, and scratch unchanged. The direct single-output CPU-reference gate
+is BF16-identical. At the real M512 grid, three traced pp512 arms cut the 72
+Q4-down launches **217.416 -> 212.090 ms (-2.450%)** at
+local64/VGPR96/SGPR128/LDS1536B/scratch0 versus VGPR88 without prefetch.
+Seven complete-state pp512 pairs improve
+**639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)**. The prior body remains
+selected below 512 rows; clean selector-unset publication is pending
+(`benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json`).
 An exact two-slot activation-cache sibling was screened and removed. Q4 down
 can safely omit the trailing K32 barrier because its direct-decoded weights
 live in wave registers; Q6 stayed on the existing shared-weight body.

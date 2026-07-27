@@ -424,7 +424,7 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151")
-        == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+        == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     )
     assert resolve_laguna_selected_down_mode("hip_gfx1151", "direct") == "direct"
     assert (
@@ -457,6 +457,13 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
             "mmq64x32_d4_f32_wavecols_direct_q4",
         )
         == "mmq64x32_d4_f32_wavecols_direct_q4"
+    )
+    assert (
+        resolve_laguna_selected_down_mode(
+            "hip_gfx1151",
+            "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512",
+        )
+        == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     )
     for rejected in ("wmma16_down", "adaptive_wmma16_down", "invalid"):
         with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
@@ -932,6 +939,26 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         np.testing.assert_array_equal(
             _f32_to_bf16_u16(down_q6_prefetch_actual),
             _f32_to_bf16_u16(down_q6_rows64_actual),
+        )
+        down_q4_prefetch_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            down_rowvec_scratch,
+            rows=3,
+            selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+            selected_down_mode=(
+                "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
+            ),
+            q6_wmma_prefetch_weight=True,
+            q6_wmma_prefetch_activation=True,
+        )
+        down_q4_prefetch_actual = _read_bf16(
+            down_q4_prefetch_output,
+            (3, h),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(down_q4_prefetch_actual),
+            _f32_to_bf16_u16(down_q6_prefetch_actual),
         )
         with monkeypatch.context() as unfused_combine:
             unfused_combine.setattr(

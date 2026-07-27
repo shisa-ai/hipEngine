@@ -1,6 +1,6 @@
 # Laguna S 2.1 Prefill Attack Plan
 
-Last updated: 2026-07-26
+Last updated: 2026-07-27
 
 Status: active successor to the completed LPF/AR-O campaign in
 [`LAGUNA.md`](LAGUNA.md). The prior bounded tasks are closed; this plan starts a
@@ -99,8 +99,12 @@ the next compact Q8 half-row during the same current-K32 compute. Clean
 512/1K/4K reaches **639.114/569.880/464.280 tok/s** and the Q6 window falls
 again to **100.367 ms**. Shape-qualified raw-nibble P8 prefetch then carries
 only the next Q4 K32 payload at M512+ and publishes
-**643.554/573.066/466.290 tok/s**. Caller-stream physical-byte and overlap
-reductions remain the active campaign.
+**643.554/573.066/466.290 tok/s**. The same payload-only pipeline is now
+admitted for the Q4 selected-down consumer at M512+: its traced 72-launch
+window falls **217.416 -> 212.090 ms (-2.450%)**, and seven complete-state
+pp512 pairs improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)**. It is
+the gfx1151 default pending a clean selector-unset publication. Caller-stream
+physical-byte and overlap reductions remain the active campaign.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -765,6 +769,7 @@ Current progress:
 | Q6 half-row activation staging | Admitted gfx1151 production default | Each of 128 threads stages one 16-byte activation half and one K16 sum instead of leaving half the workgroup idle while 64 threads stage complete rows. Resources stay local128/VGPR88/SGPR128/LDS5120B/scratch0. The actual layer-1 leaf improves **4.902 -> 4.885 ms (-0.351%, 16/21 wins)**; the all-Q6 screen improves **21/23** layers and **111.798 -> 111.490 ms (-0.276%)** with zero BF16 mismatches. Complete pp512 A/B is exact and positive at **552.562 -> 553.018 tok/s (+0.083%)**; clean headline publication is neutral. |
 | Q6 padded-activation elision | Admitted gfx1151 production default | Natural M512 has **117,760 useful** versus **362,944 padded** Q6 row slots. Padded slots are never consumed by the guarded dot/store loops, so production skips their zero LDS stores and K16 sum work. It improves **19/23** actual layers and **112.008 -> 111.806 ms (-0.180%)**, with zero BF16 mismatches and unchanged local128/VGPR88/SGPR128/LDS5120B/scratch0. Complete pp512 A/B is exact and positive at **552.983 -> 553.559 tok/s (+0.104%, 7/11 wins)**; clean publication reaches **551.459/517.307/432.099 tok/s**. |
 | Q6 selected-down integer WMMA | Admitted gfx1151 production default | Four wave32 groups consume the existing planar-qmicro/D4 caches as 16x16x16 signed-int8 x unsigned-Q6 fragments while preserving the two K16 scales, `-32*sum(x)` correction, ordered FP32 K32 accumulation, and BF16 store. The latest body carries both the next raw qmicro record/metadata and next compact Q8 half-row in registers during current fragment compute, then reuses the same LDS planes. Activation prefetch improves the retained leaf **4.104 -> 4.045 ms (-1.440%, 20/21 wins)**; clean pp512 improves **636.073 -> 639.114 tok/s**, and tracing cuts 23 Q6 calls **101.963 -> 100.367 ms (-1.565%)** at local128/VGPR112/SGPR128/LDS5120B/scratch0. |
+| Q4 selected-down raw-nibble P8 | Admitted gfx1151 default; clean publication pending | Payload-only next-K32 prefetch transfers from gate/up to the 64x32/local64 single-output body without changing resident bytes, LDS, scratch, arithmetic, or BF16 output. Three traced M512 arms cut 72 Q4-down calls **217.416 -> 212.090 ms (-2.450%)** at VGPR **88 -> 96**; seven complete-state pp512 pairs improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)**. Production selects it only at producer rows >=512. |
 | LAP-7–LAP-8 | Exact cached-only, cached-metadata, qrow6, and dense-initial policies admitted | Complete M128 tiles append before cached-only attention while partial, wrapped SWA, verifier, explicitly evicted, and unmeasured paths retain exact fallbacks. The final initial-fill policy uses global qrow4/qrow6 and SWA qrow4 without per-token position/eviction reads. Matched pp512 improves **552.144 -> 559.539 tok/s (+1.339%)**; clean publication reaches **559.290 tok/s**, and tracing cuts attention **153.226 -> 141.846 ms (-7.43%)**. Scalar split-state, M16xK64 WMMA, M8xK64 WMMA, qrow8, head2, qhead3, and nine-wave GQA sharing remain closed. |
 
 ## Post-500 campaign — 700 production stretch
@@ -1671,11 +1676,11 @@ Immediate execution queue:
 ### Next exact and quality-gated attacks
 
 The activation-only Q4 repair branch is exhausted and removed. Raw-nibble P8
-prefetch is now exact Q4 gate/up production:
+prefetch is now exact Q4 gate/up production and has transferred successfully
+to Q4 selected down:
 
-1. Refresh caller-stream attribution from the P8 production commit.
-   **Complete:** selected Q4 gate/up falls
-   **337.395 -> 333.701 ms (-1.095%)**.
+1. Publish the new shape-qualified Q4-down P8 default from a clean,
+   selector-unset revision, then refresh the all-family trace.
 2. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,

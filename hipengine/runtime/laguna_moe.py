@@ -66,6 +66,7 @@ _SELECTED_DOWN_MODES = frozenset(
         "mmq64x32_d4_f32_wavecols_q4",
         "mmq64x32_d4_f32_wavecols_direct_q4",
         "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+        "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512",
         "mmq64x32_d4x2_f32",
         "mmq64x32_d4x3_f32",
     }
@@ -140,6 +141,7 @@ _FUSED_SELECTED_SILU_PACK_DOWN_MODES = frozenset(
         "mmq64x32_d4_f32_wavecols_q4",
         "mmq64x32_d4_f32_wavecols_direct_q4",
         "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+        "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512",
     }
 )
 
@@ -1667,6 +1669,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
     q6_tile_rows: int = _MMQ32_ROWS,
     q6_wmma_prefetch_weight: bool = False,
     q6_wmma_prefetch_activation: bool = False,
+    q4_raw_weight_prefetch_packs: int = 0,
     fused_silu_pack: bool = False,
 ) -> bool:
     """Quantize compact post-SiLU rows and run range-safe Q6T16 MMQ down."""
@@ -1805,6 +1808,16 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
         **(
             {"direct_wave_decode": True}
             if direct_wave_decode_q4
+            and weight.spec.quant_key == "gguf_q4_k_t16_v1"
+            else {}
+        ),
+        **(
+            {
+                "raw_weight_prefetch_packs": (
+                    q4_raw_weight_prefetch_packs
+                )
+            }
+            if q4_raw_weight_prefetch_packs
             and weight.spec.quant_key == "gguf_q4_k_t16_v1"
             else {}
         ),
@@ -2390,14 +2403,19 @@ def run_laguna_moe_rows(
             libraries=libraries,
         )
     mmq_down_config = {
-        "mmq64x32_d4_f32": (1, False, False, False, _MMQ32_ROWS),
-        "mmq64x32_d4_f32_rowvec": (1, True, False, False, _MMQ32_ROWS),
+        "mmq64x32_d4_f32": (
+            1, False, False, False, _MMQ32_ROWS, False
+        ),
+        "mmq64x32_d4_f32_rowvec": (
+            1, True, False, False, _MMQ32_ROWS, False
+        ),
         "mmq64x32_d4_f32_wavecols_q4": (
             1,
             True,
             True,
             False,
             _MMQ32_ROWS,
+            False,
         ),
         "mmq64x32_d4_f32_wavecols_direct_q4": (
             1,
@@ -2405,6 +2423,7 @@ def run_laguna_moe_rows(
             True,
             True,
             _MMQ32_ROWS,
+            False,
         ),
         "mmq64x64_d4_f32_q6_wavecols_direct_q4": (
             1,
@@ -2412,9 +2431,22 @@ def run_laguna_moe_rows(
             True,
             True,
             _MMQ64_ROWS,
+            False,
         ),
-        "mmq64x32_d4x2_f32": (2, False, False, False, _MMQ32_ROWS),
-        "mmq64x32_d4x3_f32": (3, False, False, False, _MMQ32_ROWS),
+        "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512": (
+            1,
+            True,
+            True,
+            True,
+            _MMQ64_ROWS,
+            True,
+        ),
+        "mmq64x32_d4x2_f32": (
+            2, False, False, False, _MMQ32_ROWS, False
+        ),
+        "mmq64x32_d4x3_f32": (
+            3, False, False, False, _MMQ32_ROWS, False
+        ),
     }.get(selected_down_mode)
     (
         mmq_down_passes,
@@ -2422,7 +2454,10 @@ def run_laguna_moe_rows(
         mmq_down_wave_cols_q4,
         mmq_down_direct_wave_decode_q4,
         mmq_down_q6_tile_rows,
-    ) = mmq_down_config or (None, False, False, False, _MMQ32_ROWS)
+        mmq_down_q4_raw_prefetch,
+    ) = mmq_down_config or (
+        None, False, False, False, _MMQ32_ROWS, False
+    )
     use_mmq_down = (
         compact_gate_up
         and mmq_down_passes is not None
@@ -2440,6 +2475,9 @@ def run_laguna_moe_rows(
             q6_tile_rows=mmq_down_q6_tile_rows,
             q6_wmma_prefetch_weight=q6_wmma_prefetch_weight,
             q6_wmma_prefetch_activation=q6_wmma_prefetch_activation,
+            q4_raw_weight_prefetch_packs=(
+                8 if mmq_down_q4_raw_prefetch and rows >= 512 else 0
+            ),
             fused_silu_pack=use_fused_selected_silu_pack,
         )
     )
