@@ -14,6 +14,7 @@ from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
 
 _SOURCE = Path("hipengine/kernels/hip_gfx1100/fused/paro_combine.hip")
+_RUNTIME = Path("hipengine/runtime/laguna_gguf_runner.py")
 _LAYER = "moe_tail+next_rmsnorm"
 _QUANT = "bf16"
 _VARIANT = "laguna_aggregate_wave0_tree_gguf_f32_weight_out"
@@ -215,7 +216,7 @@ def test_wave0_tree_wrapper_validates_before_build(monkeypatch: pytest.MonkeyPat
         launch(*valid, 0)
 
 
-def test_wave0_tree_package_registry_backend_scope_and_fallbacks() -> None:
+def test_wave0_tree_package_registry_backend_scope_fallbacks_and_no_runtime_owner() -> None:
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.hip_gfx1100 import fused
     from hipengine.kernels.hip_gfx1100.fused.gguf_ops import register_gguf_ops
@@ -269,6 +270,14 @@ def test_wave0_tree_package_registry_backend_scope_and_fallbacks() -> None:
     load_backend_kernel_package("hip_gfx1151")
     for backend in ("hip_gfx1151", "cuda_sm86", "cpu_reference"):
         assert not is_registered(KernelKey(backend, _LAYER, _QUANT, _VARIANT))
+
+    runtime_source = _RUNTIME.read_text(encoding="utf-8")
+    assert _VARIANT not in runtime_source
+    assert _SYMBOL not in runtime_source
+    import hipengine.kernels.hip_gfx1100 as backend
+
+    assert not hasattr(backend, "LAGUNA_MOE_TAIL_WAVE0_TREE")
+
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_wave0_tree_matches_retained_unfused_and_cpu_for_edge_fixtures() -> None:

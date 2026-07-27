@@ -1,0 +1,308 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-design.json",
+    "design_artifact_sha256": "8066b8225f478e5d20abf3d31b1d70946c048cb7975dd26d39fbf457c2b5c703",
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "primitive_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-correctness.json",
+    "primitive_artifact_sha256": "3cb469cc4f09662153383ff05960af8b9203b7629595123af85c0c559b9c92e9",
+    "primitive_commit": "f2e8722cc7efc0d7ed9abb11e7732d109774c558",
+    "runtime_correctness_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-runtime-correctness.json",
+    "runtime_correctness_artifact_sha256": "397865f1abbbc7e742e5deda255bc873e41313f4ec3a8092a525e8e190ec85df"
+  },
+  "builder_sha256": "3af5da56897f9c01d162a13ed0783a5e9d4234d02c4825ce44f44331fb036a60",
+  "clean_adjudication": {
+    "category_process_root_count": 0,
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_resources_calls_dispatches_compiler_pass": true,
+      "every_order_child_inside_0_5pct": false,
+      "every_order_kernel_sum_improves": false,
+      "every_order_moe_tail_family_improves": false,
+      "every_order_span_inside_0_5pct": false,
+      "mechanical_gate_pass": false
+    },
+    "long_process_root_count": 0,
+    "order_deltas_pct": {
+      "candidate_then_control": {
+        "kernel_sum_pct": -0.12133989135375556,
+        "moe_tail_family_pct": 0.8431038804963542,
+        "profiled_child_tok_s_pct": -0.16787226903843822,
+        "span_pct": -0.32328226748209454
+      },
+      "control_then_candidate": {
+        "kernel_sum_pct": 0.05063998133107983,
+        "moe_tail_family_pct": -3.0558140644760923,
+        "profiled_child_tok_s_pct": -1.4766479057923276,
+        "span_pct": 0.7993304048071082
+      }
+    },
+    "passed": false,
+    "pooled": {
+      "candidate": {
+        "candidate_ms": 0.3994523928571429,
+        "control_ms": 0.0,
+        "kernel_sum_ms": 12.713476214285715,
+        "moe_tail_family_ms": 0.3994523928571429,
+        "profiled_child_tok_s": 58.4840976136298,
+        "span_median_ms": 15.4289115,
+        "stable_samples": 28
+      },
+      "control": {
+        "candidate_ms": 0.0,
+        "control_ms": 0.4039247142857143,
+        "kernel_sum_ms": 12.717995607142853,
+        "moe_tail_family_ms": 0.4039247142857143,
+        "profiled_child_tok_s": 58.74414358315976,
+        "span_median_ms": 15.3959015,
+        "stable_samples": 28
+      },
+      "delta_pct": {
+        "kernel_sum_ms": -0.035535417661258784,
+        "moe_tail_family_ms": -1.1072165852688887,
+        "profiled_child_tok_s": -0.44267556503200245,
+        "span_median_ms": 0.21440771103919953
+      },
+      "waiver_allowed": false
+    },
+    "preflight_sha256": "3903a665b6d99de469392ae813c3a850c1b0ae829b9b3642c7aa8b4917c0c78a",
+    "preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preflight_stdout_sha256": "3903a665b6d99de469392ae813c3a850c1b0ae829b9b3642c7aa8b4917c0c78a",
+    "report_sha256": "00f720010627cc4ab557e044640627526df27c65aeb078cdd7584723d8f52f57",
+    "runner_exit": 3,
+    "runner_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runner_stdout_sha256": "00f720010627cc4ab557e044640627526df27c65aeb078cdd7584723d8f52f57",
+    "short_process_root_count": 4,
+    "short_process_roots": [
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-candidate-a",
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-candidate-b",
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-a",
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-b"
+    ],
+    "stable_samples_per_arm": 28,
+    "stop_rule_applied": "Order A failed kernel/span/child guards and order B failed the D9-family guard; 512/1K/3968 and categories stopped without rerun or waiver.",
+    "summary_sha256": "2f2e8fbfb9154f831e5721e37276ead7b74019157b516e6e71dd50564fde11ae",
+    "through": "short",
+    "topology": {
+      "candidate_calls_per_token": {
+        "candidate": 47,
+        "retained_d9": 0
+      },
+      "candidate_model_kernels_per_token": 678,
+      "control_calls_per_token": {
+        "candidate": 0,
+        "retained_d9": 47
+      },
+      "control_model_kernels_per_token": 678,
+      "ids_finite_lifecycle_no_compiler": true,
+      "iq3_wave10_calls_per_token": 45,
+      "resources": "both local256/VGPR16/SGPR128/LDS1024/scratch0"
+    }
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_decode_tok_s_unchanged": 63.27021934907704,
+    "categories_skipped": true,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "next_action": "Commit rejection, then re-rank a materially independent exact residual surface.",
+    "performance_claim": false,
+    "primitive_retained_diagnostic": true,
+    "remaining_gap_pct": 1.782923076923078,
+    "retained_default_unchanged": true,
+    "retry_unchanged_owner": false,
+    "runtime_owner_rejected_and_removed": true
+  },
+  "frozen_contract": {
+    "acceptance": {
+      "candidate_calls_per_token": {
+        "candidate": 47,
+        "control": 0
+      },
+      "categories_allowed_only_after_all_eight_clean_orders_pass": true,
+      "control_calls_per_token": {
+        "candidate": 0,
+        "control": 47
+      },
+      "every_context_and_order_complete_kernel_sum_improves": true,
+      "every_context_and_order_moe_tail_family_improves": true,
+      "every_context_and_order_profiled_child_throughput_regression_min_pct_inclusive": -0.5,
+      "every_context_and_order_span_regression_max_pct_inclusive": 0.5,
+      "mechanical_requirements": "exact IDs, finite logits, local256/VGPR16/SGPR128/LDS1024/scratch0, lifecycle cleanup, no compiler",
+      "model_kernels_per_token": {
+        "candidate": 678,
+        "control": 678
+      },
+      "stop_on_first_failed_context": true,
+      "third_order_rerun_or_pooled_waiver_allowed": false,
+      "unchanged_calls_per_token": {
+        "iq3_wave10": 45
+      }
+    },
+    "builder_sha256": "68e5d9d90cb0923b9a89ac3029ccb253cd69d227d686f8c5cd7f82ab3b95bf0b",
+    "command": "bash /tmp/run_laguna_moe_tail_wave0_tree_clean_profiles.sh",
+    "contexts": [
+      {
+        "decode_tokens": 16,
+        "label": "short",
+        "prompt_length": null,
+        "stable_steps": 14
+      },
+      {
+        "decode_tokens": 8,
+        "label": "512",
+        "prompt_length": 512,
+        "stable_steps": 6
+      },
+      {
+        "decode_tokens": 8,
+        "label": "1024",
+        "prompt_length": 1024,
+        "stable_steps": 6
+      },
+      {
+        "decode_tokens": 8,
+        "label": "3968",
+        "prompt_length": 3968,
+        "stable_steps": 6
+      }
+    ],
+    "frozen_before_launch": true,
+    "harnesses": {
+      "analyzer": {
+        "path": "/tmp/analyze_laguna_moe_tail_wave0_tree_clean_profiles.py",
+        "sha256": "4dce47997eb8a1bdba7f01ac12b9d31665f252bf1db103bb893ecbd84fe7fdfe"
+      },
+      "child": {
+        "path": "/tmp/laguna_moe_tail_wave0_tree_clean_profile_child.py",
+        "sha256": "7a3481cca8ed3a561e06c23d3c97e4e6443850cdafc29a9fd1b58e273b18bd1c"
+      },
+      "runner": {
+        "path": "/tmp/run_laguna_moe_tail_wave0_tree_clean_profiles.sh",
+        "sha256": "887679b5d62e0ce764f28cce8ec14d03cb22e4576ae0b91a3dc04ef4e96f37a6"
+      }
+    },
+    "path": "/tmp/laguna-moe-tail-wave0-tree-clean-frozen-contract.json",
+    "process_orders": {
+      "1024": {
+        "a": [
+          "control",
+          "candidate"
+        ],
+        "b": [
+          "candidate",
+          "control"
+        ]
+      },
+      "3968": {
+        "a": [
+          "candidate",
+          "control"
+        ],
+        "b": [
+          "control",
+          "candidate"
+        ]
+      },
+      "512": {
+        "a": [
+          "candidate",
+          "control"
+        ],
+        "b": [
+          "control",
+          "candidate"
+        ]
+      },
+      "short": {
+        "a": [
+          "control",
+          "candidate"
+        ],
+        "b": [
+          "candidate",
+          "control"
+        ]
+      }
+    },
+    "sha256": "e812e53a7faf2a6dabb8a55f629dfaacbd37caf684f811f9100cbb2c29463f1f"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_moe_tail_wave0_tree_rejection",
+  "measured_revision": "fc79fb1d8d30da325111429bc77ec804242753fd",
+  "model": {
+    "context_length": 4096,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "reason": "runtime rejected; retained default and canonical topline unchanged"
+  },
+  "runtime_removal": {
+    "primitive_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-correctness.json",
+    "primitive_artifact_sha256": "3cb469cc4f09662153383ff05960af8b9203b7629595123af85c0c559b9c92e9",
+    "primitive_revision": "f2e8722cc7efc0d7ed9abb11e7732d109774c558",
+    "production_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "production_files_match_primitive_commit": true,
+    "rejection_green": {
+      "result": "7 passed across rejection and primitive contracts",
+      "sha256": "83a1593c5b5783693fe3006d1f6597bcb4f3a5968f23b59481ee09a0477f910a"
+    },
+    "rejection_red": {
+      "result": "one retained-plan test passes; two removal-contract tests fail while capability/resolver/session/CLI seams remain",
+      "sha256": "528ac5743cfc497a835ca4f1e6b7015bd0a3a8053433521e67f485313ac5c197"
+    },
+    "removed": [
+      "LAGUNA_MOE_TAIL_WAVE0_TREE capability",
+      "resolve_laguna_moe_tail_wave0_tree and candidate plan substitution",
+      "LagunaGGUFResidentSession use_moe_tail_wave0_tree option and telemetry",
+      "laguna_target_ar_bench.py --enable-moe-tail-wave0-tree",
+      "temporary docs/REFACTOR.md screen row"
+    ],
+    "retained": [
+      "gfx1100 wave-0-tree HIP body/export/wrapper/four-axis key",
+      "gfx1151 alias exclusion",
+      "retained D9 runtime owner",
+      "registered BF16 add + BF16 add + F32-weight RMSNorm fallback",
+      "design, primitive, runtime-correctness, and rejection evidence"
+    ],
+    "source_hashes_after_removal": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f",
+      "hipengine/runtime/laguna_gguf_runner.py": "41c44b980a0ae7d4f2e90aba49cee32d9202c304f67fd930c67123af3e53b231",
+      "scripts/laguna_target_ar_bench.py": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab",
+      "tests/test_laguna_moe_tail_wave0_tree.py": "aae6a8323f7c635b0c559c0f5a1b181550d2513e5bbdc608798e3a29b8e79f76",
+      "tests/test_laguna_moe_tail_wave0_tree_runtime.py": "fead6e3c77715ba5734258e7db8640e608d610edad8b0e3027b0450dc9a75bdc"
+    }
+  },
+  "schema": 1,
+  "status": "runtime_rejected_clean_short",
+  "validation": {
+    "adjacent_filtered_result": "134 passed after excluding exactly that unchanged stale node",
+    "adjacent_filtered_sha256": "d1a7e08c84901e70ea7fc7458e480c2ebe877e9dc0e5c1ccba15bd35ee6b1c31",
+    "adjacent_unfiltered_result": "134 passed plus one documented unchanged stale gfx1151 resolver test failure",
+    "adjacent_unfiltered_sha256": "7398d6c102ebabbcedfd6b9c29e92824f299474d683367ba2acb8c96276e95bf",
+    "cpu_reference_registry_build_result": "25 passed",
+    "cpu_reference_registry_build_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "fixtures_passed": true,
+    "fixtures_sha256": "fec7a60788a7feec6ada8becc5e66bc4dc32cc4a6b9fb299a7305a8713e7766b",
+    "lineage_note": "Only already-catalogued unrelated external drift; runtime removal changes no kernel body.",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "registry_smoke_passed": true,
+    "registry_smoke_sha256": "159c48de9337ea6a260024b63a5eac9a158602ab443d94038d9938b29d538311",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}
