@@ -118,6 +118,12 @@ launches fall **144 -> 0**, total dispatches fall **2,417 -> 2,273**, and the
 transpose-plus-gate boundary falls **11.240 -> 10.318 ms (-8.20%)**. Clean
 selector-unset continuity is **647.826/575.732/468.103 tok/s**, within
 **-0.302%/-0.149%/-0.155%** aggregate variance of the preceding packet.
+The fused RMSNorm/RoPE producer now writes the three qualified query tiles
+head-major directly. Query-pack launches fall **144 / 4.907 ms -> 0**, total
+dispatches fall **2,273 -> 2,129**, and producer-plus-pack falls
+**20.530 -> 16.666 ms (-18.82%)**. Clean selector-unset production reaches
+**654.249/579.699/468.608 tok/s**, improving
+**0.991%/0.689%/0.108%** over the preceding packet.
 An exact split gate/up formulation that
 writes D4 directly from the up epilogue is slower at both natural primary
 shapes and has been fully removed.
@@ -135,8 +141,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **647.826 tok/s**
-selector-unset, **8.499x** the old row and **88.015%** above the Vulkan
+The quality-admitted production default now measures **654.249 tok/s**
+selector-unset, **8.583x** the old row and **89.875%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -777,7 +783,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query/wave-softmax attention, exact packed-output gating, Q4/Q6 precomputed activation sums, shape-qualified Q4 raw-nibble P8, and the row-qualified source-F16 schedule publish **647.826/575.732/468.103 tok/s** at 512/1K/4K. pp512 wall is **790.336 ms**, leaving **58.907 ms** to 700. |
+| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Direct packed-query production, packed-query/wave-softmax attention, exact packed-output gating, Q4/Q6 precomputed activation sums, shape-qualified Q4 raw-nibble P8, and the row-qualified source-F16 schedule publish **654.249/579.699/468.608 tok/s** at 512/1K/4K. pp512 wall is **782.577 ms**, leaving **51.148 ms** to 700. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -792,7 +798,7 @@ Current progress:
 ## Post-500 campaign — 700 production stretch
 
 The 350 and 500 tok/s milestones prove the compounded production package, but
-they are not roofline results. Current clean production measures **0.790336
+they are not roofline results. Current clean production measures **0.782577
 seconds** synchronized pp512 wall. The clean Q6-precomputed-sum trace at
 `15b26fc09` measures **0.843063 seconds** kernel span and **1.106503 seconds**
 inclusive kernel sum. The profiler perturbs this
@@ -810,35 +816,39 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | Inclusive pp512 kernel time | Inclusive-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **331.231 ms** | **30.06%** | Shape-qualified raw-nibble P8 is the gfx1151 default. Physical counters before P8 reached **195.88 GB/s / 88.64%** of the read anchor. Compact metadata prefetch and non-temporal payload loads are both measured regressions; the next screen must remove physical bytes, cross-tile work, or a caller boundary. |
-| Activation/reduce/residual | **261.027 ms** | **23.69%** | This inclusive bucket moves with cross-stream overlap and is not an additive ceiling. The prior queue union showed only **0.826 ms** secondary-only; reopen only with caller-stream relief, reduced bandwidth contention, or a fused producer that wins the complete wall. |
-| Selected D4 Q4/Q6 down | **169.881 ms** | **15.42%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Precomputed exact Q6 K16 sums cut the Q6 subwindow **100.367 -> 99.459 ms** with unchanged resources. Further work requires fewer physical weight bytes or a new cross-tile schedule. |
-| Static-range direct hipBLASLt source-F16 | **124.738 ms** | **11.32%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
-| Q4/Q6 WMMA dense/shared | **91.716 ms** | **8.32%** | This inclusive family overlaps routed work. The secondary shared branch remains hidden. An exact shared gate/up+SiLU leaf improved **14.56%** yet regressed production **0.52%**; reopen only after queue-exclusive caller-stream evidence changes that premise. |
-| Global + SWA attention | **63.846 ms** | **5.79%** | Qualified positions 128/256/384 use exact BF16 cache widening, packed F32 queries, one wide QK and one wide PV hipBLASLt contraction, one wave32 per causal-score row, and a packed-output-aware exact gate. Partial, wrapped, explicitly evicted, verifier, decode, and unmeasured routes retain exact fallbacks. |
-| Router | **22.645 ms** | **2.06%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
-| Norm/RoPE/gates, metadata, KV/tails and other | **36.735 ms** | **3.33%** | The packed gate is included here at **10.318 ms**. No individual exact subfamily currently has the 5% perfect-removal ceiling needed to displace the selected-projection campaign. |
+| Selected D8 Q4 gate/up | **332.844 ms** | **30.45%** | Shape-qualified raw-nibble P8 is the gfx1151 default. Physical counters before P8 reached **195.88 GB/s / 88.64%** of the read anchor. Compact metadata prefetch and non-temporal payload loads are both measured regressions; the next screen must remove physical bytes, cross-tile work, or a caller boundary. |
+| Activation/reduce/residual | **252.435 ms** | **23.09%** | This inclusive bucket moves with cross-stream overlap and is not an additive ceiling. The prior queue union showed only **0.826 ms** secondary-only; reopen only with caller-stream relief, reduced bandwidth contention, or a fused producer that wins the complete wall. |
+| Selected D4 Q4/Q6 down | **170.751 ms** | **15.62%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Precomputed exact Q6 K16 sums cut the Q6 subwindow **100.367 -> 99.459 ms** with unchanged resources. Further work requires fewer physical weight bytes or a new cross-tile schedule. |
+| Static-range direct hipBLASLt source-F16 | **124.308 ms** | **11.37%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
+| Q4/Q6 WMMA dense/shared | **92.035 ms** | **8.42%** | This inclusive family overlaps routed work. The secondary shared branch remains hidden. An exact shared gate/up+SiLU leaf improved **14.56%** yet regressed production **0.52%**; reopen only after queue-exclusive caller-stream evidence changes that premise. |
+| Global + SWA attention | **60.564 ms** | **5.54%** | Qualified positions 128/256/384 use exact BF16 cache widening, direct packed F32 query production, one wide QK and one wide PV hipBLASLt contraction, one wave32 per causal-score row, and a packed-output-aware exact gate. Partial, wrapped, explicitly evicted, verifier, decode, and unmeasured routes retain exact fallbacks. |
+| Router | **22.763 ms** | **2.08%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
+| Norm/RoPE/gates, metadata, KV/tails and other | **37.474 ms** | **3.43%** | Direct packed-query production is included here at **16.666 ms** and the packed gate remains included. No individual exact subfamily currently has the 5% perfect-removal ceiling needed to displace the selected-projection campaign. |
 
 The current trace gives concrete Amdahl checkpoints; the clean publication
 below is a retained performance claim:
 
-- The clean production median is now **647.826 tok/s**. The selector-unset
-  1K/4K medians are **575.732/468.103 tok/s**. These are within
-  **-0.302%/-0.149%/-0.155%** of the preceding packet; retention rests on
-  exact complete-state A/B plus a named sub-window. The latest clean trace has
-  **2,273** dispatches, **1,101.819 ms** inclusive kernel sum, and
-  **843.411 ms** kernel span. Selected gate/up remains largest at
-  **331.231 ms**; activation/reduce/residual is second at **261.027 ms**.
-  Selected Q4/Q6 down is **169.881 ms**, with the Q6 body observed at
+- The clean production median is now **654.249 tok/s**. The selector-unset
+  1K/4K medians are **579.699/468.608 tok/s**, improving
+  **0.991%/0.689%/0.108%** over the preceding packet. The latest clean trace
+  has **2,129** dispatches, **1,093.173 ms** inclusive kernel sum, and
+  **841.892 ms** kernel span. Selected gate/up remains largest at
+  **332.844 ms**; activation/reduce/residual is second at **252.435 ms**.
+  Selected Q4/Q6 down is **170.751 ms**, with the Q6 body observed at
   local128/VGPR112/LDS5120B/scratch0. The declared 500 gate is closed.
+- Direct packed-query production removes all **144 / 4.907-ms** query
+  transposes. The fused producer itself moves **15.623 -> 16.666 ms**, so the
+  exact producer-plus-pack boundary improves **20.530 -> 16.666 ms
+  (-18.82%)**. Total dispatches fall **2,273 -> 2,129** and traced attention
+  falls **63.846 -> 60.564 ms (-5.14%)** with no resident/scratch growth.
 - Exact packed output removes all **144 / 3.703-ms** attention-output
   transpose launches. The replacement local128/VGPR8 gate raises gate time
   **7.537 -> 10.318 ms**, so the combined boundary still improves
   **11.240 -> 10.318 ms (-8.20%)** with zero resident/scratch growth.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
-- The clean wall must fall from **790.336 ms** to **731.429 ms** for 700 tok/s,
-  a further **58.907 ms**. The current profiled kernel span is **111.982 ms**
+- The clean wall must fall from **782.577 ms** to **731.429 ms** for 700 tok/s,
+  a further **51.148 ms**. The current profiled kernel span is **110.464 ms**
   above that wall, so sufficient work exists, but inclusive buckets cannot be
   added across the two streams. The next material screen must change selected
   projection physical bytes, cross-tile reuse, a producer/consumer boundary,
@@ -1890,6 +1900,21 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json).
+64. **Published exact production:** write the same three qualified query tiles
+   head-major directly from the fused per-head RMSNorm/RoPE producer. The
+   planner independently qualifies the dense-initial library route before
+   production and hard-errors if the later actual preappend/library decision
+   disagrees. Eleven complete-state pp512 pairs improve
+   **647.210 -> 650.651 tok/s (+0.532%, 7/11 wins)** with every token/logit/
+   hidden/KV/cursor hash equal. The clean trace removes all
+   **144 / 4.907-ms** query transposes, cuts dispatches **2,273 -> 2,129**,
+   and improves producer-plus-pack **20.530 -> 16.666 ms (-18.82%)**. The
+   producer is local256/VGPR16/LDS0/scratch0. Clean selector-unset 512/1K/4K
+   reaches **654.249/579.699/468.608 tok/s**, improving
+   **0.991%/0.689%/0.108%**.
+   Evidence:
+   [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-candidate.json) ·
+   [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1898,10 +1923,10 @@ prefetch is now exact Q4 gate/up production and has transferred successfully
 to Q4 selected down:
 
 1. **Trace/publication complete:** selector-unset production is now
-   **647.826/575.732/468.103 tok/s**. The refreshed pp512 trace has
-   **2,273** dispatches and cuts the packed attention output boundary
-   **11.240 -> 10.318 ms (-8.20%)**. Selected gate/up plus down remains the
-   dominant inclusive expert window at **501.112 ms**.
+   **654.249/579.699/468.608 tok/s**. The refreshed pp512 trace has
+   **2,129** dispatches and cuts the direct packed-query producer boundary
+   **20.530 -> 16.666 ms (-18.82%)**. Selected gate/up plus down remains the
+   dominant inclusive expert window at **503.595 ms**.
 2. Attack the selected-expert path with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
@@ -1926,7 +1951,7 @@ to Q4 selected down:
    without a new numerical representation.
 
 The stretch target remains **>=700 tok/s**, i.e. **<=731.429 ms** for pp512.
-Current production is **647.826 tok/s / 790.336 ms**, leaving **58.907 ms**.
+Current production is **654.249 tok/s / 782.577 ms**, leaving **51.148 ms**.
 The rejected D4 role split cannot contribute to that gap; reaching 700 now
 requires a retained physical-byte, cross-tile-reuse, or newly enabled library
 win.
@@ -3790,6 +3815,8 @@ Primary Laguna evidence:
 
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-candidate.json`
+- `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`
+- `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json`

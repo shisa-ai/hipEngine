@@ -167,10 +167,13 @@ should be removed or collapsed.
   attention route are independent fallbacks, not part of this rollback.
 - Eleven complete pp512 pairs are state-exact and improve
   **647.210 -> 650.651 tok/s (+0.532%, 7/11 wins)** with **1.557 ms** paired
-  median wall saved. Keep explicit false through the clean trace/publication
-  gate and the next optimization checkpoint, then remove this one-purpose
-  session selector and A/B comparison while retaining the generic producer
-  for unqualified rows.
+  median wall saved. Clean tracing removes all **144 / 4.907-ms** query
+  transposes, cuts dispatches **2,273 -> 2,129**, and improves the exact
+  producer-plus-pack boundary **20.530 -> 16.666 ms (-18.82%)**.
+  Selector-unset publication reaches **654.249/579.699/468.608 tok/s**.
+  Keep explicit false through the next optimization checkpoint, then remove
+  this one-purpose session selector and A/B comparison while retaining the
+  generic producer for unqualified rows.
 
 ## Laguna wave-per-row causal-softmax rollback
 
