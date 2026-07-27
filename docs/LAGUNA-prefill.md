@@ -110,6 +110,11 @@ K3072xN72 source-F16 schedule by rows now publishes
 Precomputing Q6's exact K16 activation sums once in the unchanged D4 metadata
 word then publishes **647.207/576.799/468.431 tok/s** and cuts the traced
 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)**.
+Precomputing Q4's exact K16 activation sums once in an activation-only sidecar
+then publishes **649.791/576.589/468.830 tok/s** and cuts selected gate/up
+**334.229 -> 330.720 ms (-1.050%)**. An exact split gate/up formulation that
+writes D4 directly from the up epilogue is slower at both natural primary
+shapes and has been fully removed.
 Caller-stream physical-byte and overlap reductions remain the active campaign.
 The execution order below was re-audited on
 2026-07-26 after
@@ -766,7 +771,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query/wave-softmax attention, exact Q6 weight+activation prefetch plus precomputed sums, shape-qualified Q4 raw-nibble P8, and the row-qualified source-F16 schedule publish **647.207/576.799/468.431 tok/s** at 512/1K/4K. pp512 wall is **791.092 ms**, leaving **59.663 ms** to 700. |
+| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query/wave-softmax attention, exact Q4/Q6 precomputed activation sums, shape-qualified Q4 raw-nibble P8, and the row-qualified source-F16 schedule publish **649.791/576.589/468.830 tok/s** at 512/1K/4K. pp512 wall is **787.946 ms**, leaving **56.517 ms** to 700. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -811,9 +816,10 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 The current trace gives concrete Amdahl checkpoints; the clean publication
 below is a retained performance claim:
 
-- The clean production median is now **647.207 tok/s**. The selector-unset
-  1K/4K medians are **576.799/468.431 tok/s**. Exact Q6 sum reuse improves
-  the preceding packet at every length. The latest clean trace has **2,417**
+- The clean production median is now **649.791 tok/s**. The selector-unset
+  1K/4K medians are **576.589/468.830 tok/s**. Exact Q4 sum reuse improves
+  pp512 and 4K, while a same-process 1K gate confirms a **4.428-ms** paired
+  saving with exact state. The latest clean trace has **2,417**
   dispatches, **1,106.503 ms** inclusive kernel sum, and **843.063 ms**
   kernel span. Selected gate/up remains largest at **334.229 ms**;
   activation/reduce/residual is second at **264.117 ms**. Selected Q4/Q6
@@ -821,8 +827,8 @@ below is a retained performance claim:
   local128/VGPR112/LDS5120B/scratch0. The declared 500 gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
-- The clean wall must fall from **791.092 ms** to **731.429 ms** for 700 tok/s,
-  a further **59.663 ms**. The current profiled kernel span is **111.634 ms**
+- The clean wall must fall from **787.946 ms** to **731.429 ms** for 700 tok/s,
+  a further **56.517 ms**. The current profiled kernel span is **111.634 ms**
   above that wall, so sufficient work exists, but inclusive buckets cannot be
   added across the two streams. The next material screen must change selected
   projection physical bytes, cross-tile reuse, a producer/consumer boundary,
@@ -1828,6 +1834,19 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-production.json).
+61. **Rejected and removed before integration:** split the production P8
+   gate/up contraction into two local128 launches, retain gate BF16 scratch,
+   and form the exact BF16 SiLU plus D4 cache directly in the up epilogue.
+   This removes the up BF16 write, the later gate/up reread, and the standalone
+   fused pack without local256 or cross-wave result exchange. The cache is
+   byte-identical, and both consumers remain VGPR96/LDS3072B/scratch0, but 41
+   counter-rotated samples regress M256
+   **4.4945 -> 4.5598 ms (+1.453%)** and M512
+   **6.8679 -> 6.9840 ms (+1.690%)**. The additional launch costs more than
+   the removed pack and traffic repay. Every export, wrapper, fixture, and
+   harness mode is removed.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-split-fused-silu-pack-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-split-fused-silu-pack-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1845,7 +1864,8 @@ to Q4 selected down:
    metadata-carrying, non-temporal, packed-metadata, pure axis-swap, and
    two/four-row-group launch-order schedules are now rejected. Direct row64
    is also closed on the current P8 body, including dense-expert partitioning;
-   paired local256 gate/up-to-D4 fusion is closed as well. The next expert
+   paired local256 gate/up-to-D4 fusion and the local128 split/direct-D4
+   formulation are closed as well. The next expert
    candidate must reduce weight bytes without extending accumulator lifetime,
    widening the workgroup, exchanging full results through LDS, or weakening
    P8's complete next-K32 payload coverage. Do not pair-share those payload
@@ -1861,7 +1881,7 @@ to Q4 selected down:
    without a new numerical representation.
 
 The stretch target remains **>=700 tok/s**, i.e. **<=731.429 ms** for pp512.
-Current production is **647.207 tok/s / 791.092 ms**, leaving **59.663 ms**.
+Current production is **649.791 tok/s / 787.946 ms**, leaving **56.517 ms**.
 The rejected D4 role split cannot contribute to that gap; reaching 700 now
 requires a retained physical-byte, cross-tile-reuse, or newly enabled library
 win.
@@ -3730,6 +3750,7 @@ Primary Laguna evidence:
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json`
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-split-fused-silu-pack-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`

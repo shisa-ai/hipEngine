@@ -184553,3 +184553,22 @@ Vulkan local sizes verbatim will close the measured gap.
   `K3072, N2368x2` to `K3072, N1024x2`. The value 2,368 is the byte size of
   one T16 tile record, not the projection width. No command, measurement,
   correctness result, or production decision changes.
+
+## 2026-07-27 — Reject split gate/up direct-D4 epilogue
+
+- Tested a local128 alternative to the earlier rejected local256 paired
+  fusion: launch the production P8 gate contraction alone to BF16 scratch,
+  then launch up alone and form the exact BF16 SiLU plus selected-down D4 cache
+  directly in its wave-local epilogue. This removes the up BF16 write, later
+  gate/up reread, and standalone fused pack without cross-wave exchange.
+- The dedicated packed-cache fixture and the existing 14-case Q4
+  CPU-reference matrix pass (**15 tests**); actual M256/M512 output D4 bytes
+  match production exactly. Cached tracing shows both consumers remain
+  local128/VGPR96/SGPR128/LDS3072B/scratch0.
+- Forty-one counter-rotated, pack-inclusive actual-layer samples reject it:
+  M256 **4.49449 -> 4.55980 ms (+1.453%)** and M512
+  **6.86794 -> 6.98401 ms (+1.690%)**. The extra launch costs more than the
+  removed ~0.13-ms pack and traffic repay. Every candidate kernel/export,
+  wrapper, fixture, and harness mode was removed; production stays
+  **649.791 tok/s / 787.946 ms** at pp512. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-split-fused-silu-pack-rejected.json`.
