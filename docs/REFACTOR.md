@@ -1665,3 +1665,21 @@ should be boring.
   the aggregate-flat 1K result is positive in same-process paired wall by
   **4.428 ms (7/11 wins)**. Keep rollback through the 700 campaign, then
   collapse the positive path as described above.
+
+## Laguna packed attention-output rollback
+
+- Added 2026-07-27 as the gfx1151 default candidate behind
+  `LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE`. Qualified
+  dense-initial M128 library PV tiles write directly to head-major context
+  slices; one exact packed-aware softplus gate restores generic BF16 or
+  FP16-via-BF16 output. The old output transpose remains available through
+  the session constructor for clean A/B and rollback.
+- Eleven complete-state pp512 pairs are exact and improve independent medians
+  **645.735 -> 647.920 tok/s (+0.338%)**, but paired-median wall is only
+  **-0.057 ms** with **6/11 wins**. Keep the capability, optional
+  `unpack_output`, generic gate, packed gate, and dedicated A/B harness only
+  through the immediate clean trace. Remove the candidate if the trace does
+  not eliminate all **144** output-transpose launches or if the replacement
+  gate repays the saved sub-window. On admission, preserve the generic route
+  for fallback attention and unmeasured backends, but collapse the dedicated
+  A/B harness after the active 700 campaign.

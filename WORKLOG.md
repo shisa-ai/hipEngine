@@ -184596,3 +184596,31 @@ Vulkan local sizes verbatim will close the measured gap.
   **649.791 tok/s / 787.946 ms** at pp512. Attention reopens only for a
   cooperative causal primitive that also removes masked QK work. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-attention-fused-softmax-pv-rejected.json`.
+
+## 2026-07-27 — Stage exact packed attention output for clean tracing
+
+- The retained library-attention path spent **3.703351 ms** at pp512 in 144
+  head-major-to-generic output transpose launches. The candidate instead
+  writes each qualified M128 PV result directly into the corresponding
+  head-major context slice, then consumes the mixed generic/head-major buffer
+  in one packed-aware softplus gate. QK, softmax, PV, source-F16 input,
+  BF16 rounding, resident storage, and fallback attention are unchanged.
+- RED initially failed on the missing packed-gate wrapper. The focused GREEN
+  fixture is BF16-bit exact to the generic gate. Replacing flattened indexing
+  with a two-dimensional `(row, row-block)` grid reduced the packed rows384
+  gate from **0.270226 -> 0.262491 ms** and VGPR **24 -> 16**; the comparable
+  generic gate is **0.257403 ms**. The packed gate has local256, zero LDS, and
+  zero scratch.
+- Eleven complete-state pp512 pairs are exact at independent medians
+  **645.735 -> 647.920 tok/s (+0.338%)**, with **6/11** candidate wins.
+  Paired-median wall is effectively flat at **-0.057 ms**, so the candidate
+  is not admitted from aggregate timing alone. Commit the default candidate
+  only to satisfy the repository clean-state profiler; retain it only if a
+  cached selector-unset trace removes all 144 output transposes and proves a
+  positive net attention-boundary sub-window.
+- Focused validation passes **25 tests** across packed/generic gate
+  correctness, dense-initial library helpers, and gfx1151 capability
+  resolution. `py_compile` and `git diff --check` pass. The required lineage
+  command remains blocked by the absent external
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-candidate.json`.
