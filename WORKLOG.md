@@ -184766,3 +184766,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `3aa477eacd940663800e658ed4d882963503c0da8909b652f1fc140c3d1ec072`.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk8-absolute-rejected.json`.
+
+## 2026-07-27 — Reject prefill top-9 and remove routed-width selectors
+
+- The clean replacement gate also rejects top-9. Suite max KL improves from
+  top-8's 0.671401 to **0.452960** but remains far above 0.05; top-1 is again
+  **314/320**. Category max KL is
+  **0.076117/0.016341/0.070910/0.452960** for
+  code/general-English/general-Japanese/mixed, so general-English alone
+  passes but the model-wide rule cannot ship.
+- The Poolside oracle again passes at KL **0.00004888** with matching top-1;
+  same-mode repeats are deterministic and lifecycle returns
+  **109,863,703,184 / 109,863,703,184 bytes** with zero active allocations.
+  The separately measured pp512 candidate was **684.313 tok/s**, but quality
+  is authoritative.
+- Remove the prefill routed-width setter, harness mode, top-9 category lane,
+  routing-replay width changes, and focused tests. Production remains top-10
+  for both prefill and exact c=1 decode. Raw SHA-256:
+  `09419c1e01b0e6aa9d33a939332ce6362acdaa4aabc661563e97940f01ec3712`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk9-absolute-rejected.json`.

@@ -10,7 +10,7 @@ from __future__ import annotations
 import ctypes
 import os
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Callable
@@ -2147,28 +2147,6 @@ class LagunaGGUFResidentSession:
 
         self.q4_precomputed_activation_sums = bool(enabled)
 
-    def set_prefill_moe_top_k(self, top_k: int) -> None:
-        """Select a bounded prefill-only routed-expert count.
-
-        Row scratch is allocated for the model's full routed width. A smaller
-        diagnostic width therefore changes only the logical row plan; exact
-        c=1 decode keeps the model-declared width and separate scratch owner.
-        """
-
-        self._check_open()
-        assert self.moe_plan is not None
-        assert self.rows_moe_scratch is not None
-        parsed = int(top_k)
-        if parsed <= 0 or parsed > self.moe_plan.top_k:
-            raise ValueError(
-                "prefill MoE top_k must be within the model-declared routed width"
-            )
-        row_plan = replace(self.rows_moe_scratch.plan, top_k=parsed)
-        self.rows_moe_scratch = replace(
-            self.rows_moe_scratch,
-            plan=row_plan,
-        )
-
     def set_moe_shared_after_router(self, enabled: bool) -> None:
         """Move concurrent shared work behind the exact router prefix."""
 
@@ -2450,9 +2428,7 @@ class LagunaGGUFResidentSession:
             )
         config = self.config
         sparse_layers = config.block_count - config.leading_dense_block_count
-        assert self.rows_moe_scratch is not None
-        active_top_k = self.rows_moe_scratch.plan.top_k
-        layer_lanes = rows * active_top_k
+        layer_lanes = rows * config.expert_used_count
         total_lanes = sparse_layers * layer_lanes
         capture = malloc(total_lanes * _I64_NBYTES, runtime=self.runtime)
         try:
@@ -2481,7 +2457,7 @@ class LagunaGGUFResidentSession:
                 result=result,
                 rows=rows,
                 expert_count=config.expert_count,
-                top_k=active_top_k,
+                top_k=config.expert_used_count,
                 selected_experts=MappingProxyType(selected),
             )
         finally:
@@ -3436,7 +3412,7 @@ class LagunaGGUFResidentSession:
                     leading_dense_layers=config.leading_dense_block_count,
                     sparse_layers=config.block_count - config.leading_dense_block_count,
                     rows=rows,
-                    top_k=self.rows_moe_scratch.plan.top_k,
+                    top_k=config.expert_used_count,
                     capture=routing_capture,
                     runtime=self.runtime,
                     stream=stream,
