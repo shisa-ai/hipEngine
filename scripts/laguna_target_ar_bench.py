@@ -134,11 +134,6 @@ def _parse_args() -> argparse.Namespace:
         help="use separate exact head RMSNorm/RoPE and BF16 KV append launches",
     )
     parser.add_argument(
-        "--enable-moe-tail-wave0-tree",
-        action="store_true",
-        help="screen the exact D9 wave-0 RMS reduction tree",
-    )
-    parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
         default=(16, 32),
@@ -268,9 +263,6 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         use_split_gate_fusion=False if args.disable_split_gate_fusion else None,
         use_swa_split_wave_local=(
             False if args.disable_swa_split_wave_local else None
-        ),
-        use_moe_tail_wave0_tree=(
-            True if args.enable_moe_tail_wave0_tree else None
         ),
         use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
     )
@@ -671,9 +663,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_swa_split_wave_local=(
                 False if args.disable_swa_split_wave_local else None
             ),
-            use_moe_tail_wave0_tree=(
-                True if args.enable_moe_tail_wave0_tree else None
-            ),
             use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
         )
         load_seconds = time.perf_counter() - load_started
@@ -782,7 +771,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_split_attention": owner.use_split_attention,
             "use_split_gate_fusion": owner.use_split_gate_fusion,
             "use_swa_split_wave_local": owner.use_swa_split_wave_local,
-            "use_moe_tail_wave0_tree": owner.use_moe_tail_wave0_tree,
             "use_head_kv_fusion": owner.use_head_kv_fusion,
             "use_iq2_grid64": owner.use_iq2_grid64,
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,

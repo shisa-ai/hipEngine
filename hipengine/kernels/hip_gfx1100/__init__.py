@@ -45,9 +45,6 @@ LAGUNA_IQ3_WAVE10_FUSED = True
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
 LAGUNA_IQ2_GRID64 = True
-# The exact D9 wave-0 RMS tree is admitted only as a default-off runtime screen
-# until clean and complete-category gates pass. Retained D9 remains the fallback.
-LAGUNA_MOE_TAIL_WAVE0_TREE = False
 # Clean P2.1 exact split profiles and the complete category/heldout gate admit
 # independent global/SWA crossovers. Registered single-block readers remain the
 # below-threshold and explicit-disable fallback on gfx1100; other backends do
@@ -135,7 +132,6 @@ __all__ = [
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_IQ3_WAVE10_FUSED",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
-    "LAGUNA_MOE_TAIL_WAVE0_TREE",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
     "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
