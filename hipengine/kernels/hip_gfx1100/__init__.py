@@ -45,6 +45,9 @@ LAGUNA_IQ3_WAVE10_FUSED = True
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
 LAGUNA_IQ2_GRID64 = True
+# The exact c=1 router projection wave-0 tree is admitted only as a default-off
+# W7900 screen. Rows/prefill and unsupported backends retain the local256 tree.
+LAGUNA_ROUTER_PROJECTION_WAVE0_TREE = False
 # Clean P2.1 exact split profiles and the complete category/heldout gate admit
 # independent global/SWA crossovers. Registered single-block readers remain the
 # below-threshold and explicit-disable fallback on gfx1100; other backends do
@@ -139,6 +142,7 @@ __all__ = [
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
+    "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",

@@ -1,0 +1,287 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json",
+    "design_artifact_sha256": "668051c7aab2028b3aef64842b1f72f779f6765582b59a06a0442f1689e776fa",
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "primitive_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json",
+    "primitive_artifact_sha256": "673768a895b3bc5b2d35630df293f17eb4bce0b3737e0214627b637edfdc51ca",
+    "primitive_commit": "5607dcaedc5c3702d263ee66bac126cec80feb09"
+  },
+  "builder_sha256": "2b89ac4dd65a5df1123759c7eb2d6bda3d1de3dd73570a97b552857cc18d73cb",
+  "cached_full_model_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "analyzer_sha256": "dcb91a87b9cd6175889291813125e7e08c4e8ce7338edc32e41209630be62a09",
+    "candidate_calls": 94,
+    "candidate_calls_per_token": 47,
+    "candidate_duration_ns": {
+      "max": 11160,
+      "median": 6440.0,
+      "min": 6200
+    },
+    "candidate_prefill_calls": 0,
+    "candidate_resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 24,
+      "grid_x": 65536,
+      "grid_y": 1,
+      "profiler_static_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "source_dynamic_lds_bytes": 1024,
+      "workgroup_x": 256
+    },
+    "child_sha256": "7d418b34564d71234f4f7aabd3c44276bad51d16f3aaf485a8258b2ba9b422d4",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-router-projection-wave0-tree-runtime-trace --output-file trace -- uv run python -u /tmp/trace_laguna_router_projection_wave0_tree_model.py",
+    "decode_transitions": 2,
+    "dispatch_id_stride": 683,
+    "finite_final_logits": true,
+    "first_candidate_dispatch_ids": [
+      1459,
+      2142
+    ],
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "harness_sha256": "62ffb905bc7229579d56821017bad4a1e53a2d284ec3c9d94e29e9ee1a70ee19",
+    "interpretation": "Each decode transition uses 47 exact wave-0 projections and zero retained decode projections; bulk prefill stays on 47 retained tile4 projections. Five runtime copies plus 678 model kernels/token are unchanged.",
+    "iq3_wave10_calls": 90,
+    "iq3_wave10_calls_per_token": 45,
+    "iq3_wave10_resources": {
+      "allocated_lds_bytes": 512,
+      "allocated_vgpr": 88,
+      "grid_x": 983040,
+      "scratch_bytes": 0,
+      "workgroup_x": 320
+    },
+    "model_kernels_per_token": 678,
+    "no_compiler_under_profiler": true,
+    "passed": true,
+    "preflight_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/trace_laguna_router_projection_wave0_tree_model.py",
+    "preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preflight_stdout_sha256": "a7cf4321940dbdf35e15777eca41737020dc65c15ceadcd426a8805616b88006",
+    "profile_stderr_sha256": "5c281f19c49b837fde637c2ab98f3453640850a5d5db5ed0ee9ef5f7a4b24d7f",
+    "profile_stdout_sha256": "7d418b34564d71234f4f7aabd3c44276bad51d16f3aaf485a8258b2ba9b422d4",
+    "retained_decode_projection_calls": 0,
+    "retained_decode_projection_calls_per_token": 0,
+    "retained_prefill_projection_calls": 47,
+    "retained_prefill_projection_calls_per_sparse_layer": 1,
+    "runtime_copy_calls_in_stride": 5,
+    "schema": 1,
+    "summary_sha256": "08b6de8178a85353a35d4ae0b7ceb67bd689e3bf74aa547bfdfb97da75d5b1b2",
+    "trace_path": "/tmp/laguna-router-projection-wave0-tree-runtime-trace/trace_kernel_trace.csv",
+    "trace_rows": 2801,
+    "trace_sha256": "308d36f2929c7f2d02aa1c59f8e3dfda67793e56a69f7aee5687d5c86fe27143",
+    "tracked_peak": {
+      "active_allocations": 1157,
+      "current_allocated_bytes": 40069953588,
+      "peak_allocated_bytes": 40069953588,
+      "peak_allocations": 1157,
+      "total_allocated_bytes": 40069953588,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_decode_tok_s_unchanged": 63.27021934907704,
+    "next_gate": "Commit this runtime-correctness unit, then run the frozen two-order clean gate. Run categories only if every clean row passes.",
+    "performance_claim": false,
+    "retained_default_unchanged": true,
+    "runtime_admitted_default_off": true
+  },
+  "full_state_gate": {
+    "active_kv_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "candidate": "bf16_hidden_wave0_tree",
+    "candidate_borrows_weights": true,
+    "candidate_default_off": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_router_projection_wave0_tree_runtime_correctness.py",
+    "control": "bf16_hidden",
+    "control_owns_weights": true,
+    "decode_transitions": 16,
+    "final_kv_sha256": "a62f481c82cb6e079715dba11f133de003bf98d48ca162868b41b3555f8ce2b7",
+    "full_logits_ids_hidden_routed_exact": true,
+    "generated_token_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "harness_sha256": "acd4a6d334bcbd005f1ba0ef243e31d9e623414961f455214a1233151b424a15",
+    "live_span_fields_exact": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "moe_scratch_nbytes": 157128,
+    "new_allocations": 0,
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true,
+    "prefill_kv_sha256": "82488fd827f4c18a4d72fd3a23051201a17e104b570380354ac12a3f17fdcb05",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "cb80dc4c50150c64e9f9ec123cf8f91d0e38133458950ba3dd1aa6d1ae23e94b",
+    "reset_and_reprefill_exact": true,
+    "reset_kv_sha256": "388e741cf63a675aa17fc5fa7d391168f0b7d62ba8860c9ab1abc4c6db03521a",
+    "retained_projection_fallback_present": true,
+    "rows_and_prefill_retain_control": true,
+    "rows_moe_scratch_nbytes": 19330064,
+    "rows_scratch_nbytes": 83662848,
+    "scratch_nbytes": 654804,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "09e1956023ce6876d4c9ba2f45f3f61f5c152eb0e4711561baa1b2d4d38e5b9c",
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_returned_to_baseline": true,
+    "weights_shared": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "allocation_workspace_delta_bytes": 0,
+    "benchmark_option": "--enable-router-projection-wave0-tree",
+    "candidate_c1_key": [
+      "hip_gfx1100",
+      "router_logits",
+      "f32",
+      "bf16_hidden_wave0_tree"
+    ],
+    "capability": "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE",
+    "capability_value": false,
+    "fail_closed": [
+      "default/no option leaves the optional c1 route empty",
+      "explicit False leaves the optional c1 route empty",
+      "exact candidate-key miss leaves the optional c1 route empty",
+      "gfx1151 and unsupported backends do not inherit the candidate",
+      "rows and bulk prefill always call the retained base plan projection",
+      "minimal/fake plans without the optional field retain router_logits via getattr"
+    ],
+    "model_kernel_count_delta": 0,
+    "persistent_weight_copy_delta_bytes": 0,
+    "retained_base_key": [
+      "hip_gfx1100",
+      "router_logits",
+      "f32",
+      "bf16_hidden"
+    ],
+    "scope": "gfx1100 c=1 eager sparse-layer router projection only",
+    "selector_fallback_key": [
+      "hip_gfx1100",
+      "laguna_sigmoid_router_topk",
+      "f32",
+      "correction_bias"
+    ],
+    "session_option": "use_router_projection_wave0_tree",
+    "source_hashes": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "e64fe162220c73d5f6b9ae37f71c6d5fe37bcc074414d8be78519f4b82e82ed5",
+      "hipengine/runtime/laguna_gguf_runner.py": "7521499afccfe7448490db731148ffd5761d324baeaf855c58e484b590cc8932",
+      "hipengine/runtime/laguna_moe.py": "284fa62901c4acb7ab75e1257be9ccbc8c91b31799c2c44da153aed09f3a98e8",
+      "scripts/laguna_target_ar_bench.py": "67dbdd40ce2ef9d81b11d298e26b53d78602d079278d1a0ca6d35163986dd9d9",
+      "tests/test_laguna_router_projection_wave0_tree.py": "9dc1ec59af1db9b7dba263999caf93900b6106754e0c618e18ce20f53b69f24e",
+      "tests/test_laguna_router_projection_wave0_tree_runtime.py": "74f795bc9008f398a43678a59ac2654b80f7cea14fcc68b9738c262704aba54c"
+    }
+  },
+  "kind": "hipengine_laguna_q2_xl_router_projection_wave0_tree_runtime_correctness",
+  "model": {
+    "context_length": 4096,
+    "experts": 256,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47
+  },
+  "performance_adjudication_contract": {
+    "category_gate_if_clean_passes": "both frozen complete 18-prompt train+heldout four-category process orders at horizons 16/32; every category/scope decode and E2E non-regressive, aggregate prefill non-regressive, TTFT regression <=0.5%, exact IDs/quality/lifecycle/current selector",
+    "clean_contexts": [
+      "short",
+      512,
+      1024,
+      3968
+    ],
+    "measurement_allowed_only_after_runtime_commit": true,
+    "process_orders": [
+      "control_then_candidate",
+      "candidate_then_control"
+    ],
+    "required_per_order_guards": {
+      "complete_kernel_sum": "strict improvement",
+      "correctness": "exact IDs, finite logits, lifecycle cleanup, no compiler under profiler",
+      "dispatch_span": "candidate regression <= 0.5%",
+      "inclusive_router_projection_family": "strict improvement",
+      "profiled_child_throughput": "candidate regression <= 0.5%",
+      "resources": "local256/VGPR24/SGPR128/static-LDS0+dynamic-LDS1024/scratch0",
+      "topology": "47 candidate calls, zero retained decode projections, 45 IQ3 wave10 calls, and 678 model kernels/token"
+    },
+    "stop_rule": "Stop before categories on any required clean-row failure; no rerun, third order, or pooled waiver."
+  },
+  "red_green": {
+    "base_commit": "5607dcaedc5c3702d263ee66bac126cec80feb09",
+    "compatibility_followup": {
+      "log_sha256": "08faea39fd19189f6544839f505d91d76ecb1367e219f5db362cdf22916ef869",
+      "reason": "Broad adjacent validation found three minimal fake-plan fixtures lacking the newly optional fields; getattr(None) fallback restored their legacy behavior without changing the real candidate plan.",
+      "result": "11 passed across candidate contracts plus the three recovered nodes"
+    },
+    "coverage": [
+      "gfx1100-only false capability",
+      "explicit enable/disable and exact-key/backend fail-closed resolution",
+      "separate c1 candidate while retained projection remains the rows/prefill base callable",
+      "session and benchmark CLI handoff",
+      "primitive source/registry/backend/fallback/numerical contracts remain green"
+    ],
+    "green_command": "PYTHONPATH=. uv run pytest -q tests/test_laguna_router_projection_wave0_tree_runtime.py tests/test_laguna_router_projection_wave0_tree.py",
+    "green_log_sha256": "06955fb47f16312e5d13266c774a2aa4648c46e423cbe6564a92e25b68e39131",
+    "green_result": "8 passed",
+    "red_command": "PYTHONPATH=. uv run pytest -q tests/test_laguna_router_projection_wave0_tree_runtime.py",
+    "red_log_sha256": "40c72ab9144ecf72d66977a633bf2ef4d5c055c6c023a704621c33a262ca55dc",
+    "red_result": "4 failed only on absent capability, exact-key resolver/c1 plan slot, and session/CLI handoff"
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "reason": "default-off runtime correctness only; clean and complete throughput gates are not yet run"
+  },
+  "schema": 1,
+  "source_revision": "5607dcaedc5c3702d263ee66bac126cec80feb09",
+  "status": "runtime_admitted_default_off",
+  "validation": {
+    "adjacent_filtered_result": "153 passed after excluding exactly that unchanged stale node",
+    "adjacent_filtered_sha256": "5a4db017b69e4ae1e580b620ad07139d2d81d36dd9a34c4bd219aaea79b0847a",
+    "adjacent_unfiltered_result": "153 passes plus one documented unchanged stale gfx1151 resolver test failure",
+    "adjacent_unfiltered_sha256": "163fbbe733a57e8ad43dba9df2c9bb5fe596bf9e1bf4b0cce7fd41bb7d9cc578",
+    "cpu_reference_registry_build_result": "25 passed",
+    "cpu_reference_registry_build_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "fixtures_passed": true,
+    "fixtures_sha256": "fec7a60788a7feec6ada8becc5e66bc4dc32cc4a6b9fb299a7305a8713e7766b",
+    "lineage_note": "Only already-catalogued unrelated external drift; this runtime unit changes no kernel body.",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "registry_smoke_passed": true,
+    "registry_smoke_sha256": "159c48de9337ea6a260024b63a5eac9a158602ab443d94038d9938b29d538311",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

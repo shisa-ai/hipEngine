@@ -153,7 +153,7 @@ def test_router_projection_wave0_tree_wrapper_validates_before_build(
         candidate(0x1000, 0x2000, 0x3000, 1, 3072, 0)
 
 
-def test_router_projection_wave0_tree_package_registry_scope_and_fallback() -> None:
+def test_router_projection_wave0_tree_package_registry_scope_fallback_and_default_off_owner() -> None:
     from hipengine.kernels.hip_gfx1100 import moe
     from hipengine.kernels.hip_gfx1100.moe.router import (
         qwen35_router_logits_bf16_f32w_auto_256,
@@ -186,12 +186,12 @@ def test_router_projection_wave0_tree_package_registry_scope_and_fallback() -> N
         assert not is_registered(KernelKey(backend, _LAYER, _QUANT, _VARIANT))
 
     runtime_source = _RUNTIME.read_text(encoding="utf-8")
-    assert _VARIANT not in runtime_source
+    assert _VARIANT in runtime_source
     assert _SYMBOL not in runtime_source
     import hipengine.kernels.hip_gfx1100 as backend
 
-    assert not hasattr(backend, "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE")
-    assert _VARIANT not in inspect.getsource(backend)
+    assert backend.LAGUNA_ROUTER_PROJECTION_WAVE0_TREE is False
+    assert "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE = False" in inspect.getsource(backend)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

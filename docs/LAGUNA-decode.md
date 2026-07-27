@@ -337,8 +337,11 @@ boundary; wave 0 exactly replays the current stride-128/64/32 partial tree and
 uses five shuffles for strides 16..1 after one LDS publication. All **47/47**
 actual router outputs are F32-bit exact and finite; repeated layers 1/47 improve
 event/wall **8.04-8.13% / 8.02-8.12%**. This is independent of the rejected
-expert-tile2/4/8 and persistent/selector owners. No capability, runtime route,
-default, or topline changes in the primitive unit.
+expert-tile2/4/8 and persistent/selector owners. A false/default-off gfx1100 c=1
+owner now passes exact shared-weight 16-transition state and **47-candidate /
+zero retained decode projection / 678-model-kernel** cache-only tracing; rows
+and prefill retain the existing projection. Clean adjudication remains pending,
+so the default and canonical topline are unchanged.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -2601,10 +2604,10 @@ The new premise retains one expert per workgroup and changes no cross-row
 ownership.
 
 The separately registered key is
-`hip_gfx1100/router_logits/f32/bf16_hidden_wave0_tree`; future runtime
-eligibility remains limited to c=1,
-hidden 3072, and 256 experts. Keep local256, one block per expert, the same
-BF16 hidden conversions, F32 weight reads, eight-term source order, K traversal,
+`hip_gfx1100/router_logits/f32/bf16_hidden_wave0_tree`; runtime eligibility is
+limited to c=1, hidden 3072, and 256 experts. Keep local256, one block per
+expert, the same BF16 hidden conversions, F32 weight reads, eight-term source
+order, K traversal,
 per-thread partial, 1,024-byte dynamic LDS, and F32 logit store. After one
 publication, wave 0 exactly reconstructs each lane's retained stride-128,
 stride-64, and stride-32 additions, then uses five wave32 shuffle-down additions
@@ -2638,14 +2641,43 @@ all-47 actual transfer, integrated codegen, and cache-only distinct-symbol trace
 all pass. The trace names one candidate at grid/local **65,536/256**, allocated
 VGPR24/SGPR128, static-LDS0 plus the exact 1,024-byte dynamic request, scratch0,
 with clean teardown and no compiler. The retained projection plus unchanged
-selector remains the executable fallback; gfx1151 aliasing is excluded. No
-capability, plan/session/CLI selector, allocation, default, or benchmark-rollup
-change exists. Only a separate false/default-off owner may now enter
-16-transition shared-weight state and exact **47-candidate/zero-control-router/
-678-model-kernel** tracing before clean/category adjudication. Evidence:
-[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json)
+selector remains the executable fallback; gfx1151 aliasing is excluded.
+
+A separate `LAGUNA_ROUTER_PROJECTION_WAVE0_TREE=False` capability now owns only
+an explicit c=1 route. `use_router_projection_wave0_tree=True` and
+`--enable-router-projection-wave0-tree` resolve the exact candidate key; default,
+explicit disable, exact-key miss, gfx1151, and unsupported backends leave that
+optional route empty. The base plan callable remains `bf16_hidden`, so rows and
+bulk prefill cannot enter the c=1 body. Minimal/fake plans also retain the base
+callable through the optional-field fallback.
+
+One shared-weight `mixed_ja_en_review` process matches bulk prefill, **16/16**
+decode transitions, full logits/IDs at KL **0** and top-1 **100%**, all **48
+hidden + 47 routed** boundaries, active K/V and every `base_offsets`,
+`live_counts`, `token_positions`, and `evict_mask` byte, positions,
+reset/eight-token re-prefill, scratch sizes, ownership, and teardown. Peak
+tracked ownership is unchanged at **40,459,057,576 bytes / 1,500 allocations**
+and returns to zero.
+
+A non-profiled exact-cache preflight precedes one full-model `rocprofv3` child.
+Two transitions record exactly **94 candidates = 47/token**, zero retained
+decode projections, **47 retained tile4 prefill projections**, unchanged **90
+IQ3 wave10 calls = 45/token**, and a first-candidate stride of **683 profiler
+dispatches = five runtime copies + exactly 678 model kernels/token**. Candidate
+resources are local256/VGPR24/SGPR128/static-LDS0 plus the verified 1,024-byte
+dynamic request/scratch0 at **6.200/6.440/11.160 us min/median/max**. IDs
+`[605,2825,268]`, finite logits, lifecycle, and no-compiler checks pass.
+
+This is correctness-only runtime admission, not throughput evidence. No
+allocation, launch-count, default, benchmark README/changelog, or canonical
+**63.270 tok/s** change is allowed. Commit the default-off owner before the
+frozen two-order short/512/1K/3968 gate; stop before categories on any per-order
+family/kernel/span/child failure with no favorable rerun or pooled waiver.
+Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json),
+[`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json),
 and
-[`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json).
+[`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-runtime-correctness.json).
 
 ## 9. Do not chase without new evidence
 
@@ -2710,7 +2742,7 @@ and
 | What happened after IQ4 ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json): primitive only after clean rejection. Primitive/all-layer/full-state and **12-candidate/zero-scalar/678-kernel** trace gates pass, and both short orders improve global attention **10.97%/12.12%**. Order A still regresses kernel sum **0.0949%** and span **1.3203%**, so runtime integration is removed before longer contexts/categories; canonical **63.270 tok/s / 678 kernels** remains. |
 | What happened to the gated one-page composite? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-rejected.json): primitive only after category rejection. Full state and exact **12-composite/zero-gate/666-kernel** topology pass; both short orders improve family/kernel/span/child and aggregate h32 reaches **63.853 tok/s (+0.809%)** with every category decode row positive. Train aggregate TTFT still regresses **0.780%** beyond +0.5%, so runtime integration is removed without rerun and canonical **63.270 tok/s / 678 kernels** remains. |
 | What is selected after wave-0 MoE-tail rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-rejected.json): primitive only after clean rejection. Synthetic/CPU/**12/12** actual and full-state/**12 candidate + 36 retained SWA / 678-kernel** gates pass. Both short orders improve global-head work **28.728%/26.407%** and kernel sum **0.273%/0.013%**, but order A child regresses **0.859%** and order B span regresses **0.810%**. Runtime integration is removed before long contexts/categories; current-P4 and canonical **63.270 tok/s** remain. |
-| What is selected after global-head wave-0 rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json) and [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json): the exact c=1 router-projection wave-0 tree is separately registered and runtime-unselected. Synthetic/CPU/**47/47** actual gates pass; layers 1/47 improve event/wall **8.04-8.13% / 8.02-8.12%**; codegen keeps VGPR22/private/spills0 while contracting dynamic barriers **9 -> 1** and instructions **226 -> 220**. No runtime/default change exists. |
+| What is selected after global-head wave-0 rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json), and [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-runtime-correctness.json): the exact c=1 router-projection wave-0 tree is separately registered with a false/default-off owner pending clean measurement. Synthetic/CPU/**47/47** actual and 16-transition full-state gates pass; tracing proves **47 candidates / zero retained decode projections / 47 retained prefill projections / 678 model kernels/token**. Layers 1/47 improve event/wall **8.04-8.13% / 8.02-8.12%**. The default and canonical **63.270 tok/s** remain unchanged. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
