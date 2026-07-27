@@ -3703,11 +3703,138 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**647.207 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+**654.249 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
 active targets.
 
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.
+
+## 2026-07-27 pause point: 654 tok/s production and six-shape closure
+
+This is a valid pause point, not the end of the campaign. Clean selector-unset
+production is **654.249/579.699/468.608 tok/s** at 512/1K/4K, with
+**782.577 ms** pp512 wall. The absolute ten-prompt quality gate remains
+**0.049542582** maximum KL and **316/320** top-1, leaving only
+**0.000457418** KL headroom. Reaching 700 requires **51.148 ms** from the
+current wall, or **6.99%** more throughput.
+
+The requested anti-overtuning sweep ran every shape in one resident
+128K-capacity production session with matrix chunks of 2,048, attention chunks
+of 128, BF16 KV, two queues, and one timing repetition:
+
+| Prompt | Chunks | Wall | Prefill | Versus repeated production median |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 1 | 0.823 s | **622.009 tok/s** | **-4.928%** |
+| 1K | 1 | 1.768 s | **579.152 tok/s** | **-0.094%** |
+| 4K | 2 | 8.710 s | **470.270 tok/s** | **+0.355%** |
+| 32K | 16 | 152.624 s | **214.698 tok/s** | new closure shape |
+| 64K | 32 | 496.497 s | **131.997 tok/s** | new closure shape |
+| 128K | 64 | 1,812.326 s | **72.323 tok/s** | new closure shape |
+
+Final positions are exact through 131,071, every recorded next token is
+deterministic, and all **85.256 GB** of tracked resident allocation returns to
+zero active allocations. The 1K/4K single samples agree with their repeated
+production medians and the long rows form a smooth scaling curve; there is no
+matrix-chunk shape cliff suggesting that the retained kernels were tuned only
+for pp512. This is an attribution baseline over one repeated canonical prompt,
+not a new multi-prompt quality or repeated-median performance claim.
+
+The pp512 singleton inside a 128K-capacity session is **4.928%** below the
+normal repeated median while 1K/4K remain flat. Treat that as an explicit
+resident-capacity/bucketing diagnostic, not a proven regression. The
+superlinear long-context wall is instead consistent with the known global
+attention path above 512: it falls back from the retained dense-initial
+hipBLASLt route to scalar online Q-row attention.
+
+Evidence:
+[`six-shape sweep`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json) ·
+[`current production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
+
+### Latest 350+ sprint: retained production milestones
+
+Timestamps are JST. This is the compact production ledger; the detailed
+candidate/default/trace packets remain in the evidence index and benchmark
+changelog.
+
+| Timestamp | Retained iteration | Before -> after | Delta |
+| --- | --- | ---: | ---: |
+| 2026-07-25 10:31 | Start of the latest 350+ sprint | baseline -> **354.820 tok/s** | production gate closed |
+| 2026-07-25 17:53 | Exact qrow4 attention | 354.820 -> **364.839** | **+2.824%** |
+| 2026-07-25 22:18–22:46 | Gate/up and down row-vector consumers | 368.203 -> **385.997** | **+4.832%** combined |
+| 2026-07-26 01:45 | Expert wave-column remap | 385.602 -> **432.355** | **+12.125%** |
+| 2026-07-26 03:09–03:31 | Direct Q4 gate/up and down wave decode | 449.020 -> **480.629** | **+7.040%** combined |
+| 2026-07-26 04:04–05:59 | Dense Q6, row64, parallel compaction, router tile8 | 481.950 -> **503.349** | **+4.440%** combined; 500 closed |
+| 2026-07-26 09:44–13:31 | Preappend/cache attention, qmicro, cached metadata, qrow6 | 505.084 -> **547.064** | **+8.312%** combined |
+| 2026-07-26 18:02–21:16 | Dense-initial attention and exact branch concurrency | 551.459 -> **566.839** | **+2.789%** combined |
+| 2026-07-26 23:54 | Q6 selected-down integer WMMA | 573.354 -> **576.137** | **+0.485%** pp512; 1K/4K **+2.425%/+2.883%** |
+| 2026-07-27 02:20 | F32 hipBLASLt dense-initial attention | 577.396 -> **623.050** | **+7.907%** |
+| 2026-07-27 02:57–03:44 | Packed BLAS queries and wave-per-row softmax | 623.050 -> **632.618** | **+1.536%** combined |
+| 2026-07-27 08:59–09:23 | Q6 weight and activation prefetch | 632.618 -> **639.114** | **+1.027%** combined |
+| 2026-07-27 10:24–14:02 | Q4 raw prefetch, F16 schedule, Q6/Q4 activation sums | 639.114 -> **649.791** | **+1.670%** combined |
+| 2026-07-27 15:17 | Packed attention output gate | 649.791 -> **647.826** | aggregate **-0.302%**; retained exact boundary **-8.20%** |
+| 2026-07-27 15:52 | Direct packed-query producer | 647.826 -> **654.249** | **+0.991%** |
+
+From the sprint-opening **354.820** to **654.249 tok/s**, retained production
+improved **84.389%**. From the pre-campaign **76.226 tok/s** control it
+improved **758.301%**. The external 344.56 tok/s Vulkan row is now exceeded by
+**89.879%**, subject to its different token/KV/numerical contract.
+
+### Latest 350+ sprint: bounded failures and reversions
+
+These failures are useful closed evidence, not abandoned loose ends. Candidate
+code was removed unless a separately exact decode primitive retained value.
+
+| Timestamp | Reverted/rejected iteration | Before -> candidate | Reason |
+| --- | --- | ---: | --- |
+| 2026-07-25 17:01 | Multi-K expert staging | K32 353.516 -> K64 318.850 / K128 269.071 | **-9.80%/-23.88%** |
+| 2026-07-25 17:14 | 64-row expert tile | 353.787 -> 345.141 | **-2.44%** |
+| 2026-07-26 16:38 | Byte-neutral Q4 qmicro prefill | 9.402 -> 9.571 ms | **+1.795%** leaf wall |
+| 2026-07-27 04:08 | Persistent expert-row path | 2.873 -> 18.456 ms | **6.424x** slower |
+| 2026-07-27 04:51–06:44 | D4 role splits and selective repair | speed-positive leaves, max KL **>=0.076** | quality gate failed |
+| 2026-07-27 12:20 | M256 merged attention | 792.662 -> 811.343 ms | **-2.302%** throughput |
+| 2026-07-27 12:33 | Current-body Q4 row64 | 6.528 -> 7.257 ms | **+11.17%** leaf wall |
+| 2026-07-27 12:51 | Paired Q4 SiLU pack | 6.910 -> 7.445 ms | **+7.74%** leaf wall |
+| 2026-07-27 12:57–13:02 | Partial P4 and pair-shared raw prefetch | +1.49% / +21.43% wall | both slower |
+| 2026-07-27 14:43 | Fused softmax/PV tail | 646.665 -> 643.218 tok/s | **-0.533%** |
+| 2026-07-27 16:12–16:20 | Routed top-8/top-9 | +11.03%/+5.51% speed | max KL **0.671401/0.452960** |
+| 2026-07-27 17:10 | Low-mass route pruning | 641.668 -> 687.804 tok/s | **+7.190%**, but max KL **3.649289** |
+| 2026-07-27 17:29 | Triangular BF16-WMMA QK | 0.085120 -> 0.104837 ms at context 256 | **+23.16%**; context 512 **+32.92%** |
+
+### Ranked optimization avenues after the pause
+
+There are two different targets and they should not be conflated:
+
+1. **Selected-expert physical traffic for 700 at pp512.** Gate/up plus down
+   occupy about **503.595 ms** of the clean **782.577-ms** wall. A credible
+   next body must reduce physical weight bytes or create real cross-tile reuse
+   without extending accumulator lifetimes. Roughly a 10% reduction in this
+   window is enough to reach 700. Do not repeat row64, K64 staging,
+   non-temporal loads, grid reordering, pair-shared prefetch, metadata-only
+   repacks, or paired-SiLU fusion without a genuinely new premise.
+2. **Exact block-streamed global attention above 512.** Process fixed K/V
+   blocks with online softmax/output accumulation, preferably using qualified
+   hipBLASLt QK/PV subproblems, without materializing the full score matrix or
+   computing masked upper-triangle work. This is the highest-impact 32K–128K
+   avenue and needs its own CPU-reference, wrap/eviction, long-context, and
+   absolute-quality gates.
+3. **Matched resident-capacity buckets and lazy KV allocation.** Re-measure
+   pp512 in small versus 128K capacity in one counterbalanced session. If the
+   **4.928%** singleton gap repeats, bucket/lazily grow KV and position state;
+   if it does not, close it as variance.
+4. **Context-qualified matrix chunks above 2,048.** Screen 4,096/8,192 rows
+   while leaving attention at 128. Fewer model-wide chunk passes can help long
+   prompts, but scratch pressure and expert row-tile distribution may erase
+   the gain; retain only same-session, multi-length wins.
+5. **Library capability watch.** Recheck gfx1151 grouped GEMM and
+   causal/FlashAttention support when ROCm/Tensile changes. Today the source-F16
+   grouping ceiling is only **2.891 ms**, `GroupedGemm` exposes zero applicable
+   algorithms, and the retained short attention path already beats the custom
+   triangular WMMA screen.
+
+Approximate expert routing is closed under the current **0.05** KL contract:
+there is too little quality headroom, and both top-width and low-mass screens
+failed by large margins. The next work should remain exact unless an explicit
+quality-budget change is approved.
 
 ## Promotion gates
 
@@ -3874,6 +4001,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`
