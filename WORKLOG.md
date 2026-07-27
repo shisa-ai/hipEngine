@@ -184803,3 +184803,20 @@ Vulkan local sizes verbatim will close the measured gap.
   (**21 passed**), plus `py_compile` and `git diff --check`. The required
   lineage audit remains blocked by the absent external
   `/home/lhl/amd-gpu-tuning/reference/atlas`.
+
+## 2026-07-27 — Measure Laguna routed tail mass
+
+- Clean exact replay captured normalized route weights across all 47 sparse
+  layers at M256/M512. Every lane is accounted for, row sums are within
+  **3.576e-7** of one, and tracked ownership returns
+  **77,493,641,236 / 77,493,641,236 bytes** with zero active allocations.
+- At M512, dropping the final two routes only when their combined normalized
+  mass is at most **0.10/0.125/0.15** removes
+  **3.064%/6.799%/12.758%** of route lanes. The first two lack a plausible
+  700 ceiling; **0.15** is the sole bounded candidate.
+- The rule must be global and content-independent, preserve exact c=1 top-10,
+  and pass extended-512 category/heldout quality. No fixed-prefix exemption
+  is permitted. Raw SHA-256:
+  `e415f07c1727874dd608798007a60ac883693c0e8fbdbc11535f3c5000b846d4`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-routing-tail-mass.json`.
