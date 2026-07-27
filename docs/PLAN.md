@@ -1377,17 +1377,25 @@ one-pass llama.cpp Vulkan control measured
 Vulkan is a floor rather than the target.
 
 The long-context roofline is Laguna-specific, not borrowed from hybrid
-Qwen3.x/GDN. Laguna has 48 attention layers: 12 global with 48 query heads and
-36 sliding-window layers with 72 query heads and a 512-token window. Both use
-eight KV heads of dimension 128. At 128K, the 12 global layers require about
-**2.533 PFLOP** of causal QK+PV while SWA adds at most **0.089 PFLOP**, or
-**3.52%** as much attention arithmetic. The ordered LC-0 through LC-6 attack,
-rough one-pass 4K/16K/64K development screens, mandatory positive 128K gate
-between major stages, and full promotion gates are defined in
-`LAGUNA-prefill.md`. The first implementation target is an exact
-block-streamed global-attention body with online softmax and no materialized
-quadratic score matrix, followed by six-query-head reuse of each Laguna GQA
-K/V head.
+Qwen3.x/GDN. The exact production GGUF metadata confirms that every one of
+Laguna's 48 decoder blocks uses softmax attention: 12 global layers with 48
+query heads and 36 sliding-window layers with 72 query heads and a 512-token
+window. There are no GDN/linear-attention blocks. Both attention families use
+eight KV heads of dimension 128. The exact mixed-attention QK+PV ledger is
+**5.084/50.544/677.685/2,622.181 TFLOP** at 4K/16K/64K/128K. SWA contributes
+**105.46%/27.68%/7.00%/3.51%** as much arithmetic as global attention at those
+shapes: it matters to the short guard, but the global layers own the quadratic
+tail. The coherent LC-0 control measures
+**466.482/307.953/132.831/72.139 tok/s** at those shapes with exact positions,
+deterministic tokens, and complete allocation recovery.
+
+The ordered LC-0 through LC-6 attack, rough one-pass 4K/16K/64K development
+screens, mandatory positive 128K gate between major stages, and full promotion
+gates are defined in `LAGUNA-prefill.md`. The first implementation target is
+an exact block-streamed global-attention body with online softmax and no
+materialized quadratic score matrix, followed by six-query-head reuse of each
+Laguna GQA K/V head. Global-only gains should strengthen with context length;
+the 4K guard protects the independently material SWA path.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

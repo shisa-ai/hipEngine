@@ -185028,3 +185028,52 @@ Vulkan local sizes verbatim will close the measured gap.
   blocked before reporting by the missing read-only external checkout
   `/home/lhl/amd-gpu-tuning/reference/atlas`, the same known environment
   condition recorded by prior Laguna work. No external tree was modified.
+
+## 2026-07-27 — Publish coherent LC-0 control and mixed-attention roofline
+
+- Ran the fixed LC-0 attack set once in one resident 128K-capacity session at
+  clean tracked revision `a4fcebbae4b8c8a93cd2762b3ba20bbda15e25d6`:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0
+  HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u
+  scripts/laguna_long_context_profile.py --context-length 131072 --lengths
+  4096,16384,65536,131072 --chunk-size 2048 --repetitions 1
+  --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build --output /tmp/laguna-lc0-attack-control.json`.
+  The 4K/16K/64K/128K rows are
+  **466.482/307.953/132.831/72.139 tok/s**, or
+  **8.781/53.203/493.378/1,816.939 seconds**. Final positions are exact,
+  next tokens are the deterministic **7772/81/69407/22746**, values are
+  finite, and all **85,256,224,724 resident bytes** return to zero tracked
+  active allocations.
+- The coherent control fills the missing hipEngine 16K row and is
+  **+39.874%/+9.846%/+4.902%/+9.995%** over the same-GGUF llama.cpp Vulkan
+  4K/16K/64K/128K baseline. Its 4K/64K/128K rows are
+  **-0.805%/+0.632%/-0.255%** versus the earlier hipEngine closure, so the
+  control is stable enough for LC attribution. This is one-pass development
+  evidence, not a repeated performance promotion.
+- Decoded the exact production GGUF metadata rather than borrowing the hybrid
+  Qwen3.x 35B scaling curve. Every one of Laguna's 48 decoder blocks uses
+  softmax attention: 12 global layers have 48 query heads, 36 SWA layers have
+  72 query heads and window 512, and both have eight KV heads with
+  128-dimensional keys/values. There are no GDN/linear-attention layers.
+  Exact global+SWA QK+PV is
+  **5.084/50.544/677.685/2,622.181 TFLOP** at 4K/16K/64K/128K; the SWA/global
+  ratio falls **105.46%/27.68%/7.00%/3.51%**. Global attention therefore owns
+  the asymptotic target, while the 4K screen must protect a still-material SWA
+  path.
+- The 128K all-attention-only ideal lower bounds are **88.289 seconds** at
+  29.7-TFLOP FP32/VOPD and **44.152 seconds** at 59.39-TFLOP BF16 WMMA. They
+  intentionally omit softmax, K/V traffic, projections, MoE, norms, routing,
+  output projection, occupancy, and achievable issue efficiency. Total
+  attention arithmetic divided by complete wall is only
+  **1.443/1.312 TFLOP/s** for hipEngine/Vulkan and is a system-equivalent
+  diagnostic, not measured kernel throughput.
+- Raw LC-0 JSON SHA-256 is
+  `76960cd712075bf8c108ff60377e9121f75da12a2fa860a512dababf035e4fef`.
+  Published
+  `benchmarks/results/2026-07-27-gfx1151-laguna-lc0-attack-control.json` and
+  updated the plan/rollups. The next measurement remains cached 16K/64K
+  kernel-family attribution before LC-1 implementation.
