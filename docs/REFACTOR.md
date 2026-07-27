@@ -14,21 +14,23 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## Laguna long-context F32 hipBLASLt transitional production route
+## Laguna long-context F32 hipBLASLt rollback routes
 
-- Added 2026-07-27 and promoted after complete 4K/16K/64K/128K gates. A
-  separate capacity-sized owner now routes only dense-initial global M128
-  tiles beginning above 4K; the established 512-token global+SWA owner and
-  every fallback retain their prior allocation and dispatch.
-- The route improves mandatory 128K **22.088%** and passes exact
-  token/position/lifecycle checks, but it widens the complete BF16 K/V prefix
-  and materializes an F32 `[48,128,C]` score tile. Scratch is **4.298 GB** at
-  128K, so this is a production milestone rather than the final architecture.
-- Remove the capacity-sized F32 owner, ceiling-only algorithm-override API,
-  and dedicated ceiling harness after exact block-streamed tensorized QK/PV
-  with online reduction matches or beats its long-context gates. Collapse the
-  temporary `LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT` capability and session
-  setter at the same point; do not inflate the established 512-token owner.
+- Added 2026-07-27. The first capacity-sized full-score owner improved
+  mandatory 128K **22.088%**, but widened the complete BF16 K/V prefix and
+  materialized an F32 `[48,128,C]` score tile, costing **4.298 GB** scratch.
+- The retained successor uses exact online softmax state across 4K key blocks.
+  It improves the full-score owner another **12.521%** at mandatory 128K and
+  cuts scratch **96.655%** to **143,753,216 bytes**. gfx1151 now selects
+  `LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT`; the generic `KVLiveSpans` chain
+  remains the required fallback.
+- Remove the capacity-sized full-score owner, its
+  `LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT` capability/session setter, and
+  ceiling-only algorithm-override API after one later long-context publication
+  confirms the block route is sufficient for rollback. Keep the bounded owner,
+  its explicit rollback while SWA/query-chunk work is active, and the generic
+  numerical fallback. Retire the dedicated ceiling harness after the
+  block-size/algorithm policy no longer needs bisection.
 
 ## Laguna MoE shared/routed branch-concurrency candidate
 

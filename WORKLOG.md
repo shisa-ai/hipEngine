@@ -185282,3 +185282,51 @@ Vulkan local sizes verbatim will close the measured gap.
   full-prefix F32 widen and `[48,128,C]` score materialization with exact
   block-streamed tensorized QK/PV and online reduction while preserving the
   complete-model gates.
+
+## 2026-07-28 — Promote bounded 4K-block LC-1 global attention
+
+- Added three dense-initial HIP primitives: logical BF16 K/V block widening,
+  per-query-row online tile softmax state, and F32 PV numerator merge/final
+  normalization. `LagunaAttentionHipblasLt` now optionally walks 4,096-key
+  blocks while retaining the tuned packed-query QK/PV algorithms and a
+  bounded per-row F32 max/denominator/output numerator. The production session
+  owns this route separately and gfx1151 selects
+  `LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT`; the full-score owner remains an
+  explicit rollback.
+- A two-tile context-256 fixture compares the new route to the established CPU
+  validated attention path. The focused runtime bundle passed before final
+  documentation (**19 passed**). The final 58-test affected bundle had
+  **57 passed** and one stale 4K algorithm-band expectation; updating it from
+  the transitional robust-band QK22 to the separately screened block QK20
+  repaired the isolated node (**1 passed**) without rerunning the other 57
+  already-passing tests.
+- Inclusive leaf medians at 4K/16K/64K/128K are
+  **5.456/21.881/88.035/175.591 ms**, improving retained qrow6
+  **1.391x/1.480x/1.490x/1.554x** and beating the full-score route at every
+  long shape. Maximum absolute error is **3.516e-8**, all outputs are finite,
+  and all allocations recover. Raw 4K-64K/128K SHA-256:
+  `9ce2cc0e5a44e8966ad80f6991406b0efde5f27bc5821a083fc9a7aa45c68caf` /
+  `4e6739fed20122b2bbdb4d9edd414475999cc2b7a8be65f4b5a95a665267cab8`.
+- Same-session complete-model full-score/block rows are
+  **467.930 -> 468.495 tok/s (+0.121%)** at 4K,
+  **332.645 -> 334.686 (+0.614%)** at 16K, and
+  **153.467 -> 165.002 (+7.516%)** at 64K, with identical next tokens. The
+  paired process was intentionally stopped before redundant 128K arms, so
+  these rows retain console precision.
+- Mandatory single-route 128K measures
+  **88.072709 -> 99.100107 tok/s (+12.521%)** and
+  **1,488.224922 -> 1,322.622184 seconds**, saving **165.602738 seconds**.
+  This is **+37.374%** versus original LC-0 and **+51.104%** versus same-GGUF
+  Vulkan. Token 22746, position 131071, and lifecycle are exact. Raw SHA-256:
+  `afa6454a8bac8e431c771fed908ba3d58453ddcf717b7b68a5da765c8cb3c7a8`.
+- Scratch falls **4,298,113,024 -> 143,753,216 bytes (-96.655%)** and resident
+  accounting falls by **4,154,359,808 bytes**. Cached 128K tracing names the
+  new kernels at block-widen local256/VGPR24, online-softmax
+  local32/VGPR16, and merge local256/VGPR24, all with zero LDS/scratch. Trace
+  and child SHA-256:
+  `50bc6420fb0d0263fdfebfac00c1b7355f8b0ea62c3f9dcd6975b47f9f8f769d` /
+  `146ee2f524499a09dfbe8041a00416e7bbd2abd5467f2412308e1c9ad1c3153a`.
+- Accepted artifact:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json`.
+  Next apply the bounded tensorized design to rolling SWA, then widen attention
+  query chunks.

@@ -1764,6 +1764,55 @@ __global__ void laguna_dense_initial_cache_bf16_to_f32_kernel(
   }
 }
 
+template <bool kGlobalLayout>
+__global__ void laguna_dense_initial_cache_block_bf16_to_f32_kernel(
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    float* __restrict__ key_f32,
+    float* __restrict__ value_f32,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    int64_t logical_start,
+    int64_t count,
+    int64_t context,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  if (live_counts[0] < context) return;
+  const int64_t width = num_kv_heads * head_dim;
+  const int64_t total = count * width;
+  for (int64_t index =
+           static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < total;
+       index += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t relative_slot = index / width;
+    const int64_t logical_slot = logical_start + relative_slot;
+    if (token_positions[logical_slot] != logical_slot ||
+        evict_mask[logical_slot] != 0) {
+      continue;
+    }
+    int64_t physical_slot;
+    if constexpr (kGlobalLayout) {
+      const int64_t logical_block = logical_slot / block_size;
+      const int64_t block_offset =
+          logical_slot - logical_block * block_size;
+      physical_slot =
+          static_cast<int64_t>(base_offsets[logical_block]) * block_size +
+          block_offset;
+    } else {
+      physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+    }
+    if (physical_slot < 0 || physical_slot >= capacity) continue;
+    const int64_t element = index - relative_slot * width;
+    const int64_t cache_index = physical_slot * width + element;
+    key_f32[index] = laguna_bf16_bits_to_float(key_cache[cache_index]);
+    value_f32[index] = laguna_bf16_bits_to_float(value_cache[cache_index]);
+  }
+}
+
 template <bool kToHeadMajor>
 __global__ void laguna_dense_initial_query_head_transpose_f32_kernel(
     const float* __restrict__ input,
@@ -1955,6 +2004,119 @@ __global__ void laguna_dense_initial_causal_softmax_wave_rows_f32_kernel(
   }
 }
 
+__launch_bounds__(32, 8)
+__global__ void
+laguna_dense_initial_causal_softmax_tile_wave_rows_f32_kernel(
+    float* __restrict__ scores,
+    float* __restrict__ row_max,
+    float* __restrict__ row_sum,
+    float* __restrict__ merge_scales,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t tile_start,
+    int64_t tile_count,
+    int64_t context,
+    int64_t num_q_heads,
+    int64_t start_position,
+    float scale) {
+  constexpr int kWave = 32;
+  const int lane = static_cast<int>(threadIdx.x);
+  const int64_t group = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = group % rows;
+  const int64_t q_head = group / rows;
+  if (q_head >= num_q_heads || live_counts[0] < context ||
+      row_positions[0] != start_position ||
+      token_positions[tile_start] != tile_start ||
+      token_positions[tile_start + tile_count - 1] !=
+          tile_start + tile_count - 1 ||
+      evict_mask[tile_start] != 0 ||
+      evict_mask[tile_start + tile_count - 1] != 0) {
+    return;
+  }
+  const int64_t visible_end = start_position + row + 1 < context
+      ? start_position + row + 1
+      : context;
+  int64_t visible = visible_end - tile_start;
+  visible = visible < 0 ? 0 : (visible < tile_count ? visible : tile_count);
+  const int64_t base = group * tile_count;
+  const float lowest = -3.4028234663852886e38f;
+  float local_max = lowest;
+  for (int64_t token = lane; token < visible; token += kWave) {
+    local_max = fmaxf(local_max, scores[base + token] * scale);
+  }
+#pragma unroll
+  for (int offset = kWave / 2; offset > 0; offset >>= 1) {
+    local_max = fmaxf(
+        local_max,
+        __shfl_down(local_max, offset, kWave));
+  }
+  const float tile_maximum = __shfl(local_max, 0, kWave);
+  float local_sum = 0.0f;
+  for (int64_t token = lane; token < tile_count; token += kWave) {
+    const float weight = token < visible
+        ? expf(scores[base + token] * scale - tile_maximum)
+        : 0.0f;
+    scores[base + token] = weight;
+    local_sum += weight;
+  }
+#pragma unroll
+  for (int offset = kWave / 2; offset > 0; offset >>= 1) {
+    local_sum += __shfl_down(local_sum, offset, kWave);
+  }
+  const float tile_sum = __shfl(local_sum, 0, kWave);
+  if (lane == 0) {
+    const bool first_tile = tile_start == 0;
+    const float old_maximum = first_tile ? lowest : row_max[group];
+    const float old_sum = first_tile ? 0.0f : row_sum[group];
+    const float maximum = fmaxf(old_maximum, tile_maximum);
+    const float old_scale =
+        old_sum > 0.0f ? expf(old_maximum - maximum) : 0.0f;
+    const float tile_scale =
+        tile_sum > 0.0f ? expf(tile_maximum - maximum) : 0.0f;
+    row_max[group] = maximum;
+    row_sum[group] = old_sum * old_scale + tile_sum * tile_scale;
+    merge_scales[group * 2] = old_scale;
+    merge_scales[group * 2 + 1] = tile_scale;
+  }
+}
+
+__launch_bounds__(256, 2)
+__global__ void laguna_dense_initial_attention_tile_merge_f32_kernel(
+    float* __restrict__ accumulator,
+    const float* __restrict__ tile_output,
+    float* __restrict__ final_output,
+    const float* __restrict__ row_sum,
+    const float* __restrict__ merge_scales,
+    int64_t rows,
+    int64_t num_q_heads,
+    int64_t head_dim,
+    int first_tile,
+    int final_tile) {
+  const int64_t total = rows * num_q_heads * head_dim;
+  for (int64_t index =
+           static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < total;
+       index += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t group = index / head_dim;
+    const float old_scale = first_tile != 0
+        ? 0.0f
+        : merge_scales[group * 2];
+    const float tile_scale = merge_scales[group * 2 + 1];
+    const float value =
+        (first_tile != 0 ? 0.0f : accumulator[index]) * old_scale +
+        tile_output[index] * tile_scale;
+    if (final_tile != 0) {
+      final_output[index] =
+          value / fmaxf(row_sum[group], 1.0e-20f);
+    } else {
+      accumulator[index] = value;
+    }
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_laguna_dense_initial_cache_bf16_to_f32_spans(
@@ -2024,6 +2186,89 @@ extern "C" int hipengine_laguna_dense_initial_cache_bf16_to_f32_spans(
         live_counts,
         token_positions,
         evict_mask,
+        context,
+        capacity,
+        block_size,
+        num_kv_heads,
+        head_dim);
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_dense_initial_cache_block_bf16_to_f32_spans(
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* key_f32,
+    float* value_f32,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    int64_t logical_start,
+    int64_t count,
+    int64_t context,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int global_layout,
+    hipStream_t stream) {
+  if (key_cache == nullptr || value_cache == nullptr || key_f32 == nullptr ||
+      value_f32 == nullptr || base_offsets == nullptr ||
+      live_counts == nullptr || token_positions == nullptr ||
+      evict_mask == nullptr || logical_start < 0 || count <= 0 ||
+      context <= 0 || logical_start + count > context ||
+      context > capacity || capacity <= 0 || num_kv_heads != 8 ||
+      head_dim != 128 || (global_layout != 0 && global_layout != 1) ||
+      (global_layout != 0 &&
+       (block_size != 256 || block_table_len <= 0 ||
+        (capacity + block_size - 1) / block_size > block_table_len)) ||
+      (global_layout == 0 && block_table_len < capacity)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = count * num_kv_heads * head_dim;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  if (global_layout != 0) {
+    hipLaunchKernelGGL(
+        (laguna_dense_initial_cache_block_bf16_to_f32_kernel<true>),
+        dim3(static_cast<unsigned int>(blocks)),
+        dim3(threads),
+        0,
+        stream,
+        key_cache,
+        value_cache,
+        key_f32,
+        value_f32,
+        base_offsets,
+        live_counts,
+        token_positions,
+        evict_mask,
+        logical_start,
+        count,
+        context,
+        capacity,
+        block_size,
+        num_kv_heads,
+        head_dim);
+  } else {
+    hipLaunchKernelGGL(
+        (laguna_dense_initial_cache_block_bf16_to_f32_kernel<false>),
+        dim3(static_cast<unsigned int>(blocks)),
+        dim3(threads),
+        0,
+        stream,
+        key_cache,
+        value_cache,
+        key_f32,
+        value_f32,
+        base_offsets,
+        live_counts,
+        token_positions,
+        evict_mask,
+        logical_start,
+        count,
         context,
         capacity,
         block_size,
@@ -2151,6 +2396,100 @@ hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
       num_q_heads,
       start_position,
       scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans(
+    float* scores,
+    float* row_max,
+    float* row_sum,
+    float* merge_scales,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t tile_start,
+    int64_t tile_count,
+    int64_t context,
+    int64_t num_q_heads,
+    int64_t start_position,
+    float scale,
+    hipStream_t stream) {
+  if (scores == nullptr || row_max == nullptr || row_sum == nullptr ||
+      merge_scales == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || rows <= 0 || rows > 128 ||
+      tile_start < 0 || tile_count <= 0 ||
+      tile_start + tile_count > context || context <= 0 ||
+      num_q_heads <= 0 || start_position < 0 ||
+      start_position + rows != context) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_dense_initial_causal_softmax_tile_wave_rows_f32_kernel,
+      dim3(static_cast<unsigned int>(rows * num_q_heads)),
+      dim3(32),
+      0,
+      stream,
+      scores,
+      row_max,
+      row_sum,
+      merge_scales,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
+      tile_start,
+      tile_count,
+      context,
+      num_q_heads,
+      start_position,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_dense_initial_attention_tile_merge_f32(
+    float* accumulator,
+    const float* tile_output,
+    float* final_output,
+    const float* row_sum,
+    const float* merge_scales,
+    int64_t rows,
+    int64_t num_q_heads,
+    int64_t head_dim,
+    int first_tile,
+    int final_tile,
+    hipStream_t stream) {
+  if (accumulator == nullptr || tile_output == nullptr ||
+      final_output == nullptr || row_sum == nullptr ||
+      merge_scales == nullptr || rows <= 0 || rows > 128 ||
+      num_q_heads <= 0 || head_dim != 128 ||
+      (first_tile != 0 && first_tile != 1) ||
+      (final_tile != 0 && final_tile != 1)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * num_q_heads * head_dim;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      laguna_dense_initial_attention_tile_merge_f32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      accumulator,
+      tile_output,
+      final_output,
+      row_sum,
+      merge_scales,
+      rows,
+      num_q_heads,
+      head_dim,
+      first_tile,
+      final_tile);
   return static_cast<int>(hipGetLastError());
 }
 

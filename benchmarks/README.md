@@ -129,16 +129,27 @@ is a ceiling rather than production: F32 K/V plus score scratch costs
 candidate is the next gate.
 [`long F32 ceiling`](results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-ceiling.json).
 
-That ceiling now has a production-qualified global-only owner above 4K. A
-broad start-512 policy failed paired 4K at **0.968x**, so the retained gfx1151
-shape policy leaves all work through 4K unchanged. Same-session gates improve
-16K **7.929%** and 64K **16.936%**; the mandatory 128K run improves
-**72.139 -> 88.073 tok/s (+22.088%)**, saves **328.714 seconds**, preserves
-token 22746/final position 131071, and releases every tracked allocation. The
-route remains intentionally transitional because 128K materializes
-**4.298 GB** of F32 cache/score scratch; block-streamed online reduction is
-next.
+That ceiling first promoted a production-qualified global-only owner above
+4K. A broad start-512 policy failed paired 4K at **0.968x**, so the qualified
+shape policy leaves all work through 4K unchanged. The transitional owner
+improved 16K **7.929%**, 64K **16.936%**, and mandatory 128K
+**72.139 -> 88.073 tok/s (+22.088%)**, but materialized **4.298 GB** of F32
+cache/score scratch at 128K.
 [`long F32 production`](results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-production.json).
+
+The retained successor is exact bounded-state tensorized attention. It widens
+only one 4,096-key block, runs packed F32 QK/online tile softmax/PV, and carries
+the query-row maximum, denominator, and output numerator across blocks.
+Complete-model 4K/16K/64K screens preserve or improve the full-score owner by
+**0.121%/0.614%/7.516%**. Mandatory 128K improves
+**88.073 -> 99.100 tok/s (+12.521%)** and
+**1,488.225 -> 1,322.622 seconds**, while scratch falls
+**4,298,113,024 -> 143,753,216 bytes (-96.655%)**. This is **37.374%** above
+the original hipEngine LC-0 control and **51.104%** above the same-GGUF Vulkan
+128K row. Token 22746, position 131071, finite output, and complete allocation
+recovery pass. The next long-context stage applies tensorized K/V reuse to the
+rolling 512-token SWA ring, then widens query chunks.
+[`bounded 4K-block production`](results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json).
 
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72

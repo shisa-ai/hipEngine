@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_lc1_block4096_hipblaslt_production",
+  "status": "accepted_production",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "matrix_chunk_rows": 2048,
+    "attention_chunk_rows": 128,
+    "kv_dtype": "BF16"
+  },
+  "route": {
+    "qualification": "dense-initial complete M128 global-attention tiles with start_position >= 4096",
+    "key_block": 4096,
+    "state": "per query-head/row F32 maximum, denominator, and output numerator",
+    "arithmetic": "block BF16 widen + packed F32 QK + online tile softmax + packed F32 PV + exact numerator merge/final normalization",
+    "global_layers": 12,
+    "sliding_window_layers_unchanged": 36
+  },
+  "leaf_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_hipblaslt_ceiling.py --samples 3 --warmups 1 --block-context 4096 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-block4096-hipblaslt-screen.json",
+    "128k_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_hipblaslt_ceiling.py --samples 3 --warmups 1 --only-128k --block-context 4096 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-block4096-hipblaslt-128k.json",
+    "raw_512_64k_sha256": "9ce2cc0e5a44e8966ad80f6991406b0efde5f27bc5821a083fc9a7aa45c68caf",
+    "raw_128k_sha256": "4e6739fed20122b2bbdb4d9edd414475999cc2b7a8be65f4b5a95a665267cab8",
+    "results": [
+      {
+        "context": 4096,
+        "qrow6_ms": 7.5875520706,
+        "full_score_ms": 5.612596035,
+        "blocked_ms": 5.4556827545,
+        "blocked_over_qrow6": 1.3907612323
+      },
+      {
+        "context": 16384,
+        "qrow6_ms": 32.3865623474,
+        "full_score_ms": 25.6329154968,
+        "blocked_ms": 21.8812961578,
+        "blocked_over_qrow6": 1.4801025549
+      },
+      {
+        "context": 65536,
+        "qrow6_ms": 131.1567382813,
+        "full_score_ms": 102.2487792969,
+        "blocked_ms": 88.0352172852,
+        "blocked_over_qrow6": 1.4898212593
+      },
+      {
+        "context": 131072,
+        "qrow6_ms": 272.8873291016,
+        "full_score_ms": 218.4729156494,
+        "blocked_ms": 175.5912322998,
+        "blocked_over_qrow6": 1.5541056665
+      }
+    ],
+    "maximum_abs": 3.5157427191734314e-08,
+    "all_outputs_finite": true
+  },
+  "directional_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 4096,16384,65536,131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --compare-block-attention-hipblaslt --output /tmp/laguna-lc1-block4096-production-ab.json",
+    "raw_artifact_preserved": false,
+    "qualification": "The paired process was intentionally interrupted after complete 4K/16K/64K rows and before redundant paired 128K arms; values retain console precision.",
+    "results": [
+      {
+        "length": 4096,
+        "full_score_tok_s": 467.93,
+        "blocked_tok_s": 468.495,
+        "change_pct": 0.1207445558,
+        "next_token_id": 7772
+      },
+      {
+        "length": 16384,
+        "full_score_tok_s": 332.645,
+        "blocked_tok_s": 334.686,
+        "change_pct": 0.6135670159,
+        "next_token_id": 81
+      },
+      {
+        "length": 65536,
+        "full_score_tok_s": 153.467,
+        "blocked_tok_s": 165.002,
+        "change_pct": 7.5162738569,
+        "next_token_id": 69407
+      }
+    ]
+  },
+  "mandatory_128k_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --block-attention-hipblaslt --output /tmp/laguna-lc1-block4096-production-128k.json",
+    "raw_sha256": "afa6454a8bac8e431c771fed908ba3d58453ddcf717b7b68a5da765c8cb3c7a8",
+    "full_score_seconds": 1488.2249215069,
+    "blocked_seconds": 1322.6221838919,
+    "seconds_saved": 165.602737615,
+    "full_score_tok_s": 88.0727087054,
+    "blocked_tok_s": 99.1001070421,
+    "change_pct": 12.5207893556,
+    "original_control_tok_s": 72.1389109878,
+    "blocked_over_original_pct": 37.3739992539,
+    "llamacpp_vulkan_tok_s": 65.583954,
+    "blocked_over_vulkan_pct": 51.1041969841,
+    "next_token_id": 22746,
+    "final_position": 131071,
+    "tracked_current_bytes_after": 0,
+    "tracked_active_allocations_after": 0
+  },
+  "memory": {
+    "full_score_scratch_bytes": 4298113024,
+    "blocked_scratch_bytes": 143753216,
+    "scratch_reduction_pct": 96.6554342523,
+    "full_score_resident_bytes": 89554337748,
+    "blocked_resident_bytes": 85399977940,
+    "resident_bytes_saved": 4154359808
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-directory /tmp/laguna-lc1-block4096-trace.chq40R --output-format csv --output-file blocked -- env PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_hipblaslt_ceiling.py --samples 1 --warmups 0 --only-128k --block-context 4096 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-block4096-trace.chq40R/child.json",
+    "trace_sha256": "50bc6420fb0d0263fdfebfac00c1b7355f8b0ea62c3f9dcd6975b47f9f8f769d",
+    "child_sha256": "146ee2f524499a09dfbe8041a00416e7bbd2abd5467f2412308e1c9ad1c3153a",
+    "new_kernel_resources": {
+      "block_widen": "local256/VGPR24/LDS0/scratch0",
+      "online_softmax": "local32/VGPR16/LDS0/scratch0",
+      "numerator_merge": "local256/VGPR24/LDS0/scratch0"
+    },
+    "two_candidate_launches_ms": {
+      "block_widen": 12.454,
+      "online_softmax": 115.689,
+      "numerator_merge": 1.863
+    }
+  },
+  "correctness": {
+    "cpu_reference_test": "tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+    "multi_tile_context": 256,
+    "multi_tile_size": 128,
+    "complete_model_next_tokens_match": true,
+    "complete_model_final_positions_exact": true,
+    "complete_model_lifecycle_recovered": true
+  },
+  "decision": {
+    "production_promoted": true,
+    "backend_capability": "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
+    "replaces": "capacity-sized full-prefix/full-score F32 owner for qualified production dispatch",
+    "next": "Apply the same bounded tensorized/online design to SWA, then widen attention query chunks."
+  },
+  "repo": {
+    "base_revision": "894573a59514f18cd585d88d33e09f991e8fed32",
+    "candidate_worktree_scoped_dirty": true
+  }
+}

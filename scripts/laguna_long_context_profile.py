@@ -97,6 +97,15 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
     )
     parser.add_argument(
+        "--compare-block-attention-hipblaslt",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--block-attention-hipblaslt",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
         "--moe-branch-concurrency",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -167,11 +176,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("LPF-5 repetitions must be positive")
     if args.warmup_rows <= 0 or args.warmup_rows > args.chunk_size:
         raise ValueError("LPF-5 warmup rows must fit one retained chunk")
-    if args.compare_long_attention_hipblaslt and args.long_attention_hipblaslt:
+    if (
+        args.compare_long_attention_hipblaslt
+        and args.long_attention_hipblaslt
+    ):
         raise ValueError(
             "--compare-long-attention-hipblaslt and "
             "--long-attention-hipblaslt are mutually exclusive"
         )
+    if (
+        args.compare_long_attention_hipblaslt
+        and args.compare_block_attention_hipblaslt
+    ):
+        raise ValueError("only one long-attention comparison may be active")
+    if (
+        args.compare_block_attention_hipblaslt
+        and args.block_attention_hipblaslt
+    ):
+        raise ValueError(
+            "--compare-block-attention-hipblaslt and "
+            "--block-attention-hipblaslt are mutually exclusive"
+        )
+    comparison = bool(
+        args.compare_long_attention_hipblaslt
+        or args.compare_block_attention_hipblaslt
+    )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
     if not args.model_sha256:
@@ -217,6 +246,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_moe_shared_low_priority = False
     active_moe_shared_priority_range: tuple[int, int] | None = None
     active_long_attention_hipblaslt = False
+    active_block_attention_hipblaslt = False
     rows: list[dict[str, Any]] = []
     load_started = time.perf_counter()
     try:
@@ -241,6 +271,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_long_attention_hipblaslt
                 else args.long_attention_hipblaslt
             ),
+            prefill_block_attention_hipblaslt=(
+                False
+                if args.compare_block_attention_hipblaslt
+                else args.block_attention_hipblaslt
+            ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -251,6 +286,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
+        active_block_attention_hipblaslt = (
+            owner.prefill_block_attention_hipblaslt
+        )
         load_seconds = time.perf_counter() - load_started
         owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
         runtime.device_synchronize()
@@ -259,7 +297,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 _timing_order(lengths, repetition)
             ):
                 modes = ("production",)
-                if args.compare_long_attention_hipblaslt:
+                if comparison:
                     modes = (
                         ("control", "candidate")
                         if (repetition + order_index) % 2 == 0
@@ -268,6 +306,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for mode in modes:
                     if args.compare_long_attention_hipblaslt:
                         owner.set_prefill_long_attention_hipblaslt(
+                            mode == "candidate"
+                        )
+                    if args.compare_block_attention_hipblaslt:
+                        owner.set_prefill_block_attention_hipblaslt(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -284,12 +326,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "final_position": int(owner.position),
                         "repetition": repetition,
                     }
-                    if args.compare_long_attention_hipblaslt:
+                    if comparison:
                         row["mode"] = mode
                     rows.append(row)
                     mode_text = (
                         f" mode={mode}"
-                        if args.compare_long_attention_hipblaslt
+                        if comparison
                         else ""
                     )
                     print(
@@ -309,7 +351,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if gpu_total_after != gpu_total:
         raise RuntimeError("HIP total memory changed during Laguna LPF-5 profiling")
 
-    if args.compare_long_attention_hipblaslt:
+    if comparison:
         summaries = {
             mode: {
                 str(length): _summarize_samples(
@@ -408,6 +450,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "compare_long_attention_hipblaslt": (
                 args.compare_long_attention_hipblaslt
+            ),
+            "compare_block_attention_hipblaslt": (
+                args.compare_block_attention_hipblaslt
+            ),
+            "block_attention_hipblaslt": (
+                active_block_attention_hipblaslt
+            ),
+            "block_attention_hipblaslt_requested": (
+                args.block_attention_hipblaslt
             ),
             "timed_order": "ascending then alternating direction by repetition",
             "timing_scope": "reset complete through synchronized first-token projection; load excluded",
