@@ -3800,45 +3800,69 @@ code was removed unless a separately exact decode primitive retained value.
 | 2026-07-27 17:10 | Low-mass route pruning | 641.668 -> 687.804 tok/s | **+7.190%**, but max KL **3.649289** |
 | 2026-07-27 17:29 | Triangular BF16-WMMA QK | 0.085120 -> 0.104837 ms at context 256 | **+23.16%**; context 512 **+32.92%** |
 
-### Long-context optimization is the next active campaign
+### Long-context optimization campaign: first pass closed
 
-The pp512-to-700 expert lane remains valid but is no longer the next task.
+The pp512-to-700 expert lane remains valid but was paused for the bounded
+LC-0 through LC-6 campaign.
 Gate/up plus down still occupy about **503.595 ms** of the clean
 **782.577-ms** pp512 wall, and a credible future body must reduce physical
 weight bytes or create real cross-tile reuse. That lane resumes after the
-first long-context architecture target closes or a fresh profile proves global
-attention is no longer dominant. Do not repeat row64, K64 staging,
+first long-context architecture target; a fresh profile must now decide
+whether global attention is still dominant. Do not repeat row64, K64 staging,
 non-temporal loads, grid reordering, pair-shared prefetch, metadata-only
 repacks, or paired-SiLU fusion without a genuinely new premise.
 
-The next active task is exact long-context global attention. The same-GGUF,
-same-device llama.cpp Vulkan baseline uses the clean `c0bc8591e` build,
-batch 2,048, ubatch 512, F16 KV, FlashAttention, one resident model load, and
-one pass per shape:
+The clean final sweep uses one 128K-capacity resident session, selector-unset
+M2,048 matrix/global attention, M128 SWA, and one pass per shape. The
+same-GGUF, same-device llama.cpp Vulkan baseline uses clean `c0bc8591e`,
+batch 2,048, ubatch 512, F16 KV, FlashAttention, one resident load, and one
+pass per shape:
 
-| Shape | hipEngine current | llama.cpp Vulkan | hipEngine over Vulkan |
-| ---: | ---: | ---: | ---: |
-| 512 | **622.009 tok/s** | 341.999 tok/s | **+81.874%** |
-| 4K | **466.482** | 333.502 | **+39.874%** |
-| 16K | **307.953** | 280.349 | **+9.846%** |
-| 64K | **132.831** | 126.624 | **+4.902%** |
-| 128K | **72.139** | 65.584 | **+9.995%** |
+| Shape | hipEngine LC-0 | hipEngine final | llama.cpp Vulkan | Final over Vulkan |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 622.009 tok/s | **614.031 tok/s** | 341.999 tok/s | **+79.542%** |
+| 4K | 466.482 | **609.879** | 333.502 | **+82.871%** |
+| 64K | 132.831 | **247.408** | 126.624 | **+95.388%** |
+| 128K | 72.139 | **149.308** | 65.584 | **+127.659%** |
 
-The ordinary repeated pp512 production median is **654.249 tok/s**, or
-**91.301%** above this Vulkan run. The one-pass table uses the 128K-capacity
-hipEngine LC-0 attack control for 4K through 128K; its 4K/64K/128K rows are
-within **-0.805%/+0.632%/-0.255%** of the prior closure. The pp512 row remains
-the earlier 128K-capacity closure sample. KV numerical policy differs
-(hipEngine BF16 versus Vulkan F16), and llama-bench uses its own prompt
-stream/timing boundary, so this is a source/performance floor rather than a
-quality-equivalent comparator. It nevertheless answers the architectural
-question: hipEngine already wins every overlapping absolute row. Vulkan parity
-is not the target.
+The requested six-shape final is
+**614.031/666.901/609.879/365.481/247.408/149.308 tok/s** at
+512/1K/4K/32K/64K/128K. Relative to the pre-campaign closure it changes
+**-1.283%/+15.151%/+29.687%/+70.230%/+87.435%/+106.446%** and saves
+**934.451 seconds** at 128K. Its 4K/64K/128K rows reproduce the canonical
+LC-3 gates within **-0.313%/+0.354%/-0.251%**, so the pp512 singleton is
+capacity-session variance rather than a long-context regression.
+
+KV numerical policy still differs (hipEngine BF16 versus Vulkan F16), and
+llama-bench has its own prompt stream/timing boundary, so Vulkan remains a
+source/performance floor rather than a quality-equivalent comparator.
+Nevertheless, final hipEngine retains **60.349%** of its 64K rate at 128K
+versus Vulkan's **51.794%**: the old tail-retention concern is closed for this
+campaign.
 
 Evidence:
 [`same-GGUF Vulkan long baseline`](../benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json) ·
 [`hipEngine LC-0 attack control`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc0-attack-control.json) ·
-[`hipEngine six-shape closure`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json).
+[`hipEngine pre-campaign closure`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json) ·
+[`hipEngine final closure`](../benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
+
+#### Long-context sprint ledger
+
+Timestamps are JST. “Superseded” means the result was a successful bounded
+stepping stone whose successor kept the architecture while improving its
+scratch or wall; “rejected” means production stayed on the prior row.
+
+| Timestamp | Iteration | Before -> after | Decision |
+| --- | --- | ---: | --- |
+| 2026-07-27 22:49 | LC-0 coherent attribution | baseline -> **72.139 tok/s** at 128K | accepted control |
+| 2026-07-28 01:01 | Capacity-sized F32 global hipBLASLt | 72.139 -> **88.073** (**+22.088%**) | retained, then superseded due to 4.298 GB scratch |
+| 2026-07-28 02:00 | Exact 4K-block online global | 88.073 -> **99.100** (**+12.521%**) | retained; scratch **-96.655%** |
+| 2026-07-28 02:58 | Tensorized rolling SWA | 99.100 -> **103.520** (**+4.460%**) | retained |
+| 2026-07-28 03:50 | Global M2,048 query reuse | 103.520 -> **149.684** (**+44.594%**) | retained; wider SWA rejected |
+| 2026-07-28 04:32 | Dense-contiguous cache widen | 0.250249 -> **0.234780 ms** (**-6.181%**) | retained exact sub-window; 128K **-0.291%** neutral |
+| 2026-07-28 05:12 | M4,096/M8,192 matrix chunks | 149.684 -> **147.939** at M4,096 (**-1.166%**) | rejected; +1.756/+5.268 GB |
+| 2026-07-28 05:20 | Capacity/lazy-KV and secondary routes | short shapes **-0.425%/+0.654%/-0.004%** with +6.007 GiB | closed; no production change |
+| 2026-07-28 05:43 | Clean six-shape closure | 72.323 -> **149.308** at 128K (**+106.446%**) | accepted; all gates pass |
 
 #### Laguna-specific long-context roofline
 
@@ -3874,30 +3898,31 @@ layers remain quadratic.
 | 64K | 0.633 PFLOP | 0.044 PFLOP | 0.678 PFLOP | **7.00%** |
 | 128K | 2.533 PFLOP | 0.089 PFLOP | 2.622 PFLOP | **3.51%** |
 
-This is why the optimization ordering still stands but the short screens
-matter. Global attention is the asymptotic target and owns **96.61%** of
-attention arithmetic at 128K, yet SWA owns slightly more attention arithmetic
-than global at 4K. An LC-1 global-only specialization should therefore deliver
-an increasingly strong 16K/64K/128K slope while preserving the 4K route; it
-should not be expected to remove all 4K attention wall.
+This is why the optimization ordering stood but the short screens mattered.
+Global attention is the asymptotic target and owns **96.61%** of attention
+arithmetic at 128K, yet SWA owns slightly more attention arithmetic than
+global at 4K. The retained global specialization delivered the expected
+increasing 16K/64K/128K slope while the separate rolling-SWA owner protected
+the 4K route.
 
 The gfx1151 theoretical roofs imply deliberately optimistic
 all-attention-only lower bounds at 128K of about **88.3 seconds** at
 29.7-TFLOP FP32/VOPD or **44.2 seconds** at 59.39-TFLOP BF16 WMMA. Neither is
 an end-to-end promise: they omit softmax, cache traffic, projections, MoE,
 norms, routing, output projection, occupancy, and achievable clock/issue
-efficiency. They do show that the current **1,816.9-second** hipEngine and
-**1,998.5-second** Vulkan walls are not hardware-optimal. Required total
-attention arithmetic divided by complete wall is only
-**1.443/1.312 TFLOP/s** for hipEngine/Vulkan; these are system-equivalent
-ratios, not measured attention-kernel throughput.
+efficiency. They do show that the LC-0 **1,816.9-second** hipEngine, final
+**877.863-second** hipEngine, and **1,998.5-second** Vulkan walls are not
+hardware-optimal. Required total attention arithmetic divided by complete
+wall is **1.443/2.987/1.312 TFLOP/s** for LC-0/final/Vulkan; these are
+system-equivalent ratios, not measured attention-kernel throughput.
 
 Use measured staged milestones rather than the peak as a promise:
 
 | 128K milestone | Throughput | Wall | Interpretation |
 | --- | ---: | ---: | --- |
-| Current LC-0 control | **72.139 tok/s** | 1,816.9 s | Exact scalar online global route |
-| First architectural milestone | **>=150 tok/s** | <=873.8 s | At least 2.07x current; trace-backed global wall must fall about 2.75x if other work is unchanged |
+| LC-0 control | **72.139 tok/s** | 1,816.9 s | Exact scalar online global route |
+| Final clean closure | **149.308 tok/s** | **877.863 s** | **2.070x LC-0**; within 0.462% of the strict 150 milestone |
+| First architectural milestone | **>=150 tok/s** | <=873.8 s | At least 2.07x LC-0; trace-backed global wall must fall about 2.75x if other work is unchanged |
 | Main long-context target | **>=300 tok/s** | <=436.9 s | At least 4.15x current; requires comparator-independent tiled compute near the FP32 global roof or companion non-global wins |
 | Roofline-informed stretch | **>=450 tok/s** | <=291.3 s | At least 6.22x current; requires global plus SWA/linear/capacity progress, not a global-only kernel |
 
@@ -4249,11 +4274,45 @@ Evidence:
   moves one of these leaves onto the critical path.
 - LC-5's diagnostic-only M4,096/M8,192 constructor/profile surface is removed
   now that its stated LC-6 lifetime expired. Production and the explicit
-  validation ceiling are both M2,048. The final clean selector-unset six-shape
-  sweep is the remaining campaign closure gate.
+  validation ceiling are both M2,048.
+- **Final closure passes.** Clean selector-unset
+  512/1K/4K/32K/64K/128K is
+  **614.031/666.901/609.879/365.481/247.408/149.308 tok/s**. Every expected
+  token and final position passes, all tracked allocation returns to zero,
+  and 4K/64K/128K reproduce the retained LC-3 band within **+/-0.354%**.
 
 Evidence:
-[`capacity and secondary closure`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json).
+[`capacity and secondary closure`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json) ·
+[`final six-shape closure`](../benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
+
+#### Next measured avenues after the LC-0 through LC-6 closure
+
+1. **Re-profile the retained 64K route before choosing another kernel.** The
+   LC-0 trace predates the 4K-block, SWA, and M2,048-query owners. A cached
+   64K trace should re-split global attention, SWA, and linear/MoE wall and
+   report tensor-core utilization plus QK/PV/merge launch boundaries.
+2. **Build an in-tree fused head-dim-128 GQA FlashAttention owner if global
+   still dominates.** Consume `KVLiveSpans` directly, keep bounded online
+   softmax state and F32 accumulation, and remove the separate query pack,
+   BF16-cache-to-F32 tiles, QK/PV library calls, and merge launches. Installed
+   AOTriton cannot supply this geometry; copying its unsupported adapter is
+   not the premise.
+3. **Decouple attention-query reuse from whole-model matrix width.** LC-5
+   rejected M4,096 because it widened every projection/MoE scratch plane. A
+   layer-local or two-M2,048 attention window could reuse each global K/V
+   block across 4,096 queries without paying the rejected **1.756 GB** or
+   changing expert routing geometry. This needs a new scheduling proof and
+   the same 4K/16K/64K/128K gates.
+4. **Resume pp512 physical-byte work only after that trace.** At short context
+   the mapped gate/up plus down window is still about **503.595 ms** of the
+   **782.577-ms** production wall. The next credible expert body must remove
+   physical weight bytes or cross-tile work; prior row64, K64 staging,
+   non-temporal, grid-order, pair-shared, and metadata-only variants remain
+   closed.
+
+Do not reopen lazy KV, Q8 KV, M4,096 whole-model chunks, source-F16 grouping,
+or unchanged AOTriton/GroupedGemm routes without new capability or trace
+evidence.
 
 Long-context stop rules:
 

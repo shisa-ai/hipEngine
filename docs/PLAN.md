@@ -1366,15 +1366,25 @@ T16-lite/X16 replacement-layout screen remain owned by
 `LAGUNA-prefill.md`.
 
 Subsequent exact production work reached **654.249/579.699/468.608 tok/s** at
-512/1K/4K. A one-session 512/1K/4K/32K/64K/128K closure sweep measured
-**622.009/579.152/470.270/214.698/131.997/72.323 tok/s**, with exact final
-positions, deterministic next tokens, and complete tracked-allocation
-recovery. The next active Laguna campaign is therefore long-context global
-attention; the pp512-to-700 expert lane is paused, not closed. A same-GGUF
-one-pass llama.cpp Vulkan control measured
+512/1K/4K. The pre-campaign one-session
+512/1K/4K/32K/64K/128K closure measured
+**622.009/579.152/470.270/214.698/131.997/72.323 tok/s**. The bounded
+LC-0 through LC-6 campaign then closed with a tracked-clean selector-unset
+six-shape sweep at
+**614.031/666.901/609.879/365.481/247.408/149.308 tok/s**, improving
+1K/4K/32K/64K/128K by
+**15.151%/29.687%/70.230%/87.435%/106.446%**. The 512 singleton is
+**-1.283%** in the 128K-capacity session, while a separate capacity
+counterbalance is within **-0.425%/+0.654%/-0.004%** at 512/1K/4K. Every
+final position, next token, finite-state check, and allocation teardown
+passes. The pp512-to-700 expert lane is paused, not closed; a fresh retained
+64K trace must now choose between another fused global-attention owner and
+resuming physical-byte expert work. A same-GGUF one-pass llama.cpp Vulkan
+control measured
 **341.999/333.502/280.349/126.624/65.584 tok/s** at
-512/4K/16K/64K/128K, so hipEngine already wins every overlapping shape and
-Vulkan is a floor rather than the target.
+512/4K/16K/64K/128K. Final hipEngine is
+**79.542%/82.871%/95.388%/127.659%** faster at the overlapping
+512/4K/64K/128K shapes, so Vulkan remains a floor rather than the target.
 
 The long-context roofline is Laguna-specific, not borrowed from hybrid
 Qwen3.x/GDN. The exact production GGUF metadata confirms that every one of
@@ -1389,13 +1399,13 @@ tail. The coherent LC-0 control measures
 **466.482/307.953/132.831/72.139 tok/s** at those shapes with exact positions,
 deterministic tokens, and complete allocation recovery.
 
-The ordered LC-0 through LC-6 attack, rough one-pass 4K/16K/64K development
-screens, mandatory positive 128K gate between major stages, and full promotion
-gates are defined in `LAGUNA-prefill.md`. The first implementation target is
-an exact block-streamed global-attention body with online softmax and no
-materialized quadratic score matrix, followed by six-query-head reuse of each
-Laguna GQA K/V head. Global-only gains should strengthen with context length;
-the 4K guard protects the independently material SWA path.
+The completed ordered LC-0 through LC-6 attack, rough one-pass 4K/16K/64K
+development screens, mandatory positive 128K gate between major stages, and
+full promotion gates are defined in `LAGUNA-prefill.md`. The retained route
+uses exact 4K-block online global attention, a fixed tensorized rolling-SWA
+union, and six-query-head GQA reuse across each M2,048 query chunk without a
+quadratic score matrix. Whole-model M4,096/M8,192, lazy KV, Q8 KV, and
+unchanged AOTriton/GroupedGemm routes are closed by measured evidence.
 
 LC-0 trace attribution now measures global/SWA/complete-minus-attention wall
 at **22.670/10.462/19.860 seconds** for 16K and
@@ -1403,12 +1413,16 @@ at **22.670/10.462/19.860 seconds** for 16K and
 **16.345x/4.158x/4.002x**, directly proving the expected
 quadratic/linear/linear split. At 64K, global attention alone owns **75.08%**
 of complete wall and all attention owns **83.90%**; kernel span is within
-**19.7 ms** of complete wall. Current scalar global qrow6 multiplies K/V load
-requests by about **131.76x** across 22 row groups and six GQA heads, while
-SWA qrow4 multiplies them by **288x** across 32 row groups and nine heads.
-These request counts include cache hits and are not DRAM counters. LC-1 starts
-with exact Q16 x K64/local128 block streaming, then LC-2 removes cross-head
-rereads for global-six and SWA-nine groups.
+**19.7 ms** of complete wall. The superseded LC-0 scalar global qrow6
+multiplied K/V load requests by about **131.76x** across 22 row groups and six
+GQA heads, while the superseded SWA qrow4 multiplied them by **288x** across
+32 row groups and nine heads.
+These request counts include cache hits and are not DRAM counters. The next
+decision starts with a fresh cached 64K trace. If global attention still
+dominates, the strongest new premise is an in-tree fused head-dim-128 GQA
+FlashAttention owner consuming `KVLiveSpans` directly, or an attention-only
+two-M2,048 scheduling window that raises query reuse without the rejected
+whole-model M4,096 scratch.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
