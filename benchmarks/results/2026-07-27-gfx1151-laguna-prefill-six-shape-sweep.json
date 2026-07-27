@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_prefill_six_shape_closure_sweep",
+  "created_at": "2026-07-27T18:24:53+09:00",
+  "status": "accepted_attribution_baseline",
+  "performance_claim": false,
+  "purpose": "Anti-overtuning closure sweep across the user-requested 512/1K/4K/32K/64K/128K shapes.",
+  "repo": {
+    "revision": "ce7e27b82b047dfe49a758fbebf2511fb30fcc1c",
+    "tracked_clean_at_measurement": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hip_total_bytes": 128849018880,
+    "rocm": "HIP 7.15.0"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "context_capacity": 131072,
+    "lengths": [
+      512,
+      1024,
+      4096,
+      32768,
+      65536,
+      131072
+    ],
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "queues": 2,
+    "repetitions": 1,
+    "warmup_rows": 128,
+    "timing_scope": "reset complete through synchronized first-token projection; load excluded",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 512,1024,4096,32768,65536,131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-production-six-shape-sweep.json"
+  },
+  "results": [
+    {
+      "length": 512,
+      "chunks": 1,
+      "seconds": 0.8231397269992158,
+      "tok_s": 622.0086131263688,
+      "next_token_id": 2930,
+      "final_position": 511
+    },
+    {
+      "length": 1024,
+      "chunks": 1,
+      "seconds": 1.7681017669383436,
+      "tok_s": 579.1521840811035,
+      "next_token_id": 95,
+      "final_position": 1023
+    },
+    {
+      "length": 4096,
+      "chunks": 2,
+      "seconds": 8.70988993300125,
+      "tok_s": 470.27000702735654,
+      "next_token_id": 7772,
+      "final_position": 4095
+    },
+    {
+      "length": 32768,
+      "chunks": 16,
+      "seconds": 152.62401195196435,
+      "tok_s": 214.6975405830187,
+      "next_token_id": 19306,
+      "final_position": 32767
+    },
+    {
+      "length": 65536,
+      "chunks": 32,
+      "seconds": 496.4973082720535,
+      "tok_s": 131.99668741021623,
+      "next_token_id": 69407,
+      "final_position": 65535
+    },
+    {
+      "length": 131072,
+      "chunks": 64,
+      "seconds": 1812.326146411011,
+      "tok_s": 72.3225233270318,
+      "next_token_id": 22746,
+      "final_position": 131071
+    }
+  ],
+  "short_shape_comparison": {
+    "repeated_production_median_tok_s": [
+      654.248662477172,
+      579.6987225910123,
+      468.60776605332995
+    ],
+    "single_sweep_tok_s": [
+      622.0086131263688,
+      579.1521840811035,
+      470.27000702735654
+    ],
+    "delta_pct": [
+      -4.927797517954902,
+      -0.09427975060319893,
+      0.3547190410492229
+    ],
+    "interpretation": "The 1K and 4K singleton samples agree with the repeated production medians. The 512 sample was measured inside a 128K-capacity resident session and is 4.928% lower; this is a context-capacity/bucketing diagnostic, not a replacement headline or a proven regression."
+  },
+  "correctness": {
+    "pass": true,
+    "final_positions_exact": true,
+    "repeat_next_token_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0,
+    "tracked_current_allocated_bytes_after": 0
+  },
+  "memory": {
+    "resident_nbytes": 85256224724,
+    "peak_tracked_allocated_bytes": 85256224724
+  },
+  "quality_reference": {
+    "artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json",
+    "maximum_kl": 0.04954258196634279,
+    "top1_agreement": "316/320"
+  },
+  "assessment": {
+    "anti_overtuning": "pass",
+    "finding": "No matrix-chunk shape cliff is visible. Throughput falls smoothly at long context while wall time grows superlinearly, identifying the existing scalar online global-attention path above 512 as the principal long-context ceiling.",
+    "next_measurement": "Measure 512 with matched small and 128K resident-capacity buckets before attributing the singleton gap.",
+    "raw_artifact_sha256": "fb2cf4ad8b279293b1a5d1543a508c1ee41143462965c52b96d815da647d68c9"
+  }
+}

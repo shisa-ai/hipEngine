@@ -51,6 +51,19 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
+The user-requested 512/1K/4K/32K/64K/128K closure sweep now passes in one
+128K-capacity resident session. Single-sample production throughput is
+**622.009/579.152/470.270/214.698/131.997/72.323 tok/s** with exact final
+positions through 131,071, deterministic next tokens, and zero tracked
+allocations after teardown. The 1K/4K samples are within **-0.094%/+0.355%**
+of their repeated production medians; pp512 is **-4.928%** when measured
+inside the 128K-capacity session and remains a capacity-bucketing diagnostic.
+The smooth long-context slowdown exposes the scalar online global-attention
+fallback above 512 as the next long-context ceiling rather than a
+matrix-chunk-specific cliff. This one-repeat attribution baseline does not
+replace the repeated short-shape headline or the absolute quality packet.
+[`six-shape artifact`](results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

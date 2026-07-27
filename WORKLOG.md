@@ -184911,3 +184911,44 @@ Vulkan local sizes verbatim will close the measured gap.
   GREEN passes all **66** focused KV/runner/profiler tests, including the
   existing CPU/HIP attention gates, plus `py_compile` and `git diff --check`.
   No device kernel body or <=4K dispatch changed.
+
+## 2026-07-27 — Close the 350+ sprint with a six-shape production sweep
+
+- Ran the requested 512/1K/4K/32K/64K/128K sweep in one resident
+  128K-capacity session at revision `ce7e27b82`, on AMD Radeon 8060S
+  gfx1151, Laguna S 2.1 Q4_K_M
+  (`7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`),
+  BF16 KV, matrix rows 2,048, attention rows 128, two queues, cached-only
+  build, and one repetition:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u
+  scripts/laguna_long_context_profile.py --context-length 131072 --lengths
+  512,1024,4096,32768,65536,131072 --chunk-size 2048 --repetitions 1
+  --warmup-rows 128 --compiler-version-file
+  /tmp/laguna_hipcc_version.txt --require-cached-build --output
+  /tmp/laguna-production-six-shape-sweep.json`.
+- Measured **622.009/579.152/470.270/214.698/131.997/72.323 tok/s** in
+  **0.823/1.768/8.710/152.624/496.497/1,812.326 seconds**. Against repeated
+  production medians, the short singleton rows are
+  **-4.928%/-0.094%/+0.355%**. The pp512 difference was measured inside a
+  128K-capacity allocation and remains a matched-capacity diagnostic rather
+  than a replacement headline or proven regression.
+- Correctness/lifecycle pass: final positions are exact through 131,071,
+  recorded next tokens are deterministic, all **85,256,224,724 bytes** of
+  tracked resident allocation are freed, and active allocations return to
+  zero. Raw artifact SHA-256:
+  `fb2cf4ad8b279293b1a5d1543a508c1ee41143462965c52b96d815da647d68c9`.
+- The sweep shows no matrix-chunk-specific shape cliff. Long wall time grows
+  superlinearly because context-above-512 global attention uses the scalar
+  online Q-row fallback; exact block-streamed global attention is now the
+  primary long-context avenue. The pp512-to-700 avenue remains selected-expert
+  physical traffic: gate/up plus down consume about **503.595 ms** of the
+  **782.577-ms** wall, and 700 requires **51.148 ms**.
+- Published
+  `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json`
+  and updated `docs/LAGUNA-prefill.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md` with the pause packet, timestamped sprint ledger,
+  rejected screens, and ranked next steps. Latest-sprint production improved
+  **354.820 -> 654.249 tok/s (+84.389%)**; the pre-campaign control improved
+  **76.226 -> 654.249 tok/s (+758.301%)**.
