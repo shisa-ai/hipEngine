@@ -84,6 +84,7 @@ class LagunaKVCache:
         sliding_window: int,
         backend: str,
         row_position: DeviceBuffer,
+        row_position_prepublished: bool,
         split_score_scratch: DeviceBuffer | None,
         split_physical_scratch: DeviceBuffer | None,
         global_split_min_live: int | None,
@@ -99,6 +100,7 @@ class LagunaKVCache:
         self.sliding_window = int(sliding_window)
         self.backend = str(backend)
         self._row_position = row_position
+        self._row_position_prepublished = bool(row_position_prepublished)
         self._split_score_scratch = split_score_scratch
         self._split_physical_scratch = split_physical_scratch
         self.global_split_min_live = global_split_min_live
@@ -151,7 +153,8 @@ class LagunaKVCache:
             raise ValueError(
                 f"Laguna KV owner is token-serial: expected {self.position + 1}, got {parsed}"
             )
-        _copy_i64(self._row_position, parsed, self.runtime)
+        if not self._row_position_prepublished:
+            _copy_i64(self._row_position, parsed, self.runtime)
         self.position = parsed
 
     def prepare_rows(self, positions: Sequence[int]) -> None:
@@ -693,8 +696,14 @@ def allocate_laguna_kv_cache(
     use_split_attention: bool | None = None,
     use_split_gate_fusion: bool | None = None,
     use_swa_split_wave_local: bool | None = None,
+    prepublished_row_position: DeviceBuffer | None = None,
 ) -> LagunaKVCache:
-    """Allocate per-layer BF16 payloads and complete device span metadata."""
+    """Allocate per-layer BF16 payloads and complete device span metadata.
+
+    ``prepublished_row_position`` is a caller-owned int64 scalar whose value is
+    already published before scalar :meth:`LagunaKVCache.prepare_position`.
+    Bulk-row and reset operations still publish into that borrowed scalar.
+    """
 
     context = int(context_length)
     if context <= 0:
@@ -709,6 +718,11 @@ def allocate_laguna_kv_cache(
     )
     runtime = runtime or get_hip_runtime()
     device = device or Device("hip", 0)
+    if (
+        prepublished_row_position is not None
+        and prepublished_row_position.nbytes != DType.INT64.itemsize
+    ):
+        raise ValueError("prepublished Laguna row position must be one int64 scalar")
     layer_types, head_counts, sliding_window = _validate_config(config, context)
     has_global = FULL_ATTENTION in layer_types
     has_sliding = SLIDING_ATTENTION in layer_types
@@ -828,7 +842,17 @@ def allocate_laguna_kv_cache(
             if has_sliding
             else None
         )
-        row_position = metadata((ctypes.c_int64 * 1)(-1), (1,), DType.INT64)
+        if prepublished_row_position is None:
+            row_position_buffer = allocate_raw(DType.INT64.itemsize)
+        else:
+            row_position_buffer = prepublished_row_position
+        _copy_i64(row_position_buffer, -1, runtime)
+        row_position = Tensor.from_handle(
+            row_position_buffer.ptr,
+            (1,),
+            DType.INT64,
+            device,
+        )
         split_enabled = any(
             threshold is not None
             for threshold in (
@@ -955,7 +979,8 @@ def allocate_laguna_kv_cache(
             context_length=context,
             sliding_window=sliding_window,
             backend=backend,
-            row_position=_buffer_for_tensor(row_position, buffers),
+            row_position=row_position_buffer,
+            row_position_prepublished=prepublished_row_position is not None,
             split_score_scratch=split_score_scratch,
             split_physical_scratch=split_physical_scratch,
             global_split_min_live=parsed_global_split,
@@ -1090,16 +1115,6 @@ def _copy_i64(buffer: DeviceBuffer, value: int, runtime: HipRuntime) -> None:
         ctypes.sizeof(host),
         HipMemcpyKind.HOST_TO_DEVICE,
     )
-
-
-def _buffer_for_tensor(
-    tensor: Tensor,
-    buffers: list[DeviceBuffer],
-) -> DeviceBuffer:
-    for buffer in buffers:
-        if buffer.ptr == tensor.ptr:
-            return buffer
-    raise RuntimeError("Laguna KV metadata tensor has no owned buffer")
 
 
 __all__ = [
