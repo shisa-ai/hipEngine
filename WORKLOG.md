@@ -185330,3 +185330,52 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json`.
   Next apply the bounded tensorized design to rolling SWA, then widen attention
   query chunks.
+
+## 2026-07-28 — Promote LC-2 tensorized rolling-SWA attention
+
+- RED added
+  `test_laguna_swa_hipblaslt_shape_contract`; it failed on the missing route.
+  GREEN adds a fixed M128/window512 contract. A second GPU oracle seeds all
+  512 historical ring rows, evaluates current positions 512..639 before
+  append, and compares the tensorized route to retained qrow2 online.
+- Added a local256 union gather that maps 511 historical rows through complete
+  SWA `KVLiveSpans` and BF16-rounds 128 current F32 rows. A local32 wave
+  softmax applies row `r`'s visible union interval `[r,r+512)`. Packed
+  eight-way QK/PV reuses each of eight KV heads across nine query heads.
+  Decode, verifier, partial, explicit-eviction, nonconsecutive, and unsupported
+  paths retain the generic fallback.
+- All 32 zero-workspace QK and PV algorithms were screened. QK25/PV18 improves
+  inclusive qrow2 online **3.313271 -> 0.683762 ms (4.84565x)**. Maximum
+  absolute/mean/RMSE are **3.818e-8/2.386e-9/3.362e-9**, output is finite,
+  scratch is **33,554,432 bytes**, and lifecycle recovers. Raw SHA-256:
+  `62aca585f289d12e0ab49fb3303484e729a96a410ec511762be488c4d06876b8`.
+- A standalone `--lengths 4096` command was correctly rejected by the frozen
+  shape-set harness. The admitted 512/1K/4K pair set then measures structural
+  512 non-regression, **579.394 -> 670.326 tok/s (+15.694%)** at 1K, and
+  **469.356 -> 579.269 (+23.418%)** at 4K. Tokens 2930/95/7772 match and
+  lifecycle recovers. Raw SHA-256:
+  `8147c05fe14483ad9110d1b86be585c0336e748e40c7e41183ae49ee15748638`.
+- The admitted 16K/64K one-run pair improves
+  **334.430 -> 392.424 tok/s (+17.341%)** and
+  **163.985 -> 177.222 (+8.072%)**, saving **7.240/29.850 seconds** with
+  tokens 81/69407 and exact positions/lifecycle. Raw SHA-256:
+  `6d8f025c549889f78c8dd53003cfa4770b5c360ff98fdf1316d656333244e49d`.
+- Mandatory 128K improves retained LC-1
+  **99.100107 -> 103.520263 tok/s (+4.460%)** and
+  **1,322.622184 -> 1,266.148257 seconds**, saving **56.473927 seconds**.
+  This is **+43.501%** versus original LC-0 and **+57.844%** versus same-GGUF
+  Vulkan. Token 22746, position 131071, finite output, and lifecycle pass.
+  Raw SHA-256:
+  `735f6f742fd0b747cafdce1a9064fe1b27fd43f6532baf6696e9d4e00470d75a`.
+- Cached trace SHA-256
+  `b0d094b008daacd6b2145e540611a98b645405fbe5479845f8063dfda4257058`
+  names the union gather at local256/VGPR32/SGPR128/LDS0/scratch0 and window
+  softmax at local32/VGPR24/SGPR128/LDS0/scratch0; child SHA-256 is
+  `2703707149d2459b6e40f3674aa605ffe97d6bbf3280a8afc267eb226fab4588`.
+- Promoted `LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT` on gfx1151. Accepted
+  artifact:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-lc2-swa-hipblaslt-production.json`.
+  Final affected validation passes **60 tests** across gfx1151 capability,
+  attention kernels/oracles, and resident runtime ownership. JSON, Python
+  compilation, and `git diff --check` pass. LC-2 is closed; LC-3 attention
+  query-chunk widening is next.

@@ -509,6 +509,61 @@ class LagunaKVCache:
         )
         return state, spans, int(self._pending_positions[int(row_offset)])
 
+    def can_rolling_swa_prefill(
+        self,
+        layer_id: int,
+        rows: int,
+        *,
+        row_offset: int = 0,
+    ) -> bool:
+        """Return whether one M128 tile has an intact rolling 512-token window."""
+
+        state = self.layer(layer_id)
+        offset = int(row_offset)
+        count = int(rows)
+        if (
+            state.attention_type != SLIDING_ATTENTION
+            or not self._dense_initial_metadata_valid
+            or count != 128
+            or state.capacity != self.sliding_window
+            or self.sliding_window != 512
+            or not self._pending_positions
+            or offset < 0
+            or offset + count > len(self._pending_positions)
+        ):
+            return False
+        start_position = self._pending_positions[offset]
+        return (
+            start_position >= self.sliding_window
+            and self._pending_positions[offset : offset + count]
+            == tuple(range(start_position, start_position + count))
+        )
+
+    def rolling_swa_prefill_view(
+        self,
+        layer_id: int,
+        rows: int,
+        *,
+        row_offset: int = 0,
+        row_positions_ptr: int | None = None,
+    ) -> tuple[LagunaKVLayerState, KVLiveSpans, int]:
+        """Return the preappend rolling-SWA state/span/start tuple."""
+
+        if not self.can_rolling_swa_prefill(
+            layer_id,
+            rows,
+            row_offset=row_offset,
+        ):
+            raise ValueError("Laguna rolling-SWA prefill view is not qualified")
+        state = self.layer(layer_id)
+        spans = self._bulk_slice_spans(
+            state.spans,
+            row_offset=row_offset,
+            rows=rows,
+            row_positions_ptr=row_positions_ptr,
+        )
+        return state, spans, int(self._pending_positions[int(row_offset)])
+
     def attend_prefill_cached(
         self,
         layer_id: int,

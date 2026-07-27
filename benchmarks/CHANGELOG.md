@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-28
+
+- [accepted gfx1151 Laguna LC-2 rolling-SWA hipBLASLt production] Radeon 8060S / same-GGUF matrix2048/attention128: gather the exact 511 historical BF16 ring rows plus 128 current BF16-rounded rows into a fixed 639-key QK/PV union; leaf **3.313 -> 0.684 ms (4.846x)**, complete 4K/16K/64K **+23.418%/+17.341%/+8.072%**, and mandatory 128K **99.100 -> 103.520 tok/s (+4.460%)**, saving **56.474 s** with identical tokens, exact positions, finite output, full lifecycle recovery, and **33.6 MB** bounded scratch; `benchmarks/results/2026-07-28-gfx1151-laguna-lc2-swa-hipblaslt-production.json`.
+
 ## 2026-07-27
 
 - [accepted gfx1151 Laguna LC-1 exact block4096 hipBLASLt production] Radeon 8060S / same-GGUF matrix2048/attention128: carry online F32 max/denominator/output numerator across 4,096-key QK/PV blocks; preserve or improve the transitional full-score owner at 4K/16K/64K by **+0.121%/+0.614%/+7.516%**, improve mandatory 128K **88.073 -> 99.100 tok/s (+12.521%)**, save **165.603 s**, and cut scratch **4,298,113,024 -> 143,753,216 bytes (-96.655%)** with identical next tokens, exact position, finite output, and full lifecycle recovery; `benchmarks/results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json`.

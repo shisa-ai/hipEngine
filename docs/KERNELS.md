@@ -215,6 +215,24 @@ improves **88.073 -> 99.100 tok/s (+12.521%)** while scratch falls
 temporary rollback. Evidence:
 `benchmarks/results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json`.
 
+The LC-2 rolling-SWA successor keeps the same tensorized arithmetic across ring
+wraps without preappending over still-visible history. A new local256 gather
+maps absolute positions `start-511..start-1` through complete
+`KVLiveSpans`, rounds the 128 current F32 K/V rows through the established BF16
+boundary, and emits one fixed 639-key F32 union. A local32 wave softmax applies
+the exact row-dependent 512-token diagonal window before packed PV. The
+M128/start>=512/consecutive/non-evicted gfx1151 route is separate; decode,
+verifier, partial, evicted, and unmeasured paths retain the generic fallback.
+The wrap fixture matches qrow2 within `rtol=2e-3, atol=2e-4`, with leaf maximum
+absolute error **3.818e-8**. All 32 QK/PV algorithms select **25/18** and
+improve **3.313 -> 0.684 ms (4.846x)**. Cached tracing reports gather
+local256/VGPR32 and softmax local32/VGPR24, both SGPR128/LDS0/scratch0.
+Complete 4K/16K/64K gates improve **23.418%/17.341%/8.072%**; mandatory 128K
+improves **99.100 -> 103.520 tok/s (+4.460%)** with exact state and
+**33,554,432 bytes** bounded scratch. gfx1151 enables
+`LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT`. Evidence:
+`benchmarks/results/2026-07-28-gfx1151-laguna-lc2-swa-hipblaslt-production.json`.
+
 The subsequent Q4 row64/local256 screen is rejected and removed. Eight waves
 split 64 routed rows while preserving 32 FP32 accumulators/lane. Natural
 routing nevertheless reduces M256/M512 tiles only **5.44%/16.84%**.

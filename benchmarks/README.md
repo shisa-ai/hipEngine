@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-07-27**
+Last updated: **2026-07-28**
 
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
@@ -150,6 +150,19 @@ the original hipEngine LC-0 control and **51.104%** above the same-GGUF Vulkan
 recovery pass. The next long-context stage applies tensorized K/V reuse to the
 rolling 512-token SWA ring, then widens query chunks.
 [`bounded 4K-block production`](results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json).
+
+LC-2 now tensorizes the rolling SWA half as well. After the 512-token ring
+fills, each qualified M128 tile gathers 511 historical BF16 rows plus 128
+current BF16-rounded rows into a fixed 639-key union, then runs packed F32 QK,
+a row-shifted 512-key wave softmax, and packed F32 PV. The leaf improves
+**3.313 -> 0.684 ms (4.846x)** with maximum absolute error **3.818e-8** and
+**33.6 MB** fixed scratch. Complete-model gates improve 1K/4K/16K/64K by
+**15.694%/23.418%/17.341%/8.072%**. Mandatory 128K improves
+**99.100 -> 103.520 tok/s (+4.460%)**, saves **56.474 seconds**, preserves
+token 22746/position 131071, and releases every tracked allocation. The
+retained 128K route is now **43.501%** above original LC-0 and **57.844%**
+above same-GGUF Vulkan.
+[`rolling-SWA production`](results/2026-07-28-gfx1151-laguna-lc2-swa-hipblaslt-production.json).
 
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72

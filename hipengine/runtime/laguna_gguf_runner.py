@@ -80,6 +80,7 @@ from hipengine.runtime.laguna_f16_hipblaslt import (
 )
 from hipengine.runtime.laguna_attention_hipblaslt import (
     LagunaAttentionHipblasLt,
+    LagunaSwaAttentionHipblasLt,
 )
 from hipengine.runtime.laguna_kv import (
     LagunaKVCache,
@@ -1627,6 +1628,7 @@ class LagunaGGUFResidentSession:
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         prefill_long_attention_hipblaslt: bool | None = None,
         prefill_block_attention_hipblaslt: bool | None = None,
+        prefill_swa_attention_hipblaslt: bool | None = None,
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
@@ -1778,6 +1780,15 @@ class LagunaGGUFResidentSession:
             )
             if prefill_block_attention_hipblaslt is None
             else prefill_block_attention_hipblaslt
+        )
+        self.prefill_swa_attention_hipblaslt = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT",
+                False,
+            )
+            if prefill_swa_attention_hipblaslt is None
+            else prefill_swa_attention_hipblaslt
         )
         resident_q6_qmicro = (
             getattr(resident_weights, "q6_qmicro", None)
@@ -1992,6 +2003,7 @@ class LagunaGGUFResidentSession:
         self.attention_hipblaslt: LagunaAttentionHipblasLt | None = None
         self.long_attention_hipblaslt: LagunaAttentionHipblasLt | None = None
         self.block_attention_hipblaslt: LagunaAttentionHipblasLt | None = None
+        self.swa_attention_hipblaslt: LagunaSwaAttentionHipblasLt | None = None
         self.prefill_scratch_admission_nbytes = DEFAULT_LAGUNA_SCRATCH_BYTES
         self._owns_weights = resident_weights is None
         self._closed = False
@@ -2296,6 +2308,11 @@ class LagunaGGUFResidentSession:
 
         self.prefill_block_attention_hipblaslt = bool(enabled)
 
+    def set_prefill_swa_attention_hipblaslt(self, enabled: bool) -> None:
+        """Select tensorized rolling M128 SWA attention."""
+
+        self.prefill_swa_attention_hipblaslt = bool(enabled)
+
     def set_prefill_attention_hipblaslt_packed_queries(
         self,
         enabled: bool,
@@ -2317,6 +2334,10 @@ class LagunaGGUFResidentSession:
         if self.block_attention_hipblaslt is not None:
             route = self.block_attention_hipblaslt
             self.block_attention_hipblaslt = None
+            route.close()
+        if self.swa_attention_hipblaslt is not None:
+            route = self.swa_attention_hipblaslt
+            self.swa_attention_hipblaslt = None
             route.close()
 
     def set_prefill_attention_hipblaslt_wave_rows_softmax(
@@ -2340,6 +2361,10 @@ class LagunaGGUFResidentSession:
         if self.block_attention_hipblaslt is not None:
             route = self.block_attention_hipblaslt
             self.block_attention_hipblaslt = None
+            route.close()
+        if self.swa_attention_hipblaslt is not None:
+            route = self.swa_attention_hipblaslt
+            self.swa_attention_hipblaslt = None
             route.close()
 
     def set_dense_q4_prefill_mode(self, mode: str) -> None:
@@ -2390,6 +2415,11 @@ class LagunaGGUFResidentSession:
             + (
                 self.block_attention_hipblaslt.scratch_nbytes
                 if self.block_attention_hipblaslt is not None
+                else 0
+            )
+            + (
+                self.swa_attention_hipblaslt.scratch_nbytes
+                if self.swa_attention_hipblaslt is not None
                 else 0
             )
             + self.full_rope.cos.buffer.nbytes
@@ -3048,6 +3078,13 @@ class LagunaGGUFResidentSession:
             self.block_attention_hipblaslt = route
         return route
 
+    def _ensure_swa_attention_hipblaslt(self) -> LagunaSwaAttentionHipblasLt:
+        route = self.swa_attention_hipblaslt
+        if route is None:
+            route = LagunaSwaAttentionHipblasLt(runtime=self.runtime)
+            self.swa_attention_hipblaslt = route
+        return route
+
     def _launch_attention_projections_rows(
         self,
         layer: LagunaGGUFResidentLayerWeights,
@@ -3498,17 +3535,53 @@ class LagunaGGUFResidentSession:
                         **slice_kwargs,
                     )
             else:
-                self.kv_cache.attend_prefill(
-                    layer_id,
-                    scratch.query_rotated.ptr + q_offset,
-                    scratch.key_rotated.ptr + kv_offset,
-                    scratch.value.ptr + kv_offset,
-                    scratch.context.ptr + q_offset,
-                    attention_rows,
-                    stream=stream,
-                    library=self.libraries.kv_attention,
-                    **slice_kwargs,
+                use_swa_attention_hipblaslt = bool(
+                    self.prefill_swa_attention_hipblaslt
+                    and not stage_verifier_kv
+                    and self.kv_cache.can_rolling_swa_prefill(
+                        layer_id,
+                        attention_rows,
+                        row_offset=row_offset,
+                    )
                 )
+                if use_swa_attention_hipblaslt:
+                    state, swa_spans, swa_start = (
+                        self.kv_cache.rolling_swa_prefill_view(
+                            layer_id,
+                            attention_rows,
+                            **slice_kwargs,
+                        )
+                    )
+                    self._ensure_swa_attention_hipblaslt().launch(
+                        scratch.query_rotated.ptr + q_offset,
+                        scratch.key_rotated.ptr + kv_offset,
+                        scratch.value.ptr + kv_offset,
+                        state.key_cache.ptr,
+                        state.value_cache.ptr,
+                        scratch.context.ptr + q_offset,
+                        swa_spans,
+                        rows=attention_rows,
+                        start_position=swa_start,
+                        num_q_heads=state.q_heads,
+                        num_kv_heads=config.head_count_kv,
+                        head_dim=config.key_length,
+                        sliding_window=config.sliding_window,
+                        scale=config.key_length**-0.5,
+                        stream=stream,
+                        kv_library=self.libraries.kv_attention,
+                    )
+                else:
+                    self.kv_cache.attend_prefill(
+                        layer_id,
+                        scratch.query_rotated.ptr + q_offset,
+                        scratch.key_rotated.ptr + kv_offset,
+                        scratch.value.ptr + kv_offset,
+                        scratch.context.ptr + q_offset,
+                        attention_rows,
+                        stream=stream,
+                        library=self.libraries.kv_attention,
+                        **slice_kwargs,
+                    )
                 if not stage_verifier_kv:
                     self.kv_cache.append_rows(
                         layer_id,
@@ -4286,6 +4359,10 @@ class LagunaGGUFResidentSession:
         if self.block_attention_hipblaslt is not None:
             route = self.block_attention_hipblaslt
             self.block_attention_hipblaslt = None
+            release(route.close)
+        if self.swa_attention_hipblaslt is not None:
+            route = self.swa_attention_hipblaslt
+            self.swa_attention_hipblaslt = None
             release(route.close)
         if self.verifier_scratch is not None:
             scratch = self.verifier_scratch

@@ -90,6 +90,12 @@ _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_TILE_WAVE_ROWS_F32 = (
 _SYMBOL_DENSE_INITIAL_ATTENTION_TILE_MERGE_F32 = (
     "hipengine_laguna_dense_initial_attention_tile_merge_f32"
 )
+_SYMBOL_SWA_UNION_BF16_TO_F32 = (
+    "hipengine_laguna_swa_union_bf16_to_f32_spans"
+)
+_SYMBOL_SWA_UNION_SOFTMAX_WAVE_ROWS_F32 = (
+    "hipengine_laguna_swa_union_softmax_wave_rows_f32"
+)
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
 _GLOBAL_BLOCK_SIZE = 256
@@ -2164,6 +2170,108 @@ def laguna_dense_initial_attention_tile_merge_f32(
     _check_launch(runtime, err)
 
 
+def laguna_swa_union_bf16_to_f32_spans(
+    current_key_ptr: int,
+    current_value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    key_f32_ptr: int,
+    value_f32_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    num_kv_heads: int,
+    head_dim: int,
+    start_position: int,
+    *,
+    sliding_window: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Gather the 511 historical plus 128 current rows for rolling SWA."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_prefill_rows(spans, rows, capacity)
+    if (
+        int(rows) != 128
+        or int(capacity) != 512
+        or int(sliding_window) != 512
+        or int(start_position) < int(sliding_window)
+    ):
+        raise ValueError("tensorized SWA requires M128 at rolling window 512")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_UNION_BF16_TO_F32)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 11
+        + [ctypes.c_int64] * 6
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(current_key_ptr),
+        ctypes.c_void_p(current_value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(value_f32_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(sliding_window),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(start_position),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_union_softmax_wave_rows_f32(
+    scores_ptr: int,
+    rows: int,
+    num_q_heads: int,
+    scale: float,
+    *,
+    union_context: int = 639,
+    sliding_window: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Normalize a fixed 639-key rolling-SWA score union in place."""
+
+    if (
+        int(rows) != 128
+        or int(num_q_heads) != 72
+        or int(union_context) != 639
+        or int(sliding_window) != 512
+    ):
+        raise ValueError("tensorized SWA softmax requires [72,128,639]")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_UNION_SOFTMAX_WAVE_ROWS_F32)
+    fn.argtypes = [ctypes.c_void_p] + [ctypes.c_int64] * 4 + [
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(scores_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(union_context),
+        ctypes.c_int64(sliding_window),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
     registrations = (
         (
@@ -2418,6 +2526,8 @@ __all__ = [
     "laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_m128_online_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
+    "laguna_swa_union_bf16_to_f32_spans",
+    "laguna_swa_union_softmax_wave_rows_f32",
     "laguna_swa_write_kv_f32_spans",
     "laguna_swa_write_kv_rows_f32_spans",
     "plan_laguna_kv_attention_build",

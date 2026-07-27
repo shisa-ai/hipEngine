@@ -32,6 +32,17 @@ should be removed or collapsed.
   numerical fallback. Retire the dedicated ceiling harness after the
   block-size/algorithm policy no longer needs bisection.
 
+## Laguna rolling-SWA hipBLASLt production route
+
+- Added and promoted 2026-07-28 after exact wrap-oracle plus
+  4K/16K/64K/128K gates. The fixed owner gathers a 639-key union and owns
+  **33,554,432 bytes** scratch; decode, verifier, partial, evicted, and
+  nonconsecutive paths retain the registered generic fallback.
+- `LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT` and the session setter remain useful
+  while LC-3 widens attention query chunks. Collapse the explicit selector
+  after the wider-query route either absorbs this owner or proves the M128
+  route remains independently optimal. Do not remove the span-aware fallback.
+
 ## Laguna MoE shared/routed branch-concurrency candidate
 
 - Added 2026-07-26 as an exact, default-off session and profile-harness
