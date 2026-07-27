@@ -1,0 +1,469 @@
+{
+  "actual_model": {
+    "all_47_f32_bit_exact": true,
+    "all_endpoint_event_and_wall_positive": true,
+    "all_finite": true,
+    "calls": 47,
+    "codegen_correction_diagnostic": {
+      "favorable_unchanged_rerun_used": false,
+      "final_process_was_required_for_changed_code": true,
+      "first_actual_raw_sha256": "9c81d6c4a5305230aa31f1f0c9aecf0e028565dbc1745766bdf375b9494751a3",
+      "first_actual_stdout_sha256": "5509c0256939e4b77a6203ed73666d8d64d8fbcedc765e8a104f255acfa895d1",
+      "first_codegen_sha256": "7248c05826848efad5b2261a63d99145712eaebc5b17ff6ec53e3bba89ab165c",
+      "reason": "The first generic repository body was exact and positive but emitted 240 instructions/SGPR30 because blockDim remained dynamic. Before final admission, compile-time local256 plus direct typed restrict loads restored the frozen object without changing arithmetic or ownership."
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/admit_laguna_router_projection_wave0_tree_actual.py",
+    "endpoint_rows": [
+      {
+        "call_index": 0,
+        "event_delta_pct": -8.036055773659134,
+        "event_samples_us": {
+          "candidate": [
+            4.034550189971924,
+            4.075069904327393,
+            4.031789779663086,
+            4.027228832244873,
+            4.018430233001709,
+            4.017467975616455,
+            4.01802921295166,
+            4.015669822692871,
+            4.016989231109619,
+            4.0200700759887695,
+            4.025548934936523,
+            4.02603006362915,
+            4.028788089752197,
+            4.027750015258789,
+            4.022669792175293
+          ],
+          "control": [
+            4.377151966094971,
+            4.401913166046143,
+            4.401913166046143,
+            4.379032135009766,
+            4.369751930236816,
+            4.3739118576049805,
+            4.370312213897705,
+            4.372032165527344,
+            4.370192050933838,
+            4.37283182144165,
+            4.377831935882568,
+            4.377312183380127,
+            4.3819122314453125,
+            4.380631923675537,
+            4.381473064422607
+          ]
+        },
+        "event_us": {
+          "candidate": 4.025548934936523,
+          "control": 4.377312183380127
+        },
+        "f32_bit_exact": true,
+        "finite": true,
+        "layer": 1,
+        "logits_sha256": "e833a4176028fbeccf67c9028f3db391416282cae9c61ad7a53b5ad921af42b4",
+        "wall_delta_pct": -8.019253486331944,
+        "wall_samples_us": {
+          "candidate": [
+            4.050556104630232,
+            4.0558758191764355,
+            4.0278360247612,
+            4.02778503485024,
+            4.036835860460997,
+            4.036375088617206,
+            4.036345984786749,
+            4.0348549373447895,
+            4.0378449484705925,
+            4.035096149891615,
+            4.030544776469469,
+            4.029125906527042,
+            4.031135002151132,
+            4.026595968753099,
+            4.029734991490841
+          ],
+          "control": [
+            4.386629909276962,
+            4.405549960210919,
+            4.404739942401648,
+            4.381889943033457,
+            4.388249944895506,
+            4.390530986711383,
+            4.389971029013395,
+            4.389661131426692,
+            4.393480950966477,
+            4.384360974654555,
+            4.381940001621842,
+            4.3807909823954105,
+            4.38104011118412,
+            4.3795001693069935,
+            4.380040103569627
+          ]
+        },
+        "wall_us": {
+          "candidate": 4.0348549373447895,
+          "control": 4.386629909276962
+        }
+      },
+      {
+        "call_index": 46,
+        "event_delta_pct": -8.13295373696452,
+        "event_samples_us": {
+          "candidate": [
+            4.018468856811523,
+            4.018070220947266,
+            4.019989013671875,
+            4.021510124206543,
+            4.019909858703613,
+            4.025390148162842,
+            4.026709079742432,
+            4.029348850250244,
+            4.030549049377441,
+            4.028429985046387,
+            4.0470499992370605,
+            4.022348880767822,
+            4.039909839630127,
+            4.049310207366943,
+            4.068349838256836
+          ],
+          "control": [
+            4.483552932739258,
+            4.374711990356445,
+            4.372392177581787,
+            4.375030994415283,
+            4.376313209533691,
+            4.379551887512207,
+            4.382472038269043,
+            4.38319206237793,
+            4.381711959838867,
+            4.3868727684021,
+            4.399432182312012,
+            4.408391952514648,
+            4.3861918449401855,
+            4.399432182312012,
+            4.400911808013916
+          ]
+        },
+        "event_us": {
+          "candidate": 4.026709079742432,
+          "control": 4.38319206237793
+        },
+        "f32_bit_exact": true,
+        "finite": true,
+        "layer": 47,
+        "logits_sha256": "6e920caeb648c8403d013b593695cc34a9a8afd96c2f48509b3f798ef3c9d2b5",
+        "wall_delta_pct": -8.1167892976305,
+        "wall_samples_us": {
+          "candidate": [
+            4.035325953736901,
+            4.036355996504426,
+            4.041485954076052,
+            4.040985135361552,
+            4.027434857562184,
+            4.03002486564219,
+            4.031514981761575,
+            4.027826013043523,
+            4.030165961012244,
+            4.028225084766746,
+            4.042624961584806,
+            4.041816107928753,
+            4.072486190125346,
+            4.069866146892309,
+            4.080726066604257
+          ],
+          "control": [
+            4.414150957018137,
+            4.390459973365068,
+            4.387669963762164,
+            4.39416104927659,
+            4.386291140690446,
+            4.382361192256212,
+            4.384851083159447,
+            4.3982998467981815,
+            4.380640108138323,
+            4.385700915008783,
+            4.392920061945915,
+            4.415431059896946,
+            4.41007106564939,
+            4.422330996021628,
+            4.422870930284262
+          ]
+        },
+        "wall_us": {
+          "candidate": 4.036355996504426,
+          "control": 4.392920061945915
+        }
+      }
+    ],
+    "harness_sha256": "77e0d69ee80034c3438a90320ae004b5d6b177fba3f42d9f87788f01b0d66cd9",
+    "input_token_id": 605,
+    "output_token_id": 2825,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "favorable_rerun_used": false,
+      "launches_per_sample": 1000,
+      "timing_scope": "direct cached repository C exports on captured actual hidden/weight pointers",
+      "warmups_per_mode": 50
+    },
+    "raw_path": "/tmp/laguna-router-projection-wave0-tree-actual-admission.json",
+    "raw_sha256": "c8faab79c75719fc2b39aa1eb8a79fc7a0b2e5e30751d4f3e4cbbd65b3d955f2",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "b7d6962dd3a3cba044dd4768df5e92a68fdadaf94ea4b2a7e1369ea305e00624",
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40069955636,
+      "peak_allocations": 1159,
+      "total_allocated_bytes": 40069955636,
+      "total_freed_bytes": 40069955636
+    },
+    "tracked_peak": {
+      "active_allocations": 1159,
+      "current_allocated_bytes": 40069955636,
+      "peak_allocated_bytes": 40069955636,
+      "peak_allocations": 1159,
+      "total_allocated_bytes": 40069955636,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "baseline": {
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json",
+    "design_artifact_sha256": "668051c7aab2028b3aef64842b1f72f779f6765582b59a06a0442f1689e776fa",
+    "design_commit": "b6cbc6038",
+    "model": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "model_sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "retained_key": [
+      "hip_gfx1100",
+      "router_logits",
+      "f32",
+      "bf16_hidden"
+    ],
+    "retained_wrapper": "qwen35_router_logits_bf16_f32w_auto_256"
+  },
+  "cache_only_trace": {
+    "agent_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "analyzer_sha256": "fe4b7fe07c1e8e20356b9b029f04aca90633594cf4c0a2a7eddc717b0030cb54",
+    "candidate_dispatch_id": 3,
+    "candidate_duration_ns": 1560,
+    "candidate_kernel_name": "(anonymous namespace)::qwen35_router_logits_bf16_f32w_wave0_tree_kernel(unsigned short const*, float const*, float*, long, long)",
+    "candidate_resources": {
+      "Grid_Size_X": 65536,
+      "Grid_Size_Y": 1,
+      "Grid_Size_Z": 1,
+      "LDS_Block_Size": 0,
+      "SGPR_Count": 128,
+      "Scratch_Size": 0,
+      "VGPR_Count": 24,
+      "Workgroup_Size_X": 256,
+      "Workgroup_Size_Y": 1,
+      "Workgroup_Size_Z": 1
+    },
+    "checks": {
+      "candidate_once": true,
+      "child_passed": true,
+      "control_once": true,
+      "duration_positive": true,
+      "exact": true,
+      "finite": true,
+      "grid_256_blocks": true,
+      "local256": true,
+      "no_compiler": true,
+      "profiler_static_lds0": true,
+      "scratch0": true,
+      "sgpr128": true,
+      "source_dynamic_lds1024": true,
+      "teardown": true,
+      "vgpr24": true
+    },
+    "child_sha256": "1fe70dc4cb48a3bb2f841e675f0f8010189b72ecb1164ed764c032f27cac8fc7",
+    "control_duration_ns": 13120,
+    "control_kernel_name": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short, float>(unsigned short const*, float const*, float*, long, long)",
+    "harness_sha256": "744f688f6f1af0c853f9a2c1f42ec2f6e48e2ab1ce0fa1d576d46c844d819f71",
+    "kind": "laguna_router_projection_wave0_tree_cache_only_trace",
+    "nonprofiled_preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "nonprofiled_preflight_stdout_sha256": "ac12225ca1a7424bf235828b7b14b1eb1000cd78cafe7f7739ce056d2342df72",
+    "note": "The single candidate follows the same-weight control in the tiny trace, so its 1.560-us cache-hot duration is symbol/resource plausibility only; repeated actual endpoints above carry the performance evidence.",
+    "passed": true,
+    "runtime_copy_count": 3,
+    "schema": 1,
+    "source_sha256": "50e6e4db19e890446dd8883380a026709c39d6034293e4d949b6ffff559661a7",
+    "stderr_sha256": "3cb23cab15256601d002a3d79c2bb1110c20989b667e6a3174143d341fb0afd4",
+    "stdout_sha256": "ac12225ca1a7424bf235828b7b14b1eb1000cd78cafe7f7739ce056d2342df72",
+    "summary_sha256": "94ec82eeda90daabc9a5de1091b57146592a9b487b2d8bb6cf4ddb90f73bc376",
+    "trace_sha256": "52e229547d8b733ccd72d86b4c70ea5ff5453ecb7cae11b44cd5b195d207dc18"
+  },
+  "candidate": {
+    "allocation_delta_bytes": 0,
+    "c_symbol": "hipengine_qwen35_router_logits_bf16_f32w_wave0_tree",
+    "fallback": "registered retained bf16_hidden projection followed by unchanged registered correction-only selector",
+    "gfx1151_alias_excluded": true,
+    "kernel": "qwen35_router_logits_bf16_f32w_wave0_tree_kernel",
+    "launch_delta_per_token_if_selected": 0,
+    "modeled_model_kernels_per_token_if_selected": 678,
+    "persistent_weight_copy_delta_bytes": 0,
+    "registry_key": [
+      "hip_gfx1100",
+      "router_logits",
+      "f32",
+      "bf16_hidden_wave0_tree"
+    ],
+    "scope": "separately callable c=1 local256 BF16-hidden/F32-weight router primitive; future runtime eligibility remains exact Laguna hidden3072/experts256",
+    "workspace_delta_bytes": 0,
+    "wrapper": "qwen35_router_logits_bf16_f32w_wave0_tree"
+  },
+  "codegen": {
+    "analyzer_sha256": "1aef6f77b64be78999976bac4d66b6b04bf1cedb310bdeb0ac2d63e51ea69cb3",
+    "candidate": {
+      "ds_bpermute_b32": 5,
+      "ds_load_2addr_b32": 4,
+      "ds_load_b32": 0,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 1,
+      "sgpr_count": 28,
+      "sgpr_spill_count": 0,
+      "static_instructions": 220,
+      "text_bytes": 1208,
+      "v_fma_f32": 0,
+      "vgpr_count": 22,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "codegen_sha256": "377b3ed222588d3f455f775c374fad7af8a8e36a2ed99ab1faba52a17fdfbc7a",
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22",
+    "control": {
+      "ds_bpermute_b32": 0,
+      "ds_load_2addr_b32": 0,
+      "ds_load_b32": 3,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 2,
+      "sgpr_count": 30,
+      "sgpr_spill_count": 0,
+      "static_instructions": 226,
+      "text_bytes": 1140,
+      "v_fma_f32": 0,
+      "vgpr_count": 22,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "delta": {
+      "ds_bpermute_b32": 5,
+      "s_barrier": -1,
+      "sgpr_count": -2,
+      "static_instructions": -6,
+      "text_bytes": 68,
+      "vgpr_count": 0
+    },
+    "disasm_sha256": "b0384fed6386f62a84a18ff3e0cb2ffb05e6bc032e9a01d562ac9c13f23190e8",
+    "dynamic_execution": {
+      "candidate_barriers": 1,
+      "candidate_dynamic_lds_bytes": 1024,
+      "control_barriers": 9
+    },
+    "fatbin_sha256": "3b778236afe76fc73e50afe8700a152c461ea0402df76a0a2d91ac072797e5a4",
+    "hsaco_sha256": "0f35c86852769724176cd7884ffed15fd5d95f77ae3f183f29b52409298708d5",
+    "interpretation": "Final repository object reproduces the selected ceiling: candidate 220 instructions, 1,208 B, logical VGPR22/SGPR28, private/spills0, one static publication barrier, and five ds_bpermute shuffles versus control 226 instructions, 1,140 B, VGPR22/SGPR30, and two static barrier opcodes representing nine dynamic barriers.",
+    "original_library_sha256": "e420eed7787b321d4ab1ab870b1c731cf25601431d009dc7e4a2cd22598eb52d",
+    "post_extract_library_sha256": "9ef6227ab132eb1b875972fc4019448a37648a55738270590b889af6cb45fdd9",
+    "readobj_sha256": "c3f1ccded3ed01e6fc79ae0901f0fc088a3d0c803b89a0d22796907be06fcd07",
+    "symbols": {
+      "candidate": "_ZN12_GLOBAL__N_148qwen35_router_logits_bf16_f32w_wave0_tree_kernelEPKtPKfPfll",
+      "control": "_ZN12_GLOBAL__N_127qwen35_router_logits_kernelItfEEvPKT_PKT0_Pfll"
+    },
+    "symbols_sha256": "9c52f0faf040277832abca7df5543e796975c8b9e602444b8635cd27c71dda97"
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "action": "retain separately registered exact gfx1100 primitive; do not add runtime ownership in this unit",
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "completion_claim": false,
+    "correctness": true,
+    "default_changed": false,
+    "full_model_performance_claim": false,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "performance_claim": false,
+    "primitive_performance_evidence": "direct repository primitive at actual Q2 XL layers 1/47 only",
+    "runtime_owner_added": false
+  },
+  "implementation_files": {
+    "hipengine/kernels/hip_gfx1100/moe/__init__.py": "1b5fbe6bc95d2fa107e5e2dd8657b32b9ecd76bc26145cfc42f053d6106dd53e",
+    "hipengine/kernels/hip_gfx1100/moe/router.hip": "50e6e4db19e890446dd8883380a026709c39d6034293e4d949b6ffff559661a7",
+    "hipengine/kernels/hip_gfx1100/moe/router.py": "2439ed8b5a4c873fdebb81d8d86aab6952e3b77f950b876e747f777419ae572e",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "34a1a15cbab948b30776837575cc9c7ec48ef22aaa480c38e4bd3348034240ce",
+    "tests/test_laguna_router_projection_wave0_tree.py": "3638e25d772c4899fad9ee193219fb82e9e85fe4f53f78aa1caa5e6605cd2d9c"
+  },
+  "next_action": "Commit primitive admission. Then add a separate false/default-off exact-key owner and require shared-weight 16-transition full state plus cache-only 47-candidate/zero-retained-projection/678-model-kernel tracing before any clean timing.",
+  "red_green": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_router_projection_wave0_tree.py",
+    "final": {
+      "log_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+      "result": "4 passed"
+    },
+    "first_green_diagnostic": {
+      "log_sha256": "0613c15ea059534304f4917e7231a6f3421dd297b01d3b57934280e32e434ffa",
+      "result": "2 passed, 2 test-only failures: launch-bound assertion was outside extracted function block and max-finite BF16 times large finite F32 intentionally overflowed; corrected without kernel change"
+    },
+    "red": {
+      "log_sha256": "621371a92cfdbfebd901f63fbb696e7ff23a739b2d7f69eaa2d18ea6444129d1",
+      "result": "4 failed only on absent body/C symbol, strict wrapper, package/four-axis/backend scope, and executable primitive"
+    }
+  },
+  "runtime_absence": {
+    "allocation_changed": false,
+    "benchmark_cli_added": false,
+    "benchmark_readme_or_changelog_changed": false,
+    "capability_added": false,
+    "default_changed": false,
+    "plan_or_session_selector_added": false
+  },
+  "schema": 1,
+  "status": "primitive_admitted_runtime_unselected",
+  "synthetic_and_cpu": {
+    "cases": 10,
+    "cpu_harness_sha256": "efd2886a36f47e5aa927b57184e8026dc303088e593ca900cd86844215f1e6d7",
+    "cpu_raw_path": "/tmp/laguna-router-projection-wave0-tree-cpu-gate.json",
+    "cpu_raw_sha256": "4334ffa7662e60e3a5ae87d6d100b16c6d504ade2022958d1a127c51d75afa0b",
+    "cpu_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu_stdout_sha256": "e636e338e68a5806bcc668fa0a4b74c2689aa0ea79b03efe88b4a106a1cf3cf1",
+    "focused_contract": "hidden17/3072 random, signed-zero, BF16 subnormal, large finite, retained-control F32-bit equality, strict validation, package/key/backend/fallback/runtime-absence checks",
+    "hidden_size": 3072,
+    "independent_cpu_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/gate_laguna_router_projection_wave0_tree_cpu.py",
+    "max_kl": 5.632258483750896e-16,
+    "num_experts": 256,
+    "passed": true,
+    "top1_agreement": 1.0
+  },
+  "validation": {
+    "adjacent_filtered": {
+      "log_sha256": "794c997781bf26fe8e79d1dee9b0aa803c98e00f49a8d8c0cf6ca062b4657ac4",
+      "result": "138 passed after excluding exactly the unchanged stale node"
+    },
+    "adjacent_unfiltered": {
+      "log_sha256": "16a3c2d5dd73e7eaf1a85aef760256526b9fb2b46e9192fe12385f307cbca807",
+      "result": "138 passes plus one unchanged stale gfx1151 resolver test whose call omits three required keyword-only arguments"
+    },
+    "cpu_reference_registry_build": {
+      "log_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+      "result": "25 passed"
+    },
+    "fixtures": {
+      "log_sha256": "fec7a60788a7feec6ada8becc5e66bc4dc32cc4a6b9fb299a7305a8713e7766b",
+      "result": "pass"
+    },
+    "lineage": {
+      "log_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+      "result": "pass; only already-catalogued unrelated external drift remains"
+    },
+    "registry_smoke": {
+      "log_sha256": "159c48de9337ea6a260024b63a5eac9a158602ab443d94038d9938b29d538311",
+      "result": "pass"
+    },
+    "ruff_compile": {
+      "log_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "result": "pass"
+    }
+  }
+}
