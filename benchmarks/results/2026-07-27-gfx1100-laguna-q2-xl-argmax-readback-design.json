@@ -1,0 +1,492 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "canonical_ms_per_token": 15.805224168463194,
+    "d2h_argmax_reads_per_token": 2,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "required_gain_to_beat_vulkan_pct": 1.8144711534139324,
+    "runtime_copies_per_token": 5
+  },
+  "codegen": {
+    "applicable": false,
+    "lm_head_hip_sha256": "0559f90c2711ab21acc11acfe75d259081b3b60b735ec223f7fdbd4969172686",
+    "reason": "the candidate changes only device-buffer ownership and one host D2H transfer; argmax kernel source, signature, pointers, launch count, and arithmetic remain unchanged"
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "production_source_changed": false,
+    "runtime_default_changed": false,
+    "selected_for_separate_runtime_admission": true
+  },
+  "future_admission": {
+    "no_rerun_third_order_or_pooled_waiver": true,
+    "unit_1": "default-off RED/GREEN runtime owner: exact fake-runtime layout, allocation failure/teardown, both scalar sampling sites, one-copy parsing, separate-owner fallback",
+    "unit_2": "fresh shared-weight bulk prefill plus 16 c=1 transitions with full logits/IDs/hidden/KV/KVLiveSpans/reset/lifecycle at KL<=0.05 and top-1>=90%",
+    "unit_3": "require-cached full-model trace proving 682 dispatches/token = four runtime copies + the identical 678-model-kernel name/resource multiset",
+    "unit_4": "two process orders at short/512/1024/3968 with kernel-sum/span/child guards; complete category orders only after every clean row passes"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+    },
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "immutable_evidence": {
+    "closed_premises": [
+      "quantized producer and reducer leaves",
+      "global and SWA attention ownership",
+      "router projection, selection, and composite ownership",
+      "add/RMS and MoE-tail recomposition",
+      "head/RoPE/KV write ownership",
+      "shared H2D control publication",
+      "graph, packetization, submission, and prompt-conditioned routes"
+    ],
+    "control_traces": [
+      {
+        "path": "/tmp/laguna-q2-xl-router-projection-wave0-tree-clean-8c709ba81-short-control-a/trace_kernel_trace.csv",
+        "sha256": "0b934f80b208c4f5e844ac268a4a5dbff1329402474df126f86204bcc727af4f"
+      },
+      {
+        "path": "/tmp/laguna-q2-xl-router-projection-wave0-tree-clean-8c709ba81-short-control-b/trace_kernel_trace.csv",
+        "sha256": "f758b18e39b766dd814c26b14eadfc8a67b781df492a43a0db9162a5ca282132"
+      }
+    ],
+    "rank": {
+      "path": "/tmp/laguna-post-wave0-residual-rank.txt",
+      "sha256": "e3eac267b8bcd6e4253f013f591f1b0af19ce9926f11bb8798b23bcc3aa2312d"
+    },
+    "stable_windows": 28
+  },
+  "kind": "hipengine_laguna_q2_xl_argmax_readback_design",
+  "model": {
+    "context_length": 4096,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "resident c=1 greedy target AR residual selected from immutable full-model traces; executable 4096-logit argmax host-contract screen"
+  },
+  "modeled_ceiling": {
+    "canonical_ms_per_token": 15.805224168463194,
+    "interpretation": "planning upper bound only; not full-model throughput evidence",
+    "modeled_gain_pct": 0.1410335678700969,
+    "modeled_h32_decode_tok_s": 63.35945159682428,
+    "modeled_ms_per_token": 15.782964889963194,
+    "remaining_gap_to_matched_vulkan_pct": 1.671080800668645,
+    "subtract_only_direct_readback_saving_us": 22.259278499999997
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "1fbe3792535fdf428d42f80f36a9d51d868cdb66b2b6e159e9b49173cab7a030",
+    "lineage_note": "only already-catalogued unrelated external drift; selection changes no kernel source",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "sources": [
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "713dbd9215c7371b45e3f4e0bd1317e952bb8380d4c2da72c545087f14bf8759"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/linear/lm_head.hip",
+        "sha256": "0559f90c2711ab21acc11acfe75d259081b3b60b735ec223f7fdbd4969172686"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/linear/lm_head.py",
+        "sha256": "16f125baa5ca0a0ad5d9e9ab83c972f3ca719d3bc699666760cb90018063c126"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "834cd87fca5065a7d0040e0e5c7c4601bfcd47e060b45fc96de56f77d54452ea"
+      }
+    ]
+  },
+  "revision": "c1c30238ed2736b65368f33b555b752956ee43bd",
+  "schema": 1,
+  "screen": {
+    "candidate": {
+      "allocation_count_delta": -1,
+      "d2h_calls_per_token": {
+        "candidate": 1,
+        "control": 2
+      },
+      "id_offset": 0,
+      "kernel_pointer_abi_changed": false,
+      "owner_nbytes": 12,
+      "resident_nbytes_delta": 0,
+      "runtime_copies_per_token": {
+        "candidate": 4,
+        "control": 5
+      },
+      "value_offset": 8
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_argmax_readback.py --json /tmp/laguna-argmax-readback-screen.json",
+    "contract": {
+      "path": "/tmp/laguna-argmax-readback-design-frozen-contract.json",
+      "sha256": "58e6707990c2ea25e7a8d2d96dc830286aba1a7d51c048e1a300ba26b5ade1fc"
+    },
+    "correctness": {
+      "candidate_aliases_exact": true,
+      "fixtures": 15,
+      "id_bit_exact": true,
+      "tie_break_exact": true,
+      "value_f32_bit_exact": true
+    },
+    "fixtures": [
+      {
+        "candidate": [
+          3,
+          1166016512
+        ],
+        "candidate_us_per_readback": 22.6851045,
+        "control": [
+          3,
+          1166016512
+        ],
+        "control_us_per_readback": 45.85625,
+        "expected_id": 3,
+        "expected_value_bits": 1166016512,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 0
+      },
+      {
+        "candidate": [
+          274,
+          1166017024
+        ],
+        "candidate_us_per_readback": 22.6931345,
+        "control": [
+          274,
+          1166017024
+        ],
+        "control_us_per_readback": 44.77363,
+        "expected_id": 274,
+        "expected_value_bits": 1166017024,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 1
+      },
+      {
+        "candidate": [
+          531,
+          1166017536
+        ],
+        "candidate_us_per_readback": 22.682444,
+        "control": [
+          531,
+          1166017536
+        ],
+        "control_us_per_readback": 44.7985455,
+        "expected_id": 531,
+        "expected_value_bits": 1166017536,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 2
+      },
+      {
+        "candidate": [
+          788,
+          1166018048
+        ],
+        "candidate_us_per_readback": 22.686669000000002,
+        "control": [
+          788,
+          1166018048
+        ],
+        "control_us_per_readback": 45.23575099999999,
+        "expected_id": 788,
+        "expected_value_bits": 1166018048,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 3
+      },
+      {
+        "candidate": [
+          1045,
+          1166018560
+        ],
+        "candidate_us_per_readback": 22.6176935,
+        "control": [
+          1045,
+          1166018560
+        ],
+        "control_us_per_readback": 44.7565395,
+        "expected_id": 1045,
+        "expected_value_bits": 1166018560,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 4
+      },
+      {
+        "candidate": [
+          1302,
+          1166019072
+        ],
+        "candidate_us_per_readback": 22.8083405,
+        "control": [
+          1302,
+          1166019072
+        ],
+        "control_us_per_readback": 44.9572575,
+        "expected_id": 1302,
+        "expected_value_bits": 1166019072,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 5
+      },
+      {
+        "candidate": [
+          1559,
+          1166019584
+        ],
+        "candidate_us_per_readback": 22.828501499999998,
+        "control": [
+          1559,
+          1166019584
+        ],
+        "control_us_per_readback": 45.147605000000006,
+        "expected_id": 1559,
+        "expected_value_bits": 1166019584,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 6
+      },
+      {
+        "candidate": [
+          1816,
+          1166020096
+        ],
+        "candidate_us_per_readback": 22.8052605,
+        "control": [
+          1816,
+          1166020096
+        ],
+        "control_us_per_readback": 45.0813245,
+        "expected_id": 1816,
+        "expected_value_bits": 1166020096,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 7
+      },
+      {
+        "candidate": [
+          75,
+          1166020608
+        ],
+        "candidate_us_per_readback": 22.706999500000002,
+        "control": [
+          75,
+          1166020608
+        ],
+        "control_us_per_readback": 44.9634625,
+        "expected_id": 75,
+        "expected_value_bits": 1166020608,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 8
+      },
+      {
+        "candidate": [
+          596,
+          1166021120
+        ],
+        "candidate_us_per_readback": 22.819936000000002,
+        "control": [
+          596,
+          1166021120
+        ],
+        "control_us_per_readback": 45.048368499999995,
+        "expected_id": 596,
+        "expected_value_bits": 1166021120,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 9
+      },
+      {
+        "candidate": [
+          1117,
+          1166021632
+        ],
+        "candidate_us_per_readback": 22.815296,
+        "control": [
+          1117,
+          1166021632
+        ],
+        "control_us_per_readback": 45.0051785,
+        "expected_id": 1117,
+        "expected_value_bits": 1166021632,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 10
+      },
+      {
+        "candidate": [
+          1638,
+          1166022144
+        ],
+        "candidate_us_per_readback": 22.7636,
+        "control": [
+          1638,
+          1166022144
+        ],
+        "control_us_per_readback": 45.0228785,
+        "expected_id": 1638,
+        "expected_value_bits": 1166022144,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 11
+      },
+      {
+        "candidate": [
+          2159,
+          1166022656
+        ],
+        "candidate_us_per_readback": 22.6902895,
+        "control": [
+          2159,
+          1166022656
+        ],
+        "control_us_per_readback": 44.944927,
+        "expected_id": 2159,
+        "expected_value_bits": 1166022656,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 12
+      },
+      {
+        "candidate": [
+          2680,
+          1166023168
+        ],
+        "candidate_us_per_readback": 22.7863355,
+        "control": [
+          2680,
+          1166023168
+        ],
+        "control_us_per_readback": 45.073859,
+        "expected_id": 2680,
+        "expected_value_bits": 1166023168,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 13
+      },
+      {
+        "candidate": [
+          3201,
+          1166023680
+        ],
+        "candidate_us_per_readback": 23.737033500000003,
+        "control": [
+          3201,
+          1166023680
+        ],
+        "control_us_per_readback": 47.1798735,
+        "expected_id": 3201,
+        "expected_value_bits": 1166023680,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 14
+      }
+    ],
+    "harness": {
+      "path": "/tmp/bench_laguna_argmax_readback.py",
+      "sha256": "5c98a5989fc30c97852b33664956aafd78ea133ad2c62b153279b5b83b273a1e"
+    },
+    "memory_after": {
+      "active_allocations_delta": 0,
+      "current_bytes_delta": 0
+    },
+    "memory_during_screen": {
+      "active_allocations_delta": 6,
+      "current_bytes_delta": 16456
+    },
+    "protocol": {
+      "actual_argmax_launches_per_fixture": 2,
+      "counterbalanced": true,
+      "reads_per_sample": 2000,
+      "repetitions": 15,
+      "stage1_blocks": 4,
+      "threads": 256,
+      "vocab": 4096,
+      "warmups": 100
+    },
+    "raw": {
+      "path": "/tmp/laguna-argmax-readback-screen.json",
+      "sha256": "79d59bae41fa37d1758716323090af669102cd0ac3d7d81b8c414e6095c53c1e"
+    },
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "79d59bae41fa37d1758716323090af669102cd0ac3d7d81b8c414e6095c53c1e",
+    "timing": {
+      "candidate_median_us_per_readback": 22.7636,
+      "control_median_us_per_readback": 45.0228785,
+      "saving_pct": 49.43992752484717,
+      "saving_us_per_token": 22.259278499999997
+    }
+  },
+  "selection": {
+    "candidate": {
+      "allocation_count_delta": -1,
+      "argmax_arithmetic_changed": false,
+      "candidate_layout": "one exact 12-byte owner; int64 ID view +0, float value view +8",
+      "control_layout": "separate 8-byte int64 ID and 4-byte float value owners",
+      "d2h_calls_per_token": {
+        "candidate": 1,
+        "control": 2
+      },
+      "kernel_pointer_abi_changed": false,
+      "model_kernel_count_changed": false,
+      "resident_nbytes_delta": 0,
+      "rows_prefill_verifier_changed": false,
+      "runtime_copies_per_token": {
+        "candidate": 4,
+        "control": 5
+      },
+      "scope": "post-synchronize argmax scalar readback only"
+    },
+    "fallback": "separate ID/value owners and scalar reads remain mandatory for disabled/key-miss/unsupported routes",
+    "future_capability": "LAGUNA_ARGMAX_PAIR_READBACK=False",
+    "future_owner": "LagunaEagerScratch.argmax_result exact 12-byte owner with +0 int64 ID and +8 FP32 value views",
+    "future_read": "one synchronous 12-byte D2H copy after the unchanged explicit fence",
+    "kernel_or_registry_change_selected": false,
+    "reason": "all model-kernel leaves and the shared H2D control owner are retained or directly rejected; the two D2H reads are the next materially independent exact seam",
+    "surface": "post-synchronize scalar argmax readback"
+  },
+  "status": "selected_design_only"
+}

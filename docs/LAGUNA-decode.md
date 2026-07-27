@@ -357,6 +357,16 @@ sharing/borrowing and CLI integration are removed before longer contexts or
 categories. Separate publication and canonical **63.270 tok/s** remain the
 defaults; the independent reset-position correctness fix is retained.
 
+Post-control-publication re-ranking selects the independent two-read argmax
+readback seam. The unchanged stage-2 kernel already writes an int64 ID and FP32
+value through separate raw pointers after the explicit stream/device fence.
+A screened 12-byte owner exposes those same pointers at +0/+8 and replaces two
+D2H calls with one exact 12-byte read. All **15/15** executable HIP argmax tie
+fixtures preserve ID/value bits; the direct host contract moves **45.02288 ->
+22.76360 us/token (-49.440%)** with **-1 allocation / 0 bytes** and exact
+teardown. This is design evidence only: production, defaults, canonical
+**63.270 tok/s**, and benchmark rollups are unchanged.
+
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
 explains the measured gap between llama.cpp Vulkan and hipEngine, audits the
@@ -2789,6 +2799,53 @@ for the unfused scratch-position view. Evidence:
 and
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-rejected.json).
 
+### Post-control-publication selection: shared argmax readback
+
+Re-rank the same two immutable retained controls at clean rejection commit
+`c1c30238e`: **28** stable windows, exactly **678 model kernels/token**, rank
+hash `e3eac267...2312`, and trace hashes `0b934f80...f4f` /
+`f758b18e...132`. Every model-kernel family is retained at its best exact route
+or closed by direct rejection evidence. The removed shared H2D owner is also
+closed. The remaining independent runtime seam is the two synchronous D2H
+argmax scalar reads after the explicit stream/device synchronization.
+
+Current scratch owns separate eight-byte `argmax_id` and four-byte
+`argmax_value` allocations. The unchanged `argmax_stage2_kernel` takes their raw
+pointers and writes an int64 ID plus FP32 value. Both scalar sampling sites then
+construct separate ctypes hosts and issue one D2H call per value. Select a
+future false/default-off owner that allocates one exact 12-byte result block,
+exposes the same int64 pointer at +0 and FP32 pointer at +8, and reads the whole
+block with one synchronous 12-byte D2H copy. The kernel signature, reduction,
+tie-break, output bits, fence, logits, rows/verifier arithmetic, and fallback
+stay unchanged. The resident delta is **-1 allocation / 0 bytes** and the
+profiled stride models **683 -> 682 dispatches/token = five -> four runtime
+copies + 678 unchanged model kernels**.
+
+Freeze the design before one W7900 process (`58e67079...e1fc`; harness
+`5c98a598...a1e`). The screen runs the repository's cached
+`argmax_stage1_kernel`/`argmax_stage2_kernel` on **15** deterministic 4,096-logit
+fixtures with equal maxima and varying minimum-index tie winners. Control and
+candidate launches pass the separate pointers versus exact +0/+8 aliases.
+After 100 alternating warmups, 15 counterbalanced repetitions, and 2,000
+readbacks/sample, every int64 ID and FP32 value bit is exact. Two scalar reads
+cost **45.02288 us/token median**; one 12-byte read costs **22.76360 us/token**,
+saving **22.25928 us/token (-49.4399%)**. Tracked **16,456 bytes / six
+allocations** return exactly to baseline. Raw/stdout/stderr hashes are
+`79d59bae...3c1e` / `79d59bae...3c1e` / `e3b0c442...b855`. No codegen comparison
+is applicable because kernel source and pointers are unchanged.
+
+Subtracting only the direct saving from canonical **15.805224 ms/token** models
+**15.782965 ms/token / 63.359 tok/s (+0.141%)**, still **1.671%** below matched
+Vulkan. This is a planning ceiling, not a throughput claim. Next commit a
+separate RED/GREEN default-off admission with fake-runtime exact layout,
+allocation/failure/teardown, both scalar sampling sites, one-copy parsing, and
+separate-owner fallback; then fresh shared-weight bulk plus 16-transition full
+state and cache-only exact **682 = four copies + 678 kernels** tracing. Clean
+short/512/1K/3968 and complete category gates remain later independent units;
+no production/default or benchmark rollup changes are allowed in this design
+unit. Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-design.json).
+
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
@@ -2854,6 +2911,7 @@ and
 | What is selected after wave-0 MoE-tail rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-rejected.json): primitive only after clean rejection. Synthetic/CPU/**12/12** actual and full-state/**12 candidate + 36 retained SWA / 678-kernel** gates pass. Both short orders improve global-head work **28.728%/26.407%** and kernel sum **0.273%/0.013%**, but order A child regresses **0.859%** and order B span regresses **0.810%**. Runtime integration is removed before long contexts/categories; current-P4 and canonical **63.270 tok/s** remain. |
 | What happened after global-head wave-0 rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-rejected.json): primitive only after clean rejection. Synthetic/CPU/**47/47** actual, full-state, and exact **47-candidate/678-kernel** gates pass. Both short orders improve projection work **7.527%/6.307%**, but order A child regresses **0.619%** and order B kernel/span regress **0.612%/4.211%**. Runtime integration is removed before long contexts/categories; retained `bf16_hidden` and canonical **63.270 tok/s** remain. |
 | What happened after router-projection ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-design.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-rejected.json): rejected and removed. Ownership/reset and full state pass at KL0/top-1 100%; tracing proves five→three copies and **683→681 dispatches/token** with exact corresponding 678-kernel multisets. Both short orders regress model-kernel sum **0.315%/0.336%**; order B also fails span/child at **+0.700%/-0.706%**. Longer contexts/categories stop; sharing/borrowing integration is removed, while reset-position correctness and canonical **63.270 tok/s** remain. |
+| What is selected after shared-control rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-design.json): one exact 12-byte argmax result owner with unchanged +0 int64-ID/+8 FP32-value kernel pointers and one D2H read. All **15/15** executable tie fixtures are bit-exact; the direct host contract moves **45.02288 -> 22.76360 us/token (-49.440%)**, modeling **683 -> 682 dispatches/token**, **-1 allocation / 0 bytes**, and **63.270 -> 63.359 tok/s (+0.141%)**. This is design-only; production/defaults/topline are unchanged pending separate full-state/trace/clean/category admission. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -3090,3 +3148,9 @@ cycle span **0.700%** and child throughput **0.706%**. The direct **44.358
 us/token** isolated host-contract saving does not transfer under complete clean
 decode. Sharing/borrowing runtime integration is removed before longer contexts
 or categories; separate publication and canonical **63.270 tok/s** remain.
+Post-rejection re-ranking therefore selects only the independent two-read D2H
+argmax seam. One exact 12-byte owner preserves the unchanged stage-2 ID/value
+pointers at +0/+8 and all **15/15** executable tie fixtures bit-for-bit while
+moving direct readback **45.02288 -> 22.76360 us/token (-49.440%)**. The modeled
+ceiling is **63.359 tok/s (+0.141%)**, not a performance claim; production,
+defaults, and rollups remain unchanged pending separate admission.
