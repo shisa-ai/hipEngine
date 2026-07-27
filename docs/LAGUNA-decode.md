@@ -309,6 +309,14 @@ stay unchanged. Evidence:
 [`gated runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-runtime-correctness.json),
 [`gated rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-rejected.json).
 
+Post-gated re-ranking now selects a distinct exact internal D9 contraction: let
+wave 0 reproduce the retained 256-thread RMS tree after one LDS publication,
+then publish the identical scalar with one final barrier. Actual layers 1/47
+are BF16-bit exact and improve event/wall **2.76-2.86%**; codegen contracts
+**9 -> 2 barriers** and **266 -> 225 instructions** at fixed LDS1024. This is a
+selected design only: no repository primitive, runtime owner, default, or
+canonical topline has changed.
+
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
 explains the measured gap between llama.cpp Vulkan and hipEngine, audits the
@@ -2398,6 +2406,43 @@ not retry unchanged ownership. Evidence:
 [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-runtime-correctness.json),
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-rejected.json).
 
+### Post-gated selection: exact MoE-tail wave-0 RMS tree
+
+Re-ranking all **28** stable token windows from the two immutable retained
+short controls excludes every rejected Q5/Q6/IQ2/IQ3/IQ4, SWA, router,
+staged-add, single-page, and gated-single-page premise. The next independent
+surface is instead the already-retained D9 composite itself: its **47**
+`laguna_aggregate_moe_tail_next_rmsnorm_out_kernel` calls cost **0.396687
+ms/token** and still execute a full local256 LDS reduction with nine dynamic
+barriers. No producer/consumer boundary or launch owner is reopened.
+
+The selected sibling preserves both BF16 adds, the hidden store/reload,
+per-thread square order, `rsqrtf`, norm multiply association, local256 ownership,
+1 KiB LDS, and both outputs. After all 256 partials are published, wave 0 loads
+the eight lane-aligned values and exactly replays stride 128, 64, and 32; five
+wave32 shuffle-down additions replay strides 16, 8, 4, 2, and 1. Wave 0 then
+publishes the same scalar for the unchanged normalization pass. The retained D9
+body plus the registered BF16 add + BF16 add + F32-weight RMSNorm chain remain
+required fallbacks.
+
+The one frozen W7900 actual-input screen uses layers 1/47, 50 warmups, 15
+counterbalanced repetitions, and 1,000 launches/sample. Hidden and normalized
+BF16 outputs are byte-exact. Layer 1 event/wall improves **2.862%/2.765%**;
+layer 47 improves **2.843%/2.864%**. Integrated Clang-22 codegen changes
+logical VGPR **13 -> 14** while staying in the expected allocated-VGPR16 class,
+keeps SGPR24/LDS1024/private/spills0, contracts **266 -> 225 instructions** and
+**1,404 -> 1,276 B**, and removes seven of nine barriers. Tracked ownership
+returns to zero.
+
+Applying only the smallest endpoint ratio to the immutable D9 family models
+**0.010967 ms/token** and h32 **63.270 -> 63.314 tok/s (+0.069%)**. That is a
+planning ceiling, not throughput evidence, and still leaves **1.744%** to
+Vulkan. The design therefore freezes a separately registered gfx1100 primitive,
+all-47-layer/CPU/codegen/cache-only-trace admission, then a separate false/
+default-off full-state owner and both clean context/category orders. No runtime
+or benchmark rollup changes in this unit. Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-design.json).
+
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
@@ -2662,3 +2707,9 @@ ceiling contracts **678 -> 666 kernels/token** and models **63.653 tok/s**. The
 gated primitive is now admitted after exact synthetic/CPU/all-12-layer,
 all-positive endpoint, codegen, and cache-only trace gates, but runtime ownership
 and the canonical **63.270 tok/s / 678-kernel** topline remain unchanged.
+Post-gated ranking excludes every rejected owner and selects only D9's internal
+RMS synchronization: an exact wave-0 tree preserves both BF16 boundaries and
+all FP32 association while contracting **9 -> 2 barriers**. Actual layers 1/47
+improve event/wall **2.76-2.86%** with exact bytes; the conservative modeled h32
+is **63.314 tok/s**, not a performance claim. Repository admission is pending,
+so defaults/topline remain unchanged.
