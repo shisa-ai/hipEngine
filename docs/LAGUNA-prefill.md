@@ -1620,19 +1620,38 @@ Immediate execution queue:
    body without a mechanism that preserves the production VGPR class.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json).
+48. **Admitted candidate; clean publication pending:** carry only the next
+   K32 interval's eight raw T16 nibble words in registers, decode them in
+   place on the following interval, and demand-load `d`/scale/min metadata.
+   This avoids the rejected complete decoded-record prefetch's VGPR104 cost:
+   the new P8 body is local128/**VGPR96**/SGPR128/LDS3072B/scratch0 versus
+   production VGPR88. It is BF16-identical and passes the uneven/empty-expert
+   CPU-reference gate. Forty-one counter-rotated actual layer-1 samples show
+   that P8 is shape-sensitive: M256 regresses
+   **4.4213 -> 4.4306 ms (+0.211%)**, while M512 improves
+   **6.8727 -> 6.7389 ms (-1.948%)**. Production therefore enables P8 only
+   for producer chunks of at least 512 rows and keeps the previous body below
+   that threshold. Seven complete pp512 pairs improve
+   **636.367 -> 640.003 tok/s (+0.571%, 7/7 wins)** with exact token, logit
+   bits, full logits, final/post-layer hidden, KV, and cursor. The gfx1151
+   package default now selects this shape policy; it is not a production
+   headline until the clean selector-unset 512/1K/4K gate passes. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json).
 
 ### Next exact and quality-gated attacks
 
-The activation-only Q4 repair branch is exhausted and removed. The refreshed
-post-cleanup trace reopened Q6 selected down, and its first new exact mechanism
-has cleared leaf plus complete-state A/B:
+The activation-only Q4 repair branch is exhausted and removed. Raw-nibble P8
+prefetch is the current exact Q4 gate/up candidate and has cleared leaf plus
+complete-state A/B:
 
-1. Attack the refreshed largest caller-stream family with a mechanism
+1. Run clean selector-unset 512/1K/4K publication for the shape-qualified P8
+   candidate, then refresh caller-stream attribution if it publishes.
+2. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Extend the Q6 register-overlap lesson only
    where it does not repeat the rejected decoded-Q4 prefetch or packed-metadata
    schedules.
-2. Reopen a closed family only if the new trace leaves a **>=5%**
+3. Reopen a closed family only if the new trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
    without a new numerical representation.
@@ -3495,6 +3514,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-absolute-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-quality-pending.json`

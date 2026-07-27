@@ -177,6 +177,14 @@ _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_"
     "mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q4_T16_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = {
+    packs: (
+        f"hipengine_gguf_q4_k_t16_raw_prefetch_p{packs}_selected_dual_q8_1_"
+        "ds8_f32_mmq128x32_wavecols_direct_doublebuf_"
+        "prefill_compact32_bf16_bf16_out"
+    )
+    for packs in (8,)
+}
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -625,6 +633,7 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
     wave_cols: bool = False,
     direct_wave_decode: bool = False,
     double_buffer_activation: bool = False,
+    raw_weight_prefetch_packs: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -656,12 +665,29 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         raise ValueError(
             "double_buffer_activation requires direct_wave_decode"
         )
+    if raw_weight_prefetch_packs not in (0, 8):
+        raise ValueError("raw_weight_prefetch_packs must be 0 or 8")
+    if raw_weight_prefetch_packs and not (
+        residual_passes == 1
+        and split16
+        and rowvec
+        and wave_cols
+        and direct_wave_decode
+        and double_buffer_activation
+    ):
+        raise ValueError(
+            "raw weight prefetch requires production Q4 geometry"
+        )
     if wave_cols and not split16:
         raise ValueError("wave_cols requires split16 D8")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16
+        _SYMBOL_Q4_T16_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16[
+            raw_weight_prefetch_packs
+        ]
+        if raw_weight_prefetch_packs
+        else _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16
         if double_buffer_activation
         else _SYMBOL_Q4_T16_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_BF16
         if direct_wave_decode

@@ -914,6 +914,20 @@ pp512 gate/up family **318.559 -> 314.378 ms (-1.313%)**. The matched A/B plus
 named-family trace is the retention basis
 (`benchmarks/results/2026-07-26-gfx1151-laguna-gate-activation-doublebuf-production.json`).
 
+The exact raw-nibble P8 prefetch sibling is the next gfx1151 gate/up package
+default, pending clean selector-unset publication. It retains the direct
+128x32/local128 D8 activation-double-buffer body, but carries the next K32
+interval's eight raw T16 nibble words in registers while the current packed
+dots execute. It decodes those words in place on the following interval and
+demand-loads `d`/scale/min; resident bytes, LDS3072B, arithmetic order, and
+BF16 output remain unchanged. M256 is **0.211%** slower and therefore keeps
+the previous specialization, while actual layer-1 M512 improves
+**6.8727 -> 6.7389 ms (-1.948%)**. Cached tracing names the intended P8
+symbol at local128/VGPR96/SGPR128/LDS3072B/scratch0 versus production VGPR88.
+Seven complete pp512 pairs improve **636.367 -> 640.003 tok/s (+0.571%,
+7/7 wins)** with exact complete state
+(`benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`).
+
 The same direct-decode premise is retained in Q4-down production.
 Within the 64x32/local64 wave-column body, every lane decodes its own
 resident-T16 Q4 column; D4 activation staging, packed-dot arithmetic, K order,

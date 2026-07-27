@@ -184033,3 +184033,38 @@ Vulkan local sizes verbatim will close the measured gap.
   Rolled raw/trace SHA-256:
   `d5e49385a51b1cd34dc145ef936ed3618ddbafa86c112e95ffd389205cc31e0f` /
   `dd63748737288e7f3b499b342be428a4020bba13827d51ba7ac63ea57824312d`.
+
+## 2026-07-27 — Admit shape-qualified Q4 raw-nibble P8 prefetch
+
+- Rechecked the rejected complete-record Q4 prefetch premise. The bounded new
+  body carries only the next K32 interval's eight raw resident-T16 nibble
+  words in registers, decodes them in place on the following interval, and
+  demand-loads `d`/scale/min. It leaves resident bytes, the 3,072-byte D8
+  activation double buffer, dot/K order, BF16 boundary, and scratch unchanged.
+- RED added the production-shaped P8 CPU-reference parameter and initially
+  failed on the absent wrapper selector. GREEN passes all 12 uneven/empty
+  expert Q4 parameterizations. Actual M256/M512 outputs are BF16-identical to
+  production with checksums **-2296.515208721219 /
+  1114.1769413301445**.
+- Forty-one counter-rotated burst-seven actual layer-1 samples show M256
+  **4.421268 -> 4.430606 ms (+0.2112%)** and M512
+  **6.872750 -> 6.738887 ms (-1.9477%)**. The runtime therefore selects P8
+  only for producer chunks at least 512 rows and retains the previous body
+  below 512. Raw SHA-256:
+  `c01958e3cb64227df47cdb2d82494bcc95959d1d64d3a7327e169ef79cfbb83e`.
+- Cached `rocprofv3 --kernel-trace` names the intended P8 symbol at local128,
+  **VGPR96**, SGPR128, LDS3072B, scratch0 versus production VGPR88. Trace
+  SHA-256:
+  `64f043c71a7d9528be567d95007059093af7511dc50905b8f9a099aedd429a32`.
+- Seven alternating complete pp512 pairs improve
+  **636.367277 -> 640.003202 tok/s (+0.5714%, 7/7 wins)**. All 14 runs
+  preserve token 2930, next-logit bits, full logits, final/post-layer hidden,
+  complete KV, and final cursor exactly. Raw SHA-256:
+  `d8e07896d9cf48b18a7ae3791e2bbd7f7cb17a3dc1ef7f783c5e3917592ebbf8`.
+- gfx1151 now selects
+  `mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512`; the previous
+  exact body is the required sub-512 route and rollback. Candidate evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`.
+  Clean selector-unset production publication remains before any headline
+  update. The required lineage audit remains blocked by absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`.

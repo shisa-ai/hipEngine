@@ -251,6 +251,32 @@ __device__ inline int pack_q4_k_t16_u8x4(
   return static_cast<int>(out);
 }
 
+__device__ inline uint32_t pack_q4_k_t16_raw_u8x4(
+    const uint8_t* __restrict__ tile,
+    int subblock,
+    int lane32_base,
+    int col) {
+  uint32_t out = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    out |=
+        static_cast<uint32_t>(
+            tile[Q4_K_T16_Q_OFFSET +
+                 (subblock * Q4_K_SUBBLOCK + lane32_base + i) *
+                     (Q4_K_TILE16_COLS / 2) +
+                 (col >> 1)])
+        << (8 * i);
+  }
+  return out;
+}
+
+__device__ inline uint32_t decode_q4_k_t16_raw_u8x4(
+    uint32_t raw,
+    int col) {
+  return (col & 1) ? ((raw >> 4) & 0x0F0F0F0Fu)
+                   : (raw & 0x0F0F0F0Fu);
+}
+
 __device__ inline void pack_q4_k_t16_u8x4_pair(
     const uint8_t* __restrict__ tile,
     int subblock,
@@ -2982,7 +3008,8 @@ template <
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
     bool DIRECT_WAVE_DECODE = false,
-    bool DOUBLE_BUFFER_ACTIVATION = false>
+    bool DOUBLE_BUFFER_ACTIVATION = false,
+    int RAW_WEIGHT_PREFETCH_PACKS = 0>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3015,6 +3042,17 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
       !DOUBLE_BUFFER_ACTIVATION ||
           (WAVE_COLUMNS && DIRECT_WAVE_DECODE),
       "activation double buffer requires direct wave-column decode");
+  static_assert(
+      RAW_WEIGHT_PREFETCH_PACKS == 0 ||
+          RAW_WEIGHT_PREFETCH_PACKS == 8,
+      "raw Q4 prefetch supports 0 or 8 packs");
+  static_assert(
+      RAW_WEIGHT_PREFETCH_PACKS == 0 ||
+          (ACTIVATION_PASSES == 1 && SPLIT16 && MMQ_M == 128 &&
+           ROWVEC_ACTIVATION_STAGE && WAVE_COLUMNS &&
+           THREADS == 128 && DIRECT_WAVE_DECODE &&
+           DOUBLE_BUFFER_ACTIVATION),
+      "raw Q4 prefetch requires production geometry");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -3070,6 +3108,8 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                      [ACTIVATION_PASSES][MMQ_N];
 
   const int k32_iters = static_cast<int>(in_features / MMQ_K);
+  uint32_t prefetched_raw[
+      RAW_WEIGHT_PREFETCH_PACKS > 0 ? RAW_WEIGHT_PREFETCH_PACKS : 1];
   for (int k32 = 0; k32 < k32_iters; ++k32) {
     const int activation_slot =
         DOUBLE_BUFFER_ACTIVATION ? (k32 & 1) : 0;
@@ -3093,9 +3133,21 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
 #pragma unroll
         for (int pack = 0; pack < 8; ++pack) {
           if constexpr (DIRECT_WAVE_DECODE) {
-            wave_weight.qs[pack] =
-                pack_q4_k_t16_u8x4(
-                    tile, subblock, pack * 4, col);
+            if constexpr (RAW_WEIGHT_PREFETCH_PACKS > 0) {
+              if (pack < RAW_WEIGHT_PREFETCH_PACKS && k32 > 0) {
+                wave_weight.qs[pack] =
+                    decode_q4_k_t16_raw_u8x4(
+                        prefetched_raw[pack], col);
+              } else {
+                wave_weight.qs[pack] =
+                    pack_q4_k_t16_u8x4(
+                        tile, subblock, pack * 4, col);
+              }
+            } else {
+              wave_weight.qs[pack] =
+                  pack_q4_k_t16_u8x4(
+                      tile, subblock, pack * 4, col);
+            }
           } else {
             uint32_t packed0 = 0;
             uint32_t packed1 = 0;
@@ -3126,6 +3178,28 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
             static_cast<float>(
                 tile[Q4_K_T16_MIN_OFFSET +
                      subblock * Q4_K_TILE16_COLS + col]);
+        if constexpr (RAW_WEIGHT_PREFETCH_PACKS > 0) {
+          if (k32 + 1 < k32_iters) {
+            const int next_k32 = k32 + 1;
+            const int next_weight_block = next_k32 >> 3;
+            const int next_subblock = next_k32 & 7;
+            const int64_t next_tile_index =
+                (expert_id * out_tiles + out_tile) *
+                    blocks_per_weight_row +
+                next_weight_block;
+            const uint8_t* __restrict__ next_tile =
+                qweight +
+                next_tile_index * Q4_K_T16_BLOCK_BYTES;
+#pragma unroll
+            for (int pack = 0;
+                 pack < RAW_WEIGHT_PREFETCH_PACKS;
+                 ++pack) {
+              prefetched_raw[pack] =
+                  pack_q4_k_t16_raw_u8x4(
+                      next_tile, next_subblock, pack * 4, col);
+            }
+          }
+        }
       }
     } else {
       for (int item = tid; item < (MMQ_M / 2) * 8; item += THREADS) {
@@ -3525,7 +3599,8 @@ template <
     bool WAVE_COLUMNS = false,
     int THREADS = 128,
     bool DIRECT_WAVE_DECODE = false,
-    bool DOUBLE_BUFFER_ACTIVATION = false>
+    bool DOUBLE_BUFFER_ACTIVATION = false,
+    int RAW_WEIGHT_PREFETCH_PACKS = 0>
 int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* compact_to_source,
@@ -3571,7 +3646,8 @@ int launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32(
           WAVE_COLUMNS,
           THREADS,
           DIRECT_WAVE_DECODE,
-          DOUBLE_BUFFER_ACTIVATION>),
+          DOUBLE_BUFFER_ACTIVATION,
+          RAW_WEIGHT_PREFETCH_PACKS>),
       grid,
       block,
       0,
@@ -5097,6 +5173,90 @@ hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_dou
       true,
       true>(
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+template <int RAW_WEIGHT_PREFETCH_PACKS>
+int launch_q4_k_t16_raw_prefetch_production(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      false,
+      true,
+      128,
+      true,
+      true,
+      128,
+      true,
+      true,
+      RAW_WEIGHT_PREFETCH_PACKS>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      source_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_raw_prefetch_p8_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t source_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_raw_prefetch_production<8>(
+      x_q8,
       compact_to_source,
       expert_start_compact,
       expert_start_mmq32,

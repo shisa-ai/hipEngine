@@ -42,7 +42,7 @@ def test_production_absolute_comparison_uses_current_defaults() -> None:
     ]
     assert (
         lane.selected_gate_up_mode
-        == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
     )
     assert (
         lane.selected_down_mode

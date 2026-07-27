@@ -73,6 +73,7 @@ MODES = (
     "t16-mmq128x32-d8-f32-wavecols",
     "t16-mmq128x32-d8-f32-wavecols-direct",
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf",
+    "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -676,6 +677,7 @@ def main() -> None:
                     direct_wave_decode: bool = False,
                     double_buffer_activation: bool = False,
                     split16: bool = True,
+                    raw_weight_prefetch_packs: int = 0,
                 ) -> None:
                     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
                         source_x_dev.ptr,
@@ -709,6 +711,7 @@ def main() -> None:
                         wave_cols=wave_cols,
                         direct_wave_decode=direct_wave_decode,
                         double_buffer_activation=double_buffer_activation,
+                        raw_weight_prefetch_packs=raw_weight_prefetch_packs,
                         library=mmq_library,
                         runtime=runtime,
                     )
@@ -738,6 +741,14 @@ def main() -> None:
                             wave_cols=True,
                             direct_wave_decode=True,
                             double_buffer_activation=True,
+                        )
+                    ),
+                    "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8": (
+                        lambda: t16_mmq128_d8_f32(
+                            wave_cols=True,
+                            direct_wave_decode=True,
+                            double_buffer_activation=True,
+                            raw_weight_prefetch_packs=8,
                         )
                     ),
                 }

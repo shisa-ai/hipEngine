@@ -237,7 +237,7 @@ _PREFILL_LANE_CONFIGURATIONS = {
         swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
         selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
         selected_gate_up_mode=(
-            "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+            "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
         ),
         f16_projection_mode="hipblaslt_range_direct",
         dense_q4_prefill_mode="wmma_pack8",
@@ -248,7 +248,7 @@ _PREFILL_LANE_CONFIGURATIONS = {
         swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
         selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
         selected_gate_up_mode=(
-            "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+            "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
         ),
         f16_projection_mode="hipblaslt_range_direct",
         dense_q4_prefill_mode="wmma_pack8",

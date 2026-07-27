@@ -98,10 +98,12 @@ LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX = True
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
 # one 32-column output slice to each wave, holds decoded T16 weights in
 # registers, and ping-pongs the activation tile to remove one barrier per K32.
+# For chunks of at least 512 rows, prefetch the next K32's eight raw nibble
+# words while current packed dots execute; smaller chunks keep the rollback.
 # Packed-dot arithmetic and K order remain bit-for-bit unchanged.
 # Other backends retain exact.
 LAGUNA_SELECTED_GATE_UP_MODE = (
-    "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+    "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
 )
 # Exact eight-token router tiling preserves every token/expert's K traversal
 # and reduction tree while reusing each F32 weight row twice as long.

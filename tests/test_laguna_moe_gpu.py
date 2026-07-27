@@ -383,7 +383,7 @@ def test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified() -> None:
     should_fuse = laguna_moe_module._should_fuse_selected_silu_pack
     production = {
         "selected_gate_up_mode": (
-            "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+            "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
         ),
         "selected_down_mode": (
             "mmq64x64_d4_f32_q6_wavecols_direct_q4"
@@ -467,7 +467,7 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "direct"
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151")
-        == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
     )
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "direct")
@@ -495,6 +495,13 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
             "mmq128x32_d8_f32_wavecols_direct_doublebuf",
         )
         == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+    )
+    assert (
+        resolve_laguna_selected_gate_up_mode(
+            "hip_gfx1151",
+            "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512",
+        )
+        == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
     )
     with pytest.raises(ValueError, match="unsupported Laguna selected gate/up mode"):
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "unsafe")

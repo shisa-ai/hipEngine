@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_q4_raw_prefetch_p8_candidate",
+  "status": "candidate_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "two queues; shared branch after router at least priority"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "candidate": {
+    "geometry": "production 128 output columns x 32 routed rows, local128, D8 activation double buffer",
+    "mechanism": "prefetch the next K32's eight raw T16 nibble words while current packed dots execute; decode them in place on the following iteration and demand-load d/scale/min metadata",
+    "shape_policy": "select P8 only when producer rows >= 512; preserve the previous exact body below 512",
+    "invariants": [
+      "unchanged resident T16 bytes",
+      "unchanged 3072-byte LDS allocation",
+      "zero scratch",
+      "unchanged activation quantization",
+      "unchanged packed-dot and FP32 K order",
+      "unchanged BF16 boundary"
+    ],
+    "distinction": "the rejected prefetch held the complete decoded 40-byte record and raised VGPR 88 to 104; this candidate carries only raw nibble words"
+  },
+  "correctness": {
+    "red": "The production-shaped P8 parameter initially failed because the wrapper selector did not exist.",
+    "green": "The uneven/empty-expert K512/N128 CPU-reference KL and top-1 gate passed.",
+    "actual_layer_bf16_identical": true,
+    "m256_checksum_f64": -2296.515208721219,
+    "m512_checksum_f64": 1114.1769413301445,
+    "complete_state_pairs": 7,
+    "complete_state_exact": [
+      "next token",
+      "next-token logit bits",
+      "full logits",
+      "final hidden",
+      "post-layer hidden",
+      "complete KV",
+      "final cursor"
+    ]
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 256,512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8 --warmups 5 --samples 41 --burst 7 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-raw-prefetch-p8-confirm.json",
+    "timing": "counter-rotated HIP events; both modes include the unchanged D8 activation pack",
+    "m256": {
+      "production_median_ms": 4.4212684631,
+      "p8_median_ms": 4.4306062971,
+      "p8_regression_percent": 0.2112026001,
+      "policy": "retain production body"
+    },
+    "m512": {
+      "production_median_ms": 6.8727498736,
+      "p8_median_ms": 6.7388872419,
+      "p8_improvement_percent": 1.947730299,
+      "policy": "select P8"
+    },
+    "raw_sha256": "c01958e3cb64227df47cdb2d82494bcc95959d1d64d3a7327e169ef79cfbb83e"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q4-raw-prefetch-p8-trace -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8 --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-raw-prefetch-p8-trace-child.json",
+    "production": {
+      "workgroup_size": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroup_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "64f043c71a7d9528be567d95007059093af7511dc50905b8f9a099aedd429a32"
+  },
+  "complete_state_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --mode current=mmq128x32_d8_f32_wavecols_direct_doublebuf --mode rawprefetch=mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512 --require-cached-build --output /tmp/laguna-q4-raw-prefetch-p8-pp512-ab.json",
+    "workload": "pp512, BF16 KV, matrix512, attention128",
+    "production_median_tok_s": 636.367277477,
+    "candidate_median_tok_s": 640.0032024246,
+    "candidate_improvement_percent": 0.5713563655,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "next_token": 2930,
+    "raw_sha256": "d8e07896d9cf48b18a7ae3791e2bbd7f7cb17a3dc1ef7f783c5e3917592ebbf8"
+  },
+  "decision": {
+    "result": "admit candidate",
+    "gfx1151_default": "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512",
+    "rollback": "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+    "clean_selector_unset_publication_pending": true,
+    "production_claim_pending": true,
+    "production_pp512_before_tok_s": 639.113740923285
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked",
+    "reason": "/home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "repo": {
+    "base_revision": "282c02535bba4fb038b00efbef17de92b706aacc"
+  }
+}
