@@ -134,11 +134,6 @@ def _parse_args() -> argparse.Namespace:
         help="use separate exact head RMSNorm/RoPE and BF16 KV append launches",
     )
     parser.add_argument(
-        "--enable-router-projection-wave0-tree",
-        action="store_true",
-        help="screen the exact c=1 router projection wave-0 reduction tree",
-    )
-    parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
         default=(16, 32),
@@ -270,9 +265,6 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
             False if args.disable_swa_split_wave_local else None
         ),
         use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
-        use_router_projection_wave0_tree=(
-            True if args.enable_router_projection_wave0_tree else None
-        ),
     )
 
 
@@ -672,9 +664,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 False if args.disable_swa_split_wave_local else None
             ),
             use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
-            use_router_projection_wave0_tree=(
-                True if args.enable_router_projection_wave0_tree else None
-            ),
         )
         load_seconds = time.perf_counter() - load_started
         oracle_gate = _oracle_gate(owner, args)
@@ -783,9 +772,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "use_split_gate_fusion": owner.use_split_gate_fusion,
             "use_swa_split_wave_local": owner.use_swa_split_wave_local,
             "use_head_kv_fusion": owner.use_head_kv_fusion,
-            "use_router_projection_wave0_tree": (
-                owner.use_router_projection_wave0_tree
-            ),
             "use_iq2_grid64": owner.use_iq2_grid64,
             "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
             "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,

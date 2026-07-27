@@ -35,7 +35,6 @@ _F32_NBYTES = 4
 _I64_NBYTES = 8
 
 _ROUTER_LOGITS_VARIANT = "bf16_hidden"
-_ROUTER_LOGITS_WAVE0_TREE_VARIANT = "bf16_hidden_wave0_tree"
 _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
@@ -109,34 +108,6 @@ def resolve_laguna_iq3_c1_down_schedule(
     return parsed
 
 
-def resolve_laguna_router_projection_wave0_tree(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the exact c=1 router projection screen when its key exists."""
-
-    selected = bool(
-        backend_package_capability(
-            backend,
-            "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE",
-            False,
-        )
-        if requested is None
-        else requested
-    )
-    if not selected:
-        return False
-    load_backend_kernel_package(backend)
-    return is_registered(
-        KernelKey(
-            backend,
-            "router_logits",
-            "f32",
-            _ROUTER_LOGITS_WAVE0_TREE_VARIANT,
-        )
-    )
-
-
 def resolve_laguna_selected_down_mode(
     backend: str,
     requested: str | None = None,
@@ -182,7 +153,6 @@ class LagunaMoEKernelPlan:
     shared_ffn_size: int
     routed_scaling_factor: float
     router_logits_key: KernelKey
-    c1_router_logits_key: KernelKey | None
     router_select_key: KernelKey
     selected_gate_up_key: KernelKey
     selected_gate_up_keys: Mapping[str, KernelKey]
@@ -210,7 +180,6 @@ class LagunaMoEKernelPlan:
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
-    c1_router_logits: Callable | None
     router_select: Callable
     selected_gate_up: Callable
     selected_silu: Callable
@@ -231,14 +200,8 @@ class LagunaMoEKernelPlan:
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
-        optional_c1_router = (
-            (self.c1_router_logits_key,)
-            if self.c1_router_logits_key is not None
-            else ()
-        )
         return (
             self.router_logits_key,
-            *optional_c1_router,
             self.router_select_key,
             *tuple(self.selected_gate_up_keys.values()),
             *tuple(self.c1_selected_gate_up_keys.values()),
@@ -339,7 +302,6 @@ def resolve_laguna_moe_plan(
     iq3_selected_down_tile: int = 1,
     iq3_c1_down_schedule: str | None = None,
     use_iq2_grid64: bool = False,
-    use_router_projection_wave0_tree: bool | None = None,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
@@ -392,19 +354,6 @@ def resolve_laguna_moe_plan(
                 iq3_c1_schedule == "wave10_fused"
             ):
                 iq3_c1_schedule = "serial_weighted"
-    c1_router_logits_key = (
-        KernelKey(
-            backend,
-            "router_logits",
-            "f32",
-            _ROUTER_LOGITS_WAVE0_TREE_VARIANT,
-        )
-        if resolve_laguna_router_projection_wave0_tree(
-            backend,
-            use_router_projection_wave0_tree,
-        )
-        else None
-    )
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
         "router_select": KernelKey(
@@ -629,7 +578,6 @@ def resolve_laguna_moe_plan(
         shared_ffn_size=config.expert_shared_feed_forward_length,
         routed_scaling_factor=config.expert_weights_scale,
         router_logits_key=keys["router_logits"],
-        c1_router_logits_key=c1_router_logits_key,
         router_select_key=keys["router_select"],
         selected_gate_up_key=keys["selected_gate_up"],
         selected_gate_up_keys=selected_gate_up_keys,
@@ -649,11 +597,6 @@ def resolve_laguna_moe_plan(
         shared_silu_key=keys["shared_silu"],
         add_key=keys["add"],
         router_logits=functions["router_logits"],
-        c1_router_logits=(
-            _resolve_exact(c1_router_logits_key)
-            if c1_router_logits_key is not None
-            else None
-        ),
         router_select=functions["router_select"],
         selected_gate_up=functions["selected_gate_up"],
         selected_silu=functions["selected_silu"],
@@ -1308,8 +1251,7 @@ def run_laguna_moe_c1_components(
     router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
 
-    router_logits = getattr(plan, "c1_router_logits", None) or plan.router_logits
-    router_logits(
+    plan.router_logits(
         hidden_bf16_ptr,
         router,
         scratch.router_logits.ptr,
@@ -1694,7 +1636,6 @@ __all__ = [
     "allocate_laguna_moe_scratch",
     "resolve_laguna_iq3_c1_down_schedule",
     "resolve_laguna_moe_plan",
-    "resolve_laguna_router_projection_wave0_tree",
     "resolve_laguna_selected_down_mode",
     "run_laguna_moe_c1",
     "run_laguna_moe_c1_components",
