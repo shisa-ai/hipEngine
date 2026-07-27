@@ -3,6 +3,9 @@
 Last reviewed: **2026-07-28**
 
 Latest retained hipEngine revisions in this scoreboard:
+`24b23b1e627497a1fb413c27e4ee5db1c6fd2966` for the reusable Redline GGUF
+graph soak and `3cbe23bfcb62c960bb4ad2d6746b5e15f27bbb01` for its clean controlled
+W7900 native-hipGraph versus retained-PM4 measurement packet,
 `773ab9033ea55445b254ddf47fa87cd5ff926adc` for the clean matched W7900
 Laguna hipEngine-versus-llama.cpp-HIP ABBA harness and measurement packet,
 `5a0463c71a198d1fbb1caf8ee632d29b337c5a94` for the exact W7900 Laguna
@@ -3479,14 +3482,27 @@ at median **3.059x serial / 7.881x independent**, while losing the corresponding
 Vulkan GPU-timestamp floor. These are microbenchmark transport claims, not model
 throughput.
 
-Integration remains **blocked and default-off**. A single broad process passed
+The production-sized default-off graph diagnostic is
+[`2026-07-28-gfx1100-redline-gguf-graph-spike.json`](results/2026-07-28-gfx1100-redline-gguf-graph-spike.json).
+For Qwen3.6-35B-A3B UD-Q4_K_M, repeated-token p512/d128 c=1, a clean two-process
+per transport ABBA moves native hipGraph **92.812 -> 100.357 tok/s (+8.129%)**
+with Redline retained PM4. Capture-inclusive post-load wall improves **1.0273x**
+and steady post-load wall **1.0675x** while prefill is within guard at
+**-0.315%**. All four processes are bit-identical (`KL=0`, top-1 100%); each
+Redline graph captures all **627** nodes with **256** PM4 launches and no native
+fallback. A one-session four-run soak adds **512** proven PM4 launches at
+**100.515 tok/s** median and **0.095%** range/median, with exact hashes and full
+tracked-memory recovery.
+
+Integration remains **blocked and default-off**. A separate broad process passed
 its first 48 rows, then faulted on the first packed-dot Redline replay with a
 GPU page fault at address zero; fresh family-isolated processes pass the
 deduplicated 240/240 matrix, including packed-dot 16/16. Process isolation is a
-benchmark workaround, not a production fix. The lifecycle defect must be
-minimized and fixed upstream (ownership is not yet proven between Redline,
-adapters, and ROCr), then a strict retained-PM4 hipEngine decode graph must pass
-bit-exact replay and matched end-to-end measurement before promotion.
+benchmark workaround, not a production fix. The narrow GGUF graph gate is now
+positive, but the lifecycle defect must be minimized and fixed upstream
+(ownership is not yet proven between Redline, adapters, and ROCr), followed by
+natural-prompt/category, 4K-context, concurrency, cancellation, and server
+lifecycle validation before any package-default promotion.
 
 The retained synthetic Laguna-shape IQ2_XS primitive packet is
 [`2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).

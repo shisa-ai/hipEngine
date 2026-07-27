@@ -668,10 +668,13 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 Native `hipGraph` remains the package default. A default-off, unvendored Redline
 spike may route the same graph lifecycle through one explicitly preloaded
 Python-enabled DSO and must prove retained PM4 before and after every replay;
-actual native fallback is always reported. Same-HSACO W7900 micro evidence is
-accepted, but model promotion is blocked on an upstream lifecycle fix for the
-reproduced long-process address-zero GPU fault plus bit-exact decode and matched
-end-to-end gates. Process isolation is not an acceptable runtime workaround.
+actual native fallback is always reported. Same-HSACO W7900 micro evidence and
+a narrow Qwen3.6 GGUF repeated-token p512/d128 graph gate are accepted: strict
+PM4 is bit-identical and improves decode throughput 8.129%, including a stable
+four-run persistent soak. Package-default promotion remains blocked on an
+upstream lifecycle fix for the reproduced long-process address-zero GPU fault,
+then natural-prompt/category, 4K-context, concurrency, cancellation, and server
+lifecycle gates. Process isolation is not an acceptable runtime workaround.
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
