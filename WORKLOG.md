@@ -184207,3 +184207,21 @@ Vulkan local sizes verbatim will close the measured gap.
   `py_compile`, JSON parsing, and diff checks pass. The required lineage audit
   remains blocked because the read-only
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+
+## 2026-07-27 — Publish Q4 selected-down raw-nibble P8 production
+
+- Clean tracked revision `0085acab4` ran the canonical selector-unset
+  matrix2048/attention128, two-queue, three-repetition 512/1K/4K protocol.
+  Medians are **643.141/573.717/466.913 tok/s** versus prior production
+  **643.554/573.066/466.290**: **-0.064%/+0.114%/+0.134%**. The unmatched
+  pp512 aggregate is flat within run variance; retention remains grounded in
+  the exact **7/7** matched full-state gain and named Q4-down family reduction.
+- pp512 wall is **796.093 ms**, leaving **64.664 ms** to the 700 wall of
+  731.429 ms. Tokens remain **2930/95/7772**, final positions and repeated
+  outputs are exact, and all **78,805,563,028** tracked bytes across
+  **1,407** peak allocations return to zero.
+- Load time **89.813 s** is excluded. The raw production SHA-256 is
+  `dddd5f57e3c1b1288736cb96853e7071ea6c22513250db8a858391d2ec8d49f1`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-production.json`.
+  A fresh selector-unset all-family trace is next.

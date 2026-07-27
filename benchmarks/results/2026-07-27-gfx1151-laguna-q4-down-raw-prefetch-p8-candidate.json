@@ -2,7 +2,7 @@
   "schema_version": 1,
   "date": "2026-07-27",
   "kind": "hipengine_laguna_q4_down_raw_prefetch_p8_candidate",
-  "status": "candidate_default_pending_clean_publication",
+  "status": "retained_gfx1151_production",
   "pass": true,
   "performance_claim": false,
   "system": {
@@ -81,10 +81,11 @@
     "result": "admit candidate",
     "gfx1151_default": "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512",
     "rollback": "mmq64x64_d4_f32_q6_wavecols_direct_q4",
-    "clean_selector_unset_publication_pending": true,
-    "production_claim_pending": true,
+    "clean_selector_unset_publication_pending": false,
+    "production_claim_pending": false,
     "production_pp512_before_tok_s": 643.5535247748338
   },
+  "production_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-production.json",
   "lineage_audit": {
     "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
     "status": "blocked",
