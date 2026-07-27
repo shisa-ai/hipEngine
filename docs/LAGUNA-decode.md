@@ -368,6 +368,15 @@ and child throughput **1.306%**. The paired owner/runtime/CLI route is removed
 before longer contexts/categories; separate owners and canonical **63.270
 tok/s** remain.
 
+Post-pair rejection selects a materially different output boundary: point the
+unchanged stage-2 raw output pointers at one HIP-registered mapped host page,
+retain the explicit fence, and parse the already-visible +0 int64/+8 FP32 bits
+without any D2H copy. One actual-vocab process preserves all **15/15** equal-max
+tie fixtures and improves every repetition of the complete argmax+fence+host
+boundary, **83.311 -> 39.178 us/token (-52.974%)**. This models **683 -> 681 =
+five -> three copies + 678 unchanged kernels**, but is design-only: no mapped
+runtime owner/default exists and canonical **63.270 tok/s** remains.
+
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
 explains the measured gap between llama.cpp Vulkan and hipEngine, audits the
@@ -2876,6 +2885,64 @@ restore separate owners/reads exactly. Evidence:
 and
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-rejected.json).
 
+### Post-paired-readback rejection selection: mapped-host scalar argmax output
+
+Re-rank the same immutable **28** retained short windows at clean rejection
+commit `f554a419c`. Every model-kernel leaf, shared H2D publication, and paired
+*device*-result owner is retained or directly rejected. The next independent
+seam does not merge those rejected D2H reads: it eliminates them by making the
+existing stage-2 raw output pointers directly host-visible.
+
+The torch-free runtime already supports `HIP_HOST_REGISTER_MAPPED`,
+`host_register()`, `host_get_device_pointer()`, and `host_unregister()`; the
+prefill flight recorder independently uses this ABI. Select one future
+page-backed 4,096-byte host owner, expose its device-visible int64 ID at +0 and
+FP32 value at +8, and pass those addresses to the unchanged
+`argmax_stage2_kernel`. Keep both argmax stages, launch sizes, reduction,
+minimum-index tie-break, FP32 bits, and the existing stream/device synchronization.
+After that fence, parse the mapped host bytes directly. Scalar device ownership
+falls by **two allocations / 12 bytes** and D2H copies fall **two -> zero**;
+one pinned host page is added. The three H2D publications remain, so modeled
+full-token topology is **683 -> 681 profiler dispatches = five -> three runtime
+copies + 678 unchanged model kernels**. Rows/prefill/verifier sampling and the
+ordinary separate-device owner/read chain remain mandatory fallbacks. No kernel
+source, signature, registry key, or codegen comparison changes.
+
+Freeze the screen before launch (`f81d7a9e...e190`; builder
+`b9669cd0...e6a4`; harness `ad5b0e01...00f`). Exact command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. \
+uv run python -u /tmp/bench_laguna_mapped_argmax.py \
+  --json /tmp/laguna-mapped-argmax-screen.json
+```
+
+One W7900 process runs the cached repository argmax at the actual **100,352**
+vocabulary / 256 threads / 98 stage-1 blocks. All **15/15** deterministic
+fixtures preserve the expected int64 ID, FP32 value bits, equal-maximum
+minimum-index tie, and replacement of a distinct mapped sentinel after the
+fence. Timing alternates two preloaded actual-vocab logit buffers, uses 100
+warmups per arm and 15 counterbalanced repetitions of 1,000 complete boundaries,
+and requires every repetition to improve. Control ranges **83.136-91.167
+us/token**; mapped output ranges **39.086-42.119 us/token**. Every row wins and
+medians move **83.310898 -> 39.177799 us/token**, saving **44.133099 us/token
+(-52.973981%)**. Six tracked screen allocations / 804,004 bytes return exactly
+to zero, the mapped page unregisters before close, no compiler runs, and stderr
+is empty. Raw/stdout/stderr hashes are `574f603f...be32` / `574f603f...be32` /
+`e3b0c442...b855`.
+
+Subtracting only the direct saving from canonical **15.805224 ms/token** models
+**15.761091 ms/token / 63.447 tok/s (+0.280%)**, still **1.530%** below matched
+Vulkan. This is a planning ceiling, not full-model throughput evidence. Commit
+selection only; then use a separate false/default-off runtime admission with
+fake-runtime mapping/failure/lifecycle coverage, fresh shared-weight KL0 full
+state, and cache-only exact **681 = three H2D copies + 678 kernels / zero D2H**
+tracing. Clean short/512/1K/3968 and complete categories remain later distinct
+gates with no rerun, third order, or pooled waiver. Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-mapped-host-argmax-design.json).
+
 ## 9. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
@@ -2942,6 +3009,7 @@ and
 | What happened after global-head wave-0 rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-rejected.json): primitive only after clean rejection. Synthetic/CPU/**47/47** actual, full-state, and exact **47-candidate/678-kernel** gates pass. Both short orders improve projection work **7.527%/6.307%**, but order A child regresses **0.619%** and order B kernel/span regress **0.612%/4.211%**. Runtime integration is removed before long contexts/categories; retained `bf16_hidden` and canonical **63.270 tok/s** remain. |
 | What happened after router-projection ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-design.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-rejected.json): rejected and removed. Ownership/reset and full state pass at KL0/top-1 100%; tracing proves five→three copies and **683→681 dispatches/token** with exact corresponding 678-kernel multisets. Both short orders regress model-kernel sum **0.315%/0.336%**; order B also fails span/child at **+0.700%/-0.706%**. Longer contexts/categories stop; sharing/borrowing integration is removed, while reset-position correctness and canonical **63.270 tok/s** remain. |
 | What happened after shared-control rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-design.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-rejected.json): paired argmax readback is rejected and removed. RED/GREEN, KL0 full state, and exact **683 -> 682 = five -> four copies + 678 kernels** tracing pass; both short orders improve kernel sum, but order B span/child regress **1.184%/1.306%**. Longer contexts/categories stop; separate owners and canonical **63.270 tok/s** remain. |
+| What is selected after paired-readback rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-mapped-host-argmax-design.json): mapped-host scalar argmax output, design only. The unchanged two-stage argmax writes +0 ID/+8 FP32 bits into one registered host page and retains the explicit fence, eliminating both D2H copies rather than merging them. All **15/15** actual-vocab tie fixtures and every timing repetition pass; the complete boundary moves **83.311 -> 39.178 us/token (-52.974%)** and models **683 -> 681 = five -> three copies + 678 kernels**. No runtime owner/default/topline change exists yet. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -3185,4 +3253,10 @@ moving direct readback **45.02288 -> 22.76360 us/token (-49.440%)**. Its
 false/default-off route passes RED/GREEN, KL0 full state, and exact **682 = four
 copies + 678 kernels** tracing, but short order B regresses span/child
 **1.184%/1.306%**. Runtime integration is removed before longer contexts or
-categories; separate owners and canonical **63.270 tok/s** remain.
+categories; separate owners and canonical **63.270 tok/s** remain. The next
+selected design eliminates, rather than merges, those reads: unchanged stage-2
+raw pointers target HIP-registered mapped host memory. All **15/15** actual-vocab
+tie fixtures and all timing repetitions pass at **83.311 -> 39.178 us/token
+(-52.974%)**, modeling **681 = three copies + 678 kernels**. No runtime owner or
+canonical change is claimed before separate full-state/profile/clean/category
+admission.
