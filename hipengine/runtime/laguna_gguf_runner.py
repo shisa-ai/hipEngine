@@ -407,7 +407,7 @@ class LagunaEagerScratch:
 class LagunaPrefillChunkPolicy:
     """Bounded matrix/MoE capacity with an independent attention query tile."""
 
-    MAX_MATRIX_ROWS = 2_048
+    MAX_MATRIX_ROWS = 8_192
 
     matrix_rows: int
     attention_rows: int
@@ -424,7 +424,8 @@ class LagunaPrefillChunkPolicy:
         matrix = int(matrix_rows)
         if matrix <= 0 or matrix > min(context, cls.MAX_MATRIX_ROWS):
             raise ValueError(
-                "Laguna prefill matrix rows must be positive and no larger than context/2048"
+                "Laguna prefill matrix rows must be positive and no larger "
+                "than context/8192"
             )
         attention = min(matrix, 128) if attention_rows is None else int(attention_rows)
         if attention <= 0 or attention > matrix:

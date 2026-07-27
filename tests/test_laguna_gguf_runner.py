@@ -207,6 +207,11 @@ def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
         matrix_rows=2_048,
         attention_rows=128,
     )
+    long_wide = LagunaPrefillChunkPolicy.resolve(
+        context_length=16_384,
+        matrix_rows=8_192,
+        attention_rows=128,
+    )
 
     assert (policy.matrix_rows, policy.attention_rows) == (512, 128)
     assert policy.attention_ranges(511) == (
@@ -218,14 +223,16 @@ def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
     assert (automatic.matrix_rows, automatic.attention_rows) == (256, 128)
     assert (wide.matrix_rows, wide.attention_rows) == (2_048, 128)
     assert len(wide.attention_ranges(2_048)) == 16
+    assert (long_wide.matrix_rows, long_wide.attention_rows) == (8_192, 128)
+    assert len(long_wide.attention_ranges(8_192)) == 64
     with pytest.raises(ValueError, match="attention rows"):
         LagunaPrefillChunkPolicy.resolve(
             context_length=4_096,
             matrix_rows=128,
             attention_rows=256,
         )
-    with pytest.raises(ValueError, match="context/2048"):
-        LagunaPrefillChunkPolicy.resolve(context_length=4_096, matrix_rows=2_049)
+    with pytest.raises(ValueError, match="context/8192"):
+        LagunaPrefillChunkPolicy.resolve(context_length=16_384, matrix_rows=8_193)
 
 
 def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
@@ -260,6 +267,22 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     assert wide_plan.total_nbytes == 1_756_061_728
     assert wide_plan.matrix_rows == 2_048
     assert wide_plan.attention_rows == 128
+
+    maximum_policy = LagunaPrefillChunkPolicy.resolve(
+        context_length=16_384,
+        matrix_rows=8_192,
+        attention_rows=128,
+    )
+    maximum_plan = LagunaPrefillScratchPlan.build(
+        config,
+        moe_plan,
+        policy=maximum_policy,
+    )
+    assert maximum_plan.rows_nbytes == 5_354_422_272
+    assert maximum_plan.moe_nbytes == 1_669_799_968
+    assert maximum_plan.total_nbytes == 7_024_222_240
+    assert maximum_plan.matrix_rows == 8_192
+    assert maximum_plan.attention_rows == 128
 
 
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:

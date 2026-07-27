@@ -52,7 +52,7 @@ PROFILE_LENGTH_SETS = (
     FINAL_SWEEP_LENGTHS,
 )
 DEFAULT_CHUNK_SIZE = 128
-PROFILE_CHUNK_SIZES = (128, 256, 512, 1024, 2048)
+PROFILE_CHUNK_SIZES = (128, 256, 512, 1024, 2048, 4096, 8192)
 DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json"
 )
@@ -62,7 +62,7 @@ def _parse_chunk_size(value: str | int) -> int:
     chunk_size = int(value)
     if chunk_size not in PROFILE_CHUNK_SIZES:
         raise argparse.ArgumentTypeError(
-            "matrix chunk size must be 128, 256, 512, 1024, or 2048"
+            "matrix chunk size must be 128, 256, 512, 1024, 2048, 4096, or 8192"
         )
     return chunk_size
 
