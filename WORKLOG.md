@@ -184390,3 +184390,25 @@ Vulkan local sizes verbatim will close the measured gap.
   Production remains **645.803 tok/s / 792.811 ms**. Raw artifact SHA-256:
   `0f6c5f49...df7a99` and `41f4d1ff...57ef0`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json`.
+
+## 2026-07-27 — Reject paired selected gate/up-to-D4 fusion
+
+- RED specified a direct byte comparison against the production chain:
+  direct-wave/P8 gate/up -> BF16 compact tensor -> exact fused SiLU D4 pack.
+  GREEN paired 128 gate and 128 up columns in one local256 workgroup, kept
+  each lane at 32 FP32 accumulators, exchanged the BF16 projection results
+  through LDS, reproduced the BF16 SiLU boundary, and wrote D4 blocks
+  directly.
+- The first GREEN attempt correctly failed: wave max reduction is complete
+  only in lane 0, but every lane used its own partial maximum. Broadcasting
+  lane 0's scale repaired the D4 bytes. The focused fixture then passed and
+  actual M256/M512 output SHA-256 values match production exactly.
+- Eleven counter-rotated burst-three actual-weight samples reject the
+  inclusive route. M256 regresses **4.4607 -> 4.8841 ms (+9.49%)** and M512
+  **6.9100 -> 7.4451 ms (+7.74%)**. Removing compact gate/up traffic and one
+  pack launch does not repay local256 residency, approximately **19.5 KB**
+  LDS, and cross-wave BF16 result exchange.
+- Removed the HIP specialization/export, wrapper, byte fixture, and leaf
+  modes. Production remains **645.803 tok/s / 792.811 ms**. Raw SHA-256:
+  `aa1eb30d...f895b6`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json`.
