@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T00:40:41Z",
+  "kind": "hipengine_laguna_q4_d4x2_wave_direct_screen",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "repo": {
+    "revision": "e958ca4b0",
+    "candidate_tracked_dirty": true,
+    "candidate_surfaces_removed": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "layer": 1
+  },
+  "hypothesis": {
+    "production": "one split16 D8 activation plane, 128 output columns x 32 routed rows, wave-column direct T16 decode, activation double buffer",
+    "candidate": "two recursively quantized D4 activation planes in the same wave-column direct/double-buffer geometry",
+    "purpose": "Recover the 0.0112 KL overage of the rejected one-plane D4-gate policy while retaining part of its speedup.",
+    "resident_bytes_added": 0,
+    "weight_bytes_changed": false,
+    "activation_cache_multiplier": 2
+  },
+  "correctness": {
+    "red": "The production-geometry two-plane parameter initially failed because rowvec required residual_passes=1.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest 'tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate[2-False-True-True-False-True-True-False]' -q",
+    "green_result": "1 passed",
+    "cpu_reference_kl_limit": 0.05,
+    "cpu_reference_top1_minimum": 0.9
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 128,256,512 --layer 1 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf,t16-mmq128x32-d4x2-f32-wavecols-direct-doublebuf --warmups 3 --samples 21 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-d4x2-wave-direct-leaf.json",
+    "timing": "21 counter-rotated HIP-event samples; each sample is the mean of a three-launch burst; producer pack included",
+    "source_run_sha256": "d8ea6bf1a5c0e2d5415ea6d182e40b0aee6d038c14e9a30d6dc3240a630a4486"
+  },
+  "results": {
+    "m128": {
+      "production_median_ms": 3.7290369669596353,
+      "candidate_median_ms": 4.10650634765625,
+      "change_percent": 10.122436008039193
+    },
+    "m256": {
+      "production_median_ms": 4.434309641520183,
+      "candidate_median_ms": 5.86445681254069,
+      "change_percent": 32.25185624453191
+    },
+    "m512": {
+      "production_median_ms": 6.8821455637613935,
+      "candidate_median_ms": 10.100493748982748,
+      "change_percent": 46.763733132409754
+    }
+  },
+  "decision": {
+    "retain": false,
+    "full_model_gate_run": false,
+    "reason": "The second activation plane increases LDS traffic and packed-dot work enough to lose against exact D8 at every natural shape; it cannot be an economic quality repair for the one-plane role split.",
+    "production_512_tok_s": 639.113740923285,
+    "next_action": "Do not retry residual activation planes in the direct-wave Q4 body without a mechanism that removes equivalent weight traffic."
+  }
+}
