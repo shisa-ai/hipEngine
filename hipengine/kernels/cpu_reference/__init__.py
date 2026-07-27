@@ -28,6 +28,7 @@ from hipengine.kernels.cpu_reference.laguna import (
     LagunaSparseMoEResult,
     laguna_apply_rope,
     laguna_attention_forward,
+    laguna_block_streamed_gqa_attention,
     laguna_causal_mask,
     laguna_dense_ffn_forward,
     laguna_dflash_attention_forward,

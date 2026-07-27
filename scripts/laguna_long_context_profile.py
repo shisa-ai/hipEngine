@@ -37,8 +37,14 @@ from scripts.laguna_target_ar_bench import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
 LAP0_LENGTHS = (128, 512, 1024, 4096)
+ATTACK_LENGTHS = (4096, 16384, 65536, 131072)
 FINAL_SWEEP_LENGTHS = (512, 1024, 4096, 32768, 65536, 131072)
-PROFILE_LENGTH_SETS = (DEFAULT_LENGTHS, LAP0_LENGTHS, FINAL_SWEEP_LENGTHS)
+PROFILE_LENGTH_SETS = (
+    DEFAULT_LENGTHS,
+    LAP0_LENGTHS,
+    ATTACK_LENGTHS,
+    FINAL_SWEEP_LENGTHS,
+)
 DEFAULT_CHUNK_SIZE = 128
 PROFILE_CHUNK_SIZES = (128, 256, 512, 1024, 2048)
 DEFAULT_OUTPUT = Path(
@@ -326,6 +332,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "repeat_next_token_deterministic": deterministic,
             "tracked_returned_to_baseline": recovered,
             "boundary_fixture_evidence": [
+                "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
+                "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_handles_final_128k_position",
                 "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
                 "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
                 "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",

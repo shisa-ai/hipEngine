@@ -16,6 +16,7 @@ from hipengine.kernels.cpu_reference.laguna import (
     LagunaRopeConfig,
     LagunaSparseFFNWeights,
     laguna_apply_rope,
+    laguna_block_streamed_gqa_attention,
     laguna_causal_mask,
     laguna_head_rmsnorm,
     laguna_model_forward,
@@ -27,6 +28,100 @@ from hipengine.kernels.cpu_reference.laguna import (
 from hipengine.kernels.registry import resolve
 
 FIXTURE = Path(__file__).parent / "fixtures" / "laguna_cpu_reference.json"
+
+
+def _dense_gqa_attention(
+    query: np.ndarray,
+    key: np.ndarray,
+    value: np.ndarray,
+    query_positions: np.ndarray,
+    key_positions: np.ndarray,
+    *,
+    sliding_window: int | None = None,
+) -> np.ndarray:
+    rows, heads, head_dim = query.shape
+    kv_heads = key.shape[1]
+    group_size = heads // kv_heads
+    visible = laguna_causal_mask(
+        query_positions,
+        key_positions,
+        sliding_window=sliding_window,
+    )
+    output = np.empty_like(query, dtype=np.float32)
+    scale = np.float32(head_dim**-0.5)
+    for row in range(rows):
+        selected = np.flatnonzero(visible[row])
+        for head in range(heads):
+            logits = (
+                key[selected, head // group_size] @ query[row, head] * scale
+            ).astype(np.float32)
+            logits -= np.max(logits)
+            probabilities = np.exp(logits).astype(np.float32)
+            probabilities /= probabilities.sum(dtype=np.float32)
+            output[row, head] = probabilities @ value[
+                selected,
+                head // group_size,
+            ]
+    return output
+
+
+def test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails() -> None:
+    rng = np.random.default_rng(3803)
+    query_positions = np.arange(509, 514, dtype=np.int64)
+    key_positions = np.arange(514, dtype=np.int64)
+    query = rng.normal(0.0, 0.2, size=(5, 6, 8)).astype(np.float32)
+    key = rng.normal(0.0, 0.2, size=(514, 1, 8)).astype(np.float32)
+    value = rng.normal(0.0, 0.2, size=(514, 1, 8)).astype(np.float32)
+
+    for sliding_window in (None, 512):
+        expected = _dense_gqa_attention(
+            query,
+            key,
+            value,
+            query_positions,
+            key_positions,
+            sliding_window=sliding_window,
+        )
+        actual = laguna_block_streamed_gqa_attention(
+            query,
+            key,
+            value,
+            query_positions=query_positions,
+            key_positions=key_positions,
+            query_block_size=3,
+            key_block_size=127,
+            sliding_window=sliding_window,
+        )
+        np.testing.assert_allclose(actual, expected, atol=2.0e-6, rtol=2.0e-6)
+
+
+def test_laguna_block_streaming_oracle_handles_final_128k_position() -> None:
+    rng = np.random.default_rng(131_072)
+    query_positions = np.asarray([131_071], dtype=np.int64)
+    key_positions = np.arange(131_072, dtype=np.int64)
+    query = rng.normal(0.0, 0.2, size=(1, 6, 4)).astype(np.float32)
+    key = rng.normal(0.0, 0.2, size=(131_072, 1, 4)).astype(np.float32)
+    value = rng.normal(0.0, 0.2, size=(131_072, 1, 4)).astype(np.float32)
+
+    expected = _dense_gqa_attention(
+        query,
+        key,
+        value,
+        query_positions,
+        key_positions,
+    )
+    actual = laguna_block_streamed_gqa_attention(
+        query,
+        key,
+        value,
+        query_positions=query_positions,
+        key_positions=key_positions,
+        query_block_size=16,
+        key_block_size=127,
+    )
+
+    np.testing.assert_allclose(actual, expected, atol=2.0e-6, rtol=2.0e-6)
+    assert np.isfinite(actual).all()
 
 
 def test_laguna_softplus_head_gate_broadcasts_one_gate_per_head() -> None:
