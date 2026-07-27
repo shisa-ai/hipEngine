@@ -184429,3 +184429,21 @@ Vulkan local sizes verbatim will close the measured gap.
   Production remains **645.803 tok/s / 792.811 ms**. Raw artifact SHA-256:
   `ca8427be...e4e87`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`.
+
+## 2026-07-27 — Reject pair-shared P8 raw-weight prefetch
+
+- RED added a pair-shared P8 case to the established CPU-reference fixture.
+  GREEN changed only next-K32 payload acquisition: each adjacent column
+  pair's even lane gathered the eight raw T16 words and broadcast them to the
+  odd lane. Current-interval decode, resident bytes, accumulator geometry,
+  and BF16 boundaries remained unchanged. The focused fixture passed and
+  actual-weight checksums are identical to production.
+- Forty-one counter-rotated burst-three samples decisively reject the
+  candidate. M256 regresses **4.4182 -> 5.5939 ms (+26.61%)** and M512
+  regresses **6.6970 -> 8.1325 ms (+21.43%)**. Adjacent lanes' logical
+  gathers already coalesce into the same memory transaction; the eight wave
+  shuffles add latency without removing physical traffic.
+- Removed the specialization, export, wrapper option, fixture case, and
+  harness mode. Production remains **645.803 tok/s / 792.811 ms**. Raw
+  artifact SHA-256: `b059134e...528665`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`.
