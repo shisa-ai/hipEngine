@@ -184225,3 +184225,33 @@ Vulkan local sizes verbatim will close the measured gap.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-production.json`.
   A fresh selector-unset all-family trace is next.
+
+## 2026-07-27 — Attribute Q4 selected-down raw-nibble P8 production
+
+- Clean tracked revision `60f089650` ran the cached selector-unset
+  matrix2048/attention128, two-queue, one-repetition `rocprofv3` kernel trace
+  across 512/1K/4K. The profiled pp512 row is attribution-only at
+  **596.924 tok/s**.
+- pp512 records **2,417** dispatches, **1,119.634 ms** inclusive kernel sum,
+  and **853.428 ms** kernel span. The largest inclusive families are selected
+  Q4 gate/up **334.201 ms**, activation/reduce/residual **269.925 ms**,
+  selected Q4/Q6 down **171.040 ms**, source-F16 **124.668 ms**,
+  dense/shared **95.167 ms**, attention **67.923 ms**, and router
+  **22.883 ms**.
+- Versus the prior single trace, selected down moves **-0.398%** and span
+  moves **-0.587%** while activation and dense/shared move
+  **+3.294%/+3.351%**. These inclusive changes include queue overlap and
+  run noise; they are not additive wall savings. The exact Q4-down P8 body is
+  observed at local64/VGPR96/SGPR128/LDS1536B/scratch0, while the sub-512
+  rollback remains VGPR88.
+- The clean production wall remains **796.093 ms**, **64.664 ms** above the
+  700-tok/s wall. The profiled kernel span is **121.999 ms** above that target,
+  so the next bounded screen requires a structural physical-byte, cross-tile,
+  or caller-boundary mechanism with a multi-millisecond named-family win.
+- Child/raw-trace/summary SHA-256 values are
+  `8d838e032c01e20e5eea4c26bb52b539a57f43e901c0afc563f17cf8d4954302`,
+  `d3c1df30eaad716903840c416bec23e0d14fba4e27b7b1f026c07e3b501fce8a`,
+  and
+  `27ec87ae3f42c05d48491e0d99bc7ddc2f55a2f911a7f1ef26af553fbc6a24b5`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-p8-all-family-profile.json`.

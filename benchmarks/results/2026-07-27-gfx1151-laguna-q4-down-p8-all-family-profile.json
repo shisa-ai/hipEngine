@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_q4_down_p8_all_family_profile",
+  "status": "accepted_attribution",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "repo": {
+    "revision": "60f08965070f31998653748c69d601fa54a2d3b1",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-down-p8-production-rocprof-60f089650 --output-file q4-down-p8-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-down-p8-production-rocprof-60f089650/child.json",
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "queues": 2,
+    "profiled_throughput_is_attribution_only": true
+  },
+  "pp512": {
+    "profiled_tok_s": 596.924434468944,
+    "dispatches": 2417,
+    "kernel_sum_ms": 1119.634439,
+    "kernel_span_ms": 853.427903,
+    "families_ms": {
+      "selected_q4_gate_up": 334.201149,
+      "activation_reduce_residual": 269.924908,
+      "selected_q4_q6_down": 171.039911,
+      "source_f16_projection": 124.668226,
+      "dense_shared_quant_projection": 95.167427,
+      "attention": 67.923337,
+      "norm_rope_gate": 26.25541,
+      "router": 22.882546,
+      "other": 4.512223,
+      "prefill_kv_write": 1.868708,
+      "lm_head_argmax": 1.154005,
+      "embedding": 0.036589
+    }
+  },
+  "comparison_to_previous_trace": {
+    "previous_revision": "467660ec3",
+    "kernel_sum_change_percent": 0.9480665852657388,
+    "kernel_span_change_percent": -0.5866796989921319,
+    "selected_q4_gate_up_change_percent": 0.14994720989167654,
+    "activation_reduce_residual_change_percent": 3.2937845721698,
+    "selected_q4_q6_down_change_percent": -0.3980649542151715,
+    "source_f16_projection_change_percent": -0.9111400791385171,
+    "dense_shared_quant_projection_change_percent": 3.3507216365758374,
+    "attention_change_percent": -0.12962954794408788,
+    "router_change_percent": 1.113793873389124,
+    "interpretation": "Single profiled inclusive-family sums move with cross-stream overlap and are not additive wall savings. Dispatches are unchanged, the named selected-down family is lower, and kernel span improves."
+  },
+  "q4_down_kernel": {
+    "template": "gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,true,false,64,true,true,64,true,false,8>",
+    "workgroup_size": 64,
+    "vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 1536,
+    "scratch_bytes": 0,
+    "m512_grid": [
+      3072,
+      408
+    ],
+    "sub512_rollback_template_observed": true,
+    "sub512_vgpr": 88
+  },
+  "decision": {
+    "result": "production path confirmed",
+    "largest_inclusive_family": "selected_q4_gate_up",
+    "largest_inclusive_family_ms": 334.201149,
+    "second_family": "activation_reduce_residual",
+    "second_family_ms": 269.924908,
+    "next_gate": "Require a structural physical-byte, cross-tile, or caller-stream fusion mechanism with a multi-millisecond family win before another complete-model screen."
+  },
+  "source_sha256": {
+    "child": "8d838e032c01e20e5eea4c26bb52b539a57f43e901c0afc563f17cf8d4954302",
+    "trace": "d3c1df30eaad716903840c416bec23e0d14fba4e27b7b1f026c07e3b501fce8a",
+    "summary": "27ec87ae3f42c05d48491e0d99bc7ddc2f55a2f911a7f1ef26af553fbc6a24b5"
+  }
+}

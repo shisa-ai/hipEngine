@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-27
 
+- [accepted attribution for exact gfx1151 Laguna Q4 selected-down P8 production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the clean `60f089650` trace records **2,417** pp512 dispatches, **1,119.634 ms** inclusive kernel sum, and **853.428 ms** kernel span; selected gate/up remains largest at **334.201 ms**, activation/reduce/residual is **269.925 ms**, and selected down is **171.040 ms** with the P8 body confirmed at local64/VGPR96/LDS1536B/scratch0; attribution only, no new throughput claim; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-p8-all-family-profile.json`.
+
 - [retained exact gfx1151 Laguna Q4 selected-down raw-nibble-P8 production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / selector-unset 512/1K/4K moves **643.554/573.066/466.290 -> 643.141/573.717/466.913 tok/s (-0.064%/+0.114%/+0.134%)**; pp512 is flat within run variance, while retention is supported by the exact **7/7** matched A/B and **-2.450%** named Q4-down family reduction; tokens, positions, lifecycle, and full allocation recovery remain exact; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-production.json`.
 
 - [retained exact gfx1151 Laguna Q4 selected-down raw-nibble-P8 candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / carry only the next K32 interval's eight raw T16 nibble words in the 64x32/local64 Q4-down body for producer rows >=512; tracing cuts 72 M512 launches **217.416 -> 212.090 ms (-2.450%)**, and seven complete-state pp512 pairs improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)** with identical state; subsequently published as the gfx1151 default; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json`.
