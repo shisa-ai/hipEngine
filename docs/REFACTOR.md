@@ -14,6 +14,21 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna long-context F32 hipBLASLt ceiling
+
+- Added 2026-07-27 as an explicit non-default LC-1 ceiling. The existing
+  production `LagunaAttentionHipblasLt` retains its 512-token admission and
+  allocation by default; only the ceiling harness passes a larger
+  `max_context`/48-head bound and explicit QK/PV algorithm indices.
+- Tuned inclusive M128 attention is positive at every measured shape and
+  reaches **1.250x** qrow6 at 128K, but the 128K ceiling owns **4.298 GB** of
+  scratch and has not passed a complete-model quality/lifecycle gate.
+- After the global-only production candidate either passes or fails its
+  4K/16K/64K/128K gates, remove the ceiling-only constructor breadth,
+  algorithm-override API, and dedicated harness if they are no longer needed
+  for the block-streamed tensorized successor. Do not allow the large-context
+  bound to silently inflate the established 512-token production owner.
+
 ## Laguna MoE shared/routed branch-concurrency candidate
 
 - Added 2026-07-26 as an exact, default-off session and profile-harness

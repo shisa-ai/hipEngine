@@ -30,7 +30,7 @@ _HIPBLAS_OP_N = 111
 _MATRIX_LAYOUT_BATCH_COUNT = 0
 _MATRIX_LAYOUT_STRIDED_BATCH_OFFSET = 1
 _ROWS = 128
-_MAX_CONTEXT = 512
+_PRODUCTION_MAX_CONTEXT = 512
 _MAX_Q_HEADS = 72
 _KV_HEADS = 8
 _HEAD_DIM = 128
@@ -138,10 +138,13 @@ class _BatchedProblem:
             ),
             "hipblasLtMatmulPreferenceSetAttribute(MAX_WORKSPACE)",
         )
-        algorithms = self._algorithms()
-        index = min(max(int(preferred_index), 0), len(algorithms) - 1)
-        self.algorithm = algorithms[index]
-        if int(self.algorithm.workspace_size) != 0:
+        self.algorithms = self._algorithms()
+        self.algorithm_index = min(
+            max(int(preferred_index), 0),
+            len(self.algorithms) - 1,
+        )
+        self.algorithm = self.algorithms[self.algorithm_index]
+        if any(int(algorithm.workspace_size) != 0 for algorithm in self.algorithms):
             raise RuntimeError(
                 "Laguna attention hipBLASLt requires zero workspace"
             )
@@ -208,7 +211,14 @@ class _BatchedProblem:
         out_ptr: int,
         *,
         stream: int,
+        algorithm_index: int | None = None,
     ) -> None:
+        selected = self.algorithm_index
+        if algorithm_index is not None:
+            selected = int(algorithm_index)
+            if selected < 0 or selected >= len(self.algorithms):
+                raise ValueError("hipBLASLt algorithm index is out of range")
+        algorithm = self.algorithms[selected]
         alpha = ctypes.c_float(1.0)
         beta = ctypes.c_float(0.0)
         library = self.owner.library
@@ -226,7 +236,7 @@ class _BatchedProblem:
                 self.layouts[2],
                 ctypes.c_void_p(out_ptr),
                 self.layouts[3],
-                ctypes.byref(self.algorithm.algo),
+                ctypes.byref(algorithm.algo),
                 ctypes.c_void_p(),
                 0,
                 ctypes.c_void_p(stream),
@@ -275,26 +285,41 @@ class LagunaAttentionHipblasLt:
         runtime: HipRuntime | None = None,
         packed_queries: bool = False,
         wave_rows_softmax: bool = False,
+        max_context: int = _PRODUCTION_MAX_CONTEXT,
+        max_q_heads: int = _MAX_Q_HEADS,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.packed_queries = bool(packed_queries)
         self.wave_rows_softmax = bool(wave_rows_softmax)
+        self.max_context = int(max_context)
+        self.max_q_heads = int(max_q_heads)
+        if (
+            self.max_context < _PRODUCTION_MAX_CONTEXT
+            or self.max_context > 131072
+            or self.max_context % _ROWS != 0
+        ):
+            raise ValueError(
+                "Laguna attention max_context must be an M128 multiple "
+                "within [512, 131072]"
+            )
+        if self.max_q_heads not in {48, 72}:
+            raise ValueError("Laguna attention max_q_heads must be 48 or 72")
         self.owner = HipblasLt(library_path)
         self._problems: dict[tuple[int, int], _ProblemPair] = {}
         self._buffers: list[DeviceBuffer] = []
         self._closed = False
         try:
             self.key_f32 = self._allocate(
-                _MAX_CONTEXT * _KV_HEADS * _HEAD_DIM * 4
+                self.max_context * _KV_HEADS * _HEAD_DIM * 4
             )
             self.value_f32 = self._allocate(
-                _MAX_CONTEXT * _KV_HEADS * _HEAD_DIM * 4
+                self.max_context * _KV_HEADS * _HEAD_DIM * 4
             )
             self.scores_f32 = self._allocate(
-                _MAX_Q_HEADS * _ROWS * _MAX_CONTEXT * 4
+                self.max_q_heads * _ROWS * self.max_context * 4
             )
             self.head_major_f32 = (
-                self._allocate(_MAX_Q_HEADS * _ROWS * _HEAD_DIM * 4)
+                self._allocate(self.max_q_heads * _ROWS * _HEAD_DIM * 4)
                 if self.packed_queries
                 else None
             )
@@ -321,6 +346,34 @@ class LagunaAttentionHipblasLt:
             int(rows) == _ROWS
             and context in {128, 256, 384, 512}
             and int(num_q_heads) in {48, 72}
+            and int(num_kv_heads) == _KV_HEADS
+            and int(head_dim) == _HEAD_DIM
+        )
+
+    def _supports_shape(
+        self,
+        *,
+        rows: int,
+        start_position: int,
+        num_q_heads: int,
+        num_kv_heads: int,
+        head_dim: int,
+    ) -> bool:
+        if self.max_context == _PRODUCTION_MAX_CONTEXT:
+            return self.supports(
+                rows=rows,
+                start_position=start_position,
+                num_q_heads=num_q_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+            )
+        context = int(start_position) + int(rows)
+        return (
+            int(rows) == _ROWS
+            and _ROWS <= context <= self.max_context
+            and context % _ROWS == 0
+            and int(num_q_heads) in {48, 72}
+            and int(num_q_heads) <= self.max_q_heads
             and int(num_kv_heads) == _KV_HEADS
             and int(head_dim) == _HEAD_DIM
         )
@@ -373,9 +426,15 @@ class LagunaAttentionHipblasLt:
                 ),
             ),
             preferred_index=(
-                _PACKED_ALGORITHM_INDEX[(q_heads, parsed_context, "qk")]
+                _PACKED_ALGORITHM_INDEX.get(
+                    (q_heads, parsed_context, "qk"),
+                    0,
+                )
                 if self.packed_queries
-                else _ALGORITHM_INDEX[(q_heads, parsed_context, "qk")]
+                else _ALGORITHM_INDEX.get(
+                    (q_heads, parsed_context, "qk"),
+                    0,
+                )
             ),
         )
         try:
@@ -413,9 +472,15 @@ class LagunaAttentionHipblasLt:
                     ),
                 ),
                 preferred_index=(
-                    _PACKED_ALGORITHM_INDEX[(q_heads, parsed_context, "pv")]
+                    _PACKED_ALGORITHM_INDEX.get(
+                        (q_heads, parsed_context, "pv"),
+                        0,
+                    )
                     if self.packed_queries
-                    else _ALGORITHM_INDEX[(q_heads, parsed_context, "pv")]
+                    else _ALGORITHM_INDEX.get(
+                        (q_heads, parsed_context, "pv"),
+                        0,
+                    )
                 ),
             )
         except Exception:
@@ -443,10 +508,12 @@ class LagunaAttentionHipblasLt:
         kv_library=None,
         query_is_packed: bool = False,
         unpack_output: bool = True,
+        qk_algorithm_index: int | None = None,
+        pv_algorithm_index: int | None = None,
     ) -> None:
         if self._closed:
             raise RuntimeError("Laguna attention hipBLASLt route is closed")
-        if not self.supports(
+        if not self._supports_shape(
             rows=rows,
             start_position=start_position,
             num_q_heads=num_q_heads,
@@ -494,6 +561,7 @@ class LagunaAttentionHipblasLt:
                 query_head_major_ptr,
                 self.scores_f32.ptr,
                 stream=stream,
+                algorithm_index=qk_algorithm_index,
             )
         else:
             for kv_head in range(_KV_HEADS):
@@ -504,6 +572,7 @@ class LagunaAttentionHipblasLt:
                     self.scores_f32.ptr
                     + kv_head * q_group * _ROWS * context * 4,
                     stream=stream,
+                    algorithm_index=qk_algorithm_index,
                 )
         if not self.wave_rows_softmax:
             laguna_dense_initial_causal_softmax_f32_spans(
@@ -538,6 +607,7 @@ class LagunaAttentionHipblasLt:
                 self.scores_f32.ptr,
                 self.head_major_f32.ptr if unpack_output else out_ptr,
                 stream=stream,
+                algorithm_index=pv_algorithm_index,
             )
             if unpack_output:
                 laguna_dense_initial_query_head_transpose_f32(
@@ -560,7 +630,19 @@ class LagunaAttentionHipblasLt:
                     int(out_ptr)
                     + kv_head * q_group * _HEAD_DIM * 4,
                     stream=stream,
+                    algorithm_index=pv_algorithm_index,
                 )
+
+    def algorithm_counts(
+        self,
+        *,
+        num_q_heads: int,
+        context: int,
+    ) -> tuple[int, int]:
+        """Return zero-workspace QK/PV heuristic counts for one admitted shape."""
+
+        pair = self._problem(int(num_q_heads), int(context))
+        return len(pair.qk.algorithms), len(pair.pv.algorithms)
 
     @property
     def scratch_nbytes(self) -> int:

@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_lc1_long_f32_hipblaslt_ceiling",
+  "status": "accepted_ceiling",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "shape": {
+    "rows": 128,
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "cache_dtype": "BF16",
+    "gemm_dtype": "F32",
+    "contexts": [
+      512,
+      4096,
+      16384,
+      65536,
+      131072
+    ]
+  },
+  "protocol": {
+    "timing": "HIP events; three counter-rotated samples after one warmup",
+    "candidate_boundary": "inclusive BF16 cache widen + query transpose + packed strided-batch F32 QK + wave-row causal softmax + packed F32 PV + output transpose",
+    "algorithm_screen": "one pass over all 32 zero-workspace QK heuristics, then one pass over all 32 PV heuristics at 4K/16K/64K/128K",
+    "main_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_hipblaslt_ceiling.py --samples 3 --warmups 1 --screen-algorithms --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-long-hipblaslt-algorithm-screen.json",
+    "128k_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_hipblaslt_ceiling.py --samples 3 --warmups 1 --screen-algorithms --only-128k --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-long-hipblaslt-128k-algorithm-screen.json",
+    "main_raw_sha256": "647a221acf670d5326ce0104a2fa0557939abcf3a68caf5eb84d4855e0247757",
+    "128k_raw_sha256": "87f0ed3982fa5cbdd10faedc8368c3acd96e9369f3133e20fa2c68313391d911"
+  },
+  "results": [
+    {
+      "context": 512,
+      "qrow6_ms": 0.8947179914,
+      "hipblaslt_ms": 0.413695991,
+      "speedup": 2.1627427162,
+      "qk_algorithm": 1,
+      "pv_algorithm": 22,
+      "max_abs": 4.470348358154297e-08
+    },
+    {
+      "context": 4096,
+      "qrow6_ms": 7.8891968727,
+      "hipblaslt_ms": 5.612596035,
+      "speedup": 1.4056234982,
+      "qk_algorithm": 20,
+      "pv_algorithm": 25,
+      "max_abs": 3.306195139884949e-08
+    },
+    {
+      "context": 16384,
+      "qrow6_ms": 32.383026123,
+      "hipblaslt_ms": 25.6329154968,
+      "speedup": 1.263337607,
+      "qk_algorithm": 28,
+      "pv_algorithm": 1,
+      "max_abs": 4.330649971961975e-08
+    },
+    {
+      "context": 65536,
+      "qrow6_ms": 133.3993835449,
+      "hipblaslt_ms": 102.2487792969,
+      "speedup": 1.3046550234,
+      "qk_algorithm": 28,
+      "pv_algorithm": 8,
+      "max_abs": 4.0279701352119446e-08
+    },
+    {
+      "context": 131072,
+      "qrow6_ms": 273.0216674805,
+      "hipblaslt_ms": 218.4729156494,
+      "speedup": 1.2496819877,
+      "qk_algorithm": 28,
+      "pv_algorithm": 3,
+      "max_abs": 4.621688276529312e-08
+    }
+  ],
+  "scratch": {
+    "65536_capacity_bytes": 2150629376,
+    "131072_capacity_bytes": 4298113024,
+    "layout": "F32 K/V prefix plus F32 [48,128,max_context] scores and one packed query/output tile",
+    "production_default_512_allocation_unchanged": true
+  },
+  "untuned_attribution": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-directory /tmp/laguna-lc1-long-hipblaslt-trace.ngoky6 --output-format csv --output-file lc1blas -- env PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_hipblaslt_ceiling.py --samples 1 --warmups 0 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-long-hipblaslt-traced.json",
+    "trace_sha256": "d387609d8d02d4d1cbfe50b3f7a53749c9956c39dc26e91ed5c2a47d7539c280",
+    "all_shapes_two_launches_each_ms": {
+      "hipblaslt_qk_plus_pv": 471.961,
+      "wave_softmax": 110.068,
+      "cache_widen": 9.874,
+      "query_output_transpose": 0.555
+    },
+    "assessment": "Algorithm 0 made QK the false ceiling. Screening the zero-workspace heuristics is required before judging the library formulation."
+  },
+  "correctness": {
+    "all_outputs_finite": true,
+    "maximum_abs_across_shapes": 4.621688276529312e-08,
+    "maximum_mean_abs_across_shapes": 2.447511748826514e-09,
+    "maximum_rmse_across_shapes": 3.491225530893871e-09,
+    "tracked_active_allocations_after": 0,
+    "focused_tests": [
+      "tests/test_laguna_kv_attention.py::test_laguna_global_online_prefill_admits_model_scale_capacity",
+      "tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu"
+    ]
+  },
+  "decision": {
+    "result": "retain as the LC-1 arithmetic ceiling and integrate a global-only long-context production candidate",
+    "reason": "The tuned inclusive route is positive at every tested shape and remains 1.250x faster at 128K. It proves tensorized/library QK and PV can beat scalar qrow6, while also showing that bounded score scratch and algorithm selection are material constraints.",
+    "production_promoted": false,
+    "next_gate": "Route only dense-initial global M128 chunks above 512 through a capacity-sized 48-head long-context owner; then run 4K/16K/64K directional and mandatory 128K complete-model gates."
+  },
+  "repo": {
+    "base_revision": "2468b66f6533f5b09bf121fd4c1a093c4c9d8d16"
+  }
+}

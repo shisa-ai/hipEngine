@@ -1766,8 +1766,8 @@ def laguna_dense_initial_cache_bf16_to_f32_spans(
         block_size = 1
         global_layout = 0
     parsed_context = int(context)
-    if parsed_context <= 0 or parsed_context > min(int(capacity), 512):
-        raise ValueError("dense-initial BLAS context must be within [1, 512]")
+    if parsed_context <= 0 or parsed_context > int(capacity):
+        raise ValueError("dense-initial BLAS context must be within capacity")
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DENSE_INITIAL_CACHE_BF16_TO_F32)
@@ -1915,8 +1915,8 @@ def laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
     _check_prefill_rows(spans, rows, capacity)
     parsed_context = int(context)
     parsed_start = int(start_position)
-    if parsed_context <= 0 or parsed_context > min(int(capacity), 512):
-        raise ValueError("dense-initial BLAS context must be within [1, 512]")
+    if parsed_context <= 0 or parsed_context > int(capacity):
+        raise ValueError("dense-initial BLAS context must be within capacity")
     if parsed_start < 0 or parsed_start + int(rows) != parsed_context:
         raise ValueError("dense-initial BLAS rows must end at the context boundary")
     if int(num_q_heads) <= 0:
