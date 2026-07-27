@@ -1585,6 +1585,7 @@ class LagunaGGUFResidentSession:
         q6_qmicro_permute: bool | None = None,
         q6_qmicro_planar: bool | None = None,
         q6_wmma_prefetch_weight: bool | None = None,
+        q6_wmma_prefetch_activation: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
@@ -1799,6 +1800,22 @@ class LagunaGGUFResidentSession:
         if self.q6_wmma_prefetch_weight and not self.q6_qmicro_planar:
             raise ValueError(
                 "Q6 WMMA weight prefetch requires planar qmicro"
+            )
+        self.q6_wmma_prefetch_activation = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION",
+                False,
+            )
+            if q6_wmma_prefetch_activation is None
+            else q6_wmma_prefetch_activation
+        )
+        if (
+            self.q6_wmma_prefetch_activation
+            and not self.q6_wmma_prefetch_weight
+        ):
+            raise ValueError(
+                "Q6 WMMA activation prefetch requires weight prefetch"
             )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
@@ -2050,7 +2067,20 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "Q6 WMMA weight prefetch requires planar qmicro"
             )
+        if not enabled and self.q6_wmma_prefetch_activation:
+            raise ValueError(
+                "disable Q6 WMMA activation prefetch before weight prefetch"
+            )
         self.q6_wmma_prefetch_weight = bool(enabled)
+
+    def set_q6_wmma_prefetch_activation(self, enabled: bool) -> None:
+        """Select pipelined Q6 activation loads or weight-only prefetch."""
+
+        if enabled and not self.q6_wmma_prefetch_weight:
+            raise ValueError(
+                "Q6 WMMA activation prefetch requires weight prefetch"
+            )
+        self.q6_wmma_prefetch_activation = bool(enabled)
 
     def set_moe_shared_after_router(self, enabled: bool) -> None:
         """Move concurrent shared work behind the exact router prefix."""
@@ -3313,6 +3343,7 @@ class LagunaGGUFResidentSession:
             group_compact_mode=self.group_compact_mode,
             fuse_selected_silu_pack=self.fuse_selected_silu_pack,
             q6_wmma_prefetch_weight=self.q6_wmma_prefetch_weight,
+            q6_wmma_prefetch_activation=self.q6_wmma_prefetch_activation,
             shared_after_router=self.moe_shared_after_router,
             shared_stream=(
                 self._moe_shared_stream

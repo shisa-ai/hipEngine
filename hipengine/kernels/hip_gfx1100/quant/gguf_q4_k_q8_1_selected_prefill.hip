@@ -3608,7 +3608,8 @@ template <
     bool QMICRO_PLANAR = false,
     bool INTEGER_WMMA = false,
     bool WMMA_HOIST_ACTIVATION = false,
-    bool WMMA_PREFETCH_WEIGHT = false>
+    bool WMMA_PREFETCH_WEIGHT = false,
+    bool WMMA_PREFETCH_ACTIVATION = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3673,6 +3674,11 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
           (INTEGER_WMMA && WMMA_HOIST_ACTIVATION &&
            QMICRO_PLANAR && THREADS == 128 && MMQ_N == 64),
       "WMMA weight prefetch requires production planar-Q6 geometry");
+  static_assert(
+      !WMMA_PREFETCH_ACTIVATION ||
+          (WMMA_PREFETCH_WEIGHT && HALF_ROW_ACTIVATION_STAGE &&
+           ACTIVATION_PASSES == 1),
+      "WMMA activation prefetch requires the production weight-prefetch path");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -3719,6 +3725,8 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   uint32_t prefetched_qmicro[3] = {0, 0, 0};
   uint16_t prefetched_d_bits = 0;
   int8_t prefetched_scale = 0;
+  mmq_i32x4_t prefetched_activation_qs = {0, 0, 0, 0};
+  float prefetched_activation_d = 0.0f;
 
   const int k32_iters = static_cast<int>(in_features / MMQ_K);
   for (int k32 = 0; k32 < k32_iters; ++k32) {
@@ -3933,16 +3941,36 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
           int sum = 0;
           mmq_i32x4_t packed = {0, 0, 0, 0};
           if (valid_row && compact_row < compact_rows) {
-            const int64_t q8_index =
-                static_cast<int64_t>(pass) * plane_blocks +
-                compact_row * q8_blocks_per_row + (k32 >> 2);
-            const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
-            if (half == 0) {
-              d = xb.ds4[2 * (k32 & 3)];
+            if constexpr (WMMA_PREFETCH_ACTIVATION) {
+              if (k32 > 0) {
+                packed = prefetched_activation_qs;
+                if (half == 0) {
+                  d = prefetched_activation_d;
+                }
+              } else {
+                const int64_t q8_index =
+                    static_cast<int64_t>(pass) * plane_blocks +
+                    compact_row * q8_blocks_per_row + (k32 >> 2);
+                const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
+                if (half == 0) {
+                  d = xb.ds4[2 * (k32 & 3)];
+                }
+                const int8_t* __restrict__ qs =
+                    xb.qs + (k32 & 3) * Q8_1_BLOCK + half * 16;
+                packed = *reinterpret_cast<const mmq_i32x4_t*>(qs);
+              }
+            } else {
+              const int64_t q8_index =
+                  static_cast<int64_t>(pass) * plane_blocks +
+                  compact_row * q8_blocks_per_row + (k32 >> 2);
+              const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
+              if (half == 0) {
+                d = xb.ds4[2 * (k32 & 3)];
+              }
+              const int8_t* __restrict__ qs =
+                  xb.qs + (k32 & 3) * Q8_1_BLOCK + half * 16;
+              packed = *reinterpret_cast<const mmq_i32x4_t*>(qs);
             }
-            const int8_t* __restrict__ qs =
-                xb.qs + (k32 & 3) * Q8_1_BLOCK + half * 16;
-            packed = *reinterpret_cast<const mmq_i32x4_t*>(qs);
           }
 #pragma unroll
           for (int pack = 0; pack < 4; ++pack) {
@@ -4163,6 +4191,34 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
       }
     }
 
+    if constexpr (WMMA_PREFETCH_ACTIVATION) {
+      if (k32 + 1 < k32_iters) {
+        const int next_k32 = k32 + 1;
+        const int row_offset = tid >> 1;
+        const int half = tid & 1;
+        const bool valid_row = row_offset < valid_rows;
+        const int64_t compact_row =
+            valid_row
+                ? compact_base + tile_row_in_expert + row_offset
+                : 0;
+        prefetched_activation_qs = mmq_i32x4_t{0, 0, 0, 0};
+        prefetched_activation_d = 0.0f;
+        if (valid_row && compact_row < compact_rows) {
+          const int64_t q8_index =
+              compact_row * q8_blocks_per_row + (next_k32 >> 2);
+          const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
+          if (half == 0) {
+            prefetched_activation_d =
+                xb.ds4[2 * (next_k32 & 3)];
+          }
+          const int8_t* __restrict__ qs =
+              xb.qs + (next_k32 & 3) * Q8_1_BLOCK + half * 16;
+          prefetched_activation_qs =
+              *reinterpret_cast<const mmq_i32x4_t*>(qs);
+        }
+      }
+    }
+
     if constexpr (INTEGER_WMMA) {
       const int lane16 = lane & 15;
       const int half_id = lane >> 4;
@@ -4378,7 +4434,8 @@ template <
     bool QMICRO_PLANAR = false,
     bool INTEGER_WMMA = false,
     bool WMMA_HOIST_ACTIVATION = false,
-    bool WMMA_PREFETCH_WEIGHT = false>
+    bool WMMA_PREFETCH_WEIGHT = false,
+    bool WMMA_PREFETCH_ACTIVATION = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -4419,7 +4476,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           QMICRO_PLANAR,
           INTEGER_WMMA,
           WMMA_HOIST_ACTIVATION,
-          WMMA_PREFETCH_WEIGHT>),
+          WMMA_PREFETCH_WEIGHT,
+          WMMA_PREFETCH_ACTIVATION>),
       grid,
       block,
       0,
@@ -5736,6 +5794,50 @@ hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_prefetch_wei
       true,
       true,
       false,
+      true,
+      true,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_prefetch_weight_activation_skip_padded_activation_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
       true,
       true,
       true,
