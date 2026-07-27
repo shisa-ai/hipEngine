@@ -1527,18 +1527,18 @@ should be boring.
   and activation hoist into one unconditional gfx1151 production symbol after
   the current 700 campaign no longer needs the three independent bisection
   points; preserve one non-prefetch fallback for unmeasured geometries.
-- The next exact successor adds
+- The published exact successor adds
   `LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS`, a resident-session rollback, and
   distinct producer/consumer exports. It reuses Q6's unused D4 raw-sum field
   for two `int16` K16 quant sums without changing the 160-byte ABI. The
   actual inclusive leaf improves **4.1501 -> 4.1162 ms (-0.818%)** and 11
   complete-state pp512 pairs save **1.407 ms** at the paired median with
-  **6/11 wins**. Keep the rollback only through a clean selector-unset
-  512/1K/4K publication and trace proving a Q6-family reduction. If either
-  gate regresses, remove the capability, session field/setter, special pack
-  and consumer exports, wrapper keywords, harness modes, and fixture row.
-  If both pass, collapse this and the three older Q6 WMMA selectors after the
-  current campaign.
+  **6/11 wins**. Clean selector-unset 512/1K/4K subsequently improves
+  **645.803/575.942/468.311 -> 647.207/576.799/468.431 tok/s**, while the
+  traced 23-call Q6 body falls **100.367 -> 99.459 ms (-0.905%)**. Both
+  promotion gates pass. Keep the rollback through the current 700 campaign,
+  then collapse this and the three older Q6 WMMA selectors into one
+  unconditional gfx1151 production symbol.
 
 ## Laguna Q4 projection-role quality candidate
 

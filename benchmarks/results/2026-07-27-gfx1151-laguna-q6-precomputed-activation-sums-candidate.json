@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "candidate_default_pending_clean_publication",
+  "status": "retained_and_published",
   "kind": "hipengine_laguna_q6_precomputed_activation_sums",
   "created_at": "2026-07-27T04:11:26.608256+00:00",
   "hardware": {
@@ -59,5 +59,5 @@
       "sha256": "7287784fea49023177388edbd628d360564aa8e63d3bcecc7fc41f44bfe12b2e"
     }
   ],
-  "decision": "Enable on gfx1151, retain the explicit session rollback through a clean selector-unset 512/1K/4K publication and family trace, and remove if either clean gate fails to reproduce a non-regression."
+  "decision": "Retained and published on gfx1151 after clean selector-unset 512/1K/4K improved at every length and the traced pp512 Q6 window fell 0.905%. Keep the explicit rollback through the active 700 campaign, then collapse the layered Q6 selectors."
 }

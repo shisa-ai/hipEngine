@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T13:27:57+09:00",
+  "kind": "hipengine_laguna_q6_precomputed_activation_sums_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Poolside Laguna S 2.1 Q4_K_M prefill at 512/1024/4096 rows on gfx1151",
+  "repo": {
+    "runtime_revision": "15b26fc0929c214aba2f0bf733798226fb3a1bd8",
+    "previous_production_revision": "8acbb3764fbcb0204c4ab1e116e6d796fb3c4437",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "planar-qmicro Q6 selected-down integer-WMMA row64 specialization",
+    "mechanism": "reuse the unchanged D4 metadata field for two exact int16 K16 activation sums computed once by the producer instead of recomputed by 48 output-column workgroups",
+    "resident_delta_bytes": 0,
+    "activation_block_bytes": 160,
+    "lds_delta_bytes": 0,
+    "scratch_bytes_per_thread": 0,
+    "previous_512_1024_4096_tok_s": [
+      645.803162,
+      575.942,
+      468.311
+    ],
+    "new_512_1024_4096_tok_s": [
+      647.2068529872759,
+      576.7989877815183,
+      468.4308284097971
+    ],
+    "change_percent": [
+      0.2173558554480648,
+      0.1487975840481104,
+      0.025587357503265018
+    ],
+    "pp512_wall_ms": 791.0917469998823,
+    "pp512_wall_to_700_ms": 59.66317557131083
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-precomputed-production-long.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "tracked_worktree_clean": true,
+    "selector_unset": true,
+    "raw_sha256": "1566c45e6704f7477c620f73dc2487dc6ebe007004da1ba95d110de627b215cb"
+  },
+  "samples": {
+    "512_tok_s": [
+      624.5926119634796,
+      649.1044477544295,
+      647.2068529872759
+    ],
+    "1024_tok_s": [
+      581.0921365543372,
+      575.9863877379528,
+      576.7989877815183
+    ],
+    "4096_tok_s": [
+      470.3935450079844,
+      468.4308284097971,
+      466.308024364866
+    ]
+  },
+  "correctness": {
+    "primitive_cpu_reference_cases_passed": 16,
+    "actual_weight_bf16_mismatches": 0,
+    "complete_model_ab_runs": 22,
+    "complete_model_state_exact": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "quality_transfer": "The producer and consumer are BF16-bit exact to the preceding production Q6 path, so the existing absolute category gate transfers unchanged."
+  },
+  "memory": {
+    "resident_nbytes": 78805563028,
+    "peak_allocated_bytes": 78805563028,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0
+  },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q6-precomputed-trace.PefCxh --output-file laguna-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-precomputed-trace.PefCxh/child.json",
+    "pp512": {
+      "dispatches": 2417,
+      "kernel_sum_ms": 1106.503305,
+      "kernel_span_ms": 843.062564,
+      "selected_q4_gate_up_ms": 334.229198,
+      "selected_q4_q6_down_ms": 169.510659,
+      "source_f16_projection_ms": 122.52338,
+      "dense_shared_quant_projection_ms": 91.461637,
+      "attention_ms": 67.731903,
+      "router_ms": 22.774592,
+      "activation_reduce_residual_ms": 264.11683,
+      "q6_precomputed_sum_calls": 23,
+      "q6_precomputed_sum_ms": 99.458769,
+      "previous_q6_ms": 100.367261,
+      "q6_change_percent": -0.9051678870790972
+    },
+    "kernel": {
+      "template_tail": "true,true,true,true,true,true",
+      "workgroup": 128,
+      "vgpr": 112,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "child_sha256": "329b5bfb7c578121e365a3f831e3dcf5049a91cc601598ca2a8cc2a7b3830949",
+    "raw_trace_sha256": "b4a8745c7f45b7182187ca072a6dad7aa89fba05f9461823307bf049b57d309c",
+    "summary_sha256": "f02b895beb1f5f1c141189b24363100ac812ce85681e134352c79c3c71bf3c1d"
+  },
+  "source_runs": {
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-production.json"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 647.2068529872759,
+    "target_700_reached": false,
+    "next_action": "continue the selected-expert physical-byte/cross-tile campaign; 59.663 ms remains to 700"
+  }
+}
