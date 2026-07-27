@@ -1738,6 +1738,19 @@ Immediate execution queue:
    avoids computing the masked upper triangle.
    Evidence:
    [`2026-07-27-gfx1151-laguna-production-trace-attention-m256-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-production-trace-attention-m256-rejected.json).
+55. **Rejected and removed before integration:** rebuild the 64-row Q4
+   gate/up tile on the current direct-wave, activation-double-buffered,
+   raw-prefetch-P8 body. This differs materially from the old 64-row screen,
+   but it remains slower: all-expert M256/M512 move
+   **4.3871 -> 5.0045 ms (+14.07%)** and
+   **6.5282 -> 7.2574 ms (+11.17%)**. Restricting row64 to naturally dense
+   experts does not rescue it. The best threshold (>=96 rows; only one M256
+   and five M512 experts) still regresses **5.46%/6.07%** because the larger
+   accumulator lifetime and second dispatch exceed the saved weight reads.
+   The CPU-reference gate passes and candidate/production BF16 outputs match.
+   All kernel, wrapper, fixture, and harness candidate surfaces are removed.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1753,7 +1766,9 @@ to Q4 selected down:
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
    metadata-carrying, non-temporal, packed-metadata, pure axis-swap, and
-   two/four-row-group launch-order schedules are now rejected.
+   two/four-row-group launch-order schedules are now rejected. Direct row64
+   is also closed on the current P8 body, including dense-expert partitioning;
+   the next expert candidate must not extend accumulator lifetime.
 3. Do not widen the 128-row attention slice through another dense
    QK/softmax/PV formulation: M256 remains slower even after exhaustive
    library-algorithm tuning. Reopen attention only for a fused causal
@@ -1777,8 +1792,9 @@ Post-350 exclusions:
 - do not retry the rejected raw-sum D8 or D4-gate quality shortcuts;
 - do not add a duplicate resident expert-weight sidecar or weaken c=1 exact
   decode to buy prefill;
-- do not retry 40/48/64-row Q4 gate/up accumulation without a new mechanism
-  that avoids the additional live accumulator cost;
+- do not retry 40/48/64-row Q4 gate/up accumulation or a row64/row32
+  density split without a new mechanism that avoids the additional live
+  accumulator and second-dispatch costs;
 - do not retry qrow3 attention without a mechanism that changes the SWA
   K/V-reuse or accumulator-cost tradeoff;
 - do not retry Q4 gate/up grid-axis permutations without a cross-workgroup
@@ -3623,6 +3639,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json`

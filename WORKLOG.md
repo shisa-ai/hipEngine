@@ -184366,3 +184366,27 @@ Vulkan local sizes verbatim will close the measured gap.
   **3 passed**. Production remains **645.803 tok/s**, **61.383 ms** from
   700. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-production-trace-attention-m256-rejected.json`.
+
+## 2026-07-27 — Reject current-body Q4 gate/up row64
+
+- Reopened the previously rejected 64-row Q4 gate/up geometry only because
+  the production body now has three mechanisms absent from the old screen:
+  direct wave-column T16 decode, activation double buffering, and raw-weight
+  P8 prefetch. RED added a 64-row case to the established CPU-reference
+  fixture; GREEN generalized the template/launcher and passed the focused
+  quality gate.
+- Actual layer-1 weights and natural routing replay reject the all-expert
+  route. Nine counter-rotated burst-three samples measure M256
+  **4.3871 -> 5.0045 ms (+14.07%)** and M512
+  **6.5282 -> 7.2574 ms (+11.17%)**. Row64 padding rises from
+  **2.9875x -> 5.65x** at M256 and **1.85625x -> 3.0875x** at M512.
+- A bounded density partition then kept production row32 for small experts
+  and used row64 only at thresholds 64 and 96. The best threshold 96 assigns
+  only one M256 and five M512 experts to row64, yet still regresses
+  **4.3748 -> 4.6135 ms (+5.46%)** and
+  **6.5459 -> 6.9430 ms (+6.07%)**. Candidate and production have identical
+  BF16 checksums and mismatch counts versus grouped exact.
+- Removed all experimental HIP, wrapper, fixture, and harness surfaces.
+  Production remains **645.803 tok/s / 792.811 ms**. Raw artifact SHA-256:
+  `0f6c5f49...df7a99` and `41f4d1ff...57ef0`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json`.
