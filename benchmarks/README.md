@@ -64,6 +64,21 @@ matrix-chunk-specific cliff. This one-repeat attribution baseline does not
 replace the repeated short-shape headline or the absolute quality packet.
 [`six-shape artifact`](results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json).
 
+A same-GGUF llama.cpp Vulkan one-pass baseline on the same Radeon 8060S
+measures **341.999/333.502/280.349/126.624/65.584 tok/s** at
+512/4K/16K/64K/128K. The matched hipEngine closure rows are
+**+81.874%/+41.010%/+4.243%/+10.275%** at 512/4K/64K/128K; a hipEngine 16K
+control remains an LC-0 task. Although Vulkan retains **19.177%** of its
+pp512 rate through 128K versus **11.054%** for the faster hipEngine headline,
+the tail itself favors hipEngine: 64K-to-128K retention is
+**54.791% versus 51.794%**, and wall growth is **3.650x versus 3.861x**.
+Laguna's 12 global-attention layers require about **2.533 PFLOP** of causal
+QK+PV at 128K; its 36 512-window SWA layers add only **3.52%** as much
+attention arithmetic. Both complete-model walls remain far below that
+Laguna-specific roof, so Vulkan parity is a floor and exact block-streamed
+global attention is the next active campaign.
+[`Vulkan baseline artifact`](results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

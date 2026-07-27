@@ -1365,6 +1365,30 @@ profiling proves another limiter; the detailed post-350 sequence and
 T16-lite/X16 replacement-layout screen remain owned by
 `LAGUNA-prefill.md`.
 
+Subsequent exact production work reached **654.249/579.699/468.608 tok/s** at
+512/1K/4K. A one-session 512/1K/4K/32K/64K/128K closure sweep measured
+**622.009/579.152/470.270/214.698/131.997/72.323 tok/s**, with exact final
+positions, deterministic next tokens, and complete tracked-allocation
+recovery. The next active Laguna campaign is therefore long-context global
+attention; the pp512-to-700 expert lane is paused, not closed. A same-GGUF
+one-pass llama.cpp Vulkan control measured
+**341.999/333.502/280.349/126.624/65.584 tok/s** at
+512/4K/16K/64K/128K, so hipEngine already wins every overlapping shape and
+Vulkan is a floor rather than the target.
+
+The long-context roofline is Laguna-specific, not borrowed from hybrid
+Qwen3.x/GDN. Laguna has 48 attention layers: 12 global with 48 query heads and
+36 sliding-window layers with 72 query heads and a 512-token window. Both use
+eight KV heads of dimension 128. At 128K, the 12 global layers require about
+**2.533 PFLOP** of causal QK+PV while SWA adds at most **0.089 PFLOP**, or
+**3.52%** as much attention arithmetic. The ordered LC-0 through LC-6 attack,
+rough one-pass 4K/16K/64K development screens, mandatory positive 128K gate
+between major stages, and full promotion gates are defined in
+`LAGUNA-prefill.md`. The first implementation target is an exact
+block-streamed global-attention body with online softmax and no materialized
+quadratic score matrix, followed by six-query-head reuse of each Laguna GQA
+K/V head.
+
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
 | **0. Foundation** | Core host (scheduler, block manager, engine loop, model registry, fusion planner) | ~700 | ~0 | **~700** |
