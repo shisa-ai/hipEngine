@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "kind": "hipengine_laguna_attention_fused_softmax_pv_screen",
+  "created_at": "2026-07-27T05:45:00+00:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "trace_ceiling": {
+    "pp512_attention_ms": 74.433274,
+    "widen_ms": 1.949691,
+    "query_pack_ms": 4.86377,
+    "qk_ms": 20.165917,
+    "softmax_ms": 9.984494,
+    "pv_ms": 21.840592,
+    "output_unpack_ms": 3.703351,
+    "fallback_and_kv_write_ms": 13.735838,
+    "perfect_removal_softmax_pv_unpack_ms": 35.528437
+  },
+  "candidate": {
+    "geometry": "Keep packed-query F32 hipBLASLt QK, then use one local128 block per query-head row tile. Four wave32 units form causal probabilities in LDS and 128 element lanes reuse each F32 V load across 8 or 16 adjacent query rows before writing row-major output.",
+    "removed_work": "Standalone wave32 softmax, F32 hipBLASLt PV, normalized-score global write/read, and output transpose.",
+    "arithmetic_changed": true,
+    "resident_layout_changed": false
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu -q",
+    "production_ab": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_attention_fused_pv_ab.py --repetitions 7 --require-cached-build --output /tmp/laguna-attention-fused-pv-ab.json",
+    "context_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-fused-softmax-pv-contexts-20260727a --output-file fused-pv-contexts -- .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu -q"
+  },
+  "correctness": {
+    "contexts": [128, 256, 384, 512],
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "focused_gpu_gate": "4 passed",
+    "cpu_reference_tolerance_pass": true,
+    "pp512_next_token_equal": true,
+    "pp512_complete_state_exact": false
+  },
+  "row8_trace_ms": {
+    "128": 0.063118,
+    "256": 0.216727,
+    "384": 0.3087,
+    "512": 0.421632
+  },
+  "row16_trace_ms": {
+    "128": 0.083637,
+    "256": 0.237044,
+    "384": 0.332584,
+    "512": 0.461546
+  },
+  "resources": {
+    "row8": {
+      "workgroup_threads": 128,
+      "vgpr_count": 176,
+      "lds_bytes": 16384,
+      "scratch_bytes_per_thread": 0
+    },
+    "row16": {
+      "workgroup_threads": 128,
+      "vgpr_count": 248,
+      "lds_bytes": 32768,
+      "scratch_bytes_per_thread": 0
+    }
+  },
+  "pp512_ab": {
+    "production_median_tok_s": 646.6646569327821,
+    "candidate_median_tok_s": 643.2179785862413,
+    "candidate_delta_percent": -0.5329931533430088,
+    "candidate_wins": 1,
+    "pairs": 7
+  },
+  "decision": "Reject and fully remove. Row8 wins the isolated context-128 composite but loses at production scale; row16 increases VGPR/LDS pressure and is slower at every context. Reopen only with a cooperative QK/softmax/PV tile that also eliminates masked QK work.",
+  "raw_artifacts": {
+    "production_ab": {
+      "path": "/tmp/laguna-attention-fused-pv-ab.json",
+      "sha256": "a378115804b7fa1fa2e20d16d552bde5ce1a4e23c8b92d95ff53be79bdefdae5"
+    },
+    "row8_trace": {
+      "path": "/tmp/laguna-fused-softmax-pv-contexts-20260727a/fused-pv-contexts_kernel_trace.csv",
+      "sha256": "50dd6b3ed4f491a58ca00195b747cf678a19a1d94cdef05a74aef9d23b1dff05"
+    },
+    "row16_trace": {
+      "path": "/tmp/laguna-fused-softmax-pv-row16-contexts-20260727a/fused-pv-row16-contexts_kernel_trace.csv",
+      "sha256": "5712f1c1accdda2ebbf8af53df9d92d5d85b1639be0005ea10d3d56525896213"
+    }
+  },
+  "production": {
+    "changed": false,
+    "published_pp512_tokens_per_second": 649.790751,
+    "published_pp512_wall_ms": 787.945964
+  }
+}

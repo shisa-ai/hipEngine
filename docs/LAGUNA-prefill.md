@@ -1847,6 +1847,23 @@ Immediate execution queue:
    harness mode is removed.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-split-fused-silu-pack-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-split-fused-silu-pack-rejected.json).
+62. **Rejected and removed:** keep packed-query F32 hipBLASLt QK, but replace
+   wave32 causal softmax, library PV, normalized-score traffic, and output
+   unpack with one local128 fused consumer. The pp512 trace gives this
+   formulation a **35.528 ms** perfect-removal ceiling. An eight-row tile is
+   CPU-reference green across contexts 128/256/384/512 and wins the isolated
+   context-128 composite, but seven production pairs regress
+   **646.665 -> 643.218 tok/s (-0.533%, 1/7 wins)**. It traces
+   VGPR176/LDS16384B. Doubling reuse to 16 rows raises resources to
+   VGPR248/LDS32768B and is slower at every context:
+   **0.084/0.237/0.333/0.462 ms** versus row8
+   **0.063/0.217/0.309/0.422 ms**. The scalar PV association also changes
+   complete state, although token 2930 remains stable. Every kernel/export,
+   wrapper, session switch, fixture extension, and harness is removed.
+   Attention now reopens only for a cooperative causal primitive that also
+   avoids masked QK work.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-attention-fused-softmax-pv-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-fused-softmax-pv-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1871,10 +1888,11 @@ to Q4 selected down:
    P8's complete next-K32 payload coverage. Do not pair-share those payload
    gathers through wave shuffles; coalescing already removes the physical
    traffic duplication.
-3. Do not widen the 128-row attention slice through another dense
-   QK/softmax/PV formulation: M256 remains slower even after exhaustive
-   library-algorithm tuning. Reopen attention only for a fused causal
-   primitive that avoids the masked upper triangle.
+3. Do not widen the 128-row attention slice or retry a library-QK plus scalar
+   fused-softmax/PV tail: M256 remains slower after exhaustive algorithm
+   tuning, and row8/row16 fused tails lose production despite removing the
+   score round trip. Reopen attention only for a cooperative causal primitive
+   that avoids masked QK work as well as the normalized-score materialization.
 4. Reopen any other closed family only if a future trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
