@@ -135,6 +135,52 @@ def test_laguna_global_online_prefill_admits_model_scale_capacity() -> None:
     assert len(calls) == 4
 
 
+def test_laguna_long_hipblaslt_shape_and_algorithm_bands() -> None:
+    from hipengine.runtime.laguna_attention_hipblaslt import (
+        LagunaAttentionHipblasLt,
+        _preferred_algorithm_index,
+    )
+
+    route = object.__new__(LagunaAttentionHipblasLt)
+    route.max_context = 131072
+    route.max_q_heads = 48
+    assert route._supports_shape(
+        rows=128,
+        start_position=130944,
+        num_q_heads=48,
+        num_kv_heads=8,
+        head_dim=128,
+    )
+    assert not route._supports_shape(
+        rows=128,
+        start_position=130944,
+        num_q_heads=72,
+        num_kv_heads=8,
+        head_dim=128,
+    )
+    expected = {
+        640: (30, 0),
+        2048: (20, 19),
+        4096: (22, 25),
+        16384: (28, 1),
+        65536: (28, 3),
+        131072: (28, 3),
+    }
+    for context, (qk_index, pv_index) in expected.items():
+        assert _preferred_algorithm_index(
+            query_heads=48,
+            context=context,
+            operation="qk",
+            packed_queries=True,
+        ) == qk_index
+        assert _preferred_algorithm_index(
+            query_heads=48,
+            context=context,
+            operation="pv",
+            packed_queries=True,
+        ) == pv_index
+
+
 def test_kv_live_spans_sliding_ring_requires_complete_absolute_metadata() -> None:
     spans = _ring_spans()
 

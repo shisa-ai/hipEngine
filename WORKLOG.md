@@ -185240,3 +185240,45 @@ Vulkan local sizes verbatim will close the measured gap.
   the established 72-head/512-token global+SWA owner does not inflate, wire
   only dense-initial M128 global chunks above 512, and run the required
   complete-model 4K/16K/64K/128K gates.
+
+## 2026-07-27 — Promote LC-1 long F32 global attention above 4K
+
+- Filled the production loop's intermediate-shape policy with one-pass
+  zero-workspace heuristic screens at 1K/2K/8K/32K/96K. Inclusive candidate
+  speedups versus qrow6 were **2.315x/1.259x/1.212x/1.271x/1.323x** with
+  maximum absolute error **4.052e-8** and full lifecycle recovery. Raw
+  SHA-256:
+  `0be6703cdc223a660b552ee05e13363666b292ba9381aba05558f9b60173fa74`.
+  Adjacent-shape robustness selects context bands
+  **30/0, 20/19, 22/25, 28/1, 28/3** for QK/PV.
+- Added a separate capacity-sized, 48-head owner and routed only qualified
+  dense-initial global M128 tiles. SWA, decode, verifier, partial, wrapped,
+  and evicted paths retain the established owner/fallbacks. Unit validation
+  passed `tests/test_laguna_kv_attention.py` plus
+  `tests/test_laguna_gguf_runner.py` (**35 passed**).
+- The initial broad `start_position >= 512` qualification failed a
+  same-session paired 4K gate:
+  **464.555 -> 449.640 tok/s (0.968x)**, token 7772. Descriptor construction
+  was not the cause: after the first hipBLASLt initialization, new M128
+  problem pairs cost only **0.09-0.13 ms/context**. Narrowed the route to
+  `start_position >= 4096`, preserving the complete 4K path and avoiding the
+  4.298-GB allocation for prompts through 4K.
+- Same-session directional control/candidate rows after qualification:
+  **468.065 -> 468.911 tok/s (+0.181%)** at 4K,
+  **308.181 -> 332.617 (+7.929%)** at 16K, and
+  **131.825 -> 154.151 (+16.936%)** at 64K. Next tokens
+  **7772/81/69407** match. The paired process was intentionally interrupted
+  before redundant 128K arms, so these console-precision rows have no raw
+  child JSON.
+- Mandatory single-128K production gate:
+  **72.138911 -> 88.072709 tok/s (+22.088%)** and
+  **1,816.938989 -> 1,488.224922 seconds**, saving **328.714068 seconds**.
+  Token 22746 and final position 131071 match; every tracked allocation
+  returns to zero. Candidate resident accounting is **89,554,337,748 bytes**,
+  including **4,298,113,024 bytes** of long-owner scratch. Raw SHA-256:
+  `2edf46b99194094850f796000fa13a0494fea22bdff58549a279220156eb7d20`.
+- Promoted `LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT` as the gfx1151 capability
+  default. This is a transitional production milestone: next replace the
+  full-prefix F32 widen and `[48,128,C]` score materialization with exact
+  block-streamed tensorized QK/PV and online reduction while preserving the
+  complete-model gates.
