@@ -1587,6 +1587,7 @@ class LagunaGGUFResidentSession:
         q6_wmma_prefetch_weight: bool | None = None,
         q6_wmma_prefetch_activation: bool | None = None,
         q6_precomputed_activation_sums: bool | None = None,
+        q4_precomputed_activation_sums: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
@@ -1834,6 +1835,15 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "Q6 precomputed activation sums require activation prefetch"
             )
+        self.q4_precomputed_activation_sums = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS",
+                False,
+            )
+            if q4_precomputed_activation_sums is None
+            else q4_precomputed_activation_sums
+        )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
         self.fuse_selected_silu_pack = bool(
@@ -2107,6 +2117,11 @@ class LagunaGGUFResidentSession:
                 "Q6 precomputed activation sums require activation prefetch"
             )
         self.q6_precomputed_activation_sums = bool(enabled)
+
+    def set_q4_precomputed_activation_sums(self, enabled: bool) -> None:
+        """Select packed D8 K16 sums or consumer-side sum reconstruction."""
+
+        self.q4_precomputed_activation_sums = bool(enabled)
 
     def set_moe_shared_after_router(self, enabled: bool) -> None:
         """Move concurrent shared work behind the exact router prefix."""
@@ -3372,6 +3387,9 @@ class LagunaGGUFResidentSession:
             q6_wmma_prefetch_activation=self.q6_wmma_prefetch_activation,
             q6_precomputed_activation_sums=(
                 self.q6_precomputed_activation_sums
+            ),
+            q4_precomputed_activation_sums=(
+                self.q4_precomputed_activation_sums
             ),
             shared_after_router=self.moe_shared_after_router,
             shared_stream=(

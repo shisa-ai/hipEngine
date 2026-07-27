@@ -139,6 +139,10 @@ def _apply_mode(
         session.set_q6_wmma_prefetch_weight(True)
         session.set_q6_wmma_prefetch_activation(True)
         session.set_q6_precomputed_activation_sums(True)
+    elif runtime_mode == "q4_precomputed_sums_off":
+        session.set_q4_precomputed_activation_sums(False)
+    elif runtime_mode == "q4_precomputed_sums_on":
+        session.set_q4_precomputed_activation_sums(True)
     else:
         session.set_selected_gate_up_mode(runtime_mode)
 

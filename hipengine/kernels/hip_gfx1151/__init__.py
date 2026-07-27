@@ -160,6 +160,10 @@ LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION = True
 # Computing them once in the packer removes repeated sum dots from every
 # selected-down output-column workgroup without changing activation bytes.
 LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS = True
+# D8 gate/up stores exact K16 activation sums in a bounded scratch sidecar so
+# each output-column workgroup can skip rebuilding them with integer dots.
+# Resident weights, D8 bytes/scales, arithmetic, and BF16 output are unchanged.
+LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"

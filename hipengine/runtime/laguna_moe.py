@@ -421,6 +421,7 @@ class LagunaMoEScratch:
     expert_up: DeviceBuffer
     expert_gate_up: DeviceBuffer
     activation_q8: DeviceBuffer
+    activation_q8_half_sums: DeviceBuffer
     expert_intermediate: DeviceBuffer
     expert_down: DeviceBuffer
     routed_output: DeviceBuffer
@@ -454,6 +455,7 @@ class LagunaMoEScratch:
             self.expert_up,
             self.expert_gate_up,
             self.activation_q8,
+            self.activation_q8_half_sums,
             self.expert_intermediate,
             self.expert_down,
             self.routed_output,
@@ -994,6 +996,7 @@ def _laguna_moe_scratch_sizes(
             * (h // _Q8_1_MMQ_BLOCK)
             * _Q8_1_DS4_F32_BLOCK_BYTES
         ),
+        rows * (h // 16) * 2,
         rows * k * f * _BF16_NBYTES,
         rows * k * h * _BF16_NBYTES,
         rows * h * _BF16_NBYTES,
@@ -1362,6 +1365,7 @@ def _launch_selected_gate_up_mmq32_d4x3(
     direct_wave_decode: bool = False,
     double_buffer_activation: bool = False,
     raw_weight_prefetch_packs: int = 0,
+    precomputed_activation_sums: bool = False,
     group_compact_mode: str = "serial",
     defer_silu_pack: bool = False,
 ) -> bool:
@@ -1432,6 +1436,11 @@ def _launch_selected_gate_up_mmq32_d4x3(
         plan.hidden_size,
         **({"residual_passes": residual_passes} if f32_wide else {}),
         **({"split16": True} if split16 else {}),
+        **(
+            {"q4_half_sums_ptr": scratch.activation_q8_half_sums.ptr}
+            if precomputed_activation_sums
+            else {}
+        ),
         **_stage_kwargs(
             "selected_gate_up_prefill",
             libraries,
@@ -1472,6 +1481,15 @@ def _launch_selected_gate_up_mmq32_d4x3(
         **(
             {"raw_weight_prefetch_packs": raw_weight_prefetch_packs}
             if raw_weight_prefetch_packs
+            else {}
+        ),
+        **(
+            {
+                "precomputed_activation_sums_ptr": (
+                    scratch.activation_q8_half_sums.ptr
+                )
+            }
+            if precomputed_activation_sums
             else {}
         ),
         **_stage_kwargs(
@@ -2206,6 +2224,7 @@ def run_laguna_moe_rows(
     q6_wmma_prefetch_weight: bool = False,
     q6_wmma_prefetch_activation: bool = False,
     q6_precomputed_activation_sums: bool = False,
+    q4_precomputed_activation_sums: bool = False,
     shared_after_router: bool = False,
     shared_stream: int = 0,
     shared_input_ready_event: int = 0,
@@ -2403,6 +2422,12 @@ def run_laguna_moe_rows(
                     and tokens >= 512
                 )
                 else 0
+            ),
+            precomputed_activation_sums=(
+                q4_precomputed_activation_sums
+                and selected_gate_up_mode
+                == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
+                and tokens >= 512
             ),
             group_compact_mode=group_compact_mode,
             defer_silu_pack=use_fused_selected_silu_pack,

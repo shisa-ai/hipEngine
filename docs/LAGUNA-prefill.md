@@ -1804,6 +1804,24 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json).
+60. **Retained candidate pending clean publication:** reopen Q4 D8
+   precomputed activation sums only for the intervening P8 production body,
+   and keep the sums in a separate activation-only `int16` sidecar rather
+   than widening every 160-byte D8 block. The sidecar is **196,608 bytes** at
+   M512 and **786,432 bytes** at the M2048 scratch ceiling; resident expert
+   weights and D8 bytes are unchanged. On actual layer-1 natural routing,
+   pack-inclusive M256 improves **4.4261 -> 4.4069 ms (-0.434%)** and M512
+   improves **6.7309 -> 6.6681 ms (-0.933%)** across 41 counter-rotated
+   samples with identical output checksums. Eleven complete-state pp512 pairs
+   improve **644.427 -> 645.724 tok/s (+0.201%)** at the independent
+   medians, save **2.491 ms** at the paired median, and win **9/11** pairs;
+   logits, hidden state, KV, cursor, and token 2930 are exact. This differs
+   materially from item 32's rejected widened-block result, which saved only
+   0.339 ms and won 3/6 post-cold pairs. Keep the explicit rollback through
+   the active 700 campaign; a cached trace and clean selector-unset
+   512/1K/4K publication remain mandatory.
+   Evidence:
+   [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1811,10 +1829,12 @@ The activation-only Q4 repair branch is exhausted and removed. Raw-nibble P8
 prefetch is now exact Q4 gate/up production and has transferred successfully
 to Q4 selected down:
 
-1. **Trace complete:** clean selector-unset production is
+1. **Candidate trace/publication next:** the latest published selector-unset
+   production remains
    **647.207/576.799/468.431 tok/s**. The refreshed pp512 trace attributes
    **503.740 ms** to selected gate/up plus down and leaves attention at
-   **67.732 ms**.
+   **67.732 ms**. Q4 precomputed sums now need the clean cached trace and
+   selector-unset 512/1K/4K publication described in item 60.
 2. Attack the selected-expert path with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
@@ -3699,6 +3719,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`
