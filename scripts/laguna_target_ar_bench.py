@@ -31,7 +31,9 @@ from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
-DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+DEFAULT_PROMPTS = (
+    ROOT / "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl"
+)
 DEFAULT_TEMPLATE = ROOT / "tests/fixtures/laguna_poolside_v1_template.json"
 DEFAULT_ORACLE = ROOT / "tests/fixtures/laguna_poolside_v1_oracle.json"
 DEFAULT_ORACLE_LOGPROBS = ROOT / "tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy"
@@ -44,7 +46,7 @@ DEFAULT_CACHE = Path(
 )
 DEFAULT_MODEL_SHA256 = "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
 EXPECTED_CATEGORIES = frozenset(("code", "general_en", "general_ja", "mixed_ja_en"))
-EXPECTED_PROMPT_COUNT = 10
+EXPECTED_PROMPT_COUNT = 18
 RETAINED_HORIZONS = (16, 32)
 
 
