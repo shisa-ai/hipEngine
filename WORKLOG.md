@@ -184148,3 +184148,27 @@ Vulkan local sizes verbatim will close the measured gap.
   export, Python selector, leaf mode, and fixture parameter; retained
   production P8 is unchanged at **643.554 tok/s**. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`.
+
+## 2026-07-27 — Reject Q4 P8 non-temporal loads
+
+- RED added a production-shaped P8 non-temporal fixture and failed on the
+  absent wrapper selector. GREEN applied `__builtin_nontemporal_load` only to
+  the next K32 interval's eight raw nibble-word loads, passed the
+  uneven/empty-expert CPU-reference gate, and matched actual BF16 checksum
+  **1114.1769413301445**.
+- Forty-one counter-rotated burst-seven actual M512 samples reject the cache
+  policy: retained P8 measures **6.563435 ms**, while non-temporal P8 measures
+  **6.972748 ms (+6.2363%)**. Raw SHA-256:
+  `1a07da88a48aecd219d251ae209bf1444eb94a682bfa67684efb0855aa39071b`.
+- Cached tracing holds both bodies at
+  local128/**VGPR96**/SGPR128/LDS3072B/scratch0. The loss is therefore cache
+  behavior, not occupancy or scratch: retaining ordinary cache allocation is
+  beneficial for the mixed streamed-weight/reused-activation working set.
+  Child/raw trace SHA-256 values:
+  `82379a5c001b88bb72fcb9a47cda357002d31ec767aa0505e243cdbfc9691356`
+  and
+  `3fa2c02ff001eb3cfd5e1b953283cafaab8b226dbb94bbda4ae49b3d2b07ef5e`.
+- No full-model screen is warranted. Removed the template branch, export,
+  wrapper selector, leaf mode, and fixture parameter. Production remains
+  **643.554 tok/s**. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`.

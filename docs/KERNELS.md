@@ -936,6 +936,12 @@ BF16-identical, it restores the rejected **VGPR104** class and regresses the
 actual M512 leaf **6.7265 -> 7.0330 ms (+4.556%)**. The metadata symbol,
 wrapper option, harness mode, and fixture parameter were removed
 (`benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`).
+Non-temporal P8 loads are also closed. They preserve local128/VGPR96/
+LDS3072B/scratch0 and BF16 output, but regress actual M512
+**6.5634 -> 6.9727 ms (+6.236%)**; the ordinary cache policy is beneficial
+for this mixed weight/activation working set. All candidate surfaces were
+removed
+(`benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`).
 
 The same direct-decode premise is retained in Q4-down production.
 Within the 64x32/local64 wave-column body, every lane decodes its own

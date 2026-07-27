@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_q4_p8_nontemporal_rejected",
+  "status": "rejected_removed",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "candidate": {
+    "baseline": "production raw-nibble P8 at M512",
+    "mechanism": "apply __builtin_nontemporal_load only to the next K32 interval's eight raw T16 nibble-word loads",
+    "resident_bytes_added": 0,
+    "lds_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "vgpr_added": 0,
+    "arithmetic_change": false,
+    "bf16_output_change": false
+  },
+  "correctness": {
+    "red": "The production-shaped non-temporal parameter initially failed because the wrapper selector did not exist.",
+    "green": "The uneven/empty-expert K512/N128 CPU-reference KL and top-1 gate passed.",
+    "actual_layer_bf16_identical": true,
+    "checksum_f64": 1114.1769413301445,
+    "finite": true,
+    "max_abs": 6.6875
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-lap1-routing-all-shapes.json --rows 512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-nontemporal --warmups 5 --samples 41 --burst 7 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-p8-nontemporal-screen.json",
+    "timing": "counter-rotated HIP events; both modes include the unchanged D8 activation pack",
+    "production_p8_median_ms": 6.563434600830078,
+    "nontemporal_median_ms": 6.972747802734375,
+    "nontemporal_regression_percent": 6.2362654128149675,
+    "samples_per_mode": 41,
+    "raw_sha256": "1a07da88a48aecd219d251ae209bf1444eb94a682bfa67684efb0855aa39071b"
+  },
+  "rocprof": {
+    "production": {
+      "workgroup_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroup_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    },
+    "child_sha256": "82379a5c001b88bb72fcb9a47cda357002d31ec767aa0505e243cdbfc9691356",
+    "trace_sha256": "3fa2c02ff001eb3cfd5e1b953283cafaab8b226dbb94bbda4ae49b3d2b07ef5e"
+  },
+  "decision": {
+    "result": "reject and remove candidate",
+    "reason": "Bypassing the ordinary cache policy regresses the decisive M512 leaf by 6.236% at identical resources, so the activation/weight working-set cache interaction is beneficial.",
+    "full_model_run_warranted": false,
+    "candidate_surfaces_removed": true,
+    "production_unchanged_tok_s": 643.5535247748338
+  },
+  "repo": {
+    "base_revision": "206c2dc804634cc31723d1b285cfb7d7535fbcb2"
+  }
+}

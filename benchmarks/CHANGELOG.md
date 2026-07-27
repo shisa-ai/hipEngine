@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-27
 
+- [rejected and removed exact gfx1151 Laguna Q4 P8 non-temporal loads] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / bypassing cache only for next-K32 raw-nibble P8 preserves BF16 and the local128/VGPR96/LDS3072B/scratch0 resource tuple but regresses the actual M512 leaf **6.5634 -> 6.9727 ms (+6.236%)**; every candidate surface is removed and production remains **643.554 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q4 P8 metadata prefetch] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / carrying next-K32 `d/dmin` plus scale/min beside retained raw-nibble P8 is BF16-identical but raises VGPR **96 -> 104** and regresses the actual M512 leaf **6.7265 -> 7.0330 ms (+4.556%)**; every candidate surface is removed and production remains **643.554 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`.
 
 - [retained exact gfx1151 Laguna Q4 raw-nibble-P8 production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / carry only the next K32 interval's eight raw T16 nibble words for producer chunks >=512; clean selector-unset 512/1K/4K improves **639.114/569.880/464.280 -> 643.554/573.066/466.290 tok/s (+0.695%/+0.559%/+0.433%)**, and cached tracing cuts selected Q4 gate/up **337.395 -> 333.701 ms (-1.095%)** at local128/VGPR96/LDS3072B/scratch0, with BF16 identity, exact complete state, deterministic tokens/positions, and full allocation recovery; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json`.
