@@ -113,6 +113,8 @@ _Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
 _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
     "local32_fixed_meta_gemv_decode_bf16_f32_out"
 )
+_MOE_TAIL_RETAINED_VARIANT = "laguna_aggregate_gguf_f32_weight_out"
+_MOE_TAIL_WAVE0_TREE_VARIANT = "laguna_aggregate_wave0_tree_gguf_f32_weight_out"
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -1402,11 +1404,40 @@ def resolve_laguna_q5_wave32x2_variants(
     )
 
 
+def resolve_laguna_moe_tail_wave0_tree(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the explicit wave-0 RMS-tree screen when its exact key exists."""
+
+    selected = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_MOE_TAIL_WAVE0_TREE",
+            False,
+        )
+        if requested is None
+        else requested
+    )
+    if not selected:
+        return False
+    load_backend_kernel_package(backend)
+    return is_registered(
+        KernelKey(
+            backend,
+            "moe_tail+next_rmsnorm",
+            "bf16",
+            _MOE_TAIL_WAVE0_TREE_VARIANT,
+        )
+    )
+
+
 def resolve_laguna_eager_kernel_plan(
     config: LagunaGGUFConfig,
     *,
     backend: str,
     use_moe_tail_next_rmsnorm: bool = True,
+    use_moe_tail_wave0_tree: bool | None = None,
     use_head_kv_fusion: bool = False,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
@@ -1435,6 +1466,17 @@ def resolve_laguna_eager_kernel_plan(
 
         del _laguna_kv
     load_backend_kernel_package(backend)
+    selected_wave0_tree = bool(use_moe_tail_next_rmsnorm) and (
+        resolve_laguna_moe_tail_wave0_tree(
+            backend,
+            use_moe_tail_wave0_tree,
+        )
+    )
+    tail_variant = (
+        _MOE_TAIL_WAVE0_TREE_VARIANT
+        if selected_wave0_tree
+        else _MOE_TAIL_RETAINED_VARIANT
+    )
     keys = {
         "rmsnorm": KernelKey(backend, "rmsnorm", "gguf_f32_weight", "bf16_out"),
         "add_rmsnorm": KernelKey(backend, "add_rmsnorm", "gguf_f32_weight", "bf16_out"),
@@ -1443,7 +1485,7 @@ def resolve_laguna_eager_kernel_plan(
             backend,
             "moe_tail+next_rmsnorm",
             "bf16",
-            "laguna_aggregate_gguf_f32_weight_out",
+            tail_variant,
         ),
         "global_head_kv": KernelKey(
             backend,
@@ -1801,6 +1843,7 @@ class LagunaGGUFResidentSession:
         use_split_gate_fusion: bool | None = None,
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
+        use_moe_tail_wave0_tree: bool | None = None,
         use_head_kv_fusion: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
@@ -1835,6 +1878,7 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.use_swa_split_wave_local = use_swa_split_wave_local
+        self.use_moe_tail_wave0_tree = False
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -1953,7 +1997,13 @@ class LagunaGGUFResidentSession:
                 config,
                 backend=self.backend,
                 use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
+                use_moe_tail_wave0_tree=use_moe_tail_wave0_tree,
                 use_head_kv_fusion=requested_head_kv_fusion,
+            )
+            self.use_moe_tail_wave0_tree = bool(
+                self.kernel_plan.moe_tail_next_rmsnorm is not None
+                and self.kernel_plan.moe_tail_next_rmsnorm_key.variant
+                == _MOE_TAIL_WAVE0_TREE_VARIANT
             )
             self.use_head_kv_fusion = (
                 self.kernel_plan.global_head_kv is not None
@@ -3794,6 +3844,7 @@ __all__ = [
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
+    "resolve_laguna_moe_tail_wave0_tree",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",
