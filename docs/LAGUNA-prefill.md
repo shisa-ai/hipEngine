@@ -97,8 +97,10 @@ publishing **636.073 tok/s** at pp512 while 1K/4K remain flat within
 **112.746 -> 101.963 ms (-9.564%)**. A second exact register pipeline carries
 the next compact Q8 half-row during the same current-K32 compute. Clean
 512/1K/4K reaches **639.114/569.880/464.280 tok/s** and the Q6 window falls
-again to **100.367 ms**; caller-stream physical-byte and overlap reductions
-remain the active campaign.
+again to **100.367 ms**. Shape-qualified raw-nibble P8 prefetch then carries
+only the next Q4 K32 payload at M512+ and publishes
+**643.554/573.066/466.290 tok/s**. Caller-stream physical-byte and overlap
+reductions remain the active campaign.
 The execution order below was re-audited on
 2026-07-26 after
 correcting both the Vulkan comparator geometry and the absolute quality
@@ -112,8 +114,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **639.114 tok/s**
-selector-unset, **8.385x** the old row and **85.486%** above the Vulkan
+The quality-admitted production default now measures **643.554 tok/s**
+selector-unset, **8.442x** the old row and **86.779%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -754,7 +756,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query/wave-softmax attention plus exact Q6 weight+activation prefetch publish **639.114 tok/s** at pp512; 1K/4K are **569.880/464.280 tok/s**. pp512 wall is **801.109 ms**, leaving **69.681 ms** to 700. |
+| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query/wave-softmax attention, exact Q6 weight+activation prefetch, and shape-qualified Q4 raw-nibble P8 publish **643.554 tok/s** at pp512; 1K/4K are **573.066/466.290 tok/s**. pp512 wall is **795.583 ms**, leaving **64.154 ms** to 700. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -768,7 +770,7 @@ Current progress:
 ## Post-500 campaign — 700 production stretch
 
 The 350 and 500 tok/s milestones prove the compounded production package, but
-they are not roofline results. Current clean production measures **0.801109
+they are not roofline results. Current clean production measures **0.795583
 seconds** synchronized pp512 wall. The refreshed cached Q6 weight+activation
 prefetch attribution measures **0.852825 seconds** kernel span and
 **1.127876 seconds** inclusive kernel sum. The profiler perturbs this
@@ -798,15 +800,17 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 The current trace gives concrete Amdahl checkpoints; the clean publication
 below is a retained performance claim:
 
-- The clean production median is now **639.114 tok/s**. The selector-unset
-  1K/4K medians are **569.880/464.280 tok/s**. Refreshed cached attribution
+- The clean production median is now **643.554 tok/s**. The selector-unset
+  1K/4K medians are **573.066/466.290 tok/s**. Shape-qualified raw-nibble P8
+  is exact and improves every clean length; refreshed family attribution is
+  pending from this production commit. The preceding cached attribution
   measures **100.367 ms** for all 23 Q6 selected-down calls and confirms the
   weight+activation-prefetch specialization at
   local128/VGPR112/LDS5120B/scratch0. The declared 500 gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
-- The clean wall must fall from **801.109 ms** to **731.429 ms** for 700 tok/s,
-  a further **69.681 ms**. Q6 activation prefetch cuts its comparable cached
+- The clean wall must fall from **795.583 ms** to **731.429 ms** for 700 tok/s,
+  a further **64.154 ms**. Q6 activation prefetch cuts its comparable cached
   pp512 body **101.963 -> 100.367 ms** while dispatches remain **2,417**. The next
   material screen must change selected projection physical bytes, cross-tile
   reuse, or another measured latency limiter.
@@ -1620,7 +1624,7 @@ Immediate execution queue:
    body without a mechanism that preserves the production VGPR class.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json).
-48. **Admitted candidate; clean publication pending:** carry only the next
+48. **Published production:** carry only the next
    K32 interval's eight raw T16 nibble words in registers, decode them in
    place on the following interval, and demand-load `d`/scale/min metadata.
    This avoids the rejected complete decoded-record prefetch's VGPR104 cost:
@@ -1634,18 +1638,21 @@ Immediate execution queue:
    that threshold. Seven complete pp512 pairs improve
    **636.367 -> 640.003 tok/s (+0.571%, 7/7 wins)** with exact token, logit
    bits, full logits, final/post-layer hidden, KV, and cursor. The gfx1151
-   package default now selects this shape policy; it is not a production
-   headline until the clean selector-unset 512/1K/4K gate passes. Evidence:
-   [`2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json).
+   package default now selects this shape policy. Clean selector-unset
+   512/1K/4K improves
+   **639.114/569.880/464.280 -> 643.554/573.066/466.290 tok/s
+   (+0.695%/+0.559%/+0.433%)**. The pp512 wall is **795.583 ms**, leaving
+   **64.154 ms** to 700. Tokens are deterministic, final positions are exact,
+   and all **78,805,563,028** tracked bytes are recovered. Evidence:
+   [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json),
+   [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json).
 
 ### Next exact and quality-gated attacks
 
 The activation-only Q4 repair branch is exhausted and removed. Raw-nibble P8
-prefetch is the current exact Q4 gate/up candidate and has cleared leaf plus
-complete-state A/B:
+prefetch is now exact Q4 gate/up production:
 
-1. Run clean selector-unset 512/1K/4K publication for the shape-qualified P8
-   candidate, then refresh caller-stream attribution if it publishes.
+1. Refresh caller-stream attribution from the P8 production commit.
 2. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Extend the Q6 register-overlap lesson only
@@ -1657,7 +1664,7 @@ complete-state A/B:
    without a new numerical representation.
 
 The stretch target remains **>=700 tok/s**, i.e. **<=731.429 ms** for pp512.
-Current production is **639.114 tok/s / 801.109 ms**, leaving **69.681 ms**.
+Current production is **643.554 tok/s / 795.583 ms**, leaving **64.154 ms**.
 The rejected D4 role split cannot contribute to that gap; reaching 700 now
 requires a retained physical-byte, cross-tile-reuse, or newly enabled library
 win.
@@ -3345,7 +3352,7 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**639.114 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+**643.554 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
 active targets.
 
 All headline rows also report canonical category-weighted prefill and
@@ -3514,6 +3521,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-layer-risk-absolute-rejected.json`

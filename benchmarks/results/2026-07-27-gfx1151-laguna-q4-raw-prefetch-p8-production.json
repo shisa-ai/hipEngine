@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T01:18:22.780421+00:00",
+  "kind": "hipengine_laguna_q4_raw_prefetch_p8_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset c=1 prefill-only 512/1024/4096 with BF16 KV, matrix2048/attention128 and two HIP queues",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "repo": {
+    "runtime_revision": "59f8ead371b67838df7cb3bc0f0faafae749b226",
+    "previous_production_revision": "621713cb6e57c1a7ea177476400a08def66ced63",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "production_change": {
+    "selected_gate_up_mode": "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512",
+    "mechanism": "carry the next K32 interval's eight raw T16 nibble words during current packed-dot compute, decode in place next iteration, and demand-load d/scale/min",
+    "shape_policy": "P8 at producer rows >= 512; previous exact specialization below 512",
+    "resident_bytes_added": 0,
+    "lds_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "arithmetic_change": false,
+    "bf16_output_change": false
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-raw-prefetch-p8-production-matrix.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "tracked_worktree_clean": true,
+    "selector_unset": true,
+    "raw_sha256": "93a59456e3cb24e386fd94cf1008fe239798c9cca639bf50ebdb2b344e04cc14"
+  },
+  "samples": {
+    "512_tok_s": [
+      612.554292090729,
+      643.5535247748338,
+      644.2162228811308
+    ],
+    "1024_tok_s": [
+      578.5268489212577,
+      573.0656165068592,
+      572.7469335571815
+    ],
+    "4096_tok_s": [
+      468.5697417641932,
+      466.290023780932,
+      464.7944954363843
+    ]
+  },
+  "medians": {
+    "512_tok_s": 643.5535247748338,
+    "512_wall_ms": 795.582621009089,
+    "1024_tok_s": 573.0656165068592,
+    "4096_tok_s": 466.290023780932
+  },
+  "comparison": {
+    "previous_512_tok_s": 639.113740923285,
+    "previous_1024_tok_s": 569.8801964636276,
+    "previous_4096_tok_s": 464.28032705956286,
+    "improvement_512_percent": 0.694678203152832,
+    "improvement_1024_percent": 0.5589631054033095,
+    "improvement_4096_percent": 0.4328627779895955,
+    "target_700_wall_ms": 731.4285714285714,
+    "remaining_wall_ms_to_700": 64.15404958051761
+  },
+  "correctness": {
+    "primitive_cpu_reference_cases_passed": 12,
+    "actual_layer_bf16_mismatches": 0,
+    "complete_model_ab_runs": 14,
+    "complete_model_state_exact": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "tracked_bytes_allocated_and_freed": 78805563028,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "quality_transfer": "The P8 body is BF16-bit exact to the preceding production D8 Q4 consumer, so the retained absolute category gate transfers unchanged."
+  },
+  "kernel_evidence": {
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json",
+    "workgroup_size": 128,
+    "vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 3072,
+    "scratch_bytes_per_thread": 0,
+    "m512_leaf_improvement_percent": 1.947730299,
+    "complete_state_ab_improvement_percent": 0.5713563655,
+    "complete_state_pair_wins": "7/7"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 643.5535247748338,
+    "target_700_reached": false,
+    "next_action": "refresh the cached two-queue family trace and attack the largest caller-stream physical-byte or cross-tile limiter"
+  },
+  "source_runs": {
+    "production_raw_sha256": "93a59456e3cb24e386fd94cf1008fe239798c9cca639bf50ebdb2b344e04cc14",
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-production.json",
+    "quality_artifact": "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json"
+  }
+}

@@ -184068,3 +184068,30 @@ Vulkan local sizes verbatim will close the measured gap.
   Clean selector-unset production publication remains before any headline
   update. The required lineage audit remains blocked by absent read-only
   `/home/lhl/amd-gpu-tuning/reference/atlas`.
+
+## 2026-07-27 — Publish Q4 raw-nibble P8 production
+
+- Clean tracked revision `59f8ead37` ran the canonical selector-unset
+  matrix2048/attention128, two-queue, three-repetition protocol. A first
+  attempt stopped before model load because the new content-addressed Q4
+  library cache entry was absent; it produced no timing sample. Prebuilding
+  that exact library outside measurement allowed the unchanged
+  `require_cached` command to run.
+- Production 512/1K/4K improves
+  **639.113741/569.880196/464.280327 ->
+  643.553525/573.065617/466.290024 tok/s
+  (+0.6947%/+0.5590%/+0.4329%)**. The pp512 wall is **795.583 ms**, leaving
+  **64.154 ms** to 700 tok/s. The normal cold first pp512 sample is
+  **612.554 tok/s**; the two steady samples are **643.554/644.216 tok/s**,
+  matching the prior production packet's same cold-first behavior.
+- Tokens remain **2930/95/7772**, final positions and same-mode repeats are
+  deterministic, and all **78,805,563,028** tracked bytes return to zero.
+  The raw production artifact SHA-256 is
+  `93a59456e3cb24e386fd94cf1008fe239798c9cca639bf50ebdb2b344e04cc14`.
+- Published
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json`
+  and advanced the benchmark rollup, campaign plan, kernel catalog, and
+  refactor ledger. Exact BF16 equality transfers the retained absolute
+  category gate unchanged: max KL **0.049542582**, **316/320** top-1, every
+  category at least **96.875%**. A fresh cached two-queue family trace is next
+  before choosing the next physical-byte/cross-tile attack.
