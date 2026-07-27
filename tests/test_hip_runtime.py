@@ -8,6 +8,7 @@ from hipengine.core.hip import (
     HipError,
     HipMemcpyKind,
     HipRuntime,
+    configure_default_graph_adapter,
     get_hip_runtime,
     is_default_runtime_loaded,
     reset_default_runtime_for_tests,
@@ -144,8 +145,9 @@ def test_get_runtime_configures_process_environment_before_loading_library(monke
         events.append("configure")
         return {"GPU_MAX_HW_QUEUES": "1"}
 
-    def load(cls, path: str):
+    def load(cls, path: str, *, graph_adapter=None):
         del cls, path
+        assert graph_adapter is None
         events.append("load")
         return fake_runtime
 
@@ -154,6 +156,29 @@ def test_get_runtime_configures_process_environment_before_loading_library(monke
 
     assert get_hip_runtime() is fake_runtime
     assert events == ["configure", "load"]
+
+
+def test_default_runtime_accepts_explicit_graph_adapter_before_lazy_load(monkeypatch) -> None:
+    import hipengine.kernels.backends as backends
+
+    adapter = object()
+    fake_runtime = object()
+    observed: list[object] = []
+
+    monkeypatch.setattr(backends, "configure_hip_process_environment", lambda: {})
+
+    def load(cls, path: str, *, graph_adapter=None):
+        del cls, path
+        observed.append(graph_adapter)
+        return fake_runtime
+
+    monkeypatch.setattr(HipRuntime, "load", classmethod(load))
+    configure_default_graph_adapter(adapter)  # type: ignore[arg-type]
+
+    assert get_hip_runtime() is fake_runtime
+    assert observed == [adapter]
+    with pytest.raises(RuntimeError, match="already loaded"):
+        configure_default_graph_adapter(None)
 
 
 def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:

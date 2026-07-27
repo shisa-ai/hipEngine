@@ -9,7 +9,7 @@ from __future__ import annotations
 import ctypes
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Final
+from typing import Any, Final, Protocol
 
 HIP_SUCCESS: Final[int] = 0
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
@@ -22,6 +22,26 @@ class HipMemcpyKind(IntEnum):
     DEVICE_TO_HOST = 2
     DEVICE_TO_DEVICE = 3
     DEFAULT = 4
+
+
+class HipGraphAdapter(Protocol):
+    """Optional graph-lifecycle transport used by :class:`HipRuntime`."""
+
+    def stream_begin_capture(self, stream: int, mode: int) -> None: ...
+
+    def stream_end_capture(self, stream: int) -> int: ...
+
+    def graph_instantiate(self, graph: int) -> int: ...
+
+    def graph_launch(self, graph_exec: int, stream: int) -> None: ...
+
+    def graph_exec_destroy(self, graph_exec: int) -> None: ...
+
+    def graph_destroy(self, graph: int) -> None: ...
+
+    def graph_exec_transport(self, graph_exec: int) -> str: ...
+
+    def provenance(self) -> dict[str, Any]: ...
 
 
 class HipError(RuntimeError):
@@ -37,10 +57,16 @@ class HipRuntime:
     """Loaded HIP runtime library with typed entry points."""
 
     library: ctypes.CDLL
+    graph_adapter: HipGraphAdapter | None = None
 
     @classmethod
-    def load(cls, path: str = DEFAULT_HIP_LIBRARY) -> "HipRuntime":
-        runtime = cls(ctypes.CDLL(path))
+    def load(
+        cls,
+        path: str = DEFAULT_HIP_LIBRARY,
+        *,
+        graph_adapter: HipGraphAdapter | None = None,
+    ) -> "HipRuntime":
+        runtime = cls(ctypes.CDLL(path), graph_adapter=graph_adapter)
         runtime._configure()
         return runtime
 
@@ -161,14 +187,21 @@ class HipRuntime:
         )
 
     def stream_begin_capture(self, stream: int, mode: int = 2) -> None:
+        if self.graph_adapter is not None:
+            self.graph_adapter.stream_begin_capture(stream, mode)
+            return
         self.check(self.library.hipStreamBeginCapture(ctypes.c_void_p(stream), ctypes.c_int(mode)))
 
     def stream_end_capture(self, stream: int) -> int:
+        if self.graph_adapter is not None:
+            return self.graph_adapter.stream_end_capture(stream)
         graph = ctypes.c_void_p()
         self.check(self.library.hipStreamEndCapture(ctypes.c_void_p(stream), ctypes.byref(graph)))
         return 0 if graph.value is None else int(graph.value)
 
     def graph_instantiate(self, graph: int) -> int:
+        if self.graph_adapter is not None:
+            return self.graph_adapter.graph_instantiate(graph)
         graph_exec = ctypes.c_void_p()
         error_node = ctypes.c_void_p()
         log_buffer = ctypes.create_string_buffer(4096)
@@ -184,13 +217,36 @@ class HipRuntime:
         return 0 if graph_exec.value is None else int(graph_exec.value)
 
     def graph_launch(self, graph_exec: int, stream: int) -> None:
+        if self.graph_adapter is not None:
+            self.graph_adapter.graph_launch(graph_exec, stream)
+            return
         self.check(self.library.hipGraphLaunch(ctypes.c_void_p(graph_exec), ctypes.c_void_p(stream)))
 
     def graph_exec_destroy(self, graph_exec: int) -> None:
+        if self.graph_adapter is not None:
+            self.graph_adapter.graph_exec_destroy(graph_exec)
+            return
         self.check(self.library.hipGraphExecDestroy(ctypes.c_void_p(graph_exec)))
 
     def graph_destroy(self, graph: int) -> None:
+        if self.graph_adapter is not None:
+            self.graph_adapter.graph_destroy(graph)
+            return
         self.check(self.library.hipGraphDestroy(ctypes.c_void_p(graph)))
+
+    def graph_exec_transport(self, graph_exec: int) -> str:
+        if self.graph_adapter is None:
+            return "hip_graph"
+        return self.graph_adapter.graph_exec_transport(graph_exec)
+
+    def graph_transport_provenance(self) -> dict[str, Any]:
+        if self.graph_adapter is None:
+            return {
+                "requested_transport": "hip_graph",
+                "require_pm4": False,
+                "selected_exec_transports": {"hip_graph": 1},
+            }
+        return self.graph_adapter.provenance()
 
     def event_create(self, *, flags: int = 0) -> int:
         event = ctypes.c_void_p()
@@ -313,6 +369,16 @@ class HipRuntime:
 
 
 _DEFAULT_RUNTIME: HipRuntime | None = None
+_DEFAULT_GRAPH_ADAPTER: HipGraphAdapter | None = None
+
+
+def configure_default_graph_adapter(adapter: HipGraphAdapter | None) -> None:
+    """Select an explicit graph adapter before the lazy default runtime loads."""
+
+    global _DEFAULT_GRAPH_ADAPTER
+    if _DEFAULT_RUNTIME is not None:
+        raise RuntimeError("default HIP runtime is already loaded")
+    _DEFAULT_GRAPH_ADAPTER = adapter
 
 
 def get_hip_runtime(path: str = DEFAULT_HIP_LIBRARY) -> HipRuntime:
@@ -323,7 +389,7 @@ def get_hip_runtime(path: str = DEFAULT_HIP_LIBRARY) -> HipRuntime:
         from hipengine.kernels.backends import configure_hip_process_environment
 
         configure_hip_process_environment()
-        _DEFAULT_RUNTIME = HipRuntime.load(path)
+        _DEFAULT_RUNTIME = HipRuntime.load(path, graph_adapter=_DEFAULT_GRAPH_ADAPTER)
     return _DEFAULT_RUNTIME
 
 
@@ -332,5 +398,6 @@ def is_default_runtime_loaded() -> bool:
 
 
 def reset_default_runtime_for_tests() -> None:
-    global _DEFAULT_RUNTIME
+    global _DEFAULT_GRAPH_ADAPTER, _DEFAULT_RUNTIME
     _DEFAULT_RUNTIME = None
+    _DEFAULT_GRAPH_ADAPTER = None
