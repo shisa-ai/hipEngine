@@ -1954,6 +1954,21 @@ Immediate execution queue:
    lane, and focused tests are removed. Production remains exact top-10.
    Evidence:
    [`2026-07-27-gfx1151-laguna-route-tail15-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-absolute-rejected.json).
+68. **Rejected and removed:** a native triangular BF16-WMMA QK producer
+   consumed resident cache K directly, skipped complete causal-mask tiles,
+   and shared each key tile across the six/nine GQA query heads while leaving
+   production F32 softmax/PV/output unchanged. The global-48-head and
+   SWA-72-head primitives pass their CPU tolerance fixtures, and complete
+   attention passes at contexts 128/256/384/512. Performance is decisive in
+   the other direction: after removing all LDS barriers and folding SWA's
+   ninth head into one local288 workgroup, context-256 QK is
+   **0.104837 ms** versus tuned packed F32 hipBLASLt **0.085120 ms
+   (+23.16%)**; context 512 is **0.207429 vs 0.156053 ms (+32.92%)**.
+   The best body is VGPR144/SGPR128/LDS0/scratch0. Every kernel, wrapper,
+   runtime branch, and candidate test is removed; production retains packed
+   F32 hipBLASLt QK.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-attention-triangular-bf16-wmma-qk-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-triangular-bf16-wmma-qk-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1986,8 +2001,11 @@ to Q4 selected down:
 3. Do not widen the 128-row attention slice or retry a library-QK plus scalar
    fused-softmax/PV tail: M256 remains slower after exhaustive algorithm
    tuning, and row8/row16 fused tails lose production despite removing the
-   score round trip. Reopen attention only for a cooperative causal primitive
-   that avoids masked QK work as well as the normalized-score materialization.
+   score round trip. A direct-cache triangular BF16-WMMA QK producer is also
+   closed at **+23.16%/+32.92%** for contexts 256/512. Reopen attention only
+   for a cooperative causal primitive that avoids masked QK work and the
+   normalized-score materialization without paying a packed-F32-to-BF16 query
+   conversion or 144-VGPR score-tile lifetime.
 4. Reopen any other closed family only if a future trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
