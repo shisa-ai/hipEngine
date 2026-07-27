@@ -14,6 +14,9 @@ from hipengine.kvcache import KVLiveSpans
 _SOURCE = Path(__file__).with_name("laguna_kv_attention.hip")
 _OUTPUT_NAME = "laguna_kv_attention.so"
 _SYMBOL_GLOBAL_HEAD_KV = "hipengine_laguna_global_head_rmsnorm_rope_write_kv_f32_bf16_spans"
+_SYMBOL_GLOBAL_HEAD_KV_WAVE0_TREE = (
+    "hipengine_laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_bf16_spans"
+)
 _SYMBOL_SWA_HEAD_KV = "hipengine_laguna_swa_head_rmsnorm_rope_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_WRITE = "hipengine_laguna_global_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_WRITE_ROWS = "hipengine_laguna_global_write_kv_rows_f32_bf16_spans"
@@ -141,6 +144,99 @@ def laguna_global_head_rmsnorm_rope_write_kv_f32_spans(
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_GLOBAL_HEAD_KV)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 16
+        + [ctypes.c_float]
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(q_weight_ptr),
+        ctypes.c_void_p(k_weight_ptr),
+        ctypes.c_void_p(cos_ptr),
+        ctypes.c_void_p(sin_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(key_out_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(rotary_dim),
+        ctypes.c_int64(max_positions),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_spans(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the exact wave-0 RMS tree for global current-P4 head/KV append."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    if int(num_q_heads) != 48:
+        raise ValueError("num_q_heads must be 48 for Laguna global head/KV")
+    _check_head_kv_rope_shape(rotary_dim, head_dim, max_positions)
+    assert spans.token_positions is not None
+    assert spans.evict_mask is not None
+    assert spans.row_positions is not None
+    _check_nonzero_device_pointers(
+        ("query_ptr", query_ptr),
+        ("key_ptr", key_ptr),
+        ("value_ptr", value_ptr),
+        ("q_weight_ptr", q_weight_ptr),
+        ("k_weight_ptr", k_weight_ptr),
+        ("cos_ptr", cos_ptr),
+        ("sin_ptr", sin_ptr),
+        ("query_out_ptr", query_out_ptr),
+        ("key_out_ptr", key_out_ptr),
+        ("key_cache_ptr", key_cache_ptr),
+        ("value_cache_ptr", value_cache_ptr),
+        ("base_offsets_ptr", spans.base_offsets.ptr),
+        ("live_counts_ptr", spans.live_counts.ptr),
+        ("token_positions_ptr", spans.token_positions.ptr),
+        ("evict_mask_ptr", spans.evict_mask.ptr),
+        ("row_positions_ptr", spans.row_positions.ptr),
+    )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_HEAD_KV_WAVE0_TREE)
     fn.argtypes = (
         [ctypes.c_void_p] * 16
         + [ctypes.c_float]
@@ -1578,6 +1674,10 @@ def laguna_swa_attention_prefill_wave32_exact_bf16_spans(
 def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
     for variant, kernel in (
         ("global_f32_bf16_spans", laguna_global_head_rmsnorm_rope_write_kv_f32_spans),
+        (
+            "global_wave0_tree_f32_bf16_spans",
+            laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_spans,
+        ),
         ("swa_f32_bf16_spans", laguna_swa_head_rmsnorm_rope_write_kv_f32_spans),
     ):
         register(
@@ -1821,6 +1921,7 @@ __all__ = [
     "laguna_global_attention_decode_split_exact_gated_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",
     "laguna_global_head_rmsnorm_rope_write_kv_f32_spans",
+    "laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_spans",
     "laguna_global_write_kv_f32_spans",
     "laguna_global_write_kv_rows_f32_spans",
     "laguna_swa_attention_decode_bf16_spans",

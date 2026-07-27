@@ -200,11 +200,17 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
         ),
-        # Current-P4 head/KV fusion is W7900-only until independently gated.
+        # Current-P4 head/KV fusion and the global-only wave-0 tree are
+        # W7900-only until independently gated.
         (
             "head_rmsnorm+partial_rotary+kv_write",
             "laguna_f32_weight",
             "global_f32_bf16_spans",
+        ),
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "global_wave0_tree_f32_bf16_spans",
         ),
         (
             "head_rmsnorm+partial_rotary+kv_write",
