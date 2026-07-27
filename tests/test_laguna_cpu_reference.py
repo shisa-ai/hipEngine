@@ -19,6 +19,7 @@ from hipengine.kernels.cpu_reference.laguna import (
     laguna_causal_mask,
     laguna_head_rmsnorm,
     laguna_model_forward,
+    laguna_prune_tail_routes,
     laguna_rope_tables,
     laguna_sigmoid_correction_topk,
     laguna_softplus_head_gate,
@@ -126,6 +127,55 @@ def test_laguna_router_rejects_bad_shapes_and_topk() -> None:
         laguna_sigmoid_correction_topk(hidden, router, np.zeros(3), experts_used=2)
     with pytest.raises(ValueError, match="experts_used"):
         laguna_sigmoid_correction_topk(hidden, router, bias, experts_used=5)
+
+
+def test_laguna_prune_tail_routes_is_mass_guarded_and_renormalized() -> None:
+    selected = np.arange(30, dtype=np.int64).reshape(3, 10)
+    routing = np.asarray(
+        [
+            [0.16, 0.14, 0.13, 0.12, 0.11, 0.10, 0.08, 0.07, 0.05, 0.04],
+            [0.15, 0.14, 0.13, 0.12, 0.10, 0.09, 0.08, 0.07, 0.06, 0.06],
+            [0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07, 0.08, 0.08],
+        ],
+        dtype=np.float32,
+    )
+    routing /= routing.sum(axis=1, keepdims=True, dtype=np.float32)
+
+    pruned_selected, pruned_routing, pruned_scaled = laguna_prune_tail_routes(
+        selected,
+        routing,
+        drop_count=2,
+        max_tail_mass=0.15,
+        routed_scaling_factor=2.5,
+    )
+
+    np.testing.assert_array_equal(pruned_selected[:2, -2:], -1)
+    np.testing.assert_array_equal(pruned_routing[:2, -2:], 0.0)
+    np.testing.assert_array_equal(pruned_scaled[:2, -2:], 0.0)
+    np.testing.assert_allclose(
+        pruned_routing[:2, :-2].sum(axis=1),
+        np.ones(2, dtype=np.float32),
+        rtol=0.0,
+        atol=2.0e-7,
+    )
+    np.testing.assert_allclose(
+        pruned_scaled[:2, :-2].sum(axis=1),
+        np.full(2, 2.5, dtype=np.float32),
+        rtol=0.0,
+        atol=5.0e-7,
+    )
+    np.testing.assert_array_equal(pruned_selected[2], selected[2])
+    np.testing.assert_array_equal(pruned_routing[2], routing[2])
+    np.testing.assert_allclose(
+        pruned_scaled[2],
+        routing[2] * np.float32(2.5),
+        rtol=0.0,
+        atol=0.0,
+    )
+    np.testing.assert_array_equal(
+        selected,
+        np.arange(30, dtype=np.int64).reshape(3, 10),
+    )
 
 
 def test_laguna_cpu_reference_primitives_register_under_architecture_keys() -> None:

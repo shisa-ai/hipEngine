@@ -1941,6 +1941,16 @@ Immediate execution queue:
    observed-output-conditioned, or fixed-prefix exemption is admissible.
    Evidence:
    [`2026-07-27-gfx1151-laguna-routing-tail-mass.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-routing-tail-mass.json).
+67. **Speed gate passed; absolute quality pending:** the model-wide
+   final-two mass guard at **0.15** now has a CPU oracle, registered HIP
+   primitive, explicit nullable grouped-combine fallback, and a prefill-only
+   runtime lane. It preserves exact c=1 top-10. Five counter-rotated pp512
+   pairs improve **641.668 -> 687.804 tok/s (+7.190%, 5/5 wins)** with
+   deterministic token 2930. The candidate remains default-off until the
+   deterministic extended-512 ten-prompt/four-category/320-step gate passes
+   max KL **<=0.05**, top-1 **>=90%** overall and per category, and exact
+   lifecycle recovery. Evidence:
+   [`2026-07-27-gfx1151-laguna-route-tail15-speed-pending.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-speed-pending.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1967,8 +1977,9 @@ to Q4 selected down:
    gathers through wave shuffles; coalescing already removes the physical
    traffic duplication. Fixed prefill top-8/top-9 are category-rejected despite
    reaching **720.130/684.313 tok/s**. The only remaining routed-width screen
-   is item 66's measured final-two combined-mass threshold **0.15**; remove it
-   if either the pp512 ceiling or extended-512 category gate fails.
+   is item 66's measured final-two combined-mass threshold **0.15**. Its
+   pp512 speed gate now passes at **687.804 tok/s**; remove it if the
+   extended-512 category gate fails.
 3. Do not widen the 128-row attention slice or retry a library-QK plus scalar
    fused-softmax/PV tail: M256 remains slower after exhaustive algorithm
    tuning, and row8/row16 fused tails lose production despite removing the

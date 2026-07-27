@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T17:05:00+09:00",
+  "kind": "hipengine_laguna_route_tail_mass_speed_screen",
+  "status": "quality_pending",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 5 --length 512 --mode retained=mmq128x32_d8_f32_wavecols_direct_doublebuf --mode tail15=route_tail_mass:0.15 --require-cached-build --output /tmp/laguna-tail15-speed.json",
+    "raw_sha256": "b9b242027a06f7f5c470740b474046a86a7478d49d50c5edac17841d4f3a046b",
+    "prompt_tokens": 512,
+    "repetitions": 5,
+    "counter_rotated": true,
+    "same_resident_load": true
+  },
+  "results": {
+    "retained_samples_tok_s": [
+      619.9221962463207,
+      643.0388860138115,
+      641.6683980289687,
+      641.7773695062334,
+      640.2160384666528
+    ],
+    "candidate_samples_tok_s": [
+      695.0657924176492,
+      677.4467902005962,
+      691.2237130606612,
+      687.804223051718,
+      685.9217714676745
+    ],
+    "retained_median_tok_s": 641.6683980289687,
+    "candidate_median_tok_s": 687.804223051718,
+    "median_speedup": 1.0718997930464802,
+    "paired_wins": 5,
+    "paired_samples": 5,
+    "next_token": 2930,
+    "internally_deterministic": true
+  },
+  "decision": {
+    "speed_screen_passed": true,
+    "production_admitted": false,
+    "next_gate": "extended-512 ten-prompt, four-category, 320-step absolute KL/top-1 gate"
+  }
+}
