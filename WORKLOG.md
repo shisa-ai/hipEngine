@@ -183872,3 +183872,42 @@ Vulkan local sizes verbatim will close the measured gap.
   category at least **96.875%**. Next rebuild the critical-path bridge from
   this trace and attack the largest family with a new physical-byte,
   cross-tile-reuse, or measured latency-overlap mechanism.
+
+## 2026-07-27 — Admit Q6 WMMA next-activation register prefetch
+
+- Audited the suggested K64 paired-nibble reuse against the retained resident
+  T16 layout. Its K32 subblocks already store the two nibble planes
+  independently, so there is no same-byte physical fetch to reuse without
+  reopening the rejected resident-layout campaign. Closed that premise rather
+  than relabeling an ordinary two-subblock loop as K64 reuse.
+- RED added the production planar-qmicro/row64/half-row Q6
+  CPU-reference/quality case and failed on the missing
+  `wmma_prefetch_activation` wrapper. GREEN carries the next compact Q8
+  half-row's four packed dwords and FP32 scale in registers while the current
+  integer-WMMA K32 fragment executes, then publishes the exact bytes into the
+  unchanged shared activation tile. The candidate adds no resident bytes,
+  second shared stage, scratch, arithmetic reordering, or new approximation.
+- The actual layer-1 natural-M512 leaf improves retained next-weight prefetch
+  **4.104155 -> 4.045042 ms (-1.4403%, 20/21 wins)** across 21
+  counter-rotated samples. Both paths have zero BF16 mismatches and checksum
+  **509500838004**. Raw SHA-256:
+  `e46bab986658f5c4085088a2eff7834515a8b87fd068764da4ce174d1e361ff0`.
+- Seven alternating complete pp512 pairs improve the same-owner median
+  **634.447228 -> 637.752420 tok/s (+0.5210%, 5/7 wins)**. All 14 runs
+  preserve token 2930, next-logit bits, full logits, final/post-layer hidden,
+  complete KV, and final cursor exactly. Raw SHA-256:
+  `c39be115a51f979c0ee914e32f117252b13ed0d20da32847721b7176d846af1f`.
+- Cached `rocprofv3 --kernel-trace` names the intended candidate at local128,
+  **VGPR112**, SGPR128, LDS5120B, scratch0 versus retained VGPR104. The
+  single profiled timing is noisy and not used as a speed claim. Trace/child
+  SHA-256 values are
+  `4ec046b18a926e02e7e85229af82ceafba63b6879f4edebfca0e987739590af3`
+  and
+  `54ce45ecbbc2e488167d024dbfab86eb1991f6e5d143419aab35839b4b0f8498`.
+- Validation reports 15/15 Q6 production-geometry CPU-reference/quality
+  variants and 24/24 backend/default/lifecycle tests passing. gfx1151 now
+  selects the candidate with explicit weight-only rollback. The required
+  lineage audit remains blocked by the absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Candidate evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-candidate.json`.
+  Commit this candidate so the clean-worktree production gate can run.

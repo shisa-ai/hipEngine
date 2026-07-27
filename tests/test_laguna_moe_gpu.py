@@ -916,6 +916,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
             selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
             q6_wmma_prefetch_weight=True,
+            q6_wmma_prefetch_activation=True,
         )
         down_q6_prefetch_actual = _read_bf16(
             down_q6_prefetch_output,

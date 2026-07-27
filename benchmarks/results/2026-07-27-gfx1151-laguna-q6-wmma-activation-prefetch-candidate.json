@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T00:05:59Z",
+  "kind": "hipengine_laguna_q6_wmma_activation_prefetch_candidate",
+  "status": "retained_candidate_pending_clean_production",
+  "repo_base_revision": "71b8d6c5c82ab200ad9ab91b343635ddbb075e46",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M with resident Q6_K T16 planar-qmicro selected-down weights"
+  },
+  "change": {
+    "summary": "Prefetch each next compact Q8 activation half-row into registers while the current Q6 integer-WMMA K32 fragment executes.",
+    "resident_bytes_added": 0,
+    "lds_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "arithmetic_reordered": false,
+    "bf16_boundary_changed": false
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 5 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-q6-wmma-prefetch-weight-activation-leaf.json",
+    "shape": {
+      "layer": 1,
+      "natural_prompt_rows": 512,
+      "compact_expert_rows": 5120,
+      "padded_expert_rows": 15808,
+      "in_features": 1024,
+      "out_features": 3072,
+      "experts": 256
+    },
+    "protocol": "21 counter-rotated HIP-event samples, burst 5; activation pack excluded",
+    "weight_prefetch_median_ms": 4.104155349731445,
+    "weight_activation_prefetch_median_ms": 4.045042037963867,
+    "change_percent": -1.4403283192349403,
+    "candidate_wins": 20,
+    "pairs": 21,
+    "bf16_mismatches": 0,
+    "current_checksum": 509500838004,
+    "candidate_checksum": 509500838004,
+    "raw_sha256": "e46bab986658f5c4085088a2eff7834515a8b87fd068764da4ce174d1e361ff0"
+  },
+  "complete_pp512_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --repetitions 7 --mode weight_only=q6_wmma_prefetch --mode activation_pipeline=q6_wmma_prefetch_activation --require-cached-build --output /tmp/laguna-q6-wmma-prefetch-activation-pp512-ab.json",
+    "workload": "selector-unset complete pp512, matrix rows 512, attention rows 128",
+    "weight_only_median_tok_s": 634.4472282703845,
+    "weight_activation_prefetch_median_tok_s": 637.7524201686012,
+    "change_percent": 0.5209561569410992,
+    "candidate_wins": 5,
+    "pairs": 7,
+    "correctness": {
+      "runs": 14,
+      "next_token": 2930,
+      "next_token_logit_exact": true,
+      "logits_exact": true,
+      "final_hidden_exact": true,
+      "post_layer_hidden_exact": true,
+      "kv_exact": true,
+      "cursor_exact": true
+    },
+    "raw_sha256": "c39be115a51f979c0ee914e32f117252b13ed0d20da32847721b7176d846af1f"
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. rocprofv3 --kernel-trace --output-directory /tmp/laguna-q6-prefetch-activation-trace --output-format csv -- .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 1 --warmups 1 --prefill-burst 1 --decode-burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-prefetch-activation-trace-child.json",
+    "kernel": "gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<1,true,false,128,64,true,true,true,true,false,true,true,true,true,true>",
+    "local_size": 128,
+    "current_vgpr": 104,
+    "candidate_vgpr": 112,
+    "sgpr": 128,
+    "lds_bytes": 5120,
+    "scratch_bytes": 0,
+    "trace_sha256": "4ec046b18a926e02e7e85229af82ceafba63b6879f4edebfca0e987739590af3",
+    "child_sha256": "54ce45ecbbc2e488167d024dbfab86eb1991f6e5d143419aab35839b4b0f8498",
+    "timing_note": "The single-sample profiled timing was noisy and is not used as a speed claim."
+  },
+  "validation": {
+    "red": "The new production-geometry CPU-reference parameter initially failed because wmma_prefetch_activation was absent.",
+    "green": [
+      "15 passed: Q6 T16 DS4x3 CPU-reference/quality parameter matrix",
+      "24 passed: gfx1151 backend plus owned-session lifecycle/default tests"
+    ],
+    "known_unrelated_failure": "The broader Laguna MoE Q6 row64-versus-row32 assertion predates this candidate; the new candidate-versus-current assertion passes before that failure."
+  },
+  "lineage_audit": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked",
+    "reason": "Read-only reference checkout /home/lhl/amd-gpu-tuning/reference/atlas is absent."
+  }
+}

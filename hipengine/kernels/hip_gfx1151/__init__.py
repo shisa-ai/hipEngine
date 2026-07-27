@@ -146,6 +146,11 @@ LAGUNA_Q6_QMICRO_PLANAR = True
 # current integer-WMMA fragment consumes LDS, then recycle the same 5,120-byte
 # shared tile. This preserves every Q6 dot/FP32 boundary and adds no sidecar.
 LAGUNA_Q6_WMMA_PREFETCH_WEIGHT = True
+# Pipeline the next compact Q8 activation half-row beside the retained next
+# weight record. The current K32 WMMA hides the global read, and the following
+# iteration publishes the exact bytes into the unchanged shared activation
+# tile. The complete-state pp512 A/B is exact and improves the median.
+LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
