@@ -665,6 +665,14 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 
 **Phase-0 commitment:** lever #1 only. The nano-vllm-amd code already demonstrates it works on ROCm via PyTorch's `torch.cuda.CUDAGraph` wrapper; hipEngine's torch-free port calls `hipGraphCreate` / `hipGraphInstantiate` / `hipGraphLaunch` directly through `ctypes` on `libamdhip64.so` (~300 lines).
 
+Native `hipGraph` remains the package default. A default-off, unvendored Redline
+spike may route the same graph lifecycle through one explicitly preloaded
+Python-enabled DSO and must prove retained PM4 before and after every replay;
+actual native fallback is always reported. Same-HSACO W7900 micro evidence is
+accepted, but model promotion is blocked on an upstream lifecycle fix for the
+reproduced long-process address-zero GPU fault plus bit-exact decode and matched
+end-to-end gates. Process isolation is not an acceptable runtime workaround.
+
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
 #### Fusion Planner
