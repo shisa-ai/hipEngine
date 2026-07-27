@@ -1397,6 +1397,19 @@ materialized quadratic score matrix, followed by six-query-head reuse of each
 Laguna GQA K/V head. Global-only gains should strengthen with context length;
 the 4K guard protects the independently material SWA path.
 
+LC-0 trace attribution now measures global/SWA/complete-minus-attention wall
+at **22.670/10.462/19.860 seconds** for 16K and
+**370.549/43.499/79.483 seconds** for 64K. Their 16K-to-64K ratios are
+**16.345x/4.158x/4.002x**, directly proving the expected
+quadratic/linear/linear split. At 64K, global attention alone owns **75.08%**
+of complete wall and all attention owns **83.90%**; kernel span is within
+**19.7 ms** of complete wall. Current scalar global qrow6 multiplies K/V load
+requests by about **131.76x** across 22 row groups and six GQA heads, while
+SWA qrow4 multiplies them by **288x** across 32 row groups and nine heads.
+These request counts include cache hits and are not DRAM counters. LC-1 starts
+with exact Q16 x K64/local128 block streaming, then LC-2 removes cross-head
+rereads for global-six and SWA-nine groups.
+
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
 | **0. Foundation** | Core host (scheduler, block manager, engine loop, model registry, fusion planner) | ~700 | ~0 | **~700** |

@@ -1,0 +1,222 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_lc0_long_context_attribution",
+  "status": "accepted_attribution",
+  "created_at": "2026-07-27T14:02:36.802727+00:00",
+  "performance_claim": false,
+  "scope": "Cached-only Laguna S 2.1 16K/64K all-family kernel attribution",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "repo": {
+    "revision": "51063e45344b08983e401cfd888be4bdf351efdc",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes_at_64k_capacity": 81927257044,
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "protocol": {
+    "profile_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lc0-trace.ux2oxY --output-file lc0 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 65536 --lengths 16384,65536 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-lc0-trace.ux2oxY/child.json",
+    "summary_command": "PYTHONPATH=. .venv/bin/python3 scripts/laguna_long_context_trace_summary.py --child /tmp/laguna-lc0-trace.ux2oxY/child.json --trace /tmp/laguna-lc0-trace.ux2oxY/lc0_kernel_trace.csv --output /tmp/laguna-lc0-trace.ux2oxY/summary.json",
+    "context_length": 65536,
+    "lengths": [
+      16384,
+      65536
+    ],
+    "matrix_chunk_rows": 2048,
+    "attention_chunk_rows": 128,
+    "repetitions": 1,
+    "warmup_rows": 128,
+    "model_load_excluded": true,
+    "cached_build_required": true,
+    "raw_trace_committed": false
+  },
+  "results": [
+    {
+      "length": 16384,
+      "wall_seconds": 52.991775654954836,
+      "tok_s": 309.1800528950206,
+      "versus_unprofiled_control_pct": 0.39857748008100824,
+      "next_token_id": 81,
+      "final_position": 16383,
+      "dispatches": 23210,
+      "kernel_span_seconds": 52.980299714,
+      "kernel_sum_seconds": 62.50356214,
+      "wall_minus_kernel_span_ms": 11.475940954838393,
+      "global_attention": {
+        "duration_seconds": 22.669998219,
+        "share_of_complete_wall_pct": 42.78022002246364,
+        "share_of_kernel_sum_pct": 36.26992997330632,
+        "logical_qk_pv_flops": 39584834519040,
+        "logical_tflops_per_second": 1.7461331111117369
+      },
+      "swa_attention": {
+        "duration_seconds": 10.462215454,
+        "share_of_complete_wall_pct": 19.743092819011365,
+        "share_of_kernel_sum_pct": 16.738590723143064,
+        "logical_qk_pv_flops": 10958948794368,
+        "logical_tflops_per_second": 1.047478790945572
+      },
+      "attention_total": {
+        "duration_seconds": 33.132213673,
+        "share_of_complete_wall_pct": 62.52331284147501,
+        "share_of_kernel_sum_pct": 53.00852069644938
+      },
+      "complete_wall_minus_attention": {
+        "seconds": 19.859561981954833,
+        "milliseconds_per_token": 1.212131468625173
+      }
+    },
+    {
+      "length": 65536,
+      "wall_seconds": 493.53151097299997,
+      "tok_s": 132.78990002238243,
+      "versus_unprofiled_control_pct": -0.03105566383497793,
+      "next_token_id": 69407,
+      "final_position": 65535,
+      "dispatches": 91537,
+      "kernel_span_seconds": 493.511769947,
+      "kernel_sum_seconds": 531.825050178,
+      "wall_minus_kernel_span_ms": 19.741025999962858,
+      "global_attention": {
+        "duration_seconds": 370.549118958,
+        "share_of_complete_wall_pct": 75.08114694185595,
+        "share_of_kernel_sum_pct": 69.67500286682218,
+        "logical_qk_pv_flops": 633328361275392,
+        "logical_tflops_per_second": 1.7091616977968764
+      },
+      "swa_attention": {
+        "duration_seconds": 43.499344318,
+        "share_of_complete_wall_pct": 8.813894017069106,
+        "share_of_kernel_sum_pct": 8.179258254841686,
+        "logical_qk_pv_flops": 44356614488064,
+        "logical_tflops_per_second": 1.0197076572878194
+      },
+      "attention_total": {
+        "duration_seconds": 414.048463276,
+        "share_of_complete_wall_pct": 83.89504095892505,
+        "share_of_kernel_sum_pct": 77.85426112166387
+      },
+      "complete_wall_minus_attention": {
+        "seconds": 79.48304769699996,
+        "milliseconds_per_token": 1.2128150588531488
+      }
+    }
+  ],
+  "scaling_fit_16k_to_64k": {
+    "context_ratio": 4.0,
+    "complete_wall_ratio": 9.313360514403781,
+    "global_attention_duration_ratio": 16.345352804105573,
+    "swa_attention_duration_ratio": 4.157756500930113,
+    "complete_wall_minus_attention_ratio": 4.0022558286643655,
+    "interpretation": "Global attention is quadratic; SWA and the remaining model are linear after the 512-token window fills.",
+    "projected_128k_seconds_from_64k_rates": {
+      "global_attention": 1482.1851677428608,
+      "swa_attention": 87.16893982085993,
+      "remaining_linear_model": 158.96609539399992,
+      "total": 1728.3202029577208,
+      "actual_lc0_control": 1816.9389890310122,
+      "projection_error_pct": -4.877367187797121
+    }
+  },
+  "current_scalar_attention_topology": {
+    "qualification": "Traffic counts executed BF16 K+V vector-load requests in the cached scalar route after position 512. They exclude the first 512-token library route, metadata, cache-line effects, and cache hits, so they are not physical DRAM-byte counters.",
+    "global": {
+      "kernel": "laguna_global_attention_prefill_qrows_online_bf16_kernel<6,true,true,true>",
+      "query_rows_per_wave": 6,
+      "query_heads_per_kv_head": 6,
+      "row_groups_per_128_query_tile": 22,
+      "workgroup_size": 32,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "grid_workgroups_per_launch": [
+        48,
+        22
+      ],
+      "scalar_launches": {
+        "16384": 1488,
+        "65536": 6096
+      },
+      "traffic": {
+        "16384": {
+          "instruction_requested_kv_bytes": 6800460742656,
+          "one_load_per_kv_head_query_tile_bytes": 51879346176,
+          "request_amplification": 131.08223684210526,
+          "instruction_requested_gb_per_second": 299.97623629967694
+        },
+        "65536": {
+          "instruction_requested_kv_bytes": 108860887793664,
+          "one_load_per_kv_head_query_tile_bytes": 826181419008,
+          "request_amplification": 131.76390232108318,
+          "instruction_requested_gb_per_second": 293.78261133041
+        }
+      }
+    },
+    "sliding_window": {
+      "kernel": "laguna_swa_attention_prefill_qrows_online_bf16_kernel<4,true,false,false,false>",
+      "query_rows_per_wave": 4,
+      "query_heads_per_kv_head": 9,
+      "row_groups_per_128_query_tile": 32,
+      "workgroup_size": 32,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "grid_workgroups_per_launch": [
+        72,
+        32
+      ],
+      "scalar_launches": {
+        "16384": 4464,
+        "65536": 18288
+      },
+      "traffic": {
+        "16384": {
+          "instruction_requested_kv_bytes": 2696165720064,
+          "one_load_per_kv_head_query_tile_bytes": 9361686528,
+          "request_amplification": 288.0,
+          "instruction_requested_gb_per_second": 257.70504649980035
+        },
+        "65536": {
+          "instruction_requested_kv_bytes": 11045582143488,
+          "one_load_per_kv_head_query_tile_bytes": 38352715776,
+          "request_amplification": 288.0,
+          "instruction_requested_gb_per_second": 253.9252560392582
+        }
+      }
+    }
+  },
+  "correctness": {
+    "pass": true,
+    "final_positions_exact": true,
+    "next_tokens_match_unprofiled_control": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0
+  },
+  "raw_evidence": {
+    "child_json_path": "/tmp/laguna-lc0-trace.ux2oxY/child.json",
+    "child_json_sha256": "ceb17e15797341a27a5cd0c997e4cbc5e6b75f0505342cacde01716f74ec068f",
+    "trace_csv_path": "/tmp/laguna-lc0-trace.ux2oxY/lc0_kernel_trace.csv",
+    "trace_csv_sha256": "0fb22dbfa0f4f4a3dc96d89e0d9377acb38b6ae4e0d27daf3bc4230eea7dfd8c",
+    "trace_csv_rows_including_header": 116825,
+    "trace_csv_bytes": 47101276,
+    "attached_summary_path": "/tmp/laguna-lc0-trace.ux2oxY/summary.json",
+    "attached_summary_sha256": "2400bc23ad520e9472215aa0c5d5fa174fe33377d06554475dd9cd5c70afedea"
+  },
+  "assessment": {
+    "finding": "LC-0 is complete. The long-context drop is kernel-bound and specifically global-attention-bound, not a host, launch, GDN, projection, or expert-family scaling defect. The scalar route rereads K/V across both query-row groups and independent GQA query heads.",
+    "next_action": "Implement LC-1 as an exact Q16 x K64 block-streamed global kernel. Four wave32 query-row groups sharing a staged K/V tile reduce the current post-512 global load-request amplification from about 132x to 48x before LC-2 shares each tile across the six global GQA heads. Reuse the cooperative design for the nine-head SWA groups after the global 128K gate."
+  }
+}
