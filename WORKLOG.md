@@ -184520,3 +184520,29 @@ Vulkan local sizes verbatim will close the measured gap.
   A clean cached kernel trace and selector-unset 512/1K/4K publication remain
   mandatory. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json`.
+
+## 2026-07-27 — Publish Q4 precomputed activation sums
+
+- Committed the candidate as `119ff7700`, then ran the required cached-only
+  selector-unset trace. pp512 dispatches the intended local128/VGPR96/
+  SGPR128/LDS3072B/scratch0 consumer and local128/VGPR16/LDS512B producer.
+  Selected Q4 gate/up falls **334.229 -> 330.720 ms (-1.050%)** across the
+  unchanged 94-call family.
+- Three clean selector-unset repetitions publish
+  **649.791/576.589/468.830 tok/s** at 512/1K/4K. Relative to the Q6-sum
+  packet this is **+0.399%/-0.036%/+0.085%**; pp512 wall falls
+  **791.092 -> 787.946 ms**. The five-repeat diagnostic trends downward at
+  every length as the shared APU heats—4K monotonically, shorter lengths with
+  local noise—so it is retained only as thermal context rather than
+  substituted for the declared three-repeat protocol.
+- Generalized the complete-state A/B harness with `--length` and directly
+  resolved the aggregate-flat 1K result: eleven same-process pairs save
+  **4.428 ms** at the paired median with **7/11 wins**. Every logits/hidden/
+  KV/cursor/token digest remains exact. Tokens **2930/95/7772**, final
+  positions, deterministic repeats, and complete return of all
+  **78,806,349,844** tracked bytes pass.
+- pp512 is now **649.791 tok/s / 787.946 ms**, leaving **56.517 ms** to 700.
+  Raw publication SHA-256: `dba194a9...a051a`; 1K A/B SHA-256:
+  `8b07f3a2...0e56`; trace SHA-256: `422e7a1c...da0e`; summary SHA-256:
+  `ea5dd661...d4a3`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-production.json`.

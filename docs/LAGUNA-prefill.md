@@ -1804,7 +1804,7 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json).
-60. **Retained candidate pending clean publication:** reopen Q4 D8
+60. **Published production:** reopen Q4 D8
    precomputed activation sums only for the intervening P8 production body,
    and keep the sums in a separate activation-only `int16` sidecar rather
    than widening every 160-byte D8 block. The sidecar is **196,608 bytes** at
@@ -1818,10 +1818,16 @@ Immediate execution queue:
    logits, hidden state, KV, cursor, and token 2930 are exact. This differs
    materially from item 32's rejected widened-block result, which saved only
    0.339 ms and won 3/6 post-cold pairs. Keep the explicit rollback through
-   the active 700 campaign; a cached trace and clean selector-unset
-   512/1K/4K publication remain mandatory.
+   the active 700 campaign. The clean cached trace confirms the intended
+   local128/VGPR96/LDS3072B consumer and cuts selected gate/up
+   **334.229 -> 330.720 ms (-1.050%)**. Clean selector-unset 512/1K/4K is
+   **649.791/576.589/468.830 tok/s**: pp512 improves **0.399%**, 4K improves
+   **0.085%**, and 1K is aggregate-flat at **-0.036%**. A dedicated
+   same-process 1K gate resolves that wobble in the paired wall:
+   **-4.428 ms, 7/11 wins**, with exact complete state.
    Evidence:
-   [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json).
+   [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json) ·
+   [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-production.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1829,12 +1835,10 @@ The activation-only Q4 repair branch is exhausted and removed. Raw-nibble P8
 prefetch is now exact Q4 gate/up production and has transferred successfully
 to Q4 selected down:
 
-1. **Candidate trace/publication next:** the latest published selector-unset
-   production remains
-   **647.207/576.799/468.431 tok/s**. The refreshed pp512 trace attributes
-   **503.740 ms** to selected gate/up plus down and leaves attention at
-   **67.732 ms**. Q4 precomputed sums now need the clean cached trace and
-   selector-unset 512/1K/4K publication described in item 60.
+1. **Trace/publication complete:** selector-unset production is now
+   **649.791/576.589/468.830 tok/s**. The refreshed pp512 trace cuts selected
+   gate/up **334.229 -> 330.720 ms (-1.050%)**; together with selected down,
+   the expert window is **502.286 ms**.
 2. Attack the selected-expert path with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
@@ -3719,6 +3723,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json`

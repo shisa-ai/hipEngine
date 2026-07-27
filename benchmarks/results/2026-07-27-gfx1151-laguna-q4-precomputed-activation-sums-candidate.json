@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "retained_candidate_pending_clean_publication",
+  "status": "retained_and_published",
   "kind": "hipengine_laguna_q4_precomputed_activation_sums",
   "created_at": "2026-07-27T13:45:57+09:00",
   "hardware": {
@@ -73,5 +73,5 @@
       "sha256": "c540ab058cbe9c9079ee4cd5cc9bad0d856e6f2806ff3c7a77d4e5518bcdcad2"
     }
   ],
-  "decision": "Retain as the gfx1151 M512+ default pending a clean cached trace and selector-unset 512/1K/4K publication. This reopens the old widened-block screen only because the intervening P8 body and a separate sidecar change the measured result: the new candidate wins 9/11 complete-state pairs and saves 2.491 ms at the paired median, versus the old screen's 3/6 wins and 0.339 ms."
+  "decision": "Retained and published as the gfx1151 M512+ default. The clean trace cuts selected Q4 gate/up 334.229 -> 330.720 ms, clean pp512 reaches 649.791 tok/s, and same-process 1K A/B saves 4.428 ms at the paired median. This reopens the old widened-block screen only because the intervening P8 body and a separate sidecar change the measured result: the new candidate wins 9/11 pp512 complete-state pairs and saves 2.491 ms at the paired median, versus the old screen's 3/6 wins and 0.339 ms."
 }
