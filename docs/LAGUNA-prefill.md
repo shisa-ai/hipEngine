@@ -1657,6 +1657,16 @@ Immediate execution queue:
    payload-only register set is the ceiling for this one-interval schedule.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json).
+50. **Rejected and removed before integration:** apply non-temporal loads only
+   to retained P8's next-K32 raw nibble payload. The candidate is
+   BF16-identical and keeps local128/VGPR96/SGPR128/LDS3072B/scratch0, so this
+   isolates cache policy rather than register pressure. Forty-one
+   counter-rotated M512 samples regress
+   **6.5634 -> 6.9727 ms (+6.236%)**. The ordinary cache path is materially
+   helping the mixed streamed-weight/reused-activation working set. No
+   full-model run is warranted and every non-temporal surface is removed.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1669,7 +1679,8 @@ prefetch is now exact Q4 gate/up production:
 2. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
-   metadata-carrying, and packed-metadata schedules are now rejected.
+   metadata-carrying, non-temporal, and packed-metadata schedules are now
+   rejected.
 3. Reopen a closed family only if the new trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
@@ -3533,6 +3544,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-metadata-prefetch-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json`
