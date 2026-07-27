@@ -243,6 +243,71 @@ __device__ __forceinline__ void laguna_head_rmsnorm_partial_rotary_write_kv_f32_
   }
 }
 
+template <bool WriteKV>
+__device__ __forceinline__ void laguna_head_rmsnorm_partial_rotary_wave0_tree_f32_weight_row(
+    const float* __restrict__ src,
+    const float* __restrict__ value_row,
+    const float* __restrict__ weight,
+    const float* __restrict__ cos,
+    const float* __restrict__ sin,
+    float* __restrict__ dst,
+    uint16_t* __restrict__ key_cache,
+    uint16_t* __restrict__ value_cache,
+    float eps,
+    int64_t rotary_dim,
+    int64_t cache_offset,
+    bool cache_valid,
+    float* partial) {
+  const int64_t tid = threadIdx.x;
+  constexpr int64_t head_dim = 128;
+  constexpr int64_t threads = 256;
+  float sum = 0.0f;
+  for (int64_t dim = tid; dim < head_dim; dim += threads) {
+    const float src_value = src[dim];
+    sum += src_value * src_value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  float total;
+  if (tid < 32) {
+    const float p0 = partial[tid] + partial[tid + 128];
+    const float p64 = partial[tid + 64] + partial[tid + 192];
+    const float left = p0 + p64;
+    const float p32 = partial[tid + 32] + partial[tid + 160];
+    const float p96 = partial[tid + 96] + partial[tid + 224];
+    const float right = p32 + p96;
+    total = left + right;
+#pragma unroll
+    for (int stride = 16; stride > 0; stride >>= 1) {
+      total += __shfl_down(total, stride, 32);
+    }
+    if (tid == 0) {
+      partial[0] = total;
+    }
+  }
+  __syncthreads();
+  total = partial[0];
+  const float inv_rms = rsqrtf(total / 128.0f + eps);
+  const int64_t half_rotary = rotary_dim / 2;
+  for (int64_t dim = tid; dim < head_dim; dim += threads) {
+    const float value = src[dim] * inv_rms * weight[dim];
+    float out_value = value;
+    if (dim < rotary_dim) {
+      const int64_t pair_dim = dim < half_rotary ? dim + half_rotary : dim - half_rotary;
+      const float paired = src[pair_dim] * inv_rms * weight[pair_dim];
+      const float rotated = dim < half_rotary ? -paired : paired;
+      out_value = value * cos[dim] + rotated * sin[dim];
+    }
+    dst[dim] = out_value;
+    if constexpr (WriteKV) {
+      if (cache_valid) {
+        key_cache[cache_offset + dim] = laguna_float_to_bf16_bits(out_value);
+        value_cache[cache_offset + dim] = laguna_float_to_bf16_bits(value_row[dim]);
+      }
+    }
+  }
+}
+
 template <bool GlobalSpans>
 __global__ __launch_bounds__(256) void laguna_head_rmsnorm_partial_rotary_write_kv_f32_bf16_kernel(
     const float* __restrict__ query,
@@ -322,6 +387,98 @@ __global__ __launch_bounds__(256) void laguna_head_rmsnorm_partial_rotary_write_
       value_cache,
       eps,
       head_dim,
+      rotary_dim,
+      cache_offset,
+      cache_valid,
+      partial);
+
+  if (local_head == 0 && threadIdx.x == 0 && cache_valid) {
+    const bool slot_was_live =
+        evict_mask[logical_slot] == 0 && token_positions[logical_slot] >= 0;
+    token_positions[logical_slot] = position;
+    evict_mask[logical_slot] = 0;
+    const int64_t old_count = live_counts[0];
+    const int64_t position_count = position + 1 < capacity ? position + 1 : capacity;
+    const int64_t candidate_count = slot_was_live ? old_count : position_count;
+    live_counts[0] = old_count > candidate_count ? old_count : candidate_count;
+  }
+}
+
+__global__ __launch_bounds__(256) void laguna_global_head_rmsnorm_partial_rotary_write_kv_wave0_tree_f32_bf16_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const float* __restrict__ value,
+    const float* __restrict__ q_weight,
+    const float* __restrict__ k_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    float* __restrict__ query_out,
+    float* __restrict__ key_out,
+    uint16_t* __restrict__ key_cache,
+    uint16_t* __restrict__ value_cache,
+    const int32_t* __restrict__ base_offsets,
+    int64_t* __restrict__ live_counts,
+    int64_t* __restrict__ token_positions,
+    uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t rotary_dim,
+    int64_t max_positions) {
+  const int64_t position = row_positions[0];
+  if (position < 0 || position >= max_positions) return;
+  const int64_t head = static_cast<int64_t>(blockIdx.x);
+  if (head >= num_q_heads + num_kv_heads) return;
+
+  int64_t logical_slot = -1;
+  int64_t physical_slot = -1;
+  bool cache_valid = false;
+  if (position < capacity && position / block_size < block_table_len) {
+    logical_slot = position;
+    physical_slot = laguna_global_physical_slot(base_offsets, position, block_size);
+    cache_valid = physical_slot >= 0 && physical_slot < block_table_len * block_size;
+  }
+
+  const bool is_query = head < num_q_heads;
+  const int64_t local_head = is_query ? head : head - num_q_heads;
+  constexpr int64_t head_dim = 128;
+  const int64_t offset = local_head * head_dim;
+  const float* cos = cos_table + position * rotary_dim;
+  const float* sin = sin_table + position * rotary_dim;
+  extern __shared__ float partial[];
+  if (is_query) {
+    laguna_head_rmsnorm_partial_rotary_wave0_tree_f32_weight_row<false>(
+        query + offset,
+        nullptr,
+        q_weight,
+        cos,
+        sin,
+        query_out + offset,
+        nullptr,
+        nullptr,
+        eps,
+        rotary_dim,
+        0,
+        false,
+        partial);
+    return;
+  }
+
+  const int64_t cache_offset = (physical_slot * num_kv_heads + local_head) * head_dim;
+  laguna_head_rmsnorm_partial_rotary_wave0_tree_f32_weight_row<true>(
+      key + offset,
+      value + offset,
+      k_weight,
+      cos,
+      sin,
+      key_out + offset,
+      key_cache,
+      value_cache,
+      eps,
       rotary_dim,
       cache_offset,
       cache_valid,
@@ -2392,6 +2549,71 @@ extern "C" int hipengine_laguna_global_head_rmsnorm_rope_write_kv_f32_bf16_spans
       num_q_heads,
       num_kv_heads,
       head_dim,
+      rotary_dim,
+      max_positions);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_bf16_spans(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* q_weight,
+    const float* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    float* query_out,
+    float* key_out,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    hipStream_t stream) {
+  if (capacity <= 0 || block_size != 256 || block_table_len <= 0 ||
+      num_q_heads != 48 || num_kv_heads != 8 || head_dim != 128 ||
+      rotary_dim <= 0 || rotary_dim > head_dim || max_positions <= 0) {
+    return hipErrorInvalidValue;
+  }
+  constexpr int threads = 256;
+  laguna_global_head_rmsnorm_partial_rotary_write_kv_wave0_tree_f32_bf16_kernel<<<
+      static_cast<unsigned int>(num_q_heads + num_kv_heads),
+      threads,
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(
+      query,
+      key,
+      value,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      query_out,
+      key_out,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      eps,
+      capacity,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
       rotary_dim,
       max_positions);
   return hipGetLastError();
