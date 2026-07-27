@@ -347,12 +347,16 @@ remain unchanged.
 Post-router-projection re-ranking closes the remaining ranked model-kernel
 leaves under their retained or directly rejected exact owners. The first
 materially independent residual is therefore the five synchronous runtime
-copies outside the **678 model kernels/token**. A design-only c=1 control
-publication candidate replaces the three H2D token/position copies with one
-16-byte `(token_id, position)` copy and shares the position view with
-`KVLiveSpans`. The exact host-contract screen moves **66.998 -> 22.640
-us/token (-66.21%)**, a **44.358 us/token** planning ceiling; no runtime owner,
-default, benchmark row, or canonical topline changes in the selection unit.
+copies outside the **678 model kernels/token**. The selected c=1 control
+publication is now runtime-admitted behind a false/default-off gfx1100
+capability: one scratch-owned 16-byte `(token_id, position)` copy shares its +8
+position view with `KVLiveSpans`. Fake-runtime ownership/reset gates and fresh
+shared-weight state pass at KL **0** / top-1 **100%**. Cache-only profiling
+proves **683 -> 681 dispatches/token = five -> three runtime copies + 678
+unchanged model kernels**, with the complete kernel name/resource multiset,
+IDs, lifecycle, and no-compiler checks exact. The default remains separate
+publication; clean/category timing, benchmark rows, and the canonical topline
+have not changed.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -2737,19 +2741,33 @@ so it is planning evidence rather than a full-model throughput claim.
 
 Subtracting only that measured saving from the canonical **15.805224 ms/token**
 boundary models **15.760867 ms/token / 63.448 tok/s (+0.281%)**, still **1.529%**
-below matched Vulkan. Runtime admission must be a separate RED/GREEN unit. Fake-
-runtime gates must prove allocation/view bounds, partial cleanup, borrowed
-versus standalone KV ownership, no double-free, token-serial checks, unchanged
-bulk/reset semantics, constructor failure order, and identical fused/unfused
-position visibility. Fresh shared-weight state must preserve bulk prefill, 16
-c=1 transitions, logits/IDs, all **48 hidden + 47 routed** boundaries, active
-K/V and every span field, reset/re-prefill, ownership, and lifecycle at KL0/
-top-1 100%. Cache-only tracing must prove exactly **681 dispatches/token = three
-runtime copies + 678 unchanged model kernels**, unchanged kernel resources/IDs,
-and no compiler. Only if both clean orders pass short/512/1K/3968 span,
-model-kernel-sum, and child-throughput guards may both complete category orders
-run. No third-order rerun or pooled waiver is allowed. Evidence:
-[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-design.json).
+below matched Vulkan. That remains a planning ceiling, not throughput evidence.
+The separate runtime admission is now complete behind
+`LAGUNA_SHARED_CONTROL_PUBLICATION=False` and explicit session/benchmark opt-in.
+Its RED contract failed **6/6** only on the absent seams; final fake-runtime
+coverage passes **7/7** for the exact +0/+8 views, reverse partial cleanup,
+borrowed versus standalone KV ownership, one pair publication, token-serial
+validation, unchanged bulk/reset behavior, fused/unfused position visibility,
+and KV-before-scratch teardown. Reset adds one control-only scratch-position
+publication outside decode so both control views are `-1`; the aliased candidate
+still performs no duplicate reset copy.
+
+Fresh shared-weight `mixed_ja_en_review` state preserves bulk prefill, 16 c=1
+transitions, full logits/IDs, all **48 hidden + 47 routed** boundaries, active
+K/V and every `KVLiveSpans` field, reset/re-prefill, and teardown at KL **0** /
+top-1 **100%**. It measures the designed **-2 allocations / -8 resident bytes**.
+One require-cached full-model trace then proves **681 dispatches/token = three
+runtime copies + 678 model kernels**, versus immutable control **683 = five +
+678**. The complete 678-kernel name/resource multiset, retained 47 router and 45
+IQ3-wave10 calls, IDs `[605, 2825, 268]`, finite logits, lifecycle, and
+no-compiler checks are exact. This admits correctness only; separate publication
+remains the default and canonical h32 remains **63.270 tok/s**. Next run both
+frozen short/512/1K/3968 process orders under kernel-sum/span/child guards. Only
+if every clean row passes may both complete category orders run; no third-order
+rerun or pooled waiver is allowed. Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-design.json)
+and
+[`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-runtime-correctness.json).
 
 ## 9. Do not chase without new evidence
 
@@ -2815,7 +2833,7 @@ run. No third-order rerun or pooled waiver is allowed. Evidence:
 | What happened to the gated one-page composite? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-rejected.json): primitive only after category rejection. Full state and exact **12-composite/zero-gate/666-kernel** topology pass; both short orders improve family/kernel/span/child and aggregate h32 reaches **63.853 tok/s (+0.809%)** with every category decode row positive. Train aggregate TTFT still regresses **0.780%** beyond +0.5%, so runtime integration is removed without rerun and canonical **63.270 tok/s / 678 kernels** remains. |
 | What is selected after wave-0 MoE-tail rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-rejected.json): primitive only after clean rejection. Synthetic/CPU/**12/12** actual and full-state/**12 candidate + 36 retained SWA / 678-kernel** gates pass. Both short orders improve global-head work **28.728%/26.407%** and kernel sum **0.273%/0.013%**, but order A child regresses **0.859%** and order B span regresses **0.810%**. Runtime integration is removed before long contexts/categories; current-P4 and canonical **63.270 tok/s** remain. |
 | What happened after global-head wave-0 rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-rejected.json): primitive only after clean rejection. Synthetic/CPU/**47/47** actual, full-state, and exact **47-candidate/678-kernel** gates pass. Both short orders improve projection work **7.527%/6.307%**, but order A child regresses **0.619%** and order B kernel/span regress **0.612%/4.211%**. Runtime integration is removed before long contexts/categories; retained `bf16_hidden` and canonical **63.270 tok/s** remain. |
-| What is selected after router-projection ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-design.json): shared c=1 control publication pending runtime admission. One scratch-owned 16-byte token/position block lets `KVLiveSpans` borrow the +8 position view, modeling five→three runtime copies and **683→681** profiler dispatches/token at unchanged 678 model kernels. The exact host-contract screen moves **66.998 -> 22.640 us/token (-66.21%)** with exact readback/cleanup; this is planning evidence only and no runtime/default/topline changed. |
+| What is selected after router-projection ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-design.json) and [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-control-publication-runtime-correctness.json): shared c=1 control publication is runtime-admitted default-off. One scratch-owned 16-byte token/position block lets `KVLiveSpans` borrow the +8 position view. Fake-runtime ownership/reset and full state pass at KL0/top-1 100%; tracing proves five→three runtime copies and **683→681 dispatches/token** with the complete 678-model-kernel multiset unchanged. Clean/category timing is pending; separate publication and canonical **63.270 tok/s** remain the defaults. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -3044,9 +3062,13 @@ short screen rejects runtime ownership: order A child throughput regresses
 capability/plan/session/CLI route is removed before longer contexts/categories;
 retained `bf16_hidden` remains canonical and the exact primitive is diagnostic.
 Post-router-projection re-ranking then moves outside model-kernel leaves to the
-five synchronous runtime copies per token. The selected design shares one
-scratch-owned 16-byte token/position publication with `KVLiveSpans`, modeling
-**683 -> 681 profiler dispatches/token** and **63.270 -> 63.448 tok/s (+0.281%)**
-from the direct **44.358 us/token** host-contract saving. No production owner or
-default exists yet; fake-runtime ownership, shared-weight state, exact trace,
-clean-context, and complete-category gates remain mandatory.
+five synchronous runtime copies per token. The selected scratch-owned 16-byte
+token/position publication is now implemented behind a false/default-off
+capability and shares its +8 position view with `KVLiveSpans`. Fake-runtime
+ownership/reset gates and fresh shared-weight state are exact at KL0/top-1 100%;
+cache-only tracing proves **683 -> 681 profiler dispatches/token = five -> three
+runtime copies + 678 unchanged model kernels**, including an exact complete
+kernel name/resource multiset. The direct **44.358 us/token** host-contract
+saving still models **63.270 -> 63.448 tok/s (+0.281%)**, but this is not yet a
+throughput claim. Separate publication remains canonical until both clean
+context orders and, only if unblocked, both complete category orders pass.
