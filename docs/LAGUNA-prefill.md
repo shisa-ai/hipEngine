@@ -4167,14 +4167,36 @@ Evidence:
 
 #### LC-4 — dense-initial contiguous cache specialization
 
-- Ordinary prompt prefill has dense positions, no eviction, and identity cache
-  order. Specialize the retained tiled route to direct contiguous K/V
-  addressing with no per-token position, eviction, or physical-slot reads.
-- Keep the full `KVLiveSpans` ABI and generic registered fallback. Never infer
-  dense order for continuation, verifier, wrapped SWA, decode, or an explicitly
-  evicted span.
-- Fold preappend and packed-query production into the tile only after the
-  standalone attention body wins 128K.
+- **Closed and retained as an exact kernel sub-window win.** The qualified
+  dense-initial global cache is allocated in identity physical order. Its new
+  block widen computes `logical_start * width + index` directly, removing
+  per-element token-position, eviction, block-table, block-offset, and
+  physical-capacity work.
+- A paired 100-sample M2,048/4K screen improves the exact BF16 K/V widen
+  **0.250249 -> 0.234780 ms (-6.181%)**, saving **15.469 us per 4K block**.
+  The complete attention transaction is about **53.95 ms**, so the projected
+  system effect is only **0.02-0.03%**. Explicit direct attention remains
+  within maximum absolute **3.446e-8** of qrow6.
+- The 4K/16K/64K one-run production A/B is
+  **+2.759%/+0.304%/-0.415%** with exact tokens, positions, and lifecycle.
+  Mandatory 128K is **149.249 tok/s** versus LC-3's **149.684 (-0.291%)**,
+  also exact and fully recovered. These aggregate swings are much larger than
+  the projected effect and are classified as neutral variance; no new
+  complete-model topline is claimed.
+- Cached tracing confirms the retained contiguous symbol at
+  local256/VGPR16/SGPR128/LDS0/scratch0 and **211.797-217.167 us**, versus
+  generic VGPR24 and **324.930 us** under the same profiler. gfx1151 promotes
+  `LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE=true`. Selector-unset
+  512/1K/4K is exact at **628.203/669.454/611.359 tok/s**.
+- The full `KVLiveSpans` ABI and generic registered block widen remain the
+  fallback. Continuation, verifier, decode, explicit eviction, SWA, and
+  unmeasured backends never infer dense identity order. Preappend/query
+  producer folding is not attempted because the complete attention body did
+  not show a measurable independent win. LC-5 matrix chunks above M2,048 are
+  next.
+
+Evidence:
+[`dense contiguous-cache production`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc4-dense-contiguous-cache.json).
 
 #### LC-5 — matrix chunks above 2,048
 

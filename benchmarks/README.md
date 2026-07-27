@@ -176,6 +176,16 @@ releases every tracked allocation. This is **107.494%** above original LC-0
 and **128.233%** above same-GGUF Vulkan at 128K.
 [`global-M2048 production`](results/2026-07-28-gfx1151-laguna-lc3-global-m2048-production.json).
 
+LC-4 removes redundant span decoding from the metadata-qualified
+dense-initial global-cache widen. Paired M2,048/4K timing improves the exact
+sub-window **0.250249 -> 0.234780 ms (-6.181%)** and trace resources fall
+VGPR24 -> VGPR16. Whole-model 4K/16K/64K samples are mixed within one-run
+noise; mandatory 128K is neutral at **149.249 versus 149.684 tok/s
+(-0.291%)**, with exact token/position/lifecycle. The canonical LC-3 128K
+topline therefore remains unchanged while gfx1151 retains the exact
+microsecond win and the generic `KVLiveSpans` fallback.
+[`dense contiguous-cache production`](results/2026-07-28-gfx1151-laguna-lc4-dense-contiguous-cache.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

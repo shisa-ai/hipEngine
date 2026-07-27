@@ -28,6 +28,8 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
+    laguna_dense_initial_cache_block_bf16_to_f32_spans,
+    laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans,
     laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans,
 )
 from hipengine.loading.laguna_gguf import FULL_ATTENTION
@@ -57,6 +59,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--screen-algorithms", action="store_true")
     parser.add_argument("--block-context", type=int)
+    parser.add_argument("--dense-contiguous-cache", action="store_true")
     parser.add_argument("--only-128k", action="store_true")
     parser.add_argument(
         "--contexts",
@@ -316,12 +319,75 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     kv_library=library,
                     qk_algorithm_index=qk_algorithm_index,
                     pv_algorithm_index=pv_algorithm_index,
+                    dense_contiguous_cache=args.dense_contiguous_cache,
                 )
 
             functions = {
                 "qrow6": qrow6,
                 "packed_f32_hipblaslt": packed_f32_hipblaslt,
             }
+            cache_widen_samples: dict[str, list[float]] = {}
+            cache_widen_medians: dict[str, float] = {}
+            if args.block_context is not None:
+                tile_count = min(int(args.block_context), context)
+
+                def span_cache_widen() -> None:
+                    laguna_dense_initial_cache_block_bf16_to_f32_spans(
+                        layer.key_cache.ptr,
+                        layer.value_cache.ptr,
+                        route.key_f32.ptr,
+                        route.value_f32.ptr,
+                        layer.spans,
+                        0,
+                        tile_count,
+                        context,
+                        KV_HEADS,
+                        HEAD_DIM,
+                        library=library,
+                        runtime=runtime,
+                    )
+
+                def contiguous_cache_widen() -> None:
+                    laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans(
+                        layer.key_cache.ptr,
+                        layer.value_cache.ptr,
+                        route.key_f32.ptr,
+                        route.value_f32.ptr,
+                        layer.spans,
+                        0,
+                        tile_count,
+                        context,
+                        KV_HEADS,
+                        HEAD_DIM,
+                        library=library,
+                        runtime=runtime,
+                    )
+
+                cache_functions = {
+                    "spans": span_cache_widen,
+                    "contiguous": contiguous_cache_widen,
+                }
+                for _ in range(args.warmups):
+                    for cache_function in cache_functions.values():
+                        cache_function()
+                runtime.device_synchronize()
+                cache_widen_samples = {
+                    mode: [] for mode in cache_functions
+                }
+                for sample in range(args.samples):
+                    order = (
+                        tuple(cache_functions)
+                        if sample % 2 == 0
+                        else tuple(reversed(cache_functions))
+                    )
+                    for mode in order:
+                        cache_widen_samples[mode].append(
+                            _time_ms(runtime, cache_functions[mode])
+                        )
+                cache_widen_medians = {
+                    mode: statistics.median(values)
+                    for mode, values in cache_widen_samples.items()
+                }
             qk_screen: list[dict[str, object]] = []
             pv_screen: list[dict[str, object]] = []
             algorithm_context = args.block_context or context
@@ -405,6 +471,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         "qk": qk_algorithm_index,
                         "pv": pv_algorithm_index,
                     },
+                    "cache_widen_samples_ms": cache_widen_samples,
+                    "cache_widen_medians_ms": cache_widen_medians,
                     "qk_algorithm_screen": qk_screen,
                     "pv_algorithm_screen": pv_screen,
                     "max_abs": float(np.max(delta)),
@@ -440,6 +508,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 else f"F32 [48,{query_rows},max_context]"
             ),
             "block_context": args.block_context,
+            "dense_contiguous_cache": args.dense_contiguous_cache,
             "inclusive_candidate": "BF16 cache widen + query transpose + F32 QK + wave-row softmax + F32 PV + output transpose",
         },
         "scratch_nbytes": scratch_nbytes,

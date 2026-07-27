@@ -185447,3 +185447,41 @@ Vulkan local sizes verbatim will close the measured gap.
   **60/60**. JSON, Python compilation, and `git diff --check` pass. Accepted artifact:
   `benchmarks/results/2026-07-28-gfx1151-laguna-lc3-global-m2048-production.json`.
   LC-3 is closed; LC-4 dense contiguous-cache specialization is next.
+
+## 2026-07-28 — Promote LC-4 dense-contiguous global-cache widen
+
+- RED added a real-HIP oracle requiring a direct dense-contiguous global-cache
+  block to remain bit-exact to the complete span-aware widen. GREEN retains
+  the full `KVLiveSpans` wrapper and generic fallback, but the qualified
+  dense-initial global kernel streams `logical_start * width + index`
+  directly, eliminating per-element token-position, eviction, logical-block,
+  block-offset, base-offset, and physical-capacity work.
+- A paired 100-sample M2048/4K screen improves the exact cache-widen median
+  **0.250249 -> 0.234780 ms (-6.181%)**, saving **15.469 us per 4K block**.
+  The whole generic attention transaction is **53.950 ms**, so only a
+  **0.02-0.03%** system effect is expected. Explicit direct attention remains
+  finite and within maximum absolute **3.446e-8** of qrow6. Paired/direct raw
+  SHA-256:
+  `996348b68e03c83cef86877952b1a2f5e60e6c72a387dbc5bb6c21a3470389c0` /
+  `877c9136c6d8ba55b489b61ecb00f7c6c2cc8706a175603edde8b8cbf69ea048`.
+- The one-run 4K/16K/64K complete-model comparison is
+  **+2.759%/+0.304%/-0.415%**, with identical tokens and exact positions.
+  Mandatory 128K is **149.249 tok/s / 878.211 s** versus LC-3
+  **149.684 / 875.657 (-0.291%)**, with token 22746, final position 131071,
+  finite output, and full lifecycle recovery. The aggregate swings exceed the
+  projected effect and are recorded as neutral variance; the LC-3 topline is
+  unchanged. Directional/128K SHA-256:
+  `31081796ce86579f59e41323a563dce80fbad4927edbc30040592aafe8073b5c` /
+  `ac7b9f9af1673b8ae159c6263915de9cc5ee4deadd7459d9e29ac26023d65f24`.
+- Cached tracing records the direct symbol at local256/VGPR16/SGPR128,
+  LDS0/scratch0, and **211.797-217.167 us**, versus generic VGPR24 and
+  **324.930 us**. Trace/child SHA-256:
+  `a72df94a2c93f7f681e92529950d52b70c25fac5812fda5cf22c8d485160f004` /
+  `b4778bf92b0321681994d5dd5df7056dc1e9066ef80121c51ca4c60cbdf960cc`.
+- Promoted gfx1151 `LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE=true`.
+  Selector-unset 512/1K/4K reports the capability active and exact
+  **628.203/669.454/611.359 tok/s**, raw SHA-256
+  `46c417a3208293f6d4d45ba10c03f615b3f34d8dd3a8261d3fc0caf1a436b68e`.
+  The final retained affected bundle passes **61/61**. JSON, Python
+  compilation, and `git diff --check` pass. LC-5 matrix chunks above M2048
+  are next.

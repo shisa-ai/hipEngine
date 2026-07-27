@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_dense_initial_attention_tile_merge_f32,
     laguna_dense_initial_cache_block_bf16_to_f32_spans,
     laguna_dense_initial_cache_bf16_to_f32_spans,
+    laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans,
     laguna_dense_initial_causal_softmax_f32_spans,
     laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans,
     laguna_dense_initial_causal_softmax_wave_rows_f32_spans,
@@ -616,6 +617,7 @@ class LagunaAttentionHipblasLt:
         unpack_output: bool = True,
         qk_algorithm_index: int | None = None,
         pv_algorithm_index: int | None = None,
+        dense_contiguous_cache: bool = False,
     ) -> None:
         if self._closed:
             raise RuntimeError("Laguna attention hipBLASLt route is closed")
@@ -648,6 +650,7 @@ class LagunaAttentionHipblasLt:
                 unpack_output=unpack_output,
                 qk_algorithm_index=qk_algorithm_index,
                 pv_algorithm_index=pv_algorithm_index,
+                dense_contiguous_cache=dense_contiguous_cache,
             )
             return
         q_heads = int(num_q_heads)
@@ -780,6 +783,7 @@ class LagunaAttentionHipblasLt:
         unpack_output: bool,
         qk_algorithm_index: int | None,
         pv_algorithm_index: int | None,
+        dense_contiguous_cache: bool,
     ) -> None:
         assert self.block_context is not None
         assert self.head_major_f32 is not None
@@ -808,7 +812,12 @@ class LagunaAttentionHipblasLt:
             tile_count = min(self.block_context, context - tile_start)
             first_tile = tile_start == 0
             final_tile = tile_start + tile_count == context
-            laguna_dense_initial_cache_block_bf16_to_f32_spans(
+            cache_widen = (
+                laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans
+                if dense_contiguous_cache
+                else laguna_dense_initial_cache_block_bf16_to_f32_spans
+            )
+            cache_widen(
                 key_cache_ptr,
                 value_cache_ptr,
                 self.key_f32.ptr,

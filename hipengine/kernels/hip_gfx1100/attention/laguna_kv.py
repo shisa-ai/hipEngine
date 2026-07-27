@@ -75,6 +75,9 @@ _SYMBOL_DENSE_INITIAL_CACHE_BF16_TO_F32 = (
 _SYMBOL_DENSE_INITIAL_CACHE_BLOCK_BF16_TO_F32 = (
     "hipengine_laguna_dense_initial_cache_block_bf16_to_f32_spans"
 )
+_SYMBOL_DENSE_INITIAL_CONTIGUOUS_CACHE_BLOCK_BF16_TO_F32 = (
+    "hipengine_laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans"
+)
 _SYMBOL_DENSE_INITIAL_QUERY_HEAD_TRANSPOSE_F32 = (
     "hipengine_laguna_dense_initial_query_head_transpose_f32"
 )
@@ -1884,6 +1887,73 @@ def laguna_dense_initial_cache_block_bf16_to_f32_spans(
     _check_launch(runtime, err)
 
 
+def laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans(
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    key_f32_ptr: int,
+    value_f32_ptr: int,
+    spans: KVLiveSpans,
+    logical_start: int,
+    count: int,
+    context: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Widen one qualified identity-mapped global BF16 K/V block."""
+
+    if spans.spans_mode != "uniform":
+        raise ValueError("dense contiguous cache widening requires global spans")
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    block_size = _GLOBAL_BLOCK_SIZE
+    parsed_start = int(logical_start)
+    parsed_count = int(count)
+    parsed_context = int(context)
+    if (
+        parsed_start < 0
+        or parsed_count <= 0
+        or parsed_start + parsed_count > parsed_context
+        or parsed_context > int(capacity)
+    ):
+        raise ValueError("dense contiguous cache block is out of range")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_DENSE_INITIAL_CONTIGUOUS_CACHE_BLOCK_BF16_TO_F32,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 8
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_int, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(value_f32_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_int64(parsed_start),
+        ctypes.c_int64(parsed_count),
+        ctypes.c_int64(parsed_context),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int(1),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_dense_initial_query_head_transpose_f32(
     input_ptr: int,
     output_ptr: int,
@@ -2496,6 +2566,7 @@ __all__ = [
     "build_laguna_kv_attention",
     "laguna_dense_initial_cache_bf16_to_f32_spans",
     "laguna_dense_initial_cache_block_bf16_to_f32_spans",
+    "laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans",
     "laguna_dense_initial_attention_tile_merge_f32",
     "laguna_dense_initial_causal_softmax_f32_spans",
     "laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans",
