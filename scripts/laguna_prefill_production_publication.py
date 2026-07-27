@@ -57,7 +57,7 @@ CAPABILITY_DEFAULTS = {
     ),
     "selected_gate_up_mode": (
         "LAGUNA_SELECTED_GATE_UP_MODE",
-        "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+        "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512",
     ),
     "selected_down_mode": (
         "LAGUNA_SELECTED_DOWN_MODE",
@@ -140,6 +140,7 @@ def _expected_candidate_modes(defaults: Mapping[str, Any]) -> dict[str, Any]:
                 "mmq128x32_d8_f32_wavecols",
                 "mmq128x32_d8_f32_wavecols_direct",
                 "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+                "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512",
             )
             else defaults["selected_gate_up_mode"]
         ),

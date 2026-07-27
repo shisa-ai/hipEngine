@@ -251,7 +251,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_ROUTER_LOGITS_MODE == "token_tile_8"
     assert (
         LAGUNA_SELECTED_GATE_UP_MODE
-        == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
     )
     assert (
         LAGUNA_SELECTED_DOWN_MODE

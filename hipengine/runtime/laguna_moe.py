@@ -82,6 +82,7 @@ _SELECTED_GATE_UP_MODES = frozenset(
         "mmq128x32_d8_f32_wavecols",
         "mmq128x32_d8_f32_wavecols_direct",
         "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+        "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512",
         "mmq64x32_d4x2_f32",
         "mmq64x32_d4x3_f32",
     }
@@ -129,6 +130,7 @@ _FUSED_SELECTED_SILU_PACK_GATE_UP_MODES = frozenset(
         "mmq128x32_d8_f32_wavecols",
         "mmq128x32_d8_f32_wavecols_direct",
         "mmq128x32_d8_f32_wavecols_direct_doublebuf",
+        "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512",
     }
 )
 _FUSED_SELECTED_SILU_PACK_DOWN_MODES = frozenset(
@@ -1357,6 +1359,7 @@ def _launch_selected_gate_up_mmq32_d4x3(
     wave_cols: bool = False,
     direct_wave_decode: bool = False,
     double_buffer_activation: bool = False,
+    raw_weight_prefetch_packs: int = 0,
     group_compact_mode: str = "serial",
     defer_silu_pack: bool = False,
 ) -> bool:
@@ -1462,6 +1465,11 @@ def _launch_selected_gate_up_mmq32_d4x3(
         **(
             {"double_buffer_activation": True}
             if double_buffer_activation
+            else {}
+        ),
+        **(
+            {"raw_weight_prefetch_packs": raw_weight_prefetch_packs}
+            if raw_weight_prefetch_packs
             else {}
         ),
         **_stage_kwargs(
@@ -2321,6 +2329,14 @@ def run_laguna_moe_rows(
             True,
             True,
         ),
+        "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512": (
+            1,
+            True,
+            True,
+            True,
+            True,
+            True,
+        ),
         "mmq64x32_d4x2_f32": (2, False, False, False, False, False),
         "mmq64x32_d4x3_f32": (3, False, False, False, False, False),
     }.get(selected_gate_up_mode)
@@ -2349,6 +2365,15 @@ def run_laguna_moe_rows(
             wave_cols=gate_up_wave_cols,
             direct_wave_decode=gate_up_direct_wave_decode,
             double_buffer_activation=gate_up_double_buffer_activation,
+            raw_weight_prefetch_packs=(
+                8
+                if (
+                    selected_gate_up_mode
+                    == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
+                    and tokens >= 512
+                )
+                else 0
+            ),
             group_compact_mode=group_compact_mode,
             defer_silu_pack=use_fused_selected_silu_pack,
         )

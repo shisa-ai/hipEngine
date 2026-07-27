@@ -1583,3 +1583,21 @@ should be boring.
   helper, calibration harness, and focused tests are removed. The reusable
   multi-arm pp512 harness remains. This cleanup closes the Q4
   projection-role candidate; no temporary runtime selector survives.
+
+## Laguna Q4 raw-nibble P8 prefetch rollback
+
+- Added 2026-07-27 as gfx1151 mode
+  `mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512` and P8
+  wrapper export. It carries only the next K32 interval's eight raw T16
+  nibble words, preserves the existing D8 activation double buffer, and
+  selects P8 only at producer chunks of at least 512 rows.
+- The exact actual M512 leaf improves **6.8727 -> 6.7389 ms (-1.948%)**;
+  seven complete-state pp512 pairs improve
+  **636.367 -> 640.003 tok/s (+0.571%, 7/7 wins)**. M256 regresses
+  **0.211%**, so the non-prefetch specialization remains required below the
+  threshold rather than serving only as historical rollback.
+- After clean selector-unset publication and one refreshed trace, collapse
+  the user-visible positive mode into the gfx1151 shape capability. Keep one
+  tested non-prefetch specialization for sub-512/unmeasured geometries, and
+  remove the one-purpose leaf/complete-state comparison modes when they no
+  longer serve campaign bisection.
