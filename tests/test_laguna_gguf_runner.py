@@ -228,8 +228,8 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     plan = LagunaPrefillScratchPlan.build(config, moe_plan, policy=policy)
 
     assert plan.rows_nbytes == 334_651_392
-    assert plan.moe_nbytes == 104_173_600
-    assert plan.total_nbytes == 438_824_992
+    assert plan.moe_nbytes == 104_370_208
+    assert plan.total_nbytes == 439_021_600
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
 
@@ -244,8 +244,8 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
         policy=wide_policy,
     )
     assert wide_plan.rows_nbytes == 1_338_605_568
-    assert wide_plan.moe_nbytes == 416_669_728
-    assert wide_plan.total_nbytes == 1_755_275_296
+    assert wide_plan.moe_nbytes == 417_456_160
+    assert wide_plan.total_nbytes == 1_756_061_728
     assert wide_plan.matrix_rows == 2_048
     assert wide_plan.attention_rows == 128
 
@@ -870,13 +870,15 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.q6_wmma_prefetch_activation is True
     assert session.q6_precomputed_activation_sums is True
     session.set_q6_precomputed_activation_sums(False)
+    assert session.q4_precomputed_activation_sums is True
+    session.set_q4_precomputed_activation_sums(False)
     session.set_q6_wmma_prefetch_activation(False)
     session.set_q6_wmma_prefetch_weight(False)
     assert session.q6_wmma_prefetch_weight is False
     assert kv_kwargs["prefill_cached_meta"] is True
     assert kv_kwargs["prefill_global_qrow6"] is True
     assert kv_kwargs["prefill_dense_initial"] is True
-    assert session.prefill_scratch_plan.total_nbytes == 1_755_275_296
+    assert session.prefill_scratch_plan.total_nbytes == 1_756_061_728
     assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
     assert materialize_kwargs["q6_qmicro_planar"] is True
     assert (

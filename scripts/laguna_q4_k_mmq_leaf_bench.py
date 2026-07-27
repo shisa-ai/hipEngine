@@ -74,6 +74,7 @@ MODES = (
     "t16-mmq128x32-d8-f32-wavecols-direct",
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf",
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8",
+    "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-precomputed-sums",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -455,6 +456,10 @@ def main() -> None:
                     runtime, np.asarray([active_experts.size], dtype=np.int64)
                 )
                 q8_dev = malloc(q8_bytes, runtime=runtime)
+                q8_half_sums_dev = malloc(
+                    rows * (HIDDEN // 16) * np.dtype(np.int16).itemsize,
+                    runtime=runtime,
+                )
                 out_a_dev = malloc(out_bytes, runtime=runtime)
                 out_b_dev = malloc(out_bytes, runtime=runtime)
                 out_dual_dev = malloc(2 * out_bytes, runtime=runtime)
@@ -492,6 +497,7 @@ def main() -> None:
                         active_experts_dev,
                         active_count_dev,
                         q8_dev,
+                        q8_half_sums_dev,
                         out_a_dev,
                         out_b_dev,
                         out_dual_dev,
@@ -678,6 +684,7 @@ def main() -> None:
                     double_buffer_activation: bool = False,
                     split16: bool = True,
                     raw_weight_prefetch_packs: int = 0,
+                    precomputed_activation_sums: bool = False,
                 ) -> None:
                     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
                         source_x_dev.ptr,
@@ -686,6 +693,11 @@ def main() -> None:
                         HIDDEN,
                         residual_passes=1,
                         split16=split16,
+                        q4_half_sums_ptr=(
+                            q8_half_sums_dev.ptr
+                            if precomputed_activation_sums
+                            else 0
+                        ),
                         library=mmq_library,
                         runtime=runtime,
                     )
@@ -712,6 +724,11 @@ def main() -> None:
                         direct_wave_decode=direct_wave_decode,
                         double_buffer_activation=double_buffer_activation,
                         raw_weight_prefetch_packs=raw_weight_prefetch_packs,
+                        precomputed_activation_sums_ptr=(
+                            q8_half_sums_dev.ptr
+                            if precomputed_activation_sums
+                            else 0
+                        ),
                         library=mmq_library,
                         runtime=runtime,
                     )
@@ -749,6 +766,15 @@ def main() -> None:
                             direct_wave_decode=True,
                             double_buffer_activation=True,
                             raw_weight_prefetch_packs=8,
+                        )
+                    ),
+                    "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-precomputed-sums": (
+                        lambda: t16_mmq128_d8_f32(
+                            wave_cols=True,
+                            direct_wave_decode=True,
+                            double_buffer_activation=True,
+                            raw_weight_prefetch_packs=8,
+                            precomputed_activation_sums=True,
                         )
                     ),
                 }

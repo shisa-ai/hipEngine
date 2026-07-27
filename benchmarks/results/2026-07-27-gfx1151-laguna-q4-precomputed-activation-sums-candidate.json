@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "status": "retained_candidate_pending_clean_publication",
+  "kind": "hipengine_laguna_q4_precomputed_activation_sums",
+  "created_at": "2026-07-27T13:45:57+09:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "mechanism": "For M512+ D8 gate/up with the retained P8 body, compute each producer row's exact K16 integer activation sums once in the packer and store them in a bounded int16 scratch sidecar. Each of 16 output-column workgroups loads the sums instead of rebuilding them with eight dp4a instructions per K32. The D8 activation blocks, T16 weights, packed-dot and correction arithmetic, reduction order, and BF16 outputs are unchanged.",
+  "memory": {
+    "resident_weight_delta_bytes": 0,
+    "m512_sidecar_bytes": 196608,
+    "max_m2048_scratch_delta_bytes": 786432,
+    "sidecar_formula": "rows * hidden_size / 16 * sizeof(int16)"
+  },
+  "leaf_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-precomputed-sums --samples 41 --warmups 4 --burst 3 --require-cached-build --output /tmp/laguna-q4-precomputed-sums-leaf.json",
+  "leaf": {
+    "shape": "layer 1, natural routing, K3072, N2368x2, E256",
+    "samples": 41,
+    "m256": {
+      "production_inclusive_ms": 4.426142692565918,
+      "candidate_inclusive_ms": 4.406931241353353,
+      "delta_ms": -0.0192114512125654,
+      "delta_percent": -0.43404500367402177
+    },
+    "m512": {
+      "production_inclusive_ms": 6.730893452962239,
+      "candidate_inclusive_ms": 6.6680959065755205,
+      "delta_ms": -0.06279754638671875,
+      "delta_percent": -0.9329748988833209
+    },
+    "checksums_equal": true,
+    "finite": true
+  },
+  "full_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --mode production=q4_precomputed_sums_off --mode candidate=q4_precomputed_sums_on --repetitions 11 --output /tmp/laguna-q4-precomputed-sums-full-ab.json",
+  "full_model_pp512": {
+    "pairs": 11,
+    "candidate_wins": 9,
+    "production_independent_median_tok_s": 644.4267769363798,
+    "candidate_independent_median_tok_s": 645.7235474483635,
+    "independent_median_delta_percent": 0.20122852718016393,
+    "paired_median_wall_delta_ms": -2.4911449290812016,
+    "next_token": 2930,
+    "state_exact_pairs": 11
+  },
+  "correctness": {
+    "cpu_reference_q4_matrix": "14 passed",
+    "full_logits_equal": true,
+    "next_logit_equal": true,
+    "final_hidden_equal": true,
+    "post_layer_hidden_equal": true,
+    "kv_equal": true,
+    "cursor_equal": true
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_by_missing_external_reference",
+    "detail": "/home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "raw_artifacts": [
+    {
+      "path": "/tmp/laguna-q4-precomputed-sums-leaf.json",
+      "sha256": "25434efc6585dc8b1e54ebc5e2bf790e25852b00bd7c57ec5c962f1b3c82db5f"
+    },
+    {
+      "path": "/tmp/laguna-q4-precomputed-sums-full-ab.json",
+      "sha256": "c540ab058cbe9c9079ee4cd5cc9bad0d856e6f2806ff3c7a77d4e5518bcdcad2"
+    }
+  ],
+  "decision": "Retain as the gfx1151 M512+ default pending a clean cached trace and selector-unset 512/1K/4K publication. This reopens the old widened-block screen only because the intervening P8 body and a separate sidecar change the measured result: the new candidate wins 9/11 complete-state pairs and saves 2.491 ms at the paired median, versus the old screen's 3/6 wins and 0.339 ms."
+}

@@ -2120,26 +2120,31 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         "single_direct_wave_decode",
         "raw_weight_prefetch_packs",
         "single_raw_weight_prefetch_packs",
+        "precomputed_activation_sums",
     ),
     [
-        (1, False, False, False, False, False, False, False, 0, 0),
-        (2, False, False, False, False, False, False, False, 0, 0),
-        (3, False, False, False, False, False, False, False, 0, 0),
-        (1, False, True, False, False, False, False, False, 0, 0),
-        (1, False, True, False, True, False, False, False, 0, 0),
-        (1, False, True, False, True, False, False, True, 0, 0),
+        (1, False, False, False, False, False, False, False, 0, 0, False),
+        (2, False, False, False, False, False, False, False, 0, 0, False),
+        (3, False, False, False, False, False, False, False, 0, 0, False),
+        (1, False, True, False, False, False, False, False, 0, 0, False),
+        (1, False, True, False, True, False, False, False, 0, 0, False),
+        (1, False, True, False, True, False, False, True, 0, 0, False),
         pytest.param(
-            1, False, True, False, True, False, False, True, 0, 8,
+            1, False, True, False, True, False, False, True, 0, 8, False,
             id="single-raw-weight-prefetch-p8",
         ),
-        (1, True, False, False, False, False, False, False, 0, 0),
-        (1, True, True, False, False, False, False, False, 0, 0),
-        (1, True, True, True, False, False, False, False, 0, 0),
-        (1, True, True, True, False, True, False, False, 0, 0),
-        (1, True, True, True, False, True, True, False, 0, 0),
+        (1, True, False, False, False, False, False, False, 0, 0, False),
+        (1, True, True, False, False, False, False, False, 0, 0, False),
+        (1, True, True, True, False, False, False, False, 0, 0, False),
+        (1, True, True, True, False, True, False, False, 0, 0, False),
+        (1, True, True, True, False, True, True, False, 0, 0, False),
         pytest.param(
-            1, True, True, True, False, True, True, False, 8, 0,
+            1, True, True, True, False, True, True, False, 8, 0, False,
             id="raw-weight-prefetch-p8",
+        ),
+        pytest.param(
+            1, True, True, True, False, True, True, False, 8, 0, True,
+            id="raw-weight-prefetch-p8-precomputed-activation-sums",
         ),
     ],
 )
@@ -2154,6 +2159,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     single_direct_wave_decode: bool,
     raw_weight_prefetch_packs: int,
     single_raw_weight_prefetch_packs: int,
+    precomputed_activation_sums: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -2234,6 +2240,18 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
         q8_dev = malloc(q8_bytes, runtime=runtime)
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         bufs.extend((q8_dev, out_dev))
+        activation_sums_dev = (
+            malloc(
+                fixture.compact_rows
+                * (fixture.in_features // 16)
+                * np.dtype(np.int16).itemsize,
+                runtime=runtime,
+            )
+            if precomputed_activation_sums
+            else None
+        )
+        if activation_sums_dev is not None:
+            bufs.append(activation_sums_dev)
 
         gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
             bufs[0].ptr,
@@ -2242,6 +2260,11 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             fixture.in_features,
             residual_passes=residual_passes,
             split16=split16,
+            q4_half_sums_ptr=(
+                activation_sums_dev.ptr
+                if activation_sums_dev is not None
+                else 0
+            ),
             library=library,
             runtime=runtime,
         )
@@ -2268,6 +2291,11 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             direct_wave_decode=direct_wave_decode,
             double_buffer_activation=double_buffer_activation,
             raw_weight_prefetch_packs=raw_weight_prefetch_packs,
+            precomputed_activation_sums_ptr=(
+                activation_sums_dev.ptr
+                if activation_sums_dev is not None
+                else 0
+            ),
             library=library,
             runtime=runtime,
         )

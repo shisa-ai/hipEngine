@@ -184497,3 +184497,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `b4a8745c...2d309c`; summary SHA-256:
   `f02b895b...3c1d`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json`.
+
+## 2026-07-27 — Retain Q4 precomputed activation sums candidate
+
+- Reopened the earlier rejected D8-sum premise only for the intervening P8
+  production body and a separate activation-only sidecar. The D8 pack computes
+  exact K16 integer sums once per source row; 16 output-column workgroups load
+  them instead of repeating eight sum `dp4a` operations per K32. Resident
+  weights and D8 blocks are unchanged. Scratch grows **196,608 bytes** at
+  M512 and **786,432 bytes** at the M2048 ceiling.
+- Actual layer-1 natural-routing, pack-inclusive, 41-sample medians improve
+  **4.4261 -> 4.4069 ms (-0.434%)** at M256 and
+  **6.7309 -> 6.6681 ms (-0.933%)** at M512 with identical checksums.
+- Eleven counter-rotated full pp512 pairs improve independent medians
+  **644.427 -> 645.724 tok/s (+0.201%)**, save **2.491 ms** at the paired
+  median, and win **9/11**. All logits, next logit/token, final/post-layer
+  hidden state, KV, cursor, and repeated digests are exact. The full Q4
+  CPU-reference matrix passes **14/14**; focused scratch/session accounting
+  tests pass after updating the intentional allocation delta.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  by the absent external `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
+  A clean cached kernel trace and selector-unset 512/1K/4K publication remain
+  mandatory. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json`.

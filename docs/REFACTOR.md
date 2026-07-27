@@ -1642,3 +1642,21 @@ should be boring.
   capability. Preserve the
   non-prefetch symbol for sub-512 rows and rollback/bisection because the
   admitted route is deliberately shape-qualified.
+
+## Laguna Q4 precomputed activation-sum rollback
+
+- Added 2026-07-27 as an exact gfx1151 M512+ default behind
+  `LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS`. The D8 producer writes exact K16
+  integer sums to a bounded activation-only `int16` sidecar, and the retained
+  P8 consumer loads them instead of rebuilding them in 16 output-column
+  workgroups.
+- The actual leaf improves **0.434%/0.933%** at M256/M512. Eleven
+  complete-state pp512 pairs save **2.491 ms** at the paired median with
+  **9/11 wins** and exact state. The maximum scratch plan grows by
+  **786,432 bytes**; resident weights do not grow.
+- Keep the capability, setter, old consumer, and two-symbol pack/consumer
+  split through the active 700 campaign for rollback and attribution. After
+  clean cached trace plus selector-unset 512/1K/4K publication, collapse the
+  positive path into the gfx1151 M512 shape policy. Remove the sidecar and
+  candidate symbols if clean publication regresses any required length or the
+  traced gate/up family does not improve.

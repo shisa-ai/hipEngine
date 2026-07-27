@@ -64,6 +64,9 @@ _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16_D4_Q6_HALF_SUMS = (
 _SYMBOL_DS8_F32_PACK_BF16 = (
     "hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16"
 )
+_SYMBOL_DS8_F32_PACK_BF16_Q4_HALF_SUMS = (
+    "hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16_q4_half_sums"
+)
 _SYMBOL_Q6_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
         "hipengine_gguf_q6_k_t16_selected_q8_1_"
@@ -204,6 +207,11 @@ _SYMBOL_Q4_T16_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = {
     )
     for packs in (8,)
 }
+_SYMBOL_Q4_T16_RAW_PREFETCH_PRECOMPUTED_SUMS_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = (
+    "hipengine_gguf_q4_k_t16_raw_prefetch_p8_precomputed_sums_"
+    "selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_"
+    "doublebuf_prefill_compact32_bf16_bf16_out"
+)
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -369,6 +377,7 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
     residual_passes: int = 3,
     split16: bool = False,
     q6_half_sums: bool = False,
+    q4_half_sums_ptr: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -385,10 +394,14 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
         raise ValueError("split16 requires residual_passes=1")
     if q6_half_sums and (split16 or residual_passes != 1):
         raise ValueError("q6_half_sums requires one-plane D4")
+    if q4_half_sums_ptr and (not split16 or residual_passes != 1):
+        raise ValueError("q4_half_sums_ptr requires one-plane split16 D8")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        _SYMBOL_DS4_F32_PACK_BF16_D4_Q6_HALF_SUMS
+        _SYMBOL_DS8_F32_PACK_BF16_Q4_HALF_SUMS
+        if q4_half_sums_ptr
+        else _SYMBOL_DS4_F32_PACK_BF16_D4_Q6_HALF_SUMS
         if q6_half_sums
         else
         _SYMBOL_DS8_F32_PACK_BF16
@@ -396,21 +409,39 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
         else _SYMBOL_DS4_F32_PACK_BF16[residual_passes]
     )
     fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
+    fn.argtypes = (
+        [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_int64,
+            ctypes.c_int64,
+            ctypes.c_void_p,
+        ]
+        if q4_half_sums_ptr
+        else [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_int64,
+            ctypes.c_int64,
+            ctypes.c_void_p,
+        ]
+    )
     fn.restype = ctypes.c_int
-    err = fn(
+    args = [
         ctypes.c_void_p(x_bf16_ptr),
         ctypes.c_void_p(out_q8_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden),
-        ctypes.c_void_p(stream),
+    ]
+    if q4_half_sums_ptr:
+        args.append(ctypes.c_void_p(q4_half_sums_ptr))
+    args.extend(
+        [
+            ctypes.c_int64(rows),
+            ctypes.c_int64(hidden),
+            ctypes.c_void_p(stream),
+        ]
     )
+    err = fn(*args)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -674,6 +705,7 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
     direct_wave_decode: bool = False,
     double_buffer_activation: bool = False,
     raw_weight_prefetch_packs: int = 0,
+    precomputed_activation_sums_ptr: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -718,12 +750,26 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         raise ValueError(
             "raw weight prefetch requires production Q4 geometry"
         )
+    if precomputed_activation_sums_ptr and not (
+        raw_weight_prefetch_packs == 8
+        and residual_passes == 1
+        and split16
+        and rowvec
+        and wave_cols
+        and direct_wave_decode
+        and double_buffer_activation
+    ):
+        raise ValueError(
+            "precomputed activation sums require production Q4 P8 geometry"
+        )
     if wave_cols and not split16:
         raise ValueError("wave_cols requires split16 D8")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        _SYMBOL_Q4_T16_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16[
+        _SYMBOL_Q4_T16_RAW_PREFETCH_PRECOMPUTED_SUMS_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16
+        if precomputed_activation_sums_ptr
+        else _SYMBOL_Q4_T16_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16[
             raw_weight_prefetch_packs
         ]
         if raw_weight_prefetch_packs
@@ -744,43 +790,36 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         else _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16[residual_passes]
     )
     fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_q8_ptr),
-        ctypes.c_void_p(compact_to_source_ptr),
-        ctypes.c_void_p(expert_start_compact_ptr),
-        ctypes.c_void_p(expert_start_mmq32_ptr),
-        ctypes.c_void_p(mmq_tile_expert_ptr),
-        ctypes.c_void_p(qweight_a_ptr),
-        ctypes.c_void_p(qweight_b_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(compact_rows),
-        ctypes.c_int64(source_rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features_a),
-        ctypes.c_int64(out_features_b),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(mmq_total_rows),
-        ctypes.c_void_p(stream),
+    pointer_args = 9 if precomputed_activation_sums_ptr else 8
+    fn.argtypes = (
+        [ctypes.c_void_p] * pointer_args
+        + [ctypes.c_int64] * 7
+        + [ctypes.c_void_p]
     )
+    fn.restype = ctypes.c_int
+    args = [ctypes.c_void_p(x_q8_ptr)]
+    if precomputed_activation_sums_ptr:
+        args.append(ctypes.c_void_p(precomputed_activation_sums_ptr))
+    args.extend(
+        [
+            ctypes.c_void_p(compact_to_source_ptr),
+            ctypes.c_void_p(expert_start_compact_ptr),
+            ctypes.c_void_p(expert_start_mmq32_ptr),
+            ctypes.c_void_p(mmq_tile_expert_ptr),
+            ctypes.c_void_p(qweight_a_ptr),
+            ctypes.c_void_p(qweight_b_ptr),
+            ctypes.c_void_p(out_ptr),
+            ctypes.c_int64(compact_rows),
+            ctypes.c_int64(source_rows),
+            ctypes.c_int64(in_features),
+            ctypes.c_int64(out_features_a),
+            ctypes.c_int64(out_features_b),
+            ctypes.c_int64(num_experts),
+            ctypes.c_int64(mmq_total_rows),
+            ctypes.c_void_p(stream),
+        ]
+    )
+    err = fn(*args)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
