@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "status": "candidate_pending_clean_trace",
+  "kind": "hipengine_laguna_attention_packed_output_gate",
+  "created_at": "2026-07-27T22:15:00+09:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "mechanism": "For the three qualified initial dense M128 attention tiles, write zero-workspace hipBLASLt PV output directly into each tile's head-major context slice and consume the resulting mixed generic/head-major buffer in one exact packed-aware softplus gate. This removes the three output-transpose launches per layer without changing QK, softmax, PV, source-F16, BF16 rounding, resident bytes, or fallback attention.",
+  "full_model_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_attention_packed_output_gate_ab.py --repetitions 11 --require-cached-build --output /tmp/laguna-attention-packed-output-gate-2d-ab.json",
+  "full_model_pp512": {
+    "pairs": 11,
+    "candidate_wins": 6,
+    "production_independent_median_tok_s": 645.7353422236527,
+    "candidate_independent_median_tok_s": 647.9197408071129,
+    "independent_median_delta_percent": 0.3382807848085312,
+    "production_independent_median_wall_ms": 792.8944979794323,
+    "candidate_independent_median_wall_ms": 790.2213310590014,
+    "paired_median_wall_delta_ms": -0.05655502900481224,
+    "next_token": 2930,
+    "state_exact_pairs": 11
+  },
+  "leaf_trace": {
+    "shape": "rows384, heads72, head_dim128, packed rows128..383",
+    "generic_gate_ms": 0.257403,
+    "packed_gate_ms": 0.262491,
+    "packed_minus_generic_ms": 0.005088,
+    "packed_workgroup_size": 256,
+    "packed_vgpr": 16,
+    "packed_static_lds_bytes": 0,
+    "packed_scratch_bytes": 0
+  },
+  "correctness": {
+    "mixed_layout_vs_generic_bf16_bits_equal": true,
+    "full_logits_equal": true,
+    "next_logit_equal": true,
+    "final_hidden_equal": true,
+    "post_layer_hidden_equal": true,
+    "kv_equal": true,
+    "cursor_equal": true
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_by_missing_external_reference",
+    "detail": "/home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "raw_artifacts": [
+    {
+      "path": "/tmp/laguna-attention-packed-output-gate-2d-ab.json",
+      "sha256": "6a496d99e2e7428a4632c278f5d306e644b2afb4615f78d2264ba53350b00594"
+    },
+    {
+      "path": "/tmp/laguna-packed-output-gate-2d-trace-20260727a/packed-gate-2d_kernel_trace.csv",
+      "sha256": "6be56a111c7e06c4054519974bd090f38fd368bc87d963870eeae4afde16b592"
+    }
+  ],
+  "decision": "Commit as a gfx1151 default candidate so the repository clean-state profiler can attribute the complete pp512 sub-window. Retain only if the clean trace confirms all 144 output-transpose launches are removed and the packed gate does not repay that saved time; otherwise remove the route."
+}

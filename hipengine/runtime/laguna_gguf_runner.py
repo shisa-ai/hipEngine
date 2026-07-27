@@ -33,6 +33,10 @@ from hipengine.kernels.hip_gfx1100.convert.cast import (
     f32_scale_rows,
     f32_scale_rows_to_bf16,
 )
+from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
+    laguna_softplus_head_gate_f32_bf16_packed_tiles_out,
+    laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import lm_head_argmax_stage1_blocks
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.gguf import GGUFReader
@@ -1578,6 +1582,7 @@ class LagunaGGUFResidentSession:
         prefill_attention_hipblaslt: bool | None = None,
         prefill_attention_hipblaslt_packed_queries: bool | None = None,
         prefill_attention_hipblaslt_wave_rows_softmax: bool | None = None,
+        prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
@@ -1691,6 +1696,15 @@ class LagunaGGUFResidentSession:
             capability_wave_rows_softmax
             if prefill_attention_hipblaslt_wave_rows_softmax is None
             else prefill_attention_hipblaslt_wave_rows_softmax
+        )
+        self.prefill_attention_hipblaslt_packed_output_gate = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
+                False,
+            )
+            if prefill_attention_hipblaslt_packed_output_gate is None
+            else prefill_attention_hipblaslt_packed_output_gate
         )
         resident_q6_qmicro = (
             getattr(resident_weights, "q6_qmicro", None)
@@ -3109,6 +3123,8 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
         )
         attention_ranges = self.prefill_chunk_policy.attention_ranges(rows)
+        packed_output_begin: int | None = None
+        packed_output_end: int | None = None
         if stage_verifier_kv and len(attention_ranges) != 1:
             raise ValueError("Laguna staged verifier rows must fit one attention tile")
         for row_offset, attention_rows in attention_ranges:
@@ -3170,6 +3186,10 @@ class LagunaGGUFResidentSession:
                         )
                     )
                 if use_attention_hipblaslt:
+                    leave_output_packed = bool(
+                        self.prefill_attention_hipblaslt_packed_output_gate
+                        and self.prefill_attention_hipblaslt_packed_queries
+                    )
                     self._ensure_attention_hipblaslt().launch(
                         scratch.query_rotated.ptr + q_offset,
                         state.key_cache.ptr,
@@ -3184,7 +3204,16 @@ class LagunaGGUFResidentSession:
                         scale=config.key_length**-0.5,
                         stream=stream,
                         kv_library=self.libraries.kv_attention,
+                        unpack_output=not leave_output_packed,
                     )
+                    if leave_output_packed:
+                        if packed_output_begin is None:
+                            packed_output_begin = row_offset
+                        elif packed_output_end != row_offset:
+                            raise RuntimeError(
+                                "packed attention output tiles must be contiguous"
+                            )
+                        packed_output_end = row_offset + attention_rows
                 else:
                     self.kv_cache.attend_prefill_cached(
                         layer_id,
@@ -3236,25 +3265,47 @@ class LagunaGGUFResidentSession:
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 stream,
             )
-        attention_gate = (
-            self.kernel_plan.attention_gate_fp16_via_bf16
-            if (
-                self.f16_prefill_mode == "hipblaslt_range_direct"
-                and self.fuse_f16_boundaries
+        direct_fp16_gate = bool(
+            self.f16_prefill_mode == "hipblaslt_range_direct"
+            and self.fuse_f16_boundaries
+        )
+        if packed_output_begin is not None:
+            assert packed_output_end is not None
+            packed_gate = (
+                laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out
+                if direct_fp16_gate
+                else laguna_softplus_head_gate_f32_bf16_packed_tiles_out
             )
-            else self.kernel_plan.attention_gate
-        )
-        attention_gate(
-            scratch.context.ptr,
-            scratch.gate_logits.ptr,
-            scratch.gated_context.ptr,
-            rows,
-            heads,
-            config.value_length,
-            stream=stream,
-            library=self.libraries.attention_gate,
-            runtime=self.runtime,
-        )
+            packed_gate(
+                scratch.context.ptr,
+                scratch.gate_logits.ptr,
+                scratch.gated_context.ptr,
+                rows,
+                heads,
+                config.value_length,
+                packed_output_begin,
+                packed_output_end,
+                stream=stream,
+                library=self.libraries.attention_gate,
+                runtime=self.runtime,
+            )
+        else:
+            attention_gate = (
+                self.kernel_plan.attention_gate_fp16_via_bf16
+                if direct_fp16_gate
+                else self.kernel_plan.attention_gate
+            )
+            attention_gate(
+                scratch.context.ptr,
+                scratch.gate_logits.ptr,
+                scratch.gated_context.ptr,
+                rows,
+                heads,
+                config.value_length,
+                stream=stream,
+                library=self.libraries.attention_gate,
+                runtime=self.runtime,
+            )
         self._launch_attention_output_rows(
             layer,
             scratch,

@@ -441,6 +441,7 @@ class LagunaAttentionHipblasLt:
         scale: float,
         stream: int = 0,
         kv_library=None,
+        unpack_output: bool = True,
     ) -> None:
         if self._closed:
             raise RuntimeError("Laguna attention hipBLASLt route is closed")
@@ -529,20 +530,21 @@ class LagunaAttentionHipblasLt:
             problems.pv.launch(
                 self.value_f32.ptr,
                 self.scores_f32.ptr,
-                self.head_major_f32.ptr,
+                self.head_major_f32.ptr if unpack_output else out_ptr,
                 stream=stream,
             )
-            laguna_dense_initial_query_head_transpose_f32(
-                self.head_major_f32.ptr,
-                out_ptr,
-                rows,
-                q_heads,
-                head_dim,
-                to_head_major=False,
-                stream=stream,
-                library=kv_library,
-                runtime=self.runtime,
-            )
+            if unpack_output:
+                laguna_dense_initial_query_head_transpose_f32(
+                    self.head_major_f32.ptr,
+                    out_ptr,
+                    rows,
+                    q_heads,
+                    head_dim,
+                    to_head_major=False,
+                    stream=stream,
+                    library=kv_library,
+                    runtime=self.runtime,
+                )
         else:
             for kv_head in range(_KV_HEADS):
                 problems.pv.launch(

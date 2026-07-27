@@ -93,6 +93,12 @@ LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES = True
 # improves 13.72%; paired pp512 improves 0.574% and all-exact KL falls from
 # 0.002097 to 0.001796.
 LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX = True
+# Keep the three qualified library-attention output tiles in their native
+# head-major order and consume that mixed layout directly in the exact
+# softplus gate. This removes 144 standalone output-transpose launches at
+# pp512. Eleven complete-state pairs improve the median 0.338%; the stronger
+# admission signal is the exact removal of the traced transpose sub-window.
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
@@ -424,6 +430,7 @@ __all__ = [
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT",
+    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
     "LAGUNA_PREFILL_CACHED_META",

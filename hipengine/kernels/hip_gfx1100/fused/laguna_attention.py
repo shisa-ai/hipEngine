@@ -22,6 +22,18 @@ _ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_PACKED_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ALLOWED_THREADS = {32, 64, 128, 256}
 
 
@@ -179,10 +191,145 @@ def laguna_softplus_head_gate_f32_fp16_via_bf16_out(
     )
 
 
+def _launch_packed_tiles(
+    symbol,
+    context_ptr,
+    gate_ptr,
+    out_ptr,
+    rows,
+    heads,
+    head_dim,
+    packed_begin,
+    packed_end,
+    *,
+    threads,
+    stream,
+    library,
+    runtime,
+):
+    if rows <= 0 or heads <= 0 or head_dim <= 0:
+        raise ValueError("rows, heads, and head_dim must be positive")
+    if (
+        packed_begin < 0
+        or packed_begin >= packed_end
+        or packed_end > rows
+        or packed_begin % 128
+        or packed_end % 128
+    ):
+        raise ValueError("packed tile range must be aligned within rows")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 32, 64, 128, 256")
+    library = library or build_laguna_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, symbol, _PACKED_ARGS, ctypes.c_int)
+    err = fn(
+        context_ptr,
+        gate_ptr,
+        out_ptr,
+        rows,
+        heads,
+        head_dim,
+        packed_begin,
+        packed_end,
+        threads,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def laguna_softplus_head_gate_f32_bf16_packed_tiles_out(
+    context_ptr,
+    gate_ptr,
+    out_ptr,
+    rows,
+    heads,
+    head_dim,
+    packed_begin,
+    packed_end,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    """Gate mixed generic/head-major 128-row tiles and emit generic BF16."""
+
+    _launch_packed_tiles(
+        "hipengine_laguna_softplus_head_gate_f32_bf16_packed_tiles_out",
+        context_ptr,
+        gate_ptr,
+        out_ptr,
+        rows,
+        heads,
+        head_dim,
+        packed_begin,
+        packed_end,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out(
+    context_ptr,
+    gate_ptr,
+    out_ptr,
+    rows,
+    heads,
+    head_dim,
+    packed_begin,
+    packed_end,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    """Gate mixed tiles directly to the FP16 representation of BF16."""
+
+    _launch_packed_tiles(
+        "hipengine_laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out",
+        context_ptr,
+        gate_ptr,
+        out_ptr,
+        rows,
+        heads,
+        head_dim,
+        packed_begin,
+        packed_end,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_laguna_attention_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "attention_gate", "f32", "softplus_broadcast_f32_out"),
         laguna_softplus_head_gate_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_gate",
+            "f32",
+            "softplus_broadcast_bf16_packed_tiles_out",
+        ),
+        laguna_softplus_head_gate_f32_bf16_packed_tiles_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "attention_gate",
+            "f32",
+            "softplus_broadcast_fp16_via_bf16_packed_tiles_out",
+        ),
+        laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out,
         replace=replace,
     )
     register(
@@ -207,7 +354,9 @@ register_laguna_attention_kernels()
 __all__ = [
     "build_laguna_attention",
     "laguna_softplus_head_gate_f32_bf16_out",
+    "laguna_softplus_head_gate_f32_bf16_packed_tiles_out",
     "laguna_softplus_head_gate_f32_fp16_via_bf16_out",
+    "laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out",
     "laguna_softplus_head_gate_f32_out",
     "plan_laguna_attention_build",
     "register_laguna_attention_kernels",

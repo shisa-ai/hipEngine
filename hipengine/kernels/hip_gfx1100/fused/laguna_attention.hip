@@ -62,6 +62,43 @@ __global__ void laguna_softplus_head_gate_kernel(
 }
 
 template <typename out_t, bool VIA_BF16 = false>
+__global__ void laguna_softplus_head_gate_packed_tiles_kernel(
+    const float* __restrict__ context,
+    const float* __restrict__ gate,
+    out_t* __restrict__ out,
+    int64_t rows,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t packed_begin,
+    int64_t packed_end) {
+  constexpr int64_t kTileRows = 128;
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t within_row =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t row_width = heads * head_dim;
+  if (row >= rows || within_row >= row_width) return;
+  const int64_t head = within_row / head_dim;
+  const int64_t element = within_row - head * head_dim;
+  const int64_t idx = row * row_width + within_row;
+  int64_t context_idx = idx;
+  if (row >= packed_begin && row < packed_end) {
+    const int64_t tile_begin = (row / kTileRows) * kTileRows;
+    const int64_t tile_row = row - tile_begin;
+    context_idx =
+        ((tile_begin * heads + head * kTileRows + tile_row) * head_dim)
+        + element;
+  }
+  const float value =
+      context[context_idx] * softplus(gate[row * heads + head]);
+  if constexpr (VIA_BF16) {
+    out[idx] = static_cast<out_t>(
+        bf16_bits_to_float(f32_to_bf16(value)));
+  } else {
+    store(out, idx, value);
+  }
+}
+
+template <typename out_t, bool VIA_BF16 = false>
 int launch(const float* context, const float* gate, out_t* out, int64_t rows,
            int64_t heads, int64_t head_dim, int64_t threads, hipStream_t stream) {
   if (rows <= 0 || heads <= 0 || head_dim <= 0 || threads <= 0 || threads > 256 || threads % 32) {
@@ -82,6 +119,46 @@ int launch(const float* context, const float* gate, out_t* out, int64_t rows,
       rows,
       heads,
       head_dim);
+  return hipGetLastError();
+}
+
+template <typename out_t, bool VIA_BF16 = false>
+int launch_packed_tiles(
+    const float* context,
+    const float* gate,
+    out_t* out,
+    int64_t rows,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t packed_begin,
+    int64_t packed_end,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || heads <= 0 || head_dim <= 0 ||
+      packed_begin < 0 || packed_begin >= packed_end || packed_end > rows ||
+      packed_begin % 128 != 0 || packed_end % 128 != 0 ||
+      threads <= 0 || threads > 256 || threads % 32) {
+    return hipErrorInvalidValue;
+  }
+  const int64_t row_width = heads * head_dim;
+  const int64_t blocks = (row_width + threads - 1) / threads;
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(
+          laguna_softplus_head_gate_packed_tiles_kernel<out_t, VIA_BF16>),
+      dim3(
+          static_cast<unsigned int>(blocks),
+          static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      context,
+      gate,
+      out,
+      rows,
+      heads,
+      head_dim,
+      packed_begin,
+      packed_end);
   return hipGetLastError();
 }
 
@@ -116,6 +193,56 @@ hipengine_laguna_softplus_head_gate_f32_fp16_via_bf16_out(
       rows,
       heads,
       head_dim,
+      threads,
+      stream);
+}
+
+extern "C" int
+hipengine_laguna_softplus_head_gate_f32_bf16_packed_tiles_out(
+    const float* context,
+    const float* gate,
+    uint16_t* out,
+    int64_t rows,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t packed_begin,
+    int64_t packed_end,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_packed_tiles(
+      context,
+      gate,
+      out,
+      rows,
+      heads,
+      head_dim,
+      packed_begin,
+      packed_end,
+      threads,
+      stream);
+}
+
+extern "C" int
+hipengine_laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out(
+    const float* context,
+    const float* gate,
+    half_t* out,
+    int64_t rows,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t packed_begin,
+    int64_t packed_end,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_packed_tiles<half_t, true>(
+      context,
+      gate,
+      out,
+      rows,
+      heads,
+      head_dim,
+      packed_begin,
+      packed_end,
       threads,
       stream);
 }

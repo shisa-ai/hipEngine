@@ -174,6 +174,7 @@ def test_laguna_softplus_head_gate_broadcast_matches_cpu() -> None:
     from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
         build_laguna_attention,
         laguna_softplus_head_gate_f32_bf16_out,
+        laguna_softplus_head_gate_f32_bf16_packed_tiles_out,
         laguna_softplus_head_gate_f32_out,
     )
 
@@ -224,6 +225,71 @@ def test_laguna_softplus_head_gate_broadcast_matches_cpu() -> None:
         actual_bf16,
         bf16_to_float32(float_array_to_bf16_bits(actual)),
     )
+
+    rows = 384
+    context = rng.normal(
+        0.0,
+        0.2,
+        size=(rows, heads, head_dim),
+    ).astype(np.float32)
+    gate = rng.normal(0.0, 4.0, size=(rows, heads)).astype(np.float32)
+    packed = context.copy()
+    for begin in (128, 256):
+        packed[begin : begin + 128] = (
+            context[begin : begin + 128]
+            .transpose(1, 0, 2)
+            .reshape(128, heads, head_dim)
+        )
+    allocations = []
+    try:
+        dcontext = _upload(packed, runtime, allocations)
+        dcontext_generic = _upload(context, runtime, allocations)
+        dgate = _upload(gate, runtime, allocations)
+        dout_bf16 = _alloc(context.shape, np.uint16, runtime, allocations)
+        dout_generic_bf16 = _alloc(
+            context.shape,
+            np.uint16,
+            runtime,
+            allocations,
+        )
+        laguna_softplus_head_gate_f32_bf16_out(
+            dcontext_generic.ptr,
+            dgate.ptr,
+            dout_generic_bf16.ptr,
+            rows,
+            heads,
+            head_dim,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_softplus_head_gate_f32_bf16_packed_tiles_out(
+            dcontext.ptr,
+            dgate.ptr,
+            dout_bf16.ptr,
+            rows,
+            heads,
+            head_dim,
+            128,
+            384,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_bf16 = bf16_to_float32(
+            _download(dout_bf16, context.shape, np.uint16, runtime)
+        )
+        generic_bf16 = bf16_to_float32(
+            _download(
+                dout_generic_bf16,
+                context.shape,
+                np.uint16,
+                runtime,
+            )
+        )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    np.testing.assert_array_equal(actual_bf16, generic_bf16)
 
 
 def _upload(array: np.ndarray, runtime, allocations):
