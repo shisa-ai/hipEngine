@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_long_context_final_six_shape_sweep",
+  "status": "accepted_clean_attribution_closure",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 512,1024,4096,32768,65536,131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-lc-final-six-shape.json",
+    "context_capacity": 131072,
+    "matrix_chunk_rows": 2048,
+    "global_attention_chunk_rows": 2048,
+    "swa_attention_chunk_rows": 128,
+    "repetitions": 1,
+    "warmup_rows": 128,
+    "selector_unset": true,
+    "timing_scope": "reset complete through synchronized first-token projection; model load excluded",
+    "raw_sha256": "05610cc1b727460cb2e72990646af193852dc47ad0fe58e94d99dbdf9acf5af1"
+  },
+  "final": {
+    "rows": [
+      {
+        "length": 512,
+        "chunks": 1,
+        "seconds": 0.833834219,
+        "tokens_per_second": 614.0309288319,
+        "next_token_id": 2930,
+        "final_position": 511
+      },
+      {
+        "length": 1024,
+        "chunks": 1,
+        "seconds": 1.535459175,
+        "tokens_per_second": 666.9014824149,
+        "next_token_id": 95,
+        "final_position": 1023
+      },
+      {
+        "length": 4096,
+        "chunks": 2,
+        "seconds": 6.716089693,
+        "tokens_per_second": 609.8786923975,
+        "next_token_id": 7772,
+        "final_position": 4095
+      },
+      {
+        "length": 32768,
+        "chunks": 16,
+        "seconds": 89.657309512,
+        "tokens_per_second": 365.4805188595,
+        "next_token_id": 19306,
+        "final_position": 32767
+      },
+      {
+        "length": 65536,
+        "chunks": 32,
+        "seconds": 264.890070204,
+        "tokens_per_second": 247.4082926156,
+        "next_token_id": 69407,
+        "final_position": 65535
+      },
+      {
+        "length": 131072,
+        "chunks": 64,
+        "seconds": 877.8629303339,
+        "tokens_per_second": 149.3080473852,
+        "next_token_id": 22746,
+        "final_position": 131071
+      }
+    ],
+    "resident_bytes": 87086514132,
+    "load_seconds_excluded": 94.5978889189,
+    "tracked_allocations_after": 0,
+    "tracked_bytes_after": 0
+  },
+  "before_after": {
+    "before_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json",
+    "before_tokens_per_second": {
+      "512": 622.009,
+      "1024": 579.152,
+      "4096": 470.270,
+      "32768": 214.698,
+      "65536": 131.997,
+      "131072": 72.323
+    },
+    "change_pct": {
+      "512": -1.2826295388,
+      "1024": 15.1513734589,
+      "4096": 29.6869229161,
+      "32768": 70.2300528461,
+      "65536": 87.4347845902,
+      "131072": 106.446147678
+    },
+    "128k_wall_seconds_saved": 934.451271234,
+    "512_to_128k_retention_before_pct": 11.6273237204,
+    "512_to_128k_retention_after_pct": 24.3160466964
+  },
+  "retained_reference_check": {
+    "reference": "LC-3 canonical retained one-run gates",
+    "rows": [
+      {
+        "length": 4096,
+        "reference_tokens_per_second": 611.7945091512,
+        "final_tokens_per_second": 609.8786923975,
+        "change_pct": -0.3131470984
+      },
+      {
+        "length": 65536,
+        "reference_tokens_per_second": 246.5365675258,
+        "final_tokens_per_second": 247.4082926156,
+        "change_pct": 0.3535885563
+      },
+      {
+        "length": 131072,
+        "reference_tokens_per_second": 149.6841315391,
+        "final_tokens_per_second": 149.3080473852,
+        "change_pct": -0.2512518528
+      }
+    ],
+    "decision": "All overlapping long-context shapes reproduce within +/-0.354%; no overtuning regression is observed."
+  },
+  "same_gguf_vulkan": {
+    "artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json",
+    "rows": [
+      {
+        "length": 512,
+        "vulkan_tokens_per_second": 341.999,
+        "hipengine_tokens_per_second": 614.0309288319,
+        "hipengine_change_pct": 79.5417322366
+      },
+      {
+        "length": 4096,
+        "vulkan_tokens_per_second": 333.502,
+        "hipengine_tokens_per_second": 609.8786923975,
+        "hipengine_change_pct": 82.8710749553
+      },
+      {
+        "length": 65536,
+        "vulkan_tokens_per_second": 126.624,
+        "hipengine_tokens_per_second": 247.4082926156,
+        "hipengine_change_pct": 95.3881512317
+      },
+      {
+        "length": 131072,
+        "vulkan_tokens_per_second": 65.584,
+        "hipengine_tokens_per_second": 149.3080473852,
+        "hipengine_change_pct": 127.6592574183
+      }
+    ],
+    "64k_to_128k_retention_pct": {
+      "hipengine": 60.3488451445,
+      "vulkan": 51.7942886025
+    }
+  },
+  "campaign_ledger": [
+    {
+      "timestamp_jst": "2026-07-27 22:49",
+      "iteration": "LC-0 coherent attack control",
+      "status": "accepted baseline",
+      "before_after": "128K 72.139 tok/s",
+      "description": "Established the all-attention 12-global/36-SWA baseline and attributed global attention as the asymptotic wall."
+    },
+    {
+      "timestamp_jst": "2026-07-28 01:01",
+      "iteration": "LC-1 capacity-sized F32 hipBLASLt global attention",
+      "status": "retained then superseded",
+      "before_after": "128K 72.139 -> 88.073 tok/s (+22.088%)",
+      "description": "Proved the tensorized QK/PV architecture but carried 4.298 GB context-sized scratch."
+    },
+    {
+      "timestamp_jst": "2026-07-28 02:00",
+      "iteration": "LC-1 exact 4K-block online global attention",
+      "status": "retained",
+      "before_after": "128K 88.073 -> 99.100 tok/s (+12.521%)",
+      "description": "Removed 96.655% of the transitional scratch and improved the long gate."
+    },
+    {
+      "timestamp_jst": "2026-07-28 02:58",
+      "iteration": "LC-2 tensorized rolling SWA",
+      "status": "retained",
+      "before_after": "128K 99.100 -> 103.520 tok/s (+4.460%)",
+      "description": "Reused a fixed 639-key union while preserving exact wrap semantics."
+    },
+    {
+      "timestamp_jst": "2026-07-28 03:50",
+      "iteration": "LC-3 global M2048 query reuse",
+      "status": "retained",
+      "before_after": "128K 103.520 -> 149.684 tok/s (+44.594%)",
+      "description": "Reused each exact 4K K/V block across the complete matrix chunk; wider SWA was rejected."
+    },
+    {
+      "timestamp_jst": "2026-07-28 04:32",
+      "iteration": "LC-4 dense-contiguous cache widen",
+      "status": "retained micro-window",
+      "before_after": "cache widen 0.250249 -> 0.234780 ms (-6.181%); 128K -0.291% neutral",
+      "description": "Removed redundant span decoding while keeping the complete KVLiveSpans fallback."
+    },
+    {
+      "timestamp_jst": "2026-07-28 05:12",
+      "iteration": "LC-5 M4096/M8192 matrix chunks",
+      "status": "rejected",
+      "before_after": "M4096 128K 149.684 -> 147.939 tok/s (-1.166%)",
+      "description": "Wider matrices added 1.756/5.268 GB scratch and did not improve the mandatory gate."
+    },
+    {
+      "timestamp_jst": "2026-07-28 05:20",
+      "iteration": "LC-6 capacity/lazy-KV and secondary routes",
+      "status": "closed without production change",
+      "before_after": "512/1K/4K -0.425%/+0.654%/-0.004% under 6.007 GiB extra capacity",
+      "description": "The prior capacity loss did not reproduce; lazy KV, Q8 KV, and unchanged library routes were not justified."
+    },
+    {
+      "timestamp_jst": "2026-07-28 05:43",
+      "iteration": "clean final six-shape sweep",
+      "status": "accepted closure",
+      "before_after": "128K 72.323 -> 149.308 tok/s (+106.446%)",
+      "description": "All six positions/tokens and lifecycle pass; overlapping retained gates reproduce within +/-0.354%."
+    }
+  ],
+  "correctness": {
+    "next_tokens_expected": true,
+    "final_positions_exact": true,
+    "outputs_finite": true,
+    "tracked_allocation_recovered": true,
+    "math_changed_by_final_sweep": false
+  },
+  "repo": {
+    "revision": "355f7096f7252f4e0c6870b382bf18a4aa515254",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "decision": {
+    "anti_overtuning_gate_passed": true,
+    "production_geometry_retained": true,
+    "matrix_rows": 2048,
+    "global_attention_rows": 2048,
+    "swa_attention_rows": 128,
+    "canonical_128k_tokens_per_second": 149.6841315391,
+    "final_sweep_128k_tokens_per_second": 149.3080473852,
+    "reason": "The final single-pass closure reproduces the retained long-context band and more than doubles pre-campaign 128K throughput without a correctness or lifecycle regression."
+  }
+}

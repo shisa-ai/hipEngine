@@ -76,6 +76,17 @@ unchanged library capabilities remain closed. The rejected M4,096/M8,192
 diagnostic surface is removed and production stays M2,048.
 [`LC-6 closure`](results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json).
 
+The clean selector-unset long-context publication now passes
+512/1K/4K/32K/64K/128K at
+**614.031/666.901/609.879/365.481/247.408/149.308 tok/s** in one
+128K-capacity session. Relative to the pre-campaign six-shape closure this is
+**-1.283%/+15.151%/+29.687%/+70.230%/+87.435%/+106.446%** and saves
+**934.451 seconds** at 128K. The 4K/64K/128K rows reproduce the retained LC-3
+gates within **-0.313%/+0.354%/-0.251%**; all expected tokens, final
+positions, finite state, and tracked-allocation teardown pass. The campaign
+therefore more than doubles 128K without overfitting the short gate.
+[`final long-context sweep`](results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
+
 A same-GGUF llama.cpp Vulkan one-pass baseline on the same Radeon 8060S
 measures **341.999/333.502/280.349/126.624/65.584 tok/s** at
 512/4K/16K/64K/128K. The coherent hipEngine LC-0 attack control measures
@@ -203,9 +214,19 @@ M2,048 and SWA M128. M8,192 is directionally dominated and costs **5.268 GB**
 extra scratch. M4,096 improves 16K/64K **1.457%/0.459%**, but mandatory 128K
 regresses **149.684 -> 147.939 tok/s (-1.166%)**, loses **10.327 seconds**,
 and adds **1.756 GB**. Both wider widths are rejected; the package default and
-canonical topline remain M2,048/149.684 tok/s. Explicit diagnostics remain
-available for LC-6 capacity-bucket work.
+canonical topline remain M2,048/149.684 tok/s. The explicit diagnostics were
+kept through LC-6 and are now removed after no bucketed-capacity premise
+survived.
 [`wide matrix rejection`](results/2026-07-28-gfx1151-laguna-lc5-wide-matrix-rejected.json).
+
+LC-6 and the clean final sweep close the bounded long-context campaign.
+Large-capacity short shapes vary only **-0.425%/+0.654%/-0.004%**, so lazy KV
+is not promoted. Final 512/1K/4K/32K/64K/128K is
+**614.031/666.901/609.879/365.481/247.408/149.308 tok/s**; the 128K result is
+**106.446%** above the pre-campaign closure and **127.659%** above same-GGUF
+Vulkan, with exact position/token/lifecycle.
+[`capacity closure`](results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json) ·
+[`final sweep`](results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
 
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72

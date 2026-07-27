@@ -185547,3 +185547,32 @@ Vulkan local sizes verbatim will close the measured gap.
   compilation, and `git diff --check` pass. Accepted diagnostic artifact:
   `benchmarks/results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json`.
   The final clean 512/1K/4K/32K/64K/128K selector-unset sweep is next.
+
+## 2026-07-28 — Publish clean Laguna long-context final sweep
+
+- Ran the requested selector-unset 512/1K/4K/32K/64K/128K sweep from
+  tracked-clean `355f7096f7252f4e0c6870b382bf18a4aa515254`, one 128K-capacity
+  resident session, M2,048 matrix/global-attention rows, M128 SWA, two queues,
+  cached-only TheRock HIP 7.15, and one timing pass:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 512,1024,4096,32768,65536,131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-lc-final-six-shape.json`.
+- Final throughput is
+  **614.031/666.901/609.879/365.481/247.408/149.308 tok/s**, with walls
+  **0.834/1.535/6.716/89.657/264.890/877.863 seconds**. Expected next tokens
+  are 2930/95/7772/19306/69407/22746 and every final position is exact through
+  131071.
+- Versus the pre-campaign closure this is
+  **-1.283%/+15.151%/+29.687%/+70.230%/+87.435%/+106.446%** and saves
+  **934.451 seconds** at 128K. The 4K/64K/128K rows reproduce the retained
+  LC-3 gates within **-0.313%/+0.354%/-0.251%**, so no short-shape
+  overtuning or long-tail regression is observed.
+- Versus same-GGUF Vulkan, final hipEngine is
+  **+79.542%/+82.871%/+95.388%/+127.659%** at overlapping
+  512/4K/64K/128K. hipEngine 64K-to-128K retention is **60.349%** versus
+  Vulkan **51.794%**.
+- All **87,086,514,132** tracked bytes free, active allocations return to
+  zero, and the raw artifact SHA-256 is
+  `05610cc1b727460cb2e72990646af193852dc47ad0fe58e94d99dbdf9acf5af1`.
+  Published compact evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json`.
+  LC-0 through LC-6 and the anti-overtuning sweep are closed at a valid pause
+  point. The next decision is a fresh cached 64K trace, not an assumed kernel.
