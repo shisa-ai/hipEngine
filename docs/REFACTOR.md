@@ -1683,3 +1683,9 @@ should be boring.
   gate repays the saved sub-window. On admission, preserve the generic route
   for fallback attention and unmeasured backends, but collapse the dedicated
   A/B harness after the active 700 campaign.
+- The repaired clean trace satisfies admission: all **144** output transposes
+  are absent, dispatches fall **2,417 -> 2,273**, and transpose plus gate
+  improves **11.240 -> 10.318 ms (-8.20%)**. Keep the generic route because
+  fallback attention and unmeasured backends require generic output; remove
+  only the dedicated A/B harness and constructor override after the active
+  700 campaign no longer needs this bisection point.

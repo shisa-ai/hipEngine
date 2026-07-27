@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "candidate_pending_clean_trace",
+  "status": "retained_and_published",
   "kind": "hipengine_laguna_attention_packed_output_gate",
   "created_at": "2026-07-27T22:15:00+09:00",
   "hardware": {
@@ -65,5 +65,5 @@
       "sha256": "e729710667fa2821fd3aa0d3c2a71505117c59ba3150e32b83d98c06e8780536"
     }
   ],
-  "decision": "Commit as a gfx1151 default candidate so the repository clean-state profiler can attribute the complete pp512 sub-window. Retain only if the clean trace confirms all 144 output-transpose launches are removed and the packed gate does not repay that saved time; otherwise remove the route."
+  "decision": "Retained and published as the gfx1151 default. The repaired clean trace removes all 144 output-transpose launches, cuts total pp512 dispatches 2417 -> 2273, and improves the exact output transpose plus gate window 11.239858 -> 10.317806 ms (-8.20%) with complete-state equality and no resident or scratch growth."
 }

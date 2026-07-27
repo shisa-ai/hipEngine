@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T15:12:07+09:00",
+  "kind": "hipengine_laguna_attention_packed_output_gate_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "exact pp512 attention output-boundary sub-window and dispatch reduction; selector-unset 512/1024/4096 continuity on gfx1151",
+  "repo": {
+    "runtime_revision": "c86f22ee78cc6573662364c95e644e3d5f5809ea",
+    "previous_production_revision": "119ff77000f2b6f52ce89233e1ae608f70e46564",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "qualified dense-initial M128 hipBLASLt attention tiles beginning at positions 128, 256, and 384",
+    "mechanism": "write PV output directly into head-major context slices and consume the mixed layout in an exact division-free (row, head) softplus gate",
+    "resident_weight_delta_bytes": 0,
+    "scratch_delta_bytes": 0,
+    "pp512_output_unpack_launches_before": 144,
+    "pp512_output_unpack_launches_after": 0,
+    "pp512_dispatches_before": 2417,
+    "pp512_dispatches_after": 2273,
+    "pp512_boundary_ms_before": 11.239858,
+    "pp512_boundary_ms_after": 10.317806,
+    "pp512_boundary_delta_ms": -0.922052,
+    "pp512_boundary_delta_percent": -8.20340568236732
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-packed-output-headrow-production-clean.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "tracked_worktree_clean": true,
+    "selector_unset": true,
+    "raw_sha256": "ad8993e2d649ffeaf1ade451080bfb16a7c88670696f8b825b40f0fbf182365e"
+  },
+  "samples": {
+    "512_tok_s": [
+      615.1661485650324,
+      649.5199745265272,
+      647.8258185356267
+    ],
+    "1024_tok_s": [
+      582.0423666966532,
+      573.1187180675091,
+      575.7320408570732
+    ],
+    "4096_tok_s": [
+      471.2849378606433,
+      468.10278225888703,
+      466.8777027074762
+    ],
+    "median_512_1024_4096_tok_s": [
+      647.8258185356267,
+      575.7320408570732,
+      468.10278225888703
+    ],
+    "previous_packet_512_1024_4096_tok_s": [
+      649.7907513669854,
+      576.5885813859913,
+      468.82951069028405
+    ],
+    "aggregate_change_percent": [
+      -0.30239470586878037,
+      -0.14855315498256694,
+      -0.1550091056185865
+    ],
+    "classification": "within shared-APU run variance; retention is based on exact complete-state A/B plus the named positive sub-window and dispatch reduction"
+  },
+  "same_process_pp512_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_attention_packed_output_gate_ab.py --repetitions 11 --require-cached-build --output /tmp/laguna-attention-packed-output-gate-2d-ab.json",
+    "pairs": 11,
+    "candidate_wins": 6,
+    "production_independent_median_tok_s": 645.7353422236527,
+    "candidate_independent_median_tok_s": 647.9197408071129,
+    "independent_median_delta_percent": 0.3382807848085312,
+    "paired_median_wall_delta_ms": -0.05655502900481224,
+    "state_exact_pairs": 11,
+    "raw_sha256": "6a496d99e2e7428a4632c278f5d306e644b2afb4615f78d2264ba53350b00594"
+  },
+  "correctness": {
+    "mixed_layout_vs_generic_bf16_bits_equal": true,
+    "complete_model_ab_runs": 22,
+    "complete_model_state_exact": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "quality_transfer": "The packed boundary is BF16-bit exact to the preceding production attention output, so the existing absolute category gate transfers unchanged."
+  },
+  "memory": {
+    "resident_nbytes": 78806349844,
+    "peak_allocated_bytes": 78806349844,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0
+  },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-packed-output-headrow-production-trace --output-file laguna-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-packed-output-headrow-production-trace/child.json",
+    "pp512": {
+      "dispatches": 2273,
+      "kernel_sum_ms": 1101.818951,
+      "kernel_span_ms": 843.411304,
+      "selected_q4_gate_up_ms": 331.230715,
+      "selected_q4_q6_down_ms": 169.881008,
+      "source_f16_projection_ms": 124.738183,
+      "dense_shared_quant_projection_ms": 91.716279,
+      "attention_ms": 63.846088,
+      "router_ms": 22.645107,
+      "activation_reduce_residual_ms": 261.026929,
+      "norm_rope_gate_ms": 28.921738
+    },
+    "packed_gate_kernel": {
+      "calls": 48,
+      "duration_ms": 10.317806,
+      "workgroup": 128,
+      "vgpr": 8,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes_per_thread": 0
+    },
+    "child_sha256": "89a5b1fcf55b5a9fcf88a176c04a7161bf5b9101fd83160171755f39f49b65c0",
+    "raw_trace_sha256": "f21be6b1565cc9b91727994088a23527784e69feb653da9e4e8f15d0f4a2b18f",
+    "summary_sha256": "48f5d788e0a9afc5c6731cd6f192407740f929e3c1b636433c691b34738979e8"
+  },
+  "source_runs": {
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-production.json"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 647.8258185356267,
+    "pp512_wall_ms": 790.3358979383482,
+    "target_700_reached": false,
+    "wall_to_700_ms": 58.907326509776794,
+    "next_action": "continue the physical-byte/cross-tile selected-expert campaign; the final 512/1K/4K/32K/64K/128K anti-overtuning sweep remains mandatory before wrap-up"
+  }
+}
