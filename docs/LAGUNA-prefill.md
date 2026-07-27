@@ -1773,6 +1773,16 @@ Immediate execution queue:
    wrapper selector, fixture case, and harness mode are removed.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json).
+58. **Rejected and removed before integration:** pair-share P8's next-K32
+   raw-nibble gathers between adjacent output-column lanes. The candidate is
+   exact, but eight wave shuffles cost more than the duplicated logical loads
+   that already coalesce into the same memory transactions:
+   **5.5939 vs 4.4182 ms (+26.61%)** at M256 and
+   **8.1325 vs 6.6970 ms (+21.43%)** at M512 across 41 counter-rotated
+   samples. The specialization, export, wrapper option, fixture case, and
+   harness mode are removed.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1793,7 +1803,9 @@ to Q4 selected down:
    paired local256 gate/up-to-D4 fusion is closed as well. The next expert
    candidate must reduce weight bytes without extending accumulator lifetime,
    widening the workgroup, exchanging full results through LDS, or weakening
-   P8's complete next-K32 payload coverage.
+   P8's complete next-K32 payload coverage. Do not pair-share those payload
+   gathers through wave shuffles; coalescing already removes the physical
+   traffic duplication.
 3. Do not widen the 128-row attention slice through another dense
    QK/softmax/PV formulation: M256 remains slower even after exhaustive
    library-algorithm tuning. Reopen attention only for a fused causal
@@ -3666,6 +3678,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json`

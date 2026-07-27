@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "kind": "hipengine_laguna_q4_pair_shared_raw_prefetch_screen",
+  "created_at": "2026-07-27T04:00:09.040668+00:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1
+  },
+  "scope": "Actual gate/up weights with natural M256/M512 routing replay; inclusive BF16-to-D8 producer pack plus selected gate/up.",
+  "candidate": "Have only each adjacent column pair's even lane gather the eight next-K32 raw T16 words, then broadcast them to the odd lane with eight wave shuffles.",
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-pair-shared --warmups 4 --samples 41 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-raw-prefetch-p8-pair-shared-leaf.json",
+  "results": {
+    "M256": {
+      "production_p8_median_ms": 4.418179829915364,
+      "pair_shared_p8_median_ms": 5.593910853068034,
+      "candidate_delta_percent": 26.611207972836006
+    },
+    "M512": {
+      "production_p8_median_ms": 6.696980158487956,
+      "pair_shared_p8_median_ms": 8.132460276285807,
+      "candidate_delta_percent": 21.434737505956015
+    }
+  },
+  "correctness": {
+    "focused_cpu_reference_test": "passed",
+    "candidate_and_production_checksums_equal": true,
+    "finite": true
+  },
+  "decision": "Reject and remove pair-shared P8. Adjacent lanes' duplicate logical gathers already coalesce; eight wave shuffles add latency without reducing physical transactions.",
+  "raw_artifact": {
+    "path": "/tmp/laguna-q4-raw-prefetch-p8-pair-shared-leaf.json",
+    "sha256": "b059134ecf83b30ab62f8e1a3c1deba1c541a559e282fa90672d5960ce528665"
+  },
+  "production": {
+    "changed": false,
+    "prefetch_packs": 8,
+    "pp512_tokens_per_second": 645.803162,
+    "pp512_wall_ms": 792.811231
+  }
+}
