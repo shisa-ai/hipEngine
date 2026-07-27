@@ -9,6 +9,7 @@ from scripts.laguna_long_context_profile import (
     ATTACK_LENGTHS,
     FINAL_SWEEP_LENGTHS,
     LAP0_LENGTHS,
+    LC0_TRACE_LENGTHS,
     PROFILE_LENGTH_SETS,
     _parse_chunk_size,
     _parse_lengths,
@@ -29,6 +30,8 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
     assert ATTACK_LENGTHS == (4096, 16384, 65536, 131072)
     assert ATTACK_LENGTHS in PROFILE_LENGTH_SETS
+    assert LC0_TRACE_LENGTHS == (16384, 65536)
+    assert LC0_TRACE_LENGTHS in PROFILE_LENGTH_SETS
     assert FINAL_SWEEP_LENGTHS == (512, 1024, 4096, 32768, 65536, 131072)
     assert FINAL_SWEEP_LENGTHS in PROFILE_LENGTH_SETS
     assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)
