@@ -1801,7 +1801,6 @@ class LagunaGGUFResidentSession:
         use_split_gate_fusion: bool | None = None,
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
-        use_router_projection_wave0_tree: bool | None = None,
         use_head_kv_fusion: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
@@ -1836,7 +1835,6 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.use_swa_split_wave_local = use_swa_split_wave_local
-        self.use_router_projection_wave0_tree = False
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -1987,13 +1985,6 @@ class LagunaGGUFResidentSession:
                 iq3_selected_down_tile=self.iq3_selected_down_tile,
                 iq3_c1_down_schedule=self.iq3_c1_down_schedule,
                 use_iq2_grid64=self.use_iq2_grid64,
-                use_router_projection_wave0_tree=(
-                    use_router_projection_wave0_tree
-                ),
-            )
-            self.use_router_projection_wave0_tree = bool(
-                getattr(self.moe_plan, "c1_router_logits_key", None) is not None
-                and getattr(self.moe_plan, "c1_router_logits", None) is not None
             )
             self.iq3_c1_down_schedule = getattr(
                 self.moe_plan,
