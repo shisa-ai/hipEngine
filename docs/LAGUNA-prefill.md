@@ -15,8 +15,8 @@ shipping-relative category gate reached maximum KL 0.0407248, but LAP-Q0 found
 that direct production-versus-all-exact reached 0.0535024. The admitted
 quality schedule uses hipBLASLt heuristic 2 for the K3072xN72 SWA gate through
 M128 and heuristic 4 elsewhere; the clean absolute gate passes at maximum KL
-0.0495426 and 316/320 top-1. The row-qualified M512 candidate is awaiting clean
-publication. The compounded routes are gfx1151 package defaults. The exact
+0.0495426 and 316/320 top-1. The row-qualified M512 schedule is clean
+production. The compounded routes are gfx1151 package defaults. The exact
 pair-decode wave-column D8 gate/up remap plus Q4-only D4 down remap first
 reached **448.203 tok/s**; Q6 down retains its bit-identical row-vector stage.
 A direct per-column Q4 gate/up decode, the corresponding Q4-down decode,
@@ -104,8 +104,9 @@ only the next Q4 K32 payload at M512+ and publishes
 admitted for the Q4 selected-down consumer at M512+: its traced 72-launch
 window falls **217.416 -> 212.090 ms (-2.450%)**, and seven complete-state
 pp512 pairs improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)**. Clean
-selector-unset 512/1K/4K is **643.141/573.717/466.913 tok/s**: pp512 is flat
-within **-0.064%** run variance while 1K/4K improve **0.114%/0.134%**.
+selector-unset 512/1K/4K was **643.141/573.717/466.913 tok/s**. Qualifying the
+K3072xN72 source-F16 schedule by rows now publishes
+**645.803/575.942/468.311 tok/s**, improving **0.414%/0.388%/0.299%**.
 Caller-stream physical-byte and overlap reductions remain the active campaign.
 The execution order below was re-audited on
 2026-07-26 after
@@ -120,8 +121,8 @@ The primary external control is the current local llama.cpp Vulkan build at
 `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, which measures
 **344.56 +/- 3.16 tok/s** at pp512. The pre-campaign hipEngine
 matrix512/attention128 default measured **76.226 tok/s**, a **4.520x** gap.
-The quality-admitted production default now measures **643.141 tok/s**
-selector-unset, **8.437x** the old row and **86.656%** above the Vulkan
+The quality-admitted production default now measures **645.803 tok/s**
+selector-unset, **8.472x** the old row and **87.428%** above the Vulkan
 control.
 
 That Vulkan row is now a compatibility floor, not the optimization ceiling.
@@ -762,7 +763,7 @@ Current progress:
 | LAP-6 | Admitted gfx1151 default | Torch-free, row-scaled hipBLASLt runs all five source-F16 projections on rows>1 real inputs with no added scratch; exact GEMV/tiled routes remain rollback. |
 | LAP-5 | Admitted gfx1151 default | Resident Q4 pack8 and raw Q6 use 64x16 wave32 WMMA consumers. Q4 is BF16-bit identical to the raw-Q4 WMMA oracle; Q6 passes its CPU-reference gate and removes the traced 0.365-second dense/shared family bottleneck. |
 | LAP-2 calibration / LAP-3 / LAP-4 | Admitted gfx1151 defaults | The original D4-gate/D4-down route reached **355.273/355.721 tok/s** but was rejected at max KL **0.0767056**. Same-byte D8 gate/up plus D4 down passes the clean complete category gate at max KL **0.040724836**, **317/320** top-1, **2.615x** aggregate natural-prompt prefill, flat decode, and exact lifecycle recovery. Its pre-admission pp512 samples were **353.951/356.082/356.473 tok/s**, token 2930. |
-| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query/wave-softmax attention, exact Q6 weight+activation prefetch, and shape-qualified Q4 raw-nibble P8 for gate/up and selected down publish **643.141/573.717/466.913 tok/s** at 512/1K/4K. pp512 wall is **796.093 ms**, leaving **64.664 ms** to 700. |
+| Production publication | Complete/current | The direct all-exact gate remains max KL **0.049542582**, **316/320** top-1, with deterministic repeats, Poolside exact top-1, and exact lifecycle through 4K. Packed-query/wave-softmax attention, exact Q6 weight+activation prefetch, shape-qualified Q4 raw-nibble P8, and the row-qualified source-F16 schedule publish **645.803/575.942/468.311 tok/s** at 512/1K/4K. pp512 wall is **792.811 ms**, leaving **61.383 ms** to 700. |
 | Direct Q4 gate/up wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle without changing resident bytes or arithmetic. The actual layer-1 leaf improves **8.107 -> 6.916 ms (-14.69%)**; clean pp512 improves **449.020 -> 474.363 tok/s (+5.644%)**, and cached tracing cuts the family **389.893 -> 317.722 ms (-18.51%)**. |
 | Direct Q4-down wave decode | Admitted gfx1151 default | Direct per-column T16 decode removes pair decode/shuffle only for Q4 down while retaining Q6 row-vector production. Clean pp512 improves **473.963 -> 480.629 tok/s (+1.406%)**, and cached tracing cuts the Q4-down consumer **90.280 -> 71.378 ms (-20.94%)**. |
 | Q6 qmicro resident payload | Admitted gfx1151 production default | Byte-neutral `[K32][col4][K4][QL8,QH4]` records preserve the 3,360-byte tile and every BF16 result. On the actual layer-1 660.6 MB tensor, natural-M512 selected prefill improves **5.1564 -> 5.0714 ms (-1.65%)** and top-10 exact decode improves **0.0910 -> 0.0846 ms (-6.99%)**. Clean pp512 improves **526.451 -> 530.447 tok/s (+0.759%)** and traced Q6 falls **126.594 -> 123.473 ms (-2.465%)**. Existing cache files convert once before upload; root lm-head and unmeasured backends remain legacy T16. |
@@ -807,18 +808,19 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 The current trace gives concrete Amdahl checkpoints; the clean publication
 below is a retained performance claim:
 
-- The clean production median is now **643.141 tok/s**. The selector-unset
-  1K/4K medians are **573.717/466.913 tok/s**. Selected-down P8 is exact;
-  pp512 is flat within run variance and 1K/4K improve. The clean current trace
-  has **2,417** dispatches, **1,119.634 ms** inclusive kernel sum, and
+- The clean production median is now **645.803 tok/s**. The selector-unset
+  1K/4K medians are **575.942/468.311 tok/s**. Row-qualified source-F16
+  scheduling improves the preceding packet at every length. The latest clean
+  trace predates only that descriptor change and has **2,417** dispatches,
+  **1,119.634 ms** inclusive kernel sum, and
   **853.428 ms** kernel span. Selected gate/up remains largest at
   **334.201 ms**; activation/reduce/residual is second at **269.925 ms**.
   Selected Q4/Q6 down is **171.040 ms**, with the admitted Q4 P8 body observed
   at local64/VGPR96/LDS1536B/scratch0. The declared 500 gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
   **153.226 -> 141.846 ms (-7.43%)** with the intended exact launch mix.
-- The clean wall must fall from **796.093 ms** to **731.429 ms** for 700 tok/s,
-  a further **64.664 ms**. The current profiled kernel span is **121.999 ms**
+- The clean wall must fall from **792.811 ms** to **731.429 ms** for 700 tok/s,
+  a further **61.383 ms**. The current profiled kernel span is **121.999 ms**
   above that wall, so sufficient work exists, but inclusive buckets cannot be
   added across the two streams. The next material screen must change selected
   projection physical bytes, cross-tile reuse, a producer/consumer boundary,
@@ -1691,7 +1693,7 @@ Immediate execution queue:
    closed without explicit shared residency or physical-byte reduction.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json).
-52. **Retained candidate pending clean publication:** qualify the source-F16
+52. **Admitted gfx1151 production default:** qualify the source-F16
    SWA-gate quality schedule by matrix rows. The complete category lane uses
    at most M128 and therefore keeps the admitted hipBLASLt heuristic 2 for
    K3072xN72 exactly as before. M512 now returns to the retained heuristic 4.
@@ -1704,8 +1706,14 @@ Immediate execution queue:
    descriptor fixture proves M128 still selects heuristic 2, so the existing
    320-step **0.049542582 / 316-of-320** category result is unchanged.
    Selection depends only on M/K/N, never prompt, token, category, or output.
+   Clean selector-unset 512/1K/4K improves
+   **643.141/573.717/466.913 -> 645.803/575.942/468.311 tok/s
+   (+0.414%/+0.388%/+0.299%)**. pp512 wall falls **796.093 -> 792.811 ms**,
+   leaving **61.383 ms** to 700; tokens, positions, repeats, and lifecycle
+   recovery pass.
    Evidence:
-   [`2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
+   [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json) ·
+   [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-production.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1714,8 +1722,8 @@ prefetch is now exact Q4 gate/up production and has transferred successfully
 to Q4 selected down:
 
 1. **Publication complete:** clean selector-unset
-   **643.141/573.717/466.913 tok/s**. Refresh the all-family trace from
-   `0085acab4`.
+   **645.803/575.942/468.311 tok/s** after the row-qualified source-F16
+   schedule. Refresh the all-family trace from `8acbb3764`.
 2. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
@@ -1727,7 +1735,7 @@ to Q4 selected down:
    without a new numerical representation.
 
 The stretch target remains **>=700 tok/s**, i.e. **<=731.429 ms** for pp512.
-Current production is **643.141 tok/s / 796.093 ms**, leaving **64.664 ms**.
+Current production is **645.803 tok/s / 792.811 ms**, leaving **61.383 ms**.
 The rejected D4 role split cannot contribute to that gap; reaching 700 now
 requires a retained physical-byte, cross-tile-reuse, or newly enabled library
 win.
@@ -3415,7 +3423,7 @@ a valid smaller win:
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
 The 350 and 500 production targets are achieved and current production is
-**643.141 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
+**645.803 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
 active targets.
 
 All headline rows also report canonical category-weighted prefill and

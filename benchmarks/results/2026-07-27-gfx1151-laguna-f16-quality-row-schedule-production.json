@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_f16_quality_row_schedule_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "clean selector-unset Laguna S 2.1 Q4_K_M 512/1K/4K prefill on gfx1151 plus transferred M<=128 absolute quality and direct M512 all-exact quality",
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "revision": "8acbb3764fbcb0204c4ab1e116e6d796fb3c4437",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "change": {
+    "shape": {
+      "in_features": 3072,
+      "out_features": 72,
+      "role": "SWA attention gate"
+    },
+    "quality_schedule": "hipBLASLt heuristic 2 through M128",
+    "larger_matrix_schedule": "retained hipBLASLt heuristic 4 above M128",
+    "selection": "M/K/N only",
+    "dispatch_count_changed": false,
+    "persistent_bytes_changed": false,
+    "decode_changed": false
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-quality-row-production-matrix.json",
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "selector_unset": true,
+    "load_excluded_seconds": 98.51053824997507,
+    "raw_sha256": "b9922edd3e325126d4c15f479806f4a8ae1b63a7aa50bb440fe1416769a6d680"
+  },
+  "performance": {
+    "previous": {
+      "artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-production.json",
+      "pp512_tok_s": 643.1410131236527,
+      "pp1024_tok_s": 573.7168992,
+      "pp4096_tok_s": 466.9129115,
+      "pp512_wall_ms": 796.0929089458659
+    },
+    "current": {
+      "pp512_samples_tok_s": [
+        621.1678199331282,
+        645.8031621993913,
+        648.4072097682134
+      ],
+      "pp512_median_tok_s": 645.8031621993913,
+      "pp1024_median_tok_s": 575.9422378211779,
+      "pp4096_median_tok_s": 468.3111367410163,
+      "pp512_wall_ms": 792.811230989173
+    },
+    "change_percent": {
+      "pp512": 0.4139292972172415,
+      "pp1024": 0.38788096085036194,
+      "pp4096": 0.2994616783083437
+    },
+    "pp512_wall_saving_ms": 3.2816779566928744,
+    "wall_target_700_tok_s_ms": 731.4285714285714,
+    "remaining_wall_gap_to_700_ms": 61.38265956060161
+  },
+  "correctness": {
+    "next_token_ids": {
+      "512": [
+        2930,
+        2930,
+        2930
+      ],
+      "1024": [
+        95,
+        95,
+        95
+      ],
+      "4096": [
+        7772,
+        7772,
+        7772
+      ]
+    },
+    "final_positions_exact": true,
+    "repeat_deterministic": true,
+    "tracked_allocated_bytes": 78805563028,
+    "tracked_freed_bytes": 78805563028,
+    "tracked_returned_to_baseline": true
+  },
+  "quality": {
+    "canonical_m_le_128_behavior_changed": false,
+    "canonical_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-production-absolute-quality.json",
+    "canonical_max_kl": 0.04954258196634279,
+    "canonical_top1_matches": 316,
+    "canonical_top1_total": 320,
+    "m512_candidate_kl_vs_all_exact": 0.004077129061953151,
+    "m512_top1": 2930,
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json"
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "current_production_pp512_tok_s": 645.8031621993913,
+    "next": "Continue the 700 campaign from the refreshed 61.383-ms wall gap."
+  }
+}
