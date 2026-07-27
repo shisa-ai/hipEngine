@@ -2,7 +2,7 @@
   "schema_version": 1,
   "created_at": "2026-07-27T00:05:59Z",
   "kind": "hipengine_laguna_q6_wmma_activation_prefetch_candidate",
-  "status": "retained_candidate_pending_clean_production",
+  "status": "retained_gfx1151_production",
   "repo_base_revision": "71b8d6c5c82ab200ad9ab91b343635ddbb075e46",
   "hardware": {
     "gpu": "AMD Radeon 8060S Graphics",
@@ -88,5 +88,6 @@
     "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
     "status": "blocked",
     "reason": "Read-only reference checkout /home/lhl/amd-gpu-tuning/reference/atlas is absent."
-  }
+  },
+  "production_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-production.json"
 }

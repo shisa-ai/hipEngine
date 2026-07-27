@@ -1518,6 +1518,15 @@ should be boring.
   gfx1151 production specialization with the next retained Q6 body or
   post-campaign cleanup; retain the non-prefetch template only for unmeasured
   backends and non-production geometries.
+- The retained successor adds `LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION`, the
+  `q6_wmma_prefetch_activation` session field/setter, and a candidate wrapper
+  solely for A/B rollback. It improves clean pp512
+  **636.073 -> 639.114 tok/s** and the 23-call Q6 body
+  **101.963 -> 100.367 ms**, with VGPR104 -> 112 and unchanged
+  LDS/scratch/resident bytes. Collapse weight prefetch, activation prefetch,
+  and activation hoist into one unconditional gfx1151 production symbol after
+  the current 700 campaign no longer needs the three independent bisection
+  points; preserve one non-prefetch fallback for unmeasured geometries.
 
 ## Laguna Q4 projection-role quality candidate
 

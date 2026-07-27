@@ -183911,3 +183911,39 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Candidate evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-candidate.json`.
   Commit this candidate so the clean-worktree production gate can run.
+
+## 2026-07-27 — Publish Q6 WMMA next-activation prefetch production
+
+- Clean tracked revision `621713cb6` ran the canonical selector-unset
+  matrix2048/attention128 three-repetition protocol. Production
+  512/1K/4K improves
+  **636.073231/568.765164/464.061463 ->
+  639.113741/569.880196/464.280327 tok/s
+  (+0.4780%/+0.1960%/+0.0472%)**. The pp512 wall is **801.109 ms**, leaving
+  **69.681 ms** to 700 tok/s. Tokens remain **2930/95/7772**, final
+  positions/repeats are deterministic, and all **78,805,563,028** tracked
+  bytes return to zero. Raw SHA-256:
+  `a45de8475b01452b15d948a476a830be6dda423393284898f9f87e3b3a5a1f69`.
+- The clean cached two-queue trace reaches **597.253 tok/s** and keeps
+  **2,417** pp512 dispatches. The exact 23-call Q6 specialization falls
+  **101.962530 -> 100.367261 ms (-1.5646%)**. The intended template is
+  local128/VGPR112/SGPR128/LDS5120B/scratch0. Complete pp512 kernel span/sum
+  are **852.825/1,127.876 ms**; selected gate/up, selected down, source-F16,
+  dense/shared, attention, router, and activation/reduce/residual are
+  **337.395/172.541/124.852/92.675/67.481/22.565/276.630 ms**.
+  Child/raw/summary SHA-256 values:
+  `0e385fcd782a9495473ce39d0572ce7af7290f0a1a3e088041c960f6baf2f3a7`,
+  `44945e45ad6c71070027d1fa67da37a17385de9a58aae7f95554993be608157c`,
+  and
+  `4db43b62daaa060de384dafb2f16c3035e3cd866185377407bbabbab59aab41b`.
+- The trace's apparent **257.631-ms** shared-expert SiLU body executes on the
+  least-priority secondary stream and is not an additive perfect-removal
+  ceiling. Before reopening shared fusion, derive queue-exclusive overlap and
+  show caller-stream or memory-contention relief. The largest caller family
+  remains exact D8 gate/up at **337.395 ms**.
+- Published
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-production.json`
+  and advanced the benchmark rollup, campaign bridge, kernel catalog, and
+  refactor ledger. Exact BF16 equality transfers the unchanged absolute
+  category result: max KL **0.049542582**, **316/320** top-1, every category
+  at least **96.875%**.

@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T09:17:17+09:00",
+  "kind": "hipengine_laguna_q6_wmma_activation_prefetch_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Poolside Laguna S 2.1 Q4_K_M pp512 prefill on gfx1151; exact 1K/4K continuity rows",
+  "repo": {
+    "runtime_revision": "621713cb6e57c1a7ea177476400a08def66ced63",
+    "previous_production_revision": "b58461a5e97877723276ae4fde35722232690fd5",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "planar-qmicro Q6 selected-down integer-WMMA row64 specialization",
+    "mechanism": "prefetch the next compact Q8 activation half-row beside the retained next-weight record while current K32 WMMA fragments execute",
+    "resident_delta_bytes": 0,
+    "lds_delta_bytes": 0,
+    "scratch_bytes_per_thread": 0,
+    "previous_512_1024_4096_tok_s": [
+      636.073231300461,
+      568.7651638155037,
+      464.0614633158379
+    ],
+    "new_512_1024_4096_tok_s": [
+      639.113740923285,
+      569.8801964636276,
+      464.28032705956286
+    ],
+    "change_percent": [
+      0.47801251069907735,
+      0.1960444695036978,
+      0.047162662928545984
+    ],
+    "pp512_wall_ms": 801.1093600653112,
+    "pp512_wall_to_700_ms": 69.68078863673975
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-wmma-prefetch-activation-production.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "tracked_worktree_clean": true,
+    "selector_unset": true
+  },
+  "samples": {
+    "512_tok_s": [
+      610.5751500951453,
+      639.3737342038957,
+      639.113740923285
+    ],
+    "1024_tok_s": [
+      574.6748426115972,
+      567.6624076028128,
+      569.8801964636276
+    ],
+    "4096_tok_s": [
+      466.5505649268656,
+      464.28032705956286,
+      462.1564078966804
+    ]
+  },
+  "correctness": {
+    "primitive_cpu_reference_cases_passed": 15,
+    "actual_weight_bf16_mismatches": 0,
+    "complete_model_ab_runs": 14,
+    "complete_model_state_exact": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "quality_transfer": "The new body is BF16-bit exact to the preceding production Q6 consumer, so the existing absolute category gate transfers unchanged."
+  },
+  "memory": {
+    "resident_nbytes": 78805563028,
+    "peak_allocated_bytes": 78805563028,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0
+  },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q6-activation-prefetch-production-rocprof-621713cb6 --output-file q6-activation-prefetch-production -- env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-activation-prefetch-production-rocprof-621713cb6/child.json",
+    "pp512": {
+      "dispatches": 2417,
+      "kernel_sum_ms": 1127.875551,
+      "kernel_span_ms": 852.824576,
+      "selected_q4_gate_up_ms": 337.394761,
+      "selected_q4_q6_down_ms": 172.540615,
+      "source_f16_projection_ms": 124.8518,
+      "dense_shared_quant_projection_ms": 92.675066,
+      "attention_ms": 67.481192,
+      "router_ms": 22.564869,
+      "activation_reduce_residual_ms": 276.629782,
+      "q6_activation_prefetch_calls": 23,
+      "q6_activation_prefetch_ms": 100.367261,
+      "previous_q6_ms": 101.96253,
+      "q6_change_percent": -1.5645639628596886
+    },
+    "kernel": {
+      "template_tail": "true,true,true,true,true",
+      "workgroup": 128,
+      "vgpr": 112,
+      "sgpr": 128,
+      "lds_bytes": 5120,
+      "scratch_bytes_per_thread": 0
+    },
+    "child_sha256": "0e385fcd782a9495473ce39d0572ce7af7290f0a1a3e088041c960f6baf2f3a7",
+    "raw_trace_sha256": "44945e45ad6c71070027d1fa67da37a17385de9a58aae7f95554993be608157c",
+    "summary_sha256": "4db43b62daaa060de384dafb2f16c3035e3cd866185377407bbabbab59aab41b",
+    "previous_trace_sha256": "8ef13fda2bd4307183c3d0d60d2b64f039d85095ab120a33a3b5d9889302912c"
+  },
+  "source_runs": {
+    "production_sha256": "a45de8475b01452b15d948a476a830be6dda423393284898f9f87e3b3a5a1f69",
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-production.json"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 639.113740923285,
+    "target_700_reached": false,
+    "next_action": "profile queue-exclusive overlap and attack a caller-stream mechanism; the 257.6 ms shared SiLU kernel remains overlapped rather than an additive Amdahl saving"
+  }
+}
