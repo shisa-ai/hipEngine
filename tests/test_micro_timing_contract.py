@@ -30,19 +30,24 @@ def _timed_row(
     repetitions: int = 8,
     strategy: str | None = None,
 ):
+    gpu_clock = {
+        "hip": "hip_event",
+        "vulkan": "vulkan_timestamp",
+        "redline": "redline_pm4_timestamp",
+    }[backend]
     single = module.make_timing_control(
         logical_iterations=1,
         dispatches_per_iteration=1,
         gpu_samples_us=[10.0, 12.0, 11.0],
         host_samples_us=[14.0, 16.0, 15.0],
-        gpu_clock="hip_event" if backend == "hip" else "vulkan_timestamp",
+        gpu_clock=gpu_clock,
     )
     burst = module.make_timing_control(
         logical_iterations=repetitions,
         dispatches_per_iteration=1,
         gpu_samples_us=[80.0, 88.0, 84.0],
         host_samples_us=[96.0, 104.0, 100.0],
-        gpu_clock="hip_event" if backend == "hip" else "vulkan_timestamp",
+        gpu_clock=gpu_clock,
     )
     return module.make_timed_row_contract(
         timing_mode=timing_mode,
@@ -129,6 +134,33 @@ def test_comparison_emits_separate_gpu_and_host_ratios() -> None:
     assert host["vulkan_vs_hip_speedup"] == 12.5 / 8.0
 
 
+def test_redline_retained_pm4_is_a_pre_recorded_submission() -> None:
+    module = _load_contract_module()
+    redline = _timed_row(
+        module,
+        backend="redline",
+        timing_mode="serial_latency",
+        strategy="retained_pm4_ib",
+    )
+    vulkan = _timed_row(
+        module,
+        backend="vulkan",
+        timing_mode="serial_latency",
+        strategy="vulkan_command_buffer",
+    )
+
+    assert redline["dependency_contract"]["inter_dispatch_ordering"] == "redline_rmw"
+    host = module.backend_pair_ratio(
+        redline,
+        vulkan,
+        lhs_backend="redline",
+        rhs_backend="vulkan",
+        control="burst",
+        domain="host_wall",
+    )
+    assert host["rhs_vs_lhs_speedup"] == 1.0
+
+
 def test_host_wall_comparison_rejects_enqueue_vs_command_buffer() -> None:
     module = _load_contract_module()
     hip = _timed_row(
@@ -181,6 +213,7 @@ def test_result_schema_contains_v2_result_and_comparison_contracts() -> None:
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
     assert schema["$defs"]["v2Result"]["properties"]["schema_version"] == {"const": 2}
+    assert "redline" in schema["$defs"]["v2Result"]["properties"]["backend"]["enum"]
     assert schema["$defs"]["v2Comparison"]["properties"]["kind"] == {
         "const": "hipengine_micro_comparison"
     }

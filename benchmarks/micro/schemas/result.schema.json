@@ -94,7 +94,7 @@
       "properties": {
         "work_dependency": {"enum": ["chained", "independent"]},
         "inter_dispatch_ordering": {
-          "enum": ["hip_stream_order", "vulkan_compute_barrier", "none"]
+          "enum": ["hip_stream_order", "vulkan_compute_barrier", "redline_rmw", "none"]
         },
         "output_partitioning": {"enum": ["chained_shared", "disjoint"]},
         "validation_status": {"enum": ["pass", "fail", "not_run"]}
@@ -201,7 +201,7 @@
         "schema_version": {"const": 1},
         "kind": {"const": "hipengine_micro_result"},
         "bench": {"type": "string"},
-        "backend": {"enum": ["hip", "vulkan", "cpu", "comparison"]},
+        "backend": {"enum": ["hip", "vulkan", "redline", "cpu", "comparison"]},
         "hardware": {"$ref": "#/$defs/hardware"},
         "source": {"$ref": "#/$defs/source"},
         "command": {"type": "array", "items": {"type": "string"}},
@@ -231,7 +231,7 @@
         "schema_version": {"const": 2},
         "kind": {"const": "hipengine_micro_result"},
         "bench": {"type": "string"},
-        "backend": {"enum": ["hip", "vulkan"]},
+        "backend": {"enum": ["hip", "vulkan", "redline"]},
         "hardware": {"$ref": "#/$defs/hardware"},
         "source": {"$ref": "#/$defs/source"},
         "command": {"type": "array", "items": {"type": "string"}},
@@ -280,7 +280,8 @@
           "required": ["hip", "vulkan"],
           "properties": {
             "hip": {"$ref": "#/$defs/hardware"},
-            "vulkan": {"$ref": "#/$defs/hardware"}
+            "vulkan": {"$ref": "#/$defs/hardware"},
+            "redline": {"$ref": "#/$defs/hardware"}
           },
           "additionalProperties": true
         },

@@ -12,7 +12,12 @@ TIMING_MODES = ("serial_latency", "independent_throughput")
 TIMING_CONTROLS = ("single", "burst")
 TIMING_DOMAINS = ("gpu_elapsed", "host_wall")
 METRIC_STATUSES = ("ok", "unsupported", "below_resolution", "not_run")
-_PRE_RECORDED_STRATEGIES = {"hip_graph", "vulkan_command_buffer"}
+TIMED_BACKENDS = ("hip", "vulkan", "redline")
+_PRE_RECORDED_STRATEGIES = {
+    "hip_graph",
+    "vulkan_command_buffer",
+    "retained_pm4_ib",
+}
 _HOST_ENQUEUED_STRATEGIES = {"direct", "multi_stream"}
 
 
@@ -123,16 +128,19 @@ def make_dependency_contract(
     validation_status: str,
 ) -> dict[str, str]:
     mode = parse_timing_mode(timing_mode)
-    if backend not in {"hip", "vulkan"}:
-        raise ValueError("timed cross-backend rows require backend='hip' or 'vulkan'")
+    if backend not in TIMED_BACKENDS:
+        choices = ", ".join(TIMED_BACKENDS)
+        raise ValueError(f"timed cross-backend rows require one of: {choices}")
     if validation_status not in {"pass", "fail", "not_run"}:
         raise ValueError("invalid dependency validation status")
     if mode == "serial_latency":
         return {
             "work_dependency": "chained",
-            "inter_dispatch_ordering": (
-                "hip_stream_order" if backend == "hip" else "vulkan_compute_barrier"
-            ),
+            "inter_dispatch_ordering": {
+                "hip": "hip_stream_order",
+                "vulkan": "vulkan_compute_barrier",
+                "redline": "redline_rmw",
+            }[backend],
             "output_partitioning": "chained_shared",
             "validation_status": validation_status,
         }
@@ -326,6 +334,58 @@ def submission_class(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def backend_pair_ratio(
+    lhs_row: dict[str, Any],
+    rhs_row: dict[str, Any],
+    *,
+    lhs_backend: str,
+    rhs_backend: str,
+    control: str,
+    domain: str,
+) -> dict[str, Any]:
+    """Compare two timing-contract rows without assuming a HIP/Vulkan pair.
+
+    ``lhs_vs_rhs_speedup`` is ``rhs_time / lhs_time`` and therefore exceeds one
+    when the left-hand backend is faster. ``rhs_vs_lhs_speedup`` is its inverse.
+    """
+
+    if lhs_backend not in TIMED_BACKENDS or rhs_backend not in TIMED_BACKENDS:
+        raise ValueError("comparison backends must be timed backends")
+    if lhs_backend == rhs_backend:
+        raise ValueError("comparison backends must differ")
+    if control not in TIMING_CONTROLS or domain not in TIMING_DOMAINS:
+        raise ValueError("invalid timing control or domain")
+    if dependency_signature(lhs_row) != dependency_signature(rhs_row):
+        raise ValueError(f"{lhs_backend} and {rhs_backend} rows are not comparable")
+    if domain == "host_wall" and submission_class(lhs_row) != submission_class(rhs_row):
+        raise ValueError(
+            f"{lhs_backend} and {rhs_backend} host-wall submission contracts are not comparable"
+        )
+    lhs_control = lhs_row["timing"][control]
+    rhs_control = rhs_row["timing"][control]
+    for field in ("logical_iterations", "dispatches_per_iteration"):
+        if lhs_control[field] != rhs_control[field]:
+            raise ValueError(
+                f"{lhs_backend} and {rhs_backend} {control} {field} values differ"
+            )
+    lhs_metric = lhs_control[domain]
+    rhs_metric = rhs_control[domain]
+    if lhs_metric["status"] != "ok" or rhs_metric["status"] != "ok":
+        raise ValueError(f"{domain} is unavailable for one or both backends")
+    lhs_us = float(lhs_metric["per_iteration_us"]["median"])
+    rhs_us = float(rhs_metric["per_iteration_us"]["median"])
+    if lhs_us <= 0.0 or rhs_us <= 0.0:
+        raise ValueError("timing medians must be positive for ratio calculation")
+    return {
+        "lhs_backend": lhs_backend,
+        "rhs_backend": rhs_backend,
+        "lhs_us_per_iteration": lhs_us,
+        "rhs_us_per_iteration": rhs_us,
+        "lhs_vs_rhs_speedup": rhs_us / lhs_us,
+        "rhs_vs_lhs_speedup": lhs_us / rhs_us,
+    }
+
+
 def comparison_ratio(
     hip_row: dict[str, Any],
     vulkan_row: dict[str, Any],
@@ -333,27 +393,18 @@ def comparison_ratio(
     control: str,
     domain: str,
 ) -> dict[str, float]:
-    if control not in TIMING_CONTROLS or domain not in TIMING_DOMAINS:
-        raise ValueError("invalid timing control or domain")
-    if dependency_signature(hip_row) != dependency_signature(vulkan_row):
-        raise ValueError("HIP and Vulkan dependency contracts are not comparable")
-    if domain == "host_wall" and submission_class(hip_row) != submission_class(vulkan_row):
-        raise ValueError("HIP and Vulkan host-wall submission contracts are not comparable")
-    hip_control = hip_row["timing"][control]
-    vk_control = vulkan_row["timing"][control]
-    for field in ("logical_iterations", "dispatches_per_iteration"):
-        if hip_control[field] != vk_control[field]:
-            raise ValueError(f"HIP and Vulkan {control} {field} values differ")
-    hip_metric = hip_control[domain]
-    vk_metric = vk_control[domain]
-    if hip_metric["status"] != "ok" or vk_metric["status"] != "ok":
-        raise ValueError(f"{domain} is unavailable for one or both backends")
-    hip_us = float(hip_metric["per_iteration_us"]["median"])
-    vulkan_us = float(vk_metric["per_iteration_us"]["median"])
-    if hip_us <= 0.0 or vulkan_us <= 0.0:
-        raise ValueError("timing medians must be positive for ratio calculation")
+    """Backward-compatible HIP/Vulkan ratio used by existing paired runners."""
+
+    pair = backend_pair_ratio(
+        hip_row,
+        vulkan_row,
+        lhs_backend="hip",
+        rhs_backend="vulkan",
+        control=control,
+        domain=domain,
+    )
     return {
-        "hip_us_per_iteration": hip_us,
-        "vulkan_us_per_iteration": vulkan_us,
-        "vulkan_vs_hip_speedup": hip_us / vulkan_us,
+        "hip_us_per_iteration": float(pair["lhs_us_per_iteration"]),
+        "vulkan_us_per_iteration": float(pair["rhs_us_per_iteration"]),
+        "vulkan_vs_hip_speedup": float(pair["rhs_vs_lhs_speedup"]),
     }
