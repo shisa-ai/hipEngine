@@ -158,6 +158,50 @@ __global__ void laguna_weighted_sum_rows_bf16_f32w_kernel(
   out[token * features + feature] = laguna_float_to_bf16_bits(acc);
 }
 
+__global__ void laguna_prune_tail_routes_f32_kernel(
+    int64_t* __restrict__ selected,
+    float* __restrict__ routing,
+    float* __restrict__ scaled_routing,
+    int64_t* __restrict__ sorted_lanes,
+    int64_t* __restrict__ lane_to_row,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t drop_count,
+    float max_tail_mass,
+    float routed_scaling_factor) {
+  const int64_t token =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (token >= tokens) return;
+  const int64_t base = token * top_k;
+  for (int64_t route = 0; route < top_k; ++route) {
+    sorted_lanes[base + route] = -1;
+    lane_to_row[base + route] = -1;
+  }
+  const int64_t keep_count = top_k - drop_count;
+  float tail_mass = 0.0f;
+  for (int64_t route = keep_count; route < top_k; ++route) {
+    tail_mass += routing[base + route];
+  }
+  if (tail_mass > max_tail_mass) return;
+
+  float denominator = 0.0f;
+  for (int64_t route = 0; route < keep_count; ++route) {
+    denominator += routing[base + route];
+  }
+  denominator = fmaxf(denominator, FLT_MIN);
+  const float inverse = 1.0f / denominator;
+  for (int64_t route = 0; route < keep_count; ++route) {
+    const float normalized = routing[base + route] * inverse;
+    routing[base + route] = normalized;
+    scaled_routing[base + route] = normalized * routed_scaling_factor;
+  }
+  for (int64_t route = keep_count; route < top_k; ++route) {
+    selected[base + route] = -1;
+    routing[base + route] = 0.0f;
+    scaled_routing[base + route] = 0.0f;
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_laguna_sigmoid_correction_topk_f32(
@@ -225,5 +269,43 @@ extern "C" int hipengine_laguna_weighted_sum_rows_bf16_f32w(
       out,
       top_k,
       features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_prune_tail_routes_f32(
+    int64_t* selected,
+    float* routing,
+    float* scaled_routing,
+    int64_t* sorted_lanes,
+    int64_t* lane_to_row,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t drop_count,
+    float max_tail_mass,
+    float routed_scaling_factor,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || top_k <= 1 || top_k > 16 ||
+      drop_count <= 0 || drop_count >= top_k ||
+      max_tail_mass <= 0.0f || max_tail_mass >= 1.0f ||
+      routed_scaling_factor <= 0.0f || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_prune_tail_routes_f32_kernel,
+      dim3(static_cast<unsigned int>((tokens + threads - 1) / threads)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      selected,
+      routing,
+      scaled_routing,
+      sorted_lanes,
+      lane_to_row,
+      tokens,
+      top_k,
+      drop_count,
+      max_tail_mass,
+      routed_scaling_factor);
   return static_cast<int>(hipGetLastError());
 }

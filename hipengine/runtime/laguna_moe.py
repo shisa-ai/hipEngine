@@ -297,6 +297,7 @@ class LagunaMoEKernelPlan:
     router_logits_key: KernelKey
     router_logits_keys: Mapping[str, KernelKey]
     router_select_key: KernelKey
+    router_prune_key: KernelKey
     selected_gate_up_key: KernelKey
     selected_gate_up_prefill_key: KernelKey
     activation_quant_key: KernelKey
@@ -329,11 +330,14 @@ class LagunaMoEKernelPlan:
     grouped_smallm_down_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
     grouped_weighted_sum_shared_add_key: KernelKey
+    grouped_weighted_sum_nullable_key: KernelKey
+    grouped_weighted_sum_nullable_shared_add_key: KernelKey
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
     router_logits_functions: Mapping[str, Callable]
     router_select: Callable
+    router_prune: Callable
     selected_gate_up: Callable
     selected_silu: Callable
     selected_gate_up_prefill: Callable
@@ -363,6 +367,8 @@ class LagunaMoEKernelPlan:
     grouped_smallm_downs: Mapping[str, Callable]
     grouped_weighted_sum: Callable
     grouped_weighted_sum_shared_add: Callable
+    grouped_weighted_sum_nullable: Callable
+    grouped_weighted_sum_nullable_shared_add: Callable
     shared_silu: Callable
     add: Callable
 
@@ -372,6 +378,7 @@ class LagunaMoEKernelPlan:
             self.router_logits_key,
             *tuple(self.router_logits_keys.values()),
             self.router_select_key,
+            self.router_prune_key,
             *tuple(self.selected_gate_up_keys.values()),
             self.selected_gate_up_prefill_key,
             self.activation_quant_key,
@@ -400,6 +407,8 @@ class LagunaMoEKernelPlan:
             *tuple(self.grouped_smallm_down_keys.values()),
             self.grouped_weighted_sum_key,
             self.grouped_weighted_sum_shared_add_key,
+            self.grouped_weighted_sum_nullable_key,
+            self.grouped_weighted_sum_nullable_shared_add_key,
             self.shared_silu_key,
             self.add_key,
         )
@@ -606,6 +615,12 @@ def resolve_laguna_moe_plan(
             "f32",
             _ROUTER_SELECT_VARIANT,
         ),
+        "router_prune": KernelKey(
+            backend,
+            "laguna_router_prune",
+            "f32",
+            "tail_mass",
+        ),
         "selected_gate_up": KernelKey(
             backend,
             "moe_linear",
@@ -728,6 +743,15 @@ def resolve_laguna_moe_plan(
             "weighted_lanes_sum+shared_add",
             "bf16",
             _WEIGHTED_SUM_VARIANT,
+        ),
+        "grouped_weighted_sum_nullable": KernelKey(
+            backend, "weighted_lanes_sum", "bf16", "nullable"
+        ),
+        "grouped_weighted_sum_nullable_shared_add": KernelKey(
+            backend,
+            "weighted_lanes_sum+shared_add",
+            "bf16",
+            "nullable",
         ),
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
@@ -884,6 +908,7 @@ def resolve_laguna_moe_plan(
         router_logits_key=keys["router_logits"],
         router_logits_keys=router_logits_keys,
         router_select_key=keys["router_select"],
+        router_prune_key=keys["router_prune"],
         selected_gate_up_key=keys["selected_gate_up"],
         selected_gate_up_prefill_key=keys["selected_gate_up_prefill"],
         activation_quant_key=keys["activation_quant"],
@@ -911,6 +936,7 @@ def resolve_laguna_moe_plan(
         router_logits=functions["router_logits"],
         router_logits_functions=router_logits_functions,
         router_select=functions["router_select"],
+        router_prune=functions["router_prune"],
         selected_gate_up=functions["selected_gate_up"],
         selected_gate_up_prefill=functions["selected_gate_up_prefill"],
         activation_quant=functions["activation_quant"],
@@ -945,6 +971,12 @@ def resolve_laguna_moe_plan(
         grouped_weighted_sum_shared_add_key=keys[
             "grouped_weighted_sum_shared_add"
         ],
+        grouped_weighted_sum_nullable_key=keys[
+            "grouped_weighted_sum_nullable"
+        ],
+        grouped_weighted_sum_nullable_shared_add_key=keys[
+            "grouped_weighted_sum_nullable_shared_add"
+        ],
         grouped_count=functions["grouped_count"],
         grouped_prefix_active=functions["grouped_prefix_active"],
         grouped_scatter=functions["grouped_scatter"],
@@ -961,6 +993,12 @@ def resolve_laguna_moe_plan(
         grouped_weighted_sum=functions["grouped_weighted_sum"],
         grouped_weighted_sum_shared_add=functions[
             "grouped_weighted_sum_shared_add"
+        ],
+        grouped_weighted_sum_nullable=functions[
+            "grouped_weighted_sum_nullable"
+        ],
+        grouped_weighted_sum_nullable_shared_add=functions[
+            "grouped_weighted_sum_nullable_shared_add"
         ],
         shared_silu=functions["shared_silu"],
         add=functions["add"],
@@ -2218,6 +2256,7 @@ def run_laguna_moe_rows(
     selected_down_mode: str = "direct",
     selected_gate_up_mode: str = "direct",
     router_logits_mode: str = _BASELINE_ROUTER_LOGITS_MODE,
+    route_tail_mass_threshold: float | None = None,
     dense_q4_prefill_mode: str = "retained",
     group_compact_mode: str = "serial",
     fuse_selected_silu_pack: bool = False,
@@ -2252,6 +2291,12 @@ def run_laguna_moe_rows(
             "unsupported Laguna router-logits mode; expected one of "
             f"{tuple(sorted(_ROUTER_LOGITS_MODES))}"
         )
+    if route_tail_mass_threshold is not None:
+        threshold = float(route_tail_mass_threshold)
+        if not math.isfinite(threshold) or threshold <= 0.0 or threshold >= 1.0:
+            raise ValueError(
+                "route_tail_mass_threshold must be finite and within (0, 1)"
+            )
     if dense_q4_prefill_mode not in _DENSE_Q4_PREFILL_MODES:
         raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
     if group_compact_mode not in _GROUP_COMPACT_MODES:
@@ -2335,6 +2380,38 @@ def run_laguna_moe_rows(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
+    route_prune_eligible = bool(
+        tokens >= _SELECTED_MMQ32_MIN_ROWS
+        and selected_gate_up_mode.startswith("mmq")
+        and layer.weight("ffn_gate_exps").spec.quant_key
+        == "gguf_q4_k_t16_v1"
+        and layer.weight("ffn_up_exps").spec.quant_key
+        == "gguf_q4_k_t16_v1"
+        and layer.weight("ffn_down_exps").spec.quant_key
+        in plan.grouped_smallm_downs
+    )
+    route_prune_active = (
+        route_tail_mass_threshold is not None and route_prune_eligible
+    )
+    if route_prune_active:
+        plan.router_prune(
+            scratch.selected_experts.ptr,
+            scratch.routing_weights.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.grouped_sorted_lanes.ptr,
+            scratch.grouped_lane_to_row.ptr,
+            tokens,
+            k,
+            2,
+            float(route_tail_mass_threshold),
+            plan.routed_scaling_factor,
+            **_stage_kwargs(
+                "router_select",
+                libraries,
+                stream=stream,
+                runtime=runtime,
+            ),
+        )
     if shared_concurrent and shared_after_router:
         launch_concurrent_shared()
     compact_gate_up = False
@@ -2537,7 +2614,12 @@ def run_laguna_moe_rows(
     ) or use_grouped_fused_combine
     if use_mmq_down:
         if not use_grouped_fused_combine:
-            plan.grouped_weighted_sum(
+            grouped_weighted_sum = (
+                plan.grouped_weighted_sum_nullable
+                if route_prune_active
+                else plan.grouped_weighted_sum
+            )
+            grouped_weighted_sum(
                 scratch.expert_down.ptr,
                 scratch.grouped_sorted_weights.ptr,
                 scratch.grouped_sorted_lanes.ptr,
@@ -2605,7 +2687,12 @@ def run_laguna_moe_rows(
             libraries=libraries,
         )
     if use_grouped_fused_combine:
-        plan.grouped_weighted_sum_shared_add(
+        grouped_weighted_sum_shared_add = (
+            plan.grouped_weighted_sum_nullable_shared_add
+            if route_prune_active
+            else plan.grouped_weighted_sum_shared_add
+        )
+        grouped_weighted_sum_shared_add(
             scratch.expert_down.ptr,
             scratch.grouped_sorted_weights.ptr,
             scratch.grouped_sorted_lanes.ptr,

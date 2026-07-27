@@ -13,10 +13,12 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference.laguna import (
+    laguna_prune_tail_routes,
     laguna_sigmoid_correction_topk_from_logits,
 )
 from hipengine.kernels.hip_gfx1100.moe.laguna_router import (
     build_laguna_router,
+    laguna_prune_tail_routes_f32,
     laguna_sigmoid_correction_topk_f32,
     plan_laguna_router_build,
     register_laguna_router_kernels,
@@ -85,6 +87,15 @@ def test_laguna_router_build_and_registry_contract() -> None:
         )
         is laguna_sigmoid_correction_topk_f32
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_router_prune",
+            quant="f32",
+            variant="tail_mass",
+        )
+        is laguna_prune_tail_routes_f32
+    )
 
 
 def test_laguna_router_wrapper_rejects_non_production_contracts_before_load() -> None:
@@ -98,6 +109,10 @@ def test_laguna_router_wrapper_rejects_non_production_contracts_before_load() ->
         laguna_sigmoid_correction_topk_f32(0, 0, 0, 0, 0, 0, 0, 1, 256, 10, 0.0)
     with pytest.raises(ValueError, match="requires 256 threads"):
         laguna_sigmoid_correction_topk_f32(0, 0, 0, 0, 0, 0, 0, 1, 256, 10, 2.5, threads=128)
+    with pytest.raises(ValueError, match="drop_count"):
+        laguna_prune_tail_routes_f32(0, 0, 0, 0, 0, 2, 10, 10, 0.15, 2.5)
+    with pytest.raises(ValueError, match="max_tail_mass"):
+        laguna_prune_tail_routes_f32(0, 0, 0, 0, 0, 2, 10, 2, 1.0, 2.5)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -215,3 +230,60 @@ def test_laguna_router_matches_adversarial_cpu_semantics(laguna_router_library) 
         rtol=2.0e-6,
         atol=2.0e-7,
     )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_laguna_tail_prune_matches_cpu_semantics(laguna_router_library) -> None:
+    selected = np.arange(30, dtype=np.int64).reshape(3, 10)
+    routing = np.asarray(
+        [
+            [0.16, 0.14, 0.13, 0.12, 0.11, 0.10, 0.08, 0.07, 0.05, 0.04],
+            [0.15, 0.14, 0.13, 0.12, 0.10, 0.09, 0.08, 0.07, 0.06, 0.06],
+            [0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07, 0.08, 0.08],
+        ],
+        dtype=np.float32,
+    )
+    routing /= routing.sum(axis=1, keepdims=True, dtype=np.float32)
+    scaled = (routing * np.float32(2.5)).astype(np.float32)
+    expected = laguna_prune_tail_routes(
+        selected,
+        routing,
+        drop_count=2,
+        max_tail_mass=0.15,
+        routed_scaling_factor=2.5,
+    )
+    arrays = (
+        selected.copy(),
+        routing.copy(),
+        scaled,
+        np.full(selected.size, 91, dtype=np.int64),
+        np.full(selected.size, 92, dtype=np.int64),
+    )
+    buffers = [malloc(array.nbytes) for array in arrays]
+    try:
+        for array, buffer in zip(arrays, buffers, strict=True):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        laguna_prune_tail_routes_f32(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            buffers[3].ptr,
+            buffers[4].ptr,
+            selected.shape[0],
+            selected.shape[1],
+            2,
+            0.15,
+            2.5,
+            library=laguna_router_library,
+        )
+        for array, buffer in zip(arrays, buffers, strict=True):
+            copy_device_to_host(host_array_ptr(array), buffer, array.nbytes)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+    np.testing.assert_array_equal(arrays[0], expected[0])
+    np.testing.assert_allclose(arrays[1], expected[1], rtol=0.0, atol=2.0e-7)
+    np.testing.assert_allclose(arrays[2], expected[2], rtol=0.0, atol=5.0e-7)
+    np.testing.assert_array_equal(arrays[3], -1)
+    np.testing.assert_array_equal(arrays[4], -1)

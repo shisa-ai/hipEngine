@@ -255,6 +255,12 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
             q6_qmicro_permute=True,
         )
     assert plan.router_select_key.layer == "laguna_sigmoid_router_topk"
+    assert plan.router_prune_key == KernelKey(
+        "hip_gfx1151",
+        "laguna_router_prune",
+        "f32",
+        "tail_mass",
+    )
     assert set(plan.router_logits_keys) == {
         "token_tile_4",
         "token_tile_8",
@@ -320,6 +326,15 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     }
     assert plan.grouped_weighted_sum_shared_add_key == KernelKey(
         "hip_gfx1151", "weighted_lanes_sum+shared_add", "bf16", "out"
+    )
+    assert plan.grouped_weighted_sum_nullable_key == KernelKey(
+        "hip_gfx1151", "weighted_lanes_sum", "bf16", "nullable"
+    )
+    assert plan.grouped_weighted_sum_nullable_shared_add_key == KernelKey(
+        "hip_gfx1151",
+        "weighted_lanes_sum+shared_add",
+        "bf16",
+        "nullable",
     )
     assert plan.grouped_prefix_active_key == KernelKey(
         "hip_gfx1151", "moe_group_prefix", "generic", "active_experts"
@@ -597,6 +612,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     scratch = None
     bulk_scratch = None
     router_tile8_scratch = None
+    route_prune_scratch = None
     grouped_scratch = None
     fused_scratch = None
     mmq_scratch = None
@@ -780,6 +796,51 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
                 (3, k),
             ),
         )
+        monkeypatch.setattr(laguna_moe_module, "_SELECTED_MMQ32_MIN_ROWS", 3)
+        if down_qtype == GGMLQuantizationType.Q4_K:
+            route_prune_scratch = allocate_laguna_moe_scratch(
+                plan,
+                max_rows=3,
+            )
+            route_prune_output = run_laguna_moe_rows(
+                bulk_hidden_buffer.ptr,
+                layer,
+                route_prune_scratch,
+                rows=3,
+                selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+                route_tail_mass_threshold=0.21,
+            )
+            assert np.isfinite(_read_bf16(route_prune_output, (3, h))).all()
+            baseline_routing = _read_array(
+                bulk_scratch.routing_weights,
+                np.float32,
+                (3, k),
+            )
+            pruned_selected = _read_array(
+                route_prune_scratch.selected_experts,
+                np.int64,
+                (3, k),
+            )
+            pruned_routing = _read_array(
+                route_prune_scratch.routing_weights,
+                np.float32,
+                (3, k),
+            )
+            for row in range(3):
+                if baseline_routing[row, -2:].sum(dtype=np.float32) <= np.float32(0.21):
+                    np.testing.assert_array_equal(pruned_selected[row, -2:], -1)
+                    np.testing.assert_array_equal(pruned_routing[row, -2:], 0.0)
+                    np.testing.assert_allclose(
+                        pruned_routing[row, :-2].sum(dtype=np.float32),
+                        1.0,
+                        rtol=0.0,
+                        atol=2.0e-7,
+                    )
+                else:
+                    np.testing.assert_array_equal(
+                        pruned_routing[row],
+                        baseline_routing[row],
+                    )
         grouped_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
         grouped_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
@@ -806,7 +867,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(fused_actual),
             _f32_to_bf16_u16(grouped_actual),
         )
-        monkeypatch.setattr(laguna_moe_module, "_SELECTED_MMQ32_MIN_ROWS", 3)
         mmq_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
         mmq_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
@@ -1105,6 +1165,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             concurrent_scratch.free()
         if router_tile8_scratch is not None:
             router_tile8_scratch.free()
+        if route_prune_scratch is not None:
+            route_prune_scratch.free()
         if mmq_parallel_scratch is not None:
             mmq_parallel_scratch.free()
         if down_rowvec_scratch is not None:

@@ -14,8 +14,10 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("laguna_router.hip")
 _OUTPUT_NAME = "laguna_router.so"
 _SYMBOL = "hipengine_laguna_sigmoid_correction_topk_f32"
+_PRUNE_SYMBOL = "hipengine_laguna_prune_tail_routes_f32"
 _WEIGHTED_SUM_ROWS_SYMBOL = "hipengine_laguna_weighted_sum_rows_bf16_f32w"
 _THREADS = 256
+_PRUNE_THREADS = 128
 _MAX_EXPERTS = 256
 _MAX_TOP_K = 16
 _WEIGHTED_SUM_ROWS_ARGTYPES = (
@@ -39,6 +41,20 @@ _ARGTYPES = (
     ctypes.c_int64,
     ctypes.c_int64,
     ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_PRUNE_ARGTYPES = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
     ctypes.c_float,
     ctypes.c_int64,
     ctypes.c_void_p,
@@ -174,6 +190,60 @@ def laguna_weighted_sum_rows_bf16_f32w(
         runtime.check(int(err))
 
 
+def laguna_prune_tail_routes_f32(
+    selected_ptr: int,
+    routing_ptr: int,
+    scaled_routing_ptr: int,
+    sorted_lanes_ptr: int,
+    lane_to_row_ptr: int,
+    tokens: int,
+    top_k: int,
+    drop_count: int,
+    max_tail_mass: float,
+    routed_scaling_factor: float,
+    *,
+    threads: int = _PRUNE_THREADS,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Invalidate and renormalize a route suffix behind an F32 mass guard."""
+
+    if int(tokens) <= 0:
+        raise ValueError("tokens must be positive")
+    if int(top_k) <= 1 or int(top_k) > _MAX_TOP_K:
+        raise ValueError("top_k must be within [2, 16]")
+    if int(drop_count) <= 0 or int(drop_count) >= int(top_k):
+        raise ValueError("drop_count must be within [1, top_k)")
+    threshold = float(max_tail_mass)
+    if not math.isfinite(threshold) or threshold <= 0.0 or threshold >= 1.0:
+        raise ValueError("max_tail_mass must be finite and within (0, 1)")
+    scale = float(routed_scaling_factor)
+    if not math.isfinite(scale) or scale <= 0.0:
+        raise ValueError("routed_scaling_factor must be finite and positive")
+    if int(threads) != _PRUNE_THREADS:
+        raise ValueError(f"Laguna route pruning requires {_PRUNE_THREADS} threads")
+    library = library or build_laguna_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _PRUNE_SYMBOL, _PRUNE_ARGTYPES, ctypes.c_int)
+    err = fn(
+        selected_ptr,
+        routing_ptr,
+        scaled_routing_ptr,
+        sorted_lanes_ptr,
+        lane_to_row_ptr,
+        int(tokens),
+        int(top_k),
+        int(drop_count),
+        threshold,
+        scale,
+        int(threads),
+        int(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_laguna_router_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
@@ -188,6 +258,11 @@ def register_laguna_router_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "weighted_sum", "bf16", "laguna_rows"),
         laguna_weighted_sum_rows_bf16_f32w,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "laguna_router_prune", "f32", "tail_mass"),
+        laguna_prune_tail_routes_f32,
         replace=replace,
     )
 
@@ -223,6 +298,7 @@ register_laguna_router_kernels()
 
 __all__ = [
     "build_laguna_router",
+    "laguna_prune_tail_routes_f32",
     "laguna_sigmoid_correction_topk_f32",
     "laguna_weighted_sum_rows_bf16_f32w",
     "plan_laguna_router_build",
