@@ -1763,6 +1763,16 @@ Immediate execution queue:
    materialization. Every candidate surface is removed.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json).
+57. **Rejected and removed before integration:** reduce retained raw-nibble
+   prefetch from all eight next-K32 words to four and demand-load the other
+   four. P4 is exact but loses to P8 at both actual-weight shapes:
+   **4.4541 vs 4.4321 ms (+0.50%)** at M256 and
+   **6.8635 vs 6.7625 ms (+1.49%)** at M512 across 41 counter-rotated
+   samples. P8's complete payload coverage is earning its VGPR cost; partial
+   coverage does not offer a better resource/latency balance. The P4 export,
+   wrapper selector, fixture case, and harness mode are removed.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1782,7 +1792,8 @@ to Q4 selected down:
    is also closed on the current P8 body, including dense-expert partitioning;
    paired local256 gate/up-to-D4 fusion is closed as well. The next expert
    candidate must reduce weight bytes without extending accumulator lifetime,
-   widening the workgroup, or exchanging full results through LDS.
+   widening the workgroup, exchanging full results through LDS, or weakening
+   P8's complete next-K32 payload coverage.
 3. Do not widen the 128-row attention slice through another dense
    QK/softmax/PV formulation: M256 remains slower even after exhaustive
    library-algorithm tuning. Reopen attention only for a fused causal
@@ -3655,6 +3666,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-row64-current-body-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`

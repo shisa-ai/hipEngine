@@ -184412,3 +184412,20 @@ Vulkan local sizes verbatim will close the measured gap.
   modes. Production remains **645.803 tok/s / 792.811 ms**. Raw SHA-256:
   `aa1eb30d...f895b6`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json`.
+
+## 2026-07-27 — Reject partial P4 raw-weight prefetch
+
+- RED added a four-word raw-prefetch fixture alongside the retained
+  no-prefetch and full-P8 cases. GREEN kept the same direct-wave/P8 body but
+  prefetched only four of the eight next-K32 Q4 payload words and
+  demand-loaded the remaining four.
+- The candidate is exact at the fixture and actual M256/M512 shapes. Across
+  41 counter-rotated burst-three samples, M256 measures
+  **4.4541 ms P4 versus 4.4321 ms P8 (+0.50%)** and M512 measures
+  **6.8635 ms versus 6.7625 ms (+1.49%)**. Partial coverage does not repay
+  its four-register reduction; full P8 remains the stronger latency-hiding
+  schedule.
+- Removed the P4 export, wrapper selector, fixture case, and harness mode.
+  Production remains **645.803 tok/s / 792.811 ms**. Raw artifact SHA-256:
+  `ca8427be...e4e87`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`.
