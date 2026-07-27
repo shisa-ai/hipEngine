@@ -113,6 +113,8 @@ _Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
 _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
     "local32_fixed_meta_gemv_decode_bf16_f32_out"
 )
+_GLOBAL_HEAD_RETAINED_VARIANT = "global_f32_bf16_spans"
+_GLOBAL_HEAD_WAVE0_TREE_VARIANT = "global_wave0_tree_f32_bf16_spans"
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -1269,6 +1271,39 @@ def resolve_laguna_head_kv_fusion(
     return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
 
 
+def resolve_laguna_global_head_wave0_tree(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the exact global-head wave-0 screen when its exact key exists."""
+
+    selected = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_HEAD_WAVE0_TREE",
+            False,
+        )
+        if requested is None
+        else requested
+    )
+    if not selected:
+        return False
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
+
+    register_laguna_kv_attention_kernels()
+    load_backend_kernel_package(backend)
+    return is_registered(
+        KernelKey(
+            backend,
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            _GLOBAL_HEAD_WAVE0_TREE_VARIANT,
+        )
+    )
+
+
 def resolve_laguna_mixed_attention_projections(
     backend: str,
     requested: bool | None = None,
@@ -1408,6 +1443,7 @@ def resolve_laguna_eager_kernel_plan(
     backend: str,
     use_moe_tail_next_rmsnorm: bool = True,
     use_head_kv_fusion: bool = False,
+    use_global_head_wave0_tree: bool | None = None,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
 
@@ -1435,6 +1471,17 @@ def resolve_laguna_eager_kernel_plan(
 
         del _laguna_kv
     load_backend_kernel_package(backend)
+    selected_global_head_wave0_tree = bool(use_head_kv_fusion) and (
+        resolve_laguna_global_head_wave0_tree(
+            backend,
+            use_global_head_wave0_tree,
+        )
+    )
+    global_head_variant = (
+        _GLOBAL_HEAD_WAVE0_TREE_VARIANT
+        if selected_global_head_wave0_tree
+        else _GLOBAL_HEAD_RETAINED_VARIANT
+    )
     keys = {
         "rmsnorm": KernelKey(backend, "rmsnorm", "gguf_f32_weight", "bf16_out"),
         "add_rmsnorm": KernelKey(backend, "add_rmsnorm", "gguf_f32_weight", "bf16_out"),
@@ -1449,7 +1496,7 @@ def resolve_laguna_eager_kernel_plan(
             backend,
             "head_rmsnorm+partial_rotary+kv_write",
             "laguna_f32_weight",
-            "global_f32_bf16_spans",
+            global_head_variant,
         ),
         "swa_head_kv": KernelKey(
             backend,
@@ -1802,6 +1849,7 @@ class LagunaGGUFResidentSession:
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_head_kv_fusion: bool | None = None,
+        use_global_head_wave0_tree: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
@@ -1835,6 +1883,7 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.use_swa_split_wave_local = use_swa_split_wave_local
+        self.use_global_head_wave0_tree = False
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -1954,6 +2003,12 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
                 use_head_kv_fusion=requested_head_kv_fusion,
+                use_global_head_wave0_tree=use_global_head_wave0_tree,
+            )
+            self.use_global_head_wave0_tree = bool(
+                self.kernel_plan.global_head_kv is not None
+                and self.kernel_plan.global_head_kv_key.variant
+                == _GLOBAL_HEAD_WAVE0_TREE_VARIANT
             )
             self.use_head_kv_fusion = (
                 self.kernel_plan.global_head_kv is not None
@@ -3789,6 +3844,7 @@ __all__ = [
     "launch_laguna_moe_tail_next_rmsnorm",
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",
+    "resolve_laguna_global_head_wave0_tree",
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",
     "resolve_laguna_mixed_attention_projections",
