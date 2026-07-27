@@ -184646,3 +184646,29 @@ Vulkan local sizes verbatim will close the measured gap.
   the later packed gate in `norm_rope_gate`. Its focused suite passes
   **31 tests**. Commit this repair before repeating the clean production
   trace; no aggregate performance claim is made from the profiled wall.
+
+## 2026-07-27 — Publish exact packed attention output gate
+
+- The repaired clean cached trace passes the retain gate. Qualified pp512
+  output unpack falls **144 launches / 3.703351 ms -> 0** and total
+  dispatches fall **2,417 -> 2,273**. The packed gate costs
+  **10.317806 ms** versus the old generic gate's **7.536507 ms**, so the
+  combined transpose-plus-gate boundary still improves
+  **11.239858 -> 10.317806 ms (-8.20%, 0.922052 ms saved)**.
+- The production packed gate is local128/VGPR8/SGPR128/LDS0/scratch0. The
+  complete pp512 trace records **1,101.819 ms** inclusive kernel sum and
+  **843.411 ms** kernel span. Selected gate/up remains largest at
+  **331.231 ms**, selected down is **169.881 ms**, source-F16 is
+  **124.738 ms**, dense/shared is **91.716 ms**, and attention is
+  **63.846 ms**.
+- Three clean selector-unset repetitions publish
+  **647.826/575.732/468.103 tok/s** at 512/1K/4K. They are within
+  **-0.302%/-0.149%/-0.155%** of the preceding packet and are classified as
+  shared-APU variance; retention is supported by the exact named sub-window,
+  144-launch reduction, and eleven complete-state A/B pairs. Tokens
+  **2930/95/7772**, positions, deterministic repeats, and complete return of
+  all **78,806,349,844** tracked bytes pass.
+- pp512 wall is **790.336 ms**, leaving **58.907 ms** to 700. Raw publication
+  SHA-256 is `ad8993e2...2365e`; trace SHA-256 is
+  `f21be6b1...2b18f`; summary SHA-256 is `48f5d788...979e8`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json`.
