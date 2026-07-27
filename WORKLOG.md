@@ -185170,3 +185170,37 @@ Vulkan local sizes verbatim will close the measured gap.
   all **36** queries. This targets request amplification **132x -> 22x** and
   should retain a resource shape much closer to qrow6's VGPR88 than the
   rejected four-row-per-wave body.
+
+## 2026-07-27 — Reject LC-1/LC-2 scalar GQA6 staging
+
+- Built the revised exact local192 geometry: one qrow6 wave per global query
+  head, six waves per K/V head, and one K/V tile shared across all 36
+  query-row/head combinations. A fixed 512/4K/16K/64K M128 leaf populated one
+  64K cache sequentially, used five alternating samples per mode, compared
+  every F32 output bit, and recovered every tracked allocation.
+- K64 was still VGPR248/SGPR128/LDS33,792B/scratch0. Its qrow6 -> candidate
+  medians were **0.907 -> 3.435 ms**, **7.260 -> 29.774 ms**,
+  **32.363 -> 130.740 ms**, and **132.589 -> 531.178 ms** at
+  512/4K/16K/64K, only **0.244x-0.264x** retained throughput. Raw SHA-256:
+  `83545e00b6bc32caf7148e59d1d9719df6528e00f58be896e91521dc2b2c3765`;
+  resource-trace SHA-256:
+  `af565858814a550a7cac146df9d6ff630375db3f64fa6d91a43b6967933e6df5`.
+- One bounded occupancy repair changed to K32 and
+  `launch_bounds(192,2)`. Resources fell to
+  VGPR152/SGPR128/LDS16,896B/scratch0, but qrow6 -> candidate remained
+  **0.883 -> 1.507 ms**, **7.360 -> 12.556 ms**,
+  **32.457 -> 54.043 ms**, and **132.735 -> 226.880 ms**: only
+  **0.585x-0.601x** retained throughput. Raw/trace SHA-256:
+  `3c3e1986f554a21c4c2d3ecdffe5c113d3e2d0f296fc56098253d05a54ba3a78`
+  and `c03d33cb4651d4c52ed10a34d8b98f9fa6e3af1e854060cc655729019cf92db6`.
+- Every leaf row was finite with zero F32-bit mismatches. The focused
+  production-shaped M128 fixture also passed for both variants. Full-model
+  screens were not warranted. All HIP/Python/registry/test/harness candidate
+  surfaces were removed; production is byte-for-byte unchanged at
+  `7c7816956`.
+- Conclusion: the 132x instruction-request count is mostly absorbed by cache.
+  Explicit LDS reduces requests but adds barriers and occupancy cost without
+  accelerating the serial QK reduction, `expf`, or PV accumulation. Scalar
+  staging is closed. Next establish an M128-by-context F32 hipBLASLt ceiling
+  with bounded current-chunk score scratch, then implement tensorized
+  block-streamed QK/PV with GQA reuse inside the arithmetic tile.

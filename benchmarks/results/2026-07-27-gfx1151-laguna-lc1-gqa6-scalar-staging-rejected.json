@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_lc1_gqa6_scalar_staging_rejected",
+  "status": "rejected_removed",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "shape": {
+    "rows": 128,
+    "contexts": [
+      512,
+      4096,
+      16384,
+      65536
+    ],
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "cache_dtype": "BF16",
+    "query_dot_output_dtype": "F32"
+  },
+  "protocol": {
+    "samples": 5,
+    "warmups": 1,
+    "burst": 1,
+    "order": "two-mode alternating counter-rotation",
+    "cache_capacity": 65536,
+    "cache_population": "sequential preappend in chunks <=512",
+    "k64_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_leaf.py --samples 5 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-gqa6-k64-leaf.json",
+    "k32_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_long_context_leaf.py --samples 5 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc1-gqa6-k32-leaf.json",
+    "k64_raw_sha256": "83545e00b6bc32caf7148e59d1d9719df6528e00f58be896e91521dc2b2c3765",
+    "k32_raw_sha256": "3c3e1986f554a21c4c2d3ecdffe5c113d3e2d0f296fc56098253d05a54ba3a78"
+  },
+  "correctness": {
+    "red": "The model-scale wrapper test initially failed because the cooperative GQA primitive did not exist.",
+    "green": "The production-shaped M128 preappend fixture matched retained qrow6 for every F32 output bit for both K64 and K32 bodies.",
+    "all_leaf_f32_bit_mismatches": 0,
+    "all_leaf_outputs_finite": true,
+    "tracked_active_allocations_after": 0
+  },
+  "k64": {
+    "geometry": "local192; six wave32s; qrow6 per query head; one K64 K/V tile shared across six query heads",
+    "resources": {
+      "vgpr": 248,
+      "sgpr": 128,
+      "lds_bytes": 33792,
+      "scratch_bytes": 0
+    },
+    "trace_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-directory /tmp/laguna-lc1-gqa6-k64-trace.8HD38c --output-format csv --output-file lc1gqa6 -- env PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py -k preappend_cached_qrow4",
+    "trace_sha256": "af565858814a550a7cac146df9d6ff630375db3f64fa6d91a43b6967933e6df5",
+    "rows": [
+      {
+        "context": 512,
+        "qrow6_ms": 0.9065229893,
+        "candidate_ms": 3.4352629185,
+        "speedup": 0.2638875134
+      },
+      {
+        "context": 4096,
+        "qrow6_ms": 7.2601251602,
+        "candidate_ms": 29.7737045288,
+        "speedup": 0.2438435282
+      },
+      {
+        "context": 16384,
+        "qrow6_ms": 32.3625221252,
+        "candidate_ms": 130.7403717041,
+        "speedup": 0.2475327376
+      },
+      {
+        "context": 65536,
+        "qrow6_ms": 132.5886077881,
+        "candidate_ms": 531.177734375,
+        "speedup": 0.2496125105
+      }
+    ]
+  },
+  "k32": {
+    "geometry": "local192 with launch_bounds(192,2); six wave32s; qrow6 per query head; one K32 K/V tile shared across six query heads",
+    "resources": {
+      "vgpr": 152,
+      "sgpr": 128,
+      "lds_bytes": 16896,
+      "scratch_bytes": 0
+    },
+    "trace_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-directory /tmp/laguna-lc1-gqa6-k32-trace.q0fkpO --output-format csv --output-file lc1gqa6k32 -- env PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py -k preappend_cached_qrow4",
+    "trace_sha256": "c03d33cb4651d4c52ed10a34d8b98f9fa6e3af1e854060cc655729019cf92db6",
+    "rows": [
+      {
+        "context": 512,
+        "qrow6_ms": 0.8826919794,
+        "candidate_ms": 1.5065799952,
+        "speedup": 0.585891212
+      },
+      {
+        "context": 4096,
+        "qrow6_ms": 7.3601131439,
+        "candidate_ms": 12.5560455322,
+        "speedup": 0.5861808262
+      },
+      {
+        "context": 16384,
+        "qrow6_ms": 32.4569740295,
+        "candidate_ms": 54.0429954529,
+        "speedup": 0.600576888
+      },
+      {
+        "context": 65536,
+        "qrow6_ms": 132.7353363037,
+        "candidate_ms": 226.8804931641,
+        "speedup": 0.5850451683
+      }
+    ]
+  },
+  "decision": {
+    "result": "reject and remove both candidates",
+    "reason": "K32 recovers occupancy and is substantially better than K64, but both remain slower at every context. LC-0 request amplification is therefore predominantly cache-served; LDS staging does not accelerate the serial QK, exp, and PV arithmetic and adds synchronization/resource cost.",
+    "full_model_run_warranted": false,
+    "candidate_surfaces_removed": true,
+    "production_unchanged": true,
+    "next_premise": "Close scalar staging. Establish a bounded M128-by-context F32 hipBLASLt ceiling, then implement block-streamed tensorized QK/PV with GQA reuse and online tile reductions."
+  },
+  "repo": {
+    "base_revision": "7c78169565d12cbab194ba157b01bf8d7af648d1"
+  }
+}

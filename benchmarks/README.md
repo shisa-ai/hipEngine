@@ -107,6 +107,16 @@ co-designed around staging once for all six global GQA query heads rather
 than spending LDS and barriers on single-head reuse.
 [`LC-1 rejection`](results/2026-07-27-gfx1151-laguna-lc1-single-head-qtile16-k64-rejected.json).
 
+Sharing the tile across all six global GQA heads does not rescue the scalar
+design. Exact local192 K64 reaches only **0.244x-0.264x** qrow6 throughput;
+K32 with two-workgroup launch bounds lowers VGPR **248 -> 152** and LDS
+**33,792 -> 16,896 B**, yet still reaches only **0.585x-0.601x** from context
+512 through 64K. Both candidates are removed. The result changes LC-1's
+premise: request amplification was mostly cache-served, while serial
+dot/exp/PV arithmetic remains the ceiling. The next screen is a bounded F32
+hipBLASLt ceiling followed by tensorized block-streamed QK/PV.
+[`GQA6 rejection`](results/2026-07-27-gfx1151-laguna-lc1-gqa6-scalar-staging-rejected.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

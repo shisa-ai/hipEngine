@@ -4011,12 +4011,20 @@ Evidence:
   leaf command/raw samples were not preserved, so this is explicitly
   non-promotable rejection evidence; the cached resource trace and exact
   output gate are preserved.
-- The revised first bounded geometry is one **local192 six-wave** workgroup
-  per global K/V head and qrow6 group. Each wave retains the established six
-  query rows for one of that K/V head's six query heads; the workgroup stages
-  one K64 BF16 K/V tile plus bounded metadata once for all 36 query rows.
-  This targets post-512 request amplification of about **22x**, down from
-  **132x**, without the rejected candidate's four-row-per-wave VGPR explosion.
+- **Also rejected and removed:** a local192 six-wave body assigned one qrow6
+  wave to each of a K/V head's six query heads and staged K/V once for all 36
+  queries. K64 remained **VGPR248/LDS33,792 B** and delivered only
+  **0.244x-0.264x** qrow6 throughput. K32 with
+  `launch_bounds(192,2)` reduced resources to
+  **VGPR152/LDS16,896 B**, but still delivered only **0.585x-0.601x** at
+  context 512/4K/16K/64K. Both were exact and both lost at every shape.
+- This closes scalar LDS staging as the LC-1 premise. The LC-0 load-request
+  amplification is predominantly cache-served; suppressing requests does not
+  accelerate the serial dot, exponential, and PV loop. The revised first
+  bounded task is an **M128-by-context F32 hipBLASLt ceiling** using bounded
+  current-chunk score scratch, followed by block-streamed tensorized QK/PV
+  with online tile reduction. GQA reuse must live inside that arithmetic
+  design, not be bolted onto the scalar body.
 - Carry online row max, denominator, and output state across K/V tiles. Never
   materialize the complete score matrix or compute masked upper-triangle
   blocks.
@@ -4031,16 +4039,16 @@ Evidence:
   new geometry.
 
 Evidence:
-[`single-head Q16xK64 rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-single-head-qtile16-k64-rejected.json).
+[`single-head Q16xK64 rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-single-head-qtile16-k64-rejected.json) ·
+[`GQA6 scalar-staging rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-gqa6-scalar-staging-rejected.json).
 
 #### LC-2 — share K/V across Laguna GQA heads
 
-- **Co-designed with LC-1:** one global K/V head serves six query heads. Load
-  each K/V tile once per cooperative six-wave workgroup and reuse it across
-  the complete group instead of launching independent query-head waves that
-  reread the same cache. A winning combined screen can close LC-1 and LC-2
-  together after the mandatory 128K gate; separating them again requires new
-  evidence.
+- **Co-designed with tensorized LC-1:** one global K/V head serves six query
+  heads. Reuse K/V inside the GEMM/MFMA QK/PV tile or library batch instead of
+  staging it for six otherwise-serial waves. A winning combined screen can
+  close LC-1 and LC-2 together after the mandatory 128K gate; scalar
+  cooperative staging is now closed evidence.
 - One SWA K/V head serves **nine** query heads. After the global cooperative
   body passes its mandatory 128K gate, reuse the same tile-sharing design for
   SWA rather than leaving its measured **288x** request amplification in
