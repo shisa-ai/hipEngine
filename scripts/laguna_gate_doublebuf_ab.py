@@ -134,6 +134,11 @@ def _apply_mode(
     elif runtime_mode == "q6_wmma_prefetch_activation":
         session.set_q6_wmma_prefetch_weight(True)
         session.set_q6_wmma_prefetch_activation(True)
+        session.set_q6_precomputed_activation_sums(False)
+    elif runtime_mode == "q6_wmma_precomputed_sums":
+        session.set_q6_wmma_prefetch_weight(True)
+        session.set_q6_wmma_prefetch_activation(True)
+        session.set_q6_precomputed_activation_sums(True)
     else:
         session.set_selected_gate_up_mode(runtime_mode)
 

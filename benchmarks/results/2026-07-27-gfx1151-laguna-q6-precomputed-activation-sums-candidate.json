@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "status": "candidate_default_pending_clean_publication",
+  "kind": "hipengine_laguna_q6_precomputed_activation_sums",
+  "created_at": "2026-07-27T04:11:26.608256+00:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "mechanism": "For Q6 selected down only, reuse each 160-byte D4 block's otherwise-unused raw-sum field for two exact int16 K16 quant sums. Compute them once in the producer and load them in the row64 integer-WMMA consumer instead of recomputing four dp4a sums in each of 48 output-column workgroups.",
+  "leaf_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_qmicro_leaf.py --samples 21 --warmups 3 --prefill-burst 7 --decode-burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-precomputed-sums-inclusive-leaf.json",
+  "leaf": {
+    "shape": "layer 1, natural M512 routing, K1024, N3072, E256",
+    "weight_nbytes": 660602880,
+    "samples": 21,
+    "standard_pack_median_ms": 0.10311928817204066,
+    "precomputed_sum_pack_median_ms": 0.10390928813389369,
+    "production_consumer_median_ms": 4.046978269304548,
+    "candidate_consumer_median_ms": 4.012244633265904,
+    "inclusive_production_ms": 4.150097557476589,
+    "inclusive_candidate_ms": 4.116153921399798,
+    "inclusive_delta_ms": -0.03394363607679063,
+    "inclusive_delta_percent": -0.8179009293373019,
+    "bf16_mismatches": 0
+  },
+  "full_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --mode production=q6_wmma_prefetch_activation --mode candidate=q6_wmma_precomputed_sums --repetitions 11 --require-cached-build --output /tmp/laguna-q6-precomputed-sums-full-ab.json",
+  "full_model_pp512": {
+    "pairs": 11,
+    "candidate_wins": 6,
+    "production_independent_median_tok_s": 646.4296486341098,
+    "candidate_independent_median_tok_s": 644.6258195055265,
+    "paired_median_wall_delta_ms": -1.406800001859665,
+    "paired_median_delta_percent": 0.17908009682359172,
+    "next_token": 2930,
+    "state_exact_pairs": 11
+  },
+  "correctness": {
+    "cpu_reference_q6_matrix": "16 passed",
+    "full_logits_equal": true,
+    "next_logit_equal": true,
+    "final_hidden_equal": true,
+    "post_layer_hidden_equal": true,
+    "kv_equal": true,
+    "cursor_equal": true,
+    "tracked_memory_returned": true
+  },
+  "raw_artifacts": [
+    {
+      "path": "/tmp/laguna-q6-precomputed-sums-inclusive-leaf.json",
+      "sha256": "49316d3f625d650be8053223b9b8e497ed21dd5ed19aaa1f9b76ad6fce0ead67"
+    },
+    {
+      "path": "/tmp/laguna-q6-precomputed-sums-full-ab.json",
+      "sha256": "7287784fea49023177388edbd628d360564aa8e63d3bcecc7fc41f44bfe12b2e"
+    }
+  ],
+  "decision": "Enable on gfx1151, retain the explicit session rollback through a clean selector-unset 512/1K/4K publication and family trace, and remove if either clean gate fails to reproduce a non-regression."
+}

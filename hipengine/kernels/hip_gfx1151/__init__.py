@@ -156,6 +156,10 @@ LAGUNA_Q6_WMMA_PREFETCH_WEIGHT = True
 # iteration publishes the exact bytes into the unchanged shared activation
 # tile. The complete-state pp512 A/B is exact and improves the median.
 LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION = True
+# Reuse Q6's otherwise-unused D4 sum field for two exact K16 quant sums.
+# Computing them once in the packer removes repeated sum dots from every
+# selected-down output-column workgroup without changing activation bytes.
+LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS = True
 # Stable expert-major count/prefix/scatter uses one workgroup per expert instead
 # of one workgroup serially scanning all 5,120 routed lanes twice.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"

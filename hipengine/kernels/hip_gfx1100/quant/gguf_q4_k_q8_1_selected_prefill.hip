@@ -478,6 +478,14 @@ __device__ inline float subgroup16_max(float value) {
   return value;
 }
 
+__device__ inline int subgroup16_sum(int value) {
+#pragma unroll
+  for (int offset = 8; offset > 0; offset >>= 1) {
+    value += __shfl_down(value, offset, 16);
+  }
+  return value;
+}
+
 template <int residual_passes>
 __launch_bounds__(128, 1)
 __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
@@ -515,7 +523,6 @@ __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
           fminf(127.0f, fmaxf(-127.0f, rintf(residual / scale)));
       q = static_cast<int>(qf);
     }
-
     const int64_t plane_blocks = rows * blocks_per_row;
     block_q8_1_mmq_ds4* __restrict__ out_block =
         out + static_cast<int64_t>(pass) * plane_blocks +
@@ -533,7 +540,9 @@ __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
   }
 }
 
-template <int residual_passes>
+template <
+    int residual_passes,
+    bool Q6_HALF_SUMS = false>
 __launch_bounds__(128, 1)
 __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -547,6 +556,9 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
   const int lane = tid & 31;
   const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
   if (row >= rows || q8_block >= blocks_per_row) return;
+  static_assert(
+      !Q6_HALF_SUMS || residual_passes == 1,
+      "Q6 half-sum packing supports the one-plane D4 path");
 
   const int64_t in_idx =
       row * hidden + q8_block * Q8_1_MMQ_BLOCK + tid;
@@ -556,7 +568,8 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
   __shared__ float sum_shared[4];
 #pragma unroll
   for (int pass = 0; pass < residual_passes; ++pass) {
-    const float sum = wave32_sum(residual);
+    const float sum =
+        Q6_HALF_SUMS ? 0.0f : wave32_sum(residual);
     const float max_abs = wave32_max(fabsf(residual));
     if (lane == 0) {
       scale_shared[ds4_idx] = max_abs / 127.0f;
@@ -571,6 +584,10 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
           fminf(127.0f, fmaxf(-127.0f, rintf(residual / scale)));
       q = static_cast<int>(qf);
     }
+    const int half_sum =
+        Q6_HALF_SUMS ? subgroup16_sum(q) : 0;
+    const int upper_half_sum =
+        Q6_HALF_SUMS ? __shfl(half_sum, 16, 32) : 0;
 
     const int64_t plane_blocks = rows * blocks_per_row;
     block_q8_1_mmq_ds4_f32* __restrict__ out_block =
@@ -579,14 +596,26 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
     out_block->qs[tid] = static_cast<int8_t>(q);
     if (lane == 0) {
       out_block->ds4[2 * ds4_idx + 0] = scale;
-      out_block->ds4[2 * ds4_idx + 1] = sum_shared[ds4_idx];
+      if constexpr (Q6_HALF_SUMS) {
+        const uint32_t packed_sums =
+            static_cast<uint16_t>(half_sum) |
+            (static_cast<uint32_t>(
+                 static_cast<uint16_t>(upper_half_sum))
+             << 16);
+        reinterpret_cast<uint32_t*>(out_block->ds4)
+            [2 * ds4_idx + 1] = packed_sums;
+      } else {
+        out_block->ds4[2 * ds4_idx + 1] = sum_shared[ds4_idx];
+      }
     }
     residual = fmaf(-static_cast<float>(q), scale, residual);
     __syncthreads();
   }
 }
 
-template <int residual_passes>
+template <
+    int residual_passes,
+    bool Q6_HALF_SUMS = false>
 __launch_bounds__(128, 1)
 __global__ void gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel(
     const uint16_t* __restrict__ gate_up,
@@ -600,6 +629,9 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel(
   const int lane = tid & 31;
   const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
   if (row >= rows || q8_block >= blocks_per_row) return;
+  static_assert(
+      !Q6_HALF_SUMS || residual_passes == 1,
+      "Q6 half-sum packing supports the one-plane D4 path");
 
   const int64_t col = q8_block * Q8_1_MMQ_BLOCK + tid;
   const int64_t row_base = row * hidden * 2;
@@ -616,7 +648,8 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel(
   __shared__ float sum_shared[4];
 #pragma unroll
   for (int pass = 0; pass < residual_passes; ++pass) {
-    const float sum = wave32_sum(residual);
+    const float sum =
+        Q6_HALF_SUMS ? 0.0f : wave32_sum(residual);
     const float max_abs = wave32_max(fabsf(residual));
     if (lane == 0) {
       scale_shared[ds4_idx] = max_abs / 127.0f;
@@ -631,6 +664,10 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel(
           fminf(127.0f, fmaxf(-127.0f, rintf(residual / scale)));
       q = static_cast<int>(qf);
     }
+    const int half_sum =
+        Q6_HALF_SUMS ? subgroup16_sum(q) : 0;
+    const int upper_half_sum =
+        Q6_HALF_SUMS ? __shfl(half_sum, 16, 32) : 0;
 
     const int64_t plane_blocks = rows * blocks_per_row;
     block_q8_1_mmq_ds4_f32* __restrict__ out_block =
@@ -639,7 +676,17 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel(
     out_block->qs[tid] = static_cast<int8_t>(q);
     if (lane == 0) {
       out_block->ds4[2 * ds4_idx + 0] = scale;
-      out_block->ds4[2 * ds4_idx + 1] = sum_shared[ds4_idx];
+      if constexpr (Q6_HALF_SUMS) {
+        const uint32_t packed_sums =
+            static_cast<uint16_t>(half_sum) |
+            (static_cast<uint32_t>(
+                 static_cast<uint16_t>(upper_half_sum))
+             << 16);
+        reinterpret_cast<uint32_t*>(out_block->ds4)
+            [2 * ds4_idx + 1] = packed_sums;
+      } else {
+        out_block->ds4[2 * ds4_idx + 1] = sum_shared[ds4_idx];
+      }
     }
     residual = fmaf(-static_cast<float>(q), scale, residual);
     __syncthreads();
@@ -2437,7 +2484,9 @@ int launch_q8_1_mmq_ds4_pack_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-template <int residual_passes>
+template <
+    int residual_passes,
+    bool Q6_HALF_SUMS = false>
 int launch_q8_1_mmq_ds4_f32_pack_bf16(
     const uint16_t* x,
     block_q8_1_mmq_ds4_f32* out,
@@ -2449,7 +2498,9 @@ int launch_q8_1_mmq_ds4_f32_pack_bf16(
   }
   const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
   hipLaunchKernelGGL(
-      (gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel<residual_passes>),
+      (gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel<
+          residual_passes,
+          Q6_HALF_SUMS>),
       dim3(
           static_cast<unsigned int>(blocks_per_row),
           static_cast<unsigned int>(rows)),
@@ -2463,7 +2514,9 @@ int launch_q8_1_mmq_ds4_f32_pack_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-template <int residual_passes>
+template <
+    int residual_passes,
+    bool Q6_HALF_SUMS = false>
 int launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16(
     const uint16_t* gate_up,
     block_q8_1_mmq_ds4_f32* out,
@@ -2475,7 +2528,9 @@ int launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16(
   }
   const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
   hipLaunchKernelGGL(
-      (gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel<residual_passes>),
+      (gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_kernel<
+          residual_passes,
+          Q6_HALF_SUMS>),
       dim3(
           static_cast<unsigned int>(blocks_per_row),
           static_cast<unsigned int>(rows)),
@@ -3688,7 +3743,8 @@ template <
     bool INTEGER_WMMA = false,
     bool WMMA_HOIST_ACTIVATION = false,
     bool WMMA_PREFETCH_WEIGHT = false,
-    bool WMMA_PREFETCH_ACTIVATION = false>
+    bool WMMA_PREFETCH_ACTIVATION = false,
+    bool PRECOMPUTED_ACTIVATION_SUMS = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3758,6 +3814,11 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
           (WMMA_PREFETCH_WEIGHT && HALF_ROW_ACTIVATION_STAGE &&
            ACTIVATION_PASSES == 1),
       "WMMA activation prefetch requires the production weight-prefetch path");
+  static_assert(
+      !PRECOMPUTED_ACTIVATION_SUMS ||
+          (COMPACT_ACTIVATION_CACHE && HALF_ROW_ACTIVATION_STAGE &&
+           ACTIVATION_PASSES == 1),
+      "precomputed activation sums require the compact half-row D4 path");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -3806,6 +3867,7 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   int8_t prefetched_scale = 0;
   mmq_i32x4_t prefetched_activation_qs = {0, 0, 0, 0};
   float prefetched_activation_d = 0.0f;
+  uint32_t prefetched_activation_sums = 0;
 
   const int k32_iters = static_cast<int>(in_features / MMQ_K);
   for (int k32 = 0; k32 < k32_iters; ++k32) {
@@ -4018,6 +4080,7 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
         for (int pass = 0; pass < ACTIVATION_PASSES; ++pass) {
           float d = 0.0f;
           int sum = 0;
+          uint32_t packed_sums = 0;
           mmq_i32x4_t packed = {0, 0, 0, 0};
           if (valid_row && compact_row < compact_rows) {
             if constexpr (WMMA_PREFETCH_ACTIVATION) {
@@ -4026,6 +4089,9 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                 if (half == 0) {
                   d = prefetched_activation_d;
                 }
+                if constexpr (PRECOMPUTED_ACTIVATION_SUMS) {
+                  packed_sums = prefetched_activation_sums;
+                }
               } else {
                 const int64_t q8_index =
                     static_cast<int64_t>(pass) * plane_blocks +
@@ -4033,6 +4099,11 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                 const block_q8_1_mmq_ds4_f32& xb = x_q8[q8_index];
                 if (half == 0) {
                   d = xb.ds4[2 * (k32 & 3)];
+                }
+                if constexpr (PRECOMPUTED_ACTIVATION_SUMS) {
+                  packed_sums =
+                      reinterpret_cast<const uint32_t*>(xb.ds4)
+                          [2 * (k32 & 3) + 1];
                 }
                 const int8_t* __restrict__ qs =
                     xb.qs + (k32 & 3) * Q8_1_BLOCK + half * 16;
@@ -4046,6 +4117,11 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
               if (half == 0) {
                 d = xb.ds4[2 * (k32 & 3)];
               }
+              if constexpr (PRECOMPUTED_ACTIVATION_SUMS) {
+                packed_sums =
+                    reinterpret_cast<const uint32_t*>(xb.ds4)
+                        [2 * (k32 & 3) + 1];
+              }
               const int8_t* __restrict__ qs =
                   xb.qs + (k32 & 3) * Q8_1_BLOCK + half * 16;
               packed = *reinterpret_cast<const mmq_i32x4_t*>(qs);
@@ -4056,10 +4132,16 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
             const int32_t packed_qs = packed[pack];
             activation_tile[pass][row_offset]
                            .qs[half * 4 + pack] = packed_qs;
-            sum = gguf_q4_k_mmq_dp4a(
-                0x01010101u,
-                static_cast<uint32_t>(packed_qs),
-                sum);
+            if constexpr (!PRECOMPUTED_ACTIVATION_SUMS) {
+              sum = gguf_q4_k_mmq_dp4a(
+                  0x01010101u,
+                  static_cast<uint32_t>(packed_qs),
+                  sum);
+            }
+          }
+          if constexpr (PRECOMPUTED_ACTIVATION_SUMS) {
+            sum = static_cast<int16_t>(
+                packed_sums >> (half * 16));
           }
           activation_tile[pass][row_offset].sums[half] =
               static_cast<int16_t>(sum);
@@ -4282,6 +4364,7 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
                 : 0;
         prefetched_activation_qs = mmq_i32x4_t{0, 0, 0, 0};
         prefetched_activation_d = 0.0f;
+        prefetched_activation_sums = 0;
         if (valid_row && compact_row < compact_rows) {
           const int64_t q8_index =
               compact_row * q8_blocks_per_row + (next_k32 >> 2);
@@ -4289,6 +4372,11 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
           if (half == 0) {
             prefetched_activation_d =
                 xb.ds4[2 * (next_k32 & 3)];
+          }
+          if constexpr (PRECOMPUTED_ACTIVATION_SUMS) {
+            prefetched_activation_sums =
+                reinterpret_cast<const uint32_t*>(xb.ds4)
+                    [2 * (next_k32 & 3) + 1];
           }
           const int8_t* __restrict__ qs =
               xb.qs + (next_k32 & 3) * Q8_1_BLOCK + half * 16;
@@ -4514,7 +4602,8 @@ template <
     bool INTEGER_WMMA = false,
     bool WMMA_HOIST_ACTIVATION = false,
     bool WMMA_PREFETCH_WEIGHT = false,
-    bool WMMA_PREFETCH_ACTIVATION = false>
+    bool WMMA_PREFETCH_ACTIVATION = false,
+    bool PRECOMPUTED_ACTIVATION_SUMS = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -4556,7 +4645,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           INTEGER_WMMA,
           WMMA_HOIST_ACTIVATION,
           WMMA_PREFETCH_WEIGHT,
-          WMMA_PREFETCH_ACTIVATION>),
+          WMMA_PREFETCH_ACTIVATION,
+          PRECOMPUTED_ACTIVATION_SUMS>),
       grid,
       block,
       0,
@@ -4841,6 +4931,21 @@ extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4(
       stream);
 }
 
+extern "C" int
+hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4_q6_half_sums(
+    const uint16_t* gate_up,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_f32_pack_dual_silu_bf16<1, true>(
+      gate_up,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x2(
     const uint16_t* gate_up,
     void* out,
@@ -4862,6 +4967,21 @@ extern "C" int hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4(
     int64_t hidden,
     hipStream_t stream) {
   return launch_q8_1_mmq_ds4_f32_pack_bf16<1>(
+      x,
+      reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4_q6_half_sums(
+    const uint16_t* x,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_f32_pack_bf16<1, true>(
       x,
       reinterpret_cast<block_q8_1_mmq_ds4_f32*>(out),
       rows,
@@ -6043,6 +6163,51 @@ hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_prefetch_wei
       true,
       true,
       false,
+      true,
+      true,
+      true,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      expert_start_compact,
+      expert_start_mmq64,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_prefetch_weight_activation_precomputed_sums_skip_padded_activation_selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq64,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
       true,
       true,
       true,

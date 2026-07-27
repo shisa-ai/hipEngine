@@ -50,11 +50,17 @@ _SYMBOL_DS4_F32_PACK_BF16 = {
     2: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x2",
     3: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3",
 }
+_SYMBOL_DS4_F32_PACK_BF16_D4_Q6_HALF_SUMS = (
+    "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4_q6_half_sums"
+)
 _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16 = {
     1: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4",
     2: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x2",
     3: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3",
 }
+_SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16_D4_Q6_HALF_SUMS = (
+    "hipengine_gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4_q6_half_sums"
+)
 _SYMBOL_DS8_F32_PACK_BF16 = (
     "hipengine_gguf_q8_1_mmq_ds8_f32_pack_bf16"
 )
@@ -128,6 +134,11 @@ _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_PREFETCH_WEIGHT_ACTIV
     "hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_"
     "prefetch_weight_activation_skip_padded_activation_selected_q8_1_ds4_f32_"
     "mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
+)
+_SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_PREFETCH_WEIGHT_ACTIVATION_PRECOMPUTED_SUMS_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_"
+    "prefetch_weight_activation_precomputed_sums_skip_padded_activation_"
+    "selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
 )
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
@@ -357,6 +368,7 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
     *,
     residual_passes: int = 3,
     split16: bool = False,
+    q6_half_sums: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -371,9 +383,14 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
         raise ValueError("residual_passes must be 1, 2, or 3")
     if split16 and residual_passes != 1:
         raise ValueError("split16 requires residual_passes=1")
+    if q6_half_sums and (split16 or residual_passes != 1):
+        raise ValueError("q6_half_sums requires one-plane D4")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
+        _SYMBOL_DS4_F32_PACK_BF16_D4_Q6_HALF_SUMS
+        if q6_half_sums
+        else
         _SYMBOL_DS8_F32_PACK_BF16
         if split16
         else _SYMBOL_DS4_F32_PACK_BF16[residual_passes]
@@ -405,6 +422,7 @@ def gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
     hidden: int,
     *,
     residual_passes: int = 3,
+    q6_half_sums: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -417,11 +435,17 @@ def gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3(
         raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
     if residual_passes not in _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16:
         raise ValueError("residual_passes must be 1, 2, or 3")
+    if q6_half_sums and residual_passes != 1:
+        raise ValueError("q6_half_sums requires one-plane D4")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
-        _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16[residual_passes],
+        (
+            _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16_D4_Q6_HALF_SUMS
+            if q6_half_sums
+            else _SYMBOL_DS4_F32_PACK_DUAL_SILU_BF16[residual_passes]
+        ),
     )
     fn.argtypes = [
         ctypes.c_void_p,
@@ -468,6 +492,7 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     wmma_hoist_activation: bool | None = None,
     wmma_prefetch_weight: bool = False,
     wmma_prefetch_activation: bool = False,
+    precomputed_activation_sums: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -549,11 +574,18 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
         raise ValueError(
             "wmma_prefetch_activation requires wmma_prefetch_weight=True"
         )
+    if precomputed_activation_sums and not wmma_prefetch_activation:
+        raise ValueError(
+            "precomputed_activation_sums requires production WMMA prefetch"
+        )
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
         (
+            _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_PREFETCH_WEIGHT_ACTIVATION_PRECOMPUTED_SUMS_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
+            if precomputed_activation_sums
+            else
             _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_PREFETCH_WEIGHT_ACTIVATION_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16
             if wmma_prefetch_activation
             else _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_PREFETCH_WEIGHT_SKIP_PADDED_ACTIVATION_DS4_F32_MMQ64X64_ROWVEC_BF16

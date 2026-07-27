@@ -1783,6 +1783,20 @@ Immediate execution queue:
    harness mode are removed.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json).
+59. **Admitted candidate; clean publication pending:** for Q6 selected down,
+   reuse D4's otherwise-unused 32-bit raw-sum field for two exact `int16` K16
+   quant sums. The 160-byte activation block is unchanged, while the producer
+   computes each sum once instead of every one of the 48 output-column
+   workgroups rebuilding it. On the actual 660.6-MB layer-1 tensor, inclusive
+   pack plus production integer-WMMA improves
+   **4.1501 -> 4.1162 ms (-0.818%)** across 21 samples with zero BF16
+   mismatches. Eleven complete-state pp512 pairs are noisier but positive in
+   the paired wall: **6/11 wins**, median **-1.407 ms (+0.179%)**, with exact
+   logits, hidden state, KV, cursor, and token 2930. gfx1151 enables it behind
+   an explicit rollback; clean selector-unset publication and a family trace
+   remain the promotion gates.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json).
 
 ### Next exact and quality-gated attacks
 
@@ -3678,6 +3692,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p4-rejected.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-q4-paired-silu-pack-rejected.json`
