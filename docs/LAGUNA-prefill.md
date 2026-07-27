@@ -3941,6 +3941,8 @@ The campaign intentionally uses cheap evidence while far from the target:
   in a single 128K-capacity resident session:
   **466.482/307.953/132.831/72.139 tok/s**. Exact positions, deterministic
   tokens, finite outputs, and full tracked-allocation recovery pass.
+- **Done:** admit the fixed **16K/64K** cached trace set so LC-0 can attribute
+  both useful scaling points without profiling the 30-minute 128K row.
 - Trace one cached 16K and one 64K control. Attribute all 12 global layers,
   36 SWA layers, projections, MoE, and residual families without profiling
   the 30-minute 128K row.

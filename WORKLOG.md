@@ -185077,3 +185077,16 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-27-gfx1151-laguna-lc0-attack-control.json` and
   updated the plan/rollups. The next measurement remains cached 16K/64K
   kernel-family attribution before LC-1 implementation.
+
+## 2026-07-27 — Admit bounded LC-0 16K/64K trace set
+
+- RED imported the missing `LC0_TRACE_LENGTHS` and failed collection. GREEN
+  admits exactly **(16384, 65536)** alongside the existing strict length sets;
+  arbitrary lists remain rejected. This permits one cached profiler child to
+  measure both useful scaling points without paying for or tracing the
+  30-minute 128K control.
+- Focused validation passes
+  `PYTHONPATH=. .venv/bin/python3 -m pytest -q
+  tests/test_laguna_long_context_profile.py` (**32 passed**), `py_compile`,
+  and `git diff --check`. Next run the cached-only rocprofv3 child and attach
+  the all-family summary before implementing LC-1.
