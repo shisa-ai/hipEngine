@@ -3999,15 +3999,24 @@ Evidence:
 
 #### LC-1 — real block-streamed global attention
 
-- Replace token-serial Q-row scanning for qualified prompt prefill with fixed
-  query and K/V tiles, initially **16-32 query rows x 64-128 key rows**.
-- The first bounded geometry is **Q16 x K64**, local128: four wave32s retain
-  four query rows each while one approximately 33-KiB LDS tile stages 64
-  BF16 K/V rows plus bounded metadata. It preserves per-query token order and
-  the existing generic `KVLiveSpans` path.
-- Before cross-head sharing, Q16 reduces the post-512 global request
-  amplification from about **132x to 48x**: eight query-row groups times six
-  query heads per K/V head. LC-2 then targets the remaining six-way reread.
+- Replace token-serial independent-query-head scanning for qualified prompt
+  prefill with a K/V tile shared by the complete GQA head group. LC-0 proved
+  that row blocking and head sharing must be designed together rather than
+  treated as independent sequential wins.
+- **Rejected and removed:** the exact single-head **Q16 x K64/local128**
+  screen reduced theoretical row-group requests about 2.75x but raised the
+  resource tuple to **VGPR248/SGPR128/LDS33,792 B/scratch0**. Direct cached
+  leaf timing regressed qrow6 by **5.05x/5.33x/5.04x/4.96x** at
+  context 512/4K/16K/64K. It never reached a full-model screen. The inline
+  leaf command/raw samples were not preserved, so this is explicitly
+  non-promotable rejection evidence; the cached resource trace and exact
+  output gate are preserved.
+- The revised first bounded geometry is one **local192 six-wave** workgroup
+  per global K/V head and qrow6 group. Each wave retains the established six
+  query rows for one of that K/V head's six query heads; the workgroup stages
+  one K64 BF16 K/V tile plus bounded metadata once for all 36 query rows.
+  This targets post-512 request amplification of about **22x**, down from
+  **132x**, without the rejected candidate's four-row-per-wave VGPR explosion.
 - Carry online row max, denominator, and output state across K/V tiles. Never
   materialize the complete score matrix or compute masked upper-triangle
   blocks.
@@ -4021,12 +4030,17 @@ Evidence:
   block-streamed design, but its resource/performance failure must inform the
   new geometry.
 
+Evidence:
+[`single-head Q16xK64 rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-single-head-qtile16-k64-rejected.json).
+
 #### LC-2 — share K/V across Laguna GQA heads
 
-- One global K/V head serves six query heads. Load each K/V tile once per
-  cooperative workgroup and reuse it across the complete six-head group
-  instead of launching independent query-head waves that reread the same
-  cache.
+- **Co-designed with LC-1:** one global K/V head serves six query heads. Load
+  each K/V tile once per cooperative six-wave workgroup and reuse it across
+  the complete group instead of launching independent query-head waves that
+  reread the same cache. A winning combined screen can close LC-1 and LC-2
+  together after the mandatory 128K gate; separating them again requires new
+  evidence.
 - One SWA K/V head serves **nine** query heads. After the global cooperative
   body passes its mandatory 128K gate, reuse the same tile-sharing design for
   SWA rather than leaving its measured **288x** request amplification in

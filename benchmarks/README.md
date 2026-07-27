@@ -97,6 +97,16 @@ row groups and six GQA heads; SWA qrow4 issues **288x** across 32 groups and
 nine heads. These include cache hits and are not physical DRAM counters.
 [`LC-0 attribution`](results/2026-07-27-gfx1151-laguna-lc0-long-context-attribution.json).
 
+The first LC-1 leaf establishes an important negative boundary. An exact
+single-query-head Q16xK64 block-streamed body reached
+local128/VGPR248/LDS33,792B and ran **4.96x-5.33x slower** than qrow6 from
+context 512 through 64K. The candidate is removed. Its output/resource gate
+is preserved, while the ephemeral leaf samples are explicitly non-promotable
+because their raw command was not retained. LC-1 and LC-2 are consequently
+co-designed around staging once for all six global GQA query heads rather
+than spending LDS and barriers on single-head reuse.
+[`LC-1 rejection`](results/2026-07-27-gfx1151-laguna-lc1-single-head-qtile16-k64-rejected.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

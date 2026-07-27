@@ -185138,3 +185138,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `0fb22dbfa0f4f4a3dc96d89e0d9377acb38b6ae4e0d27daf3bc4230eea7dfd8c`,
   and `2400bc23ad520e9472215aa0c5d5fa174fe33377d06554475dd9cd5c70afedea`.
   The uncommitted raw CSV has **116,825 lines / 47,101,276 bytes**.
+
+## 2026-07-27 — Reject LC-1 single-head Q16xK64 staging
+
+- RED first extended the model-scale admission test for a missing exact
+  Q16xK64 cached-metadata primitive. GREEN added a local128 body in which four
+  wave32s retained four query rows each while a workgroup staged K64 BF16 K/V
+  plus metadata for one query head. The production-shaped M128 preappend
+  fixture matched retained qrow4/qrow6 for every F32 output bit, and the full
+  focused file passed **16 tests**.
+- Cached rocprof at 2026-07-27 23:18 JST confirmed the intended symbol ran at
+  local128, grid **6144x8**, VGPR248/SGPR128/LDS33,792B/scratch0. Trace:
+  `/tmp/laguna-lc1-primitive-trace.q4Ra8Z/lc1_kernel_trace.csv`, SHA-256
+  `8059d3e690cd93b05059f7deda389afa062771f56039f1b2d79fc774fafc3ecb`.
+- The direct cached synthetic leaf decisively rejected the geometry:
+  qrow6 -> Q16xK64 was **0.887575 -> 4.482681 ms** at context 512,
+  **7.191577 -> 38.299942 ms** at 4K,
+  **31.454977 -> 158.571762 ms** at 16K, and
+  **128.857407 -> 638.882324 ms** at 64K. That is only
+  **0.188x-0.202x** retained throughput. The 2.75x row-group request
+  reduction cannot repay VGPR248, one-workgroup-per-CU occupancy, 33 KiB LDS,
+  staging, and barriers while each tile still serves only one query head.
+- The ephemeral inline leaf command/raw samples were not preserved, so these
+  timings are recorded as non-promotable rejection evidence rather than a
+  retained performance claim. All candidate HIP/Python/registry/test surfaces
+  were removed; production sources are byte-for-byte unchanged from
+  `2ab537e43`.
+- Revised premise: co-design LC-1 and LC-2. One local192 six-wave workgroup
+  owns one global K/V head plus one qrow6 row group. Each wave retains six
+  query rows for one of the six GQA query heads, while K64 is staged once for
+  all **36** queries. This targets request amplification **132x -> 22x** and
+  should retain a resource shape much closer to qrow6's VGPR88 than the
+  rejected four-row-per-wave body.

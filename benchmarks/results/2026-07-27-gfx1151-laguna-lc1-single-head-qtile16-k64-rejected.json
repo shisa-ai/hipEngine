@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "timestamp_jst": "2026-07-27T23:18:01+09:00",
+  "kind": "hipengine_laguna_lc1_single_head_qtile16_k64_rejected",
+  "status": "rejected_removed",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model_shape": {
+    "attention": "Laguna global attention",
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "kv_dtype": "BF16",
+    "query_and_accumulator_dtype": "F32"
+  },
+  "candidate": {
+    "symbol": "laguna_global_attention_prefill_qtile16_k64_cached_meta_online_bf16_kernel",
+    "geometry": "Q16 x K64, local128; four wave32s retain four query rows each for one query head",
+    "mechanism": "stage one 64-row BF16 K/V plus metadata tile in LDS for reuse across 16 query rows of one query head",
+    "arithmetic_change": false,
+    "output_change": false,
+    "candidate_surfaces_removed": true
+  },
+  "correctness": {
+    "red": "The model-scale admission test initially failed because the Q16xK64 wrapper did not exist.",
+    "green": "The existing M128 preappend fixture matched both retained qrow references for every F32 output bit.",
+    "focused_suite": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py",
+    "focused_suite_result": "16 passed",
+    "exact_f32_output": true
+  },
+  "leaf_diagnostic": {
+    "timing": "five direct cached synthetic leaf samples per shape; retained qrow6 and candidate launched from the same process",
+    "exact_command_preserved": false,
+    "raw_artifact_preserved": false,
+    "promotion_eligible": false,
+    "reason_not_promotion_eligible": "The ephemeral inline leaf command and raw samples were not preserved. These measurements are sufficient to abandon a roughly five-times-slower design but are not a retainable performance claim.",
+    "rows": [
+      {
+        "context": 512,
+        "qrow6_ms": 0.887575,
+        "candidate_ms": 4.482681,
+        "candidate_over_qrow6": 0.1980009285,
+        "candidate_regression_percent": 405.0481368
+      },
+      {
+        "context": 4096,
+        "qrow6_ms": 7.191577,
+        "candidate_ms": 38.299942,
+        "candidate_over_qrow6": 0.1877699188,
+        "candidate_regression_percent": 432.5666679
+      },
+      {
+        "context": 16384,
+        "qrow6_ms": 31.454977,
+        "candidate_ms": 158.571762,
+        "candidate_over_qrow6": 0.1983643027,
+        "candidate_regression_percent": 404.1229628
+      },
+      {
+        "context": 65536,
+        "qrow6_ms": 128.857407,
+        "candidate_ms": 638.882324,
+        "candidate_over_qrow6": 0.2016919269,
+        "candidate_regression_percent": 395.8056652
+      }
+    ]
+  },
+  "rocprof": {
+    "exact_command_preserved": false,
+    "promotion_eligible": false,
+    "reproduction_template": "Prebuild laguna_kv_attention.so for gfx1151, then run rocprofv3 --kernel-trace around tests/test_laguna_kv_attention.py -k preappend_cached_qrow4 with HIPENGINE_REQUIRE_CACHED_BUILD=1.",
+    "trace_path": "/tmp/laguna-lc1-primitive-trace.q4Ra8Z/lc1_kernel_trace.csv",
+    "trace_sha256": "8059d3e690cd93b05059f7deda389afa062771f56039f1b2d79fc774fafc3ecb",
+    "expected_symbol_ran": true,
+    "workgroup_size": 128,
+    "grid": "6144 x 8",
+    "vgpr": 248,
+    "sgpr": 128,
+    "lds_bytes": 33792,
+    "scratch_bytes": 0,
+    "occupancy_assessment": "VGPR248 makes the four-wave workgroup effectively one resident workgroup per CU."
+  },
+  "decision": {
+    "result": "reject and remove candidate",
+    "reason": "A 2.75x reduction in row-group K/V requests cannot repay VGPR248, 33 KiB LDS, barriers, and staging when the tile still serves only one query head. Every tested context is about five times slower.",
+    "full_model_run_warranted": false,
+    "production_unchanged": true,
+    "next_premise": "Co-design LC-1 with GQA reuse: one six-wave workgroup owns one global KV head and one qrow6 row group, stages K64 once, and serves all six query heads. This changes the request-amplification target from about 132x to 22x while retaining only six query rows per wave."
+  },
+  "repo": {
+    "base_revision": "2ab537e433dfd2b25483a027b04a74ccf9046441"
+  }
+}
