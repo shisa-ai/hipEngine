@@ -1,0 +1,16 @@
+Redline
+Copyright 2026 Kaden Schutt <kaden@hipfire.dev>
+
+This product includes software developed by Kaden Schutt, originally as part of
+the hipfire project (https://github.com/Kaden-Schutt/hipfire).
+
+The redline-dispatch and redline-rocr crates implement an auditable
+capture/replay dispatch runtime against the public ROCr/HSA ABI. No ROCm
+implementation source is vendored; see the pinned external Redline checkout's
+crates/redline-rocr/PROVENANCE.md for ABI provenance.
+
+"Redline" is a trademark of Kaden Schutt. As stated in section 6 of the Apache
+License, Version 2.0, this License does not grant permission to use the trade
+name "Redline", except as required for reasonable and customary use in
+describing the origin of the work. Redistributions must retain this NOTICE per
+section 4(d) of the License.

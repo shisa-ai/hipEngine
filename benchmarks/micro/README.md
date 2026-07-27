@@ -136,6 +136,8 @@ approximately six minutes for the stricter matrix.
 | Path | Purpose |
 | --- | --- |
 | `timing_contract.py` | Shared mode, control, metric, correctness, and comparison gates |
+| `redline_matrix.py` | Optional pinned-source Redline runner, normalizer, and tri-comparator |
+| `REDLINE-NOTICE` | Apache-2.0 attribution required by the derived Redline orchestration |
 | `comparison_claim.py` | Shared source, device, raw-identity, and matrix claim gate for joint wrappers |
 | `runners/micro_timing_hip.hpp` | HIP event and multi-stream timing helpers |
 | `runners/micro_timing_vulkan.hpp` | Vulkan timestamp, barrier, calibrated multi-queue timing helpers |
@@ -143,6 +145,56 @@ approximately six minutes for the stricter matrix.
 | `schemas/result.schema.json` | v1 legacy plus v2 result/comparison artifact schema |
 | `schemas/environment.schema.json` | Environment artifact schema |
 | `results/` | Retained compact artifacts, separated by architecture and device |
+
+## Experimental Redline retained-PM4 arm
+
+`redline_matrix.py` adds a default-off third result backend without modifying the
+native HIP or Vulkan runners. It requires a separate, clean Redline checkout at
+commit `33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e`; the external repository is not
+vendored or imported by the hipEngine runtime.
+
+The adapter captures each unchanged HIP launch closure once to recover exact
+kernel topology and argument bytes. Capture is outside every returned sample.
+The timed path must then succeed through profiled `redline-capi` retained PM4;
+there is no native-HIP fallback in this microbenchmark arm. Every normalized
+result records the Redline checkout, shared-library and adapter hashes,
+Radiowave/code-object sidecars, `retained_pm4_ib` submission, and
+`redline_pm4_timestamp` GPU clock.
+
+On gfx1100, Redline's supported auto policy resolves at most two independent
+public queues. Therefore the controlled matrix runs HIP and Redline with the
+same two-lane cap instead of comparing Redline Q2 against HIP Q4. Vulkan's
+single-command-buffer families retain their native submission contract; the
+multi-stage Vulkan families receive the same requested lane count. Host-wall
+ratios are emitted only when submission classes match.
+
+A clean source/math/shape comparison is not by itself a transport attribution:
+the Radiowave sidecar and the native HIP harness code object are not asserted
+byte-identical. `transport_attribution` remains
+`blocked_no_same_hsaco_control` until a separate same-HSACO HIP/Redline control
+passes. This distinction does not block reporting descriptive per-backend GPU
+times, wins, and regressions.
+
+Example (TheRock paths are intentionally explicit):
+
+```bash
+python3 benchmarks/micro/redline_matrix.py \
+  --redline-root /home/lhl/redline \
+  --rocm-root "$THEROCK_ROOT" \
+  --hipcc "$THEROCK_ROOT/bin/hipcc" \
+  --llvm-bin "$THEROCK_ROOT/lib/llvm/bin" \
+  --gfx-arch gfx1100 \
+  --gpu-name "AMD Radeon Pro W7900" \
+  --visible-device 0 --independent-lanes 2 \
+  --reps 20 --warmup 5 --samples 7 \
+  --build-redline \
+  --out-dir /tmp/hipengine-redline-micro
+```
+
+The core runner covers the ten timer-substitutable families. Dispatch/grid is a
+separate direct-PM4 floor control because its native HIP harness already owns an
+inner hipGraph; the matrix manifest states whether that control and the
+same-HSACO control were run rather than silently treating either as covered.
 
 ## Paired Runner Inventory
 

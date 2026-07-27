@@ -78,6 +78,7 @@
       "properties": {
         "logical_iterations": {"type": "integer", "minimum": 1},
         "dispatches_per_iteration": {"type": "integer", "minimum": 1},
+        "retained_lane_count": {"type": "integer", "minimum": 1},
         "gpu_elapsed": {"$ref": "#/$defs/metric"},
         "host_wall": {"$ref": "#/$defs/metric"}
       },
