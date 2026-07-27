@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "kind": "hipengine_laguna_q4_split_gate_up_fused_silu_pack_screen",
+  "created_at": "2026-07-27T05:16:00+00:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1
+  },
+  "scope": "Actual K3072/N1024 gate/up weights with natural M256/M512 routing replay. Both modes include producer BF16-to-D8 packing and emit the complete selected-down D4 activation cache.",
+  "candidate": {
+    "geometry": "Keep the production local128 P8 contraction. Launch gate alone to BF16 scratch, then launch up alone with a wave-local exact BF16 SiLU and direct D4 epilogue.",
+    "removed_work": "The up BF16 global write, the subsequent gate/up global reread, and the standalone fused-SiLU D4 pack launch.",
+    "added_work": "One additional selected-projection launch versus the combined gate/up contraction.",
+    "resident_layout_changed": false,
+    "arithmetic_changed": false
+  },
+  "command": "PYTHONPATH=. python3 scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-mmq128x32-d8-f32-p8-precomputed-sums-production-silu-pack,t16-mmq128x32-d8-f32-p8-precomputed-sums-split-fused-silu-pack --warmups 3 --samples 41 --burst 3 --output /tmp/laguna-split-fused-silu-pack-41.json",
+  "results": {
+    "M256": {
+      "production_median_ms": 4.494487444559733,
+      "candidate_median_ms": 4.559796651204427,
+      "candidate_delta_percent": 1.4530957634278252,
+      "byte_mismatches": 0,
+      "output_sha256": "6b394a6f23849b1b6545c1caec63ef07b82d245ec33a4f3545e2096e0ae5783c"
+    },
+    "M512": {
+      "production_median_ms": 6.867944081624349,
+      "candidate_median_ms": 6.984014511108398,
+      "candidate_delta_percent": 1.6900316616526245,
+      "byte_mismatches": 0,
+      "output_sha256": "d5e6ea2c15980949f4cf6b0bc2fda674a2645e4bf6f67ba2e5de4c4b637db053"
+    }
+  },
+  "correctness": {
+    "focused_gpu_gate": "15 passed",
+    "candidate_and_production_d4_bytes_equal": true,
+    "finite": true
+  },
+  "profiler": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-split-silu-prof.gA34su --output-file split-silu --log-level error -- .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 512 --modes t16-mmq128x32-d8-f32-p8-precomputed-sums-production-silu-pack,t16-mmq128x32-d8-f32-p8-precomputed-sums-split-fused-silu-pack --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-split-silu-prof.gA34su/child.json",
+    "production_and_candidate_consumer_resources": {
+      "workgroup_threads": 128,
+      "vgpr_count": 96,
+      "sgpr_count": 128,
+      "lds_block_size_bytes": 3072,
+      "scratch_size_bytes": 0
+    },
+    "finding": "The fused epilogue does not increase allocated resources, but splitting the same 16 output tiles across two launches loses more wall time than the removed 0.13-ms standalone pack repays."
+  },
+  "decision": "Reject and fully remove. The exact split formulation preserves local128 and avoids cross-wave exchange, but still regresses both natural primary shapes.",
+  "raw_artifact": {
+    "path": "/tmp/laguna-split-fused-silu-pack-41.json",
+    "sha256": "18c4016b4e165e61b682d8b64a56d3930f69fe02b1fa5c8297452394d589596b"
+  },
+  "trace": {
+    "path": "/tmp/laguna-split-silu-prof.gA34su/split-silu_kernel_trace.csv",
+    "sha256": "f738e58d605227c076130f967b232c1b409a4a814f625d588a30a1b304418841"
+  },
+  "production": {
+    "changed": false,
+    "pp512_tokens_per_second": 649.790751,
+    "pp512_wall_ms": 787.945964
+  }
+}
