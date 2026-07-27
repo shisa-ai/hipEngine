@@ -184447,3 +184447,32 @@ Vulkan local sizes verbatim will close the measured gap.
   harness mode. Production remains **645.803 tok/s / 792.811 ms**. Raw
   artifact SHA-256: `b059134e...528665`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-pair-shared-prefetch-rejected.json`.
+
+## 2026-07-27 — Admit Q6 precomputed activation sums candidate
+
+- Source audit found that Q6 selected down never consumes D4's raw FP32 sum,
+  yet each of 48 output-column workgroups recomputes the same two K16 quant
+  sums for every routed row. RED added a production planar-qmicro,
+  integer-WMMA, weight+activation-prefetch case. GREEN repurposes the
+  unchanged 32-bit field for two exact `int16` sums in both ordinary and
+  fused-SiLU D4 packers and loads them through the existing activation
+  prefetch.
+- The 160-byte activation ABI, quant bytes, scales, resident weights, WMMA
+  fragments, correction, FP32 K order, and BF16 boundary are unchanged. The
+  16-case Q6 CPU-reference matrix passes. On actual layer-1 natural M512,
+  21 samples measure pack **0.10312 -> 0.10391 ms** and consumer
+  **4.04698 -> 4.01224 ms**, for inclusive
+  **4.15010 -> 4.11615 ms (-0.818%)** with zero BF16 mismatches and complete
+  allocation return.
+- Eleven counter-rotated full pp512 pairs are state-exact and save
+  **1.4068 ms** at the paired median (**+0.179%, 6/11 wins**). Independent
+  medians are noisy at **646.430/644.626 tok/s**, so clean selector-unset
+  publication plus a Q6-family trace remain mandatory.
+- A changed broad Q6 runtime node reaches its pre-existing later
+  row64-versus-row32 assertion failure. A detached clean `cd2256263` worktree
+  reproduces the identical **9088/9216** mismatch, so it is not introduced by
+  this candidate; the new CPU-reference matrix and complete-state paths are
+  green. Initial trace attempts correctly failed before profiling because the
+  harness requires the full 512/1K/4K tuple and a clean tracked worktree.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json`.

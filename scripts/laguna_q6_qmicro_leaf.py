@@ -146,6 +146,8 @@ def main() -> int:
 
     buffers = []
     samples = {
+        "pack_standard": [],
+        "pack_precomputed_sums": [],
         "prefill_legacy": [],
         "prefill_qmicro": [],
         "prefill_qmicro_compact_activation": [],
@@ -157,6 +159,7 @@ def main() -> int:
         "prefill_qmicro_planar_integer_wmma_hoist_activation": [],
         "prefill_qmicro_planar_integer_wmma_prefetch_weight": [],
         "prefill_qmicro_planar_integer_wmma_prefetch_weight_activation": [],
+        "prefill_qmicro_planar_integer_wmma_precomputed_sums": [],
         "decode_legacy": [],
         "decode_qmicro": [],
         "decode_qmicro_planar": [],
@@ -172,6 +175,7 @@ def main() -> int:
         tile_expert_dev = _upload(runtime, tile_expert)
         selected_dev = _upload(runtime, TOP10_EXPERTS)
         q8_dev = malloc(q8_nbytes, runtime=runtime)
+        q8_precomputed_sums_dev = malloc(q8_nbytes, runtime=runtime)
         prefill_legacy_out = malloc(prefill_out_nbytes, runtime=runtime)
         prefill_qmicro_out = malloc(prefill_out_nbytes, runtime=runtime)
         prefill_qmicro_compact_activation_out = malloc(
@@ -210,6 +214,10 @@ def main() -> int:
             prefill_out_nbytes,
             runtime=runtime,
         )
+        prefill_qmicro_planar_integer_wmma_precomputed_sums_out = malloc(
+            prefill_out_nbytes,
+            runtime=runtime,
+        )
         decode_legacy_out = malloc(decode_out_nbytes, runtime=runtime)
         decode_qmicro_out = malloc(decode_out_nbytes, runtime=runtime)
         decode_qmicro_planar_out = malloc(
@@ -228,6 +236,7 @@ def main() -> int:
                 tile_expert_dev,
                 selected_dev,
                 q8_dev,
+                q8_precomputed_sums_dev,
                 prefill_legacy_out,
                 prefill_qmicro_out,
                 prefill_qmicro_compact_activation_out,
@@ -239,6 +248,7 @@ def main() -> int:
                 prefill_qmicro_planar_integer_wmma_hoist_activation_out,
                 prefill_qmicro_planar_integer_wmma_prefetch_weight_out,
                 prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_out,
+                prefill_qmicro_planar_integer_wmma_precomputed_sums_out,
                 decode_legacy_out,
                 decode_qmicro_out,
                 decode_qmicro_planar_out,
@@ -250,6 +260,16 @@ def main() -> int:
             compact_rows,
             IN_FEATURES,
             residual_passes=1,
+            library=prefill_library,
+            runtime=runtime,
+        )
+        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+            prefill_x_dev.ptr,
+            q8_precomputed_sums_dev.ptr,
+            compact_rows,
+            IN_FEATURES,
+            residual_passes=1,
+            q6_half_sums=True,
             library=prefill_library,
             runtime=runtime,
         )
@@ -266,9 +286,14 @@ def main() -> int:
             wmma_hoist_activation: bool = False,
             wmma_prefetch_weight: bool = False,
             wmma_prefetch_activation: bool = False,
+            precomputed_activation_sums: bool = False,
         ) -> None:
             gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
-                q8_dev.ptr,
+                (
+                    q8_precomputed_sums_dev.ptr
+                    if precomputed_activation_sums
+                    else q8_dev.ptr
+                ),
                 compact_starts_dev.ptr,
                 padded_starts_dev.ptr,
                 tile_expert_dev.ptr,
@@ -280,7 +305,9 @@ def main() -> int:
                     else legacy_dev.ptr
                 ),
                 (
-                    prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_out.ptr
+                    prefill_qmicro_planar_integer_wmma_precomputed_sums_out.ptr
+                    if precomputed_activation_sums
+                    else prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_out.ptr
                     if wmma_prefetch_activation
                     else prefill_qmicro_planar_integer_wmma_prefetch_weight_out.ptr
                     if wmma_prefetch_weight
@@ -320,6 +347,7 @@ def main() -> int:
                 wmma_hoist_activation=wmma_hoist_activation,
                 wmma_prefetch_weight=wmma_prefetch_weight,
                 wmma_prefetch_activation=wmma_prefetch_activation,
+                precomputed_activation_sums=precomputed_activation_sums,
                 library=prefill_library,
                 runtime=runtime,
             )
@@ -358,6 +386,31 @@ def main() -> int:
             )
 
         launches = {
+            "pack_standard": (
+                lambda: gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+                    prefill_x_dev.ptr,
+                    q8_dev.ptr,
+                    compact_rows,
+                    IN_FEATURES,
+                    residual_passes=1,
+                    library=prefill_library,
+                    runtime=runtime,
+                ),
+                args.prefill_burst,
+            ),
+            "pack_precomputed_sums": (
+                lambda: gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+                    prefill_x_dev.ptr,
+                    q8_precomputed_sums_dev.ptr,
+                    compact_rows,
+                    IN_FEATURES,
+                    residual_passes=1,
+                    q6_half_sums=True,
+                    library=prefill_library,
+                    runtime=runtime,
+                ),
+                args.prefill_burst,
+            ),
             "prefill_legacy": (lambda: prefill(False), args.prefill_burst),
             "prefill_qmicro": (lambda: prefill(True), args.prefill_burst),
             "prefill_qmicro_compact_activation": (
@@ -451,6 +504,21 @@ def main() -> int:
                 ),
                 args.prefill_burst,
             ),
+            "prefill_qmicro_planar_integer_wmma_precomputed_sums": (
+                lambda: prefill(
+                    True,
+                    compact_activation=True,
+                    half_row_activation=True,
+                    skip_padded_activation=True,
+                    qmicro_planar=True,
+                    integer_wmma=True,
+                    wmma_hoist_activation=True,
+                    wmma_prefetch_weight=True,
+                    wmma_prefetch_activation=True,
+                    precomputed_activation_sums=True,
+                ),
+                args.prefill_burst,
+            ),
             "decode_legacy": (lambda: decode(False), args.decode_burst),
             "decode_qmicro": (lambda: decode(True), args.decode_burst),
             "decode_qmicro_planar": (
@@ -533,6 +601,18 @@ def main() -> int:
             wmma_prefetch_weight=True,
             wmma_prefetch_activation=True,
         )
+        prefill(
+            True,
+            compact_activation=True,
+            half_row_activation=True,
+            skip_padded_activation=True,
+            qmicro_planar=True,
+            integer_wmma=True,
+            wmma_hoist_activation=True,
+            wmma_prefetch_weight=True,
+            wmma_prefetch_activation=True,
+            precomputed_activation_sums=True,
+        )
         decode(False)
         decode(True)
         decode(True, qmicro_planar=True)
@@ -590,6 +670,11 @@ def main() -> int:
         prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_host = _read_bf16(
             runtime,
             prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_out,
+            (compact_rows, OUT_FEATURES),
+        )
+        prefill_qmicro_planar_integer_wmma_precomputed_sums_host = _read_bf16(
+            runtime,
+            prefill_qmicro_planar_integer_wmma_precomputed_sums_out,
             (compact_rows, OUT_FEATURES),
         )
         decode_legacy_host = _read_bf16(
@@ -672,6 +757,12 @@ def main() -> int:
             != prefill_qmicro_planar_integer_wmma_prefetch_weight_host
         )
     )
+    prefill_qmicro_planar_integer_wmma_precomputed_sums_mismatches = int(
+        np.count_nonzero(
+            prefill_qmicro_planar_integer_wmma_precomputed_sums_host
+            != prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_host
+        )
+    )
     decode_mismatches = int(
         np.count_nonzero(decode_qmicro_host != decode_legacy_host)
     )
@@ -711,12 +802,18 @@ def main() -> int:
             "warmups": args.warmups,
             "prefill_burst": args.prefill_burst,
             "decode_burst": args.decode_burst,
-            "order": "counter-rotated over fourteen modes",
-            "timing": "HIP events; prefill activation pack excluded",
+            "order": "counter-rotated over seventeen modes",
+            "timing": "HIP events; pack and consumer modes timed separately",
         },
         "samples_ms": samples,
         "medians_ms": medians,
         "change_percent": {
+            "pack_precomputed_sums": (
+                medians["pack_precomputed_sums"]
+                / medians["pack_standard"]
+                - 1.0
+            )
+            * 100.0,
             "prefill": (
                 medians["prefill_qmicro"] / medians["prefill_legacy"] - 1.0
             )
@@ -785,6 +882,16 @@ def main() -> int:
                 - 1.0
             )
             * 100.0,
+            "prefill_qmicro_planar_integer_wmma_precomputed_sums": (
+                medians[
+                    "prefill_qmicro_planar_integer_wmma_precomputed_sums"
+                ]
+                / medians[
+                    "prefill_qmicro_planar_integer_wmma_prefetch_weight_activation"
+                ]
+                - 1.0
+            )
+            * 100.0,
             "decode": (
                 medians["decode_qmicro"] / medians["decode_legacy"] - 1.0
             )
@@ -825,6 +932,9 @@ def main() -> int:
             "prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_bf16_mismatches": (
                 prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_mismatches
             ),
+            "prefill_qmicro_planar_integer_wmma_precomputed_sums_bf16_mismatches": (
+                prefill_qmicro_planar_integer_wmma_precomputed_sums_mismatches
+            ),
             "decode_bf16_mismatches": decode_mismatches,
             "decode_qmicro_planar_bf16_mismatches": (
                 decode_qmicro_planar_mismatches
@@ -856,6 +966,11 @@ def main() -> int:
                     dtype=np.uint64
                 )
             ),
+            "prefill_qmicro_planar_integer_wmma_precomputed_sums_checksum": int(
+                prefill_qmicro_planar_integer_wmma_precomputed_sums_host.sum(
+                    dtype=np.uint64
+                )
+            ),
             "decode_checksum": int(decode_qmicro_host.sum(dtype=np.uint64)),
             "decode_qmicro_planar_checksum": int(
                 decode_qmicro_planar_host.sum(dtype=np.uint64)
@@ -878,6 +993,8 @@ def main() -> int:
             and prefill_qmicro_planar_integer_wmma_prefetch_weight_mismatches
             == 0
             and prefill_qmicro_planar_integer_wmma_prefetch_weight_activation_mismatches
+            == 0
+            and prefill_qmicro_planar_integer_wmma_precomputed_sums_mismatches
             == 0
             and decode_mismatches == 0
             and decode_qmicro_planar_mismatches == 0

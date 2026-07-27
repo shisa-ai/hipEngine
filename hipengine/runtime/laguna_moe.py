@@ -1669,6 +1669,7 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
     q6_tile_rows: int = _MMQ32_ROWS,
     q6_wmma_prefetch_weight: bool = False,
     q6_wmma_prefetch_activation: bool = False,
+    q6_precomputed_activation_sums: bool = False,
     q4_raw_weight_prefetch_packs: int = 0,
     fused_silu_pack: bool = False,
 ) -> bool:
@@ -1733,6 +1734,14 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
         lanes,
         plan.expert_ffn_size,
         residual_passes=residual_passes,
+        **(
+            {"q6_half_sums": True}
+            if (
+                q6_precomputed_activation_sums
+                and weight.spec.quant_key == "gguf_q6_k_t16_v1"
+            )
+            else {}
+        ),
         **_stage_kwargs(
             "selected_gate_up_prefill",
             libraries,
@@ -1791,6 +1800,13 @@ def _launch_selected_down_mmq64x32_d4x3_f32(
                 "wmma_prefetch_activation": (
                     q6_wmma_prefetch_activation
                     and q6_wmma_prefetch_weight
+                    and plan.q6_qmicro_planar
+                    and rowvec
+                    and tile_rows == _MMQ64_ROWS
+                ),
+                "precomputed_activation_sums": (
+                    q6_precomputed_activation_sums
+                    and q6_wmma_prefetch_activation
                     and plan.q6_qmicro_planar
                     and rowvec
                     and tile_rows == _MMQ64_ROWS
@@ -2189,6 +2205,7 @@ def run_laguna_moe_rows(
     fuse_selected_silu_pack: bool = False,
     q6_wmma_prefetch_weight: bool = False,
     q6_wmma_prefetch_activation: bool = False,
+    q6_precomputed_activation_sums: bool = False,
     shared_after_router: bool = False,
     shared_stream: int = 0,
     shared_input_ready_event: int = 0,
@@ -2475,6 +2492,9 @@ def run_laguna_moe_rows(
             q6_tile_rows=mmq_down_q6_tile_rows,
             q6_wmma_prefetch_weight=q6_wmma_prefetch_weight,
             q6_wmma_prefetch_activation=q6_wmma_prefetch_activation,
+            q6_precomputed_activation_sums=(
+                q6_precomputed_activation_sums
+            ),
             q4_raw_weight_prefetch_packs=(
                 8 if mmq_down_q4_raw_prefetch and rows >= 512 else 0
             ),

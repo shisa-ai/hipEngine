@@ -1586,6 +1586,7 @@ class LagunaGGUFResidentSession:
         q6_qmicro_planar: bool | None = None,
         q6_wmma_prefetch_weight: bool | None = None,
         q6_wmma_prefetch_activation: bool | None = None,
+        q6_precomputed_activation_sums: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
@@ -1816,6 +1817,22 @@ class LagunaGGUFResidentSession:
         ):
             raise ValueError(
                 "Q6 WMMA activation prefetch requires weight prefetch"
+            )
+        self.q6_precomputed_activation_sums = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS",
+                False,
+            )
+            if q6_precomputed_activation_sums is None
+            else q6_precomputed_activation_sums
+        )
+        if (
+            self.q6_precomputed_activation_sums
+            and not self.q6_wmma_prefetch_activation
+        ):
+            raise ValueError(
+                "Q6 precomputed activation sums require activation prefetch"
             )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
@@ -2081,6 +2098,15 @@ class LagunaGGUFResidentSession:
                 "Q6 WMMA activation prefetch requires weight prefetch"
             )
         self.q6_wmma_prefetch_activation = bool(enabled)
+
+    def set_q6_precomputed_activation_sums(self, enabled: bool) -> None:
+        """Select packed Q6 K16 sums or consumer-side sum reconstruction."""
+
+        if enabled and not self.q6_wmma_prefetch_activation:
+            raise ValueError(
+                "Q6 precomputed activation sums require activation prefetch"
+            )
+        self.q6_precomputed_activation_sums = bool(enabled)
 
     def set_moe_shared_after_router(self, enabled: bool) -> None:
         """Move concurrent shared work behind the exact router prefix."""
@@ -3344,6 +3370,9 @@ class LagunaGGUFResidentSession:
             fuse_selected_silu_pack=self.fuse_selected_silu_pack,
             q6_wmma_prefetch_weight=self.q6_wmma_prefetch_weight,
             q6_wmma_prefetch_activation=self.q6_wmma_prefetch_activation,
+            q6_precomputed_activation_sums=(
+                self.q6_precomputed_activation_sums
+            ),
             shared_after_router=self.moe_shared_after_router,
             shared_stream=(
                 self._moe_shared_stream
