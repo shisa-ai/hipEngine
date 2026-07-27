@@ -15,7 +15,7 @@ from scripts.laguna_grouped_down_category_bench import (
     GROUPED_COMBINE_COMPARISON,
     MODES,
     PREFILL_350_COMPARISON,
-    PREFILL_TOPK8_ABSOLUTE_COMPARISON,
+    PREFILL_TOPK9_ABSOLUTE_COMPARISON,
     PRODUCTION_ABSOLUTE_COMPARISON,
     SWA_QROW2_COMPARISON,
     SWA_QROW2_ONLINE_COMPARISON,
@@ -80,18 +80,18 @@ def test_attention_hipblaslt_comparison_adds_only_attention_candidate() -> None:
     assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
 
 
-def test_prefill_topk8_comparison_is_prefill_only_and_absolute() -> None:
-    assert PREFILL_TOPK8_ABSOLUTE_COMPARISON.modes == (
+def test_prefill_topk9_comparison_is_prefill_only_and_absolute() -> None:
+    assert PREFILL_TOPK9_ABSOLUTE_COMPARISON.modes == (
         "all_exact",
-        "prefill_topk8_candidate",
+        "prefill_topk9_candidate",
     )
-    assert not PREFILL_TOPK8_ABSOLUTE_COMPARISON.require_performance_gate
+    assert not PREFILL_TOPK9_ABSOLUTE_COMPARISON.require_performance_gate
     exact = benchmark._PREFILL_LANE_CONFIGURATIONS["all_exact"]
     candidate = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "prefill_topk8_candidate"
+        "prefill_topk9_candidate"
     ]
     assert exact.prefill_moe_top_k is None
-    assert candidate.prefill_moe_top_k == 8
+    assert candidate.prefill_moe_top_k == 9
     assert candidate.attention_hipblaslt is True
 
 

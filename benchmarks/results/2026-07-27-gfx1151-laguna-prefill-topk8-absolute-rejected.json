@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T16:11:14+09:00",
+  "kind": "hipengine_laguna_prefill_topk8_absolute_category",
+  "status": "rejected_category_gate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "0fb25f50d499fbb142e4715ff5ff1b6b87c76baf",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py --comparison prefill_topk8_absolute --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-prefill-topk8-absolute-category.json",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": 4,
+    "teacher_forced_steps": 320,
+    "repetitions": 3,
+    "chunk_size": 128,
+    "exact_c1_decode_top_k": 10,
+    "candidate_prefill_top_k": 8,
+    "raw_sha256": "3aa477eacd940663800e658ed4d882963503c0da8909b652f1fc140c3d1ec072"
+  },
+  "quality": {
+    "teacher_forced_max_kl": 0.6714010133254187,
+    "teacher_forced_top1_matches": 314,
+    "teacher_forced_top1_steps": 320,
+    "teacher_forced_top1_agreement": 0.98125,
+    "finite": true,
+    "categories": {
+      "code": {
+        "max_kl": 0.13315419282907956,
+        "top1_matches": 127,
+        "steps": 128
+      },
+      "general_en": {
+        "max_kl": 0.08135602847122209,
+        "top1_matches": 64,
+        "steps": 64
+      },
+      "general_ja": {
+        "max_kl": 0.06591538790345491,
+        "top1_matches": 64,
+        "steps": 64
+      },
+      "mixed_ja_en": {
+        "max_kl": 0.6714010133254187,
+        "top1_matches": 59,
+        "steps": 64
+      }
+    },
+    "poolside_oracle_kl": 0.0001800296408503236,
+    "poolside_oracle_top1_match": true,
+    "same_mode_repeat_deterministic": true,
+    "thresholds": {
+      "max_kl": 0.05,
+      "minimum_suite_and_category_top1": 0.9
+    }
+  },
+  "diagnostic_performance": {
+    "candidate_short_prompt_prefill_tok_s": 281.7622949758382,
+    "speedup_vs_deliberately_all_exact_lane": 5.1773156213730696
+  },
+  "memory": {
+    "peak_allocated_bytes": 77920971836,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0,
+    "total_allocated_bytes": 109863703184,
+    "total_freed_bytes": 109863703184
+  },
+  "gate": {
+    "failed_checks": [
+      "teacher_forced_max_kl_above_0.05"
+    ],
+    "production_retained": false,
+    "next_action": "remove the top-8 category lane and run the separately measured top-9 candidate"
+  }
+}

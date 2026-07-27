@@ -184748,3 +184748,21 @@ Vulkan local sizes verbatim will close the measured gap.
   `7d5bb49da3def2110b5678c257804742c49934c5fc02b17e0e125c32ef5ad962`.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk-screen-candidate.json`.
+
+## 2026-07-27 — Reject prefill top-8 and advance top-9
+
+- The clean ten-prompt, four-category, 320-step absolute gate rejects
+  prefill-only top-8. Suite max KL is **0.671401** versus the **0.05** limit;
+  top-1 remains **314/320 (98.125%)**, but every category exceeds the KL
+  threshold at **0.133154/0.081356/0.065915/0.671401** for
+  code/general-English/general-Japanese/mixed.
+- The independent Poolside oracle passes at KL **0.00018003** and matching
+  top-1, illustrating why the full category lane is mandatory. Same-mode
+  repeats remain deterministic, exact c=1 decode stays top-10, and tracked
+  lifecycle returns **109,863,703,184 / 109,863,703,184 bytes** with zero
+  active allocations.
+- Remove the rejected top-8 comparison/configuration and advance the already
+  measured **684.313 tok/s** top-9 arm to the same absolute gate. Raw SHA-256:
+  `3aa477eacd940663800e658ed4d882963503c0da8909b652f1fc140c3d1ec072`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk8-absolute-rejected.json`.
