@@ -110,7 +110,7 @@ from hipengine.runtime.laguna_rope import (
 )
 
 LAGUNA_DFLASH_CAPTURE_DEPTHS = (2, 11, 20, 30, 39, 48)
-_INITIAL_MAX_CONTEXT = 4_096
+_DEFAULT_CONTEXT_LENGTH = 4_096
 _EXPECTED_HEAD_COUNTS = tuple([48, 72, 72, 72] * 12)
 _EXPECTED_LAYER_TYPES = tuple(
     FULL_ATTENTION if layer_id % 4 == 0 else SLIDING_ATTENTION for layer_id in range(48)
@@ -120,6 +120,23 @@ _F32_NBYTES = DType.FP32.itemsize
 _I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
 _U8_NBYTES = DType.BOOL.itemsize
+
+
+def _validate_laguna_context_length(
+    context_length: int,
+    *,
+    model_context_length: int,
+) -> int:
+    requested = int(context_length)
+    declared = int(model_context_length)
+    if requested <= 0:
+        raise ValueError("Laguna eager context_length must be positive")
+    if requested > declared:
+        raise ValueError(
+            "Laguna eager context_length exceeds the model-declared "
+            f"limit {declared}"
+        )
+    return requested
 
 
 def resolve_laguna_moe_branch_concurrency(
@@ -1582,7 +1599,7 @@ class LagunaGGUFResidentSession:
         model_path: str | Path | None = None,
         *,
         resident_weights: LagunaGGUFResidentWeights | None = None,
-        context_length: int = _INITIAL_MAX_CONTEXT,
+        context_length: int = _DEFAULT_CONTEXT_LENGTH,
         backend: str = "hip_gfx1151",
         runtime: HipRuntime | None = None,
         device: Device | None = None,
@@ -1625,6 +1642,8 @@ class LagunaGGUFResidentSession:
         self.device = device or Device("hip", 0)
         self.backend = resolve_backend(backend)
         self.context_length = int(context_length)
+        if self.context_length <= 0:
+            raise ValueError("Laguna eager context_length must be positive")
         matrix_rows = prefill_chunk_size
         if matrix_rows is None:
             matrix_rows = min(
@@ -1962,10 +1981,6 @@ class LagunaGGUFResidentSession:
         self._moe_shared_input_ready_event = 0
         self._moe_shared_output_ready_event = 0
 
-        if self.context_length <= 0 or self.context_length > _INITIAL_MAX_CONTEXT:
-            raise ValueError(
-                f"initial Laguna eager context_length must be within [1, {_INITIAL_MAX_CONTEXT}]"
-            )
         if resident_weights is not None and (
             repacked_cache is not None or model_sha256 is not None
         ):
@@ -1982,6 +1997,10 @@ class LagunaGGUFResidentSession:
                 config = resident_weights.config
                 if resident_weights.backend != self.backend:
                     raise ValueError("resident Laguna backend does not match the session backend")
+            self.context_length = _validate_laguna_context_length(
+                self.context_length,
+                model_context_length=config.context_length,
+            )
 
             self.kernel_plan = resolve_laguna_eager_kernel_plan(
                 config,

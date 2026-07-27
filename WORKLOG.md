@@ -184882,3 +184882,16 @@ Vulkan local sizes verbatim will close the measured gap.
   `tests/test_laguna_long_context_profile.py`, plus `py_compile` and
   `git diff --check`. This is harness-only preparation; no production runtime
   or kernel changed.
+
+## 2026-07-27 — Admit model-declared Laguna context lengths
+
+- The first closure-sweep launch failed before model load or timing because
+  `LagunaGGUFResidentSession` still capped initial context at **4,096** even
+  though Laguna S 2.1 declares **262,144** and the resident KV/RoPE paths are
+  length-parameterized. No performance sample was produced.
+- Replaced the legacy fixed maximum with a **4,096 default** plus explicit
+  validation against `config.context_length`. The requested 128K session is
+  now admitted while zero/negative and above-model requests remain rejected.
+  This does not change the existing default or any <=4K allocation.
+- The failed production launch is the RED evidence. GREEN passes all **50**
+  focused runner/profiler tests, `py_compile`, and `git diff --check`.
