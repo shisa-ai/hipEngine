@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.laguna_long_context_profile import (
+    ATTACK_LENGTHS,
     FINAL_SWEEP_LENGTHS,
     LAP0_LENGTHS,
     PROFILE_LENGTH_SETS,
@@ -26,6 +27,8 @@ from scripts.laguna_long_context_trace_summary import (
 def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert LAP0_LENGTHS == (128, 512, 1024, 4096)
     assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
+    assert ATTACK_LENGTHS == (4096, 16384, 65536, 131072)
+    assert ATTACK_LENGTHS in PROFILE_LENGTH_SETS
     assert FINAL_SWEEP_LENGTHS == (512, 1024, 4096, 32768, 65536, 131072)
     assert FINAL_SWEEP_LENGTHS in PROFILE_LENGTH_SETS
     assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)

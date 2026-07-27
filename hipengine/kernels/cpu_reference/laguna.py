@@ -279,6 +279,141 @@ def laguna_causal_mask(
     return mask
 
 
+def laguna_block_streamed_gqa_attention(
+    query: ArrayLike,
+    key: ArrayLike,
+    value: ArrayLike,
+    *,
+    query_positions: ArrayLike,
+    key_positions: ArrayLike,
+    query_block_size: int,
+    key_block_size: int,
+    sliding_window: int | None = None,
+    scale: float | None = None,
+) -> np.ndarray:
+    """Reference exact causal GQA using blockwise online-softmax state merges.
+
+    This oracle intentionally preserves only ``(row max, denominator, output
+    numerator)`` across key tiles. It therefore exercises the bounded-state
+    contract required by Laguna long-context prefill without materializing a
+    complete query-by-key score matrix.
+    """
+
+    q = np.asarray(query, dtype=np.float32)
+    k = np.asarray(key, dtype=np.float32)
+    v = np.asarray(value, dtype=np.float32)
+    q_pos = np.asarray(query_positions, dtype=np.int64)
+    k_pos = np.asarray(key_positions, dtype=np.int64)
+    if q.ndim != 3 or k.ndim != 3 or v.ndim != 3:
+        raise ValueError("query, key, and value must have shape [rows, heads, head_dim]")
+    query_rows, query_heads, head_dim = q.shape
+    key_rows, kv_heads, key_dim = k.shape
+    if query_rows <= 0 or key_rows <= 0:
+        raise ValueError("query and key/value rows must be positive")
+    if v.shape != (key_rows, kv_heads, key_dim):
+        raise ValueError("value must match key rows, KV heads, and head_dim")
+    if head_dim <= 0 or key_dim != head_dim:
+        raise ValueError("query, key, and value head_dim must match and be positive")
+    if query_heads <= 0 or kv_heads <= 0 or query_heads % kv_heads:
+        raise ValueError("query heads must be a positive multiple of KV heads")
+    if q_pos.shape != (query_rows,) or k_pos.shape != (key_rows,):
+        raise ValueError("query_positions and key_positions must match their row counts")
+    q_block = int(query_block_size)
+    k_block = int(key_block_size)
+    if q_block <= 0 or k_block <= 0:
+        raise ValueError("query_block_size and key_block_size must be positive")
+    attention_scale = head_dim**-0.5 if scale is None else float(scale)
+    if not math.isfinite(attention_scale) or attention_scale <= 0.0:
+        raise ValueError("attention scale must be finite and positive")
+    attention_scale_f32 = np.float32(attention_scale)
+    group_size = query_heads // kv_heads
+    output = np.empty_like(q, dtype=np.float32)
+
+    for query_start in range(0, query_rows, q_block):
+        query_end = min(query_start + q_block, query_rows)
+        query_tile = q[query_start:query_end]
+        query_position_tile = q_pos[query_start:query_end]
+        tile_rows = query_end - query_start
+        row_max = np.full(
+            (tile_rows, query_heads),
+            -np.inf,
+            dtype=np.float32,
+        )
+        denominator = np.zeros((tile_rows, query_heads), dtype=np.float32)
+        numerator = np.zeros(
+            (tile_rows, query_heads, head_dim),
+            dtype=np.float32,
+        )
+
+        for key_start in range(0, key_rows, k_block):
+            key_end = min(key_start + k_block, key_rows)
+            visible = laguna_causal_mask(
+                query_position_tile,
+                k_pos[key_start:key_end],
+                sliding_window=sliding_window,
+            )
+            if not np.any(visible):
+                continue
+            for kv_head in range(kv_heads):
+                head_start = kv_head * group_size
+                head_end = head_start + group_size
+                logits = (
+                    np.einsum(
+                        "qhd,kd->qhk",
+                        query_tile[:, head_start:head_end],
+                        k[key_start:key_end, kv_head],
+                        optimize=False,
+                    )
+                    * attention_scale_f32
+                ).astype(np.float32)
+                logits = np.where(visible[:, None, :], logits, -np.inf)
+                block_max = np.max(logits, axis=2)
+                active = np.isfinite(block_max)
+                if not np.any(active):
+                    continue
+
+                old_max = row_max[:, head_start:head_end]
+                new_max = np.where(
+                    active,
+                    np.maximum(old_max, block_max),
+                    old_max,
+                ).astype(np.float32)
+                old_scale = np.ones_like(old_max, dtype=np.float32)
+                continuing = active & np.isfinite(old_max)
+                starting = active & ~np.isfinite(old_max)
+                old_scale[continuing] = np.exp(
+                    old_max[continuing] - new_max[continuing]
+                ).astype(np.float32)
+                old_scale[starting] = np.float32(0.0)
+
+                weights = np.zeros_like(logits, dtype=np.float32)
+                weights[active] = np.exp(
+                    logits[active] - new_max[active, None]
+                ).astype(np.float32)
+                numerator[:, head_start:head_end] = (
+                    numerator[:, head_start:head_end] * old_scale[..., None]
+                    + np.einsum(
+                        "qhk,kd->qhd",
+                        weights,
+                        v[key_start:key_end, kv_head],
+                        optimize=False,
+                    ).astype(np.float32)
+                ).astype(np.float32)
+                denominator[:, head_start:head_end] = (
+                    denominator[:, head_start:head_end] * old_scale
+                    + weights.sum(axis=2, dtype=np.float32)
+                ).astype(np.float32)
+                row_max[:, head_start:head_end] = new_max
+
+        if np.any(denominator <= 0.0) or not np.isfinite(denominator).all():
+            raise ValueError("causal mask left at least one query head without visible keys")
+        output[query_start:query_end] = (
+            numerator / denominator[..., None]
+        ).astype(np.float32)
+
+    return output
+
+
 def laguna_head_rmsnorm(
     values: ArrayLike,
     weight: ArrayLike,
@@ -1013,6 +1148,7 @@ __all__ = [
     "LagunaSparseMoEResult",
     "laguna_apply_rope",
     "laguna_attention_forward",
+    "laguna_block_streamed_gqa_attention",
     "laguna_causal_mask",
     "laguna_dense_ffn_forward",
     "laguna_head_rmsnorm",

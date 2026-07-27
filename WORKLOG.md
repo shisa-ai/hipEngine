@@ -185005,3 +185005,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json`
   and updated `docs/LAGUNA-prefill.md`, `docs/PLAN.md`,
   `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-27 — Admit the LC-0 attack set and block-streaming oracle
+
+- RED extended the strict Laguna profiler contract with the required fixed
+  **4K/16K/64K/128K** attack set and failed collection because
+  `ATTACK_LENGTHS` did not exist. GREEN admits exactly that tuple alongside
+  the existing default/LAP-0/six-shape sets; arbitrary lists remain rejected.
+- RED added an exact CPU-reference contract for causal GQA block streaming and
+  failed on the missing primitive. GREEN
+  `laguna_block_streamed_gqa_attention` carries only FP32 row maximum,
+  denominator, and output numerator across bounded key tiles. It matches
+  dense GQA for partial three-row query tiles, 127-key tails, global and
+  512-window masks at positions 511/512/513, and the final 131,071 query
+  position without materializing a complete score matrix.
+- Focused validation passes
+  `tests/test_laguna_long_context_profile.py
+  tests/test_laguna_cpu_reference.py` (**48 passed**), plus `py_compile` and
+  `git diff --check`.
+- Attempted the required pre-kernel lineage audit:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`. It remains
+  blocked before reporting by the missing read-only external checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`, the same known environment
+  condition recorded by prior Laguna work. No external tree was modified.

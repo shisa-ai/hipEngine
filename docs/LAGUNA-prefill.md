@@ -3913,17 +3913,19 @@ The campaign intentionally uses cheap evidence while far from the target:
 #### LC-0 — baseline, harness, and attribution
 
 - **Done:** capture the same-GGUF Vulkan 512/4K/16K/64K/128K baseline above.
-- Admit the fixed 4K/16K/64K/128K hipEngine attack set and capture current
-  production 16K in the same 128K-capacity session as the existing rows.
+- **Done:** admit the fixed 4K/16K/64K/128K hipEngine attack set. Arbitrary
+  lists remain rejected.
+- Capture current production 16K in the same 128K-capacity session as the
+  existing rows.
 - Trace one cached 16K and one 64K control. Attribute all 12 global layers,
   36 SWA layers, projections, MoE, and residual families without profiling
   the 30-minute 128K row.
 - Record global-attention achieved FLOP/s, K/V bytes, GQA reread factor,
   dispatches, resource tuple, and wall-growth fit. Replace inferred
   linear/quadratic shares with trace-backed values.
-- Freeze CPU-reference fixtures for dense causal block merge at tile
-  boundaries, partial query/key tiles, position 511/512/513, and the final
-  128K position.
+- **Done:** freeze a bounded-state CPU-reference block-streaming oracle against
+  dense GQA at partial query/key tiles, positions 511/512/513, global/SWA
+  masks, and the final 128K position.
 
 #### LC-1 — real block-streamed global attention
 
