@@ -93,7 +93,6 @@ _BF16_NBYTES = DType.BF16.itemsize
 _F32_NBYTES = DType.FP32.itemsize
 _I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
-_ARGMAX_PAIR_NBYTES = _I64_NBYTES + _F32_NBYTES
 _U8_NBYTES = DType.BOOL.itemsize
 _MIXED_ATTENTION_VARIANT = "mixed_pack8_gemv_decode_bf16_f32_out"
 _MIXED_ATTENTION_Q6_FIXED_META_VARIANT = (
@@ -270,7 +269,6 @@ class LagunaEagerScratch:
     argmax_block_indices: DeviceBuffer
     argmax_id: DeviceBuffer
     argmax_value: DeviceBuffer
-    argmax_result: DeviceBuffer | None = None
     _closed: bool = False
 
     @classmethod
@@ -278,7 +276,6 @@ class LagunaEagerScratch:
         cls,
         config: LagunaGGUFConfig,
         *,
-        argmax_pair_readback: bool = False,
         runtime: HipRuntime | None = None,
     ) -> "LagunaEagerScratch":
         max_heads = max(int(value) for value in config.head_counts)
@@ -316,23 +313,6 @@ class LagunaEagerScratch:
         )
         buffers: list[DeviceBuffer] = []
         try:
-            if argmax_pair_readback:
-                buffers.extend(
-                    malloc(nbytes, runtime=runtime) for nbytes in sizes[:-2]
-                )
-                argmax_result = malloc(_ARGMAX_PAIR_NBYTES, runtime=runtime)
-                buffers.append(argmax_result)
-                return cls(
-                    max_query_width,
-                    max_heads,
-                    *buffers[:-1],
-                    DeviceBuffer(argmax_result.ptr, _I64_NBYTES),
-                    DeviceBuffer(
-                        argmax_result.ptr + _I64_NBYTES,
-                        _F32_NBYTES,
-                    ),
-                    argmax_result=argmax_result,
-                )
             buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
         except Exception:
             for buffer in reversed(buffers):
@@ -342,11 +322,6 @@ class LagunaEagerScratch:
 
     @property
     def buffers(self) -> tuple[DeviceBuffer, ...]:
-        argmax = (
-            (self.argmax_id, self.argmax_value)
-            if self.argmax_result is None
-            else (self.argmax_result,)
-        )
         return (
             self.token_id,
             self.position,
@@ -370,7 +345,8 @@ class LagunaEagerScratch:
             self.logits,
             self.argmax_block_values,
             self.argmax_block_indices,
-            *argmax,
+            self.argmax_id,
+            self.argmax_value,
         )
 
     @property
@@ -1293,22 +1269,6 @@ def resolve_laguna_head_kv_fusion(
     return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
 
 
-def resolve_laguna_argmax_pair_readback(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the measured backend's default-off paired argmax readback."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_ARGMAX_PAIR_READBACK",
-        None,
-    )
-    if capability is None:
-        return False
-    return bool(capability) if requested is None else bool(requested)
-
-
 def resolve_laguna_mixed_attention_projections(
     backend: str,
     requested: bool | None = None,
@@ -1842,7 +1802,6 @@ class LagunaGGUFResidentSession:
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_head_kv_fusion: bool | None = None,
-        use_argmax_pair_readback: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
@@ -1876,10 +1835,6 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.use_swa_split_wave_local = use_swa_split_wave_local
-        self.use_argmax_pair_readback = resolve_laguna_argmax_pair_readback(
-            self.backend,
-            use_argmax_pair_readback,
-        )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -2083,11 +2038,7 @@ class LagunaGGUFResidentSession:
             )
             self.use_split_gate_fusion = self.kv_cache.split_gate_fusion
             self.use_swa_split_wave_local = self.kv_cache.swa_split_wave_local
-            self.scratch = LagunaEagerScratch.allocate(
-                config,
-                argmax_pair_readback=self.use_argmax_pair_readback,
-                runtime=self.runtime,
-            )
+            self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
                 runtime=self.runtime,
@@ -3038,20 +2989,11 @@ class LagunaGGUFResidentSession:
             self.runtime.stream_synchronize(stream)
         else:
             self.runtime.device_synchronize()
-        if getattr(self, "use_argmax_pair_readback", False):
-            assert self.scratch.argmax_result is not None
-            next_id, next_value = _read_argmax_pair(
-                self.scratch.argmax_result,
-                self.runtime,
-            )
-        else:
-            next_id = _read_i64(self.scratch.argmax_id, self.runtime)
-            next_value = _read_f32(self.scratch.argmax_value, self.runtime)
         result = LagunaEagerTokenResult(
             position=int(position),
             input_token_id=int(input_token_id),
-            next_token_id=next_id,
-            next_token_logit=next_value,
+            next_token_id=_read_i64(self.scratch.argmax_id, self.runtime),
+            next_token_logit=_read_f32(self.scratch.argmax_value, self.runtime),
             logits=_buffer_view(scratch.logits, 0, config.vocab_size * _F32_NBYTES),
             final_hidden=_buffer_view(scratch.final_norm, 0, hidden_nbytes),
             post_layer_hidden=_buffer_view(scratch.hidden, int(row_index) * hidden_nbytes, hidden_nbytes),
@@ -3452,15 +3394,8 @@ class LagunaGGUFResidentSession:
             self.runtime.stream_synchronize(stream)
         else:
             self.runtime.device_synchronize()
-        if getattr(self, "use_argmax_pair_readback", False):
-            assert scratch.argmax_result is not None
-            next_id, next_value = _read_argmax_pair(
-                scratch.argmax_result,
-                self.runtime,
-            )
-        else:
-            next_id = _read_i64(scratch.argmax_id, self.runtime)
-            next_value = _read_f32(scratch.argmax_value, self.runtime)
+        next_id = _read_i64(scratch.argmax_id, self.runtime)
+        next_value = _read_f32(scratch.argmax_value, self.runtime)
         return LagunaEagerTokenResult(
             position=position,
             input_token_id=input_token_id,
@@ -3761,24 +3696,6 @@ def _read_f32_rows(
         HipMemcpyKind.DEVICE_TO_HOST,
     )
     return tuple(float(value) for value in host)
-
-
-def _read_argmax_pair(
-    buffer: DeviceBuffer,
-    runtime: HipRuntime,
-) -> tuple[int, float]:
-    if buffer.nbytes != _ARGMAX_PAIR_NBYTES:
-        raise ValueError("Laguna argmax pair readback requires exactly 12 bytes")
-    host = (ctypes.c_ubyte * _ARGMAX_PAIR_NBYTES)()
-    runtime.memcpy(
-        ctypes.addressof(host),
-        buffer.ptr,
-        _ARGMAX_PAIR_NBYTES,
-        HipMemcpyKind.DEVICE_TO_HOST,
-    )
-    token_id = ctypes.c_int64.from_buffer(host, 0)
-    value = ctypes.c_float.from_buffer(host, _I64_NBYTES)
-    return int(token_id.value), float(value.value)
 
 
 def _read_i64(buffer: DeviceBuffer, runtime: HipRuntime) -> int:
