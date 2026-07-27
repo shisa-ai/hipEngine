@@ -184624,3 +184624,25 @@ Vulkan local sizes verbatim will close the measured gap.
   command remains blocked by the absent external
   `/home/lhl/amd-gpu-tuning/reference/atlas`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-candidate.json`.
+
+## 2026-07-27 — Repair packed attention gate indexing
+
+- The first clean candidate trace proved the structural half of the gate:
+  pp512 output-unpack dispatches fell **144 -> 0** and total dispatches fell
+  **2,417 -> 2,273**. Its packed gate, however, grew
+  **7.537 -> 11.077 ms** versus the old generic gate and consumed almost all
+  **3.703 ms** of removed transpose work; the combined boundary improved only
+  **11.240 -> 11.077 ms**.
+- The bounded repair maps one local128 block directly to one `(row, head)` and
+  one thread to one of the fixed 128 head elements. This removes all runtime
+  divisions and halves workgroup size without changing an address or
+  arithmetic boundary. The focused mixed-layout fixture remains BF16-bit
+  exact. Same-shape cached tracing improves the packed gate
+  **0.262491 -> 0.178974 ms**, now faster than the generic
+  **0.212719 ms**, while VGPR falls **16 -> 8** and LDS/scratch stay zero.
+- The trace summarizer's intentional RED rejected the no-unpack composite.
+  It now accepts both exact `widen + pack + QK + softmax + PV + unpack` and
+  packed-output `widen + pack + QK + softmax + PV` sequences while leaving
+  the later packed gate in `norm_rope_gate`. Its focused suite passes
+  **31 tests**. Commit this repair before repeating the clean production
+  trace; no aggregate performance claim is made from the profiled wall.

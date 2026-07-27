@@ -273,6 +273,48 @@ def test_lpf5_trace_attributes_packed_query_wave_softmax_composite() -> None:
     assert summary["attention_duration_ns"] == 27
 
 
+def test_lpf5_trace_attributes_packed_output_blas_attention_composite() -> None:
+    rows = [
+        _row(0, "gguf_q4_k_embedding_bf16_out_kernel", 0, 10, grid_y=128),
+        _row(
+            1,
+            "void laguna_dense_initial_cache_bf16_to_f32_kernel<false>",
+            10,
+            2,
+        ),
+        _row(
+            2,
+            "void laguna_dense_initial_query_head_transpose_f32_kernel<true>",
+            12,
+            3,
+        ),
+        _row(3, "Cijk_qk", 15, 4),
+        _row(
+            4,
+            "laguna_dense_initial_causal_softmax_wave_rows_f32_kernel",
+            19,
+            5,
+        ),
+        _row(5, "Cijk_pv", 24, 6),
+        _row(
+            6,
+            "laguna_softplus_head_gate_packed_tiles_kernel<_Float16, true>",
+            30,
+            7,
+        ),
+        _row(7, "argmax_stage2_kernel", 37, 1),
+    ]
+
+    summary = _summarize_segment(
+        {"length": 128, "chunks": 1, "rows": rows}
+    )
+    assert summary["families"]["swa_attention"]["calls"] == 5
+    assert summary["families"]["swa_attention"]["duration_ns"] == 20
+    assert summary["families"]["norm_rope_gate"]["calls"] == 1
+    assert summary["families"]["norm_rope_gate"]["duration_ns"] == 7
+    assert summary["attention_duration_ns"] == 20
+
+
 @pytest.mark.parametrize(
     ("kernel_name", "family"),
     [

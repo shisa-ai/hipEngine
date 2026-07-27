@@ -28,13 +28,14 @@
   },
   "leaf_trace": {
     "shape": "rows384, heads72, head_dim128, packed rows128..383",
-    "generic_gate_ms": 0.257403,
-    "packed_gate_ms": 0.262491,
-    "packed_minus_generic_ms": 0.005088,
-    "packed_workgroup_size": 256,
-    "packed_vgpr": 16,
+    "generic_gate_ms": 0.212719,
+    "packed_gate_ms": 0.178974,
+    "packed_minus_generic_ms": -0.033745,
+    "packed_workgroup_size": 128,
+    "packed_vgpr": 8,
     "packed_static_lds_bytes": 0,
-    "packed_scratch_bytes": 0
+    "packed_scratch_bytes": 0,
+    "repair": "Map one block directly to one (row, head) and one thread to one head element, removing every runtime division from the hot loop. The previous 2D row-block kernel measured 0.262491 ms with VGPR16."
   },
   "correctness": {
     "mixed_layout_vs_generic_bf16_bits_equal": true,
@@ -58,6 +59,10 @@
     {
       "path": "/tmp/laguna-packed-output-gate-2d-trace-20260727a/packed-gate-2d_kernel_trace.csv",
       "sha256": "6be56a111c7e06c4054519974bd090f38fd368bc87d963870eeae4afde16b592"
+    },
+    {
+      "path": "/tmp/laguna-packed-gate-headrow-trace/packed-gate-headrow_kernel_trace.csv",
+      "sha256": "e729710667fa2821fd3aa0d3c2a71505117c59ba3150e32b83d98c06e8780536"
     }
   ],
   "decision": "Commit as a gfx1151 default candidate so the repository clean-state profiler can attribute the complete pp512 sub-window. Retain only if the clean trace confirms all 144 output-transpose launches are removed and the packed gate does not repay that saved time; otherwise remove the route."
