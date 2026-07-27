@@ -8,7 +8,6 @@ owned scratch, greedy top-1, and caller-owned DFlash hidden taps.
 from __future__ import annotations
 
 import ctypes
-import math
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -1618,7 +1617,6 @@ class LagunaGGUFResidentSession:
         q6_wmma_prefetch_activation: bool | None = None,
         q6_precomputed_activation_sums: bool | None = None,
         q4_precomputed_activation_sums: bool | None = None,
-        prefill_route_tail_mass_threshold: float | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
@@ -1892,10 +1890,6 @@ class LagunaGGUFResidentSession:
             )
             if q4_precomputed_activation_sums is None
             else q4_precomputed_activation_sums
-        )
-        self.prefill_route_tail_mass_threshold: float | None = None
-        self.set_prefill_route_tail_mass_threshold(
-            prefill_route_tail_mass_threshold
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
@@ -2175,22 +2169,6 @@ class LagunaGGUFResidentSession:
         """Select packed D8 K16 sums or consumer-side sum reconstruction."""
 
         self.q4_precomputed_activation_sums = bool(enabled)
-
-    def set_prefill_route_tail_mass_threshold(
-        self,
-        threshold: float | None,
-    ) -> None:
-        """Select the diagnostic post-router tail-mass guard for row prefill."""
-
-        if threshold is None:
-            self.prefill_route_tail_mass_threshold = None
-            return
-        parsed = float(threshold)
-        if not math.isfinite(parsed) or parsed <= 0.0 or parsed >= 1.0:
-            raise ValueError(
-                "prefill route tail-mass threshold must be within (0, 1)"
-            )
-        self.prefill_route_tail_mass_threshold = parsed
 
     def set_moe_shared_after_router(self, enabled: bool) -> None:
         """Move concurrent shared work behind the exact router prefix."""
@@ -3596,9 +3574,6 @@ class LagunaGGUFResidentSession:
             selected_down_mode=self.selected_down_mode,
             selected_gate_up_mode=self.selected_gate_up_mode,
             router_logits_mode=self.router_logits_mode,
-            route_tail_mass_threshold=(
-                self.prefill_route_tail_mass_threshold
-            ),
             dense_q4_prefill_mode=self.dense_q4_prefill_mode,
             group_compact_mode=self.group_compact_mode,
             fuse_selected_silu_pack=self.fuse_selected_silu_pack,

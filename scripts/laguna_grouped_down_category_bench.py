@@ -65,8 +65,6 @@ class CategoryComparison:
     screen_candidate_variant: str | None = None
     require_shape_screen: bool = True
     require_performance_gate: bool = True
-    required_chunk_size: int = 128
-    prompt_token_target: int = 0
 
 
 @dataclass(frozen=True)
@@ -81,7 +79,6 @@ class PrefillLaneConfiguration:
     f16_projection_mode: str = "retained"
     dense_q4_prefill_mode: str = "retained"
     attention_hipblaslt: bool = False
-    route_tail_mass_threshold: float | None = None
 
 
 GROUPED_DOWN_COMPARISON = CategoryComparison(
@@ -203,21 +200,6 @@ ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON = CategoryComparison(
     require_shape_screen=False,
     require_performance_gate=False,
 )
-ROUTE_TAIL_MASS_ABSOLUTE_COMPARISON = CategoryComparison(
-    name="route_tail_mass_absolute",
-    modes=("all_exact", "route_tail_mass_candidate"),
-    aggregate_key="route_tail_mass_candidate_vs_all_exact",
-    screen_kind="not_applicable",
-    screen_status="not_applicable",
-    screen_decision_key="not_applicable",
-    require_positive_wall=True,
-    execution_mode="cumulative_prefill",
-    require_exact_free_running=False,
-    screen_requires_model=False,
-    require_shape_screen=False,
-    required_chunk_size=512,
-    prompt_token_target=512,
-)
 _GLOBAL_PREFILL_VARIANTS = {
     "global_exact": "global_context_rows_spans",
     "global_qrow2_online": "global_context_rows_qrow2_online_spans",
@@ -272,18 +254,6 @@ _PREFILL_LANE_CONFIGURATIONS = {
         dense_q4_prefill_mode="wmma_pack8",
         attention_hipblaslt=True,
     ),
-    "route_tail_mass_candidate": PrefillLaneConfiguration(
-        f16_prefill_mode="wmma_comp_swa",
-        global_prefill_variant="global_context_rows_qrow4_m128_online_spans",
-        swa_prefill_variant="swa_context_rows_qrow4_m128_online_spans",
-        selected_down_mode="mmq64x64_d4_f32_q6_wavecols_direct_q4",
-        selected_gate_up_mode=(
-            "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
-        ),
-        f16_projection_mode="hipblaslt_range_direct",
-        dense_q4_prefill_mode="wmma_pack8",
-        route_tail_mass_threshold=0.15,
-    ),
 }
 _COMPARISONS = {
     comparison.name: comparison
@@ -298,7 +268,6 @@ _COMPARISONS = {
         PREFILL_350_COMPARISON,
         PRODUCTION_ABSOLUTE_COMPARISON,
         ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
-        ROUTE_TAIL_MASS_ABSOLUTE_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -331,7 +300,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--chunk-size", type=int, default=128)
-    parser.add_argument("--prompt-token-target", type=int, default=0)
     parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
@@ -360,40 +328,6 @@ def _mode_order(
         if (int(prompt_index) + int(repetition)) % 2 == 0
         else tuple(reversed(modes))
     )
-
-
-def _extend_prompt_streams(
-    prompts: Sequence[Mapping[str, Any]],
-    target_tokens: int,
-) -> list[dict[str, Any]]:
-    """Cycle canonical token streams from each prompt to one exact row count."""
-
-    target = int(target_tokens)
-    if target < 0:
-        raise ValueError("prompt token target must be nonnegative")
-    rows = [dict(prompt) for prompt in prompts]
-    if target == 0:
-        return rows
-    streams = [tuple(int(token) for token in prompt["token_ids"]) for prompt in rows]
-    if not streams or any(not stream for stream in streams):
-        raise ValueError("prompt extension requires nonempty canonical token streams")
-    for prompt_index, row in enumerate(rows):
-        extended: list[int] = []
-        source_index = prompt_index
-        while len(extended) < target:
-            extended.extend(streams[source_index])
-            source_index = (source_index + 1) % len(streams)
-        token_ids = tuple(extended[:target])
-        row["token_ids"] = token_ids
-        row["token_ids_sha256"] = _sha256_bytes(
-            json.dumps(
-                token_ids,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        )
-        row["prompt_tokens"] = len(token_ids)
-    return rows
 
 
 @contextmanager
@@ -460,10 +394,6 @@ def _session_for_mode(
         session.set_f16_prefill_mode(lane.f16_projection_mode)
         session.set_dense_q4_prefill_mode(lane.dense_q4_prefill_mode)
         session.set_prefill_attention_hipblaslt(lane.attention_hipblaslt)
-        if lane.route_tail_mass_threshold is not None:
-            session.set_prefill_route_tail_mass_threshold(
-                lane.route_tail_mass_threshold
-            )
         return session
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
@@ -510,10 +440,6 @@ def _oracle_for_candidate(
             session.set_prefill_attention_hipblaslt(
                 lane.attention_hipblaslt
             )
-            if lane.route_tail_mass_threshold is not None:
-                session.set_prefill_route_tail_mass_threshold(
-                    lane.route_tail_mass_threshold
-                )
 
         with _f16_prefill_mode(lane.f16_prefill_mode):
             return _oracle_gate(
@@ -1046,16 +972,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(
             f"retained {comparison.name} gate requires at least three repetitions"
         )
-    if args.chunk_size != comparison.required_chunk_size:
-        raise ValueError(
-            f"retained {comparison.name} gate requires chunk size "
-            f"{comparison.required_chunk_size}"
-        )
-    if args.prompt_token_target != comparison.prompt_token_target:
-        raise ValueError(
-            f"retained {comparison.name} gate requires prompt token target "
-            f"{comparison.prompt_token_target}"
-        )
+    if args.chunk_size != 128:
+        raise ValueError(f"retained {comparison.name} gate requires chunk size 128")
     if args.teacher_forced_tokens != max(RETAINED_HORIZONS):
         raise ValueError(
             f"retained {comparison.name} gate requires 32 teacher-forced tokens"
@@ -1099,7 +1017,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     reader = GGUFReader(args.model)
     tokenizer = LagunaGGUFTokenizer.from_gguf_info(reader.info)
     prompts = _load_prompts(args.prompts, tokenizer)
-    prompts = _extend_prompt_streams(prompts, args.prompt_token_target)
 
     runtime = get_hip_runtime()
     gpu_free_before, gpu_total = runtime.mem_get_info()
@@ -1253,12 +1170,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "comparison": comparison.name,
             "modes": list(comparison.modes),
             "chunk_size": args.chunk_size,
-            "prompt_token_target": args.prompt_token_target,
-            "prompt_extension_policy": (
-                "cycle all canonical token streams in suite order from each prompt"
-                if args.prompt_token_target
-                else None
-            ),
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmup_output_tokens_per_mode": args.warmup_output_tokens,
@@ -1302,9 +1213,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "attention_hipblaslt": _PREFILL_LANE_CONFIGURATIONS[
                             mode
                         ].attention_hipblaslt,
-                        "route_tail_mass_threshold": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].route_tail_mass_threshold,
                     }
                     for mode in comparison.modes
                 }
