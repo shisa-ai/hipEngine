@@ -186,6 +186,15 @@ topline therefore remains unchanged while gfx1151 retains the exact
 microsecond win and the generic `KVLiveSpans` fallback.
 [`dense contiguous-cache production`](results/2026-07-28-gfx1151-laguna-lc4-dense-contiguous-cache.json).
 
+LC-5 screens matrix chunks above M2,048 while preserving global-attention
+M2,048 and SWA M128. M8,192 is directionally dominated and costs **5.268 GB**
+extra scratch. M4,096 improves 16K/64K **1.457%/0.459%**, but mandatory 128K
+regresses **149.684 -> 147.939 tok/s (-1.166%)**, loses **10.327 seconds**,
+and adds **1.756 GB**. Both wider widths are rejected; the package default and
+canonical topline remain M2,048/149.684 tok/s. Explicit diagnostics remain
+available for LC-6 capacity-bucket work.
+[`wide matrix rejection`](results/2026-07-28-gfx1151-laguna-lc5-wide-matrix-rejected.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

@@ -185485,3 +185485,38 @@ Vulkan local sizes verbatim will close the measured gap.
   The final retained affected bundle passes **61/61**. JSON, Python
   compilation, and `git diff --check` pass. LC-5 matrix chunks above M2048
   are next.
+
+## 2026-07-28 — Reject LC-5 matrix chunks above M2048
+
+- RED raises the explicit matrix-policy contract through M8,192 and checks
+  overflow rejection, exact rows+MoE scratch accounting, and one 8,192-row
+  KV transaction sliced into a legal global M2,048 view. GREEN changes only
+  the constructor/profile diagnostic ceiling; gfx1151 remains M2,048 by
+  package capability.
+- Exact bounded rows+MoE scratch is **1,756,061,728 / 3,512,115,232 /
+  7,024,222,240 bytes** at M2,048/M4,096/M8,192. Measured 128K-capacity
+  resident bytes rise **87,086,514,132 -> 88,842,567,636 -> 92,354,674,644**,
+  matching **+1,756,053,504 / +5,268,160,512 bytes** above retained after
+  fixed-owner effects.
+- Cheap short screens are exact. M4,096 measures
+  **626.953/670.490/617.797 tok/s** at 512/1K/4K; M8,192 measures
+  **627.432/672.776/619.169**. Raw SHA-256:
+  `b3cd5d822880c16aa404f9bfc9f549d7e99eff4a36929ec6ee296d5478f7cb9f` /
+  `921df10549bca4af9e2c34de586be363534d1d8269c27cdec0d4633e0e2358bb`.
+- Long-capacity M8,192 is rejected before 128K: 4K/16K/64K is
+  **609.368/479.032/245.564 tok/s**, or
+  **-0.397%/+1.325%/-0.394%** versus LC-3. It loses to M4,096 at every
+  directional shape while spending another 3.512 GB scratch. Raw SHA-256:
+  `c07f5bce598a0262ce764268ad34e7db0e90cd7e9b1d2a0650d4c2a1914121f7`.
+- M4,096 advances with exact **611.937/479.656/247.668 tok/s** at
+  4K/16K/64K, **+0.023%/+1.457%/+0.459%** versus LC-3. Mandatory 128K then
+  rejects it: **149.684 -> 147.939 tok/s (-1.166%)** and
+  **875.657 -> 885.984 seconds**, losing **10.327 seconds** while carrying
+  1.756 GB extra scratch. Token 22746, final position 131071, finite output,
+  and full lifecycle recovery pass. Directional/128K SHA-256:
+  `634970d51b9edb7ed8440e3fa98fe592e2335fe8c9e2fc24e218c6ee61ebcfac` /
+  `5b89ff426f59445b9da77b8863d0cfefad0c9c0ffbaea4d13172f4fc8bc5938a`.
+- Production remains `LAGUNA_PREFILL_MATRIX_ROWS=2048`; explicit M4,096 and
+  M8,192 survive only for LC-6 capacity-bucket/lazy-scratch diagnostics.
+  The final affected bundle passes **61/61**. JSON, Python compilation, and
+  `git diff --check` pass.

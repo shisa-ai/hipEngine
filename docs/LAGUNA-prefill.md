@@ -4200,14 +4200,33 @@ Evidence:
 
 #### LC-5 — matrix chunks above 2,048
 
-- Lift the current 2,048-row policy only after overflow, allocation, scratch,
-  routing-capacity, and transaction-state RED tests exist.
-- Screen matrix rows **4,096/8,192** while independently retaining the best
-  LC-3 attention query tile. Current M2,048 scratch is about 1.756 GB; expected
-  linear growth fits the available 128K session headroom but must be measured.
-- Larger matrix chunks reduce repeated whole-model/weight passes and target
-  the remaining linear component. They cannot substitute for LC-1 because
-  global QK/PV remains quadratic.
+- **Closed and rejected for production.** RED/Green lifts only the explicit
+  diagnostic ceiling to M8,192, accounts exact scratch, and proves one
+  8,192-row transaction can retain global attention M2,048 and SWA M128.
+  gfx1151's package default remains M2,048.
+- Bounded rows+MoE scratch is **1.756/3.512/7.024 GB** at
+  M2,048/M4,096/M8,192. Thus M4,096 adds **1.756 GB** and M8,192 adds
+  **5.268 GB** to every session before timing work.
+- M8,192 is rejected before 128K. Its long-capacity 4K/16K/64K result is
+  **609.368/479.032/245.564 tok/s**, or
+  **-0.397%/+1.325%/-0.394%** versus retained. It is weaker than M4,096 at
+  every directional shape while spending another **3.512 GB** scratch.
+- M4,096 is exact and directionally positive at
+  **611.937/479.656/247.668 tok/s** for 4K/16K/64K
+  (**+0.023%/+1.457%/+0.459%**). Mandatory 128K nevertheless falls
+  **149.684 -> 147.939 tok/s (-1.166%)** and
+  **875.657 -> 885.984 seconds**, losing **10.327 seconds** while consuming
+  the extra 1.756 GB. Token 22746, final position 131071, finite output, and
+  lifecycle pass, so this is a performance/capacity rejection rather than a
+  correctness failure.
+- The result falsifies repeated whole-model weight streaming as the remaining
+  dominant LC bottleneck at M2,048. Wider routed batches touch more experts
+  and trade fewer transactions for more saturated per-transaction work;
+  global attention's quadratic component is unchanged. LC-6 capacity/lazy-KV
+  and secondary bandwidth work are next.
+
+Evidence:
+[`wide matrix rejection`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc5-wide-matrix-rejected.json).
 
 #### LC-6 — capacity buckets, lazy KV, and secondary bandwidth work
 

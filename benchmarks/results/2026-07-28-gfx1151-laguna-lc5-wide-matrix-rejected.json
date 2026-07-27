@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_lc5_wide_matrix_screen",
+  "status": "rejected_production_default_retained",
+  "pass": false,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "retained": {
+    "matrix_chunk_rows": 2048,
+    "global_attention_chunk_rows": 2048,
+    "swa_attention_chunk_rows": 128,
+    "bounded_rows_plus_moe_scratch_bytes": 1756061728,
+    "long_context_tokens_per_second": {
+      "4096": 611.7945091512,
+      "16384": 472.7660847475,
+      "65536": 246.5365675258,
+      "131072": 149.6841315391
+    },
+    "mandatory_128k_seconds": 875.6572834559
+  },
+  "m4096": {
+    "matrix_transactions": {
+      "4096": 1,
+      "16384": 4,
+      "65536": 16,
+      "131072": 32
+    },
+    "bounded_rows_plus_moe_scratch_bytes": 3512115232,
+    "incremental_scratch_bytes": 1756053504,
+    "short_gate": {
+      "context_capacity": 4096,
+      "tokens_per_second": {
+        "512": 626.9526336775,
+        "1024": 670.4898938855,
+        "4096": 617.7970375478
+      },
+      "next_token_ids": {
+        "512": 2930,
+        "1024": 95,
+        "4096": 7772
+      },
+      "raw_sha256": "b3cd5d822880c16aa404f9bfc9f549d7e99eff4a36929ec6ee296d5478f7cb9f"
+    },
+    "directional_gate": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 4096,16384,65536 --chunk-size 4096 --attention-rows 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc5-m4096-4k-16k-64k.json",
+      "results": [
+        {
+          "length": 4096,
+          "tokens_per_second": 611.936670355,
+          "change_vs_retained_pct": 0.023236757,
+          "next_token_id": 7772
+        },
+        {
+          "length": 16384,
+          "tokens_per_second": 479.655947107,
+          "change_vs_retained_pct": 1.457351232,
+          "next_token_id": 81
+        },
+        {
+          "length": 65536,
+          "tokens_per_second": 247.6682989624,
+          "change_vs_retained_pct": 0.459052159,
+          "next_token_id": 69407
+        }
+      ],
+      "raw_sha256": "634970d51b9edb7ed8440e3fa98fe592e2335fe8c9e2fc24e218c6ee61ebcfac"
+    },
+    "mandatory_128k_gate": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 131072 --chunk-size 4096 --attention-rows 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc5-m4096-128k.json",
+      "seconds": 885.9843271041,
+      "seconds_delta": 10.3270436482,
+      "tokens_per_second": 147.9394115564,
+      "change_vs_retained_pct": -1.165601166,
+      "next_token_id": 22746,
+      "final_position": 131071,
+      "lifecycle_recovered": true,
+      "raw_sha256": "5b89ff426f59445b9da77b8863d0cfefad0c9c0ffbaea4d13172f4fc8bc5938a"
+    },
+    "decision": "reject: mandatory 128K regression plus 1.756 GB incremental scratch"
+  },
+  "m8192": {
+    "matrix_transactions": {
+      "4096": 1,
+      "16384": 2,
+      "65536": 8,
+      "131072": 16
+    },
+    "bounded_rows_plus_moe_scratch_bytes": 7024222240,
+    "incremental_scratch_bytes": 5268160512,
+    "short_gate": {
+      "context_capacity": 8192,
+      "tokens_per_second": {
+        "512": 627.4317952389,
+        "1024": 672.7763723038,
+        "4096": 619.1689369605
+      },
+      "next_token_ids": {
+        "512": 2930,
+        "1024": 95,
+        "4096": 7772
+      },
+      "raw_sha256": "921df10549bca4af9e2c34de586be363534d1d8269c27cdec0d4633e0e2358bb"
+    },
+    "directional_gate": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 4096,16384,65536 --chunk-size 8192 --attention-rows 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc5-m8192-4k-16k-64k.json",
+      "results": [
+        {
+          "length": 4096,
+          "tokens_per_second": 609.3677462737,
+          "change_vs_retained_pct": -0.396663069,
+          "next_token_id": 7772
+        },
+        {
+          "length": 16384,
+          "tokens_per_second": 479.0323907457,
+          "change_vs_retained_pct": 1.325455907,
+          "next_token_id": 81
+        },
+        {
+          "length": 65536,
+          "tokens_per_second": 245.5640685819,
+          "change_vs_retained_pct": -0.394464381,
+          "next_token_id": 69407
+        }
+      ],
+      "raw_sha256": "c07f5bce598a0262ce764268ad34e7db0e90cd7e9b1d2a0650d4c2a1914121f7"
+    },
+    "mandatory_128k_gate": {
+      "run": false,
+      "reason": "M8192 was already weaker than M4096 at every long-capacity directional shape, regressed 4K/64K versus retained, and costs 3.512 GB more scratch than M4096"
+    },
+    "decision": "reject before 128K: dominated by M4096 and 5.268 GB above retained scratch"
+  },
+  "correctness": {
+    "all_measured_next_tokens_match": true,
+    "all_measured_final_positions_exact": true,
+    "all_measured_lifecycles_recovered": true,
+    "math_changed": false
+  },
+  "decision": {
+    "production_promoted": false,
+    "retained_matrix_rows": 2048,
+    "explicit_diagnostic_max_rows": 8192,
+    "reason": "M4096 fails the mandatory 128K performance/capacity gate; M8192 is directionally dominated and more expensive",
+    "next": "LC-6: capacity buckets, lazy KV growth, and remaining bandwidth/launch overheads."
+  },
+  "repo": {
+    "base_revision": "a87027840d310cb7736d2ab097469791dcf02d4a",
+    "candidate_worktree_scoped_dirty": true
+  }
+}
