@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_redline_gguf_graph_spike",
+  "date": "2026-07-28",
+  "status": "retained_experimental_integration_default_blocked",
+  "performance_claim": true,
+  "claim_scope": "Two-process-per-transport ABBA diagnostic for one repeated-token Qwen3.6 GGUF p512/d128 c=1 graph workload on W7900; not a package-default or broad model-throughput claim.",
+  "decision": {
+    "retain_optional_adapter": true,
+    "enable_by_default": false,
+    "vendor_redline": false,
+    "use_process_isolation_as_runtime_fix": false,
+    "seek_upstream_lifecycle_fix": true,
+    "reason": "The production-sized graph is bit-exact and faster with proven retained PM4, but the separate long-lived multi-family matrix still reproduces an address-zero GPU page fault. Natural prompts, 4K context, concurrency, and post-fix lifecycle gates remain absent."
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "gfx_arch": "gfx1100",
+    "compute_units": 96,
+    "visible_device": 0,
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "llvm": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "hipcc_version_file_sha256": "5858bddec984a64e8ff88a08651d87372a916e4c8a9b6ef2b9ebbfb3bbb2c50f"
+  },
+  "source": {
+    "hipengine_measurement_commit": "3cbe23bfcb62c960bb4ad2d6746b5e15f27bbb01",
+    "hipengine_measurement_dirty": false,
+    "hipengine_persistent_soak_commit": "24b23b1e627497a1fb413c27e4ee5db1c6fd2966",
+    "hipengine_persistent_soak_dirty": false,
+    "redline_commit": "33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e",
+    "redline_dirty": false,
+    "redline_python_dso_sha256": "970a270aa059e726b4941f596557f39a50741cf0c63ec40c4003091cdfb6dd25",
+    "redline_python_module_same_backing_file": true,
+    "redline_build_workaround": "No source edit: a temporary ld.mold wrapper execs the exact restored TheRock ld.lld because upstream build.rs unconditionally requests mold and mold is absent.",
+    "redline_build_command": "PATH=<temporary-ld.mold-wrapper>:$ROCM_ROOT/bin:$ROCM_ROOT/lib/llvm/bin:$PATH ROCM_PATH=$ROCM_ROOT HIP_PATH=$ROCM_ROOT PYO3_PYTHON=/home/lhl/mambaforge/envs/therock/bin/python CARGO_TARGET_DIR=/tmp/redline-hipgraph-python-33683f3 cargo build --release -p redline-hipgraph --features python",
+    "redline_export_proof": [
+      "PyInit_redline_hipgraph",
+      "hipStreamBeginCapture",
+      "hipGraphLaunch"
+    ],
+    "runner_wrapper_measurement_path": "/tmp/run_redline_gguf_bench.py",
+    "runner_wrapper_retained_path": "scripts/qwen35_gguf_redline_bench.py",
+    "runner_wrapper_sha256": "217c7f515ee0dfac2f197c8f9847170bbf1b107a1b201397394798d17e584465"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 22663387424,
+    "sampled_fingerprint_algorithm": "sha256-sampled-v1",
+    "sampled_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "order": [
+      "native_A",
+      "redline_A",
+      "redline_B",
+      "native_B"
+    ],
+    "processes_per_transport": 2,
+    "prompt": "512 repetitions of token id 9707",
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "graph_steps_per_replay": 1,
+    "prefill": "forced bulk with WMMA enabled",
+    "decode": "GGUF GEMV decode graph",
+    "build": "cache-only with precomputed compiler version",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0; ROCR_VISIBLE_DEVICES=0",
+    "common_environment": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100",
+    "native_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-redline-hipcc-version-20260728.txt --require-cached-build --use-wmma-prefill --use-gemv-decode --json /tmp/hipengine-redline-graph-gate-20260728/native-512-128/result.json",
+    "redline_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REDLINE_HIPGRAPH_LIBRARY=/tmp/redline-hipgraph-python-33683f3/release/libredline_hipgraph.so HIPENGINE_REDLINE_HIPGRAPH_MODULE=/tmp/redline-hipgraph-python-33683f3/release/libredline_hipgraph.so HIPENGINE_REDLINE_HIPGRAPH_SHA256=970a270aa059e726b4941f596557f39a50741cf0c63ec40c4003091cdfb6dd25 LD_PRELOAD=/tmp/redline-hipgraph-python-33683f3/release/libredline_hipgraph.so /home/lhl/mambaforge/envs/therock/bin/python /tmp/run_redline_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-redline-hipcc-version-20260728.txt --require-cached-build --use-wmma-prefill --use-gemv-decode --json /tmp/hipengine-redline-graph-gate-20260728/redline-512-128/result.json",
+    "persistent_redline_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REDLINE_HIPGRAPH_LIBRARY=/tmp/redline-hipgraph-python-33683f3/release/libredline_hipgraph.so HIPENGINE_REDLINE_HIPGRAPH_MODULE=/tmp/redline-hipgraph-python-33683f3/release/libredline_hipgraph.so HIPENGINE_REDLINE_HIPGRAPH_SHA256=970a270aa059e726b4941f596557f39a50741cf0c63ec40c4003091cdfb6dd25 LD_PRELOAD=/tmp/redline-hipgraph-python-33683f3/release/libredline_hipgraph.so /home/lhl/mambaforge/envs/therock/bin/python /tmp/run_redline_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 4 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-redline-hipcc-version-20260728.txt --require-cached-build --use-wmma-prefill --use-gemv-decode --json /tmp/hipengine-redline-graph-gate-20260728/redline-persistent4-512-128/result.json",
+    "runner_note": "The measured /tmp wrapper and retained scripts/qwen35_gguf_redline_bench.py are byte-identical. The wrapper configures require_pm4=True, then removes LD_PRELOAD from the child environment while retaining the already-mapped interposer in Python. Substitute the retained path to reproduce from the committed tree."
+  },
+  "correctness": {
+    "status": "pass",
+    "processes": 4,
+    "generated_ids_per_process_including_prefill_and_warmup": 130,
+    "generated_token_ids_sha256": "4788b002c071649cd95b5d35b4b00a9c3e0ba8ad87b0022298b67c46c5375bef",
+    "final_token_id": 9707,
+    "final_selected_logit_fp32": 28.054584503173828,
+    "final_logits_sha256": "d833fdb652bbd3221d362c5b79046ffd6123e9069fcf21402ad399365d55f33a",
+    "final_logits_bit_identical": true,
+    "kl": 0.0,
+    "top1_agreement": 1.0,
+    "finite_final_logits_all": true,
+    "tracked_current_bytes_after_close_all": 0
+  },
+  "transport_proof": {
+    "captured_nodes_per_graph": 627,
+    "redline_graphs_instantiated": 2,
+    "redline_pm4_launches_across_abba": 256,
+    "redline_native_fallback_launches": 0,
+    "build_pm4_replay_ok_per_process": 1,
+    "topology_reconciliation": "native_nodes=627, redline_nodes=627, reconcile=true, invalid=false, topology_matches=true",
+    "selected_transport": "redline_pm4",
+    "strict_proof": "is_pm4 at instantiate and before/after every launch"
+  },
+  "performance": {
+    "native": {
+      "decode_tok_s_samples": [
+        92.7105887530446,
+        92.91374143628194
+      ],
+      "decode_tok_s_median": 92.81216509466327,
+      "decode_range_over_median_percent": 0.21888583574160778,
+      "prefill_tok_s_median": 2208.464239420675,
+      "graph_capture_seconds_median": 0.032055801479145885,
+      "capture_inclusive_post_load_seconds_median": 1.6757737355073914,
+      "steady_post_load_seconds_excluding_capture_median": 1.6437179340282455,
+      "load_seconds_median": 78.03542271046899
+    },
+    "redline": {
+      "decode_tok_s_samples": [
+        100.33485023519229,
+        100.37895194119962
+      ],
+      "decode_tok_s_median": 100.35690108819595,
+      "decode_range_over_median_percent": 0.04394486630128943,
+      "prefill_tok_s_median": 2201.4990799201587,
+      "graph_capture_seconds_median": 0.09144043945707381,
+      "capture_inclusive_post_load_seconds_median": 1.6312608030857518,
+      "steady_post_load_seconds_excluding_capture_median": 1.539820363628678,
+      "load_seconds_median": 78.27770578558557
+    },
+    "redline_vs_native": {
+      "decode_throughput_percent": 8.129037810762707,
+      "prefill_throughput_percent": -0.3153847536305765,
+      "graph_capture_time_ratio": 2.852539485451986,
+      "capture_inclusive_post_load_speedup_percent": 2.728744069460709,
+      "steady_post_load_speedup_percent": 6.7473825423848055
+    },
+    "interpretation": "Retained PM4 improves the repeated-token graph decode and both capture-inclusive and steady post-load walls. Capture itself is slower and prefill is within the 0.5% guard. Two processes per transport are sufficient for this narrow diagnostic, not a broad package-default claim."
+  },
+  "persistent_soak": {
+    "status": "pass_after_focused_harness_repair",
+    "graph_count": 1,
+    "measured_runs": 4,
+    "pm4_launches": 512,
+    "selected_transport_all": "redline_pm4",
+    "decode_tok_s_samples": [
+      100.45500719622551,
+      100.53050923622747,
+      100.55056280121843,
+      100.499359260246
+    ],
+    "decode_tok_s_median": 100.51493424823673,
+    "decode_range_over_median_percent": 0.0950660772029511,
+    "decode_stdev_over_median_percent": 0.041412870902958115,
+    "final_logits_sha256_all": "d833fdb652bbd3221d362c5b79046ffd6123e9069fcf21402ad399365d55f33a",
+    "tracked_current_bytes_after_close": 0,
+    "initial_mechanical_failure": "The benchmark forgot to reset Qwen35GGUFDecodeGraph.replayed_steps before reuse; run 2 stopped before launch. Commit 24b23b1e6 resets only that host counter alongside the existing device-position reset, after which the declared four-run gate passes.",
+    "raw_result_sha256": "21e88376719e6dc9ae66e5abd2c785d9bda48101e94272e8bc32ad2483fe8ed3"
+  },
+  "foundational_gate": {
+    "status": "pass",
+    "kernels": 2,
+    "replays": 4,
+    "fresh_input_each_replay": true,
+    "bf16_bit_exact": true,
+    "selected_transport": "redline_pm4",
+    "stdout_sha256": "eb4bd64f7014f7d42e9d358035802242741b974e8dfcd37c59f9c21ce29d781e",
+    "stderr_sha256": "c4f40019966aa934cbfb8b961e3c64a03ffd77e74fa7f9dfae41574196b5e3b5"
+  },
+  "raw_evidence": {
+    "root": "/tmp/hipengine-redline-graph-gate-20260728",
+    "native_A": {
+      "result_sha256": "4164f184864eda5105e075f498491dea3646cb2180ccef95423f6959ef835f82",
+      "stderr_sha256": "5ea7e11fba4f13cb5f1dd85cfd69530182467dc58e65a7fbaacd727966e0735e"
+    },
+    "redline_A": {
+      "result_sha256": "7e33eb81d192eada64c5caee0d3199ff5211ca1a4468a194ff7a70864185a106",
+      "stderr_sha256": "2f3f894f63b33bfbe6ee51464c0a81423681b2fbf8ff9e57a1ae835df2e347cf"
+    },
+    "redline_B": {
+      "result_sha256": "a204e98c467bccd62fc4aeedf766a1842b426e3a2cd164ac77a620e35f8681a4",
+      "stderr_sha256": "8a63d258a0febc4e61ca6d450763b05d7486a60c5cc9c89474ef94100e97a308"
+    },
+    "native_B": {
+      "result_sha256": "44db097903b199e926532f5d0a405b6eb93bd9811b32811aac7ba742a13765b0",
+      "stderr_sha256": "2f11bf14d22196b18d1c227ace6f73baff57bdc4e43a09e7a56a58d9fa97143d"
+    },
+    "persistent_soak_stdout_sha256": "21e88376719e6dc9ae66e5abd2c785d9bda48101e94272e8bc32ad2483fe8ed3",
+    "persistent_soak_stderr_sha256": "3edff4956aadccc4626495d15aeae199c2564093bcdbbe1e65deeee0a0b93435"
+  },
+  "known_blockers": [
+    "The separate one-process 240-row same-HSACO matrix still faults at address zero after 48 rows; family isolation is not a production fix.",
+    "Redline upstream can execute one native shadow launch before strict post-launch proof detects a replay-time PM4 fallback.",
+    "No 4K-context, natural-prompt/category, concurrency, cancellation, or server lifecycle gate has run.",
+    "The Python-enabled interposer must be removed from LD_PRELOAD in the child environment so non-Python subprocesses are not injected with unresolved Python symbols.",
+    "Upstream build.rs requires mold even when mold is unavailable; the local build used an explicit temporary linker wrapper without source modification."
+  ],
+  "related_micro_artifact": "benchmarks/results/2026-07-28-gfx1100-redline-transport-spike.json"
+}
