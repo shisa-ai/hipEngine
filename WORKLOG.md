@@ -184302,3 +184302,24 @@ Vulkan local sizes verbatim will close the measured gap.
   All four focused F16 tests and diff checks pass. Candidate evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json`.
   Clean selector-unset 512/1K/4K publication is next.
+
+## 2026-07-27 — Publish the row-qualified source-F16 schedule
+
+- Clean tracked revision `8acbb3764` ran the canonical selector-unset,
+  automatic-two-queue, matrix2048/attention128 512/1K/4K protocol. Medians
+  improve **643.141/573.717/466.913 ->
+  645.803/575.942/468.311 tok/s (+0.414%/+0.388%/+0.299%)**.
+- pp512 wall falls **796.093 -> 792.811 ms (-3.282 ms)**, consistent with
+  the **2.196-ms** direct library model and the loaded-model candidate A/B.
+  The clean 700 wall is 731.429 ms, leaving **61.383 ms**.
+- Every run preserves deterministic tokens **2930/95/7772**, exact final
+  positions, and complete allocation recovery: all **78,805,563,028**
+  tracked bytes return to zero. Model load **98.511 s** is excluded. The raw
+  publication SHA-256 is
+  `b9922edd3e325126d4c15f479806f4a8ae1b63a7aa50bb440fe1416769a6d680`.
+  Canonical M<=128 arithmetic and the complete category gate are unchanged;
+  the separate M512 all-exact result remains KL **0.00407713**, top-1 2930.
+- Published
+  `benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-production.json`.
+  The next step is a refreshed clean all-family trace, then another
+  multi-millisecond structural screen.
