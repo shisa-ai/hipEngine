@@ -1603,5 +1603,8 @@ should be boring.
   longer serve campaign bisection.
 - The clean publication trigger is satisfied at
   **643.554/573.066/466.290 tok/s**, improving all required lengths with
-  exact lifecycle. Keep the explicit mode through the immediately queued
-  refreshed trace; then collapse it as described above.
+  exact lifecycle. The refreshed trace trigger is also satisfied: selected
+  Q4 gate/up falls **337.395 -> 333.701 ms** and the P8 resource tuple is
+  confirmed. Keep the explicit old/new symbols only through the immediately
+  following compact-metadata-prefetch A/B; then collapse the winning >=512
+  shape policy as described above.

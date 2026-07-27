@@ -184095,3 +184095,32 @@ Vulkan local sizes verbatim will close the measured gap.
   category gate unchanged: max KL **0.049542582**, **316/320** top-1, every
   category at least **96.875%**. A fresh cached two-queue family trace is next
   before choosing the next physical-byte/cross-tile attack.
+
+## 2026-07-27 — Attribute Q4 raw-nibble P8 production
+
+- Clean production revision `467660ec3` ran the cached all-family
+  `rocprofv3 --kernel-trace` protocol with one warmup and one 512/1K/4K pass.
+  The intended P8 template executes at
+  local128/**VGPR96**/SGPR128/LDS3072B/scratch0; the sub-512 warmup correctly
+  retains the VGPR88 non-prefetch template.
+- At pp512, selected Q4 gate/up falls
+  **337.394761 -> 333.700774 ms (-1.0949%)** with **94** calls and unchanged
+  **2,417** total dispatches. Kernel sum falls
+  **1,127.876 -> 1,109.119 ms (-1.663%)**. The single profiled kernel span is
+  noisy at **852.825 -> 858.464 ms (+0.661%)** because the secondary-heavy
+  activation/reduce/residual family shifts **-15.312 ms**; the clean
+  three-repetition wall remains the production claim.
+- The refreshed family table is selected gate/up **333.701 ms**,
+  activation/reduce/residual **261.318 ms**, selected down **171.723 ms**,
+  source-F16 **125.815 ms**, dense/shared **92.082 ms**, attention
+  **68.012 ms**, and router **22.630 ms**. This keeps selected Q4 gate/up the
+  largest caller family.
+- Child/raw/summary SHA-256 values:
+  `970f4e93d6bc7f414b5289a05d65873f6be752d41884fe01d356dec5f594e0e9`,
+  `bc5c0bcf5e6de0fa5d196bd8ad8a4056cff12183d4800c1eb4ab8f1c871e5be8`,
+  and
+  `4ae4a387bd7d1be13aaca19be241f9015d8f014f005b58ef720fe14cf7a325b9`.
+- The next bounded exact screen extends the successful raw P8 payload
+  pipeline with only the next K32 `d`/scale/min metadata. It must stay below
+  the rejected complete decoded-record prefetch's register cost and beat P8
+  on the actual M512 leaf before any complete-model run.

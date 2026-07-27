@@ -107,11 +107,40 @@
     "complete_state_ab_improvement_percent": 0.5713563655,
     "complete_state_pair_wins": "7/7"
   },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-p8-production-rocprof-467660ec3 --output-file q4-p8-production -- env GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-p8-production-rocprof-467660ec3/child.json",
+    "pp512": {
+      "dispatches": 2417,
+      "kernel_sum_ms": 1109.11925,
+      "kernel_span_ms": 858.464339,
+      "selected_q4_gate_up_ms": 333.700774,
+      "previous_selected_q4_gate_up_ms": 337.394761,
+      "selected_q4_gate_up_change_percent": -1.094856063873495,
+      "selected_q4_q6_down_ms": 171.723482,
+      "source_f16_projection_ms": 125.814573,
+      "dense_shared_quant_projection_ms": 92.082015,
+      "attention_ms": 68.0115,
+      "router_ms": 22.630489,
+      "activation_reduce_residual_ms": 261.317667
+    },
+    "kernel": {
+      "template_tail": "true,true,true,8",
+      "workgroup": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes_per_thread": 0
+    },
+    "interpretation": "The intended caller family improves, while the single profiled kernel span regresses 0.661% because secondary overlapped work shifts by 15.312 ms. The three-repetition unprofiled wall remains the production claim.",
+    "child_sha256": "970f4e93d6bc7f414b5289a05d65873f6be752d41884fe01d356dec5f594e0e9",
+    "raw_trace_sha256": "bc5c0bcf5e6de0fa5d196bd8ad8a4056cff12183d4800c1eb4ab8f1c871e5be8",
+    "summary_sha256": "4ae4a387bd7d1be13aaca19be241f9015d8f014f005b58ef720fe14cf7a325b9"
+  },
   "gate": {
     "production_retained": true,
     "headline_512_tok_s": 643.5535247748338,
     "target_700_reached": false,
-    "next_action": "refresh the cached two-queue family trace and attack the largest caller-stream physical-byte or cross-tile limiter"
+    "next_action": "screen raw-payload P8 plus compact next-K32 d/scale/min metadata prefetch without carrying the rejected complete decoded record"
   },
   "source_runs": {
     "production_raw_sha256": "93a59456e3cb24e386fd94cf1008fe239798c9cca639bf50ebdb2b344e04cc14",
