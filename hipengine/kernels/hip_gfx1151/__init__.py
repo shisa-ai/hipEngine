@@ -88,6 +88,11 @@ LAGUNA_PREFILL_ATTENTION_HIPBLASLT = True
 # the qualified 48-layer leaf model 5.08% and the seven-pair pp512 median
 # 0.87%, while all-exact KL improves from 0.002214 to 0.002097.
 LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES = True
+# Write the three qualified M128 query tiles directly in head-major order from
+# the fused RMSNorm/RoPE producer. This removes 144 standalone query-transpose
+# launches at pp512; eleven complete-state pairs improve the median 0.532% and
+# every token/logit/hidden/KV hash remains exact.
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER = True
 # One wave32 owns one causal-score row, replacing the former 256-thread
 # block reduction and its LDS barriers. The qualified 48-layer attention leaf
 # improves 13.72%; paired pp512 improves 0.574% and all-exact KL falls from
@@ -431,6 +436,7 @@ __all__ = [
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
+    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
     "LAGUNA_PREFILL_CACHED_META",

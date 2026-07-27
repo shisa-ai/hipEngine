@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "status": "retained_pending_clean_trace_and_publication",
+  "kind": "hipengine_laguna_attention_packed_query_producer",
+  "created_at": "2026-07-27T15:34:44+09:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "mechanism": "For the three qualified initial dense M128 attention tiles beginning at rows 128, 256, and 384, the existing fused per-head RMSNorm plus RoPE producer writes query F32 directly in head-major tile order. The zero-workspace packed hipBLASLt route consumes that exact layout without a standalone query transpose. Row zero, partial, wrapped, explicitly evicted, verifier, decode, and unsupported routes retain the generic producer and established KVLiveSpans attention fallbacks.",
+  "full_model_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_attention_packed_output_gate_ab.py --comparison packed_query_producer --repetitions 11 --require-cached-build --output /tmp/laguna-attention-packed-query-producer-ab.json",
+  "full_model_pp512": {
+    "pairs": 11,
+    "candidate_wins": 7,
+    "production_independent_median_tok_s": 647.2100600714512,
+    "candidate_independent_median_tok_s": 650.6509552390294,
+    "independent_median_delta_percent": 0.5316504454826232,
+    "production_independent_median_wall_ms": 791.0878269467503,
+    "candidate_independent_median_wall_ms": 786.9042470119894,
+    "paired_median_wall_saved_ms": 1.5567520167678595,
+    "paired_mean_wall_saved_ms": 5.531987895003774,
+    "next_token": 2930,
+    "state_exact_pairs": 11
+  },
+  "correctness": {
+    "packed_tiles_match_generic_f32_bits": true,
+    "generic_rows_match_generic_f32_bits": true,
+    "key_output_matches_generic_f32_bits": true,
+    "full_logits_equal": true,
+    "next_logit_equal": true,
+    "final_hidden_equal": true,
+    "post_layer_hidden_equal": true,
+    "kv_equal": true,
+    "cursor_equal": true
+  },
+  "validation": {
+    "focused_gpu_and_dispatch_tests_pass": true,
+    "trace_parser_red_green_pass": true,
+    "py_compile_pass": true,
+    "diff_check_pass": true
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_by_missing_external_reference",
+    "detail": "/home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "raw_artifacts": [
+    {
+      "path": "/tmp/laguna-attention-packed-query-producer-ab.json",
+      "sha256": "4656ccc330f19ec71653af6f43a12cd4c55d68b28f6d8e2b5b59e0df42657ec9"
+    },
+    {
+      "path": "/tmp/laguna-attention-packed-query-producer-smoke.json",
+      "sha256": "37978f6337f6cea74d467fa84b206f2aed2443215d88d68b0965a47c4548263d"
+    }
+  ],
+  "decision": "Retain as the gfx1151 default candidate. The exact complete-state A/B gate is positive; commit the staged candidate to satisfy the clean-state profiler, then require the cached production trace to remove all 144 pp512 query-transpose launches and name the packed-query RMSNorm/RoPE producer with plausible resources before publication."
+}

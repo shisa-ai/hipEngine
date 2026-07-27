@@ -441,6 +441,7 @@ class LagunaAttentionHipblasLt:
         scale: float,
         stream: int = 0,
         kv_library=None,
+        query_is_packed: bool = False,
         unpack_output: bool = True,
     ) -> None:
         if self._closed:
@@ -453,6 +454,8 @@ class LagunaAttentionHipblasLt:
             head_dim=head_dim,
         ):
             raise ValueError("unsupported Laguna attention hipBLASLt shape")
+        if query_is_packed and not self.packed_queries:
+            raise ValueError("packed query input requires the packed-query route")
         q_heads = int(num_q_heads)
         context = int(start_position) + int(rows)
         q_group = q_heads // _KV_HEADS
@@ -472,20 +475,23 @@ class LagunaAttentionHipblasLt:
         )
         if self.packed_queries:
             assert self.head_major_f32 is not None
-            laguna_dense_initial_query_head_transpose_f32(
-                query_ptr,
-                self.head_major_f32.ptr,
-                rows,
-                q_heads,
-                head_dim,
-                to_head_major=True,
-                stream=stream,
-                library=kv_library,
-                runtime=self.runtime,
-            )
+            query_head_major_ptr = int(query_ptr)
+            if not query_is_packed:
+                query_head_major_ptr = self.head_major_f32.ptr
+                laguna_dense_initial_query_head_transpose_f32(
+                    query_ptr,
+                    query_head_major_ptr,
+                    rows,
+                    q_heads,
+                    head_dim,
+                    to_head_major=True,
+                    stream=stream,
+                    library=kv_library,
+                    runtime=self.runtime,
+                )
             problems.qk.launch(
                 self.key_f32.ptr,
-                self.head_major_f32.ptr,
+                query_head_major_ptr,
                 self.scores_f32.ptr,
                 stream=stream,
             )

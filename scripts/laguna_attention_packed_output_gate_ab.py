@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare production attention unpack with packed-output-aware gating."""
+"""Compare exact packed attention input/output boundary candidates."""
 
 from __future__ import annotations
 
@@ -27,9 +27,27 @@ from scripts.laguna_target_ar_bench import (
     _progress,
 )
 
-_MODES = {
-    "production_rollback": False,
-    "packed_output_gate_candidate": True,
+_COMPARISONS = {
+    "packed_output_gate": {
+        "production_rollback": {
+            "packed_output_gate": False,
+            "packed_query_producer": False,
+        },
+        "packed_output_gate_candidate": {
+            "packed_output_gate": True,
+            "packed_query_producer": False,
+        },
+    },
+    "packed_query_producer": {
+        "production_rollback": {
+            "packed_output_gate": True,
+            "packed_query_producer": False,
+        },
+        "packed_query_producer_candidate": {
+            "packed_output_gate": True,
+            "packed_query_producer": True,
+        },
+    },
 }
 _STATE_KEYS = (
     "next_token",
@@ -44,6 +62,11 @@ _STATE_KEYS = (
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--comparison",
+        choices=tuple(_COMPARISONS),
+        default="packed_output_gate",
+    )
     parser.add_argument("--repetitions", type=int, default=7)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--output", type=Path)
@@ -52,7 +75,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _child(
     owner: LagunaGGUFResidentSession,
-    packed_output_gate: bool,
+    settings: dict[str, bool],
 ) -> LagunaGGUFResidentSession:
     assert owner.weights is not None
     return LagunaGGUFResidentSession(
@@ -68,8 +91,13 @@ def _child(
         prefill_attention_chunk_size=128,
         prefill_attention_hipblaslt=True,
         prefill_attention_hipblaslt_packed_queries=True,
+        prefill_attention_hipblaslt_packed_query_producer=(
+            settings["packed_query_producer"]
+        ),
         prefill_attention_hipblaslt_wave_rows_softmax=True,
-        prefill_attention_hipblaslt_packed_output_gate=packed_output_gate,
+        prefill_attention_hipblaslt_packed_output_gate=(
+            settings["packed_output_gate"]
+        ),
     )
 
 
@@ -77,8 +105,9 @@ def _run(
     owner: LagunaGGUFResidentSession,
     mode: str,
     tokens: list[int],
+    settings: dict[str, bool],
 ) -> dict[str, float | int | str]:
-    child = _child(owner, _MODES[mode])
+    child = _child(owner, settings)
     try:
         started = time.perf_counter()
         result = child.prefill(tokens, use_bulk=True)
@@ -118,8 +147,9 @@ def main() -> int:
     prompts = _load_prompts(DEFAULT_PROMPTS, tokenizer)
     tokens = list(_profile_token_stream(prompts, 512)[0])
     runtime = get_hip_runtime()
-    samples = {mode: [] for mode in _MODES}
-    records = {mode: [] for mode in _MODES}
+    modes = _COMPARISONS[args.comparison]
+    samples = {mode: [] for mode in modes}
+    records = {mode: [] for mode in modes}
     owner = LagunaGGUFResidentSession(
         DEFAULT_MODEL,
         context_length=512,
@@ -136,18 +166,22 @@ def main() -> int:
         prefill_attention_chunk_size=128,
     )
     try:
-        for enabled in _MODES.values():
-            warm = _child(owner, enabled)
+        for settings in modes.values():
+            warm = _child(owner, settings)
             try:
                 warm.prefill(tokens[:128], use_bulk=True)
                 runtime.device_synchronize()
             finally:
                 warm.close()
         for repetition in range(args.repetitions):
-            modes = tuple(_MODES)
-            order = modes if repetition % 2 == 0 else tuple(reversed(modes))
+            mode_names = tuple(modes)
+            order = (
+                mode_names
+                if repetition % 2 == 0
+                else tuple(reversed(mode_names))
+            )
             for mode in order:
-                record = _run(owner, mode, tokens)
+                record = _run(owner, mode, tokens, modes[mode])
                 samples[mode].append(float(record["tok_s"]))
                 records[mode].append(record)
                 print(
@@ -164,21 +198,22 @@ def main() -> int:
             "samples_tok_s": values,
             "median_tok_s": statistics.median(values),
             "records": records[mode],
-            "packed_output_gate": _MODES[mode],
+            **modes[mode],
         }
         for mode, values in samples.items()
     }
-    rollback = float(result["production_rollback"]["median_tok_s"])
-    candidate = float(
-        result["packed_output_gate_candidate"]["median_tok_s"]
+    candidate_mode = next(
+        mode for mode in modes if mode != "production_rollback"
     )
+    rollback = float(result["production_rollback"]["median_tok_s"])
+    candidate = float(result[candidate_mode]["median_tok_s"])
     result["comparison"] = {
         "speedup": candidate / rollback,
         "delta_percent": (candidate / rollback - 1.0) * 100.0,
         "candidate_wins": sum(
             candidate_value > rollback_value
             for candidate_value, rollback_value in zip(
-                samples["packed_output_gate_candidate"],
+                samples[candidate_mode],
                 samples["production_rollback"],
                 strict=True,
             )
@@ -187,7 +222,7 @@ def main() -> int:
             {key: candidate_record[key] for key in _STATE_KEYS}
             == {key: rollback_record[key] for key in _STATE_KEYS}
             for candidate_record, rollback_record in zip(
-                records["packed_output_gate_candidate"],
+                records[candidate_mode],
                 records["production_rollback"],
                 strict=True,
             )

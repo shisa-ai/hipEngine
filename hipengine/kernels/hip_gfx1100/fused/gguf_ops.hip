@@ -514,6 +514,7 @@ __global__ void gguf_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight_ke
   }
 }
 
+template <bool PACK_QUERY_TILES>
 __global__ void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(
     const float* __restrict__ query,
     const float* __restrict__ key,
@@ -530,7 +531,9 @@ __global__ void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(
     int64_t num_kv_heads,
     int64_t head_dim,
     int64_t rotary_dim,
-    int64_t max_positions) {
+    int64_t max_positions,
+    int64_t packed_query_begin,
+    int64_t packed_query_end) {
   const int64_t head = blockIdx.x;
   const int64_t token = blockIdx.y;
   if (head >= num_q_heads + num_kv_heads || token >= tokens) {
@@ -543,10 +546,21 @@ __global__ void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(
   const bool is_query = head < num_q_heads;
   const int64_t local_head = is_query ? head : head - num_q_heads;
   const int64_t heads = is_query ? num_q_heads : num_kv_heads;
-  const int64_t offset = (token * heads + local_head) * head_dim;
-  const float* src = (is_query ? query : key) + offset;
+  const int64_t src_offset = (token * heads + local_head) * head_dim;
+  int64_t dst_offset = src_offset;
+  if constexpr (PACK_QUERY_TILES) {
+    if (is_query && token >= packed_query_begin && token < packed_query_end) {
+      constexpr int64_t kTileRows = 128;
+      const int64_t tile_begin = (token / kTileRows) * kTileRows;
+      const int64_t tile_row = token - tile_begin;
+      dst_offset =
+          ((tile_begin * num_q_heads + local_head * kTileRows + tile_row) *
+           head_dim);
+    }
+  }
+  const float* src = (is_query ? query : key) + src_offset;
   const float* weight = is_query ? q_weight : k_weight;
-  float* dst = (is_query ? query_out : key_out) + offset;
+  float* dst = (is_query ? query_out : key_out) + dst_offset;
   const float* cos = cos_table + position * rotary_dim;
   const float* sin = sin_table + position * rotary_dim;
   extern __shared__ float partial[];
@@ -954,7 +968,7 @@ extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_w
   if (threads <= 0) {
     threads = 256;
   }
-  gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<<<
+  gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false><<<
       dim3(static_cast<unsigned int>(num_q_heads + num_kv_heads), static_cast<unsigned int>(tokens)),
       static_cast<unsigned int>(threads),
       static_cast<size_t>(threads) * sizeof(float),
@@ -974,6 +988,69 @@ extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_w
       num_kv_heads,
       head_dim,
       rotary_dim,
-      max_positions);
+      max_positions,
+      0,
+      0);
+  return hipGetLastError();
+}
+
+extern "C" int
+hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_weight(
+    const float* query,
+    const float* key,
+    const float* q_weight,
+    const float* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int64_t* positions,
+    float* query_out,
+    float* key_out,
+    float eps,
+    int64_t tokens,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    int64_t packed_query_begin,
+    int64_t packed_query_end,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_q_heads <= 0 || num_kv_heads <= 0 ||
+      head_dim <= 0 || rotary_dim <= 0 || rotary_dim > head_dim ||
+      (rotary_dim % 2) != 0 || max_positions <= 0 ||
+      packed_query_begin < 0 || packed_query_begin >= packed_query_end ||
+      packed_query_end > tokens || packed_query_begin % 128 != 0 ||
+      packed_query_end % 128 != 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<true><<<
+      dim3(
+          static_cast<unsigned int>(num_q_heads + num_kv_heads),
+          static_cast<unsigned int>(tokens)),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(
+      query,
+      key,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      positions,
+      query_out,
+      key_out,
+      eps,
+      tokens,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions,
+      packed_query_begin,
+      packed_query_end);
   return hipGetLastError();
 }
