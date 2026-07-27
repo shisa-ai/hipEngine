@@ -51,9 +51,5 @@ def test_scalar_sampling_sites_restore_separate_reads() -> None:
     ):
         source = inspect.getsource(method)
         assert "_read_argmax_pair" not in source
-        assert source.count("_read_laguna_argmax_result") == 1
-
-    helper_source = inspect.getsource(runner._read_laguna_argmax_result)
-    assert "_read_argmax_pair" not in helper_source
-    assert "_read_i64" in helper_source
-    assert "_read_f32" in helper_source
+        assert "_read_i64" in source
+        assert "_read_f32" in source

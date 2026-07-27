@@ -8,7 +8,6 @@ owned scratch, greedy top-1, and caller-owned DFlash hidden taps.
 from __future__ import annotations
 
 import ctypes
-import mmap
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,12 +16,7 @@ from typing import Callable
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import (
-    HIP_HOST_REGISTER_MAPPED,
-    HipMemcpyKind,
-    HipRuntime,
-    get_hip_runtime,
-)
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.backends import (
     backend_package_capability,
@@ -246,84 +240,6 @@ class LagunaEagerKernelPlan:
 
 
 @dataclass
-class LagunaMappedArgmaxOutput:
-    """Page-backed host owner for device-visible scalar argmax outputs."""
-
-    runtime: HipRuntime
-    host_nbytes: int
-    host_ptr: int
-    device_ptr: int
-    argmax_id: DeviceBuffer
-    argmax_value: DeviceBuffer
-    _mapping: mmap.mmap | None
-    _mapped_buffer: object | None
-    _registered: bool = True
-    _closed: bool = False
-
-    @classmethod
-    def allocate(cls, *, runtime: HipRuntime) -> "LagunaMappedArgmaxOutput":
-        host_nbytes = mmap.PAGESIZE
-        mapping = mmap.mmap(-1, host_nbytes)
-        mapped_buffer = (ctypes.c_ubyte * host_nbytes).from_buffer(mapping)
-        host_ptr = ctypes.addressof(mapped_buffer)
-        registered = False
-        try:
-            runtime.host_register(
-                host_ptr,
-                host_nbytes,
-                flags=HIP_HOST_REGISTER_MAPPED,
-            )
-            registered = True
-            device_ptr = runtime.host_get_device_pointer(host_ptr)
-            if device_ptr <= 0:
-                raise RuntimeError("HIP returned a null mapped Laguna argmax pointer")
-        except BaseException:
-            try:
-                if registered:
-                    runtime.host_unregister(host_ptr)
-            finally:
-                mapped_buffer = None
-                mapping.close()
-            raise
-        return cls(
-            runtime=runtime,
-            host_nbytes=host_nbytes,
-            host_ptr=host_ptr,
-            device_ptr=device_ptr,
-            argmax_id=DeviceBuffer(device_ptr, _I64_NBYTES),
-            argmax_value=DeviceBuffer(device_ptr + _I64_NBYTES, _F32_NBYTES),
-            _mapping=mapping,
-            _mapped_buffer=mapped_buffer,
-        )
-
-    @property
-    def closed(self) -> bool:
-        return self._closed
-
-    def read(self) -> tuple[int, float]:
-        if self._closed or self._mapping is None:
-            raise RuntimeError("mapped Laguna argmax output is closed")
-        token_id = ctypes.c_int64.from_buffer(self._mapping, 0)
-        value = ctypes.c_float.from_buffer(self._mapping, _I64_NBYTES)
-        return int(token_id.value), float(value.value)
-
-    def free(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        mapping = self._mapping
-        self._mapping = None
-        try:
-            if self._registered:
-                self.runtime.host_unregister(self.host_ptr)
-                self._registered = False
-        finally:
-            self._mapped_buffer = None
-            if mapping is not None:
-                mapping.close()
-
-
-@dataclass
 class LagunaEagerScratch:
     """Deterministic c=1 scratch owner sized for Laguna's widest layer."""
 
@@ -353,7 +269,6 @@ class LagunaEagerScratch:
     argmax_block_indices: DeviceBuffer
     argmax_id: DeviceBuffer
     argmax_value: DeviceBuffer
-    mapped_argmax_output: LagunaMappedArgmaxOutput | None = None
     _closed: bool = False
 
     @classmethod
@@ -361,7 +276,6 @@ class LagunaEagerScratch:
         cls,
         config: LagunaGGUFConfig,
         *,
-        mapped_argmax_output: bool = False,
         runtime: HipRuntime | None = None,
     ) -> "LagunaEagerScratch":
         max_heads = max(int(value) for value in config.head_counts)
@@ -398,27 +312,9 @@ class LagunaEagerScratch:
             _F32_NBYTES,
         )
         buffers: list[DeviceBuffer] = []
-        mapped: LagunaMappedArgmaxOutput | None = None
         try:
-            if mapped_argmax_output:
-                buffers.extend(
-                    malloc(nbytes, runtime=runtime) for nbytes in sizes[:-2]
-                )
-                mapped = LagunaMappedArgmaxOutput.allocate(
-                    runtime=runtime or get_hip_runtime()
-                )
-                return cls(
-                    max_query_width,
-                    max_heads,
-                    *buffers,
-                    mapped.argmax_id,
-                    mapped.argmax_value,
-                    mapped_argmax_output=mapped,
-                )
             buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
-        except BaseException:
-            if mapped is not None:
-                mapped.free()
+        except Exception:
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
             raise
@@ -426,11 +322,6 @@ class LagunaEagerScratch:
 
     @property
     def buffers(self) -> tuple[DeviceBuffer, ...]:
-        argmax = (
-            (self.argmax_id, self.argmax_value)
-            if self.mapped_argmax_output is None
-            else ()
-        )
         return (
             self.token_id,
             self.position,
@@ -454,7 +345,8 @@ class LagunaEagerScratch:
             self.logits,
             self.argmax_block_values,
             self.argmax_block_indices,
-            *argmax,
+            self.argmax_id,
+            self.argmax_value,
         )
 
     @property
@@ -465,12 +357,8 @@ class LagunaEagerScratch:
         if self._closed:
             return
         self._closed = True
-        try:
-            for buffer in reversed(self.buffers):
-                free(buffer, runtime=runtime)
-        finally:
-            if self.mapped_argmax_output is not None:
-                self.mapped_argmax_output.free()
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
 
 
 @dataclass
@@ -1381,22 +1269,6 @@ def resolve_laguna_head_kv_fusion(
     return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
 
 
-def resolve_laguna_mapped_argmax_output(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the measured backend's default-off mapped-host argmax owner."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_MAPPED_ARGMAX_OUTPUT",
-        None,
-    )
-    if capability is None:
-        return False
-    return bool(capability) if requested is None else bool(requested)
-
-
 def resolve_laguna_mixed_attention_projections(
     backend: str,
     requested: bool | None = None,
@@ -1930,7 +1802,6 @@ class LagunaGGUFResidentSession:
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_head_kv_fusion: bool | None = None,
-        use_mapped_argmax_output: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
@@ -1964,10 +1835,6 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.use_swa_split_wave_local = use_swa_split_wave_local
-        self.use_mapped_argmax_output = resolve_laguna_mapped_argmax_output(
-            self.backend,
-            use_mapped_argmax_output,
-        )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -2171,11 +2038,7 @@ class LagunaGGUFResidentSession:
             )
             self.use_split_gate_fusion = self.kv_cache.split_gate_fusion
             self.use_swa_split_wave_local = self.kv_cache.swa_split_wave_local
-            self.scratch = LagunaEagerScratch.allocate(
-                config,
-                mapped_argmax_output=self.use_mapped_argmax_output,
-                runtime=self.runtime,
-            )
+            self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
                 runtime=self.runtime,
@@ -3126,15 +2989,11 @@ class LagunaGGUFResidentSession:
             self.runtime.stream_synchronize(stream)
         else:
             self.runtime.device_synchronize()
-        next_id, next_value = _read_laguna_argmax_result(
-            self.scratch,
-            self.runtime,
-        )
         result = LagunaEagerTokenResult(
             position=int(position),
             input_token_id=int(input_token_id),
-            next_token_id=next_id,
-            next_token_logit=next_value,
+            next_token_id=_read_i64(self.scratch.argmax_id, self.runtime),
+            next_token_logit=_read_f32(self.scratch.argmax_value, self.runtime),
             logits=_buffer_view(scratch.logits, 0, config.vocab_size * _F32_NBYTES),
             final_hidden=_buffer_view(scratch.final_norm, 0, hidden_nbytes),
             post_layer_hidden=_buffer_view(scratch.hidden, int(row_index) * hidden_nbytes, hidden_nbytes),
@@ -3535,7 +3394,8 @@ class LagunaGGUFResidentSession:
             self.runtime.stream_synchronize(stream)
         else:
             self.runtime.device_synchronize()
-        next_id, next_value = _read_laguna_argmax_result(scratch, self.runtime)
+        next_id = _read_i64(scratch.argmax_id, self.runtime)
+        next_value = _read_f32(scratch.argmax_value, self.runtime)
         return LagunaEagerTokenResult(
             position=position,
             input_token_id=input_token_id,
@@ -3836,16 +3696,6 @@ def _read_f32_rows(
         HipMemcpyKind.DEVICE_TO_HOST,
     )
     return tuple(float(value) for value in host)
-
-
-def _read_laguna_argmax_result(
-    scratch: LagunaEagerScratch,
-    runtime: HipRuntime,
-) -> tuple[int, float]:
-    mapped = getattr(scratch, "mapped_argmax_output", None)
-    if mapped is not None:
-        return mapped.read()
-    return _read_i64(scratch.argmax_id, runtime), _read_f32(scratch.argmax_value, runtime)
 
 
 def _read_i64(buffer: DeviceBuffer, runtime: HipRuntime) -> int:
