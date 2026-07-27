@@ -19,8 +19,11 @@ from hipengine.core.hipblaslt import (
 )
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+    laguna_dense_initial_attention_tile_merge_f32,
+    laguna_dense_initial_cache_block_bf16_to_f32_spans,
     laguna_dense_initial_cache_bf16_to_f32_spans,
     laguna_dense_initial_causal_softmax_f32_spans,
+    laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans,
     laguna_dense_initial_causal_softmax_wave_rows_f32_spans,
     laguna_dense_initial_query_head_transpose_f32,
 )
@@ -73,6 +76,8 @@ _PACKED_ALGORITHM_INDEX = {
     (72, 384, "pv"): 18,
     (72, 512, "qk"): 1,
     (72, 512, "pv"): 3,
+    (48, 4096, "qk"): 20,
+    (48, 4096, "pv"): 25,
 }
 
 # Robust context bands from the gfx1151 LC-1 packed-F32 screens. The production
@@ -317,12 +322,16 @@ class LagunaAttentionHipblasLt:
         wave_rows_softmax: bool = False,
         max_context: int = _PRODUCTION_MAX_CONTEXT,
         max_q_heads: int = _MAX_Q_HEADS,
+        block_context: int | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.packed_queries = bool(packed_queries)
         self.wave_rows_softmax = bool(wave_rows_softmax)
         self.max_context = int(max_context)
         self.max_q_heads = int(max_q_heads)
+        self.block_context = (
+            None if block_context is None else int(block_context)
+        )
         if (
             self.max_context < _PRODUCTION_MAX_CONTEXT
             or self.max_context > 131072
@@ -334,23 +343,60 @@ class LagunaAttentionHipblasLt:
             )
         if self.max_q_heads not in {48, 72}:
             raise ValueError("Laguna attention max_q_heads must be 48 or 72")
+        if self.block_context is not None and (
+            not self.packed_queries
+            or self.block_context < _ROWS
+            or self.block_context > self.max_context
+            or self.block_context % _ROWS != 0
+        ):
+            raise ValueError(
+                "blocked Laguna attention requires packed queries and an "
+                "M128 block_context within [128, max_context]"
+            )
+        scratch_context = self.block_context or self.max_context
         self.owner = HipblasLt(library_path)
         self._problems: dict[tuple[int, int], _ProblemPair] = {}
         self._buffers: list[DeviceBuffer] = []
         self._closed = False
         try:
             self.key_f32 = self._allocate(
-                self.max_context * _KV_HEADS * _HEAD_DIM * 4
+                scratch_context * _KV_HEADS * _HEAD_DIM * 4
             )
             self.value_f32 = self._allocate(
-                self.max_context * _KV_HEADS * _HEAD_DIM * 4
+                scratch_context * _KV_HEADS * _HEAD_DIM * 4
             )
             self.scores_f32 = self._allocate(
-                self.max_q_heads * _ROWS * self.max_context * 4
+                self.max_q_heads * _ROWS * scratch_context * 4
             )
             self.head_major_f32 = (
                 self._allocate(self.max_q_heads * _ROWS * _HEAD_DIM * 4)
                 if self.packed_queries
+                else None
+            )
+            blocked_rows = self.max_q_heads * _ROWS
+            self.tile_output_f32 = (
+                self._allocate(blocked_rows * _HEAD_DIM * 4)
+                if self.block_context is not None
+                else None
+            )
+            self.accum_head_major_f32 = (
+                self._allocate(blocked_rows * _HEAD_DIM * 4)
+                if self.block_context is not None
+                else None
+            )
+            self.row_max_f32 = (
+                self._allocate(blocked_rows * 4)
+                if self.block_context is not None
+                else None
+            )
+            self.row_sum_f32 = (
+                self._allocate(blocked_rows * 4)
+                if self.block_context is not None
+                else None
+            )
+            self.merge_scales_f32 = (
+                self._allocate(blocked_rows * 2 * 4)
+                if self.block_context is not None
                 else None
             )
         except Exception:
@@ -547,6 +593,25 @@ class LagunaAttentionHipblasLt:
             raise ValueError("unsupported Laguna attention hipBLASLt shape")
         if query_is_packed and not self.packed_queries:
             raise ValueError("packed query input requires the packed-query route")
+        if self.block_context is not None:
+            self._launch_blocked(
+                query_ptr,
+                key_cache_ptr,
+                value_cache_ptr,
+                out_ptr,
+                spans,
+                rows=rows,
+                start_position=start_position,
+                num_q_heads=num_q_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+                scale=scale,
+                stream=stream,
+                kv_library=kv_library,
+                query_is_packed=query_is_packed,
+                unpack_output=unpack_output,
+            )
+            return
         q_heads = int(num_q_heads)
         context = int(start_position) + int(rows)
         q_group = q_heads // _KV_HEADS
@@ -656,6 +721,130 @@ class LagunaAttentionHipblasLt:
                     stream=stream,
                     algorithm_index=pv_algorithm_index,
                 )
+
+    def _launch_blocked(
+        self,
+        query_ptr: int,
+        key_cache_ptr: int,
+        value_cache_ptr: int,
+        out_ptr: int,
+        spans: KVLiveSpans,
+        *,
+        rows: int,
+        start_position: int,
+        num_q_heads: int,
+        num_kv_heads: int,
+        head_dim: int,
+        scale: float,
+        stream: int,
+        kv_library,
+        query_is_packed: bool,
+        unpack_output: bool,
+    ) -> None:
+        assert self.block_context is not None
+        assert self.head_major_f32 is not None
+        assert self.tile_output_f32 is not None
+        assert self.accum_head_major_f32 is not None
+        assert self.row_max_f32 is not None
+        assert self.row_sum_f32 is not None
+        assert self.merge_scales_f32 is not None
+        q_heads = int(num_q_heads)
+        context = int(start_position) + int(rows)
+        query_head_major_ptr = int(query_ptr)
+        if not query_is_packed:
+            query_head_major_ptr = self.head_major_f32.ptr
+            laguna_dense_initial_query_head_transpose_f32(
+                query_ptr,
+                query_head_major_ptr,
+                rows,
+                q_heads,
+                head_dim,
+                to_head_major=True,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+        for tile_start in range(0, context, self.block_context):
+            tile_count = min(self.block_context, context - tile_start)
+            first_tile = tile_start == 0
+            final_tile = tile_start + tile_count == context
+            laguna_dense_initial_cache_block_bf16_to_f32_spans(
+                key_cache_ptr,
+                value_cache_ptr,
+                self.key_f32.ptr,
+                self.value_f32.ptr,
+                spans,
+                tile_start,
+                tile_count,
+                context,
+                num_kv_heads,
+                head_dim,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+            problems = self._problem(q_heads, tile_count)
+            problems.qk.launch(
+                self.key_f32.ptr,
+                query_head_major_ptr,
+                self.scores_f32.ptr,
+                stream=stream,
+            )
+            laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans(
+                self.scores_f32.ptr,
+                self.row_max_f32.ptr,
+                self.row_sum_f32.ptr,
+                self.merge_scales_f32.ptr,
+                spans,
+                rows,
+                tile_start,
+                tile_count,
+                context,
+                q_heads,
+                start_position,
+                scale,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+            problems.pv.launch(
+                self.value_f32.ptr,
+                self.scores_f32.ptr,
+                self.tile_output_f32.ptr,
+                stream=stream,
+            )
+            final_output_ptr = (
+                self.accum_head_major_f32.ptr
+                if unpack_output
+                else int(out_ptr)
+            )
+            laguna_dense_initial_attention_tile_merge_f32(
+                self.accum_head_major_f32.ptr,
+                self.tile_output_f32.ptr,
+                final_output_ptr,
+                self.row_sum_f32.ptr,
+                self.merge_scales_f32.ptr,
+                rows,
+                q_heads,
+                head_dim,
+                first_tile=first_tile,
+                final_tile=final_tile,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+        if unpack_output:
+            laguna_dense_initial_query_head_transpose_f32(
+                self.accum_head_major_f32.ptr,
+                out_ptr,
+                rows,
+                q_heads,
+                head_dim,
+                to_head_major=False,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
 
     def algorithm_counts(
         self,

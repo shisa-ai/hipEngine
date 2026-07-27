@@ -161,7 +161,7 @@ def test_laguna_long_hipblaslt_shape_and_algorithm_bands() -> None:
     expected = {
         640: (30, 0),
         2048: (20, 19),
-        4096: (22, 25),
+        4096: (20, 25),
         16384: (28, 1),
         65536: (28, 3),
         131072: (28, 3),
@@ -2362,7 +2362,7 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
         load=True,
         require_cached=_require_cached_build(),
     )
-    context = 128
+    context = 256
     rows = 128
     query_heads = 72
     kv_heads = 8
@@ -2414,6 +2414,7 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
     blas_attention = np.empty_like(query)
     packed_attention = np.empty_like(query)
     wave_attention = np.empty_like(query)
+    blocked_attention = np.empty_like(query)
     scale = 0.5
     for head in range(query_heads):
         for row in range(rows):
@@ -2433,6 +2434,12 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
         packed_queries=True,
         wave_rows_softmax=True,
     )
+    blocked_route = LagunaAttentionHipblasLt(
+        runtime=runtime,
+        packed_queries=True,
+        wave_rows_softmax=True,
+        block_context=128,
+    )
     allocations = []
     try:
         key_out = malloc(key_f32.nbytes, runtime=runtime)
@@ -2444,6 +2451,7 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
         blas_out = malloc(blas_attention.nbytes, runtime=runtime)
         packed_out = malloc(packed_attention.nbytes, runtime=runtime)
         wave_out = malloc(wave_attention.nbytes, runtime=runtime)
+        blocked_out = malloc(blocked_attention.nbytes, runtime=runtime)
         allocations.extend(
             (
                 key_out,
@@ -2455,6 +2463,7 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
                 blas_out,
                 packed_out,
                 wave_out,
+                blocked_out,
             )
         )
         copy_host_to_device(
@@ -2599,6 +2608,20 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
             scale=head_dim**-0.5,
             kv_library=library,
         )
+        blocked_route.launch(
+            query_device.ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            blocked_out.ptr,
+            state.spans,
+            rows=rows,
+            start_position=start_position,
+            num_q_heads=query_heads,
+            num_kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim**-0.5,
+            kv_library=library,
+        )
         runtime.device_synchronize()
         for host, device in (
             (key_f32, key_out),
@@ -2609,6 +2632,7 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
             (blas_attention, blas_out),
             (packed_attention, packed_out),
             (wave_attention, wave_out),
+            (blocked_attention, blocked_out),
         ):
             copy_device_to_host(
                 host_array_ptr(host),
@@ -2622,6 +2646,7 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
         packed_route.close()
         wave_route.close()
         route.close()
+        blocked_route.close()
         cache.free()
 
     np.testing.assert_array_equal(key_f32, bf16_to_float32(key_bits))
@@ -2642,6 +2667,12 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
     )
     np.testing.assert_allclose(
         wave_attention,
+        current_attention,
+        rtol=2e-3,
+        atol=2e-4,
+    )
+    np.testing.assert_allclose(
+        blocked_attention,
         current_attention,
         rtol=2e-3,
         atol=2e-4,

@@ -1626,6 +1626,7 @@ class LagunaGGUFResidentSession:
         prefill_attention_hipblaslt_wave_rows_softmax: bool | None = None,
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         prefill_long_attention_hipblaslt: bool | None = None,
+        prefill_block_attention_hipblaslt: bool | None = None,
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
@@ -1768,6 +1769,15 @@ class LagunaGGUFResidentSession:
             )
             if prefill_long_attention_hipblaslt is None
             else prefill_long_attention_hipblaslt
+        )
+        self.prefill_block_attention_hipblaslt = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
+                False,
+            )
+            if prefill_block_attention_hipblaslt is None
+            else prefill_block_attention_hipblaslt
         )
         resident_q6_qmicro = (
             getattr(resident_weights, "q6_qmicro", None)
@@ -1981,6 +1991,7 @@ class LagunaGGUFResidentSession:
         self.f16_hipblaslt: LagunaF16HipblasLt | None = None
         self.attention_hipblaslt: LagunaAttentionHipblasLt | None = None
         self.long_attention_hipblaslt: LagunaAttentionHipblasLt | None = None
+        self.block_attention_hipblaslt: LagunaAttentionHipblasLt | None = None
         self.prefill_scratch_admission_nbytes = DEFAULT_LAGUNA_SCRATCH_BYTES
         self._owns_weights = resident_weights is None
         self._closed = False
@@ -2280,6 +2291,11 @@ class LagunaGGUFResidentSession:
 
         self.prefill_long_attention_hipblaslt = bool(enabled)
 
+    def set_prefill_block_attention_hipblaslt(self, enabled: bool) -> None:
+        """Select bounded-state blocks within qualified long attention."""
+
+        self.prefill_block_attention_hipblaslt = bool(enabled)
+
     def set_prefill_attention_hipblaslt_packed_queries(
         self,
         enabled: bool,
@@ -2297,6 +2313,10 @@ class LagunaGGUFResidentSession:
         if self.long_attention_hipblaslt is not None:
             route = self.long_attention_hipblaslt
             self.long_attention_hipblaslt = None
+            route.close()
+        if self.block_attention_hipblaslt is not None:
+            route = self.block_attention_hipblaslt
+            self.block_attention_hipblaslt = None
             route.close()
 
     def set_prefill_attention_hipblaslt_wave_rows_softmax(
@@ -2316,6 +2336,10 @@ class LagunaGGUFResidentSession:
         if self.long_attention_hipblaslt is not None:
             route = self.long_attention_hipblaslt
             self.long_attention_hipblaslt = None
+            route.close()
+        if self.block_attention_hipblaslt is not None:
+            route = self.block_attention_hipblaslt
+            self.block_attention_hipblaslt = None
             route.close()
 
     def set_dense_q4_prefill_mode(self, mode: str) -> None:
@@ -2361,6 +2385,11 @@ class LagunaGGUFResidentSession:
             + (
                 self.long_attention_hipblaslt.scratch_nbytes
                 if self.long_attention_hipblaslt is not None
+                else 0
+            )
+            + (
+                self.block_attention_hipblaslt.scratch_nbytes
+                if self.block_attention_hipblaslt is not None
                 else 0
             )
             + self.full_rope.cos.buffer.nbytes
@@ -3004,6 +3033,21 @@ class LagunaGGUFResidentSession:
             self.long_attention_hipblaslt = route
         return route
 
+    def _ensure_block_attention_hipblaslt(self) -> LagunaAttentionHipblasLt:
+        route = self.block_attention_hipblaslt
+        if route is None:
+            maximum_context = self.context_length // 128 * 128
+            route = LagunaAttentionHipblasLt(
+                runtime=self.runtime,
+                packed_queries=True,
+                wave_rows_softmax=True,
+                max_context=maximum_context,
+                max_q_heads=48,
+                block_context=4096,
+            )
+            self.block_attention_hipblaslt = route
+        return route
+
     def _launch_attention_projections_rows(
         self,
         layer: LagunaGGUFResidentLayerWeights,
@@ -3407,7 +3451,12 @@ class LagunaGGUFResidentSession:
                         and self.prefill_attention_hipblaslt_packed_queries
                     )
                     attention_route = (
-                        self._ensure_long_attention_hipblaslt()
+                        self._ensure_block_attention_hipblaslt()
+                        if (
+                            use_long_attention_hipblaslt
+                            and self.prefill_block_attention_hipblaslt
+                        )
+                        else self._ensure_long_attention_hipblaslt()
                         if use_long_attention_hipblaslt
                         else self._ensure_attention_hipblaslt()
                     )
@@ -4233,6 +4282,10 @@ class LagunaGGUFResidentSession:
         if self.long_attention_hipblaslt is not None:
             route = self.long_attention_hipblaslt
             self.long_attention_hipblaslt = None
+            release(route.close)
+        if self.block_attention_hipblaslt is not None:
+            route = self.block_attention_hipblaslt
+            self.block_attention_hipblaslt = None
             release(route.close)
         if self.verifier_scratch is not None:
             scratch = self.verifier_scratch

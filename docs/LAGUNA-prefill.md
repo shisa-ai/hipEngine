@@ -4028,34 +4028,52 @@ Evidence:
   **4.622e-8**. Screening all 32 zero-workspace heuristics matters:
   algorithm 0 falsely lost at every long shape, while tuned QK/PV pairs are
   **20/25, 28/1, 28/8, and 28/3** at 4K/16K/64K/128K.
-- **Production milestone passed:** the separate capacity-sized 48-head owner
-  is now the gfx1151 default only for dense-initial global tiles beginning
-  above 4K. The first broad `start >= 512` policy was rejected at paired 4K
-  **464.555 -> 449.640 tok/s (0.968x)**. Raising qualification to 4K preserves
-  the complete 4K path and retains 93.75% of global quadratic work at 16K.
-  Same-session directional gates then measure
+- **Transitional production milestone passed:** the separate capacity-sized
+  48-head owner qualified only dense-initial global tiles beginning above 4K.
+  The first broad `start >= 512` policy was rejected at paired 4K
+  **464.555 -> 449.640 tok/s (0.968x)**. Raising qualification to 4K preserved
+  the complete 4K path and produced
   **468.065 -> 468.911 tok/s (+0.181%)** at 4K,
-  **308.181 -> 332.617 (+7.929%)** at 16K, and
-  **131.825 -> 154.151 (+16.936%)** at 64K, with identical next tokens.
-- The mandatory 128K complete-model gate measures
-  **72.139 -> 88.073 tok/s (+22.088%)**, or
-  **1,816.939 -> 1,488.225 seconds**, saving **328.714 seconds**. Token 22746,
-  final position 131071, and full tracked-allocation recovery pass. This is
-  **34.290%** faster than same-GGUF llama.cpp Vulkan at 128K.
-- The accepted milestone still uses **2.151 GB** scratch at 64K and
-  **4.298 GB** at 128K for F32 K/V plus an F32 `[48,128,C]` score tile. The
-  next bounded task remains the intended block-streamed tensorized QK/PV
-  design with online tile reduction; it must preserve the measured long gains
-  while eliminating full-prefix widening and score materialization. GQA reuse
-  must live inside that arithmetic design, not be bolted onto the scalar body.
-- Carry online row max, denominator, and output state across K/V tiles. Never
-  materialize the complete score matrix or compute masked upper-triangle
-  blocks.
-- Start with FP32 query/dot/output accumulation and BF16 cache widening so the
-  first route isolates scheduling/reuse from a new numerical approximation.
-- Register a separate dense-prefill primitive with the existing generic
-  `KVLiveSpans` attention chain as its exact fallback. Decode, verifier,
-  partial, wrapped, and evicted paths remain unchanged.
+  **308.181 -> 332.617 (+7.929%)** at 16K,
+  **131.825 -> 154.151 (+16.936%)** at 64K, and
+  **72.139 -> 88.073 (+22.088%)** at mandatory 128K. It proved the tensorized
+  arithmetic but still widened the full prefix and materialized an F32
+  `[48,128,C]` score tile, costing **4.298 GB** scratch at 128K.
+- **Bounded block-streamed production successor passed and replaces it:**
+  split the key prefix into 4,096-token blocks, widen only the current block,
+  and carry per query-head/row F32 maximum, denominator, and output numerator
+  across tuned QK/softmax/PV tiles. The final merge is the exact online
+  softmax identity; it never materializes the complete score matrix or
+  computes future key blocks.
+- Inclusive M128 leaf timing improves qrow6
+  **7.588 -> 5.456 ms (1.391x)** at 4K,
+  **32.387 -> 21.881 (1.480x)** at 16K,
+  **131.157 -> 88.035 (1.490x)** at 64K, and
+  **272.887 -> 175.591 (1.554x)** at 128K. It also beats the transitional
+  full-score route at every long shape. Maximum absolute output error is
+  **3.516e-8** and all outputs are finite.
+- Same-session complete-model screens preserve or improve the transitional
+  route at 4K/16K/64K:
+  **467.930 -> 468.495 (+0.121%)**,
+  **332.645 -> 334.686 (+0.614%)**, and
+  **153.467 -> 165.002 (+7.516%)**, with identical next tokens.
+  The mandatory 128K gate improves
+  **88.073 -> 99.100 tok/s (+12.521%)**, or
+  **1,488.225 -> 1,322.622 seconds**, saving another **165.603 seconds**.
+  Relative to the original LC-0 control this is **+37.374%**; relative to
+  same-GGUF llama.cpp Vulkan it is **+51.104%**. Token 22746, final position
+  131071, and full allocation recovery pass.
+- Scratch falls **4,298,113,024 -> 143,753,216 bytes (-96.655%)** and resident
+  accounting falls by **4,154,359,808 bytes**. Cached tracing names the block
+  widener at local256/VGPR24, online tile softmax at local32/VGPR16, and
+  numerator merge at local256/VGPR24; all use zero LDS and scratch. LC-1's
+  exact bounded-state global architecture is therefore closed and retained.
+- The retained numerical boundary uses FP32 query/dot/output accumulation and
+  exact BF16 cache widening, isolating scheduling/reuse from a new
+  approximation.
+- The separate dense-prefill primitive retains the generic `KVLiveSpans`
+  attention chain as its fallback. Decode, verifier, partial, wrapped, and
+  evicted paths remain unchanged.
 - A BF16-WMMA/MFMA QK/PV body is a separate quality-gated substage. The
   rejected small triangular WMMA screen does not close a genuinely tiled
   block-streamed design, but its resource/performance failure must inform the
@@ -4065,7 +4083,8 @@ Evidence:
 [`single-head Q16xK64 rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-single-head-qtile16-k64-rejected.json) ·
 [`GQA6 scalar-staging rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-gqa6-scalar-staging-rejected.json) ·
 [`long F32 hipBLASLt ceiling`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-ceiling.json) ·
-[`long F32 hipBLASLt production`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-production.json).
+[`transitional full-score production`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-production.json) ·
+[`bounded 4K-block production`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json).
 
 #### LC-2 — share K/V across Laguna GQA heads
 
@@ -4074,6 +4093,10 @@ Evidence:
   staging it for six otherwise-serial waves. A winning combined screen can
   close LC-1 and LC-2 together after the mandatory 128K gate; scalar
   cooperative staging is now closed evidence.
+- **Global side closed:** the retained packed-query, eight-way library batch
+  plus 4K-block online state consumes each widened global K/V block once per
+  KV-head batch and has passed the mandatory 128K gate. It closes LC-1 and
+  the global half of LC-2 without an extra replicated-head sidecar.
 - One SWA K/V head serves **nine** query heads. After the global cooperative
   body passes its mandatory 128K gate, reuse the same tile-sharing design for
   SWA rather than leaving its measured **288x** request amplification in

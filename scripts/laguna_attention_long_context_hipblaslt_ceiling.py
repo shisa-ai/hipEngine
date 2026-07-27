@@ -49,6 +49,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--screen-algorithms", action="store_true")
+    parser.add_argument("--block-context", type=int)
     parser.add_argument("--only-128k", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
@@ -143,6 +144,15 @@ def _append_rows(
 def run(args: argparse.Namespace) -> dict[str, object]:
     if args.samples <= 0 or args.warmups < 0:
         raise ValueError("samples must be positive and warmups non-negative")
+    if args.block_context is not None and (
+        args.block_context < ROWS
+        or args.block_context % ROWS != 0
+        or args.screen_algorithms
+    ):
+        raise ValueError(
+            "block-context must be an M128 multiple and cannot screen "
+            "whole-context algorithms"
+        )
     tracked = _tracked_status()
     if tracked and not args.allow_dirty:
         raise RuntimeError("tracked worktree must be clean; use --allow-dirty")
@@ -179,6 +189,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wave_rows_softmax=True,
         max_context=contexts[-1],
         max_q_heads=Q_HEADS,
+        block_context=args.block_context,
     )
     scratch_nbytes = route.scratch_nbytes
     allocations = []
@@ -389,7 +400,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "warmups": args.warmups,
             "order": "two-mode alternating counter-rotation",
             "cache_capacity": contexts[-1],
-            "score_scratch": "F32 [48,128,max_context]",
+            "score_scratch": (
+                "F32 [48,128,block_context]"
+                if args.block_context is not None
+                else "F32 [48,128,max_context]"
+            ),
+            "block_context": args.block_context,
             "inclusive_candidate": "BF16 cache widen + query transpose + F32 QK + wave-row softmax + F32 PV + output transpose",
         },
         "scratch_nbytes": scratch_nbytes,

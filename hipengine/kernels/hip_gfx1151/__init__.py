@@ -109,6 +109,10 @@ LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE = True
 # preserve the 4K path and improve 16K/64K/128K by 7.93%/16.94%/22.09%;
 # SWA, decode, partial, wrapped, evicted, and verifier paths remain unchanged.
 LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT = True
+# Exact 4K key blocks carry online row max/sum/output state across tensorized
+# QK/PV calls. This cuts 128K scratch 4.298 GB -> 143.753 MB and improves the
+# complete-model long route another 12.52% while preserving its >4K gate.
+LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
@@ -444,6 +448,7 @@ __all__ = [
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
+    "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",

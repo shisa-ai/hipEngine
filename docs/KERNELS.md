@@ -196,6 +196,25 @@ tracing cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)** at unchanged
 **2,417** dispatches. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-{candidate,production}.json`.
 
+The long-context successor extends that packed-query/library design without
+allocating a full-prefix score plane. Three separately registered dense-initial
+primitives widen one logical BF16 K/V block to F32, update per-row online
+softmax maximum/denominator and block-relative weights, then merge the F32 PV
+numerator into persistent bounded state. The runtime uses 4,096-key blocks only
+for complete global M128 tiles beginning at 4K; decode, verifier, partial,
+wrapped, evicted, SWA, and unmeasured-backend paths retain complete
+`KVLiveSpans` fallbacks. A two-block CPU fixture matches the established
+attention route within tolerance. Cached gfx1151 tracing names the block
+widener at local256/VGPR24/LDS0/scratch0, online tile softmax at
+local32/VGPR16/LDS0/scratch0, and numerator merge at
+local256/VGPR24/LDS0/scratch0. Complete-model 4K/16K/64K gates improve the
+transitional full-score owner **0.121%/0.614%/7.516%**; mandatory 128K
+improves **88.073 -> 99.100 tok/s (+12.521%)** while scratch falls
+**4,298,113,024 -> 143,753,216 bytes (-96.655%)**. gfx1151 enables
+`LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT`; the full-score owner remains a
+temporary rollback. Evidence:
+`benchmarks/results/2026-07-27-gfx1151-laguna-lc1-block4096-hipblaslt-production.json`.
+
 The subsequent Q4 row64/local256 screen is rejected and removed. Eight waves
 split 64 routed rows while preserving 32 FP32 accumulators/lane. Natural
 routing nevertheless reduces M256/M512 tiles only **5.44%/16.84%**.

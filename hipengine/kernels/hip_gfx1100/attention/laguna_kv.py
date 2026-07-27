@@ -72,6 +72,9 @@ _SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_ONLINE = (
 _SYMBOL_DENSE_INITIAL_CACHE_BF16_TO_F32 = (
     "hipengine_laguna_dense_initial_cache_bf16_to_f32_spans"
 )
+_SYMBOL_DENSE_INITIAL_CACHE_BLOCK_BF16_TO_F32 = (
+    "hipengine_laguna_dense_initial_cache_block_bf16_to_f32_spans"
+)
 _SYMBOL_DENSE_INITIAL_QUERY_HEAD_TRANSPOSE_F32 = (
     "hipengine_laguna_dense_initial_query_head_transpose_f32"
 )
@@ -80,6 +83,12 @@ _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_F32 = (
 )
 _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_WAVE_ROWS_F32 = (
     "hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans"
+)
+_SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_TILE_WAVE_ROWS_F32 = (
+    "hipengine_laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans"
+)
+_SYMBOL_DENSE_INITIAL_ATTENTION_TILE_MERGE_F32 = (
+    "hipengine_laguna_dense_initial_attention_tile_merge_f32"
 )
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
@@ -1798,6 +1807,77 @@ def laguna_dense_initial_cache_bf16_to_f32_spans(
     _check_launch(runtime, err)
 
 
+def laguna_dense_initial_cache_block_bf16_to_f32_spans(
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    key_f32_ptr: int,
+    value_f32_ptr: int,
+    spans: KVLiveSpans,
+    logical_start: int,
+    count: int,
+    context: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Widen one initial identity-mapped BF16 K/V block for tiled BLAS."""
+
+    if spans.spans_mode == "uniform":
+        capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+        block_size = _GLOBAL_BLOCK_SIZE
+        global_layout = 1
+    else:
+        capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+        block_size = 1
+        global_layout = 0
+    parsed_start = int(logical_start)
+    parsed_count = int(count)
+    parsed_context = int(context)
+    if (
+        parsed_start < 0
+        or parsed_count <= 0
+        or parsed_start + parsed_count > parsed_context
+        or parsed_context > int(capacity)
+    ):
+        raise ValueError("dense-initial BLAS cache block is out of range")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_DENSE_INITIAL_CACHE_BLOCK_BF16_TO_F32,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 8
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_int, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(value_f32_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_int64(parsed_start),
+        ctypes.c_int64(parsed_count),
+        ctypes.c_int64(parsed_context),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int(global_layout),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_dense_initial_query_head_transpose_f32(
     input_ptr: int,
     output_ptr: int,
@@ -1944,6 +2024,141 @@ def laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
         ctypes.c_int64(num_q_heads),
         ctypes.c_int64(parsed_start),
         ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans(
+    scores_ptr: int,
+    row_max_ptr: int,
+    row_sum_ptr: int,
+    merge_scales_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    tile_start: int,
+    tile_count: int,
+    context: int,
+    num_q_heads: int,
+    start_position: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Update online softmax state for one head-major score tile."""
+
+    if spans.spans_mode == "uniform":
+        capacity = _check_global_spans(
+            spans,
+            _LAGUNA_KV_HEADS,
+            _LAGUNA_HEAD_DIM,
+        )
+    else:
+        capacity = _check_swa_spans(
+            spans,
+            _LAGUNA_KV_HEADS,
+            _LAGUNA_HEAD_DIM,
+        )
+    _check_prefill_rows(spans, rows, capacity)
+    parsed_start = int(tile_start)
+    parsed_count = int(tile_count)
+    parsed_context = int(context)
+    parsed_row_start = int(start_position)
+    if (
+        parsed_start < 0
+        or parsed_count <= 0
+        or parsed_start + parsed_count > parsed_context
+        or parsed_context > int(capacity)
+    ):
+        raise ValueError("dense-initial BLAS score tile is out of range")
+    if parsed_row_start < 0 or parsed_row_start + int(rows) != parsed_context:
+        raise ValueError("dense-initial BLAS rows must end at the context boundary")
+    if int(num_q_heads) <= 0:
+        raise ValueError("num_q_heads must be positive")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_TILE_WAVE_ROWS_F32,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 8
+        + [ctypes.c_int64] * 6
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(scores_ptr),
+        ctypes.c_void_p(row_max_ptr),
+        ctypes.c_void_p(row_sum_ptr),
+        ctypes.c_void_p(merge_scales_ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(parsed_start),
+        ctypes.c_int64(parsed_count),
+        ctypes.c_int64(parsed_context),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(parsed_row_start),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_dense_initial_attention_tile_merge_f32(
+    accumulator_ptr: int,
+    tile_output_ptr: int,
+    final_output_ptr: int,
+    row_sum_ptr: int,
+    merge_scales_ptr: int,
+    rows: int,
+    num_q_heads: int,
+    head_dim: int,
+    *,
+    first_tile: bool,
+    final_tile: bool,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Merge one PV numerator tile and normalize the final head-major output."""
+
+    if int(rows) <= 0 or int(rows) > 128:
+        raise ValueError("dense-initial BLAS rows must be within [1, 128]")
+    _check_laguna_attention_shape(
+        num_q_heads,
+        _LAGUNA_KV_HEADS,
+        head_dim,
+    )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_DENSE_INITIAL_ATTENTION_TILE_MERGE_F32,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 5
+        + [ctypes.c_int64] * 3
+        + [ctypes.c_int] * 2
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(accumulator_ptr),
+        ctypes.c_void_p(tile_output_ptr),
+        ctypes.c_void_p(final_output_ptr),
+        ctypes.c_void_p(row_sum_ptr),
+        ctypes.c_void_p(merge_scales_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int(int(bool(first_tile))),
+        ctypes.c_int(int(bool(final_tile))),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
@@ -2172,7 +2387,10 @@ register_laguna_kv_attention_kernels()
 __all__ = [
     "build_laguna_kv_attention",
     "laguna_dense_initial_cache_bf16_to_f32_spans",
+    "laguna_dense_initial_cache_block_bf16_to_f32_spans",
+    "laguna_dense_initial_attention_tile_merge_f32",
     "laguna_dense_initial_causal_softmax_f32_spans",
+    "laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans",
     "laguna_dense_initial_causal_softmax_wave_rows_f32_spans",
     "laguna_dense_initial_query_head_transpose_f32",
     "laguna_global_attention_decode_bf16_spans",
