@@ -4222,24 +4222,38 @@ Evidence:
 - The result falsifies repeated whole-model weight streaming as the remaining
   dominant LC bottleneck at M2,048. Wider routed batches touch more experts
   and trade fewer transactions for more saturated per-transaction work;
-  global attention's quadratic component is unchanged. LC-6 capacity/lazy-KV
-  and secondary bandwidth work are next.
+  global attention's quadratic component is unchanged.
 
 Evidence:
 [`wide matrix rejection`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc5-wide-matrix-rejected.json).
 
 #### LC-6 — capacity buckets, lazy KV, and secondary bandwidth work
 
-- Counterbalance pp512/4K in small versus 128K resident-capacity sessions. If
-  the observed pp512 **4.928%** gap repeats, bucket or lazily grow KV/position
-  allocations; otherwise close it as variance.
-- Recheck Q8 KV or another compressed-cache lane only after LC-1/LC-2 tracing
-  proves K/V bandwidth is the remaining limiter. Compression is a new quality
-  surface and does not enter the exact first pass.
-- Recheck gfx1151 causal/FlashAttention and grouped-GEMM library capabilities
-  when ROCm/Tensile changes. Today the retained short hipBLASLt route stops at
-  context 512, AOTriton lacks the admitted Laguna geometry, source-F16 grouping
-  saves only 2.891 ms, and `GroupedGemm` exposes zero applicable algorithms.
+- **Closed without a production change.** A clean M2,048 session sized for
+  128K carries **6.007 GiB** more resident allocation than the 4K-capacity
+  control, yet 512/1K/4K changes only
+  **-0.425%/+0.654%/-0.004%**:
+  **625.532/673.832/611.334 tok/s** versus
+  **628.203/669.454/611.359**. Tokens, positions, and lifecycle match. The
+  earlier **-4.928%** pp512 singleton does not reproduce, so it is closed as
+  one-run variance rather than evidence for lazy KV or allocation buckets.
+- Exact BF16 cache widening is not the remaining wall. LC-4 reduced its 4K
+  sub-window to **0.234780 ms** inside about **53.95 ms** of complete
+  attention, only **0.02-0.03%**. Q8 KV would add a new quality surface for
+  no measured system ceiling and remains closed.
+- Existing library screens remain conclusive for this runtime: AOTriton lacks
+  Laguna's head-dim-128 GQA causal `KVLiveSpans` geometry; concatenated
+  source-F16 QKV saves only **2.891 ms** before output restriding; and
+  `hipblaslt_ext::GroupedGemm` exposes zero applicable gfx1151 algorithms.
+  Reopen only after a ROCm/Tensile/AOTriton capability change or a new trace
+  moves one of these leaves onto the critical path.
+- LC-5's diagnostic-only M4,096/M8,192 constructor/profile surface is removed
+  now that its stated LC-6 lifetime expired. Production and the explicit
+  validation ceiling are both M2,048. The final clean selector-unset six-shape
+  sweep is the remaining campaign closure gate.
+
+Evidence:
+[`capacity and secondary closure`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json).
 
 Long-context stop rules:
 

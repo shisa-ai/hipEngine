@@ -993,17 +993,10 @@ def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
         assert cache.can_preappend_prefill(0, 128)
         assert not cache.can_preappend_prefill(1, 128)
         cache.discard_rows()
-        wide_positions = tuple(range(512, 512 + 8_192))
+        wide_positions = tuple(range(512, 512 + 2_048))
         cache.prepare_rows(wide_positions)
-        assert cache.can_preappend_prefill(0, 2_048, row_offset=6_144)
-        cache.append_rows(
-            0,
-            0x2000,
-            0x3000,
-            2_048,
-            row_offset=6_144,
-            row_positions_ptr=positions_ptr + 6_144 * DType.INT64.itemsize,
-        )
+        assert cache.can_preappend_prefill(0, 2_048)
+        cache.append_rows(0, 0x2000, 0x3000, 2_048)
         with pytest.raises(ValueError, match="SWA ring"):
             cache.append_rows(1, 0x2000, 0x3000, 2_048)
         cache.append_rows(

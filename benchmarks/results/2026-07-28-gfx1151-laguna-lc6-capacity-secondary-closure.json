@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_lc6_capacity_secondary_closure",
+  "status": "accepted_diagnostic_closure_no_production_change",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "production_geometry": {
+    "matrix_chunk_rows": 2048,
+    "global_attention_chunk_rows": 2048,
+    "swa_attention_chunk_rows": 128
+  },
+  "capacity_counterbalance": {
+    "right_sized_context_capacity": 4096,
+    "large_context_capacity": 131072,
+    "large_capacity_incremental_resident_bytes": 6449874880,
+    "large_capacity_incremental_resident_gib": 6.0069140792,
+    "right_sized": {
+      "tokens_per_second": {
+        "512": 628.2030502425,
+        "1024": 669.4541176057,
+        "4096": 611.3588768778
+      },
+      "resident_bytes": 80636639252,
+      "next_token_ids": {
+        "512": 2930,
+        "1024": 95,
+        "4096": 7772
+      },
+      "raw_sha256": "46c417a3208293f6d4d45ba10c03f615b3f34d8dd3a8261d3fc0caf1a436b68e",
+      "repo_revision": "c7c073660ec72edaf42bdff105891faabb27b769",
+      "provenance_note": "LC-4 selector-unset route while its scoped implementation worktree was dirty; the measured M2048 production path was subsequently promoted unchanged"
+    },
+    "large_capacity": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc6-128k-capacity-short.json",
+      "tokens_per_second": {
+        "512": 625.5324921271,
+        "1024": 673.8320537034,
+        "4096": 611.3337723255
+      },
+      "change_vs_right_sized_pct": {
+        "512": -0.4251106572,
+        "1024": 0.6539561088,
+        "4096": -0.0041063528
+      },
+      "resident_bytes": 87086514132,
+      "next_token_ids": {
+        "512": 2930,
+        "1024": 95,
+        "4096": 7772
+      },
+      "final_positions": {
+        "512": 511,
+        "1024": 1023,
+        "4096": 4095
+      },
+      "tracked_allocations_recovered": true,
+      "repo_revision": "11011df75b34c4da0b8bbc68a0b33f701dc2065c",
+      "repo_tracked_clean": true,
+      "raw_sha256": "9a8c9d280c407c88dbec74b8f042db9dd7cfb1dbde26c395ea2be62df51f7252"
+    },
+    "decision": "The prior -4.928% pp512 singleton does not reproduce. All three changes are within +/-0.654%, tokens and positions match, and lifecycle recovers, so no lazy KV or context-capacity bucket is justified for prefill speed."
+  },
+  "secondary_bandwidth_closure": {
+    "compressed_kv": {
+      "promoted": false,
+      "reason": "LC-4 reduced the exact 4K BF16 cache-widen sub-window to 0.234780 ms inside a roughly 53.95 ms complete attention transaction, only about 0.02-0.03% of that transaction. Q8 KV would add a new quality surface without attacking the measured wall."
+    },
+    "aotriton": {
+      "promoted": false,
+      "reason": "The installed AOTriton adapters do not admit Laguna's head-dim-128, GQA, causal, KVLiveSpans geometry."
+    },
+    "source_f16_grouping": {
+      "promoted": false,
+      "reason": "The exact concatenated QKV ceiling saves only 2.891 ms before required output restriding, while hipblaslt_ext::GroupedGemm exposes zero applicable gfx1151 algorithms."
+    },
+    "library_recheck_trigger": "Reopen only after a ROCm/Tensile/AOTriton capability change or a new trace that moves one of these leaves onto the critical path."
+  },
+  "cleanup": {
+    "expired_explicit_matrix_widths_removed": [
+      4096,
+      8192
+    ],
+    "retained_max_matrix_rows": 2048,
+    "reason": "LC-5 rejected both wider widths and LC-6 found no bucketed/lazy-capacity premise that could justify retaining diagnostic-only dispatch surface."
+  },
+  "correctness": {
+    "next_tokens_match": true,
+    "final_positions_exact": true,
+    "large_capacity_lifecycle_recovered": true,
+    "math_changed": false
+  },
+  "decision": {
+    "production_changed": false,
+    "lazy_kv_implemented": false,
+    "kv_compression_implemented": false,
+    "matrix_rows": 2048,
+    "next": "Run the final clean selector-unset 512/1K/4K/32K/64K/128K sweep."
+  }
+}
