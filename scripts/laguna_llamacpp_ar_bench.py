@@ -16,6 +16,7 @@ import os
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,6 +53,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--server-bin", type=Path, default=DEFAULT_SERVER)
     parser.add_argument("--source-dir", type=Path)
     parser.add_argument("--source-revision")
+    parser.add_argument(
+        "--source-patch",
+        type=Path,
+        action="append",
+        help="declared measurement-only patch applied after the named source revision",
+    )
     parser.add_argument("--reference-repo", type=Path, default=DEFAULT_REFERENCE_REPO)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
@@ -133,7 +140,11 @@ def _git_blob_sha1(payload: bytes) -> str:
 
 
 def _verify_source_archive(
-    source_dir: Path, reference_repo: Path, revision: str
+    source_dir: Path,
+    reference_repo: Path,
+    revision: str,
+    *,
+    patches: list[Path] | None = None,
 ) -> dict[str, Any]:
     source = source_dir.resolve()
     reference = reference_repo.resolve()
@@ -157,6 +168,63 @@ def _verify_source_archive(
             continue
         relative = raw_path.decode("utf-8", errors="surrogateescape")
         expected[relative] = (mode, object_id)
+
+    declared_patches = [path.resolve() for path in (patches or [])]
+    patch_records = [
+        {"path": str(path), "sha256": _sha256_file(path)}
+        for path in declared_patches
+    ]
+    if declared_patches:
+        touched: set[str] = set()
+        for patch in declared_patches:
+            if not patch.is_file():
+                raise FileNotFoundError(f"declared source patch not found: {patch}")
+            numstat = subprocess.check_output(
+                ("git", "apply", "--numstat", str(patch)), cwd=reference, text=True
+            )
+            for line in numstat.splitlines():
+                fields = line.split("\t", 2)
+                if len(fields) != 3 or " => " in fields[2]:
+                    raise ValueError(f"unsupported source patch path record: {line!r}")
+                touched.add(fields[2])
+        with tempfile.TemporaryDirectory(prefix="laguna-llamacpp-source-patch-") as raw:
+            staging = Path(raw)
+            for relative in sorted(touched):
+                if relative not in expected:
+                    raise ValueError(f"source patch touches unknown path: {relative}")
+                mode, object_id = expected[relative]
+                payload = subprocess.check_output(
+                    ("git", "cat-file", "blob", object_id), cwd=reference
+                )
+                path = staging / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if mode == "120000":
+                    path.symlink_to(payload.decode("utf-8", errors="surrogateescape"))
+                else:
+                    path.write_bytes(payload)
+                    if mode == "100755":
+                        path.chmod(0o755)
+            for patch in declared_patches:
+                subprocess.run(
+                    ("git", "apply", "--check", "--unsafe-paths", str(patch)),
+                    cwd=staging,
+                    check=True,
+                )
+                subprocess.run(
+                    ("git", "apply", "--unsafe-paths", str(patch)),
+                    cwd=staging,
+                    check=True,
+                )
+            for relative in sorted(touched):
+                mode, _object_id = expected[relative]
+                path = staging / relative
+                if mode == "120000":
+                    payload = os.readlink(path).encode(
+                        "utf-8", errors="surrogateescape"
+                    )
+                else:
+                    payload = path.read_bytes()
+                expected[relative] = (mode, _git_blob_sha1(payload))
 
     mismatches: list[str] = []
     for relative, (mode, object_id) in expected.items():
@@ -193,7 +261,9 @@ def _verify_source_archive(
         "path": str(source),
         "reference_repo": str(reference),
         "revision": full_revision,
-        "archive_matches_revision": True,
+        "archive_matches_revision": not declared_patches,
+        "archive_matches_revision_plus_patches": True,
+        "patches": patch_records,
         "tracked_files": len(expected),
         "git_tree_listing_sha256": _sha256(tree),
     }
@@ -683,7 +753,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         repetitions=args.repetitions,
     )
     source_dir, revision = _resolved_source(args)
-    source = _verify_source_archive(source_dir, args.reference_repo, revision)
+    source = _verify_source_archive(
+        source_dir,
+        args.reference_repo,
+        revision,
+        patches=args.source_patch,
+    )
     bundle = _binary_bundle(args.server_bin)
 
     env = os.environ.copy()
@@ -790,7 +865,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     eligible = bool(
         harness_repo["tracked_clean"]
-        and source["archive_matches_revision"]
+        and source["archive_matches_revision_plus_patches"]
         and model_sha256 == args.model_sha256
         and prompt_sha256 == MATCHED_PROMPT_SHA256
         and len(rows) == expected_rows

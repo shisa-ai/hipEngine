@@ -190,6 +190,45 @@ def test_source_archive_verification_is_fail_closed(tmp_path: Path) -> None:
         _verify_source_archive(source, reference, revision)
 
 
+def test_source_archive_verification_accepts_only_declared_patch(
+    tmp_path: Path,
+) -> None:
+    reference = tmp_path / "reference"
+    source = tmp_path / "source"
+    reference.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=reference, check=True)
+    subprocess.run(("git", "config", "user.email", "test@example.com"), cwd=reference, check=True)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=reference, check=True)
+    (reference / "source.txt").write_text("before\n", encoding="utf-8")
+    subprocess.run(("git", "add", "source.txt"), cwd=reference, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=reference, check=True)
+    revision = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=reference, text=True).strip()
+    source.mkdir()
+    (source / "source.txt").write_text("after\n", encoding="utf-8")
+    patch = tmp_path / "measurement.patch"
+    patch.write_text(
+        "diff --git a/source.txt b/source.txt\n"
+        "index 90be1c3..89eaf97 100644\n"
+        "--- a/source.txt\n"
+        "+++ b/source.txt\n"
+        "@@ -1 +1 @@\n"
+        "-before\n"
+        "+after\n",
+        encoding="utf-8",
+    )
+
+    state = _verify_source_archive(source, reference, revision, patches=[patch])
+
+    assert state["archive_matches_revision_plus_patches"] is True
+    assert state["patches"] == [
+        {"path": str(patch.resolve()), "sha256": _sha256_file(patch)}
+    ]
+
+    (source / "source.txt").write_text("undeclared\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="source archive mismatch"):
+        _verify_source_archive(source, reference, revision, patches=[patch])
+
+
 def test_hipengine_reference_matches_transition_count_and_repetitions(
     tmp_path: Path,
 ) -> None:
