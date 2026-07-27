@@ -1601,3 +1601,7 @@ should be boring.
   tested non-prefetch specialization for sub-512/unmeasured geometries, and
   remove the one-purpose leaf/complete-state comparison modes when they no
   longer serve campaign bisection.
+- The clean publication trigger is satisfied at
+  **643.554/573.066/466.290 tok/s**, improving all required lengths with
+  exact lifecycle. Keep the explicit mode through the immediately queued
+  refreshed trace; then collapse it as described above.

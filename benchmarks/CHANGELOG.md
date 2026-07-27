@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-27
 
+- [retained exact gfx1151 Laguna Q4 raw-nibble-P8 production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / carry only the next K32 interval's eight raw T16 nibble words for producer chunks >=512; clean selector-unset 512/1K/4K improves **639.114/569.880/464.280 -> 643.554/573.066/466.290 tok/s (+0.695%/+0.559%/+0.433%)**, with BF16 identity, exact complete state, deterministic tokens/positions, and full allocation recovery; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q4 qmicro metadata-LDS] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / wave-owned K256 coefficient expansion is BF16-identical and saves **25,165,824 resident bytes (2.778%)**, but even a deliberately rolled decoder raises VGPR/LDS **88/3,072 B -> 120/5,120 B** and regresses the actual M256/M512 leaf **4.394 -> 4.940 ms (+12.44%) / 6.793 -> 7.385 ms (+8.71%)**; every candidate surface is removed and production remains **639.114 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json`.
 
 - [rejected and removed quality-gated gfx1151 Laguna Q4 D4x2 direct wave] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / a second residual activation plane passes the CPU-reference gate but regresses the pack-inclusive actual leaf **3.729 -> 4.107 ms (+10.12%)**, **4.434 -> 5.864 ms (+32.25%)**, and **6.882 -> 10.100 ms (+46.76%)** at M128/M256/M512; every candidate surface is removed and production remains **639.114 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json`.
