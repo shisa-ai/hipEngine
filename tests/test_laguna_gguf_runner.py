@@ -256,27 +256,33 @@ def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> 
     top_k = 10
     layers = 47
     layer_nbytes = rows * top_k * DType.INT64.itemsize
+    weight_layer_nbytes = rows * top_k * DType.FP32.itemsize
     capture = DeviceBuffer(0x71000000, layers * layer_nbytes)
+    weight_capture = DeviceBuffer(0x72000000, layers * weight_layer_nbytes)
 
     capture_laguna_routing_rows(
         0x12340000,
+        routing_weights_ptr=0x13340000,
         layer_id=1,
         leading_dense_layers=1,
         sparse_layers=layers,
         rows=rows,
         top_k=top_k,
         capture=capture,
+        routing_capture=weight_capture,
         runtime=runtime,
         stream=5,
     )
     capture_laguna_routing_rows(
         0x22340000,
+        routing_weights_ptr=0x23340000,
         layer_id=47,
         leading_dense_layers=1,
         sparse_layers=layers,
         rows=rows,
         top_k=top_k,
         capture=capture,
+        routing_capture=weight_capture,
         runtime=runtime,
         stream=5,
     )
@@ -290,9 +296,23 @@ def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> 
             5,
         ),
         (
+            weight_capture.ptr,
+            0x13340000,
+            weight_layer_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            5,
+        ),
+        (
             capture.ptr + 46 * layer_nbytes,
             0x22340000,
             layer_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            5,
+        ),
+        (
+            weight_capture.ptr + 46 * weight_layer_nbytes,
+            0x23340000,
+            weight_layer_nbytes,
             HipMemcpyKind.DEVICE_TO_DEVICE,
             5,
         ),
@@ -307,6 +327,34 @@ def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> 
             rows=rows,
             top_k=top_k,
             capture=DeviceBuffer(capture.ptr, capture.nbytes - 8),
+            runtime=runtime,
+        )
+    with pytest.raises(ValueError, match="routing-weight capture buffer"):
+        capture_laguna_routing_rows(
+            0x12340000,
+            routing_weights_ptr=0x13340000,
+            layer_id=1,
+            leading_dense_layers=1,
+            sparse_layers=layers,
+            rows=rows,
+            top_k=top_k,
+            capture=capture,
+            routing_capture=DeviceBuffer(
+                weight_capture.ptr,
+                weight_capture.nbytes - DType.FP32.itemsize,
+            ),
+            runtime=runtime,
+        )
+    with pytest.raises(ValueError, match="provided together"):
+        capture_laguna_routing_rows(
+            0x12340000,
+            routing_weights_ptr=0x13340000,
+            layer_id=1,
+            leading_dense_layers=1,
+            sparse_layers=layers,
+            rows=rows,
+            top_k=top_k,
+            capture=capture,
             runtime=runtime,
         )
     with pytest.raises(ValueError, match="sparse layer range"):

@@ -46,6 +46,16 @@ ROUTING_PROTOCOL_ROWS = {
     "lap1": LAP1_ROWS,
 }
 DEFAULT_TILE_ROWS = (2, 4, 8, 16, 32)
+DEFAULT_TAIL_MASS_THRESHOLDS = (
+    0.05,
+    0.075,
+    0.10,
+    0.125,
+    0.15,
+    0.175,
+    0.20,
+    0.225,
+)
 DEFAULT_SEED = 20260723
 DEFAULT_OUTPUT = (
     ROOT / "benchmarks/results/2026-07-23-gfx1151-laguna-routing-256-512.json"
@@ -176,6 +186,99 @@ def _routing_distribution_summary(
             json.dumps(flattened, separators=(",", ":")).encode("utf-8")
         ).hexdigest(),
         "layers": layers,
+    }
+
+
+def _routing_tail_mass_summary(
+    routing_by_layer: Mapping[int, Sequence[float]],
+    *,
+    rows: int,
+    top_k: int,
+    thresholds: Sequence[float] = DEFAULT_TAIL_MASS_THRESHOLDS,
+) -> dict[str, Any]:
+    """Summarize the normalized mass in the final one and two route slots."""
+
+    parsed_rows = int(rows)
+    parsed_top_k = int(top_k)
+    parsed_thresholds = tuple(float(value) for value in thresholds)
+    if parsed_rows <= 0 or parsed_top_k < 2:
+        raise ValueError("tail-mass routing requires positive rows and top_k >= 2")
+    if (
+        not parsed_thresholds
+        or any(not np.isfinite(value) or value <= 0.0 or value >= 1.0 for value in parsed_thresholds)
+        or tuple(sorted(set(parsed_thresholds))) != parsed_thresholds
+    ):
+        raise ValueError("tail-mass thresholds must be sorted, distinct, and within (0, 1)")
+
+    expected_lanes = parsed_rows * parsed_top_k
+    planes: list[np.ndarray] = []
+    for raw_layer_id, raw_weights in sorted(routing_by_layer.items()):
+        weights = np.asarray(raw_weights, dtype=np.float32)
+        if weights.shape != (expected_lanes,):
+            raise ValueError(
+                f"layer {int(raw_layer_id)} routing weights must equal "
+                f"rows*top_k={expected_lanes}"
+            )
+        if not np.isfinite(weights).all() or np.any(weights < 0.0):
+            raise ValueError("routing weights must be finite and non-negative")
+        planes.append(weights.reshape(parsed_rows, parsed_top_k))
+    if not planes:
+        raise ValueError("tail-mass routing summary requires at least one sparse layer")
+
+    all_rows = np.concatenate(planes, axis=0)
+    row_sum_error = np.abs(
+        all_rows.sum(axis=1, dtype=np.float32) - np.float32(1.0)
+    )
+    drop_one = all_rows[:, -1].astype(np.float32)
+    drop_two = all_rows[:, -2:].sum(axis=1, dtype=np.float32)
+    total_rows = int(all_rows.shape[0])
+    total_lanes = total_rows * parsed_top_k
+
+    def summarize(values: np.ndarray, removed_per_row: int) -> dict[str, Any]:
+        quantile_values = np.quantile(
+            values.astype(np.float64),
+            (0.0, 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99, 1.0),
+        )
+        quantiles = dict(
+            zip(
+                (
+                    "minimum",
+                    "p01",
+                    "p05",
+                    "p25",
+                    "median",
+                    "p75",
+                    "p95",
+                    "p99",
+                    "maximum",
+                ),
+                (float(value) for value in quantile_values),
+                strict=True,
+            )
+        )
+        threshold_rows: dict[str, Any] = {}
+        for threshold in parsed_thresholds:
+            eligible = int(np.count_nonzero(values <= np.float32(threshold)))
+            removed = eligible * int(removed_per_row)
+            threshold_rows[f"{threshold:g}"] = {
+                "eligible_rows": eligible,
+                "eligible_fraction": eligible / total_rows,
+                "removed_lanes": removed,
+                "removed_lane_fraction": removed / total_lanes,
+            }
+        return {
+            "quantiles": quantiles,
+            "thresholds": threshold_rows,
+        }
+
+    return {
+        "rows_per_layer": parsed_rows,
+        "top_k": parsed_top_k,
+        "sparse_layers": len(planes),
+        "routed_rows": total_rows,
+        "row_sum_max_abs_error": float(row_sum_error.max(initial=np.float32(0.0))),
+        "drop_one": summarize(drop_one, 1),
+        "drop_two": summarize(drop_two, 2),
     }
 
 
@@ -333,6 +436,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             routing[str(value)] = {
                 "next_token_id": int(replay.result.next_token_id),
                 "patterns": patterns,
+                "tail_mass": _routing_tail_mass_summary(
+                    replay.routing_weights,
+                    rows=value,
+                    top_k=replay.top_k,
+                ),
             }
             print(
                 f"rows={value} natural_groups={natural['active_expert_groups']} "

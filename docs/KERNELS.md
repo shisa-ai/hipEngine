@@ -225,6 +225,13 @@ all-family tracing measures **504.631 tok/s** and cuts router
 **30.658 -> 23.315 ms**. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`.
 
+The diagnostic-only prefill routing replay also captures the normalized F32
+weight beside every selected expert ID. Normal generation allocates neither
+capture plane. `scripts/laguna_routing_replay.py` reports the final-one and
+final-two route-mass distributions plus eligible/removed-lane fractions at a
+frozen threshold grid, so any routed-width experiment starts from measured
+model-wide work instead of a guessed cutoff.
+
 ### CPU-reference primitive oracles (**CPU reference landed**)
 
 Registered by `hipengine.kernels.cpu_reference.register_cpu_reference_kernels()` under `KernelKey("cpu_reference", <layer>, "fp16")`:

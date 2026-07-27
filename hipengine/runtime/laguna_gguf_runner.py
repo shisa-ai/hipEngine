@@ -1242,13 +1242,14 @@ class LagunaVerifierRowsResult:
 
 @dataclass(frozen=True)
 class LagunaPrefillRoutingReplay:
-    """Host-owned selected-expert lanes from one diagnostic prefill pass."""
+    """Host-owned selected-expert lanes and weights from one diagnostic pass."""
 
     result: LagunaEagerTokenResult
     rows: int
     expert_count: int
     top_k: int
     selected_experts: Mapping[int, tuple[int, ...]]
+    routing_weights: Mapping[int, tuple[float, ...]]
 
 
 @dataclass(frozen=True)
@@ -1423,16 +1424,18 @@ def capture_laguna_hidden_rows(
 def capture_laguna_routing_rows(
     selected_experts_ptr: int,
     *,
+    routing_weights_ptr: int | None = None,
     layer_id: int,
     leading_dense_layers: int,
     sparse_layers: int,
     rows: int,
     top_k: int,
     capture: DeviceBuffer,
+    routing_capture: DeviceBuffer | None = None,
     runtime: HipRuntime,
     stream: int = 0,
 ) -> None:
-    """Copy one sparse layer's selected IDs into a bounded diagnostic plane."""
+    """Copy one sparse layer's selected IDs and optional weights to bounded planes."""
 
     parsed_rows = int(rows)
     parsed_top_k = int(top_k)
@@ -1451,6 +1454,10 @@ def capture_laguna_routing_rows(
             "Laguna routing replay capture buffer must exactly match all sparse planes: "
             f"expected={expected_nbytes} actual={capture.nbytes}"
         )
+    if (routing_weights_ptr is None) != (routing_capture is None):
+        raise ValueError(
+            "Laguna routing weights pointer and routing capture must be provided together"
+        )
     runtime.memcpy_async(
         capture.ptr + sparse_index * layer_nbytes,
         int(selected_experts_ptr),
@@ -1458,6 +1465,22 @@ def capture_laguna_routing_rows(
         HipMemcpyKind.DEVICE_TO_DEVICE,
         int(stream),
     )
+    if routing_capture is not None:
+        weight_layer_nbytes = parsed_rows * parsed_top_k * _F32_NBYTES
+        expected_weight_nbytes = sparse_count * weight_layer_nbytes
+        if routing_capture.nbytes != expected_weight_nbytes:
+            raise ValueError(
+                "Laguna routing-weight capture buffer must exactly match all sparse "
+                f"planes: expected={expected_weight_nbytes} "
+                f"actual={routing_capture.nbytes}"
+            )
+        runtime.memcpy_async(
+            routing_capture.ptr + sparse_index * weight_layer_nbytes,
+            int(routing_weights_ptr),
+            weight_layer_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
 
 
 def load_laguna_eager_libraries(
@@ -2431,8 +2454,18 @@ class LagunaGGUFResidentSession:
         layer_lanes = rows * config.expert_used_count
         total_lanes = sparse_layers * layer_lanes
         capture = malloc(total_lanes * _I64_NBYTES, runtime=self.runtime)
+        routing_capture: DeviceBuffer | None = None
         try:
-            self._execute_rows(tokens, routing_capture=capture, stream=stream)
+            routing_capture = malloc(
+                total_lanes * _F32_NBYTES,
+                runtime=self.runtime,
+            )
+            self._execute_rows(
+                tokens,
+                routing_capture=capture,
+                routing_weight_capture=routing_capture,
+                stream=stream,
+            )
             result = self._project_rows_last(
                 input_token_id=tokens[-1],
                 position=self.position,
@@ -2440,10 +2473,17 @@ class LagunaGGUFResidentSession:
                 stream=stream,
             )
             host = (ctypes.c_int64 * total_lanes)()
+            host_routing = (ctypes.c_float * total_lanes)()
             self.runtime.memcpy(
                 ctypes.addressof(host),
                 capture.ptr,
                 capture.nbytes,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
+            self.runtime.memcpy(
+                ctypes.addressof(host_routing),
+                routing_capture.ptr,
+                routing_capture.nbytes,
                 HipMemcpyKind.DEVICE_TO_HOST,
             )
             selected = {
@@ -2453,14 +2493,32 @@ class LagunaGGUFResidentSession:
                 )
                 for layer_id in range(config.leading_dense_block_count, config.block_count)
             }
+            routing = {
+                layer_id: tuple(
+                    float(
+                        host_routing[
+                            (layer_id - config.leading_dense_block_count) * layer_lanes
+                            + lane
+                        ]
+                    )
+                    for lane in range(layer_lanes)
+                )
+                for layer_id in range(
+                    config.leading_dense_block_count,
+                    config.block_count,
+                )
+            }
             return LagunaPrefillRoutingReplay(
                 result=result,
                 rows=rows,
                 expert_count=config.expert_count,
                 top_k=config.expert_used_count,
                 selected_experts=MappingProxyType(selected),
+                routing_weights=MappingProxyType(routing),
             )
         finally:
+            if routing_capture is not None:
+                free(routing_capture, runtime=self.runtime)
             free(capture, runtime=self.runtime)
 
     def verify_rows(
@@ -2726,12 +2784,17 @@ class LagunaGGUFResidentSession:
         capture_rows: LagunaHiddenCaptureTargets | None = None,
         stage_verifier_kv: bool = False,
         routing_capture: DeviceBuffer | None = None,
+        routing_weight_capture: DeviceBuffer | None = None,
         stream: int,
     ) -> None:
         self._check_open()
         self._check_no_staged_verifier()
         if capture_last is not None and capture_rows is not None:
             raise ValueError("Laguna row execution accepts capture_last or capture_rows, not both")
+        if (routing_capture is None) != (routing_weight_capture is None):
+            raise ValueError(
+                "Laguna routing ID and weight captures must be provided together"
+            )
         tokens = tuple(int(token) for token in token_ids)
         rows = len(tokens)
         if rows <= 0 or rows > self.prefill_chunk_size:
@@ -2780,6 +2843,7 @@ class LagunaGGUFResidentSession:
                     rows=rows,
                     stage_verifier_kv=stage_verifier_kv,
                     routing_capture=routing_capture,
+                    routing_weight_capture=routing_weight_capture,
                     stream=stream,
                 )
                 depth = layer_id + 1
@@ -3060,6 +3124,7 @@ class LagunaGGUFResidentSession:
         rows: int,
         stage_verifier_kv: bool = False,
         routing_capture: DeviceBuffer | None = None,
+        routing_weight_capture: DeviceBuffer | None = None,
         stream: int,
     ) -> None:
         assert self.weights is not None
@@ -3408,12 +3473,16 @@ class LagunaGGUFResidentSession:
                 assert self.rows_moe_scratch is not None
                 capture_laguna_routing_rows(
                     self.rows_moe_scratch.selected_experts.ptr,
+                    routing_weights_ptr=(
+                        self.rows_moe_scratch.routing_weights.ptr
+                    ),
                     layer_id=layer_id,
                     leading_dense_layers=config.leading_dense_block_count,
                     sparse_layers=config.block_count - config.leading_dense_block_count,
                     rows=rows,
                     top_k=config.expert_used_count,
                     capture=routing_capture,
+                    routing_capture=routing_weight_capture,
                     runtime=self.runtime,
                     stream=stream,
                 )
