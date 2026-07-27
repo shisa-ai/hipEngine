@@ -891,7 +891,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     )
     assert (
         session.selected_down_mode
-        == "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+        == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     )
     assert session.fuse_selected_silu_pack is True
     session.set_fused_selected_silu_pack(False)

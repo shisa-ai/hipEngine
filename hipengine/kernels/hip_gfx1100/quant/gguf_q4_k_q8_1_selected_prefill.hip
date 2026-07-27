@@ -3048,11 +3048,14 @@ gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
       "raw Q4 prefetch supports 0 or 8 packs");
   static_assert(
       RAW_WEIGHT_PREFETCH_PACKS == 0 ||
-          (ACTIVATION_PASSES == 1 && SPLIT16 && MMQ_M == 128 &&
+          (ACTIVATION_PASSES == 1 &&
            ROWVEC_ACTIVATION_STAGE && WAVE_COLUMNS &&
-           THREADS == 128 && DIRECT_WAVE_DECODE &&
-           DOUBLE_BUFFER_ACTIVATION),
-      "raw Q4 prefetch requires production geometry");
+           DIRECT_WAVE_DECODE &&
+           ((SPLIT16 && MMQ_M == 128 && THREADS == 128 &&
+             DOUBLE_BUFFER_ACTIVATION) ||
+            (!SPLIT16 && MMQ_M == 64 && THREADS == 64 &&
+             !DOUBLE_BUFFER_ACTIVATION))),
+      "raw Q4 prefetch requires admitted gate/up or down geometry");
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -5482,6 +5485,49 @@ hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_wavecols_direct_prefill_c
       true,
       64,
       true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      nullptr,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight,
+      qweight,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features,
+      0,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_raw_prefetch_p8_selected_q8_1_ds4_f32_mmq64x32_wavecols_direct_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_q4_k_t16_selected_dual_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      64,
+      true,
+      true,
+      64,
+      true,
+      false,
+      8>(
       reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
       nullptr,
       expert_start_compact,

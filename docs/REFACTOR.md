@@ -1612,3 +1612,20 @@ should be boring.
   **6.7265 -> 7.0330 ms (+4.556%)**, so that bisection dependency is closed.
   Collapse the retained P8/non-P8 shape capability in the next cleanup unit;
   preserve the non-P8 specialization below 512 because it is measured faster.
+
+## Laguna Q4 selected-down raw-nibble P8 rollback
+
+- Added 2026-07-27 as the gfx1151 shape mode
+  `mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512`. It reuses the
+  exact gate/up P8 mechanism in the single-output 64x32/local64 Q4-down body,
+  adds no resident bytes/LDS/scratch, and preserves the previous body below
+  512 producer rows.
+- The M512 trace cuts 72 Q4-down launches
+  **217.416 -> 212.090 ms (-2.450%)**. Seven complete-state pp512 pairs
+  improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)** with every output
+  and state digest exact. The candidate is the gfx1151 default pending clean
+  selector-unset publication.
+- After clean publication and a refreshed all-family trace, collapse the
+  explicit positive selector into the gfx1151 shape capability. Preserve the
+  non-prefetch symbol for sub-512 rows and rollback/bisection because the
+  admitted route is deliberately shape-qualified.

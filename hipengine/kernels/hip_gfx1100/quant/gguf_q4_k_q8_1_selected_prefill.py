@@ -153,6 +153,14 @@ _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_WAVECOLS_DIRECT_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_q8_1_ds4_f32_"
     "mmq64x32_wavecols_direct_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q4_T16_SINGLE_RAW_PREFETCH_DS4_F32_MMQ64X32_WAVECOLS_DIRECT_BF16 = {
+    packs: (
+        f"hipengine_gguf_q4_k_t16_raw_prefetch_p{packs}_selected_q8_1_"
+        "ds4_f32_mmq64x32_wavecols_direct_"
+        "prefill_compact32_bf16_bf16_out"
+    )
+    for packs in (8,)
+}
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_ROWVEC_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_f32_"
     "mmq64x32_rowvec_prefill_compact32_bf16_bf16_out"
@@ -761,6 +769,7 @@ def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out
     rowvec: bool = False,
     wave_cols: bool = False,
     direct_wave_decode: bool = False,
+    raw_weight_prefetch_packs: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -782,9 +791,21 @@ def gguf_q4_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_bf16_bf16_out
         raise ValueError("wave_cols requires rowvec")
     if direct_wave_decode and not wave_cols:
         raise ValueError("direct_wave_decode requires wave_cols")
+    if raw_weight_prefetch_packs not in (0, 8):
+        raise ValueError("raw_weight_prefetch_packs must be 0 or 8")
+    if raw_weight_prefetch_packs and not direct_wave_decode:
+        raise ValueError(
+            "raw weight prefetch requires direct wave-column decode"
+        )
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    if direct_wave_decode:
+    if raw_weight_prefetch_packs:
+        symbol = (
+            _SYMBOL_Q4_T16_SINGLE_RAW_PREFETCH_DS4_F32_MMQ64X32_WAVECOLS_DIRECT_BF16[
+                raw_weight_prefetch_packs
+            ]
+        )
+    elif direct_wave_decode:
         symbol = _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_WAVECOLS_DIRECT_BF16
     elif wave_cols:
         symbol = _SYMBOL_Q4_T16_SINGLE_DS4_F32_MMQ64X32_WAVECOLS_BF16

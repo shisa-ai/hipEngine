@@ -25,6 +25,16 @@ local128/VGPR96/SGPR128/LDS3072B/scratch0. The absolute category gate remains
 requires another **64.154 ms** from the **795.583-ms** pp512 median wall.
 [`candidate`](results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-candidate.json).
 
+Payload-only P8 has also passed admission for the Q4 selected-down
+64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
+M512 launches **217.416 -> 212.090 ms (-2.450%)** at
+local64/VGPR96/LDS1536B/scratch0, while seven full-state pairs improve
+**639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)** with identical logits,
+hidden states, KV, cursor, and token. The gfx1151 default is updated; a clean
+selector-unset publication is pending, so the canonical topline above remains
+**643.554 tok/s**.
+[`candidate`](results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json).
+
 The 256-thread Q4 row64 gate/up screen is exact but rejected and fully
 removed. Keeping 32 accumulators per lane avoids the earlier row64 register
 failure, but natural routing cuts M256/M512 tiles only **5.44%/16.84%**.

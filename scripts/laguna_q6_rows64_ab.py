@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Laguna Q6 selected-down 32-row and 64-row production modes."""
+"""Compare exact Laguna selected-down production modes."""
 
 from __future__ import annotations
 
@@ -25,8 +25,10 @@ from scripts.laguna_target_ar_bench import (
 )
 
 _MODES = {
-    "q6_rows32_rollback": "mmq64x32_d4_f32_wavecols_direct_q4",
-    "q6_rows64_candidate": "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+    "current": "mmq64x64_d4_f32_q6_wavecols_direct_q4",
+    "q4_rawprefetch": (
+        "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
+    ),
 }
 
 
