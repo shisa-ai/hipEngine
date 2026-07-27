@@ -7,7 +7,7 @@ library is loaded only when ``get_hip_runtime()`` or ``HipRuntime.load()`` is ca
 from __future__ import annotations
 
 import ctypes
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Final, Protocol
 
@@ -58,6 +58,7 @@ class HipRuntime:
 
     library: ctypes.CDLL
     graph_adapter: HipGraphAdapter | None = None
+    _native_graph_exec_count: int = field(default=0, init=False)
 
     @classmethod
     def load(
@@ -214,7 +215,10 @@ class HipRuntime:
                 ctypes.c_size_t(len(log_buffer)),
             )
         )
-        return 0 if graph_exec.value is None else int(graph_exec.value)
+        value = 0 if graph_exec.value is None else int(graph_exec.value)
+        if value:
+            self._native_graph_exec_count += 1
+        return value
 
     def graph_launch(self, graph_exec: int, stream: int) -> None:
         if self.graph_adapter is not None:
@@ -244,7 +248,7 @@ class HipRuntime:
             return {
                 "requested_transport": "hip_graph",
                 "require_pm4": False,
-                "selected_exec_transports": {"hip_graph": 1},
+                "selected_exec_transports": {"hip_graph": self._native_graph_exec_count},
             }
         return self.graph_adapter.provenance()
 

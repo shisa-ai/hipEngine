@@ -215,6 +215,10 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     assert stream == 0x5001
     assert graph == 0x6000
     assert graph_exec == 0x7000
+    assert runtime.graph_exec_transport(graph_exec) == "hip_graph"
+    assert runtime.graph_transport_provenance()["selected_exec_transports"] == {
+        "hip_graph": 1
+    }
     assert (free_bytes, total_bytes) == (0x9000, 0xA000)
     assert lib.copied == [
         (0x1000, 0x2000, 16, int(HipMemcpyKind.HOST_TO_DEVICE)),

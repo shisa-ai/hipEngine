@@ -414,6 +414,8 @@ def main() -> int:
         "fastpath_safety": [run.get("fastpath_safety") for run in runs],
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
+        "graph_transport": get_hip_runtime().graph_transport_provenance(),
+        "graph_transports_all": [run.get("decode_graph_transport") for run in runs],
         "runs": runs,
         "summary": _summary(measured_runs),
         "notes": [
@@ -440,6 +442,19 @@ def main() -> int:
 def _exact_command_payload(argv: Sequence[object]) -> dict[str, Any]:
     argv_strings = [str(item) for item in argv]
     return {"argv": argv_strings, "command": shlex.join(argv_strings)}
+
+
+def _array_sha256(value: np.ndarray) -> str:
+    array = np.ascontiguousarray(value)
+    digest = hashlib.sha256()
+    digest.update(array.dtype.str.encode("ascii"))
+    digest.update(json.dumps(array.shape, separators=(",", ":")).encode("ascii"))
+    digest.update(array.view(np.uint8))
+    return digest.hexdigest()
+
+
+def _token_ids_sha256(token_ids: Sequence[int]) -> str:
+    return _array_sha256(np.asarray(token_ids, dtype=np.int64))
 
 
 def _gguf_tensor_inventory_summary(info: GGUFModelInfo) -> dict[str, Any]:
@@ -725,6 +740,7 @@ def _run_existing_session_once(
     prefill_seconds = 0.0
     warmup_decode_seconds = 0.0
     decode_seconds = 0.0
+    decode_graph_transport: str | None = None
     decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
@@ -771,6 +787,7 @@ def _run_existing_session_once(
             else:
                 decode_graph_reused = True
             decode_graph_recorded_tokens = getattr(graph, "generated", None) is not None
+            decode_graph_transport = runtime.graph_exec_transport(graph.graph_exec)
             if decode_graph_reused:
                 # capture_decode_graph() primes the device position scalar before
                 # capture, outside the graph body. A retained graph therefore
@@ -787,6 +804,7 @@ def _run_existing_session_once(
                 with roctx.region("measured_decode_graph", selected=rocprof_selected_region):
                     graph.replay(decode_tokens)
                 decode_seconds = time.perf_counter() - decode_start
+                decode_graph_transport = runtime.graph_exec_transport(graph.graph_exec)
                 if decode_graph_recorded_tokens:
                     generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
                 final = graph.read_sample()
@@ -809,6 +827,7 @@ def _run_existing_session_once(
         final_token_id = None if final is None else final.token_id
         final_logit = None if final is None else final.logit
         finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
+        final_logits_sha256 = None if final is None else _array_sha256(final.logits)
     finally:
         memory_snapshots["before_close"] = _memory_snapshot("before_close", runtime, session)
 
@@ -839,6 +858,7 @@ def _run_existing_session_once(
         "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "decode_graph_reused": bool(decode_graph_reused),
         "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
+        "decode_graph_transport": decode_graph_transport,
         "rocprof_selected_region": rocprof_selected_region,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
@@ -861,6 +881,8 @@ def _run_existing_session_once(
             "finite_final_logits": finite_logits,
             "final_token_id": final_token_id,
             "final_logit": final_logit,
+            "final_logits_sha256": final_logits_sha256,
+            "generated_token_ids_sha256": _token_ids_sha256(generated_token_ids),
             "generated_preview_token_ids": generated_token_ids[:16],
             "generated_tail_token_ids": generated_token_ids[-16:],
             "generated_count_including_prefill_sample_and_warmup": len(generated_token_ids),
@@ -930,6 +952,7 @@ def _run_once(
     generated_token_ids: list[int] = []
     final = None
     graph_capture_seconds = 0.0
+    decode_graph_transport: str | None = None
     decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
@@ -963,11 +986,13 @@ def _run_once(
                 record_steps=decode_tokens,
             )
             graph_capture_seconds = time.perf_counter() - capture_start
+            decode_graph_transport = runtime.graph_exec_transport(graph.graph_exec)
             try:
                 decode_start = time.perf_counter()
                 with roctx.region("measured_decode_graph", selected=rocprof_selected_region):
                     graph.replay(decode_tokens)
                 decode_seconds = time.perf_counter() - decode_start
+                decode_graph_transport = runtime.graph_exec_transport(graph.graph_exec)
                 generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
                 final = graph.read_sample()
             finally:
@@ -984,6 +1009,7 @@ def _run_once(
         final_token_id = None if final is None else final.token_id
         final_logit = None if final is None else final.logit
         finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
+        final_logits_sha256 = None if final is None else _array_sha256(final.logits)
     finally:
         memory_snapshots["before_close"] = _memory_snapshot("before_close", runtime, session)
         session.close()
@@ -1013,6 +1039,7 @@ def _run_once(
         "fastpath_safety": fastpath_safety,
         "requested_graph_replay_decode": bool(graph_replay_decode),
         "effective_graph_replay_decode": bool(effective_graph_replay_decode),
+        "decode_graph_transport": decode_graph_transport,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
@@ -1033,6 +1060,8 @@ def _run_once(
             "finite_final_logits": finite_logits,
             "final_token_id": final_token_id,
             "final_logit": final_logit,
+            "final_logits_sha256": final_logits_sha256,
+            "generated_token_ids_sha256": _token_ids_sha256(generated_token_ids),
             "generated_preview_token_ids": generated_token_ids[:16],
             "generated_tail_token_ids": generated_token_ids[-16:],
             "generated_count_including_prefill_sample_and_warmup": len(generated_token_ids),

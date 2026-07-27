@@ -3,6 +3,8 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
+import numpy as np
+
 from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo
 from scripts import qwen35_gguf_bench as bench
 
@@ -52,6 +54,16 @@ def test_exact_command_payload_preserves_argv_and_shell_command() -> None:
 
     assert payload["argv"] == argv
     assert shlex.split(payload["command"]) == argv
+
+
+def test_correctness_fingerprints_are_dtype_and_order_sensitive() -> None:
+    logits = np.array([1.0, -0.0, 3.5], dtype=np.float32)
+    same = np.array([1.0, -0.0, 3.5], dtype=np.float32)
+    changed_bits = np.array([1.0, 0.0, 3.5], dtype=np.float32)
+
+    assert bench._array_sha256(logits) == bench._array_sha256(same)
+    assert bench._array_sha256(logits) != bench._array_sha256(changed_bits)
+    assert bench._token_ids_sha256([1, 2, 3]) != bench._token_ids_sha256([3, 2, 1])
 
 
 def test_decode_graph_disabled_reason_tracks_production_graph_capability() -> None:
