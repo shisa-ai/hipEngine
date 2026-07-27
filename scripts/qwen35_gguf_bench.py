@@ -791,8 +791,9 @@ def _run_existing_session_once(
             if decode_graph_reused:
                 # capture_decode_graph() primes the device position scalar before
                 # capture, outside the graph body. A retained graph therefore
-                # needs the same scalar reset before each replay after
+                # needs the same scalar and host replay-window reset after each
                 # session.reset()+prefill()+warmup.
+                _reset_reusable_graph_replay(graph)
                 stream = runtime.stream_create()
                 try:
                     session._set_full_attention_position_device(session.position, stream=stream)
@@ -1069,6 +1070,10 @@ def _run_once(
         "memory": _memory_summary(memory_snapshots),
         "memory_snapshots": memory_snapshots,
     }
+
+
+def _reset_reusable_graph_replay(graph: Any) -> None:
+    graph.replayed_steps = 0
 
 
 def _decode_graph_disabled_reason(session: Any, requested: bool) -> str | None:
