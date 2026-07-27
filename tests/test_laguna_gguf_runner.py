@@ -917,6 +917,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     )
     assert session.prefill_chunk_size == 2_048
     assert session.prefill_attention_chunk_size == 128
+    assert session.prefill_global_attention_chunk_size == 2_048
     assert session.prefill_kv_preappend is True
     assert session.prefill_cached_meta is True
     assert session.prefill_global_qrow6 is True

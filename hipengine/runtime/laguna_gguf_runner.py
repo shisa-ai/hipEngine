@@ -1614,6 +1614,7 @@ class LagunaGGUFResidentSession:
         model_sha256: str | None = None,
         prefill_chunk_size: int | None = None,
         prefill_attention_chunk_size: int | None = None,
+        prefill_global_attention_chunk_size: int | None = None,
         global_prefill_variant: str | None = None,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
@@ -1669,6 +1670,34 @@ class LagunaGGUFResidentSession:
         )
         self.prefill_chunk_size = self.prefill_chunk_policy.matrix_rows
         self.prefill_attention_chunk_size = self.prefill_chunk_policy.attention_rows
+        global_attention_rows = (
+            int(
+                backend_package_capability(
+                    self.backend,
+                    "LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS",
+                    self.prefill_attention_chunk_size,
+                )
+                or self.prefill_attention_chunk_size
+            )
+            if prefill_global_attention_chunk_size is None
+            else int(prefill_global_attention_chunk_size)
+        )
+        if (
+            prefill_global_attention_chunk_size is None
+            and global_attention_rows > self.prefill_chunk_size
+        ):
+            global_attention_rows = self.prefill_attention_chunk_size
+        self.prefill_global_attention_chunk_size = global_attention_rows
+        if (
+            self.prefill_global_attention_chunk_size
+            not in {128, 256, 512, 1_024, 2_048}
+            or self.prefill_global_attention_chunk_size
+            > self.prefill_chunk_size
+        ):
+            raise ValueError(
+                "Laguna global attention rows must be a supported width "
+                "within matrix capacity"
+            )
         self.global_prefill_variant = resolve_laguna_global_prefill_variant(
             self.backend,
             global_prefill_variant,
@@ -3063,7 +3092,11 @@ class LagunaGGUFResidentSession:
             self.long_attention_hipblaslt = route
         return route
 
-    def _ensure_block_attention_hipblaslt(self) -> LagunaAttentionHipblasLt:
+    def _ensure_block_attention_hipblaslt(
+        self,
+        query_rows: int = 128,
+    ) -> LagunaAttentionHipblasLt:
+        parsed_rows = int(query_rows)
         route = self.block_attention_hipblaslt
         if route is None:
             maximum_context = self.context_length // 128 * 128
@@ -3074,8 +3107,13 @@ class LagunaGGUFResidentSession:
                 max_context=maximum_context,
                 max_q_heads=48,
                 block_context=4096,
+                query_rows=parsed_rows,
             )
             self.block_attention_hipblaslt = route
+        elif route.query_rows != parsed_rows:
+            raise RuntimeError(
+                "Laguna block-attention query width changed within one session"
+            )
         return route
 
     def _ensure_swa_attention_hipblaslt(self) -> LagunaSwaAttentionHipblasLt:
@@ -3322,7 +3360,18 @@ class LagunaGGUFResidentSession:
             stream=stream,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
-        attention_ranges = self.prefill_chunk_policy.attention_ranges(rows)
+        attention_limit = (
+            self.prefill_global_attention_chunk_size
+            if (
+                layer.attention_type == FULL_ATTENTION
+                and rows >= self.prefill_global_attention_chunk_size
+            )
+            else min(self.prefill_chunk_policy.attention_rows, 128)
+        )
+        attention_ranges = tuple(
+            (start, min(attention_limit, rows - start))
+            for start in range(0, rows, attention_limit)
+        )
         packed_query_offsets: set[int] = set()
         if (
             self.prefill_attention_hipblaslt_packed_query_producer
@@ -3465,8 +3514,16 @@ class LagunaGGUFResidentSession:
                         self.prefill_long_attention_hipblaslt
                         and not use_attention_hipblaslt
                         and layer.attention_type == FULL_ATTENTION
-                        and attention_rows == 128
-                        and blas_start >= _LONG_ATTENTION_MIN_START
+                        and attention_rows
+                        in {128, 256, 512, 1_024, 2_048}
+                        and (
+                            attention_rows == 128
+                            or self.prefill_block_attention_hipblaslt
+                        )
+                        and (
+                            attention_rows > 128
+                            or blas_start >= _LONG_ATTENTION_MIN_START
+                        )
                         and blas_start + attention_rows <= self.context_length
                         and state.q_heads == 48
                         and config.head_count_kv == 8
@@ -3486,9 +3543,10 @@ class LagunaGGUFResidentSession:
                     leave_output_packed = bool(
                         self.prefill_attention_hipblaslt_packed_output_gate
                         and self.prefill_attention_hipblaslt_packed_queries
+                        and query_is_packed
                     )
                     attention_route = (
-                        self._ensure_block_attention_hipblaslt()
+                        self._ensure_block_attention_hipblaslt(attention_rows)
                         if (
                             use_long_attention_hipblaslt
                             and self.prefill_block_attention_hipblaslt

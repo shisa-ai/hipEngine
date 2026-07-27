@@ -164,6 +164,18 @@ retained 128K route is now **43.501%** above original LC-0 and **57.844%**
 above same-GGUF Vulkan.
 [`rolling-SWA production`](results/2026-07-28-gfx1151-laguna-lc2-swa-hipblaslt-production.json).
 
+LC-3 now reuses every exact 4K global K/V block across a complete M2,048
+matrix chunk while preserving M128 SWA. Exhaustive global screens reduce
+inclusive cost per row **43.309 -> 26.382 us (-39.09%)** from M128 to M2,048;
+the corresponding SWA screen is rejected because per-row cost rises
+**5.370 -> 21.124 us**. Complete 4K/16K/64K improves
+**5.615%/20.473%/39.112%**. Mandatory 128K improves
+**103.520 -> 149.684 tok/s (+44.594%)**, cuts wall
+**1,266.148 -> 875.657 seconds**, preserves token 22746/position 131071, and
+releases every tracked allocation. This is **107.494%** above original LC-0
+and **128.233%** above same-GGUF Vulkan at 128K.
+[`global-M2048 production`](results/2026-07-28-gfx1151-laguna-lc3-global-m2048-production.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

@@ -82,6 +82,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--context-length", type=int, default=max(DEFAULT_LENGTHS))
     parser.add_argument("--lengths", type=_parse_lengths, default=DEFAULT_LENGTHS)
     parser.add_argument("--chunk-size", type=_parse_chunk_size, default=DEFAULT_CHUNK_SIZE)
+    parser.add_argument(
+        "--attention-rows",
+        type=_parse_chunk_size,
+        help="global-attention query rows; SWA remains capped at 128",
+    )
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--warmup-rows", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--compiler-version-file", type=Path)
@@ -274,6 +279,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
+    active_attention_rows = 128
+    active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
     load_started = time.perf_counter()
     try:
@@ -288,6 +295,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             repacked_cache=args.repacked_cache,
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
+            prefill_global_attention_chunk_size=args.attention_rows,
             q6_qmicro_permute=args.q6_qmicro_permute,
             q6_qmicro_planar=args.q6_qmicro_planar,
             moe_branch_concurrency=args.moe_branch_concurrency,
@@ -323,6 +331,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_swa_attention_hipblaslt = (
             owner.prefill_swa_attention_hipblaslt
+        )
+        active_attention_rows = owner.prefill_attention_chunk_size
+        active_global_attention_rows = (
+            owner.prefill_global_attention_chunk_size
         )
         load_seconds = time.perf_counter() - load_started
         owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
@@ -470,7 +482,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "lengths": list(lengths),
             "chunk_size": args.chunk_size,
             "matrix_rows": args.chunk_size,
-            "attention_rows": min(args.chunk_size, 128),
+            "attention_rows": active_global_attention_rows,
+            "swa_attention_rows": min(
+                args.chunk_size,
+                128,
+                active_attention_rows,
+            ),
             "chunks_per_length": {
                 str(length): math.ceil(length / args.chunk_size) for length in lengths
             },

@@ -144,6 +144,7 @@ def test_laguna_long_hipblaslt_shape_and_algorithm_bands() -> None:
     route = object.__new__(LagunaAttentionHipblasLt)
     route.max_context = 131072
     route.max_q_heads = 48
+    route.query_rows = 128
     assert route._supports_shape(
         rows=128,
         start_position=130944,
@@ -168,17 +169,33 @@ def test_laguna_long_hipblaslt_shape_and_algorithm_bands() -> None:
     }
     for context, (qk_index, pv_index) in expected.items():
         assert _preferred_algorithm_index(
+            query_rows=128,
             query_heads=48,
             context=context,
             operation="qk",
             packed_queries=True,
         ) == qk_index
         assert _preferred_algorithm_index(
+            query_rows=128,
             query_heads=48,
             context=context,
             operation="pv",
             packed_queries=True,
         ) == pv_index
+    assert _preferred_algorithm_index(
+        query_rows=2_048,
+        query_heads=48,
+        context=2_048,
+        operation="qk",
+        packed_queries=True,
+    ) == 15
+    assert _preferred_algorithm_index(
+        query_rows=2_048,
+        query_heads=48,
+        context=4_096,
+        operation="pv",
+        packed_queries=True,
+    ) == 2
 
 
 def test_laguna_swa_hipblaslt_shape_contract() -> None:
@@ -978,6 +995,8 @@ def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
         cache.discard_rows()
         wide_positions = tuple(range(512, 512 + 2_048))
         cache.prepare_rows(wide_positions)
+        assert cache.can_preappend_prefill(0, 2_048)
+        cache.append_rows(0, 0x2000, 0x3000, 2_048)
         with pytest.raises(ValueError, match="SWA ring"):
             cache.append_rows(1, 0x2000, 0x3000, 2_048)
         cache.append_rows(

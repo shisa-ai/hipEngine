@@ -43,6 +43,17 @@ should be removed or collapsed.
   after the wider-query route either absorbs this owner or proves the M128
   route remains independently optimal. Do not remove the span-aware fallback.
 
+## Laguna global M2048 attention-query route
+
+- Added and promoted 2026-07-28 after exhaustive M128..M2048 global/SWA
+  screens and positive 4K/16K/64K/128K complete-model gates. The production
+  capability `LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS=2048` applies only to
+  complete global matrix chunks; SWA and partial tails remain M128.
+- Keep the explicit constructor/profile override through LC-4/LC-5 so dense
+  addressing and larger matrix chunks can be bisected independently. Collapse
+  it into the final chunk policy after those stages choose their retained
+  geometry. Never remove the generic span-aware fallback.
+
 ## Laguna MoE shared/routed branch-concurrency candidate
 
 - Added 2026-07-26 as an exact, default-off session and profile-harness

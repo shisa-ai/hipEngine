@@ -1898,8 +1898,8 @@ def laguna_dense_initial_query_head_transpose_f32(
 ) -> None:
     """Transpose dense-initial F32 query/output rows around batched BLAS."""
 
-    if int(rows) <= 0 or int(rows) > 128:
-        raise ValueError("dense-initial BLAS rows must be within [1, 128]")
+    if int(rows) <= 0 or int(rows) > 2_048:
+        raise ValueError("dense-initial BLAS rows must be within [1, 2048]")
     _check_laguna_attention_shape(
         num_q_heads,
         _LAGUNA_KV_HEADS,
@@ -2134,8 +2134,8 @@ def laguna_dense_initial_attention_tile_merge_f32(
 ) -> None:
     """Merge one PV numerator tile and normalize the final head-major output."""
 
-    if int(rows) <= 0 or int(rows) > 128:
-        raise ValueError("dense-initial BLAS rows must be within [1, 128]")
+    if int(rows) <= 0 or int(rows) > 2_048:
+        raise ValueError("dense-initial BLAS rows must be within [1, 2048]")
     _check_laguna_attention_shape(
         num_q_heads,
         _LAGUNA_KV_HEADS,
