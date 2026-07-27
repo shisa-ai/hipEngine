@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T16:30:45+09:00",
+  "kind": "hipengine_laguna_routing_tail_mass",
+  "status": "accepted_diagnostic",
+  "pass": true,
+  "performance_claim": false,
+  "repo": {
+    "revision": "346e6980ce41c9e7eb070961da284dfc9a6fae95",
+    "tracked_clean": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_routing_replay.py --protocol retained --rows 256,512 --require-cached-build --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-routing-tail-mass.json",
+    "workload_rows": [
+      256,
+      512
+    ],
+    "sparse_layers": 47,
+    "top_k": 10,
+    "token_source": "mixed_ja_en_review repeated without leading BOS",
+    "raw_sha256": "e415f07c1727874dd608798007a60ac883693c0e8fbdbc11535f3c5000b846d4"
+  },
+  "results": {
+    "m256": {
+      "routed_rows": 12032,
+      "row_sum_max_abs_error": 3.5762786865234375e-07,
+      "drop_one_mass_median": 0.06257777288556099,
+      "drop_two_mass_median": 0.12842800468206406,
+      "drop_two_thresholds": {
+        "0.10": {
+          "eligible_row_fraction": 0.21783577127659576,
+          "removed_lane_fraction": 0.04356715425531915
+        },
+        "0.125": {
+          "eligible_row_fraction": 0.460688164893617,
+          "removed_lane_fraction": 0.0921376329787234
+        },
+        "0.15": {
+          "eligible_row_fraction": 0.7527426861702128,
+          "removed_lane_fraction": 0.15054853723404255
+        }
+      }
+    },
+    "m512": {
+      "routed_rows": 24064,
+      "row_sum_max_abs_error": 3.5762786865234375e-07,
+      "drop_one_mass_median": 0.06837267428636551,
+      "drop_two_mass_median": 0.13947560638189316,
+      "drop_two_thresholds": {
+        "0.10": {
+          "eligible_row_fraction": 0.1532164228723404,
+          "removed_lane_fraction": 0.030643284574468084
+        },
+        "0.125": {
+          "eligible_row_fraction": 0.33992686170212766,
+          "removed_lane_fraction": 0.06798537234042554
+        },
+        "0.15": {
+          "eligible_row_fraction": 0.6378823138297872,
+          "removed_lane_fraction": 0.12757646276595744
+        }
+      }
+    }
+  },
+  "correctness": {
+    "every_natural_lane_accounted": true,
+    "normalized_weight_sums_within_f32_roundoff": true,
+    "tracked_allocated_bytes": 77493641236,
+    "tracked_freed_bytes": 77493641236,
+    "active_allocations_after": 0
+  },
+  "decision": {
+    "thresholds_at_or_below_0.10_have_insufficient_700_ceiling": true,
+    "single_bounded_candidate": "drop final two routes only when their combined normalized mass is <=0.15",
+    "candidate_removed_lane_fraction_m512": 0.12757646276595744,
+    "quality_status": "not_admitted",
+    "next_gate": "primitive semantics, pp512 ceiling, then extended-512 complete category quality"
+  }
+}

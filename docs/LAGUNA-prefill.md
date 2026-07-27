@@ -1928,6 +1928,19 @@ Immediate execution queue:
    Evidence:
    [`top-8`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk8-absolute-rejected.json) ·
    [`top-9`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk9-absolute-rejected.json).
+66. **Measured diagnostic; one bounded candidate remains:** capture normalized
+   F32 route weights beside selected IDs without changing normal generation.
+   Across all 47 sparse layers at M512, the final route has median mass
+   **0.06837** and the final two have median combined mass **0.13948**.
+   Dropping two only when their combined mass is at most **0.10** removes just
+   **3.064%** of lanes, which cannot close the 700 gap. Threshold **0.15**
+   affects **63.788%** of routed rows and removes **12.758%** of lanes; it is
+   the sole dynamic-width candidate with a plausible ceiling. It must be a
+   model-wide rule, preserve exact c=1 top-10, and pass an extended-512
+   complete category/heldout gate before promotion. No prompt-conditioned,
+   observed-output-conditioned, or fixed-prefix exemption is admissible.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-routing-tail-mass.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-routing-tail-mass.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1952,9 +1965,10 @@ to Q4 selected down:
    widening the workgroup, exchanging full results through LDS, or weakening
    P8's complete next-K32 payload coverage. Do not pair-share those payload
    gathers through wave shuffles; coalescing already removes the physical
-   traffic duplication. Do not reduce the model's routed width: prefill-only
-   top-8/top-9 are now category-rejected despite reaching
-   **720.130/684.313 tok/s** in pp512 screening.
+   traffic duplication. Fixed prefill top-8/top-9 are category-rejected despite
+   reaching **720.130/684.313 tok/s**. The only remaining routed-width screen
+   is item 66's measured final-two combined-mass threshold **0.15**; remove it
+   if either the pp512 ceiling or extended-512 category gate fails.
 3. Do not widen the 128-row attention slice or retry a library-QK plus scalar
    fused-softmax/PV tail: M256 remains slower after exhaustive algorithm
    tuning, and row8/row16 fused tails lose production despite removing the
