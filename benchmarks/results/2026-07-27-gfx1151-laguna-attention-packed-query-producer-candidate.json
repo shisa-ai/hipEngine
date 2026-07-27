@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "retained_pending_clean_trace_and_publication",
+  "status": "retained_and_published",
   "kind": "hipengine_laguna_attention_packed_query_producer",
   "created_at": "2026-07-27T15:34:44+09:00",
   "hardware": {
@@ -59,5 +59,5 @@
       "sha256": "37978f6337f6cea74d467fa84b206f2aed2443215d88d68b0965a47c4548263d"
     }
   ],
-  "decision": "Retain as the gfx1151 default candidate. The exact complete-state A/B gate is positive; commit the staged candidate to satisfy the clean-state profiler, then require the cached production trace to remove all 144 pp512 query-transpose launches and name the packed-query RMSNorm/RoPE producer with plausible resources before publication."
+  "decision": "Retained and published as the gfx1151 default. The clean trace removes all 144 pp512 query-transpose launches, cuts dispatches 2273 -> 2129, and improves producer plus transpose 20.530426 -> 16.665674 ms (-18.82%) at local256/VGPR16/LDS0/scratch0. Clean selector-unset 512/1K/4K reaches 654.249/579.699/468.608 tok/s."
 }

@@ -184702,3 +184702,28 @@ Vulkan local sizes verbatim will close the measured gap.
   producer to appear at plausible resources, and the complete selector-unset
   trace to pass. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-candidate.json`.
+
+## 2026-07-27 — Publish direct packed attention query producer
+
+- The clean cached trace passes the structural gate. Qualified pp512 query
+  transpose falls **144 launches / 4.907376 ms -> 0** and total dispatches
+  fall **2,273 -> 2,129**. The direct packed producer runs 48 times at
+  local256/VGPR16/SGPR128/LDS0/scratch0 and costs **16.665674 ms** versus the
+  prior generic producer's **15.623050 ms**. Producer plus transpose still
+  improves **20.530426 -> 16.665674 ms (-18.82%, 3.864752 ms saved)**.
+- The complete pp512 trace records **1,093.173 ms** inclusive kernel sum and
+  **841.892 ms** kernel span. Traced attention falls
+  **63.846 -> 60.564 ms (-5.14%)**. Selected gate/up remains largest at
+  **332.844 ms**, activation/reduce/residual is **252.435 ms**, selected down
+  **170.751 ms**, source-F16 **124.308 ms**, and dense/shared **92.035 ms**.
+- Three clean selector-unset repetitions publish
+  **654.249/579.699/468.608 tok/s** at 512/1K/4K, improving the preceding
+  packet **0.991%/0.689%/0.108%**. Tokens **2930/95/7772**, positions,
+  deterministic repeats, and complete return of all **78,806,349,844**
+  tracked bytes pass. The eleven-pair gate remains complete-state exact at
+  **647.210 -> 650.651 tok/s (+0.532%, 7/11 wins)**; the canonical quality
+  gate transfers unchanged at max KL **0.049542582**, **316/320** top-1.
+- pp512 wall is **782.577 ms**, leaving **51.148 ms** to 700. Raw publication
+  SHA-256 is `b9e908a3...41b8`; trace SHA-256 is
+  `d2b029b0...0463`; summary SHA-256 is `d7ca2039...b7f`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`.

@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T15:44:49+09:00",
+  "kind": "hipengine_laguna_attention_packed_query_producer_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "exact pp512 attention query-producer boundary and dispatch reduction; selector-unset 512/1024/4096 continuity on gfx1151",
+  "repo": {
+    "runtime_revision": "fc84d87b98cedea5331f7e9feeece053385696aa",
+    "previous_production_revision": "ebc0b9073a4a4895647cfa8198aac3e26252ac95",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "qualified dense-initial M128 hipBLASLt attention tiles beginning at positions 128, 256, and 384",
+    "mechanism": "write each qualified query tile head-major from the fused per-head RMSNorm plus RoPE producer and consume it directly in the existing packed zero-workspace QK contraction",
+    "resident_weight_delta_bytes": 0,
+    "scratch_delta_bytes": 0,
+    "pp512_query_pack_launches_before": 144,
+    "pp512_query_pack_launches_after": 0,
+    "pp512_dispatches_before": 2273,
+    "pp512_dispatches_after": 2129,
+    "pp512_generic_producer_ms_before": 15.62305,
+    "pp512_packed_producer_ms_after": 16.665674,
+    "pp512_producer_plus_query_pack_ms_before": 20.530426,
+    "pp512_producer_plus_query_pack_ms_after": 16.665674,
+    "pp512_boundary_delta_ms": -3.864752,
+    "pp512_boundary_delta_percent": -18.824509535262447
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-packed-query-producer-production-clean.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "tracked_worktree_clean": true,
+    "selector_unset": true,
+    "raw_sha256": "b9e908a38b1525adc9256cf22d7d39eae657bb0ce91659d9787815ffb4b841b8"
+  },
+  "samples": {
+    "512_tok_s": [
+      624.3928664149962,
+      654.248662477172,
+      655.2305918667181
+    ],
+    "1024_tok_s": [
+      584.8074349923114,
+      579.6987225910123,
+      579.4136392521804
+    ],
+    "4096_tok_s": [
+      471.6124370671874,
+      468.60776605332995,
+      467.35472335077804
+    ],
+    "median_512_1024_4096_tok_s": [
+      654.248662477172,
+      579.6987225910123,
+      468.60776605332995
+    ],
+    "previous_packet_512_1024_4096_tok_s": [
+      647.8258185356267,
+      575.7320408570732,
+      468.10278225888703
+    ],
+    "aggregate_change_percent": [
+      0.991446119894368,
+      0.6889805417176209,
+      0.10787882780916025
+    ]
+  },
+  "same_process_pp512_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_attention_packed_output_gate_ab.py --comparison packed_query_producer --repetitions 11 --require-cached-build --output /tmp/laguna-attention-packed-query-producer-ab.json",
+    "pairs": 11,
+    "candidate_wins": 7,
+    "production_independent_median_tok_s": 647.2100600714512,
+    "candidate_independent_median_tok_s": 650.6509552390294,
+    "independent_median_delta_percent": 0.5316504454826232,
+    "paired_median_wall_saved_ms": 1.5567520167678595,
+    "state_exact_pairs": 11,
+    "raw_sha256": "4656ccc330f19ec71653af6f43a12cd4c55d68b28f6d8e2b5b59e0df42657ec9"
+  },
+  "correctness": {
+    "packed_query_tiles_match_generic_f32_bits": true,
+    "generic_query_rows_match_generic_f32_bits": true,
+    "key_output_matches_generic_f32_bits": true,
+    "complete_model_ab_runs": 22,
+    "complete_model_state_exact": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "quality_transfer": "The direct packed producer is F32-bit exact after layout inversion to the preceding generic query producer, so the existing absolute category gate transfers unchanged."
+  },
+  "memory": {
+    "resident_nbytes": 78806349844,
+    "peak_allocated_bytes": 78806349844,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0
+  },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-packed-query-producer-production-trace --output-file laguna-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-packed-query-producer-production-trace/child.json",
+    "pp512": {
+      "dispatches": 2129,
+      "kernel_sum_ms": 1093.173214,
+      "kernel_span_ms": 841.892296,
+      "selected_q4_gate_up_ms": 332.843678,
+      "selected_q4_q6_down_ms": 170.751262,
+      "source_f16_projection_ms": 124.30827,
+      "dense_shared_quant_projection_ms": 92.034648,
+      "attention_ms": 60.563749,
+      "router_ms": 22.762915,
+      "activation_reduce_residual_ms": 252.434764,
+      "norm_rope_gate_ms": 29.600584
+    },
+    "packed_query_producer": {
+      "calls": 48,
+      "duration_ms": 16.665674,
+      "workgroup": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes_per_thread": 0
+    },
+    "delta_from_previous_pp512": {
+      "attention_ms_before": 63.846088,
+      "attention_ms_after": 60.563749,
+      "attention_delta_percent": -5.141018193628399,
+      "kernel_sum_ms_before": 1101.818951,
+      "kernel_sum_ms_after": 1093.173214,
+      "kernel_sum_delta_percent": -0.7846785528741629,
+      "kernel_span_ms_before": 843.411304,
+      "kernel_span_ms_after": 841.892296,
+      "kernel_span_delta_percent": -0.1801028742199562
+    },
+    "child_sha256": "22bf997402f2f76d305cba947aa9f0d7bf3ff32951c55f99a44663e2cdb56c35",
+    "raw_trace_sha256": "d2b029b0e29c09a9dc901523eadeb55b2e97a710c2896304a2b50bd0a48d0463",
+    "summary_sha256": "d7ca20390201caff6084134f35c346ca781d8d5a3ea6d5cf0e30d44d22d6ab7f"
+  },
+  "source_runs": {
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 654.248662477172,
+    "pp512_wall_ms": 782.5770679628477,
+    "target_700_reached": false,
+    "wall_to_700_ms": 51.14849653427622,
+    "next_action": "continue the physical-byte/cross-tile selected-expert campaign; the final 512/1K/4K/32K/64K/128K anti-overtuning sweep remains mandatory before wrap-up"
+  }
+}
