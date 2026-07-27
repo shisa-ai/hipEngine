@@ -811,11 +811,14 @@ below is a retained performance claim:
   material screen must change selected projection physical bytes, cross-tile
   reuse, or another measured latency limiter.
 - Queue-exclusive attribution closes the apparent shared-expert ceiling.
-  The caller stream spans **884.129 ms** with **874.975 ms** of kernels and
-  only **9.154 ms** of gaps. The secondary shared stream contains
-  **325.222 ms** of kernels but is wholly nested inside the caller stream:
-  it starts **23.609 ms** later and ends **6.535 ms** earlier. Its
-  **240.447-ms** standalone SiLU cost is therefore not an Amdahl saving.
+  The refreshed caller stream spans **852.825 ms** with **787.420 ms** of
+  kernels. The secondary shared stream contains **340.456 ms** of kernels and
+  is hidden except for **0.826 ms**: it starts **76.139 ms** after the request
+  and ends **6.038 ms** before it. The two queues execute concurrently for
+  **339.630 ms**. Its **257.508-ms** standalone SiLU cost is therefore not an
+  Amdahl saving. The observed **64.579-ms** both-idle time is a profiled-trace
+  quantity, not a clean-wall ceiling; the profiled span is already
+  **51.715 ms** slower than the unprofiled production wall.
   The exact dual-pack8 gate/up+SiLU leaf cut its actual-weight operation
   **0.50183 -> 0.42874 ms (-14.56%)**, then lost the complete pp512 wall
   **580.394 -> 577.374 tok/s (-0.52%, 1/7 wins)**. Shared work is frozen
@@ -1576,6 +1579,17 @@ Immediate execution queue:
    the 23-call Q6 window **101.963 -> 100.367 ms (-1.565%)**. Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-candidate.json),
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-production.json).
+45. **Rejected and removed:** timestamp-unioned attribution on the refreshed
+   trace shows **339.630 ms** with both queues active, only **0.826 ms** with
+   the secondary queue alone, and the secondary branch ending **6.038 ms**
+   before pp512 completes. Its **257.508-ms** shared-SiLU inclusive sum is
+   starvation/overlap, not an additive ceiling. An exhaustive 256-KiB device
+   table removed scalar `expf` while preserving every BF16 gate encoding
+   bit-for-bit, but isolated M512 regressed
+   **0.021211 -> 0.021876 ms (+3.136%, 2/21 wins)** because the indexed global
+   read costs more than the native exponential. All LUT surfaces are removed;
+   shared SiLU remains closed. Evidence:
+   [`2026-07-27-gfx1151-laguna-shared-silu-bf16-lut-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-shared-silu-bf16-lut-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1583,14 +1597,11 @@ The activation-only Q4 repair branch is exhausted and removed. The refreshed
 post-cleanup trace reopened Q6 selected down, and its first new exact mechanism
 has cleared leaf plus complete-state A/B:
 
-1. Rebuild the queue-exclusive critical-path bridge from the clean
-   weight+activation-prefetch trace. The full 23-call Q6 window now retains a
-   compounded **10.980%** win from the pre-pipeline body.
-2. Attack the refreshed largest caller-stream family with a mechanism
+1. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Extend the Q6 register-overlap lesson only
    where it does not repeat the rejected decoded-Q4 prefetch schedule.
-3. Reopen a closed family only if the new trace leaves a **>=5%**
+2. Reopen a closed family only if the new trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
    without a new numerical representation.

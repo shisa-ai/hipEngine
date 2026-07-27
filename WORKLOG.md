@@ -183947,3 +183947,27 @@ Vulkan local sizes verbatim will close the measured gap.
   refactor ledger. Exact BF16 equality transfers the unchanged absolute
   category result: max KL **0.049542582**, **316/320** top-1, every category
   at least **96.875%**.
+
+## 2026-07-27 — Reject exhaustive BF16 shared-SiLU lookup
+
+- Corrected the refreshed pp512 queue ledger by sorting the raw trace on
+  timestamps before segmentation and unioning intervals per queue. The
+  **852.824576-ms** kernel span contains **787.419603 ms** caller work,
+  **340.455948 ms** secondary work, **339.629512 ms** with both queues active,
+  only **0.826436 ms** secondary-only, and **64.578537 ms** both-idle. The
+  secondary stream ends **6.038289 ms** before the request; its 47 standalone
+  SiLU calls sum to **257.507575 ms** but are not an additive wall ceiling.
+- RED failed on absent lookup wrappers. GREEN generated all **65,536** BF16
+  `gate * sigmoid(gate)` values with the same device `expf`, then matched the
+  scalar kernel bit-for-bit across the complete gate encoding domain and four
+  BF16 up values.
+- The exact lookup loses the isolated natural shared shape
+  **0.021211 -> 0.021876 ms (+3.1356%, 2/21 wins)** across 21 counter-rotated
+  burst-10 HIP-event pairs. The native exponential is already cheaper than
+  the candidate's indexed global read, which would also add traffic while the
+  caller is selected-weight-bandwidth bound. A full-model screen is not
+  justified; every LUT kernel, wrapper, registry, and test surface was
+  removed. Production remains **639.114 tok/s**.
+- The required lineage audit is still blocked by the absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-shared-silu-bf16-lut-rejected.json`.

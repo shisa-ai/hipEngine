@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T00:00:00Z",
+  "kind": "hipengine_laguna_shared_silu_bf16_lut_rejected",
+  "status": "rejected_and_removed",
+  "repo_base_revision": "78909e152",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "queue_attribution": {
+    "source_trace": "/tmp/laguna-q6-activation-prefetch-production-rocprof-621713cb6/q6-activation-prefetch-production_kernel_trace.csv",
+    "source_trace_sha256": "44945e45ad6c71070027d1fa67da37a17385de9a58aae7f95554993be608157c",
+    "protocol": "Sort kernel rows by Start_Timestamp and Dispatch_Id, segment requests from the first Q4 embedding through argmax stage 2, and union intervals independently by Queue_Id.",
+    "pp512_kernel_span_ms": 852.824576,
+    "caller_queue": {
+      "calls": 2229,
+      "busy_ms": 787.419603,
+      "gaps_ms": 65.404973
+    },
+    "secondary_queue": {
+      "calls": 188,
+      "busy_ms": 340.455948,
+      "first_ms_from_segment_start": 76.139451,
+      "last_ms_from_segment_start": 846.786287
+    },
+    "coverage_ms": {
+      "both_idle": 64.578537,
+      "caller_only": 447.790091,
+      "secondary_only": 0.826436,
+      "both_queues": 339.629512
+    },
+    "shared_silu": {
+      "secondary_calls": 47,
+      "secondary_sum_ms": 257.507575,
+      "first_ms_from_segment_start": 77.33269,
+      "last_ms_from_segment_start": 846.344017
+    },
+    "conclusion": "The secondary branch is hidden except for 0.826 ms and finishes 6.038 ms before the request. Its inclusive SiLU sum is not an additive wall-time ceiling."
+  },
+  "candidate": {
+    "summary": "Generate a 65536-entry FP32 device table for exact BF16 gate * sigmoid(gate), then replace each expf with one indexed table read and the unchanged FP32 multiply/BF16 store.",
+    "table_bytes": 262144,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 - <<'PY'  # allocate normal-distributed BF16 gate/up [512,3072], initialize the exhaustive table, run 5 warmups, then 21 counter-rotated HIP-event samples with burst 10 for scalar expf and LUT kernels",
+    "shape": {
+      "rows": 512,
+      "features": 3072
+    },
+    "samples": 21,
+    "burst": 10,
+    "baseline_median_ms": 0.021211299300193786,
+    "candidate_median_ms": 0.021876399219036103,
+    "change_percent": 3.1355925416423736,
+    "candidate_wins": 2,
+    "pairs": 21,
+    "bf16_mismatches": 0
+  },
+  "correctness": {
+    "red": "The exhaustive-gate-domain test initially failed to import the absent LUT initialization and execution wrappers.",
+    "green": "The candidate matched the scalar kernel bit-for-bit for all 65536 BF16 gate encodings against four BF16 up values.",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest tests/test_paro_silu_plan.py::test_silu_mul_separate_out_bf16_lut_matches_exhaustive_gate_domain -q",
+    "result": "1 passed"
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The scalar expf path is already cheaper in isolation; the LUT adds a random global read to a run whose caller stream is selected-weight-bandwidth bound. A full-model gate is not justified.",
+    "production_unchanged_tok_s": 639.113740923285,
+    "candidate_surfaces_removed": true
+  },
+  "lineage_audit": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked",
+    "reason": "Read-only reference checkout /home/lhl/amd-gpu-tuning/reference/atlas is absent."
+  }
+}
