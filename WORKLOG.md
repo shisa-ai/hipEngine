@@ -184476,3 +184476,24 @@ Vulkan local sizes verbatim will close the measured gap.
   harness requires the full 512/1K/4K tuple and a clean tracked worktree.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-candidate.json`.
+
+## 2026-07-27 — Publish Q6 precomputed activation sums
+
+- Committed the exact candidate as `15b26fc09`, then ran the required cached
+  selector-unset rocprof trace over 512/1K/4K. pp512 dispatches the intended
+  production template at local128/VGPR112/SGPR128/LDS5120B/scratch0. Its
+  23-call Q6 window falls **100.367 -> 99.459 ms (-0.905%)**; the refreshed
+  full pp512 trace has **2,417** dispatches, **1,106.503 ms** inclusive
+  kernel sum, and **843.063 ms** span.
+- Three clean selector-unset repetitions publish
+  **647.207/576.799/468.431 tok/s** at 512/1K/4K, improving the preceding
+  **645.803/575.942/468.311 tok/s** packet by
+  **0.217%/0.149%/0.026%**. Tokens **2930/95/7772**, final positions,
+  deterministic repeats, and complete return of all **78,805,563,028**
+  tracked bytes pass.
+- pp512 wall is now **791.092 ms**, leaving **59.663 ms** to the 700 tok/s
+  target. Raw publication SHA-256:
+  `1566c45e...215cb`; trace SHA-256:
+  `b4a8745c...2d309c`; summary SHA-256:
+  `f02b895b...3c1d`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json`.
