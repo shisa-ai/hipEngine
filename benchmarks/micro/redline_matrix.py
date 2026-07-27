@@ -92,6 +92,7 @@ FAMILIES: dict[str, dict[str, Any]] = {
     "q4-selected-dual": {
         "runner": "q4_selected_dual_real_slice.py",
         "production_python": True,
+        "jit_cache_families": ["gguf_q4_k_gemv"],
         "args": [
             "--x-rows", "4", "--rows", "32", "--experts", "256",
             "--in-features", "2048", "--out-features", "512",
@@ -101,6 +102,9 @@ FAMILIES: dict[str, dict[str, Any]] = {
     "q6-x8-selected-down": {
         "runner": "q6_x8_real_slice.py",
         "production_python": True,
+        "jit_cache_families": [
+            "gguf_q4_k_gemv", "gguf_k_gemv", "gguf_x8_selected_gemv",
+        ],
         "args": [
             "--rows", "8", "--experts", "256", "--in-features", "512",
             "--out-features", "2048", "--local-size", "64",
@@ -109,6 +113,7 @@ FAMILIES: dict[str, dict[str, Any]] = {
     "dense-q8": {
         "runner": "q8_0_dense_real_slice.py",
         "production_python": True,
+        "jit_cache_families": ["gguf_q4_k_gemv", "gguf_q8_0_dp4a_gemv"],
         "args": [
             "--shapes", "768x2048,2048x2048", "--rows-list", "1,4",
             "--local-sizes", "32,64,128", "--row-tiles", "1,4",
@@ -553,9 +558,12 @@ def _index_rows(family: str, result: dict[str, Any]) -> dict[tuple[Any, ...], di
 
 
 def _device_fingerprint(value: Any) -> str:
+    # RADV appends a driver codename such as ``(RADV NAVI31)`` to the same
+    # physical device name reported by HIP. That suffix is not device identity.
+    device_name = str(value).split("(", 1)[0]
     return "_".join(
         token for token in "".join(
-            character.lower() if character.isalnum() else " " for character in str(value)
+            character.lower() if character.isalnum() else " " for character in device_name
         ).split()
     )
 
@@ -660,7 +668,9 @@ def build_three_backend_comparison(
     row_sets = {backend: set(rows) for backend, rows in indexed.items()}
     if len({frozenset(keys) for keys in row_sets.values()}) != 1:
         raise ValueError("three-backend row matrices do not match exactly")
-    keys = sorted(row_sets["hip"], key=str)
+    required_rows = row_sets["hip"]
+    backend_only_rows = {backend: 0 for backend in BACKENDS}
+    keys = sorted(required_rows, key=str)
     comparisons: list[dict[str, Any]] = []
     matched_rows: list[dict[str, Any]] = []
     redline_over_hip: list[float] = []
@@ -774,6 +784,13 @@ def build_three_backend_comparison(
         "transport_attribution": transport_attribution,
         "source": source,
         "sources": {backend: results[backend]["source"] for backend in BACKENDS},
+        "provenance": {
+            "device_match": True,
+            "matrix_evidence": {
+                "required_rows": len(required_rows),
+                "excluded_backend_only_rows": backend_only_rows,
+            },
+        },
         "command": list(command),
         "hardware": {backend: results[backend]["hardware"] for backend in BACKENDS},
         "inputs": dict(input_refs),
@@ -850,11 +867,32 @@ def _build_redline(redline_root: Path, *, env: dict[str, str], log: Path) -> Non
     )
 
 
-def _sidecars(build_dir: Path) -> list[Path]:
-    suffixes = (".redline.co", ".redline.hsaco", ".redline.manifest.json", ".redline.radiowave.json")
-    return sorted(
-        path for path in build_dir.rglob("*") if path.is_file() and path.name.endswith(suffixes)
+def _sidecars(
+    build_dir: Path,
+    *,
+    family: str | None = None,
+    cache_root: Path | None = None,
+) -> list[Path]:
+    suffixes = (
+        ".redline.co",
+        ".redline.hsaco",
+        ".redline.manifest.json",
+        ".redline.radiowave.json",
     )
+    roots = [build_dir]
+    if family is not None:
+        if family not in FAMILIES:
+            raise ValueError(f"unsupported family: {family}")
+        root = cache_root or Path("~/.cache/hipengine/build").expanduser()
+        for jit_family in FAMILIES[family].get("jit_cache_families", []):
+            roots.extend(path for path in root.glob(f"{jit_family}-*") if path.is_dir())
+    sidecars = {
+        path.resolve()
+        for root in roots
+        for path in root.rglob("*")
+        if path.is_file() and path.name.endswith(suffixes)
+    }
+    return sorted(sidecars)
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
@@ -981,7 +1019,7 @@ def run_matrix(args: argparse.Namespace) -> dict[str, Any]:
                         redline_evidence=evidence,
                         library_path=_redline_library(redline_root),
                         adapter_paths=_adapter_paths(redline_root),
-                        sidecar_paths=_sidecars(build_dir),
+                        sidecar_paths=_sidecars(build_dir, family=family),
                     )
                     canonical["command"] = command
                 _write_json(final, canonical)

@@ -306,6 +306,36 @@ def test_three_backend_comparison_reports_all_pairs_and_transport_scope() -> Non
     assert redline_hip["gpu_elapsed"]["lhs_vs_rhs_speedup"] == pytest.approx(10.0 / 6.0)
 
 
+def test_three_backend_comparison_accepts_radv_codename_suffix() -> None:
+    module = _load_module()
+    results = {
+        "hip": _result("hip", 10.0),
+        "vulkan": _result("vulkan", 8.0),
+        "redline": _result("redline", 6.0),
+    }
+    results["vulkan"]["hardware"]["gpu_name"] = (
+        "AMD Radeon Pro W7900 (RADV NAVI31)"
+    )
+    results["redline"]["redline_provenance"] = {
+        "execution_proof": {
+            "api": "redline-capi",
+            "native_hip_fallback_available": False,
+            "profiled_retained_pm4_required": True,
+            "radiowave_manifest_verified": True,
+        },
+        "checkout": {"commit": module.PINNED_REDLINE_COMMIT, "dirty": False},
+    }
+
+    comparison = module.build_three_backend_comparison(
+        results,
+        family="geometry",
+        command=["python3", "redline_matrix.py"],
+        input_refs={backend: f"/tmp/{backend}.json" for backend in results},
+    )
+
+    assert comparison["provenance"]["device_match"] is True
+
+
 def test_three_backend_comparison_rejects_mismatched_independent_hip_redline_lanes() -> None:
     module = _load_module()
     results = {
@@ -333,6 +363,38 @@ def test_three_backend_comparison_rejects_mismatched_independent_hip_redline_lan
             command=["python3", "redline_matrix.py"],
             input_refs={backend: f"/tmp/{backend}.json" for backend in results},
         )
+
+
+def test_production_sidecars_are_recovered_from_jit_cache(tmp_path: Path) -> None:
+    module = _load_module()
+    build_dir = tmp_path / "matrix-build"
+    build_dir.mkdir()
+    cache = tmp_path / "cache"
+    q6_quant = cache / "gguf_k_gemv-abc"
+    q6_dot = cache / "gguf_x8_selected_gemv-def"
+    q6_quantizer = cache / "gguf_q4_k_gemv-ghi"
+    unrelated = cache / "gguf_q8_0_dp4a_gemv-jkl"
+    for directory, stem in (
+        (q6_quant, "gguf_k_gemv.so"),
+        (q6_dot, "gguf_x8_selected_gemv.so"),
+        (q6_quantizer, "gguf_q4_k_gemv.so"),
+        (unrelated, "gguf_q8_0_dp4a_gemv.so"),
+    ):
+        directory.mkdir(parents=True)
+        (directory / f"{stem}.redline.co").write_bytes(b"co")
+        (directory / f"{stem}.redline.radiowave.json").write_text("{}\n")
+
+    sidecars = module._sidecars(
+        build_dir,
+        family="q6-x8-selected-down",
+        cache_root=cache,
+    )
+
+    assert {path.parent.name for path in sidecars} == {
+        "gguf_q4_k_gemv-ghi",
+        "gguf_k_gemv-abc",
+        "gguf_x8_selected_gemv-def",
+    }
 
 
 def test_tri_comparator_matches_native_dispatch_count_aliases() -> None:
