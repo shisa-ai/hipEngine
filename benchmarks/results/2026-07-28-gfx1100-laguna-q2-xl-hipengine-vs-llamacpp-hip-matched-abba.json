@@ -1,0 +1,668 @@
+{
+  "checks": {
+    "accepted": true,
+    "cross_engine_generated_ids_equal_not_required": true,
+    "frozen_abba_order_followed": true,
+    "hipengine_correctness_and_lifecycle_pass": true,
+    "hipengine_generated_ids_stable_across_processes": true,
+    "llamacpp_device_code_bundle_byte_identical_to_clean_build": true,
+    "llamacpp_native_timing_rows_valid": true,
+    "llamacpp_source_revision_plus_declared_patch_verified": true,
+    "measurement_patch_is_post_generation_host_response_only": true,
+    "no_production_runtime_change_between_hipengine_processes": true,
+    "returned_sse_token_array_completeness_not_timing_authority": true,
+    "same_18_prompt_token_streams": true,
+    "same_bf16_kv_storage": true,
+    "same_context_and_horizons": true,
+    "same_flash_attention_policy": true,
+    "same_four_categories": true,
+    "same_model_sha256": true,
+    "same_natural_greedy_policy": true,
+    "same_runs_and_timed_transition_counts": true
+  },
+  "comparison": {
+    "16": {
+      "faster_engine": "hipEngine",
+      "hipengine_speed_ratio": 1.300343026364241,
+      "hipengine_tok_s": 64.0943689614155,
+      "hipengine_vs_llamacpp_pct": 30.034302636424105,
+      "llamacpp_hip_tok_s": 49.29035466943161,
+      "runs_each": 144,
+      "timed_decode_transitions_each": 2160
+    },
+    "32": {
+      "faster_engine": "hipEngine",
+      "hipengine_speed_ratio": 1.2695443272337001,
+      "hipengine_tok_s": 63.43123014078344,
+      "hipengine_vs_llamacpp_pct": 26.954432723370015,
+      "llamacpp_hip_tok_s": 49.96377738065927,
+      "runs_each": 144,
+      "timed_decode_transitions_each": 4464
+    }
+  },
+  "date": "2026-07-28",
+  "decision": {
+    "does_not_claim_vulkan_beaten": true,
+    "faster_engine": "hipEngine",
+    "llamacpp_hip_beaten_both_horizons": true,
+    "summary": "hipEngine beats clean same-source llama.cpp HIP under the pooled ABBA protocol; the separate matched Vulkan objective remains independently gated."
+  },
+  "hardware": {
+    "GPU_MAX_HW_QUEUES": "1",
+    "HIP_VISIBLE_DEVICES": "0",
+    "device": "AMD Radeon Pro W7900",
+    "one_engine_process_at_a_time": true,
+    "target_arch": "gfx1100"
+  },
+  "hipengine": {
+    "backend": "hip_gfx1100",
+    "between_process_changed_paths": [
+      "WORKLOG.md",
+      "benchmarks/llama.cpp/0003-laguna-content-only-raw-measurement.patch",
+      "scripts/laguna_llamacpp_ar_bench.py",
+      "tests/test_laguna_poolside_ar_bench.py"
+    ],
+    "between_process_production_paths": [],
+    "cached_kernels_required": true,
+    "categories": {
+      "code": {
+        "16": {
+          "decode_seconds": 11.06579394522123,
+          "runs": 48,
+          "timed_decode_transitions": 720,
+          "transition_tok_s": 65.06537204327145
+        },
+        "32": {
+          "decode_seconds": 23.095438533462584,
+          "runs": 48,
+          "timed_decode_transitions": 1488,
+          "transition_tok_s": 64.42830682102279
+        }
+      },
+      "general_en": {
+        "16": {
+          "decode_seconds": 7.336801297264174,
+          "runs": 32,
+          "timed_decode_transitions": 480,
+          "transition_tok_s": 65.42360635812607
+        },
+        "32": {
+          "decode_seconds": 15.313912224257365,
+          "runs": 32,
+          "timed_decode_transitions": 992,
+          "transition_tok_s": 64.77769922362907
+        }
+      },
+      "general_ja": {
+        "16": {
+          "decode_seconds": 7.602127108257264,
+          "runs": 32,
+          "timed_decode_transitions": 480,
+          "transition_tok_s": 63.14022288296581
+        },
+        "32": {
+          "decode_seconds": 15.913120736833662,
+          "runs": 32,
+          "timed_decode_transitions": 992,
+          "transition_tok_s": 62.33849515788848
+        }
+      },
+      "mixed_ja_en": {
+        "16": {
+          "decode_seconds": 7.695586038287729,
+          "runs": 32,
+          "timed_decode_transitions": 480,
+          "transition_tok_s": 62.373417386520465
+        },
+        "32": {
+          "decode_seconds": 16.052956982748583,
+          "runs": 32,
+          "timed_decode_transitions": 992,
+          "transition_tok_s": 61.79546865204083
+        }
+      }
+    },
+    "commands": [
+      [
+        "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10",
+        "scripts/laguna_target_ar_bench.py",
+        "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+        "--prompts",
+        "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "--template",
+        "tests/fixtures/laguna_poolside_v1_template.json",
+        "--oracle",
+        "tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+        "--oracle-logprobs",
+        "tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+        "--bulk-correctness-artifact",
+        "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json",
+        "--backend",
+        "hip_gfx1100",
+        "--context-length",
+        "4096",
+        "--chunk-size",
+        "128",
+        "--output-horizons",
+        "16,32",
+        "--repetitions",
+        "4",
+        "--warmup-output-tokens",
+        "2",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+        "--require-cached-build",
+        "--direct-gguf",
+        "--safety-reserve-gib",
+        "4",
+        "--model-sha256",
+        "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+        "--quant-label",
+        "UD-Q2_K_XL",
+        "--global-split-min-live",
+        "127",
+        "--swa-split-min-live",
+        "65",
+        "--swa-split-tile16-min-live",
+        "257",
+        "--output",
+        "/tmp/2026-07-28-hipengine-laguna-matched-ar.json"
+      ],
+      [
+        "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10",
+        "scripts/laguna_target_ar_bench.py",
+        "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+        "--prompts",
+        "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "--template",
+        "tests/fixtures/laguna_poolside_v1_template.json",
+        "--oracle",
+        "tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+        "--oracle-logprobs",
+        "tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+        "--bulk-correctness-artifact",
+        "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json",
+        "--backend",
+        "hip_gfx1100",
+        "--context-length",
+        "4096",
+        "--chunk-size",
+        "128",
+        "--output-horizons",
+        "16,32",
+        "--repetitions",
+        "4",
+        "--warmup-output-tokens",
+        "2",
+        "--compiler-version-file",
+        "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+        "--require-cached-build",
+        "--direct-gguf",
+        "--safety-reserve-gib",
+        "4",
+        "--model-sha256",
+        "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+        "--quant-label",
+        "UD-Q2_K_XL",
+        "--global-split-min-live",
+        "127",
+        "--swa-split-min-live",
+        "65",
+        "--swa-split-tile16-min-live",
+        "257",
+        "--output",
+        "/tmp/2026-07-28-hipengine-laguna-matched-ar-b.json"
+      ]
+    ],
+    "correctness": {
+      "all_processes_pass": true,
+      "generated_ids_stable_across_processes": true,
+      "poolside_max_kl": 0.00015682291693663912,
+      "poolside_top1_agreement": 1.0,
+      "serial_bulk_and_repeat_ids_exact": true,
+      "tracked_returned_to_baseline": true
+    },
+    "horizons": {
+      "16": {
+        "decode_seconds": 33.7003083890304,
+        "runs": 144,
+        "timed_decode_transitions": 2160,
+        "transition_tok_s": 64.0943689614155
+      },
+      "32": {
+        "decode_seconds": 70.3754284773022,
+        "runs": 144,
+        "timed_decode_transitions": 4464,
+        "transition_tok_s": 63.43123014078344
+      }
+    },
+    "process_rates_tok_s": {
+      "16": [
+        64.15781788045948,
+        64.03104541409114
+      ],
+      "32": [
+        63.49109358938734,
+        63.37147947199107
+      ]
+    },
+    "process_spread_pct": {
+      "16": 0.197985938771561,
+      "32": 0.18875070992958598
+    },
+    "raw_process_artifacts": [
+      {
+        "path": "/tmp/2026-07-28-hipengine-laguna-matched-ar.json",
+        "revision": "a5f0719d42ac42e7cb883fc15cb56b5551b89b00",
+        "sha256": "505d9c4a0f698385f302db456c809194b09b66c261e4fa7561a20485ad45986a"
+      },
+      {
+        "path": "/tmp/2026-07-28-hipengine-laguna-matched-ar-b.json",
+        "revision": "773ab9033ea55445b254ddf47fa87cd5ff926adc",
+        "sha256": "daf75910b4fbcfe25e5135808a271f069cd3207c28267f4c6e55e5503fe610d7"
+      }
+    ],
+    "repo_revisions": [
+      "a5f0719d42ac42e7cb883fc15cb56b5551b89b00",
+      "773ab9033ea55445b254ddf47fa87cd5ff926adc"
+    ],
+    "rocm_versions": [
+      "HIP version: 7.2.53211-3d9ef42",
+      "HIP version: 7.2.53211-3d9ef42"
+    ]
+  },
+  "kind": "hipengine_laguna_q2_xl_matched_llamacpp_hip_abba",
+  "llamacpp_hip": {
+    "build": {
+      "cmake_cache": {
+        "path": "/tmp/llama-c0bc8591-hip-measure-build/CMakeCache.txt",
+        "sha256": "e364e2b4b5b4c7f18a5e8e44653ad89f1550fe0a63f9325c66f0514b25fbe3d4"
+      },
+      "hip_library_bundle_sha256": "a3c0786de840b39bd2e996979de3ec1ce3f040c9d9c1b132101522e21b44ce40",
+      "hip_library_bytes": 110671880,
+      "hip_library_files": 269,
+      "primary_hip_libraries": [
+        {
+          "bytes": 63313152,
+          "path": "/tmp/llama-c0bc8591-hip-measure-build/bin/libggml-hip.so.0.17.0",
+          "sha256": "a3d9e7b85642ce753c1892a091b494a1f6194a9654df49f3938a3a0247f9faad"
+        }
+      ],
+      "server": {
+        "bytes": 15976,
+        "path": "/tmp/llama-c0bc8591-hip-measure-build/bin/llama-server",
+        "sha256": "eb3f69b9929f2775db54e2d34573050bb9b112c9fb6657c81a86e93c009f3981"
+      }
+    },
+    "categories": {
+      "code": {
+        "16": {
+          "decode_seconds": 14.601681,
+          "hipengine_exact_runs": 16,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 48,
+          "runs": 48,
+          "timed_decode_transitions": 720,
+          "transition_tok_s": 49.30939115845635
+        },
+        "32": {
+          "decode_seconds": 29.756467,
+          "hipengine_exact_runs": 0,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 48,
+          "runs": 48,
+          "timed_decode_transitions": 1488,
+          "transition_tok_s": 50.0059365246553
+        }
+      },
+      "general_en": {
+        "16": {
+          "decode_seconds": 9.750073,
+          "hipengine_exact_runs": 8,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 32,
+          "runs": 32,
+          "timed_decode_transitions": 480,
+          "transition_tok_s": 49.23040063392346
+        },
+        "32": {
+          "decode_seconds": 19.860576,
+          "hipengine_exact_runs": 0,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 32,
+          "runs": 32,
+          "timed_decode_transitions": 992,
+          "transition_tok_s": 49.94819888406057
+        }
+      },
+      "general_ja": {
+        "16": {
+          "decode_seconds": 9.729074,
+          "hipengine_exact_runs": 8,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 8,
+          "runs": 32,
+          "timed_decode_transitions": 480,
+          "transition_tok_s": 49.33665835001357
+        },
+        "32": {
+          "decode_seconds": 19.85559,
+          "hipengine_exact_runs": 8,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 8,
+          "runs": 32,
+          "timed_decode_transitions": 992,
+          "transition_tok_s": 49.96074153424804
+        }
+      },
+      "mixed_ja_en": {
+        "16": {
+          "decode_seconds": 9.741133,
+          "hipengine_exact_runs": 0,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 24,
+          "runs": 32,
+          "timed_decode_transitions": 480,
+          "transition_tok_s": 49.27558221410179
+        },
+        "32": {
+          "decode_seconds": 19.872093,
+          "hipengine_exact_runs": 0,
+          "native_timing_rows_valid": true,
+          "returned_token_arrays_complete": 16,
+          "runs": 32,
+          "timed_decode_transitions": 992,
+          "transition_tok_s": 49.91925108240989
+        }
+      }
+    },
+    "harness_commands": [
+      [
+        "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10",
+        "scripts/laguna_llamacpp_ar_bench.py",
+        "--server-bin",
+        "/tmp/llama-c0bc8591-hip-measure-build/bin/llama-server",
+        "--source-dir",
+        "/tmp/llama-c0bc8591-hip-measure-src",
+        "--source-revision",
+        "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+        "--source-patch",
+        "benchmarks/llama.cpp/0003-laguna-content-only-raw-measurement.patch",
+        "--reference-repo",
+        "/home/lhl/llama.cpp/llama.cpp-hip",
+        "--model",
+        "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+        "--model-sha256",
+        "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+        "--prompts",
+        "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "--hipengine-artifact",
+        "/tmp/2026-07-28-hipengine-laguna-matched-ar.json",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18084",
+        "--context-length",
+        "4096",
+        "--output-horizons",
+        "16,32",
+        "--repetitions",
+        "4",
+        "--gpu-layers",
+        "999",
+        "--cache-type-k",
+        "bf16",
+        "--cache-type-v",
+        "bf16",
+        "--flash-attention",
+        "on",
+        "--no-mmap",
+        "--repack",
+        "--skip-chat-parsing",
+        "--hip-visible-devices",
+        "0",
+        "--gpu-max-hw-queues",
+        "1",
+        "--startup-timeout",
+        "240",
+        "--request-timeout",
+        "180",
+        "--server-log",
+        "/tmp/2026-07-28-llamacpp-hip-laguna-matched-a-server.log",
+        "--output",
+        "/tmp/2026-07-28-llamacpp-hip-laguna-matched-a.json"
+      ],
+      [
+        "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10",
+        "scripts/laguna_llamacpp_ar_bench.py",
+        "--server-bin",
+        "/tmp/llama-c0bc8591-hip-measure-build/bin/llama-server",
+        "--source-dir",
+        "/tmp/llama-c0bc8591-hip-measure-src",
+        "--source-revision",
+        "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+        "--source-patch",
+        "benchmarks/llama.cpp/0003-laguna-content-only-raw-measurement.patch",
+        "--reference-repo",
+        "/home/lhl/llama.cpp/llama.cpp-hip",
+        "--model",
+        "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+        "--model-sha256",
+        "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+        "--prompts",
+        "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "--hipengine-artifact",
+        "/tmp/2026-07-28-hipengine-laguna-matched-ar.json",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18084",
+        "--context-length",
+        "4096",
+        "--output-horizons",
+        "16,32",
+        "--repetitions",
+        "4",
+        "--gpu-layers",
+        "999",
+        "--cache-type-k",
+        "bf16",
+        "--cache-type-v",
+        "bf16",
+        "--flash-attention",
+        "on",
+        "--no-mmap",
+        "--repack",
+        "--skip-chat-parsing",
+        "--hip-visible-devices",
+        "0",
+        "--gpu-max-hw-queues",
+        "1",
+        "--startup-timeout",
+        "240",
+        "--request-timeout",
+        "180",
+        "--server-log",
+        "/tmp/2026-07-28-llamacpp-hip-laguna-matched-b-server.log",
+        "--output",
+        "/tmp/2026-07-28-llamacpp-hip-laguna-matched-b.json"
+      ]
+    ],
+    "horizons": {
+      "16": {
+        "decode_seconds": 43.821961,
+        "hipengine_exact_runs": 32,
+        "native_timing_rows_valid": true,
+        "returned_token_arrays_complete": 112,
+        "runs": 144,
+        "timed_decode_transitions": 2160,
+        "transition_tok_s": 49.29035466943161
+      },
+      "32": {
+        "decode_seconds": 89.344726,
+        "hipengine_exact_runs": 8,
+        "native_timing_rows_valid": true,
+        "returned_token_arrays_complete": 104,
+        "runs": 144,
+        "timed_decode_transitions": 4464,
+        "transition_tok_s": 49.96377738065927
+      }
+    },
+    "process_rates_tok_s": {
+      "16": [
+        49.35178035862201,
+        49.2290816971197
+      ],
+      "32": [
+        50.060131593103804,
+        49.867793374943
+      ]
+    },
+    "process_spread_pct": {
+      "16": 0.24924019963892263,
+      "32": 0.3856962683603582
+    },
+    "raw_process_artifacts": [
+      {
+        "path": "/tmp/2026-07-28-llamacpp-hip-laguna-matched-a.json",
+        "revision": "773ab9033ea55445b254ddf47fa87cd5ff926adc",
+        "sha256": "bf2e2ac0381abb33055bd7abf65b33fab1b0cac7d5d7d320ca97e40c59f7a917"
+      },
+      {
+        "path": "/tmp/2026-07-28-llamacpp-hip-laguna-matched-b.json",
+        "revision": "773ab9033ea55445b254ddf47fa87cd5ff926adc",
+        "sha256": "d871b0028afcc9621aa625bc549ab3e23f990f04d536f93ca661da030cc2cfa9"
+      }
+    ],
+    "returned_array_diagnostics": {
+      "complete_rows_h16": 112,
+      "complete_rows_h32": 104,
+      "hipengine_exact_runs_h16": 32,
+      "hipengine_exact_runs_h32": 8,
+      "native_predicted_counts_and_times_authoritative": true,
+      "rows_per_horizon": 144
+    },
+    "server_command": [
+      "/tmp/llama-c0bc8591-hip-measure-build/bin/llama-server",
+      "-m",
+      "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "18084",
+      "-c",
+      "4096",
+      "-ngl",
+      "999",
+      "-fa",
+      "on",
+      "-ctk",
+      "bf16",
+      "-ctv",
+      "bf16",
+      "--parallel",
+      "1",
+      "--no-warmup",
+      "--metrics",
+      "--no-mmap",
+      "--skip-chat-parsing"
+    ],
+    "server_logs": [
+      {
+        "path": "/tmp/2026-07-28-llamacpp-hip-laguna-matched-a-server.log",
+        "sha256": "17e0ff7f09ca067ae9317c68ca6740e817ca51656368d4ff92fc5a3cbd91baa9"
+      },
+      {
+        "path": "/tmp/2026-07-28-llamacpp-hip-laguna-matched-b-server.log",
+        "sha256": "5b143e892059f1fa331f1f2dbaf42cc7f0ebde447c755131ac55a5e6319d2d41"
+      }
+    ],
+    "source": {
+      "archive_matches_revision": false,
+      "archive_matches_revision_plus_patches": true,
+      "git_tree_listing_sha256": "8fbc367ea3a9824509c22f30552a2872632e3c64a07831e0e77a4743c55cc2dd",
+      "patches": [
+        {
+          "path": "/home/lhl/hipEngine-main/benchmarks/llama.cpp/0003-laguna-content-only-raw-measurement.patch",
+          "sha256": "f010fbd1178bd79523a4fc6d5767f8cebabd72fac8b379fd45dbedbd35b9a443"
+        }
+      ],
+      "path": "/tmp/llama-c0bc8591-hip-measure-src",
+      "reference_repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "tracked_files": 3258
+    }
+  },
+  "model": {
+    "bytes": 39684584480,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "notes": [
+    "llama.cpp predicted_ms begins after its first sampled token while predicted_n includes that token; subtracting one makes the timed transition count exactly match hipEngine.",
+    "The c0bc content-only raw-response patch is declared and source-verified, executes after generation, and leaves the byte-identical clean HIP device bundle in place.",
+    "Incomplete SSE token arrays are a c0bc response diagnostic. Every native prompt_n, predicted_n, and predicted_ms row is valid and supplies the primary metric.",
+    "This accepted HIP comparison does not replace the independently retained device-pinned Vulkan target."
+  ],
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "W7900 natural-greedy post-TTFT c1 decode with identical model bytes, prompt token streams, BF16 K/V, FA-on policy, context, horizons, run counts, and timed transition counts",
+  "prompt_suite": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "count": 18,
+    "path": "/home/lhl/hipEngine-main/benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_tokens_max": 122,
+    "prompt_tokens_min": 68,
+    "sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76"
+  },
+  "protocol": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "context_length": 4096,
+    "contract_path": "/tmp/2026-07-28-laguna-hip-vs-llamacpp-abba-contract.json",
+    "contract_sha256": "a01e45b52cea7175d940000791cf435afb75165a916e363f5f8b0f929ddc7eb2",
+    "flash_attention": "on",
+    "horizons": [
+      16,
+      32
+    ],
+    "important_limit": "This is a protocol/storage/timing 1:1 comparison, not bit-identical cross-engine arithmetic. Each engine retains its native exact kernels and reduction order.",
+    "kv_storage": "BF16 K and BF16 V",
+    "mmap": false,
+    "primary_metric": "sum of post-TTFT synchronized transitions / sum decode seconds; llama.cpp denominator is server-native predicted_ms and numerator is predicted_n - 1",
+    "process_order": [
+      "hipengine_a",
+      "llamacpp_hip_a",
+      "llamacpp_hip_b",
+      "hipengine_b"
+    ],
+    "processes_per_engine": 2,
+    "prompts": 18,
+    "repack": true,
+    "repetitions_per_process": 4,
+    "replacement_disclosure": [
+      "Initial clean llama.cpp A aborted after 33 valid rows on c0bc content-only response parsing; no artifact or aggregate was emitted.",
+      "SSE-only replacement aborted at the same host parser; no artifact or aggregate was emitted.",
+      "Accepted A/B use the declared post-generation raw-content response patch; model execution and the complete 269-file HIP bundle are unchanged."
+    ],
+    "rerun_policy": "no favorable rerun; replace a process only for a mechanical crash before a valid artifact and disclose it",
+    "runs_per_horizon_per_engine": 144,
+    "sampling": "natural greedy; temperature=0; neutral penalties; seed=4242",
+    "timed_transitions_per_engine": {
+      "16": 2160,
+      "32": 4464
+    }
+  },
+  "schema": 1,
+  "status": "accepted"
+}
