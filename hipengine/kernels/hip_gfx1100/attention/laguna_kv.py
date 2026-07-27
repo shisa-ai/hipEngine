@@ -382,8 +382,6 @@ def laguna_global_attention_prefill_qrow2_online_bf16_spans(
     _check_prefill_rows(spans, rows, capacity)
     if int(max_context_len) != capacity:
         raise ValueError("max_context_len must equal the global span capacity")
-    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
-        raise ValueError("Laguna global prefill currently supports at most 4096 tokens")
     _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
@@ -444,8 +442,6 @@ def laguna_global_attention_prefill_qrow4_online_bf16_spans(
     _check_prefill_rows(spans, rows, capacity)
     if int(max_context_len) != capacity:
         raise ValueError("max_context_len must equal the global span capacity")
-    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
-        raise ValueError("Laguna global prefill currently supports at most 4096 tokens")
     _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
@@ -506,8 +502,6 @@ def laguna_global_attention_prefill_qrow4_cached_online_bf16_spans(
     _check_prefill_rows(spans, rows, capacity)
     if int(max_context_len) != capacity:
         raise ValueError("max_context_len must equal the global span capacity")
-    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
-        raise ValueError("Laguna global prefill currently supports at most 4096 tokens")
     _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
@@ -568,8 +562,6 @@ def laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans(
     _check_prefill_rows(spans, rows, capacity)
     if int(max_context_len) != capacity:
         raise ValueError("max_context_len must equal the global span capacity")
-    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
-        raise ValueError("Laguna global prefill currently supports at most 4096 tokens")
     _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
@@ -630,8 +622,6 @@ def laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans(
     _check_prefill_rows(spans, rows, capacity)
     if int(max_context_len) != capacity:
         raise ValueError("max_context_len must equal the global span capacity")
-    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
-        raise ValueError("Laguna global prefill currently supports at most 4096 tokens")
     _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
@@ -692,8 +682,6 @@ def _laguna_global_attention_prefill_dense_initial_online_bf16_spans(
     _check_prefill_rows(spans, rows, capacity)
     if int(max_context_len) != capacity:
         raise ValueError("max_context_len must equal the global span capacity")
-    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
-        raise ValueError("Laguna global prefill currently supports at most 4096 tokens")
     if start_position is None or int(start_position) < 0:
         raise ValueError("dense-initial global prefill requires a start position")
     if int(start_position) + int(rows) > capacity:

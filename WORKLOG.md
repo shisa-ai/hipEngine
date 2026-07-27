@@ -184895,3 +184895,19 @@ Vulkan local sizes verbatim will close the measured gap.
   This does not change the existing default or any <=4K allocation.
 - The failed production launch is the RED evidence. GREEN passes all **50**
   focused runner/profiler tests, `py_compile`, and `git diff --check`.
+
+## 2026-07-27 — Admit long-capacity online global prefill
+
+- The second closure-sweep launch loaded all **814/814** tensors and allocated
+  the 128K resident state, then failed before timing in the global-attention
+  wrapper because it applied the legacy 4K cap to allocated capacity rather
+  than live context.
+- Kept the 4K guard on the legacy decode and shared-score prefill kernels,
+  whose LDS allocation scales with capacity. Removed it only from the
+  zero-LDS online qrow2/qrow4/qrow6, cached, cached-metadata, and
+  dense-initial prefill launches; those kernels already scan their live
+  span and take capacity through the launch ABI.
+- RED is the direct 128K-capacity wrapper fixture failing at the old guard.
+  GREEN passes all **66** focused KV/runner/profiler tests, including the
+  existing CPU/HIP attention gates, plus `py_compile` and `git diff --check`.
+  No device kernel body or <=4K dispatch changed.
