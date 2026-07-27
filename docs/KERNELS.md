@@ -1013,6 +1013,14 @@ candidate behind an explicit rollback. Clean selector-unset pp512 improves
 pp512 Q6 body **112.746 -> 101.963 ms (-9.564%)** while retaining
 2,417 dispatches
 (`benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-weight-prefetch-production.json`).
+A successor pipelines each next compact Q8 activation half-row beside that
+weight record while the current K32 WMMA executes. It preserves the same
+resident bytes, activation/weight LDS, dot order, FP32 accumulation, and BF16
+boundary. The actual leaf improves **4.104 -> 4.045 ms (-1.440%, 20/21
+wins)**; clean selector-unset 512/1K/4K reaches
+**639.114/569.880/464.280 tok/s**. Cached tracing cuts the 23-call Q6 body
+again to **100.367 ms** at local128/VGPR112/SGPR128/LDS5120B/scratch0
+(`benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-production.json`).
 
 Direct-decode 256x32/local256 gate/up is also rejected and removed. Eight
 wave32s own one output column each and all 32 routed rows, so the candidate
