@@ -106,11 +106,26 @@
     "complete_state_ab_change_percent": 0.5616398949130241,
     "complete_state_pair_wins": "7/7"
   },
+  "rocprof": {
+    "artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-p8-all-family-profile.json",
+    "revision": "60f08965070f31998653748c69d601fa54a2d3b1",
+    "pp512_dispatches": 2417,
+    "pp512_kernel_sum_ms": 1119.634439,
+    "pp512_kernel_span_ms": 853.427903,
+    "selected_q4_gate_up_ms": 334.201149,
+    "activation_reduce_residual_ms": 269.924908,
+    "selected_q4_q6_down_ms": 171.039911,
+    "source_f16_projection_ms": 124.668226,
+    "dense_shared_quant_projection_ms": 95.167427,
+    "attention_ms": 67.923337,
+    "router_ms": 22.882546,
+    "raw_trace_sha256": "d3c1df30eaad716903840c416bec23e0d14fba4e27b7b1f026c07e3b501fce8a"
+  },
   "gate": {
     "production_retained": true,
     "headline_512_tok_s": 643.1410131236527,
     "target_700_reached": false,
-    "next_action": "refresh the selector-unset all-family trace and attack the largest remaining caller-stream ceiling"
+    "next_action": "attack the refreshed 334.201-ms selected Q4 gate/up or 269.925-ms activation/reduce/residual caller stream with a structural multi-millisecond mechanism"
   },
   "source_runs": {
     "production_raw_sha256": "dddd5f57e3c1b1288736cb96853e7071ea6c22513250db8a858391d2ec8d49f1",
