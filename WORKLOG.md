@@ -184727,3 +184727,24 @@ Vulkan local sizes verbatim will close the measured gap.
   SHA-256 is `b9e908a3...41b8`; trace SHA-256 is
   `d2b029b0...0463`; summary SHA-256 is `d7ca2039...b7f`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`.
+
+## 2026-07-27 — Screen prefill-only routed width
+
+- The remaining selected-expert window is too large for the closed
+  lossless-layout/tile variants to reach 700. Added a bounded prefill-only
+  routed-width diagnostic: row scratch keeps its full allocation but receives
+  a smaller logical plan; separately owned c=1 decode remains model-exact
+  top-10. Routing replay now records the active prefill width.
+- Five counter-rotated pp512 samples measure top-10/top-9/top-8 medians
+  **648.578/684.313/720.130 tok/s**, or **+5.510%/+11.032%** for top-9/top-8.
+  All modes deterministically select token 2930; each mode's logits, hidden,
+  and KV hashes repeat exactly, while different widths intentionally produce
+  different state.
+- This is a quality-pending screen, not a production claim. The top-8
+  candidate now proceeds to the clean canonical ten-prompt/320-step absolute
+  KL/top-1 gate. Focused runtime/category tests pass **22 tests**; the direct
+  setter unit plus session-close coverage pass **2 tests**; `py_compile` and
+  `git diff --check` pass. Raw SHA-256:
+  `7d5bb49da3def2110b5678c257804742c49934c5fc02b17e0e125c32ef5ad962`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk-screen-candidate.json`.
