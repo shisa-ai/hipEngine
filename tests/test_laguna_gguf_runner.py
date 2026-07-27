@@ -19,6 +19,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaPrefillChunkPolicy,
     LagunaPrefillScratchPlan,
     LagunaRowsScratch,
+    _validate_laguna_context_length,
     capture_laguna_hidden_rows,
     capture_laguna_hidden_tap,
     capture_laguna_routing_rows,
@@ -86,6 +87,17 @@ def test_laguna_moe_branch_concurrency_requires_two_automatic_queues() -> None:
 
 def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
+
+
+def test_laguna_context_admission_uses_the_model_declared_limit() -> None:
+    assert _validate_laguna_context_length(
+        131_072,
+        model_context_length=262_144,
+    ) == 131_072
+    with pytest.raises(ValueError, match="positive"):
+        _validate_laguna_context_length(0, model_context_length=262_144)
+    with pytest.raises(ValueError, match="model-declared limit 262144"):
+        _validate_laguna_context_length(262_145, model_context_length=262_144)
 
 
 def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> None:
