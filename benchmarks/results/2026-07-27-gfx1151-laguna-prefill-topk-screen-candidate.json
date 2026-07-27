@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T16:30:00+09:00",
+  "kind": "hipengine_laguna_prefill_topk_screen",
+  "status": "quality_pending_candidate",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "675bae2eb",
+    "tracked_clean": false,
+    "reason": "the validated diagnostic selector and category lane were the only tracked changes"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --mode top10=q4_precomputed_sums_on --mode top9=prefill_topk:9 --mode top8=prefill_topk:8 --repetitions 5 --require-cached-build --output /tmp/laguna-prefill-topk-quick-ab.json",
+    "workload": "pp512",
+    "matrix_chunk_size": 512,
+    "attention_chunk_size": 128,
+    "repetitions": 5,
+    "counter_rotated": true,
+    "exact_decode_top_k": 10,
+    "raw_sha256": "7d5bb49da3def2110b5678c257804742c49934c5fc02b17e0e125c32ef5ad962"
+  },
+  "results": {
+    "top10_median_tok_s": 648.5777898764652,
+    "top9_median_tok_s": 684.3125798500353,
+    "top8_median_tok_s": 720.1295424982908,
+    "top9_delta_percent": 5.509715338907384,
+    "top8_delta_percent": 11.032100349204699,
+    "top8_wall_ms": 710.9831909183413,
+    "top8_target_700_reached": true,
+    "all_modes_next_token": 2930,
+    "same_mode_logits_hidden_kv_deterministic": true,
+    "cross_mode_state_equal": false
+  },
+  "correctness": {
+    "status": "not_admitted",
+    "reason": "top-k reduction intentionally changes prefill arithmetic; the canonical ten-prompt 320-step absolute KL/top-1 gate is required",
+    "exact_c1_decode_route_preserved": true
+  },
+  "gate": {
+    "candidate_has_sufficient_wall_ceiling": true,
+    "production_retained": false,
+    "next_action": "run prefill_topk8_absolute on the complete category suite; remove the selector on rejection"
+  }
+}

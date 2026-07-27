@@ -1707,3 +1707,20 @@ should be boring.
   fallback attention and unmeasured backends require generic output; remove
   only the dedicated A/B harness and constructor override after the active
   700 campaign no longer needs this bisection point.
+
+## Laguna prefill-only routed-width selector
+
+- Added 2026-07-27 as the explicit diagnostic
+  `LagunaGGUFResidentSession.set_prefill_moe_top_k`. It changes only the
+  logical plan attached to the already-full-size row scratch; the separately
+  owned c=1 scratch keeps the model-declared top-10 route.
+- A five-repetition pp512 screen measures top-10/top-9/top-8 medians
+  **648.578/684.313/720.130 tok/s**. Each mode is internally deterministic
+  and selects token 2930, while cross-mode hidden/logit/KV hashes differ as
+  expected for approximate routing.
+- Keep the setter, multi-arm harness mode, and `prefill_topk8_absolute`
+  category lane only through the canonical ten-prompt/320-step gate. On
+  rejection remove all three. On admission replace the diagnostic setter
+  with a gfx1151 prefill-shape capability, keep top-10 c=1 decode, run clean
+  selector-unset publication and tracing, then remove the temporary category
+  lane after its artifact is immutable.

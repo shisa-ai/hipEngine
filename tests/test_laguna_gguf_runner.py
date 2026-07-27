@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
 import pytest
@@ -26,6 +26,32 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_moe_branch_concurrency,
 )
 from tests._laguna_synthetic import make_laguna_info
+
+
+def test_prefill_moe_top_k_changes_only_row_scratch_plan() -> None:
+    @dataclass(frozen=True)
+    class Plan:
+        top_k: int
+
+    @dataclass(frozen=True)
+    class Scratch:
+        plan: Plan
+        marker: int
+
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session._closed = False
+    session.moe_plan = Plan(top_k=10)
+    session.rows_moe_scratch = Scratch(plan=Plan(top_k=10), marker=17)
+
+    session.set_prefill_moe_top_k(9)
+
+    assert session.moe_plan.top_k == 10
+    assert session.rows_moe_scratch.plan.top_k == 9
+    assert session.rows_moe_scratch.marker == 17
+    with pytest.raises(ValueError, match="model-declared routed width"):
+        session.set_prefill_moe_top_k(0)
+    with pytest.raises(ValueError, match="model-declared routed width"):
+        session.set_prefill_moe_top_k(11)
 
 
 class _FakeRuntime:
