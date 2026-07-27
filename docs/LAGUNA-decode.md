@@ -795,6 +795,39 @@ pays more launches yet has lower kernel sum, so Python and graph submission do
 not explain its lead. Its IQ3 and FlashAttention sources are implementation
 references; the complete engine is not a performance target by itself.
 
+#### 4.6.1 Matched natural-completion closure
+
+A later repository-owned server harness removes those protocol differences. It
+uses the same model SHA-256, all 18 train+heldout prompt token streams, natural
+greedy sampling, BF16 K/V, FA on, context 4096, h16/h32, one W7900 queue, and the
+same post-TTFT transition count. The frozen engine order is hipEngine A ->
+llama.cpp A -> llama.cpp B -> hipEngine B, with four repetitions per process.
+Rates pool raw decode seconds rather than averaging per-process rates:
+
+| Matched post-TTFT AR | hipEngine | llama.cpp HIP | hipEngine delta |
+| --- | ---: | ---: | ---: |
+| h16, 144 runs / 2,160 transitions each | **64.094 tok/s** | 49.290 tok/s | **+30.034% / 1.300x** |
+| h32, 144 runs / 4,464 transitions each | **63.431 tok/s** | 49.964 tok/s | **+26.954% / 1.270x** |
+
+Both hipEngine processes pass Poolside KL **0.000156823**, top-1 **100%**, exact
+serial/bulk/repeat trajectories, stable cross-process IDs, and complete tracked
+teardown. llama.cpp is built from verified `c0bc8591e` source plus one declared
+content-only response patch that runs after generation. The accepted server
+keeps the clean build's complete **269-file byte-identical HIP bundle**
+(`a3c0786d...ce40`; primary `libggml-hip.so` `a3d9e7b8...9faad`). Every native
+`prompt_n`, `predicted_n`, and `predicted_ms` row is valid.
+
+The primary normalization is essential: llama.cpp starts `predicted_ms` after
+its first sampled token while `predicted_n` includes that token, so its
+comparable numerator is `predicted_n - 1`. c0bc can omit entries from SSE token
+arrays, making returned-array completeness and cross-engine generated-ID
+matches diagnostics rather than timing gates. This is therefore a true 1:1
+**protocol/storage/timing** comparison, not bit-identical arithmetic: each
+engine retains its own kernels, reductions, and scheduling. The result closes
+llama.cpp **HIP** decisively but does not replace or claim victory over the
+separate device-pinned Vulkan target. Evidence:
+[`matched ABBA artifact`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-hipengine-vs-llamacpp-hip-matched-abba.json).
+
 ### 4.7 Raw-IQ3 ISA and ownership breakdown
 
 The exact K1024/N3072/top-10 selected-down comparison is:
@@ -3153,6 +3186,16 @@ rollups do not change. See the [design](../benchmarks/results/2026-07-27-gfx1100
 [runtime gate](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-runtime-correctness.json),
 and [rejection](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-rejected.json).
 
+A fresh matched same-source HIP audit now clarifies the backend boundary without
+changing that retained route. The frozen two-process-per-engine ABBA row pools
+hipEngine **64.094/63.431 tok/s** versus llama.cpp HIP **49.290/49.964 tok/s**
+at h16/h32, a **30.034%/26.954%** lead over exactly **2,160/4,464 transitions
+per engine**. This is accepted natural-completion protocol/storage/timing
+parity with BF16 K/V and FA on, not cross-engine bit identity. It proves the
+remaining Laguna target is Vulkan-specific; it does not promote a new hipEngine
+default or replace canonical **63.270 tok/s**. See the
+[matched ABBA artifact](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-hipengine-vs-llamacpp-hip-matched-abba.json).
+
 ### 9.2 Next gfx1100 work must have a larger premise
 
 The current short residual profile is the planning basis, not a promise that
@@ -3293,6 +3336,7 @@ shape and serving evidence.
 | Compact conclusions and logger hashes | [`...decode-gap-analysis.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-decode-gap-analysis.json) |
 | What does the corrected HIP/Vulkan history transfer? | [`HIP-vs-VULKAN.md`](HIP-vs-VULKAN.md), [`HIP-vs-VULKAN-HISTORY.md`](HIP-vs-VULKAN-HISTORY.md) |
 | What does same-source llama.cpp HIP isolate? | [`...hip-vulkan-isa-attention-review.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-hip-vulkan-isa-attention-review.json), `/tmp/laguna-llamacpp-hip-depth-profile-summary.json` hash therein |
+| Does hipEngine beat same-source llama.cpp HIP under a true matched natural-completion protocol? | [`...hipengine-vs-llamacpp-hip-matched-abba.json`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-hipengine-vs-llamacpp-hip-matched-abba.json): yes, **64.094/63.431** versus **49.290/49.964 tok/s** at h16/h32 (**+30.034%/+26.954%**) over equal 144-run and 2,160/4,464-transition pools. This is protocol/storage/timing parity, not cross-engine arithmetic identity or a Vulkan claim. |
 | What is the raw-IQ3 ownership/ISA result? | Same review artifact plus `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip` and llama.cpp HIP `mmvq.cu`/`vecdotq.cuh` plus Vulkan `mul_mat_vec.comp`/`dequant_funcs_cm2.glsl` at `c0bc8591e` |
 | What is the next attention algorithm? | Same review artifact; llama.cpp `fattn-tile.cuh`/`fattn-common.cuh` at `c0bc8591e`; in-tree `attention/paged_attn_decode.hip` split producer/reducer |
 | Did a bit-lossless Q5 repack help? | [`...p3-q5-t16-repack-rejected.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json): exact generic/wave32x2 T16 both regress actual global/SWA layers and are not retained. |
@@ -3574,11 +3618,21 @@ kernels / zero D2H** trace. Complete short decode still rejects both process
 orders: A regresses span/child **1.301%/0.523%**, while B regresses kernel/span
 **0.021%/0.790%**. Runtime integration is removed before longer contexts or
 categories; the general host-mapping ABI remains, and no default, rollup, or
-canonical **63.270 tok/s** change is claimed. Post-mapped rejection therefore
-selects the independent synchronization schedule: preserve both separate device
-outputs and both D2H copies, enqueue them into a registered non-mapped host page,
-and use one final fence instead of a pre-fence plus two blocking reads. All
-**15/15** actual-vocab tie fixtures pass on default/nonblocking streams and every
-direct timing row improves at **82.129 -> 51.353 us/token (-37.472%)**. This is
-design-only; projected topology remains **683 dispatches / five copies / 678
-kernels**, and runtime/full-state/clean/category admission remains pending.
+canonical **63.270 tok/s** change is claimed.
+
+Post-mapped rejection therefore selected the independent synchronization
+schedule: preserve both separate device outputs and both D2H copies, enqueue
+them into a registered non-mapped host page, and use one final fence instead of
+a pre-fence plus two blocking reads. All **15/15** actual-vocab tie fixtures,
+full state, and exact **683-dispatch / five-copy / 678-kernel** topology passed,
+but the frozen short gate rejected both process orders: A regressed span/child
+**0.618%/0.503%**, while B regressed model-kernel sum **0.126%**. Runtime
+integration is removed and the blocking fallback remains canonical.
+
+The final same-source HIP ABBA closes the comparison ambiguity rather than
+reopening a rejected owner. Across equal 144-run and 2,160/4,464-transition
+h16/h32 pools, hipEngine measures **64.094/63.431 tok/s** versus llama.cpp HIP
+**49.290/49.964 tok/s**, a **30.034%/26.954%** lead. All protocol, native-timing,
+source, device-bundle, correctness, and lifecycle gates pass. Cross-engine
+arithmetic remains intentionally native, and the independently pinned Vulkan
+objective remains open.

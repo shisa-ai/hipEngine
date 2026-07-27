@@ -1,8 +1,10 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-27**
+Last reviewed: **2026-07-28**
 
 Latest retained hipEngine revisions in this scoreboard:
+`773ab9033ea55445b254ddf47fa87cd5ff926adc` for the clean matched W7900
+Laguna hipEngine-versus-llama.cpp-HIP ABBA harness and measurement packet,
 `5a0463c71a198d1fbb1caf8ee632d29b337c5a94` for the exact W7900 Laguna
 IQ3 ten-wave fused measurement/runtime packet promoted by this update,
 `b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2` for the clean gfx1151 Laguna
@@ -619,6 +621,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL matched post-TTFT c1 decode versus llama.cpp HIP | 2026-07-28 | clean hipEngine A/B `a5f0719d4` / `773ab9033`; verified llama.cpp `c0bc8591e` plus declared host-response patch; byte-identical 269-file HIP bundle `a3c0786d...ce40`; BF16 K/V; FA on; one queue | **Accepted protocol-matched ABBA comparison**: over the same 18 natural-greedy train+heldout prompt token streams, h16/h32, and exactly **2,160/4,464 timed transitions per engine**, pooled hipEngine is **64.094/63.431 tok/s** versus llama.cpp HIP **49.290/49.964**, or **+30.03%/+26.95%**. Both hipEngine processes pass Poolside KL **0.000156823**, top-1 100%, exact serial/bulk/repeat trajectories, and teardown. All llama.cpp native timing rows pass; its c0bc response-only patch is source-verified and leaves device code unchanged. This is protocol/storage/timing 1:1, not bit-identical cross-engine reduction order, and it does **not** claim Vulkan is beaten. [`artifact`](results/2026-07-28-gfx1100-laguna-q2-xl-hipengine-vs-llamacpp-hip-matched-abba.json). | Yes, for the declared natural-greedy post-TTFT HIP comparison | Rerun after either engine's model kernels/runtime, llama.cpp source/device bundle, model/prompt, KV/FA policy, ROCm/compiler, or W7900 queue/clock policy changes; keep Vulkan as a separate backend target. |
 | Radeon RX 7900 XTX GPU1, gfx1100 | Qwen3.6-35B-A3B UD-Q3_K_M native prefill/decode, c2/c4/c8, and NextN diagnostic | 2026-07-22 | merged branch tip `5c76b408`; exact model/artifact identities and cached GPU1 traces retained | **Accepted direct-Q3 path / rejected MTP diagnostic**: exact fully-bulk prefill reaches **848.543/831.393 tok/s** at 512/4K; graph decode retains **101.216/108.383 tok/s** at c1 and native c8 reaches **207.780/211.177 aggregate tok/s** with exact IDs/full logits and no c>N serial fallback. The blk.40 NextN B1/B2/B3 row is exact but only **0.544x/0.346x/0.271x** AR and remains disabled. | Yes for the declared direct/native-Q3 scopes; no MTP promotion | Rerun after Q3 quant kernels, native-row ownership, MTP transaction/state, model, compiler/runtime, or GPU policy changes. |
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | PARO BF16/INT8 KV context capacity and fidelity | 2026-07-13 | clean profile-aware BF16 frontier `5a49b16d`; clean INT8 capacity `d6504544`; clean functional check `2743798f`; clean external-format screen `d0b56364`; current Qwen3.6 packed model fingerprint retained | **Current capacity / correctness outcome**: on the physical 24 GB XTX, the automatic all-768 low-memory prefill profile makes **208 Ki BF16 the recommended safe cap** at **23.623 GiB whole-device peak / 0.361 GiB free**. **220 Ki physically completes** at 23.908 GiB but leaves only **0.076 GiB (~78 MiB)** and is edge-only; a 232 Ki low-profile screen exceeds capacity. Compact 256K INT8 fits at 22.971 GiB tracked but remains unsupported. External-format S1 lowers mean KL to **0.13342**, but the winning Hadamard group32 row rejects 4K/16 at **0.15512 KL** despite **94.12% top-1**. | Current diagnostic table | Rerun after chunk policy, model/runtime, or allocator changes; do not promote 220 Ki without more margin, and require matched-context plus broader task quality before INT8 support. |
 | Radeon Pro W7900, gfx1100 | llama.cpp Q8_0 KV protocol/arithmetic isolation | 2026-07-13 | clean harness `a344d32a`; llama.cpp HIP build 9648 / `1ebf790cd`; exact library/model hashes retained; external instrumentation tree disclosed dirty | **Repeated-token pass superseded as representative quality evidence**: native Q8_0/F16 at 4K/16 is **0.000006 KL / 100% top-1** on repeated token 9707 but **0.075654/1.26009 mean/max KL / 94.12% top-1** on exact mixed `mixed_v1`, failing the KL gate; an exact rerun reproduces every row. Mixed K-only and V-only Q8 reach **0.09668** and **0.24322** mean KL, while full Q8 improves through non-additive K/V interaction. The old 128K repeated row remains a saturation control, not broad fidelity evidence. No performance claim. | Current diagnostic table | Require multiple mixed/natural prompt families after cache arithmetic, format, model/build, or protocol changes; do not promote from repeated-token rows. |
@@ -1236,9 +1239,9 @@ blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-27
+### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-28
 
-Last updated: **2026-07-27**.
+Last updated: **2026-07-28**.
 
 **Status: exact dense decode, IQ3 ten-wave fused weighted-down ownership with
 wave4 fallback, P2 exact split attention plus SWA tile16 scores, P4.1
@@ -1346,6 +1349,31 @@ slot-order reducer.
 | Wave10-fused change vs matched wave4 | **-0.189%** | **+0.105%** | **+1.528%** | **-0.008%** | **+0.145%** |
 | D3 token-serial control | 44.396 | 1.800 s | 39.000 | 6.883 | 11.675 |
 
+A fresh same-source HIP closure uses a frozen ABBA engine order rather than the
+older forced-token/F16-KV `llama-bench` diagnostic. Each process runs four
+repetitions of all 18 natural-greedy train+heldout prompts at h16/h32 with the
+same model bytes, prompt token streams, BF16 K/V, FA-on policy, context 4096,
+one W7900 queue, and post-TTFT timing boundary. Rates are pooled from raw
+seconds rather than averaged:
+
+| Matched natural completion | hipEngine | llama.cpp HIP | hipEngine delta |
+| --- | ---: | ---: | ---: |
+| h16, 144 runs / 2,160 transitions each | **64.094 tok/s** | 49.290 tok/s | **+30.034% / 1.300x** |
+| h32, 144 runs / 4,464 transitions each | **63.431 tok/s** | 49.964 tok/s | **+26.954% / 1.270x** |
+
+Both hipEngine processes pass Poolside KL **0.000156823**, top-1 **100%**, exact
+serial/bulk/repeat IDs, stable IDs across processes, and zero final tracked
+ownership. llama.cpp uses verified source `c0bc8591e` plus one declared
+post-generation content-only response patch; its complete 269-file HIP bundle is
+byte-identical to the clean build. Every native `prompt_n`, `predicted_n`, and
+`predicted_ms` row is valid. c0bc sometimes omits SSE token-array entries, so
+those arrays and cross-engine ID matches are diagnostics, not timing ownership.
+This is a true 1:1 **protocol/storage/timing** comparison, not a claim of
+bit-identical arithmetic: hipEngine retains `KVLiveSpans` and its exact kernels,
+while llama.cpp retains ggml scheduling and reduction order. It also does not
+supersede or claim victory over the separately pinned Vulkan target. Evidence:
+[`matched ABBA artifact`](results/2026-07-28-gfx1100-laguna-q2-xl-hipengine-vs-llamacpp-hip-matched-abba.json).
+
 P0 also pools two complete process-order pairs. Every category improves h16/h32
 decode by **2.80-3.16%** and E2E by **0.30-0.76%**; unaffected prefill is
 **-0.057% aggregate** and remains within **-0.152% to +0.077%** by category.
@@ -1413,7 +1441,7 @@ artifact](results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-rejected.json).
 Exact current-default D12 benchmark command:
 
 ```bash
-HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-d12-target-ar.json
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-d12-target-ar.json
 ```
 
 ##### Laguna Q2 XL c=1 decode D0

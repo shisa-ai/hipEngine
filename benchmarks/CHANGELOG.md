@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-28
+
+- [accepted matched gfx1100 Laguna Q2 XL hipEngine versus llama.cpp HIP ABBA] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / same 18 natural-greedy train+heldout prompt token streams, BF16 K/V, FA on, context 4096, h16/h32, and post-TTFT transition counts: pooled hipEngine **64.094/63.431 tok/s** versus verified same-source llama.cpp HIP **49.290/49.964 tok/s**, a **+30.034%/+26.954%** lead over exactly **2,160/4,464 transitions per engine**; both clean hipEngine processes pass KL/top-1/trajectory/lifecycle gates, all llama.cpp native timing rows pass, and the declared post-generation response patch leaves its 269-file HIP device bundle byte-identical. This is protocol/storage/timing parity, not cross-engine bit identity or a Vulkan-beating claim; `benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-hipengine-vs-llamacpp-hip-matched-abba.json`.
+
 ## 2026-07-27
 
 - [retained gfx1100 Laguna Q2 XL exact IQ3 ten-wave fused weighted down] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / retained wave4 producer plus slot-order reducer -> exact local320 ten-wave fused owner moves the matched two-order 18-prompt h32 row **62.318 -> 63.270 tok/s (+1.528%)**, or prior retained **61.992 -> 63.270 (+2.063%)**; every train/heldout category improves at both horizons, all clean orders improve inclusive IQ3/kernel/span with non-regressive child throughput, full state/default-vs-wave4 is exact, and model kernels contract **723 -> 678/token**. Pinned Vulkan remains faster at **64.418 tok/s**, requiring another **1.81%**; `benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json`.
