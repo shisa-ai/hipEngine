@@ -184821,32 +184821,30 @@ Vulkan local sizes verbatim will close the measured gap.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-routing-tail-mass.json`.
 
-## 2026-07-27 — Pass the low-mass route-tail speed gate
+## 2026-07-27 — Reject and remove low-mass route pruning
 
-- Added a default-off prefill rule that drops the final two top-10 routes only
-  when their combined normalized F32 mass is at most **0.15**, then
-  renormalizes the retained routes. Exact c=1 decode remains top-10.
-- The first integrated attempt exposed stale compact metadata: dropped source
-  lanes left uninitialized inverse-map entries for the grouped weighted
-  combine. Repaired it by initializing both maps to `-1` in the prune
-  primitive and selecting separately registered nullable combine bodies only
-  for the candidate. The ordinary exact combine bodies and registry routes
-  remain unchanged.
-- CPU prune semantics, HIP prune semantics, nullable sparse-lane combine,
-  registry/session/category contracts, and the production-shape Q4 MoE chain
-  pass. The focused Q6 parameter still fails its later rows64-versus-rows32
-  equality assertion with 9,088 mismatches; an untouched detached
-  `e86a71b31` worktree reproduces the identical failure, so it is not caused
-  by this candidate. Per the focused-repair policy, the passing Q4 node and
-  direct primitive gates are the relevant new-path evidence.
-- Five counter-rotated same-owner pp512 pairs measure
+- Implemented the sole measured routed-width candidate: drop the final two
+  top-10 routes only when their combined normalized F32 mass is at most
+  **0.15**, renormalize the retained routes, and keep exact c=1 top-10.
+  A stale compact-map landmine found during integration was repaired with
+  explicit `-1` initialization and candidate-only nullable combines; the
+  focused CPU/HIP/production-shape Q4 bundle passed **69 tests**.
+- Five counter-rotated pp512 pairs pass the speed screen at
   **641.668 -> 687.804 tok/s (+7.190%, 5/5 wins)** with deterministic token
-  2930. Raw SHA-256 is
+  2930. Raw speed SHA-256:
   `b9b242027a06f7f5c470740b474046a86a7478d49d50c5edac17841d4f3a046b`.
-  This is quality-pending, not production. The next mandatory gate extends
-  every canonical prompt deterministically to 512 rows and compares all
-  320 teacher-forced steps against the all-exact lane.
-- Added the extended-512 `route_tail_mass_absolute` category lane and restored
-  the suite-cycling extension helper. The candidate is removed in full if
-  KL/top-1/category/lifecycle admission fails. Evidence:
-  `benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-speed-pending.json`.
+- The clean deterministic extended-512 ten-prompt gate rejects the candidate.
+  Maximum KL is **3.649289081** versus **0.05**; top-1 is
+  **297/320 (92.813%)**. Category KL maxima are
+  **2.907917/0.625267/3.649289/2.751395** for
+  code/general-English/general-Japanese/mixed. Poolside top-1 still matches
+  but KL is **0.414191**, confirming the single-prompt speed screen was
+  misleading. Repeats are deterministic; tracked lifecycle returns
+  **137,521,545,872 / 137,521,545,872 bytes** with zero active allocations.
+  Raw quality SHA-256:
+  `db82d91de00da8f84a5810f71b0060a5c75e76c39c40c60d486a3c4f0bf13a9b`.
+- The removal trigger is satisfied. Removed the prune CPU/HIP primitives,
+  nullable combine variants, plan/session fields, harness mode, extended
+  category lane/helper, catalog/refactor entries, and focused tests.
+  Production remains model-declared top-10 for prefill and decode. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-absolute-rejected.json`.

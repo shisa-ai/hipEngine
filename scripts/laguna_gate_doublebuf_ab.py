@@ -125,12 +125,7 @@ def _apply_mode(
     runtime_mode: str,
 ) -> None:
     selected_down_prefix = "selected_down:"
-    route_tail_mass_prefix = "route_tail_mass:"
-    if runtime_mode.startswith(route_tail_mass_prefix):
-        session.set_prefill_route_tail_mass_threshold(
-            float(runtime_mode.removeprefix(route_tail_mass_prefix))
-        )
-    elif runtime_mode.startswith(selected_down_prefix):
+    if runtime_mode.startswith(selected_down_prefix):
         session.set_selected_down_mode(
             runtime_mode.removeprefix(selected_down_prefix)
         )

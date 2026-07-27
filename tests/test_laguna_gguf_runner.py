@@ -84,17 +84,6 @@ def test_laguna_moe_branch_concurrency_requires_two_automatic_queues() -> None:
     )
 
 
-def test_laguna_prefill_route_tail_mass_threshold_is_explicit_and_bounded() -> None:
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.set_prefill_route_tail_mass_threshold(0.15)
-    assert session.prefill_route_tail_mass_threshold == 0.15
-    session.set_prefill_route_tail_mass_threshold(None)
-    assert session.prefill_route_tail_mass_threshold is None
-    for invalid in (0.0, 1.0, float("inf"), float("nan")):
-        with pytest.raises(ValueError, match="within"):
-            session.set_prefill_route_tail_mass_threshold(invalid)
-
-
 def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
 

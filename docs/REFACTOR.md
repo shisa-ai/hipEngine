@@ -1723,20 +1723,3 @@ should be boring.
   the runtime setter, multi-arm harness mode, both category
   comparisons/configurations, and focused tests are removed. Production
   remains model-declared top-10 for prefill and decode.
-
-## Laguna low-mass route-tail candidate
-
-- Added 2026-07-27 as a default-off, prefill-only threshold of **0.15** on
-  the combined normalized mass of the final two top-10 routes. Exact c=1
-  decode is untouched. The candidate initializes nullable grouped metadata,
-  invalidates only guarded suffix routes, renormalizes the retained routes,
-  and selects separately registered nullable combine fallbacks.
-- A five-pair pp512 screen improves **641.668 -> 687.804 tok/s (+7.190%)**
-  with **5/5** paired wins and deterministic next token 2930. This is
-  quality-pending and is not a production claim.
-- Remove the runtime setter, prune kernel, nullable combine variants, category
-  lane, harness mode, and focused tests if the extended-512 complete-category
-  gate fails KL **<=0.05**, top-1 **>=90%** overall and per category, or
-  lifecycle recovery. On admission, collapse the fixed **0.15** threshold
-  into a gfx1151 prefill capability and retain the full top-10 chain as the
-  unfused/exact fallback.

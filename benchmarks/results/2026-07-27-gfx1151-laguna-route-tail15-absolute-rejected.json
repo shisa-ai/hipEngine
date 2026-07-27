@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T17:07:27+09:00",
+  "kind": "hipengine_laguna_route_tail_mass_absolute_gate",
+  "status": "rejected_quality",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "f423e750ded61a58435c02c184964d52fdad8c3d",
+    "tracked_clean": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py --comparison route_tail_mass_absolute --chunk-size 512 --prompt-token-target 512 --repetitions 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-extended512-absolute.json",
+    "raw_sha256": "db82d91de00da8f84a5810f71b0060a5c75e76c39c40c60d486a3c4f0bf13a9b",
+    "prompt_suite": "all ten canonical prompts, deterministically cycled to 512 tokens",
+    "teacher_forced_steps": 320,
+    "repetitions": 3,
+    "baseline": "all_exact",
+    "candidate": "production prefill plus final-two combined normalized mass <=0.15"
+  },
+  "speed_screen": {
+    "retained_samples_tok_s": [
+      619.9221962463207,
+      643.0388860138115,
+      641.6683980289687,
+      641.7773695062334,
+      640.2160384666528
+    ],
+    "candidate_samples_tok_s": [
+      695.0657924176492,
+      677.4467902005962,
+      691.2237130606612,
+      687.804223051718,
+      685.9217714676745
+    ],
+    "retained_median_tok_s": 641.6683980289687,
+    "candidate_median_tok_s": 687.804223051718,
+    "median_speedup": 1.0718997930464802,
+    "paired_wins": 5,
+    "paired_samples": 5
+  },
+  "extended_512_gate": {
+    "all_exact_prefill_tok_s": 58.412304243930514,
+    "candidate_prefill_tok_s": 620.4138914826462,
+    "candidate_prefill_speedup": 10.621287749440427,
+    "teacher_forced": {
+      "finite": true,
+      "steps": 320,
+      "top1_matches": 297,
+      "top1_agreement": 0.928125,
+      "max_kl_divergence": 3.6492890813593815,
+      "thresholds": {
+        "max_kl_divergence": 0.05,
+        "minimum_top1_agreement": 0.9
+      },
+      "categories": {
+        "code": {
+          "top1_agreement": 0.9296875,
+          "max_kl_divergence": 2.9079167981232876
+        },
+        "general_en": {
+          "top1_agreement": 0.9375,
+          "max_kl_divergence": 0.6252666790984682
+        },
+        "general_ja": {
+          "top1_agreement": 0.921875,
+          "max_kl_divergence": 3.6492890813593815
+        },
+        "mixed_ja_en": {
+          "top1_agreement": 0.921875,
+          "max_kl_divergence": 2.751394838408083
+        }
+      }
+    },
+    "poolside_oracle": {
+      "top1_agreement": 1.0,
+      "kl_divergence": 0.41419133327024354,
+      "pass": false
+    },
+    "same_mode_repeat_deterministic": true,
+    "cross_mode_free_running_exact": false,
+    "tracked_allocated_bytes": 137521545872,
+    "tracked_freed_bytes": 137521545872,
+    "active_allocations_after": 0
+  },
+  "decision": {
+    "speed_gate_passed": true,
+    "quality_gate_passed": false,
+    "failure": "maximum KL 3.6492890813593815 exceeds 0.05",
+    "candidate_removed": true,
+    "production_default": "exact model-declared top-10"
+  }
+}

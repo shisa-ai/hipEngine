@@ -1941,16 +1941,19 @@ Immediate execution queue:
    observed-output-conditioned, or fixed-prefix exemption is admissible.
    Evidence:
    [`2026-07-27-gfx1151-laguna-routing-tail-mass.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-routing-tail-mass.json).
-67. **Speed gate passed; absolute quality pending:** the model-wide
-   final-two mass guard at **0.15** now has a CPU oracle, registered HIP
-   primitive, explicit nullable grouped-combine fallback, and a prefill-only
-   runtime lane. It preserves exact c=1 top-10. Five counter-rotated pp512
-   pairs improve **641.668 -> 687.804 tok/s (+7.190%, 5/5 wins)** with
-   deterministic token 2930. The candidate remains default-off until the
-   deterministic extended-512 ten-prompt/four-category/320-step gate passes
-   max KL **<=0.05**, top-1 **>=90%** overall and per category, and exact
-   lifecycle recovery. Evidence:
-   [`2026-07-27-gfx1151-laguna-route-tail15-speed-pending.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-speed-pending.json).
+67. **Rejected and removed:** the final-two combined-mass threshold **0.15**
+   passes its five-pair pp512 speed screen at
+   **641.668 -> 687.804 tok/s (+7.190%, 5/5 wins)**, but fails the
+   deterministic extended-512 ten-prompt absolute gate. Suite maximum KL is
+   **3.649289** versus **0.05**; top-1 is **297/320 (92.813%)**. Every
+   category violates KL at **2.907917/0.625267/3.649289/2.751395** for
+   code/general-English/general-Japanese/mixed. Poolside alone keeps matching
+   top-1 but reaches KL **0.414191**. Repeats are deterministic and lifecycle
+   returns exactly to zero, so this is a numerical rejection. The prune
+   kernel, nullable combine variants, runtime setter, harness mode, category
+   lane, and focused tests are removed. Production remains exact top-10.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-route-tail15-absolute-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-absolute-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1977,9 +1980,9 @@ to Q4 selected down:
    gathers through wave shuffles; coalescing already removes the physical
    traffic duplication. Fixed prefill top-8/top-9 are category-rejected despite
    reaching **720.130/684.313 tok/s**. The only remaining routed-width screen
-   is item 66's measured final-two combined-mass threshold **0.15**. Its
-   pp512 speed gate now passes at **687.804 tok/s**; remove it if the
-   extended-512 category gate fails.
+   was item 66's final-two combined-mass threshold **0.15**; item 67 rejects
+   it on extended-512 quality despite a **687.804 tok/s** speed screen. No
+   routed-width approximation remains open.
 3. Do not widen the 128-row attention slice or retry a library-QK plus scalar
    fused-softmax/PV tail: M256 remains slower after exhaustive algorithm
    tuning, and row8/row16 fused tails lose production despite removing the

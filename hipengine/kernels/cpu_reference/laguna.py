@@ -933,63 +933,6 @@ def laguna_sigmoid_correction_topk_from_logits(
     )
 
 
-def laguna_prune_tail_routes(
-    selected_experts: ArrayLike,
-    routing_weights: ArrayLike,
-    *,
-    drop_count: int,
-    max_tail_mass: float,
-    routed_scaling_factor: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Drop a fixed route suffix only when its normalized mass is bounded.
-
-    This is the independent oracle for the diagnostic post-router primitive.
-    Eligible rows keep their existing selected-route order, invalidate the
-    suffix with expert ID ``-1``, and renormalize the remaining F32 weights.
-    """
-
-    selected = np.asarray(selected_experts, dtype=np.int64)
-    routing = np.asarray(routing_weights, dtype=np.float32)
-    if selected.ndim != 2 or routing.shape != selected.shape:
-        raise ValueError(
-            "selected_experts and routing_weights must have matching [rows, top_k] shapes"
-        )
-    if selected.shape[0] <= 0 or selected.shape[1] < 2:
-        raise ValueError("route pruning requires positive rows and top_k >= 2")
-    count = int(drop_count)
-    if count <= 0 or count >= selected.shape[1]:
-        raise ValueError("drop_count must be within [1, top_k)")
-    threshold = float(max_tail_mass)
-    if not math.isfinite(threshold) or threshold <= 0.0 or threshold >= 1.0:
-        raise ValueError("max_tail_mass must be finite and within (0, 1)")
-    scale = float(routed_scaling_factor)
-    if not math.isfinite(scale) or scale <= 0.0:
-        raise ValueError("routed_scaling_factor must be finite and positive")
-    if np.any(selected < 0) or not np.isfinite(routing).all() or np.any(routing < 0.0):
-        raise ValueError("selected expert IDs and routing weights must be valid")
-
-    out_selected = selected.copy()
-    out_routing = routing.copy()
-    out_scaled = (routing * np.float32(scale)).astype(np.float32)
-    keep_count = selected.shape[1] - count
-    tail_mass = routing[:, keep_count:].sum(axis=1, dtype=np.float32)
-    eligible = tail_mass <= np.float32(threshold)
-    for row in np.flatnonzero(eligible):
-        denominator = np.maximum(
-            routing[row, :keep_count].sum(dtype=np.float32),
-            np.float32(np.finfo(np.float32).tiny),
-        )
-        normalized = (routing[row, :keep_count] / denominator).astype(np.float32)
-        out_selected[row, keep_count:] = -1
-        out_routing[row, :keep_count] = normalized
-        out_routing[row, keep_count:] = np.float32(0.0)
-        out_scaled[row, :keep_count] = (
-            normalized * np.float32(scale)
-        ).astype(np.float32)
-        out_scaled[row, keep_count:] = np.float32(0.0)
-    return out_selected, out_routing, out_scaled
-
-
 def register_laguna_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(

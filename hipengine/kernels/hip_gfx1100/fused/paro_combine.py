@@ -77,12 +77,6 @@ _SYMBOL_WEIGHTED_LANES_FP16 = "hipengine_weighted_lanes_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_LANES_SHARED_ADD = (
     "hipengine_weighted_lanes_sum_shared_add_out_bf16_f32w"
 )
-_SYMBOL_WEIGHTED_LANES_NULLABLE = (
-    "hipengine_weighted_lanes_sum_nullable_out_bf16_f32w"
-)
-_SYMBOL_WEIGHTED_LANES_NULLABLE_SHARED_ADD = (
-    "hipengine_weighted_lanes_sum_nullable_shared_add_out_bf16_f32w"
-)
 _SYMBOL_WEIGHTED_SUM = "hipengine_weighted_sum_out_bf16_f32w"
 _SYMBOL_WEIGHTED_SUM_FP16 = "hipengine_weighted_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL = "hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w"
@@ -218,85 +212,6 @@ def weighted_lanes_sum_shared_add_out_bf16_f32w(
     fn = signed_kernel_fn(
         library,
         _SYMBOL_WEIGHTED_LANES_SHARED_ADD,
-        _ARGTYPES_WEIGHTED_LANES_SHARED_ADD,
-        ctypes.c_int,
-    )
-    err = fn(
-        values_ptr,
-        weights_ptr,
-        sorted_lanes_ptr,
-        lane_to_row_ptr,
-        shared_ptr,
-        out_ptr,
-        tokens,
-        top_k,
-        features,
-        threads,
-        stream,
-    )
-    _check_launch(runtime, err)
-
-
-def weighted_lanes_sum_nullable_out_bf16_f32w(
-    values_ptr: int,
-    weights_ptr: int,
-    sorted_lanes_ptr: int,
-    lane_to_row_ptr: int,
-    out_ptr: int,
-    tokens: int,
-    top_k: int,
-    features: int,
-    *,
-    threads: int = 128,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Reduce grouped lanes while skipping routes invalidated before compaction."""
-
-    _launch_weighted_lanes(
-        _SYMBOL_WEIGHTED_LANES_NULLABLE,
-        values_ptr,
-        weights_ptr,
-        sorted_lanes_ptr,
-        lane_to_row_ptr,
-        out_ptr,
-        tokens,
-        top_k,
-        features,
-        threads,
-        stream,
-        library,
-        runtime,
-    )
-
-
-def weighted_lanes_sum_nullable_shared_add_out_bf16_f32w(
-    values_ptr: int,
-    weights_ptr: int,
-    sorted_lanes_ptr: int,
-    lane_to_row_ptr: int,
-    shared_ptr: int,
-    out_ptr: int,
-    tokens: int,
-    top_k: int,
-    features: int,
-    *,
-    threads: int = 128,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Skip invalid grouped lanes, then add the shared BF16 output exactly."""
-
-    _check_positive(tokens, "tokens")
-    _check_positive(top_k, "top_k")
-    _check_vector_shape(features, threads)
-    library = library or build_paro_combine(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(
-        library,
-        _SYMBOL_WEIGHTED_LANES_NULLABLE_SHARED_ADD,
         _ARGTYPES_WEIGHTED_LANES_SHARED_ADD,
         ctypes.c_int,
     )
@@ -1500,21 +1415,6 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
                 "out",
             ),
             weighted_lanes_sum_shared_add_out_bf16_f32w,
-            replace=replace,
-        )
-        register(
-            KernelKey("hip_gfx1100", "weighted_lanes_sum", quant, "nullable"),
-            weighted_lanes_sum_nullable_out_bf16_f32w,
-            replace=replace,
-        )
-        register(
-            KernelKey(
-                "hip_gfx1100",
-                "weighted_lanes_sum+shared_add",
-                quant,
-                "nullable",
-            ),
-            weighted_lanes_sum_nullable_shared_add_out_bf16_f32w,
             replace=replace,
         )
         register(

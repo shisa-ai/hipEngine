@@ -18,8 +18,6 @@ from hipengine.kernels.hip_gfx1100.fused import (
     shared_gate_combine_residual_out_fp16,
     weighted_lanes_sum_out_bf16_f32w,
     weighted_lanes_sum_out_fp16_f32w,
-    weighted_lanes_sum_nullable_out_bf16_f32w,
-    weighted_lanes_sum_nullable_shared_add_out_bf16_f32w,
     weighted_lanes_sum_shared_add_out_bf16_f32w,
     weighted_sum_out_bf16_f32w,
     weighted_sum_out_fp16_f32w,
@@ -87,24 +85,6 @@ def test_paro_combine_registers_bf16_fp16_and_w4_paro_variants() -> None:
                 variant="out",
             )
             is weighted_lanes_sum_shared_add_out_bf16_f32w
-        )
-        assert (
-            resolve(
-                backend="hip_gfx1100",
-                layer="weighted_lanes_sum",
-                quant=quant,
-                variant="nullable",
-            )
-            is weighted_lanes_sum_nullable_out_bf16_f32w
-        )
-        assert (
-            resolve(
-                backend="hip_gfx1100",
-                layer="weighted_lanes_sum+shared_add",
-                quant=quant,
-                variant="nullable",
-            )
-            is weighted_lanes_sum_nullable_shared_add_out_bf16_f32w
         )
         assert (
             resolve(backend="hip_gfx1100", layer="weighted_sum", quant=quant, variant="out")
@@ -319,12 +299,6 @@ def test_paro_combine_wrappers_validate_before_gpu_load() -> None:
         weighted_lanes_sum_out_fp16_f32w(0, 0, 0, 0, 0, 2, 0, 16)
     with pytest.raises(ValueError, match="features must be positive"):
         weighted_lanes_sum_shared_add_out_bf16_f32w(
-            0, 0, 0, 0, 0, 0, 2, 4, 0
-        )
-    with pytest.raises(ValueError, match="tokens must be positive"):
-        weighted_lanes_sum_nullable_out_bf16_f32w(0, 0, 0, 0, 0, 0, 8, 16)
-    with pytest.raises(ValueError, match="features must be positive"):
-        weighted_lanes_sum_nullable_shared_add_out_bf16_f32w(
             0, 0, 0, 0, 0, 0, 2, 4, 0
         )
     with pytest.raises(ValueError, match="rows must be positive"):
@@ -637,85 +611,6 @@ def test_weighted_lanes_shared_add_matches_exact_unfused_cpu_boundaries() -> Non
             )
         )
         weighted_lanes_sum_shared_add_out_bf16_f32w(
-            values_d.ptr,
-            weights_d.ptr,
-            sorted_lanes_d.ptr,
-            lane_to_row_d.ptr,
-            shared_d.ptr,
-            out_d.ptr,
-            tokens,
-            top_k,
-            features,
-            library=library,
-        )
-        copy_device_to_host(host_array_ptr(out), out_d, out.nbytes)
-    finally:
-        for buf in reversed(bufs):
-            free(buf)
-
-    np.testing.assert_array_equal(out, expected)
-
-
-@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_weighted_lanes_nullable_shared_add_skips_invalid_routes() -> None:
-    rng = np.random.default_rng(20260727)
-    tokens = 2
-    top_k = 4
-    features = 19
-    rows = tokens * top_k
-    sorted_lanes = np.asarray([0, 2, 4, 5, 7, -1, -1, -1], dtype=np.int64)
-    lane_to_row = np.full(rows, -1, dtype=np.int64)
-    lane_to_row[sorted_lanes[:5]] = np.arange(5, dtype=np.int64)
-    values = _bf16_bits(rng.normal(size=(rows, features)).astype(np.float32))
-    weights = rng.normal(size=rows).astype(np.float32)
-    shared = _bf16_bits(rng.normal(size=(tokens, features)).astype(np.float32))
-
-    libm = ctypes.CDLL("libm.so.6")
-    fmaf = libm.fmaf
-    fmaf.argtypes = (ctypes.c_float, ctypes.c_float, ctypes.c_float)
-    fmaf.restype = ctypes.c_float
-    values_f32 = _bf16_to_f32(values)
-    selected = np.empty((tokens, features), dtype=np.float32)
-    for token in range(tokens):
-        for feature in range(features):
-            acc = ctypes.c_float(0.0)
-            for slot in range(top_k):
-                row = int(lane_to_row[token * top_k + slot])
-                if row < 0:
-                    continue
-                acc = ctypes.c_float(
-                    fmaf(
-                        ctypes.c_float(values_f32[row, feature]),
-                        ctypes.c_float(weights[row]),
-                        acc,
-                    )
-                )
-            selected[token, feature] = acc.value
-    expected = _bf16_bits(
-        _bf16_to_f32(_bf16_bits(selected)) + _bf16_to_f32(shared)
-    )
-    out = np.empty_like(expected)
-
-    library = build_paro_combine(load=True)
-    bufs = []
-    try:
-        values_d = _dev(np.ascontiguousarray(values))
-        weights_d = _dev(np.ascontiguousarray(weights))
-        sorted_lanes_d = _dev(sorted_lanes)
-        lane_to_row_d = _dev(np.full(rows, -1, dtype=np.int64))
-        shared_d = _dev(np.ascontiguousarray(shared))
-        out_d = _dev(out)
-        bufs.extend(
-            (
-                values_d,
-                weights_d,
-                sorted_lanes_d,
-                lane_to_row_d,
-                shared_d,
-                out_d,
-            )
-        )
-        weighted_lanes_sum_nullable_shared_add_out_bf16_f32w(
             values_d.ptr,
             weights_d.ptr,
             sorted_lanes_d.ptr,

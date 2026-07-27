@@ -16,11 +16,9 @@ from scripts.laguna_grouped_down_category_bench import (
     MODES,
     PREFILL_350_COMPARISON,
     PRODUCTION_ABSOLUTE_COMPARISON,
-    ROUTE_TAIL_MASS_ABSOLUTE_COMPARISON,
     SWA_QROW2_COMPARISON,
     SWA_QROW2_ONLINE_COMPARISON,
     _aggregate,
-    _extend_prompt_streams,
     _load_shape_screen,
     _mode_order,
     _oracle_for_candidate,
@@ -79,83 +77,6 @@ def test_attention_hipblaslt_comparison_adds_only_attention_candidate() -> None:
     assert lane.selected_down_mode == production.selected_down_mode
     assert lane.f16_projection_mode == production.f16_projection_mode
     assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
-
-
-def test_route_tail_mass_absolute_lane_is_extended_and_mass_guarded() -> None:
-    comparison = ROUTE_TAIL_MASS_ABSOLUTE_COMPARISON
-    assert comparison.modes == ("all_exact", "route_tail_mass_candidate")
-    assert comparison.required_chunk_size == 512
-    assert comparison.prompt_token_target == 512
-    assert not comparison.require_exact_free_running
-    lane = benchmark._PREFILL_LANE_CONFIGURATIONS["route_tail_mass_candidate"]
-    production = benchmark._PREFILL_LANE_CONFIGURATIONS[
-        "production_absolute_candidate"
-    ]
-    assert lane.route_tail_mass_threshold == pytest.approx(0.15)
-    assert lane.selected_gate_up_mode == production.selected_gate_up_mode
-    assert lane.selected_down_mode == production.selected_down_mode
-
-
-def test_extended_prompt_streams_cycle_the_complete_suite() -> None:
-    prompts = [
-        {
-            "id": "a",
-            "token_ids": (1, 2),
-            "prompt_tokens": 2,
-            "token_ids_sha256": "old-a",
-        },
-        {
-            "id": "b",
-            "token_ids": (3,),
-            "prompt_tokens": 1,
-            "token_ids_sha256": "old-b",
-        },
-    ]
-
-    extended = _extend_prompt_streams(prompts, 5)
-
-    assert extended[0]["token_ids"] == (1, 2, 3, 1, 2)
-    assert extended[1]["token_ids"] == (3, 1, 2, 3, 1)
-    assert [row["prompt_tokens"] for row in extended] == [5, 5]
-    assert extended[0]["token_ids_sha256"] != "old-a"
-    assert extended[1]["token_ids_sha256"] != "old-b"
-    assert _extend_prompt_streams(prompts, 0) == prompts
-    assert prompts[0]["token_ids"] == (1, 2)
-
-
-def test_route_tail_mass_candidate_configures_only_candidate_session(
-    monkeypatch,
-) -> None:
-    configured: list[tuple[str, object]] = []
-
-    class FakeSession:
-        def set_selected_gate_up_mode(self, mode: str) -> None:
-            configured.append(("selected_gate_up", mode))
-
-        def set_selected_down_mode(self, mode: str) -> None:
-            configured.append(("selected_down", mode))
-
-        def set_f16_prefill_mode(self, mode: str) -> None:
-            configured.append(("f16_projection", mode))
-
-        def set_dense_q4_prefill_mode(self, mode: str) -> None:
-            configured.append(("dense_q4", mode))
-
-        def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
-            configured.append(("attention_hipblaslt", enabled))
-
-        def set_prefill_route_tail_mass_threshold(self, threshold: float) -> None:
-            configured.append(("route_tail_mass", threshold))
-
-    monkeypatch.setattr(benchmark, "_session", lambda *_args, **_kwargs: FakeSession())
-    benchmark._session_for_mode(
-        object(),
-        SimpleNamespace(),
-        "route_tail_mass_candidate",
-        comparison=ROUTE_TAIL_MASS_ABSOLUTE_COMPARISON,
-    )
-
-    assert ("route_tail_mass", 0.15) in configured
 
 
 def _rows(
