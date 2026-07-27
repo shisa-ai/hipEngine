@@ -117,6 +117,7 @@ FAMILIES: dict[str, dict[str, Any]] = {
 }
 
 ROW_KEYS: dict[str, tuple[str, ...]] = {
+    "dispatch": ("sweep", "dispatch_count", "grid_blocks"),
     "geometry": ("k", "rows", "workgroup_size", "body_repeats"),
     "reduction": ("variant", "k", "rows", "workgroup_size", "body_repeats"),
     "memory-waitcnt": ("mode", "param", "n", "block_size", "body_iters"),
@@ -534,6 +535,8 @@ def _row_key(family: str, row: dict[str, Any]) -> tuple[Any, ...]:
     if family not in ROW_KEYS:
         raise ValueError(f"unsupported Redline comparison family: {family}")
     values = [row.get(field) for field in ROW_KEYS[family]]
+    if family == "dispatch":
+        values[1] = row.get("node_count", row.get("dispatch_count"))
     if family == "reduction" and values[0] == "subgroup":
         values[0] = "wave_shuffle"
     return tuple(values)
