@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T02:06:48.299082+00:00",
+  "kind": "hipengine_laguna_q4_down_raw_prefetch_p8_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset c=1 prefill-only 512/1024/4096 with BF16 KV, matrix2048/attention128 and two HIP queues",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "repo": {
+    "runtime_revision": "0085acab4f26118496feda5e6f77a4606870b961",
+    "previous_production_revision": "467660ec3",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "production_change": {
+    "selected_down_mode": "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512",
+    "mechanism": "carry the next Q4 K32 interval's eight raw T16 nibble words during current selected-down packed-dot compute",
+    "shape_policy": "P8 at producer rows >=512; previous exact specialization below 512",
+    "resident_bytes_added": 0,
+    "lds_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "arithmetic_change": false,
+    "bf16_output_change": false
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-down-p8-production-matrix.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "tracked_worktree_clean": true,
+    "selector_unset": true,
+    "raw_sha256": "dddd5f57e3c1b1288736cb96853e7071ea6c22513250db8a858391d2ec8d49f1"
+  },
+  "samples": {
+    "512_tok_s": [
+      617.8016053207718,
+      643.1410131236527,
+      646.6219217170186
+    ],
+    "1024_tok_s": [
+      577.0925903062678,
+      573.7168992030125,
+      573.3535383969746
+    ],
+    "4096_tok_s": [
+      469.9946785602571,
+      466.91291148091847,
+      464.96059836614853
+    ]
+  },
+  "medians": {
+    "512_tok_s": 643.1410131236527,
+    "512_wall_ms": 796.0929089458659,
+    "1024_tok_s": 573.7168992030125,
+    "4096_tok_s": 466.91291148091847
+  },
+  "comparison": {
+    "previous_512_tok_s": 643.5535247748338,
+    "previous_1024_tok_s": 573.0656165068592,
+    "previous_4096_tok_s": 466.290023780932,
+    "change_512_percent": -0.06409904309443437,
+    "change_1024_percent": 0.11364888721177024,
+    "change_4096_percent": 0.13358375007377354,
+    "interpretation": "The unmatched clean pp512 aggregate is flat within run variance. Retention is based on the exact seven-pair full-state A/B and named Q4-down family reduction.",
+    "target_700_wall_ms": 731.4285714285714,
+    "remaining_wall_ms_to_700": 64.66433751729448
+  },
+  "correctness": {
+    "complete_model_state_exact_transfers": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "tracked_bytes_allocated_and_freed": 78805563028,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "minimum_category_top1": "96.875%",
+    "quality_transfer": "The selected-down P8 body is BF16-bit exact to the preceding production Q4 consumer, so the retained absolute category gate transfers unchanged."
+  },
+  "kernel_evidence": {
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json",
+    "workgroup_size": 64,
+    "production_vgpr": 88,
+    "candidate_vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 1536,
+    "scratch_bytes_per_thread": 0,
+    "m512_traced_q4_down_change_percent": -2.4495531720043706,
+    "complete_state_ab_change_percent": 0.5616398949130241,
+    "complete_state_pair_wins": "7/7"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 643.1410131236527,
+    "target_700_reached": false,
+    "next_action": "refresh the selector-unset all-family trace and attack the largest remaining caller-stream ceiling"
+  },
+  "source_runs": {
+    "production_raw_sha256": "dddd5f57e3c1b1288736cb96853e7071ea6c22513250db8a858391d2ec8d49f1",
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-production.json",
+    "quality_artifact": "benchmarks/results/2026-07-25-gfx1151-laguna-prefill-350-d8-category.json"
+  }
+}

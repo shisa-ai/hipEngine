@@ -970,7 +970,9 @@ Q4-down launches **217.416 -> 212.090 ms (-2.450%)** at
 local64/VGPR96/SGPR128/LDS1536B/scratch0 versus VGPR88 without prefetch.
 Seven complete-state pp512 pairs improve
 **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)**. The prior body remains
-selected below 512 rows; clean selector-unset publication is pending
+selected below 512 rows. Clean selector-unset publication is
+**643.141/573.717/466.913 tok/s** with exact tokens, positions, lifecycle,
+and allocation recovery
 (`benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-raw-prefetch-p8-candidate.json`).
 An exact two-slot activation-cache sibling was screened and removed. Q4 down
 can safely omit the trailing K32 barrier because its direct-decoded weights

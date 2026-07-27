@@ -1623,9 +1623,10 @@ should be boring.
 - The M512 trace cuts 72 Q4-down launches
   **217.416 -> 212.090 ms (-2.450%)**. Seven complete-state pp512 pairs
   improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)** with every output
-  and state digest exact. The candidate is the gfx1151 default pending clean
-  selector-unset publication.
-- After clean publication and a refreshed all-family trace, collapse the
-  explicit positive selector into the gfx1151 shape capability. Preserve the
+  and state digest exact. Clean selector-unset publication is
+  **643.141/573.717/466.913 tok/s**, with pp512 flat within run variance.
+- The clean publication trigger is satisfied. After a refreshed all-family
+  trace, collapse the explicit positive selector into the gfx1151 shape
+  capability. Preserve the
   non-prefetch symbol for sub-512 rows and rollback/bisection because the
   admitted route is deliberately shape-qualified.
