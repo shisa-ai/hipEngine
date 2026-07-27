@@ -1660,3 +1660,8 @@ should be boring.
   positive path into the gfx1151 M512 shape policy. Remove the sidecar and
   candidate symbols if clean publication regresses any required length or the
   traced gate/up family does not improve.
+- The clean trace/publication trigger is satisfied: selected gate/up falls
+  **334.229 -> 330.720 ms (-1.050%)**, pp512 reaches **649.791 tok/s**, and
+  the aggregate-flat 1K result is positive in same-process paired wall by
+  **4.428 ms (7/11 wins)**. Keep rollback through the 700 campaign, then
+  collapse the positive path as described above.

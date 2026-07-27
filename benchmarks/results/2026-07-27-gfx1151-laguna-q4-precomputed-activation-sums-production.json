@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T14:03:00+09:00",
+  "kind": "hipengine_laguna_q4_precomputed_activation_sums_production",
+  "status": "retained_gfx1151_selector_unset_production",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "selector-unset Poolside Laguna S 2.1 Q4_K_M prefill at 512/1024/4096 rows on gfx1151",
+  "repo": {
+    "runtime_revision": "119ff77000f2b6f52ce89233e1ae608f70e46564",
+    "previous_production_revision": "15b26fc0929c214aba2f0bf733798226fb3a1bd8",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2 with least-priority shared MoE stream"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "production_change": {
+    "scope": "M512+ selected-Q4 D8 gate/up P8 specialization",
+    "mechanism": "compute exact K16 integer activation sums once per producer row in a bounded int16 scratch sidecar instead of reconstructing them in 16 output-column workgroups",
+    "resident_weight_delta_bytes": 0,
+    "m512_sidecar_bytes": 196608,
+    "max_m2048_scratch_delta_bytes": 786432,
+    "previous_512_1024_4096_tok_s": [
+      647.2068529872759,
+      576.7989877815183,
+      468.4308284097971
+    ],
+    "new_512_1024_4096_tok_s": [
+      649.7907513669854,
+      576.5885813859913,
+      468.82951069028405
+    ],
+    "change_percent": [
+      0.39923841470206334,
+      -0.03647828792769925,
+      0.0851101713011504
+    ],
+    "pp512_wall_ms": 787.9459640244022,
+    "pp512_wall_to_700_ms": 56.517392595830756
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-precomputed-production-long.json",
+    "matrix_chunk_size": 2048,
+    "attention_chunk_size": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "timed_order": "ascending then alternating direction",
+    "tracked_worktree_clean": true,
+    "selector_unset": true,
+    "raw_sha256": "dba194a937bc94cb8018249ce7b44c1d558a9defa2921c81d2d5ef659a3a051a"
+  },
+  "samples": {
+    "512_tok_s": [
+      605.5931788362484,
+      649.7907513669854,
+      650.5481395724906
+    ],
+    "1024_tok_s": [
+      580.4535046323363,
+      576.5885813859913,
+      576.0339555448685
+    ],
+    "4096_tok_s": [
+      471.9200510434585,
+      468.82951069028405,
+      467.2440926666317
+    ]
+  },
+  "same_process_1024_ab": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gate_doublebuf_ab.py --length 1024 --mode production=q4_precomputed_sums_off --mode candidate=q4_precomputed_sums_on --repetitions 11 --require-cached-build --output /tmp/laguna-q4-precomputed-sums-full-ab-1024.json",
+    "pairs": 11,
+    "candidate_wins": 7,
+    "production_independent_median_tok_s": 576.8736414926731,
+    "candidate_independent_median_tok_s": 576.6584390023907,
+    "paired_median_wall_delta_ms": -4.428472020663321,
+    "state_exact_pairs": 11,
+    "raw_sha256": "8b07f3a276163706d4c7bf64539b20cf147f904ab431e974ce772d6b6b1b0e56"
+  },
+  "thermal_diagnostic": {
+    "command": "same selector-unset command with --repetitions 5",
+    "observation": "All three lengths trend downward as the longer run progresses; 4K decays monotonically and the shorter lengths have lower tails despite local noise. The lower aggregate medians are classified as shared-APU thermal drift rather than a candidate-specific regression.",
+    "raw_sha256": "62bc538fa4c1a9b27b936899daf83d83efeb83d6115dd1827706474597c7eed1"
+  },
+  "correctness": {
+    "primitive_cpu_reference_cases_passed": 14,
+    "complete_model_ab_runs_512": 22,
+    "complete_model_ab_runs_1024": 22,
+    "complete_model_state_exact": true,
+    "next_tokens_512_1024_4096": [
+      2930,
+      95,
+      7772
+    ],
+    "final_positions_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_returned": true,
+    "absolute_category_max_kl": 0.04954258196634279,
+    "absolute_category_top1": "316/320",
+    "quality_transfer": "The producer and consumer are BF16-bit exact to the preceding production Q4 path, so the existing absolute category gate transfers unchanged."
+  },
+  "memory": {
+    "resident_nbytes": 78806349844,
+    "peak_allocated_bytes": 78806349844,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0
+  },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q4-sums-trace-BrrYr2 --output-file laguna-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-sums-trace-BrrYr2/child.json",
+    "pp512": {
+      "dispatches": 2417,
+      "kernel_sum_ms": 1127.799253,
+      "kernel_span_ms": 875.590243,
+      "selected_q4_gate_up_ms": 330.719758,
+      "previous_selected_q4_gate_up_ms": 334.229198,
+      "selected_q4_gate_up_change_percent": -1.050009999425594,
+      "selected_q4_q6_down_ms": 171.565904,
+      "source_f16_projection_ms": 124.296554,
+      "dense_shared_quant_projection_ms": 96.026736,
+      "attention_ms": 74.433274,
+      "router_ms": 22.991109,
+      "activation_reduce_residual_ms": 273.808763
+    },
+    "consumer_kernel": {
+      "template_tail": "true,true,8,true",
+      "workgroup": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes_per_thread": 0
+    },
+    "producer_kernel": {
+      "template_tail": "true",
+      "workgroup": 128,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes_per_thread": 0
+    },
+    "child_sha256": "f82cedfbc0f309c19f0f86d66efea8386866a7863fa3e0ec089174fbd70d7642",
+    "raw_trace_sha256": "422e7a1c31afd913e35dd6def145333d38d1931c7f3f0f3957b2f57490ffda0e",
+    "summary_sha256": "ea5dd66126759bd2246a8efa9636a87d23db1eb0de57605196a643b5cde4d4a3"
+  },
+  "source_runs": {
+    "candidate_artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-precomputed-activation-sums-candidate.json",
+    "previous_production": "benchmarks/results/2026-07-27-gfx1151-laguna-q6-precomputed-activation-sums-production.json"
+  },
+  "gate": {
+    "production_retained": true,
+    "headline_512_tok_s": 649.7907513669854,
+    "target_700_reached": false,
+    "next_action": "continue the selected-expert physical-byte/cross-tile campaign; 56.517 ms remains to 700"
+  }
+}

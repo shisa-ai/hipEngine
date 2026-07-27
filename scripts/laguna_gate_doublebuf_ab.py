@@ -36,6 +36,7 @@ _MODES = {
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repetitions", type=int, default=7)
+    parser.add_argument("--length", type=int, default=512)
     parser.add_argument(
         "--mode",
         action="append",
@@ -68,18 +69,20 @@ def _modes_from_args(values: list[str] | None) -> dict[str, str]:
 
 def _child_session(
     owner: LagunaGGUFResidentSession,
+    *,
+    context_length: int,
 ) -> LagunaGGUFResidentSession:
     assert owner.weights is not None
     return LagunaGGUFResidentSession(
         resident_weights=owner.weights,
-        context_length=512,
+        context_length=context_length,
         backend="hip_gfx1151",
         runtime=owner.runtime,
         compiler_version=_compiler_version(
             Path("/tmp/laguna_hipcc_version.txt")
         ),
         require_cached_build=True,
-        prefill_chunk_size=512,
+        prefill_chunk_size=min(2_048, context_length),
         prefill_attention_chunk_size=128,
     )
 
@@ -89,7 +92,7 @@ def _run(
     selected_gate_up_mode: str,
     tokens: list[int],
 ) -> dict[str, float | int | str]:
-    child = _child_session(owner)
+    child = _child_session(owner, context_length=len(tokens))
     try:
         _apply_mode(child, selected_gate_up_mode)
         started = time.perf_counter()
@@ -97,7 +100,8 @@ def _run(
         child.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
         return {
-            "tok_s": 512.0 / elapsed,
+            "tok_s": len(tokens) / elapsed,
+            "length": len(tokens),
             "next_token": int(result.next_token_id),
             "next_token_logit_hex": float(result.next_token_logit).hex(),
             "logits_sha256": _device_digest(
@@ -151,18 +155,20 @@ def main() -> int:
     args = _parse_args()
     if args.repetitions <= 0:
         raise ValueError("--repetitions must be positive")
+    if args.length <= 0:
+        raise ValueError("--length must be positive")
     modes = _modes_from_args(args.mode)
     reader = GGUFReader(DEFAULT_MODEL)
     tokenizer = LagunaGGUFTokenizer.from_gguf_info(reader.info)
     prompts = _load_prompts(DEFAULT_PROMPTS, tokenizer)
-    token_stream, _ = _profile_token_stream(prompts, 512)
+    token_stream, _ = _profile_token_stream(prompts, args.length)
     tokens = list(token_stream)
     runtime = get_hip_runtime()
     samples = {mode: [] for mode in modes}
     records = {mode: [] for mode in modes}
     owner = LagunaGGUFResidentSession(
         DEFAULT_MODEL,
-        context_length=512,
+        context_length=args.length,
         backend="hip_gfx1151",
         runtime=runtime,
         compiler_version=_compiler_version(
@@ -172,12 +178,15 @@ def main() -> int:
         progress=_progress,
         repacked_cache=DEFAULT_CACHE,
         model_sha256=DEFAULT_MODEL_SHA256,
-        prefill_chunk_size=512,
+        prefill_chunk_size=min(2_048, args.length),
         prefill_attention_chunk_size=128,
     )
     try:
         for gate_up_mode in modes.values():
-            warm_session = _child_session(owner)
+            warm_session = _child_session(
+                owner,
+                context_length=args.length,
+            )
             try:
                 _apply_mode(warm_session, gate_up_mode)
                 warm_session.prefill(tokens[:128], use_bulk=True)
