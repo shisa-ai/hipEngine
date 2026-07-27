@@ -12,6 +12,7 @@ from scripts.laguna_llamacpp_ar_bench import (
     MATCHED_PROMPT_SHA256,
     _aggregate,
     _build_server_command,
+    _completion_payload,
     _load_hipengine_reference,
     _response_row,
     _sha256_file,
@@ -53,6 +54,38 @@ def test_poolside_response_row_uses_native_timing_ownership() -> None:
     assert row["wall_output_tok_s"] == pytest.approx(5.0)
     assert row["matches_hipengine"] is False
     assert row["matching_hipengine_prefix_tokens"] == 2
+
+
+def test_streaming_transport_keeps_native_timing_authoritative() -> None:
+    assert _completion_payload((1, 2, 3), 4)["stream"] is True
+    row = _response_row(
+        prompt={
+            "id": "p",
+            "category": "code",
+            "prompt_tokens": 3,
+            "token_ids_sha256": "prompt-hash",
+        },
+        horizon=4,
+        repetition=0,
+        response={
+            "tokens": [10, 11, 12],
+            "timings": {
+                "prompt_n": 3,
+                "prompt_ms": 10.0,
+                "predicted_n": 4,
+                "predicted_ms": 200.0,
+            },
+        },
+        wall_seconds=0.3,
+        hipengine_ids=[10, 11, 12, 13],
+    )
+
+    assert row["valid_token_count"] is True
+    assert row["valid_native_predicted_count"] is True
+    assert row["returned_token_array_complete"] is False
+    assert row["timed_decode_transitions"] == 3
+    assert row["transition_normalized_tok_s"] == pytest.approx(15.0)
+    assert row["matches_hipengine"] is False
 
 
 def test_poolside_aggregate_is_weighted_and_fail_closed() -> None:
