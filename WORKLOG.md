@@ -184572,3 +184572,27 @@ Vulkan local sizes verbatim will close the measured gap.
   wrapper, fixture, and harness mode was removed; production stays
   **649.791 tok/s / 787.946 ms** at pp512. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-split-fused-silu-pack-rejected.json`.
+
+## 2026-07-27 — Reject library-QK plus fused softmax/PV attention
+
+- Split the clean pp512 attention trace before coding: widen **1.950 ms**,
+  query pack **4.864 ms**, QK **20.166 ms**, wave softmax **9.984 ms**, PV
+  **21.841 ms**, output unpack **3.703 ms**, and fallback/KV work
+  **13.736 ms**. Fusing softmax+PV+unpack therefore had a bounded
+  **35.528-ms** perfect-removal ceiling.
+- Implemented one local128 block per query-head tile: four wave32 units built
+  the exact retained causal probabilities in LDS, then 128 element lanes
+  reused each F32 V load across eight adjacent rows and wrote row-major
+  output. The CPU-reference fixture passed at contexts 128/256/384/512.
+- Seven complete pp512 pairs rejected row8:
+  **646.665 -> 643.218 tok/s (-0.533%, 1/7 wins)**. Token 2930 remained
+  stable, but the scalar PV association changed full state. Tracing measured
+  local128/VGPR176/LDS16384B/scratch0.
+- The sole bounded follow-up doubled V reuse to 16 rows. It raised resources
+  to VGPR248/LDS32768B and lost at every context:
+  **0.084/0.237/0.333/0.462 ms** versus row8
+  **0.063/0.217/0.309/0.422 ms**. Removed every candidate kernel/export,
+  wrapper, session flag, fixture extension, and harness. Production remains
+  **649.791 tok/s / 787.946 ms** at pp512. Attention reopens only for a
+  cooperative causal primitive that also removes masked QK work. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-attention-fused-softmax-pv-rejected.json`.
