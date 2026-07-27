@@ -927,7 +927,9 @@ symbol at local128/VGPR96/SGPR128/LDS3072B/scratch0 versus production VGPR88.
 Seven complete pp512 pairs improve **636.367 -> 640.003 tok/s (+0.571%,
 7/7 wins)** with exact complete state. Clean selector-unset 512/1K/4K
 publishes **643.554/573.066/466.290 tok/s**, improving every required length
-with deterministic tokens/positions and full allocation recovery
+with deterministic tokens/positions and full allocation recovery. Cached
+all-family tracing cuts selected Q4 gate/up
+**337.395 -> 333.701 ms (-1.095%)** and confirms the P8 resource tuple
 (`benchmarks/results/2026-07-27-gfx1151-laguna-q4-raw-prefetch-p8-{candidate,production}.json`).
 
 The same direct-decode premise is retained in Q4-down production.

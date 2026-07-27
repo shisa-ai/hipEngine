@@ -788,23 +788,23 @@ locked-clock physical traffic and achievable-bandwidth evidence.
 
 | Current production family | Inclusive pp512 kernel time | Inclusive-sum share | Remaining decision |
 | --- | ---: | ---: | --- |
-| Selected D8 Q4 gate/up | **337.395 ms** | **29.91%** | Direct per-column T16 decode with an activation double buffer is the gfx1151 default. Physical counters already reach **195.88 GB/s / 88.64%** of the read anchor; this remains the largest inclusive family but needs a physical-byte architecture, not another local decode tweak. |
-| Activation/reduce/residual | **276.630 ms** | **24.53%** | The **257.631-ms** shared-expert SiLU body runs on the least-priority secondary stream and is substantially overlapped; it is not an additive Amdahl saving. Reopen only with a queue-exclusive trace proving caller-stream relief or reduced bandwidth contention. |
-| Selected D4 Q4/Q6 down | **172.541 ms** | **15.30%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Weight+activation register pipelines cut the exact 23-call pp512 Q6 body **112.746 -> 100.367 ms (-10.980% compounded)** and add no resident bytes, LDS, or scratch. The remaining down opportunity requires fewer physical weight bytes or a new cross-tile schedule. |
-| Static-range direct hipBLASLt source-F16 | **124.852 ms** | **11.07%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
-| Q4/Q6 WMMA dense/shared | **92.675 ms** | **8.22%** | This inclusive family overlaps routed work. The secondary shared branch remains hidden. An exact shared gate/up+SiLU leaf improved **14.56%** yet regressed production **0.52%**; reopen only after queue-exclusive caller-stream evidence changes that premise. |
-| Global + SWA attention | **67.481 ms** | **5.98%** | Qualified positions 128/256/384 use exact BF16 cache widening, packed F32 query/output tiles, one wide QK and one wide PV hipBLASLt contraction, and one wave32 per causal-score row. Partial, wrapped, explicitly evicted, verifier, decode, and unmeasured routes retain exact fallbacks. |
-| Router | **22.565 ms** | **2.00%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
-| Norm/RoPE/gates, metadata, KV/tails and other | **33.738 ms** | **2.99%** | No individual exact subfamily currently has the 5% perfect-removal ceiling needed to displace the selected-projection campaign. |
+| Selected D8 Q4 gate/up | **333.701 ms** | **30.09%** | Shape-qualified raw-nibble P8 cuts this family **1.095%** and is the gfx1151 default. Physical counters before P8 reached **195.88 GB/s / 88.64%** of the read anchor; the next bounded screen adds only compact metadata to the successful raw payload pipeline. |
+| Activation/reduce/residual | **261.318 ms** | **23.56%** | This secondary-heavy family moved **-15.312 ms** between single profiled runs, confirming overlap noise rather than a new additive ceiling. The prior queue union showed only **0.826 ms** secondary-only; reopen only with caller-stream relief or reduced bandwidth contention. |
+| Selected D4 Q4/Q6 down | **171.723 ms** | **15.48%** | Direct Q4 decode and byte-neutral planar-Q6 integer WMMA are retained. Weight+activation register pipelines cut the exact 23-call pp512 Q6 body **112.746 -> 100.367 ms (-10.980% compounded)** and add no resident bytes, LDS, or scratch. The remaining down opportunity requires fewer physical weight bytes or a new cross-tile schedule. |
+| Static-range direct hipBLASLt source-F16 | **125.815 ms** | **11.34%** | All five contractions and fused producer boundaries are included. Exact fusion removes **96** standalone casts. Concatenated QKV still has only a **2.891-ms** modeled ceiling before restride, and layout-preserving `GroupedGemm` exposes zero gfx1151 algorithms. |
+| Q4/Q6 WMMA dense/shared | **92.082 ms** | **8.30%** | This inclusive family overlaps routed work. The secondary shared branch remains hidden. An exact shared gate/up+SiLU leaf improved **14.56%** yet regressed production **0.52%**; reopen only after queue-exclusive caller-stream evidence changes that premise. |
+| Global + SWA attention | **68.012 ms** | **6.13%** | Qualified positions 128/256/384 use exact BF16 cache widening, packed F32 query/output tiles, one wide QK and one wide PV hipBLASLt contraction, and one wave32 per causal-score row. Partial, wrapped, explicitly evicted, verifier, decode, and unmeasured routes retain exact fallbacks. |
+| Router | **22.630 ms** | **2.04%** | The after-router boundary remains production. Eight-token reuse is retained; eager least-priority release regresses **0.198%** and is closed. |
+| Norm/RoPE/gates, metadata, KV/tails and other | **33.654 ms** | **3.03%** | No individual exact subfamily currently has the 5% perfect-removal ceiling needed to displace the selected-projection campaign. |
 
 The current trace gives concrete Amdahl checkpoints; the clean publication
 below is a retained performance claim:
 
 - The clean production median is now **643.554 tok/s**. The selector-unset
   1K/4K medians are **573.066/466.290 tok/s**. Shape-qualified raw-nibble P8
-  is exact and improves every clean length; refreshed family attribution is
-  pending from this production commit. The preceding cached attribution
-  measures **100.367 ms** for all 23 Q6 selected-down calls and confirms the
+  is exact and improves every clean length. Refreshed cached attribution cuts
+  selected Q4 gate/up **337.395 -> 333.701 ms (-1.095%)** and measures
+  **100.367 ms** for all 23 Q6 selected-down calls, confirming the
   weight+activation-prefetch specialization at
   local128/VGPR112/LDS5120B/scratch0. The declared 500 gate is closed.
 - Dense-initial metadata elision cuts global+SWA attention
