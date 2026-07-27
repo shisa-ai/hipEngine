@@ -674,7 +674,8 @@ PM4 is bit-identical and improves decode throughput 8.129%, including a stable
 four-run persistent soak. Package-default promotion remains blocked on an
 upstream lifecycle fix for the reproduced long-process address-zero GPU fault,
 then natural-prompt/category, 4K-context, concurrency, cancellation, and server
-lifecycle gates. Process isolation is not an acceptable runtime workaround.
+lifecycle gates. Process isolation is not an acceptable runtime workaround. See
+[REDLINE.md](REDLINE.md) for the complete fault ledger and minimization plan.
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
