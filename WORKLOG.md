@@ -184275,3 +184275,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `5d440eade0f551fcb73025b3e5048d39c4ff28315baee538de6472f186a993e6`.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json`.
+
+## 2026-07-27 — Qualify the source-F16 quality schedule by rows
+
+- The K3072xN72 SWA-gate quality repair selected hipBLASLt heuristic 2 at
+  every matrix height even though the complete category gate is M<=128. RED
+  extended descriptor coverage to M512 and failed because that shape still
+  selected heuristic 2. GREEN keeps heuristic 2 through M128 and returns
+  larger matrices to retained heuristic 4.
+- The existing seven-algorithm library screen measures the M512 contraction
+  at **0.097302 ms** on heuristic 2 and **0.036308 ms** on heuristic 4,
+  modeling **2.196 ms** across 36 SWA layers. A loaded-model seven-pair
+  pp512 A/B gives **5/7** wins. Excluding the first explicitly cold pair,
+  six steady pairs move median wall **797.030 -> 794.718 ms (-2.312 ms)**,
+  mean paired wall **-1.874 ms**, and paired geometric throughput
+  **+0.2355%** with **4/6** wins.
+- An independent M512 all-exact run keeps top-1 **2930** and measures
+  candidate KL **0.00407713** versus **0.00179634** for the all-row heuristic
+  2 rollback. The canonical M<=128 descriptor and arithmetic are unchanged,
+  so the existing complete 320-step **0.049542582 / 316-of-320** quality
+  result remains directly applicable; no >5-minute repeat is justified.
+- The F16/category/runner bundle completed 40 tests before one unrelated
+  environment-induced failure: the runner lifecycle node expected concurrent
+  MoE while the test process explicitly set `GPU_MAX_HW_QUEUES=1`. Per the
+  focused-repair rule, rerunning only that node with the variable unset passed.
+  All four focused F16 tests and diff checks pass. Candidate evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json`.
+  Clean selector-unset 512/1K/4K publication is next.
