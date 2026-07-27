@@ -111,6 +111,7 @@ from hipengine.runtime.laguna_rope import (
 
 LAGUNA_DFLASH_CAPTURE_DEPTHS = (2, 11, 20, 30, 39, 48)
 _DEFAULT_CONTEXT_LENGTH = 4_096
+_LONG_ATTENTION_MIN_START = 4_096
 _EXPECTED_HEAD_COUNTS = tuple([48, 72, 72, 72] * 12)
 _EXPECTED_LAYER_TYPES = tuple(
     FULL_ATTENTION if layer_id % 4 == 0 else SLIDING_ATTENTION for layer_id in range(48)
@@ -1624,6 +1625,7 @@ class LagunaGGUFResidentSession:
         prefill_attention_hipblaslt_packed_query_producer: bool | None = None,
         prefill_attention_hipblaslt_wave_rows_softmax: bool | None = None,
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
+        prefill_long_attention_hipblaslt: bool | None = None,
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
         q6_half_row_activation: bool | None = None,
@@ -1757,6 +1759,15 @@ class LagunaGGUFResidentSession:
             )
             if prefill_attention_hipblaslt_packed_output_gate is None
             else prefill_attention_hipblaslt_packed_output_gate
+        )
+        self.prefill_long_attention_hipblaslt = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
+                False,
+            )
+            if prefill_long_attention_hipblaslt is None
+            else prefill_long_attention_hipblaslt
         )
         resident_q6_qmicro = (
             getattr(resident_weights, "q6_qmicro", None)
@@ -1969,6 +1980,7 @@ class LagunaGGUFResidentSession:
         self.prefill_scratch_plan: LagunaPrefillScratchPlan | None = None
         self.f16_hipblaslt: LagunaF16HipblasLt | None = None
         self.attention_hipblaslt: LagunaAttentionHipblasLt | None = None
+        self.long_attention_hipblaslt: LagunaAttentionHipblasLt | None = None
         self.prefill_scratch_admission_nbytes = DEFAULT_LAGUNA_SCRATCH_BYTES
         self._owns_weights = resident_weights is None
         self._closed = False
@@ -2263,6 +2275,11 @@ class LagunaGGUFResidentSession:
 
         self.prefill_attention_hipblaslt = bool(enabled)
 
+    def set_prefill_long_attention_hipblaslt(self, enabled: bool) -> None:
+        """Select the global-only materialized-score long-attention candidate."""
+
+        self.prefill_long_attention_hipblaslt = bool(enabled)
+
     def set_prefill_attention_hipblaslt_packed_queries(
         self,
         enabled: bool,
@@ -2276,6 +2293,10 @@ class LagunaGGUFResidentSession:
         if self.attention_hipblaslt is not None:
             route = self.attention_hipblaslt
             self.attention_hipblaslt = None
+            route.close()
+        if self.long_attention_hipblaslt is not None:
+            route = self.long_attention_hipblaslt
+            self.long_attention_hipblaslt = None
             route.close()
 
     def set_prefill_attention_hipblaslt_wave_rows_softmax(
@@ -2291,6 +2312,10 @@ class LagunaGGUFResidentSession:
         if self.attention_hipblaslt is not None:
             route = self.attention_hipblaslt
             self.attention_hipblaslt = None
+            route.close()
+        if self.long_attention_hipblaslt is not None:
+            route = self.long_attention_hipblaslt
+            self.long_attention_hipblaslt = None
             route.close()
 
     def set_dense_q4_prefill_mode(self, mode: str) -> None:
@@ -2331,6 +2356,11 @@ class LagunaGGUFResidentSession:
             + (
                 self.attention_hipblaslt.scratch_nbytes
                 if self.attention_hipblaslt is not None
+                else 0
+            )
+            + (
+                self.long_attention_hipblaslt.scratch_nbytes
+                if self.long_attention_hipblaslt is not None
                 else 0
             )
             + self.full_rope.cos.buffer.nbytes
@@ -2960,6 +2990,20 @@ class LagunaGGUFResidentSession:
             self.attention_hipblaslt = route
         return route
 
+    def _ensure_long_attention_hipblaslt(self) -> LagunaAttentionHipblasLt:
+        route = self.long_attention_hipblaslt
+        if route is None:
+            maximum_context = self.context_length // 128 * 128
+            route = LagunaAttentionHipblasLt(
+                runtime=self.runtime,
+                packed_queries=True,
+                wave_rows_softmax=True,
+                max_context=maximum_context,
+                max_q_heads=48,
+            )
+            self.long_attention_hipblaslt = route
+        return route
+
     def _launch_attention_projections_rows(
         self,
         layer: LagunaGGUFResidentLayerWeights,
@@ -3310,6 +3354,7 @@ class LagunaGGUFResidentSession:
                     **slice_kwargs,
                 )
                 use_attention_hipblaslt = False
+                use_long_attention_hipblaslt = False
                 if (
                     self.prefill_attention_hipblaslt
                     and self.kv_cache.can_dense_initial_prefill(
@@ -3335,6 +3380,17 @@ class LagunaGGUFResidentSession:
                             head_dim=config.key_length,
                         )
                     )
+                    use_long_attention_hipblaslt = (
+                        self.prefill_long_attention_hipblaslt
+                        and not use_attention_hipblaslt
+                        and layer.attention_type == FULL_ATTENTION
+                        and attention_rows == 128
+                        and blas_start >= _LONG_ATTENTION_MIN_START
+                        and blas_start + attention_rows <= self.context_length
+                        and state.q_heads == 48
+                        and config.head_count_kv == 8
+                        and config.key_length == 128
+                    )
                 if (
                     self.prefill_attention_hipblaslt_packed_query_producer
                     and query_is_packed != use_attention_hipblaslt
@@ -3342,12 +3398,20 @@ class LagunaGGUFResidentSession:
                     raise RuntimeError(
                         "packed query producer disagrees with attention route"
                     )
-                if use_attention_hipblaslt:
+                if (
+                    use_attention_hipblaslt
+                    or use_long_attention_hipblaslt
+                ):
                     leave_output_packed = bool(
                         self.prefill_attention_hipblaslt_packed_output_gate
                         and self.prefill_attention_hipblaslt_packed_queries
                     )
-                    self._ensure_attention_hipblaslt().launch(
+                    attention_route = (
+                        self._ensure_long_attention_hipblaslt()
+                        if use_long_attention_hipblaslt
+                        else self._ensure_attention_hipblaslt()
+                    )
+                    attention_route.launch(
                         scratch.query_rotated.ptr + q_offset,
                         state.key_cache.ptr,
                         state.value_cache.ptr,
@@ -4165,6 +4229,10 @@ class LagunaGGUFResidentSession:
         if self.attention_hipblaslt is not None:
             route = self.attention_hipblaslt
             self.attention_hipblaslt = None
+            release(route.close)
+        if self.long_attention_hipblaslt is not None:
+            route = self.long_attention_hipblaslt
+            self.long_attention_hipblaslt = None
             release(route.close)
         if self.verifier_scratch is not None:
             scratch = self.verifier_scratch

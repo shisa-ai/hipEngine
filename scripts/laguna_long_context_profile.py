@@ -38,12 +38,14 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
 LAP0_LENGTHS = (128, 512, 1024, 4096)
 ATTACK_LENGTHS = (4096, 16384, 65536, 131072)
+LC1_128K_GATE_LENGTHS = (131072,)
 LC0_TRACE_LENGTHS = (16384, 65536)
 FINAL_SWEEP_LENGTHS = (512, 1024, 4096, 32768, 65536, 131072)
 PROFILE_LENGTH_SETS = (
     DEFAULT_LENGTHS,
     LAP0_LENGTHS,
     ATTACK_LENGTHS,
+    LC1_128K_GATE_LENGTHS,
     LC0_TRACE_LENGTHS,
     FINAL_SWEEP_LENGTHS,
 )
@@ -84,6 +86,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-rows", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--long-attention-hipblaslt",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
+        "--compare-long-attention-hipblaslt",
+        action="store_true",
+    )
     parser.add_argument(
         "--moe-branch-concurrency",
         action=argparse.BooleanOptionalAction,
@@ -155,12 +167,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("LPF-5 repetitions must be positive")
     if args.warmup_rows <= 0 or args.warmup_rows > args.chunk_size:
         raise ValueError("LPF-5 warmup rows must fit one retained chunk")
+    if args.compare_long_attention_hipblaslt and args.long_attention_hipblaslt:
+        raise ValueError(
+            "--compare-long-attention-hipblaslt and "
+            "--long-attention-hipblaslt are mutually exclusive"
+        )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
     if not args.model_sha256:
         raise ValueError("--model-sha256 is required")
     repo = _repo_state()
-    if not repo["tracked_clean"]:
+    if not repo["tracked_clean"] and not args.allow_dirty:
         raise RuntimeError("retained Laguna LPF-5 profiling requires a clean tracked worktree")
 
     # Runtime initialization applies backend process defaults such as
@@ -199,6 +216,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_moe_shared_after_router = False
     active_moe_shared_low_priority = False
     active_moe_shared_priority_range: tuple[int, int] | None = None
+    active_long_attention_hipblaslt = False
     rows: list[dict[str, Any]] = []
     load_started = time.perf_counter()
     try:
@@ -218,6 +236,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
+            prefill_long_attention_hipblaslt=(
+                False
+                if args.compare_long_attention_hipblaslt
+                else args.long_attention_hipblaslt
+            ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -225,32 +248,58 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_moe_shared_after_router = owner.moe_shared_after_router
         active_moe_shared_low_priority = owner.moe_shared_low_priority
         active_moe_shared_priority_range = owner.moe_shared_priority_range
+        active_long_attention_hipblaslt = (
+            owner.prefill_long_attention_hipblaslt
+        )
         load_seconds = time.perf_counter() - load_started
         owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
         runtime.device_synchronize()
         for repetition in range(args.repetitions):
-            for length in _timing_order(lengths, repetition):
-                owner.reset_state()
-                started = time.perf_counter()
-                result = owner.prefill(token_stream[:length], use_bulk=True)
-                runtime.device_synchronize()
-                elapsed = time.perf_counter() - started
-                row = {
-                    "length": length,
-                    "chunks": math.ceil(length / args.chunk_size),
-                    "prefill_seconds": elapsed,
-                    "prefill_tok_s": length / elapsed,
-                    "next_token_id": int(result.next_token_id),
-                    "final_position": int(owner.position),
-                    "repetition": repetition,
-                }
-                rows.append(row)
-                print(
-                    f"rep={repetition} length={length} chunks={row['chunks']} "
-                    f"prefill={row['prefill_tok_s']:.3f} tok/s next={result.next_token_id}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+            for order_index, length in enumerate(
+                _timing_order(lengths, repetition)
+            ):
+                modes = ("production",)
+                if args.compare_long_attention_hipblaslt:
+                    modes = (
+                        ("control", "candidate")
+                        if (repetition + order_index) % 2 == 0
+                        else ("candidate", "control")
+                    )
+                for mode in modes:
+                    if args.compare_long_attention_hipblaslt:
+                        owner.set_prefill_long_attention_hipblaslt(
+                            mode == "candidate"
+                        )
+                    owner.reset_state()
+                    started = time.perf_counter()
+                    result = owner.prefill(token_stream[:length], use_bulk=True)
+                    runtime.device_synchronize()
+                    elapsed = time.perf_counter() - started
+                    row = {
+                        "length": length,
+                        "chunks": math.ceil(length / args.chunk_size),
+                        "prefill_seconds": elapsed,
+                        "prefill_tok_s": length / elapsed,
+                        "next_token_id": int(result.next_token_id),
+                        "final_position": int(owner.position),
+                        "repetition": repetition,
+                    }
+                    if args.compare_long_attention_hipblaslt:
+                        row["mode"] = mode
+                    rows.append(row)
+                    mode_text = (
+                        f" mode={mode}"
+                        if args.compare_long_attention_hipblaslt
+                        else ""
+                    )
+                    print(
+                        f"rep={repetition} length={length}{mode_text} "
+                        f"chunks={row['chunks']} "
+                        f"prefill={row['prefill_tok_s']:.3f} tok/s "
+                        f"next={result.next_token_id}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
         resident_nbytes = owner.resident_nbytes
     finally:
         if owner is not None:
@@ -260,19 +309,54 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if gpu_total_after != gpu_total:
         raise RuntimeError("HIP total memory changed during Laguna LPF-5 profiling")
 
-    summaries = {
-        str(length): _summarize_samples(
-            [row for row in rows if int(row["length"]) == length]
+    if args.compare_long_attention_hipblaslt:
+        summaries = {
+            mode: {
+                str(length): _summarize_samples(
+                    [
+                        row
+                        for row in rows
+                        if int(row["length"]) == length
+                        and row["mode"] == mode
+                    ]
+                )
+                for length in lengths
+            }
+            for mode in ("control", "candidate")
+        }
+        summary_rows = [
+            summary
+            for mode_summaries in summaries.values()
+            for summary in mode_summaries.values()
+        ]
+        mode_next_tokens_match = all(
+            summaries["control"][str(length)]["next_token_ids"]
+            == summaries["candidate"][str(length)]["next_token_ids"]
+            for length in lengths
         )
-        for length in lengths
-    }
+    else:
+        summaries = {
+            str(length): _summarize_samples(
+                [row for row in rows if int(row["length"]) == length]
+            )
+            for length in lengths
+        }
+        summary_rows = list(summaries.values())
+        mode_next_tokens_match = True
     positions_exact = all(int(row["final_position"]) == int(row["length"]) - 1 for row in rows)
-    deterministic = all(bool(summary["repeat_deterministic"]) for summary in summaries.values())
+    deterministic = all(
+        bool(summary["repeat_deterministic"]) for summary in summary_rows
+    )
     recovered = bool(
         tracked_after["current_allocated_bytes"] == tracked_before["current_allocated_bytes"]
         and tracked_after["active_allocations"] == tracked_before["active_allocations"]
     )
-    passed = bool(positions_exact and deterministic and recovered)
+    passed = bool(
+        positions_exact
+        and deterministic
+        and mode_next_tokens_match
+        and recovered
+    )
     prompt_payload = args.prompts.read_bytes()
     manifest_path = args.repacked_cache / "manifest.json"
     return {
@@ -318,6 +402,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "moe_shared_after_router": active_moe_shared_after_router,
             "moe_shared_low_priority": active_moe_shared_low_priority,
             "moe_shared_priority_range": active_moe_shared_priority_range,
+            "long_attention_hipblaslt": active_long_attention_hipblaslt,
+            "long_attention_hipblaslt_requested": (
+                args.long_attention_hipblaslt
+            ),
+            "compare_long_attention_hipblaslt": (
+                args.compare_long_attention_hipblaslt
+            ),
             "timed_order": "ascending then alternating direction by repetition",
             "timing_scope": "reset complete through synchronized first-token projection; load excluded",
             "prompt_suite": str(args.prompts.resolve()),
@@ -332,6 +423,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "pass": passed,
             "final_positions_exact": positions_exact,
             "repeat_next_token_deterministic": deterministic,
+            "control_candidate_next_tokens_match": mode_next_tokens_match,
             "tracked_returned_to_baseline": recovered,
             "boundary_fixture_evidence": [
                 "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",

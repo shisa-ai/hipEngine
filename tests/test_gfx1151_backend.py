@@ -86,6 +86,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER,
     LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES,
     LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX,
+    LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT,
     LAGUNA_Q6_WMMA_PREFETCH_WEIGHT,
     LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION,
     LAGUNA_PREFILL_CACHED_META,
@@ -249,6 +250,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER is True
     assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES is True
     assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX is True
+    assert LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT is True
     assert LAGUNA_Q6_WMMA_PREFETCH_WEIGHT is True
     assert LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION is True
     assert LAGUNA_MOE_GROUP_COMPACT_MODE == "parallel"
@@ -380,6 +382,19 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert backend_package_capability(
         "hip_gfx1100",
         "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
+        None,
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
+            None,
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
         None,
     ) is None
     assert (

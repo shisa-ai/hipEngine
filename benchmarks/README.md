@@ -129,6 +129,17 @@ is a ceiling rather than production: F32 K/V plus score scratch costs
 candidate is the next gate.
 [`long F32 ceiling`](results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-ceiling.json).
 
+That ceiling now has a production-qualified global-only owner above 4K. A
+broad start-512 policy failed paired 4K at **0.968x**, so the retained gfx1151
+shape policy leaves all work through 4K unchanged. Same-session gates improve
+16K **7.929%** and 64K **16.936%**; the mandatory 128K run improves
+**72.139 -> 88.073 tok/s (+22.088%)**, saves **328.714 seconds**, preserves
+token 22746/final position 131071, and releases every tracked allocation. The
+route remains intentionally transitional because 128K materializes
+**4.298 GB** of F32 cache/score scratch; block-streamed online reduction is
+next.
+[`long F32 production`](results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-production.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

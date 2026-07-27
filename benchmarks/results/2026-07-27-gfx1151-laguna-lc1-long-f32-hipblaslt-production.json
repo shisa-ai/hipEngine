@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_lc1_long_f32_hipblaslt_production",
+  "status": "accepted_production",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "matrix_chunk_rows": 2048,
+    "attention_chunk_rows": 128,
+    "kv_dtype": "BF16"
+  },
+  "route": {
+    "qualification": "dense-initial complete M128 global-attention tiles with start_position >= 4096",
+    "global_layers": 12,
+    "sliding_window_layers_unchanged": 36,
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "arithmetic": "BF16 cache widen + packed F32 QK + wave-row causal softmax + packed F32 PV",
+    "fallbacks_unchanged": [
+      "context through 4K",
+      "SWA",
+      "decode",
+      "partial",
+      "wrapped",
+      "evicted",
+      "verifier"
+    ]
+  },
+  "directional_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 4096,16384,65536,131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --compare-long-attention-hipblaslt --output /tmp/laguna-lc1-long-production-ab-threshold4k.json",
+    "raw_artifact_preserved": false,
+    "qualification": "The paired process was intentionally interrupted before its redundant paired 128K arms after the complete 4K/16K/64K rows printed; values below retain console precision.",
+    "results": [
+      {
+        "length": 4096,
+        "control_tok_s": 468.065,
+        "candidate_tok_s": 468.911,
+        "change_pct": 0.1807441274,
+        "next_token_id": 7772
+      },
+      {
+        "length": 16384,
+        "control_tok_s": 308.181,
+        "candidate_tok_s": 332.617,
+        "change_pct": 7.9291065964,
+        "next_token_id": 81
+      },
+      {
+        "length": 65536,
+        "control_tok_s": 131.825,
+        "candidate_tok_s": 154.151,
+        "change_pct": 16.9360895126,
+        "next_token_id": 69407
+      }
+    ]
+  },
+  "mandatory_128k_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --long-attention-hipblaslt --output /tmp/laguna-lc1-long-production-128k-gate.json",
+    "raw_sha256": "2edf46b99194094850f796000fa13a0494fea22bdff58549a279220156eb7d20",
+    "retained_control_seconds": 1816.938989031,
+    "candidate_seconds": 1488.2249215069,
+    "seconds_saved": 328.7140675241,
+    "retained_control_tok_s": 72.1389109878,
+    "candidate_tok_s": 88.0727087054,
+    "change_pct": 22.0876604587,
+    "llamacpp_vulkan_tok_s": 65.583954,
+    "candidate_over_vulkan_pct": 34.2900257362,
+    "next_token_id": 22746,
+    "final_position": 131071
+  },
+  "rejected_broad_qualification": {
+    "result": "start_position >= 512 was rejected before promotion",
+    "paired_4k_control_tok_s": 464.555,
+    "paired_4k_candidate_tok_s": 449.64,
+    "candidate_over_control": 0.9678940061,
+    "decision": "qualify above 4K; this preserves all 4K work while retaining 93.75% of global quadratic work at 16K"
+  },
+  "correctness": {
+    "leaf_maximum_abs": 4.621688276529312e-08,
+    "directional_next_tokens_match": true,
+    "128k_next_token_matches_control": true,
+    "128k_final_position_exact": true,
+    "tracked_current_bytes_after": 0,
+    "tracked_active_allocations_after": 0
+  },
+  "memory": {
+    "128k_resident_bytes": 89554337748,
+    "long_attention_scratch_bytes": 4298113024,
+    "scratch_allocated_only_after_4k": true
+  },
+  "decision": {
+    "production_promoted": true,
+    "backend_capability": "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
+    "next": "Replace the materialized F32 score matrix and full-prefix cache widening with exact block-streamed tensorized QK/PV plus online reduction."
+  },
+  "repo": {
+    "base_revision": "e481b721c52f0a2bd6e4e99e50d5c4dee0176560",
+    "candidate_worktree_scoped_dirty": true
+  }
+}

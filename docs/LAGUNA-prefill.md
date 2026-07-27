@@ -4028,13 +4028,26 @@ Evidence:
   **4.622e-8**. Screening all 32 zero-workspace heuristics matters:
   algorithm 0 falsely lost at every long shape, while tuned QK/PV pairs are
   **20/25, 28/1, 28/8, and 28/3** at 4K/16K/64K/128K.
-- The ceiling is not yet production: it uses **2.151 GB** scratch at 64K and
+- **Production milestone passed:** the separate capacity-sized 48-head owner
+  is now the gfx1151 default only for dense-initial global tiles beginning
+  above 4K. The first broad `start >= 512` policy was rejected at paired 4K
+  **464.555 -> 449.640 tok/s (0.968x)**. Raising qualification to 4K preserves
+  the complete 4K path and retains 93.75% of global quadratic work at 16K.
+  Same-session directional gates then measure
+  **468.065 -> 468.911 tok/s (+0.181%)** at 4K,
+  **308.181 -> 332.617 (+7.929%)** at 16K, and
+  **131.825 -> 154.151 (+16.936%)** at 64K, with identical next tokens.
+- The mandatory 128K complete-model gate measures
+  **72.139 -> 88.073 tok/s (+22.088%)**, or
+  **1,816.939 -> 1,488.225 seconds**, saving **328.714 seconds**. Token 22746,
+  final position 131071, and full tracked-allocation recovery pass. This is
+  **34.290%** faster than same-GGUF llama.cpp Vulkan at 128K.
+- The accepted milestone still uses **2.151 GB** scratch at 64K and
   **4.298 GB** at 128K for F32 K/V plus an F32 `[48,128,C]` score tile. The
-  next bounded task is a global-only, capacity-sized long-context owner using
-  those measured algorithms. After its complete-model gate, replace the
-  materialized score tile with block-streamed tensorized QK/PV and online tile
-  reduction. GQA reuse must live inside that arithmetic design, not be bolted
-  onto the scalar body.
+  next bounded task remains the intended block-streamed tensorized QK/PV
+  design with online tile reduction; it must preserve the measured long gains
+  while eliminating full-prefix widening and score materialization. GQA reuse
+  must live inside that arithmetic design, not be bolted onto the scalar body.
 - Carry online row max, denominator, and output state across K/V tiles. Never
   materialize the complete score matrix or compute masked upper-triangle
   blocks.
@@ -4051,7 +4064,8 @@ Evidence:
 Evidence:
 [`single-head Q16xK64 rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-single-head-qtile16-k64-rejected.json) ·
 [`GQA6 scalar-staging rejection`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-gqa6-scalar-staging-rejected.json) ·
-[`long F32 hipBLASLt ceiling`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-ceiling.json).
+[`long F32 hipBLASLt ceiling`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-ceiling.json) ·
+[`long F32 hipBLASLt production`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-production.json).
 
 #### LC-2 — share K/V across Laguna GQA heads
 

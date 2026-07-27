@@ -75,6 +75,36 @@ _PACKED_ALGORITHM_INDEX = {
     (72, 512, "pv"): 3,
 }
 
+# Robust context bands from the gfx1151 LC-1 packed-F32 screens. The production
+# loop visits every M128 context, so use algorithms that stayed near the winner
+# across adjacent anchor shapes rather than overfitting exact benchmark points.
+_LONG_PACKED_ALGORITHM_BANDS = (
+    (1024, 30, 0),
+    (2048, 20, 19),
+    (8192, 22, 25),
+    (16384, 28, 1),
+    (131072, 28, 3),
+)
+
+
+def _preferred_algorithm_index(
+    *,
+    query_heads: int,
+    context: int,
+    operation: str,
+    packed_queries: bool,
+) -> int:
+    key = (int(query_heads), int(context), str(operation))
+    table = _PACKED_ALGORITHM_INDEX if packed_queries else _ALGORITHM_INDEX
+    selected = table.get(key)
+    if selected is not None:
+        return int(selected)
+    if packed_queries and int(query_heads) == 48 and int(context) > 512:
+        for upper_context, qk_index, pv_index in _LONG_PACKED_ALGORITHM_BANDS:
+            if int(context) <= upper_context:
+                return qk_index if operation == "qk" else pv_index
+    return 0
+
 
 @dataclass(frozen=True)
 class _Layout:
@@ -426,14 +456,11 @@ class LagunaAttentionHipblasLt:
                 ),
             ),
             preferred_index=(
-                _PACKED_ALGORITHM_INDEX.get(
-                    (q_heads, parsed_context, "qk"),
-                    0,
-                )
-                if self.packed_queries
-                else _ALGORITHM_INDEX.get(
-                    (q_heads, parsed_context, "qk"),
-                    0,
+                _preferred_algorithm_index(
+                    query_heads=q_heads,
+                    context=parsed_context,
+                    operation="qk",
+                    packed_queries=self.packed_queries,
                 )
             ),
         )
@@ -472,14 +499,11 @@ class LagunaAttentionHipblasLt:
                     ),
                 ),
                 preferred_index=(
-                    _PACKED_ALGORITHM_INDEX.get(
-                        (q_heads, parsed_context, "pv"),
-                        0,
-                    )
-                    if self.packed_queries
-                    else _ALGORITHM_INDEX.get(
-                        (q_heads, parsed_context, "pv"),
-                        0,
+                    _preferred_algorithm_index(
+                        query_heads=q_heads,
+                        context=parsed_context,
+                        operation="pv",
+                        packed_queries=self.packed_queries,
                     )
                 ),
             )
