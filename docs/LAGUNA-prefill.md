@@ -3819,14 +3819,16 @@ one pass per shape:
 | Shape | hipEngine current | llama.cpp Vulkan | hipEngine over Vulkan |
 | ---: | ---: | ---: | ---: |
 | 512 | **622.009 tok/s** | 341.999 tok/s | **+81.874%** |
-| 4K | **470.270** | 333.502 | **+41.010%** |
-| 16K | LC-0 control pending | 280.349 | pending |
-| 64K | **131.997** | 126.624 | **+4.243%** |
-| 128K | **72.323** | 65.584 | **+10.275%** |
+| 4K | **466.482** | 333.502 | **+39.874%** |
+| 16K | **307.953** | 280.349 | **+9.846%** |
+| 64K | **132.831** | 126.624 | **+4.902%** |
+| 128K | **72.139** | 65.584 | **+9.995%** |
 
 The ordinary repeated pp512 production median is **654.249 tok/s**, or
 **91.301%** above this Vulkan run. The one-pass table uses the 128K-capacity
-hipEngine closure session where available. KV numerical policy differs
+hipEngine LC-0 attack control for 4K through 128K; its 4K/64K/128K rows are
+within **-0.805%/+0.632%/-0.255%** of the prior closure. The pp512 row remains
+the earlier 128K-capacity closure sample. KV numerical policy differs
 (hipEngine BF16 versus Vulkan F16), and llama-bench uses its own prompt
 stream/timing boundary, so this is a source/performance floor rather than a
 quality-equivalent comparator. It nevertheless answers the architectural
@@ -3835,49 +3837,69 @@ is not the target.
 
 Evidence:
 [`same-GGUF Vulkan long baseline`](../benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json) ·
+[`hipEngine LC-0 attack control`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc0-attack-control.json) ·
 [`hipEngine six-shape closure`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json).
 
 #### Laguna-specific long-context roofline
 
-Do not use a Qwen3.x/GDN long-context curve as Laguna's optimal shape. Laguna
-has **48 attention layers**: **12 global** layers (`layer % 4 == 0`) and
-**36 sliding-window** layers with a 512-token window. Global attention has
-48 query heads, while SWA has 72; both use eight KV heads and head dimension
-128.
+Do not use the hybrid Qwen3.x 35B GDN/linear-attention curve as Laguna's
+optimal shape. The production GGUF metadata confirms that **all 48 Laguna
+decoder blocks use softmax attention**: **12 global** layers
+(`layer % 4 == 0`) and **36 sliding-window** layers with a 512-token window.
+There are no GDN or other linear-attention layers. Global attention has 48
+query heads, while SWA has 72; both use eight KV heads and head dimension 128.
+The model also has one dense MLP block and 47 sparse-MoE blocks; those
+projections, experts, norms, and routing remain predominantly linear in prompt
+length.
 
-At 128K, causal QK plus PV therefore requires about **2.533 PFLOP** in the
-12 global layers:
+For prompt length `C`, the exact attention pair counts are:
 
 ```text
-4 FLOP per head-dimension/pair
-* 128 dimensions
-* 48 query heads
-* 12 global layers
-* (131072 * 131073 / 2) causal pairs
-= 2.533 PFLOP
+global_pairs(C) = C * (C + 1) / 2
+swa_pairs(C)    = C * (C + 1) / 2                         when C <= 512
+                  512 * 513 / 2 + (C - 512) * 512        otherwise
+
+global_flops(C) = 4 * 128 * 48 * 12 * global_pairs(C)
+swa_flops(C)    = 4 * 128 * 72 * 36 * swa_pairs(C)
 ```
 
-The 36 bounded SWA layers add at most about **0.089 PFLOP**, only **3.52%** of
-the global-attention arithmetic. Projections, MoE, norms, routing, KV traffic,
-and softmax remain additional mostly-linear work.
+The factor four counts QK and PV multiply-adds. This makes the theoretical
+scaling genuinely mixed: SWA becomes linear after 512, while the 12 global
+layers remain quadratic.
 
-The gfx1151 theoretical roofs imply deliberately optimistic global-only lower
-bounds of about **85.3 seconds** at 29.7-TFLOP FP32/VOPD or **42.7 seconds**
-at 59.39-TFLOP BF16 WMMA. Neither is an end-to-end promise: they omit
-softmax, cache traffic, every linear/model family, occupancy, and achievable
-clock/issue efficiency. They do show that the current **1,812.3-second**
-hipEngine and **1,998.5-second** Vulkan walls are not hardware-optimal.
-Required global arithmetic divided by complete wall is only
-**1.398/1.268 TFLOP/s** for hipEngine/Vulkan.
+| Prompt | Global QK+PV | SWA QK+PV | Total attention | SWA / global |
+| ---: | ---: | ---: | ---: | ---: |
+| 4K | 2.475 TFLOP | 2.610 TFLOP | 5.084 TFLOP | **105.46%** |
+| 16K | 39.585 TFLOP | 10.959 TFLOP | 50.544 TFLOP | **27.68%** |
+| 64K | 0.633 PFLOP | 0.044 PFLOP | 0.678 PFLOP | **7.00%** |
+| 128K | 2.533 PFLOP | 0.089 PFLOP | 2.622 PFLOP | **3.51%** |
+
+This is why the optimization ordering still stands but the short screens
+matter. Global attention is the asymptotic target and owns **96.61%** of
+attention arithmetic at 128K, yet SWA owns slightly more attention arithmetic
+than global at 4K. An LC-1 global-only specialization should therefore deliver
+an increasingly strong 16K/64K/128K slope while preserving the 4K route; it
+should not be expected to remove all 4K attention wall.
+
+The gfx1151 theoretical roofs imply deliberately optimistic
+all-attention-only lower bounds at 128K of about **88.3 seconds** at
+29.7-TFLOP FP32/VOPD or **44.2 seconds** at 59.39-TFLOP BF16 WMMA. Neither is
+an end-to-end promise: they omit softmax, cache traffic, projections, MoE,
+norms, routing, output projection, occupancy, and achievable clock/issue
+efficiency. They do show that the current **1,816.9-second** hipEngine and
+**1,998.5-second** Vulkan walls are not hardware-optimal. Required total
+attention arithmetic divided by complete wall is only
+**1.443/1.312 TFLOP/s** for hipEngine/Vulkan; these are system-equivalent
+ratios, not measured attention-kernel throughput.
 
 Use measured staged milestones rather than the peak as a promise:
 
 | 128K milestone | Throughput | Wall | Interpretation |
 | --- | ---: | ---: | --- |
-| Current production control | **72.323 tok/s** | 1,812.3 s | Exact scalar online global route |
+| Current LC-0 control | **72.139 tok/s** | 1,816.9 s | Exact scalar online global route |
 | First architectural milestone | **>=150 tok/s** | <=873.8 s | At least 2.07x current; block streaming is materially working |
 | Main long-context target | **>=300 tok/s** | <=436.9 s | At least 4.15x current; tiled global attention is comparator-independent |
-| Roofline-informed stretch | **>=450 tok/s** | <=291.3 s | At least 6.22x current; still well above global-only ideal floors |
+| Roofline-informed stretch | **>=450 tok/s** | <=291.3 s | At least 6.22x current; still well above all-attention ideal floors |
 
 Rebuild these milestones after the first cached 16K/64K family trace measures
 actual global-attention wall. They are campaign targets, not promotion gates
@@ -3915,8 +3937,10 @@ The campaign intentionally uses cheap evidence while far from the target:
 - **Done:** capture the same-GGUF Vulkan 512/4K/16K/64K/128K baseline above.
 - **Done:** admit the fixed 4K/16K/64K/128K hipEngine attack set. Arbitrary
   lists remain rejected.
-- Capture current production 16K in the same 128K-capacity session as the
-  existing rows.
+- **Done:** capture one coherent current-production 4K/16K/64K/128K control
+  in a single 128K-capacity resident session:
+  **466.482/307.953/132.831/72.139 tok/s**. Exact positions, deterministic
+  tokens, finite outputs, and full tracked-allocation recovery pass.
 - Trace one cached 16K and one 64K control. Attribute all 12 global layers,
   36 SWA layers, projections, MoE, and residual families without profiling
   the 30-minute 128K row.

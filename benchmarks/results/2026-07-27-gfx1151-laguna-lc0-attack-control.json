@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_lc0_attack_control",
+  "status": "accepted_attribution_baseline",
+  "created_at": "2026-07-27T13:41:27.888172+00:00",
+  "performance_claim": false,
+  "scope": "Laguna S 2.1 c=1 prefill-only 4K/16K/64K/128K LC-0 control",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hip_total_bytes": 128849018880,
+    "rocm_version": "HIP version: 7.15.0-0000000"
+  },
+  "repo": {
+    "revision": "a4fcebbae4b8c8a93cd2762b3ba20bbda15e25d6",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": 255
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 85256224724,
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 4096,16384,65536,131072 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-lc0-attack-control.json",
+    "context_length": 131072,
+    "matrix_chunk_rows": 2048,
+    "attention_chunk_rows": 128,
+    "kv_dtype": "bf16",
+    "repetitions": 1,
+    "timing_scope": "reset complete through synchronized first-token projection; model load excluded",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "token_source": "mixed_ja_en_review repeated without leading BOS",
+    "token_stream_sha256": "d4303d3aee99be04fd50b50f13312da8d34c1f08610db9982fcb7f930e175284",
+    "model_load_seconds_excluded": 108.71494714298751
+  },
+  "architecture": {
+    "source": "The exact production GGUF metadata decoded by hipengine.loading.laguna_gguf.laguna_gguf_config_from_metadata",
+    "attention_contract": "All 48 decoder blocks use softmax attention; Laguna has no GDN or other linear-attention layer.",
+    "layers": 48,
+    "global_attention_layers": 12,
+    "sliding_window_attention_layers": 36,
+    "sliding_window": 512,
+    "global_query_heads": 48,
+    "sliding_query_heads": 72,
+    "kv_heads": 8,
+    "key_dimension": 128,
+    "value_dimension": 128,
+    "global_layer_pattern": "layer_id % 4 == 0",
+    "attention_flop_convention": "QK plus PV counts four FLOP per query-key pair, query head, and head dimension.",
+    "attention_qk_pv_flops": [
+      {
+        "length": 4096,
+        "global": 2474505142272,
+        "sliding_window": 2609532370944,
+        "total": 5084037513216,
+        "sliding_over_global_pct": 105.45673663656333
+      },
+      {
+        "length": 16384,
+        "global": 39584834519040,
+        "sliding_window": 10958948794368,
+        "total": 50543783313408,
+        "sliding_over_global_pct": 27.68471544095209
+      },
+      {
+        "length": 65536,
+        "global": 633328361275392,
+        "sliding_window": 44356614488064,
+        "total": 677684975763456,
+        "sliding_over_global_pct": 7.003730955414499
+      },
+      {
+        "length": 131072,
+        "global": 2533294117748736,
+        "sliding_window": 88886835412992,
+        "total": 2622180953161728,
+        "sliding_over_global_pct": 3.508745186365613
+      }
+    ],
+    "idealized_attention_only_seconds_at_128k": {
+      "fp32_vopd_29_7_tflops": 88.28892098187637,
+      "bf16_wmma_59_39_tflops": 44.151893469636775
+    },
+    "complete_wall_equivalent_attention_tflops_at_128k": {
+      "hipengine": 1.4431860227514617,
+      "llamacpp_vulkan": 1.312049820781112
+    },
+    "qualification": "The idealized bounds include exact global and SWA QK+PV arithmetic but omit softmax, K/V traffic, projections, MoE, norms, routing, output projection, occupancy, and achievable issue efficiency. The complete-wall equivalent is not a kernel-throughput measurement."
+  },
+  "results": [
+    {
+      "length": 4096,
+      "chunks": 2,
+      "seconds": 8.780617255950347,
+      "tok_s": 466.48201152649835,
+      "next_token_id": 7772,
+      "final_position": 4095,
+      "llamacpp_vulkan_tok_s": 333.502331,
+      "hipengine_over_vulkan_pct": 39.87368847700748,
+      "versus_prior_closure_pct": -0.8054922647631413
+    },
+    {
+      "length": 16384,
+      "chunks": 8,
+      "seconds": 53.20298893901054,
+      "tok_s": 307.95262309006483,
+      "next_token_id": 81,
+      "final_position": 16383,
+      "llamacpp_vulkan_tok_s": 280.348882,
+      "hipengine_over_vulkan_pct": 9.846210512109277,
+      "versus_prior_closure_pct": null
+    },
+    {
+      "length": 65536,
+      "chunks": 32,
+      "seconds": 493.3782414860325,
+      "tok_s": 132.83115161829713,
+      "next_token_id": 69407,
+      "final_position": 65535,
+      "llamacpp_vulkan_tok_s": 126.624439,
+      "hipengine_over_vulkan_pct": 4.9016703784149795,
+      "versus_prior_closure_pct": 0.6319474066055486
+    },
+    {
+      "length": 131072,
+      "chunks": 64,
+      "seconds": 1816.9389890310122,
+      "tok_s": 72.13891098781568,
+      "next_token_id": 22746,
+      "final_position": 131071,
+      "llamacpp_vulkan_tok_s": 65.583954,
+      "hipengine_over_vulkan_pct": 9.99475723561234,
+      "versus_prior_closure_pct": -0.25453730097523275
+    }
+  ],
+  "correctness": {
+    "pass": true,
+    "final_positions_exact": true,
+    "next_tokens_deterministic_against_prior_closure_where_available": true,
+    "finite": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0
+  },
+  "memory": {
+    "peak_tracked_allocated_bytes": 85256224724,
+    "tracked_current_allocated_bytes_after": 0
+  },
+  "raw_evidence": {
+    "path": "/tmp/laguna-lc0-attack-control.json",
+    "sha256": "76960cd712075bf8c108ff60377e9121f75da12a2fa860a512dababf035e4fef"
+  },
+  "assessment": {
+    "finding": "The coherent LC-0 control is stable against the prior closure, fills the missing hipEngine 16K row, and remains faster than same-GGUF llama.cpp Vulkan at every attack shape. Laguna's optimal scaling model is mixed softmax attention: SWA is material at 4K and 16K, while the 12 global layers dominate the quadratic tail.",
+    "next_action": "Trace cached 16K and 64K controls, then implement exact block-streamed global attention while retaining the 4K guard because SWA owns slightly more attention arithmetic than global attention at that shape."
+  }
+}
