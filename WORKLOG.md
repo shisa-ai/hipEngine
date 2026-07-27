@@ -185204,3 +185204,39 @@ Vulkan local sizes verbatim will close the measured gap.
   staging is closed. Next establish an M128-by-context F32 hipBLASLt ceiling
   with bounded current-chunk score scratch, then implement tensorized
   block-streamed QK/PV with GQA reuse inside the arithmetic tile.
+
+## 2026-07-27 — Establish LC-1 long F32 hipBLASLt ceiling
+
+- RED extended the model-scale wrapper fixture to a 131,072-token global
+  cache-widen and wave-row-softmax shape; the old 512 cap failed. GREEN lifts
+  only the generic cache widener and wave-row softmax to span capacity. The
+  older local256 softmax remains capped at 512. The production hipBLASLt owner
+  still defaults to 512 tokens; an explicit ceiling-only `max_context` and
+  `max_q_heads` control allocation.
+- The first algorithm-0 screen was misleading: inclusive hipBLASLt was
+  **2.161x** qrow6 at 512 but only
+  **0.921x/0.586x/0.537x** at 4K/16K/64K. A cached trace showed only
+  **9.874 ms** total cache widening across eight candidate launches, versus
+  **471.961 ms** in QK+PV and **110.068 ms** in softmax. Algorithm 0 made QK,
+  not widening, the false ceiling. Trace SHA-256:
+  `d387609d8d02d4d1cbfe50b3f7a53749c9956c39dc26e91ed5c2a47d7539c280`.
+- Screened all 32 zero-workspace QK heuristics once, then all 32 PV heuristics
+  once, at each long shape. The tuned inclusive medians are:
+  **0.895 -> 0.414 ms (2.163x)** at 512,
+  **7.889 -> 5.613 ms (1.406x)** at 4K,
+  **32.383 -> 25.633 ms (1.263x)** at 16K,
+  **133.399 -> 102.249 ms (1.305x)** at 64K, and
+  **273.022 -> 218.473 ms (1.250x)** at 128K.
+  Selected QK/PV pairs are existing **1/22** at 512, then
+  **20/25, 28/1, 28/8, 28/3**.
+- Every output is finite. Maximum absolute/mean/RMSE versus qrow6 over all
+  shapes is **4.622e-8/2.448e-9/3.491e-9**, and all tracked allocations return
+  to zero. Raw tuned 512-64K and 128K SHA-256 values are
+  `647a221acf670d5326ce0104a2fa0557939abcf3a68caf5eb84d4855e0247757`
+  and `87f0ed3982fa5cbdd10faedc8368c3acd96e9369f3133e20fa2c68313391d911`.
+- Scratch is **2,150,629,376 bytes** at 64K and
+  **4,298,113,024 bytes** at 128K. This is an accepted arithmetic ceiling,
+  not production. Next add a separate global-only capacity-sized owner so
+  the established 72-head/512-token global+SWA owner does not inflate, wire
+  only dense-initial M128 global chunks above 512, and run the required
+  complete-model 4K/16K/64K/128K gates.

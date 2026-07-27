@@ -117,6 +117,18 @@ dot/exp/PV arithmetic remains the ceiling. The next screen is a bounded F32
 hipBLASLt ceiling followed by tensorized block-streamed QK/PV.
 [`GQA6 rejection`](results/2026-07-27-gfx1151-laguna-lc1-gqa6-scalar-staging-rejected.json).
 
+The tuned packed-F32 hipBLASLt ceiling is the first positive LC-1
+architecture. Inclusive BF16-cache widening, query/output transposes, QK,
+wave-row causal softmax, and PV improve qrow6
+**2.163x/1.406x/1.263x/1.305x/1.250x** at
+512/4K/16K/64K/128K, with maximum absolute output error
+**4.622e-8**. Untuned algorithm 0 loses at long context; screening all 32
+zero-workspace heuristics selects QK28 from 16K onward and is essential. This
+is a ceiling rather than production: F32 K/V plus score scratch costs
+**2.151 GB** at 64K and **4.298 GB** at 128K. A global-only complete-model
+candidate is the next gate.
+[`long F32 ceiling`](results/2026-07-27-gfx1151-laguna-lc1-long-f32-hipblaslt-ceiling.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at

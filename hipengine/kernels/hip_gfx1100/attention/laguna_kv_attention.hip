@@ -2131,7 +2131,7 @@ hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
   if (scores == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
       row_positions == nullptr || rows <= 0 || rows > 128 ||
-      context <= 0 || context > 512 || num_q_heads <= 0 ||
+      context <= 0 || num_q_heads <= 0 ||
       start_position < 0 || start_position + rows != context) {
     return static_cast<int>(hipErrorInvalidValue);
   }

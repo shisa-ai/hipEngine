@@ -50,6 +50,8 @@ def _ring_spans(capacity: int = 512) -> KVLiveSpans:
 
 def test_laguna_global_online_prefill_admits_model_scale_capacity() -> None:
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        laguna_dense_initial_cache_bf16_to_f32_spans,
+        laguna_dense_initial_causal_softmax_wave_rows_f32_spans,
         laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans,
         laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans,
     )
@@ -76,6 +78,8 @@ def test_laguna_global_online_prefill_admits_model_scale_capacity() -> None:
             return 0
 
     library = SimpleNamespace(
+        hipengine_laguna_dense_initial_cache_bf16_to_f32_spans=FakeFn(),
+        hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans=FakeFn(),
         hipengine_laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans=FakeFn(),
         hipengine_laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans=FakeFn(),
     )
@@ -105,7 +109,30 @@ def test_laguna_global_online_prefill_admits_model_scale_capacity() -> None:
         library=library,
         runtime=SimpleNamespace(),
     )
-    assert len(calls) == 2
+    laguna_dense_initial_cache_bf16_to_f32_spans(
+        0x9000,
+        0xA000,
+        0xB000,
+        0xC000,
+        spans,
+        capacity,
+        8,
+        128,
+        library=library,
+        runtime=SimpleNamespace(),
+    )
+    laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
+        0xD000,
+        spans,
+        128,
+        capacity,
+        48,
+        capacity - 128,
+        128**-0.5,
+        library=library,
+        runtime=SimpleNamespace(),
+    )
+    assert len(calls) == 4
 
 
 def test_kv_live_spans_sliding_ring_requires_complete_absolute_metadata() -> None:
