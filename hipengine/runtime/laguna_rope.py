@@ -13,6 +13,7 @@ from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.cpu_reference import LagunaRopeConfig, laguna_rope_tables
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
+    gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_weight,
 )
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.materialize import DeviceTensorAllocation, load_host_array_to_device_as_dtype
@@ -93,6 +94,16 @@ def register_laguna_rope_kernels(*, replace: bool = True) -> None:
         gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "head_rmsnorm+partial_rotary",
+            "laguna_f32_weight",
+            "positions_packed_query_f32",
+        ),
+        gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_weight,
+        replace=replace,
+    )
 
 
 def launch_laguna_head_rmsnorm_rope(
@@ -110,17 +121,24 @@ def launch_laguna_head_rmsnorm_rope(
     head_dim: int,
     tables: LagunaDeviceRoPETables,
     *,
+    packed_query_begin: int | None = None,
+    packed_query_end: int | None = None,
     backend: str = "hip_gfx1100",
     threads: int = 256,
     stream: int = 0,
     library=None,
     runtime=None,
 ) -> None:
+    packed_query = packed_query_begin is not None or packed_query_end is not None
+    if packed_query and (
+        packed_query_begin is None or packed_query_end is None
+    ):
+        raise ValueError("packed query begin and end must be provided together")
     key = KernelKey(
         backend,
         "head_rmsnorm+partial_rotary",
         "laguna_f32_weight",
-        "positions_f32",
+        "positions_packed_query_f32" if packed_query else "positions_f32",
     )
     fn = resolve(
         backend=key.backend,
@@ -138,7 +156,7 @@ def launch_laguna_head_rmsnorm_rope(
             quant=key.quant,
             variant=key.variant,
         )
-    fn(
+    args = [
         query_ptr,
         key_ptr,
         q_weight_ptr,
@@ -155,6 +173,11 @@ def launch_laguna_head_rmsnorm_rope(
         head_dim,
         tables.config.rotary_dim,
         tables.max_positions,
+    ]
+    if packed_query:
+        args.extend((int(packed_query_begin), int(packed_query_end)))
+    fn(
+        *args,
         threads=threads,
         stream=stream,
         library=library,

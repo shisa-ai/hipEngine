@@ -1581,6 +1581,7 @@ class LagunaGGUFResidentSession:
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
         prefill_attention_hipblaslt_packed_queries: bool | None = None,
+        prefill_attention_hipblaslt_packed_query_producer: bool | None = None,
         prefill_attention_hipblaslt_wave_rows_softmax: bool | None = None,
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         q6_qmicro: bool | None = None,
@@ -1686,6 +1687,15 @@ class LagunaGGUFResidentSession:
             )
             if prefill_attention_hipblaslt_packed_queries is None
             else prefill_attention_hipblaslt_packed_queries
+        )
+        self.prefill_attention_hipblaslt_packed_query_producer = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
+                False,
+            )
+            if prefill_attention_hipblaslt_packed_query_producer is None
+            else prefill_attention_hipblaslt_packed_query_producer
         )
         capability_wave_rows_softmax = backend_package_capability(
             self.backend,
@@ -3103,6 +3113,52 @@ class LagunaGGUFResidentSession:
             stream=stream,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
+        attention_ranges = self.prefill_chunk_policy.attention_ranges(rows)
+        packed_query_offsets: set[int] = set()
+        if (
+            self.prefill_attention_hipblaslt_packed_query_producer
+            and self.prefill_attention_hipblaslt
+            and self.prefill_attention_hipblaslt_packed_queries
+            and self.prefill_kv_preappend
+            and not stage_verifier_kv
+        ):
+            for row_offset, attention_rows in attention_ranges:
+                if not self.kv_cache.can_dense_initial_prefill(
+                    layer_id,
+                    attention_rows,
+                    row_offset=row_offset,
+                ):
+                    continue
+                state, _, start_position = (
+                    self.kv_cache.dense_initial_prefill_view(
+                        layer_id,
+                        attention_rows,
+                        row_offset=row_offset,
+                        row_positions_ptr=(
+                            scratch.positions.ptr
+                            + row_offset * _I64_NBYTES
+                        ),
+                    )
+                )
+                if start_position >= 128 and LagunaAttentionHipblasLt.supports(
+                    rows=attention_rows,
+                    start_position=start_position,
+                    num_q_heads=state.q_heads,
+                    num_kv_heads=config.head_count_kv,
+                    head_dim=config.key_length,
+                ):
+                    packed_query_offsets.add(row_offset)
+        packed_query_begin: int | None = None
+        packed_query_end: int | None = None
+        if packed_query_offsets:
+            packed_query_begin = min(packed_query_offsets)
+            packed_query_end = max(packed_query_offsets) + 128
+            if packed_query_offsets != set(
+                range(packed_query_begin, packed_query_end, 128)
+            ):
+                raise RuntimeError(
+                    "packed attention query tiles must be contiguous"
+                )
         launch_laguna_head_rmsnorm_rope(
             scratch.query.ptr,
             scratch.key.ptr,
@@ -3117,12 +3173,13 @@ class LagunaGGUFResidentSession:
             config.head_count_kv,
             config.key_length,
             rope,
+            packed_query_begin=packed_query_begin,
+            packed_query_end=packed_query_end,
             backend=self.backend,
             stream=stream,
             library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
-        attention_ranges = self.prefill_chunk_policy.attention_ranges(rows)
         packed_output_begin: int | None = None
         packed_output_end: int | None = None
         if stage_verifier_kv and len(attention_ranges) != 1:
@@ -3149,6 +3206,15 @@ class LagunaGGUFResidentSession:
                     row_offset=row_offset,
                 )
             )
+            query_is_packed = row_offset in packed_query_offsets
+            if (
+                self.prefill_attention_hipblaslt_packed_query_producer
+                and query_is_packed
+                and not preappend
+            ):
+                raise RuntimeError(
+                    "packed query producer requires the planned preappend route"
+                )
             if preappend:
                 self.kv_cache.append_rows(
                     layer_id,
@@ -3185,6 +3251,13 @@ class LagunaGGUFResidentSession:
                             head_dim=config.key_length,
                         )
                     )
+                if (
+                    self.prefill_attention_hipblaslt_packed_query_producer
+                    and query_is_packed != use_attention_hipblaslt
+                ):
+                    raise RuntimeError(
+                        "packed query producer disagrees with attention route"
+                    )
                 if use_attention_hipblaslt:
                     leave_output_packed = bool(
                         self.prefill_attention_hipblaslt_packed_output_gate
@@ -3204,6 +3277,7 @@ class LagunaGGUFResidentSession:
                         scale=config.key_length**-0.5,
                         stream=stream,
                         kv_library=self.libraries.kv_attention,
+                        query_is_packed=query_is_packed,
                         unpack_output=not leave_output_packed,
                     )
                     if leave_output_packed:

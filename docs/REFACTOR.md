@@ -157,6 +157,21 @@ should be removed or collapsed.
   collapse the redundant positive selector/session rebuild path while keeping
   the whole-BLAS-route rollback and every unsafe-shape `KVLiveSpans` fallback.
 
+## Laguna direct packed-query producer rollback
+
+- Added 2026-07-27 as
+  `prefill_attention_hipblaslt_packed_query_producer=false`. The gfx1151
+  capability writes only the three qualified dense-initial M128 query tiles
+  head-major from fused RMSNorm/RoPE; false restores the exact standalone
+  generic-to-head-major query transpose. Generic row zero and every unsafe
+  attention route are independent fallbacks, not part of this rollback.
+- Eleven complete pp512 pairs are state-exact and improve
+  **647.210 -> 650.651 tok/s (+0.532%, 7/11 wins)** with **1.557 ms** paired
+  median wall saved. Keep explicit false through the clean trace/publication
+  gate and the next optimization checkpoint, then remove this one-purpose
+  session selector and A/B comparison while retaining the generic producer
+  for unqualified rows.
+
 ## Laguna wave-per-row causal-softmax rollback
 
 - Added 2026-07-27 as

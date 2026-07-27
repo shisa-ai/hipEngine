@@ -548,6 +548,71 @@ def gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
     )
 
 
+def gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_weight(
+    query_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_table_ptr: int,
+    sin_table_ptr: int,
+    positions_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    eps: float,
+    tokens: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    packed_query_begin: int,
+    packed_query_end: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch head RMSNorm + RoPE with aligned query tiles head-major."""
+
+    _check_positive(tokens, "tokens")
+    _check_common_attention_shape(num_q_heads, num_kv_heads, head_dim, rotary_dim)
+    _check_positive(max_positions, "max_positions")
+    if (
+        packed_query_begin < 0
+        or packed_query_begin >= packed_query_end
+        or packed_query_end > tokens
+        or packed_query_begin % 128
+        or packed_query_end % 128
+    ):
+        raise ValueError("packed query range must be aligned within tokens")
+    _check_threads(threads)
+    _launch_head_rmsnorm_partial_rotary_positions(
+        "hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_weight",
+        query_ptr,
+        key_ptr,
+        q_weight_ptr,
+        k_weight_ptr,
+        cos_table_ptr,
+        sin_table_ptr,
+        positions_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        eps,
+        tokens,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        packed_query_range=(packed_query_begin, packed_query_end),
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_gguf_ops(*, replace: bool = True) -> None:
     register(KernelKey("hip_gfx1100", "elementwise", "bf16", "add"), gguf_bf16_add, replace=replace)
     register(
@@ -623,6 +688,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "head_rmsnorm+partial_rotary", "gguf_f32_weight", "qwen35_positions_f32"),
         gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "head_rmsnorm+partial_rotary",
+            "gguf_f32_weight",
+            "qwen35_positions_packed_query_f32",
+        ),
+        gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_weight,
         replace=replace,
     )
 
@@ -799,6 +874,7 @@ def _launch_head_rmsnorm_partial_rotary_positions(
     rotary_dim: int,
     max_positions: int,
     *,
+    packed_query_range: tuple[int, int] | None = None,
     threads: int,
     stream: int,
     library: ctypes.CDLL | None,
@@ -824,11 +900,16 @@ def _launch_head_rmsnorm_partial_rotary_positions(
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
+        *(
+            [ctypes.c_int64, ctypes.c_int64]
+            if packed_query_range is not None
+            else []
+        ),
         ctypes.c_int64,
         ctypes.c_void_p,
     ]
     fn.restype = ctypes.c_int
-    err = fn(
+    call_args = [
         ctypes.c_void_p(query_ptr),
         ctypes.c_void_p(key_ptr),
         ctypes.c_void_p(q_weight_ptr),
@@ -845,9 +926,18 @@ def _launch_head_rmsnorm_partial_rotary_positions(
         ctypes.c_int64(head_dim),
         ctypes.c_int64(rotary_dim),
         ctypes.c_int64(max_positions),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
+    ]
+    if packed_query_range is not None:
+        call_args.extend(
+            ctypes.c_int64(value) for value in packed_query_range
+        )
+    call_args.extend(
+        (
+            ctypes.c_int64(threads),
+            ctypes.c_void_p(stream),
+        )
     )
+    err = fn(*call_args)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -923,6 +1013,7 @@ __all__ = [
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight",
     "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
+    "gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_weight",
     "plan_gguf_ops_build",
     "register_gguf_ops",
 ]

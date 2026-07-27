@@ -169,6 +169,135 @@ def test_laguna_head_rmsnorm_rope_matches_cpu_at_production_heads(q_heads, rope)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_head_rmsnorm_rope_packed_query_tiles_match_generic() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import build_gguf_ops
+    from hipengine.runtime.laguna_rope import (
+        launch_laguna_head_rmsnorm_rope,
+        materialize_laguna_rope_tables,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_gguf_ops(load=True, require_cached=_require_cached_build())
+    rng = np.random.default_rng(290)
+    tokens, q_heads, kv_heads, head_dim = 256, 72, 8, 128
+    rope = LagunaRopeConfig(
+        rope_type="default",
+        rotary_dim=128,
+        freq_base=10000.0,
+    )
+    positions = np.arange(tokens, dtype=np.int64)
+    query = rng.normal(
+        0.0,
+        0.2,
+        size=(tokens, q_heads, head_dim),
+    ).astype(np.float32)
+    key = rng.normal(
+        0.0,
+        0.2,
+        size=(tokens, kv_heads, head_dim),
+    ).astype(np.float32)
+    q_weight = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    k_weight = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    allocations = []
+    tables = materialize_laguna_rope_tables(
+        tokens,
+        rope,
+        runtime=runtime,
+    )
+    try:
+        dq = _upload(query, runtime, allocations)
+        dk = _upload(key, runtime, allocations)
+        dqw = _upload(q_weight, runtime, allocations)
+        dkw = _upload(k_weight, runtime, allocations)
+        dpos = _upload(positions, runtime, allocations)
+        dqo_generic = _alloc(
+            query.shape,
+            np.float32,
+            runtime,
+            allocations,
+        )
+        dko_generic = _alloc(key.shape, np.float32, runtime, allocations)
+        dqo_packed = _alloc(query.shape, np.float32, runtime, allocations)
+        dko_packed = _alloc(key.shape, np.float32, runtime, allocations)
+        common = (
+            dq.ptr,
+            dk.ptr,
+            dqw.ptr,
+            dkw.ptr,
+            dpos.ptr,
+        )
+        launch_laguna_head_rmsnorm_rope(
+            *common,
+            dqo_generic.ptr,
+            dko_generic.ptr,
+            1e-6,
+            tokens,
+            q_heads,
+            kv_heads,
+            head_dim,
+            tables,
+            backend="hip_gfx1151",
+            library=library,
+            runtime=runtime,
+        )
+        launch_laguna_head_rmsnorm_rope(
+            *common,
+            dqo_packed.ptr,
+            dko_packed.ptr,
+            1e-6,
+            tokens,
+            q_heads,
+            kv_heads,
+            head_dim,
+            tables,
+            packed_query_begin=128,
+            packed_query_end=256,
+            backend="hip_gfx1151",
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        generic_q = _download(
+            dqo_generic,
+            query.shape,
+            np.float32,
+            runtime,
+        )
+        packed_q = _download(
+            dqo_packed,
+            query.shape,
+            np.float32,
+            runtime,
+        )
+        generic_k = _download(
+            dko_generic,
+            key.shape,
+            np.float32,
+            runtime,
+        )
+        packed_k = _download(
+            dko_packed,
+            key.shape,
+            np.float32,
+            runtime,
+        )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        tables.free(runtime=runtime)
+
+    unpacked_q = packed_q.copy()
+    unpacked_q[128:256] = (
+        packed_q[128:256]
+        .reshape(q_heads, 128, head_dim)
+        .transpose(1, 0, 2)
+    )
+    np.testing.assert_array_equal(unpacked_q, generic_q)
+    np.testing.assert_array_equal(packed_k, generic_k)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_softplus_head_gate_broadcast_matches_cpu() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (

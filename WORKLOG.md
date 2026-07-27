@@ -184672,3 +184672,33 @@ Vulkan local sizes verbatim will close the measured gap.
   SHA-256 is `ad8993e2...2365e`; trace SHA-256 is
   `f21be6b1...2b18f`; summary SHA-256 is `48f5d788...979e8`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json`.
+
+## 2026-07-27 — Stage direct packed attention query producer
+
+- The refreshed production trace still spends **4.907376 ms** in 144
+  standalone generic-to-head-major query transpose launches at pp512. The
+  exact candidate writes only the three qualified rows128..511 M128 query
+  tiles head-major from the existing fused per-head RMSNorm/RoPE kernel.
+  Row zero and all partial/wrapped/evicted/verifier/decode/unsupported routes
+  retain the generic producer and established `KVLiveSpans` fallbacks.
+- A new production-shape GPU fixture intentionally compares the mixed-layout
+  query after unpacking and the untouched key output to the generic producer;
+  both are F32-bit exact. The planner independently predicts the dense-initial
+  library route before RoPE, requires a contiguous aligned packed range, and
+  hard-errors if the later actual preappend/library route disagrees. The
+  library wrapper accepts packed input only when its packed-query route is
+  selected.
+- Eleven complete pp512 pairs pass every token/logit/hidden/KV/cursor hash and
+  improve independent medians **647.210 -> 650.651 tok/s (+0.532%)**, with
+  **7/11** wins and **1.557 ms** paired-median wall saved. The trace parser's
+  intentional RED rejected the new `widen + QK + softmax + PV` sequence; GREEN
+  now distinguishes it from both packed-with-transpose and old eight-way
+  attention. Focused GPU/trace/backend tests pass; `py_compile` and
+  `git diff --check` pass.
+- The lineage command remains blocked by the absent external
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. Commit this exact positive
+  candidate only to satisfy the repository clean-state profiler. Publication
+  still requires all **144** query-transpose launches to disappear, the fused
+  producer to appear at plausible resources, and the complete selector-unset
+  trace to pass. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-candidate.json`.
