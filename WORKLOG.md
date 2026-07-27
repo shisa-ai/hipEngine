@@ -184323,3 +184323,46 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-production.json`.
   The next step is a refreshed clean all-family trace, then another
   multi-millisecond structural screen.
+
+## 2026-07-27 — Refresh production trace and reject M256 attention merging
+
+- Clean revision `285b2638c` ran cached-only `rocprofv3 --kernel-trace`
+  around the selector-unset matrix2048/attention128 512/1K/4K profile:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace
+  --output-format csv --output-directory
+  /tmp/laguna-production-trace-cUNM5z --output-file laguna-production --
+  .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths
+  512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build --output
+  /tmp/laguna-production-trace-cUNM5z/child.json`.
+- pp512 records **2,417** dispatches, **1,112.508 ms** inclusive kernel sum,
+  **853.021 ms** kernel span, and **781.331/331.178 ms** on caller/secondary
+  queues. Families are gate/up **333.998 ms**, activation/reduce/residual
+  **268.949 ms**, selected down **170.295 ms**, source-F16 **122.924 ms**,
+  dense/shared **91.398 ms**, attention **68.058 ms**, norm/RoPE/gate
+  **26.331 ms**, and router **22.976 ms**. Child/raw/summary SHA-256 values
+  are `9d9020be...1d1aa`, `8b136bab...34fd`, and
+  `bb5525ef...0712`.
+- RED/GREEN then generalized dense-initial preappend, transpose, softmax,
+  packed hipBLASLt layouts, and scratch to a bounded M256 x context512 tile.
+  Sampled rows matched the CPU reference while the established M128 helper
+  remained green. The runtime candidate retained the first two M128 slices
+  and merged only rows 256..511.
+- Same-resident-session A/B rejected the route. Excluding the explicitly cold
+  first production sample, steady production is **792.662 ms /
+  645.924 tok/s** versus candidate **811.343 ms / 631.053 tok/s**:
+  **+18.680 ms / -2.302%**. All runs select token 2930. The generic M256
+  online control is worse at **~504–506 tok/s** versus warm M128
+  **~646–648 tok/s**.
+- Exhaustively screened all 32 zero-workspace algorithms for M256/context512
+  QK and PV. Best indices are QH48 **25/2** and QH72 **16/23**; their total
+  modeled saving across 12 full and 36 SWA layers is only **0.783 ms**.
+  The extra masked dense work, not algorithm selection, causes the loss.
+- Removed every M256 kernel-wrapper/runtime/test/scratch surface and rebuilt
+  the original cached attention library. Post-removal focused validation is
+  **3 passed**. Production remains **645.803 tok/s**, **61.383 ms** from
+  700. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-production-trace-attention-m256-rejected.json`.
