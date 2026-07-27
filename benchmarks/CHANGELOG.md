@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-27
 
+- [retained gfx1151 Laguna source-F16 row-qualified candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / keep quality-qualified hipBLASLt heuristic 2 for K3072xN72 through M128 but return M512 to heuristic 4; direct library timing models **2.196 ms** and six steady pp512 pairs measure **797.030 -> 794.718 ms (-2.312 ms, 4/6 wins)**, while M512 all-exact KL is **0.00407713** with top-1 2930 and canonical M<=128 behavior is unchanged; clean publication pending; `benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json`.
+
 - [rejected and removed exact gfx1151 Laguna Q4 P8 hybrid row-group order] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / interleaving two or four adjacent routed-row workgroups per output-column tile preserves the 128x32/local128 body and every BF16 bit, but M512 moves **6.7168 -> 6.7696/6.7332 ms (+0.787%/+0.245%)**; all candidate surfaces are removed and production remains **643.141 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json`.
 
 - [accepted attribution for exact gfx1151 Laguna Q4 selected-down P8 production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / the clean `60f089650` trace records **2,417** pp512 dispatches, **1,119.634 ms** inclusive kernel sum, and **853.428 ms** kernel span; selected gate/up remains largest at **334.201 ms**, activation/reduce/residual is **269.925 ms**, and selected down is **171.040 ms** with the P8 body confirmed at local64/VGPR96/LDS1536B/scratch0; attribution only, no new throughput claim; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-p8-all-family-profile.json`.

@@ -27,9 +27,10 @@ _FP32_UNIT_ROUNDOFF = 2.0**-24
 _ATTENTION_NUMERIC_SAFETY_FACTOR = 2.0
 _QUALITY_ALGORITHM_BY_KN = {
     # The default heuristic-4 schedule misses the cumulative all-exact quality
-    # gate at 0.05350 KL.  Restricting heuristic 2 to the tiny sliding-attention
-    # gate projection restores the gate without slowing the wide projections.
-    (3072, 72): 2,
+    # gate at 0.05350 KL for the M<=128 canonical category lane. Restricting
+    # heuristic 2 to that measured row range restores the gate without forcing
+    # its slower schedule onto the production M512 contraction.
+    (3072, 72): (128, 2),
 }
 
 
@@ -179,10 +180,15 @@ class LagunaF16HipblasLt:
         cached = self._problems.get(shape)
         if cached is None:
             problem = self.owner.problem(*shape)
-            algorithm_index = _QUALITY_ALGORITHM_BY_KN.get(
-                (shape[1], shape[2]),
-                self.preferred_algorithm_index,
+            quality_schedule = _QUALITY_ALGORITHM_BY_KN.get(
+                (shape[1], shape[2])
             )
+            algorithm_index = self.preferred_algorithm_index
+            if (
+                quality_schedule is not None
+                and shape[0] <= quality_schedule[0]
+            ):
+                algorithm_index = quality_schedule[1]
             algorithm = problem.algorithm(algorithm_index)
             if int(algorithm.workspace_size) != 0:
                 raise RuntimeError("Laguna hipBLASLt route requires a zero-workspace algorithm")

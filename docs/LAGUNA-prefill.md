@@ -12,10 +12,11 @@ candidate crossed 350 tok/s but failed the complete category quality gate.
 The repaired gate/up route uses one FP32 scale per 16 activations in the same
 160-byte block and widens the Q4 consumer to 128 columns x 32 rows. Its original
 shipping-relative category gate reached maximum KL 0.0407248, but LAP-Q0 found
-that direct production-versus-all-exact reached 0.0535024. Production now uses
-hipBLASLt heuristic 2 only for the K3072xN72 SWA gate shape and heuristic 4
-elsewhere; the clean absolute gate passes at maximum KL 0.0495426 and 316/320
-top-1. The compounded routes are gfx1151 package defaults. The exact
+that direct production-versus-all-exact reached 0.0535024. The admitted
+quality schedule uses hipBLASLt heuristic 2 for the K3072xN72 SWA gate through
+M128 and heuristic 4 elsewhere; the clean absolute gate passes at maximum KL
+0.0495426 and 316/320 top-1. The row-qualified M512 candidate is awaiting clean
+publication. The compounded routes are gfx1151 package defaults. The exact
 pair-decode wave-column D8 gate/up remap plus Q4-only D4 down remap first
 reached **448.203 tok/s**; Q6 down retains its bit-identical row-vector stage.
 A direct per-column Q4 gate/up decode, the corresponding Q4-down decode,
@@ -879,8 +880,9 @@ The quality contract remains binding. LAP-Q0 found that the prior
 **0.040724836** result compared current production with an already approximate
 shipping control and was not an absolute budget measurement. Direct
 production-versus-all-exact reached **0.053502420** and therefore failed. A
-one-shape hipBLASLt schedule—heuristic 2 only for the K3072xN72 SWA gate GEMM,
-heuristic 4 everywhere else—passes at **0.049542582**, leaving only
+row-qualified hipBLASLt schedule—heuristic 2 for the K3072xN72 SWA gate
+through M128, heuristic 4 above M128 and everywhere else—passes at
+**0.049542582**, leaving only
 **0.000457418** below the 0.05 ceiling. The rejected D4 gate candidate already
 showed that another approximate shortcut can hold 355+ tok/s while failing
 quality at KL **0.0767056**. New approximate paths are closed unless they first
@@ -1689,6 +1691,21 @@ Immediate execution queue:
    closed without explicit shared residency or physical-byte reduction.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json).
+52. **Retained candidate pending clean publication:** qualify the source-F16
+   SWA-gate quality schedule by matrix rows. The complete category lane uses
+   at most M128 and therefore keeps the admitted hipBLASLt heuristic 2 for
+   K3072xN72 exactly as before. M512 now returns to the retained heuristic 4.
+   The independent library screen measures **0.097302 -> 0.036308 ms** per
+   M512 SWA gate, modeling **2.196 ms** across 36 layers. Six steady
+   counter-rotated pp512 pairs, excluding the first explicitly cold pair,
+   measure **797.030 -> 794.718 ms (-2.312 ms)** at the medians with **4/6**
+   wins; all seven pairs give **5/7** wins. The M512 all-exact comparison
+   remains finite at KL **0.00407713** with top-1 **2930**, while the
+   descriptor fixture proves M128 still selects heuristic 2, so the existing
+   320-step **0.049542582 / 316-of-320** category result is unchanged.
+   Selection depends only on M/K/N, never prompt, token, category, or output.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 ### Next exact and quality-gated attacks
 

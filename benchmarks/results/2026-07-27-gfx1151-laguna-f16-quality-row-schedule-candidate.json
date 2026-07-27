@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_f16_quality_row_schedule_candidate",
+  "status": "candidate_retained_pending_clean_publication",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "repo": {
+    "base_revision": "d05d950a340910b3bf83c82f8b4460de146898b2",
+    "tracked_dirty_for_candidate": true
+  },
+  "change": {
+    "shape": {
+      "in_features": 3072,
+      "out_features": 72,
+      "role": "SWA attention gate"
+    },
+    "rollback": "hipBLASLt heuristic 2 at every row count",
+    "candidate": "hipBLASLt heuristic 2 through M128 and the retained heuristic 4 above M128",
+    "selection_inputs": [
+      "matrix rows",
+      "in_features",
+      "out_features"
+    ],
+    "prompt_or_token_conditioned": false,
+    "dispatch_count_changed": false,
+    "persistent_bytes_changed": false
+  },
+  "red_green": {
+    "red": "The descriptor-selection fixture expected heuristic 4 at M512 and failed because the old route selected heuristic 2.",
+    "green": "The route now selects heuristic 2 at M128 and heuristic 4 at M512; all four focused F16 route tests pass.",
+    "command": ".venv/bin/python3 -m pytest tests/test_laguna_f16_hipblaslt.py -q",
+    "result": "4 passed"
+  },
+  "library_screen": {
+    "source": "/tmp/2026-07-23-gfx1151-laguna-f16-library-ceiling.json",
+    "source_sha256": "58f516093ae9241aae417601f4c5374ad4cfb08475d713a5c1e2ea1b34608b8a",
+    "m512_heuristic2_ms": 0.097302,
+    "m512_heuristic4_ms": 0.036308,
+    "modeled_36_swa_layer_saving_ms": 2.195784
+  },
+  "full_model_ab": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/laguna_f16_quality_rows_ab.py --repetitions 7 --output /tmp/laguna-f16-quality-rows-ab.json",
+    "rows": 512,
+    "raw_sha256": "ee390db5da91be0b5959130d3426181e7770901d1fe1aa532e2a8350e2d111b5",
+    "all_pairs": {
+      "rollback_median_wall_ms": 798.6658919835463,
+      "candidate_median_wall_ms": 796.6197730274871,
+      "candidate_wins": 5,
+      "pairs": 7
+    },
+    "steady_pairs_excluding_first_cold_pair": {
+      "rollback_median_wall_ms": 797.0299070002511,
+      "candidate_median_wall_ms": 794.718163961079,
+      "median_wall_saving_ms": 2.311743039172142,
+      "mean_paired_wall_saving_ms": 1.8743756421220799,
+      "paired_geometric_speedup": 1.0023551532685888,
+      "candidate_wins": 4,
+      "pairs": 6
+    },
+    "next_token": 2930
+  },
+  "quality": {
+    "m512_all_exact_top1": 2930,
+    "candidate_top1": 2930,
+    "candidate_kl_vs_all_exact": 0.004077129061953151,
+    "rollback_kl_vs_all_exact": 0.0017963404552110262,
+    "canonical_m_le_128_behavior": "unchanged: heuristic 2 remains selected",
+    "canonical_320_step_evidence": "benchmarks/results/2026-07-26-gfx1151-laguna-production-absolute-quality.json",
+    "canonical_max_kl": 0.04954258196634279,
+    "canonical_top1_matches": 316,
+    "canonical_top1_total": 320
+  },
+  "validation": {
+    "focused_bundle": "tests/test_laguna_f16_hipblaslt.py tests/test_laguna_grouped_down_category_bench.py tests/test_laguna_gguf_runner.py",
+    "result": "40 passed, one environment-induced unrelated failure",
+    "focused_repair": "The sole failure expected MoE concurrency while the test process explicitly set GPU_MAX_HW_QUEUES=1; rerunning only that node with the variable unset passed.",
+    "diff_check": true,
+    "lineage_audit": {
+      "status": "blocked",
+      "reason": "Read-only reference checkout /home/lhl/amd-gpu-tuning/reference/atlas is absent."
+    }
+  },
+  "decision": {
+    "retained": true,
+    "production_default_changed": true,
+    "headline_production_unchanged_pending_clean_publication_tok_s": 643.1410131236527,
+    "next": "Commit the candidate, then run the clean selector-unset 512/1K/4K publication protocol."
+  }
+}
