@@ -185520,3 +185520,30 @@ Vulkan local sizes verbatim will close the measured gap.
   M8,192 survive only for LC-6 capacity-bucket/lazy-scratch diagnostics.
   The final affected bundle passes **61/61**. JSON, Python compilation, and
   `git diff --check` pass.
+
+## 2026-07-28 — Close LC-6 capacity and secondary bandwidth work
+
+- Counterbalanced the retained M2,048 production route at short shapes using
+  4K-capacity and clean 128K-capacity resident sessions. The latter carries
+  **87,086,514,132 bytes**, **6,449,874,880 bytes / 6.007 GiB** above the
+  former's **80,636,639,252 bytes**.
+- Right-sized versus 128K-capacity 512/1K/4K is
+  **628.203/669.454/611.359 -> 625.532/673.832/611.334 tok/s**, or
+  **-0.425%/+0.654%/-0.004%**. Next tokens remain 2930/95/7772, positions are
+  exact, and tracked allocation returns to zero. The clean large-capacity
+  command was
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lc6-128k-capacity-short.json`;
+  raw SHA-256
+  `9a8c9d280c407c88dbec74b8f042db9dd7cfb1dbde26c395ea2be62df51f7252`.
+- The prior **-4.928%** pp512 singleton does not reproduce; lazy KV and
+  capacity buckets are closed as unjustified. LC-4 already reduced exact BF16
+  cache widening to **0.234780 ms**, only **0.02-0.03%** of the complete
+  attention transaction, so Q8 KV would add quality risk without attacking a
+  measured ceiling. AOTriton, source-F16 grouping, and GroupedGemm remain
+  closed until their installed capabilities or critical-path evidence change.
+- Removed the expired M4,096/M8,192 constructor/profile/test diagnostics and
+  restored the explicit validation ceiling to production M2,048. The affected
+  runner/KV/profile/backend bundle passes **93/93**. JSON parse, Python
+  compilation, and `git diff --check` pass. Accepted diagnostic artifact:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json`.
+  The final clean 512/1K/4K/32K/64K/128K selector-unset sweep is next.

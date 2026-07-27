@@ -72,10 +72,10 @@ should be removed or collapsed.
   gfx1151 production at M2,048. M4,096 fails mandatory 128K
   **149.684 -> 147.939 tok/s (-1.166%)** while adding **1.756 GB** scratch;
   M8,192 is directionally dominated and adds **5.268 GB**.
-- Keep explicit widths through LC-6 for capacity-bucket/lazy-scratch screens.
-  Remove M4,096/M8,192 support afterward unless a bucketed policy avoids the
-  always-resident scratch cost and passes a fresh 4K/16K/64K/128K gate. Do
-  not change `LAGUNA_PREFILL_MATRIX_ROWS=2048` from the rejected evidence.
+- **Closed 2026-07-28:** LC-6 did not reproduce a capacity-dependent short
+  prefill loss, so no bucketed policy is justified. M4,096/M8,192 constructor,
+  profile, and test support is removed; production and the validation ceiling
+  are both M2,048. The LC-5 artifact preserves the rejected evidence.
 
 ## Laguna MoE shared/routed branch-concurrency candidate
 

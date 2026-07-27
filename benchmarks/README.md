@@ -64,6 +64,18 @@ matrix-chunk-specific cliff. This one-repeat attribution baseline does not
 replace the repeated short-shape headline or the absolute quality packet.
 [`six-shape artifact`](results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json).
 
+LC-6 now closes that capacity diagnostic. With the retained M2,048 geometry,
+a 128K-capacity session allocates **6.007 GiB** more than the 4K-capacity
+control but changes 512/1K/4K only
+**-0.425%/+0.654%/-0.004%**, to
+**625.532/673.832/611.334 tok/s**. Exact tokens, positions, and lifecycle
+pass, so the prior **-4.928%** singleton is not reproducible and neither lazy
+KV nor a capacity bucket is promoted. Exact BF16 cache widening is only
+**0.02-0.03%** of the measured complete attention transaction; Q8 KV and
+unchanged library capabilities remain closed. The rejected M4,096/M8,192
+diagnostic surface is removed and production stays M2,048.
+[`LC-6 closure`](results/2026-07-28-gfx1151-laguna-lc6-capacity-secondary-closure.json).
+
 A same-GGUF llama.cpp Vulkan one-pass baseline on the same Radeon 8060S
 measures **341.999/333.502/280.349/126.624/65.584 tok/s** at
 512/4K/16K/64K/128K. The coherent hipEngine LC-0 attack control measures
