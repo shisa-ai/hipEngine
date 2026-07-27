@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_redline_transport_spike",
+  "date": "2026-07-28",
+  "status": "microbenchmark_claim_accepted_integration_blocked",
+  "decision": {
+    "enable_by_default": false,
+    "vendor_redline": false,
+    "continue_optional_integration_spike": true,
+    "required_before_default": [
+      "minimal upstreamable reproducer and fix for the long-lived-process GPU page fault",
+      "strict retained-PM4 proof in the hipEngine graph adapter",
+      "bit-exact 128-token GGUF decode replay",
+      "matched interleaved end-to-end model benchmark"
+    ]
+  },
+  "claims": {
+    "same_hsaco_microbenchmark_transport": {
+      "status": "accepted",
+      "performance_claim": true,
+      "scope": "240 correctness-gated Hipfire rows using byte-identical HIP/Redline code objects; family-isolated processes with overlapping filter rows deduplicated by row key"
+    },
+    "hipengine_model_throughput": {
+      "status": "not_measured",
+      "performance_claim": false
+    },
+    "production_stability": {
+      "status": "blocked",
+      "performance_claim": false
+    }
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "gfx_arch": "gfx1100",
+    "compute_units": 96,
+    "pci": "0000:0d:00.0",
+    "visible_device": 0,
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "llvm": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "vulkan": "Mesa RADV 26.1.4-arch3.1",
+    "environment_sha256": "949f785cb1354a4f9c6b91c263241ef78dea4449755619a92d009dfc9caf864f"
+  },
+  "source": {
+    "hipengine_commit": "3381f676ce7f1b3dbb821fd962250bad5634ecbd",
+    "redline_commit": "33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e",
+    "redline_dirty": false,
+    "hipfire_commit": "455ffb9dfd6a5712889b504737f88fbbe87d3efe",
+    "redline_library_sha256": "6230f16b179cb0e84851d5823185d9fee57f03fd84b91a9be633db3b227ac2bd",
+    "radiowave_sha256": "5bdc10c6fbb68e546b941f131819492f60549ea13ab1dbd0aba592b220efd516",
+    "hipfire_binary_sha256": "655141e2e5eef7a1a31f08a9da7b6fb19cdc114b61a79152331ac1ee0a72a291"
+  },
+  "protocol": {
+    "matrix": "hipengine_f2c",
+    "backends": [
+      "redline",
+      "hip",
+      "vulkan"
+    ],
+    "modes": [
+      "serial_latency",
+      "independent_throughput"
+    ],
+    "warmups": 3,
+    "samples": 7,
+    "redline_independent_queues": 2,
+    "wave_policy": "radiowave_tuned",
+    "scheduler_profile": "default",
+    "redline_rmw_boundary": "radiowave_certified_vmem",
+    "variance_gate": "A backend row is stable when (max(samples)-min(samples))/median(samples) <= 0.10; a pair/triple is stable only when every included backend passes.",
+    "command_template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPFIRE_BENCH_ARCH=gfx1100 target/hipengine-w7900-gfx1100/release/hipfire-6409-bench --matrix hipengine --backends redline,hip,vulkan --filter <family> --wave-policy radiowave --redline-queues auto --scheduler-profile default --redline-rmw radiowave-vmem --warmups 3 --samples 7 --out <family>/results.json"
+  },
+  "same_hsaco_results": {
+    "matched_rows": 240,
+    "correctness_passed_rows": 240,
+    "correctness_failed_rows": 0,
+    "redline_first_rows": 208,
+    "redline_first_percent": 86.66666666666667,
+    "redline_vs_hip": {
+      "wins": 239,
+      "rows": 240,
+      "median_time_ratio": 0.3581676592651509,
+      "median_speedup": 2.7919885398131434,
+      "stable_pair_rows": 213,
+      "stable_pair_wins": 212,
+      "stable_pair_median_time_ratio": 0.3558446861166233,
+      "stable_pair_median_speedup": 2.810214790371391
+    },
+    "redline_vs_vulkan": {
+      "wins": 208,
+      "rows": 240,
+      "median_time_ratio": 0.5895145062062983,
+      "median_speedup": 1.6963110991709065,
+      "stable_pair_rows": 134,
+      "stable_pair_wins": 115,
+      "stable_pair_median_time_ratio": 0.6564903781962872,
+      "stable_pair_median_speedup": 1.5232515711007195
+    },
+    "stable_three_backend_rows": {
+      "rows": 134,
+      "redline_first": 115,
+      "redline_faster_than_hip": 133
+    },
+    "dispatch_grid_submatrix": {
+      "serial_latency": {
+        "rows": 8,
+        "redline_faster_than_hip": 8,
+        "median_redline_over_hip_time_ratio": 0.087,
+        "median_redline_over_hip_speedup": 11.49425287356322,
+        "redline_faster_than_vulkan": 7,
+        "median_redline_over_vulkan_time_ratio": 0.5457
+      },
+      "independent_throughput": {
+        "rows": 8,
+        "redline_faster_than_hip": 8,
+        "median_redline_over_hip_time_ratio": 0.0671,
+        "median_redline_over_hip_speedup": 14.903129657228018,
+        "redline_faster_than_vulkan": 5,
+        "median_redline_over_vulkan_time_ratio": 0.8057
+      }
+    }
+  },
+  "hipengine_direct_dispatch_control": {
+    "correctness_passed_rows": 16,
+    "correctness_failed_rows": 0,
+    "serial_latency": {
+      "rows": 8,
+      "redline_faster_than_hip": 8,
+      "median_redline_over_hip_time_ratio": 0.3269161511706731,
+      "median_redline_over_hip_speedup": 3.058888330903939,
+      "redline_faster_than_vulkan": 0,
+      "median_redline_over_vulkan_time_ratio": 1.89213808754103
+    },
+    "independent_throughput": {
+      "rows": 8,
+      "redline_faster_than_hip": 8,
+      "median_redline_over_hip_time_ratio": 0.1268868728200109,
+      "median_redline_over_hip_speedup": 7.881035900526137,
+      "redline_faster_than_vulkan": 0,
+      "median_redline_over_vulkan_time_ratio": 2.6789013920159905
+    },
+    "interpretation": "Direct retained-PM4 submission beats hipGraph in every row, but the independent Vulkan timestamped dispatch floor remains lower. This is a dispatch transport control, not model throughput."
+  },
+  "source_matched_hipengine_matrix": {
+    "status": "diagnostic_only_code_object_identity_not_proven",
+    "matched_rows": 224,
+    "correctness_passed_rows": 224,
+    "redline_first_rows": 167,
+    "redline_vs_hip": {
+      "wins": 188,
+      "median_time_ratio": 0.808516199829258,
+      "median_speedup": 1.2368335974111333
+    },
+    "redline_vs_vulkan": {
+      "wins": 185,
+      "median_time_ratio": 0.5368043229858406,
+      "median_speedup": 1.8628762049413996
+    },
+    "notable_regressions": {
+      "independent_memory_waitcnt_redline_over_hip_ratio": 1.1285,
+      "independent_packed_dot_redline_over_hip_ratio": 1.6936,
+      "independent_packed_dot_redline_over_vulkan_ratio": 2.1234,
+      "independent_two_stage_reduction_redline_over_hip_ratio": 1.4628
+    },
+    "interpretation": "Packed-dot becomes 16/16 faster than HIP in the same-HSACO control, so this matrix cannot attribute source/codegen differences to transport."
+  },
+  "lifecycle_blocker": {
+    "reproduced": true,
+    "broad_process_completed_rows": 48,
+    "next_row": "serial_latency/packed-dot/q8_signed/groups16/n32768/body64/wg64",
+    "failure": "Memory access fault by GPU node-1 on address (nil): page not present or supervisor privilege",
+    "isolated_family_processes": "all filters exited 0; deduplicated matrix passed 240/240",
+    "fresh_packed_dot_process": "16/16 correctness rows passed",
+    "assessment": "Evidence indicates a cross-family or repeated resource-lifecycle defect rather than packed-dot math. Root ownership is not yet proven between Redline core, its Hipfire/hipEngine adapters, and ROCr.",
+    "policy": "Process isolation is a benchmark workaround only. Do not silently monkeypatch or default-enable Redline; minimize and seek an upstream lifecycle fix."
+  },
+  "external_sanity_check": {
+    "source": "https://github.com/ROCm/ROCm/issues/6409#issuecomment-5061942739",
+    "reported_hardware": "Radeon RX 7900 XTX, gfx1100",
+    "reported_rows": 240,
+    "reported_redline_vs_hip": {
+      "wins": 227,
+      "median_speedup": 2.34
+    },
+    "reported_redline_vs_vulkan": {
+      "wins": 192,
+      "median_speedup": 1.43
+    },
+    "reported_serialized_dispatch_grid_median_speedup": 6.88,
+    "assessment": "The W7900 same-HSACO medians are 19.3% and 18.6% above the report and win 12/16 more rows respectively. The separate dispatch controls bracket the reported 6.88x. Hardware, ROCm, and harness differences prevent treating these deltas as a regression or universal uplift."
+  },
+  "raw_evidence": {
+    "root": "/tmp/hipengine-redline-w7900-20260728",
+    "same_hsaco_family_result_sha256": {
+      "dense-q8": "0768020d8fa226a67035f16ee9d4c3eee25e5d2707c39f3ebe31510bb56f06de",
+      "dispatch-grid": "84fd224db994e036859633bd86f42cb0d02238a5cc78143caafab12b77e30e5d",
+      "geometry": "86bcebd0e7ff747d5e2e38524a8888335ffeb7fb0c27fa8ca2fc30050889fce0",
+      "memory-waitcnt": "1ac977d62e1a47a69087560e40a4ec31a4593f2d88d894ebe55b3fa1755f7ee3",
+      "q4-selected-dual": "2d48ed48954bc7b8764485d6e81cd8c0a01404cbf1088534a57d22275fa7eef8",
+      "q6-x8-selected-down": "1e9c8910e045cc4fdd0db7956e2972c8670a5695e7d1bfdd318699741046559f",
+      "reduction_and_two_stage_reduction": "8fec5fb16ad77d38b0c59b18f6f7a9a8a5caa14296238f194bcb60627b0f3017",
+      "sampler": "7715ae77b25bffef090b0949d6dc316741eb2daad96d30e0a22bb58f80257576",
+      "two-stage-reduction-overlap": "c3af38a76b80767c564ce4108f8a430982b105dde591f172a213c4e2c1707c7d",
+      "vopd": "966d236d5416099d823c99e5f7ee6dc79ac44fe3cf77e2eb871e49eef12eaffd",
+      "packed-dot-confirm": "1c81b3bc8f0725075d50c3ccf073789bf3e9b1e1bd38b9f9f2edff843cc27a3c"
+    },
+    "broad_failure_stdout_sha256": "bb6d1c0d45ece5a856f49237fac61c6f493e05ba6ce9cd249bedd83daf0ecf13",
+    "broad_failure_stderr_sha256": "8859d2d1883cc930568c1f2f5c7de449441cca0721dd12278f790f435039e73e",
+    "direct_dispatch_serial_comparison_sha256": "65df9d0effc4a4b0deb23c9022a2d86ecdbd81e98d4465748acb2fb26bf28508",
+    "direct_dispatch_independent_comparison_sha256": "d5b1cb4ada96202b05031c2e57701e2f1094c760a30e4ee1ab4158b3f831d8cc",
+    "source_matched_matrix_manifest_sha256": "83df501ce622539cc78769681d4e36ad0ac5f0bd3d16b536db7fbb40012edd17"
+  }
+}

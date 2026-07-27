@@ -3467,6 +3467,27 @@ systematically one code below the CPU/HIP oracle. The retained portable shader
 eliminates those scale mismatches; both the gfx1100-matched and current strict
 gfx1151 matrices now pass 22/22 comparisons and all 232 burst rows.
 
+The W7900 retained-PM4 Redline spike is
+[`2026-07-28-gfx1100-redline-transport-spike.json`](results/2026-07-28-gfx1100-redline-transport-spike.json).
+Across **240/240 correctness-passing same-HSACO Hipfire rows**, Redline is first
+on **208 (86.7%)**, beats HIP on **239** with a median **2.792x** speedup, and
+beats Vulkan on **208** with a median **1.696x** speedup. The formal <=10%
+sample-range gate retains **212/213** Redline-over-HIP wins at median **2.810x**
+and **115/134** Redline-over-Vulkan wins at median **1.523x**. A separate
+hipEngine direct dispatch control passes 16/16 and beats hipGraph on every row
+at median **3.059x serial / 7.881x independent**, while losing the corresponding
+Vulkan GPU-timestamp floor. These are microbenchmark transport claims, not model
+throughput.
+
+Integration remains **blocked and default-off**. A single broad process passed
+its first 48 rows, then faulted on the first packed-dot Redline replay with a
+GPU page fault at address zero; fresh family-isolated processes pass the
+deduplicated 240/240 matrix, including packed-dot 16/16. Process isolation is a
+benchmark workaround, not a production fix. The lifecycle defect must be
+minimized and fixed upstream (ownership is not yet proven between Redline,
+adapters, and ROCr), then a strict retained-PM4 hipEngine decode graph must pass
+bit-exact replay and matched end-to-end measurement before promotion.
+
 The retained synthetic Laguna-shape IQ2_XS primitive packet is
 [`2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).
 At K=3072/N=128/E=16, rowbatch4 reduces event time by 7.24-58.82% versus

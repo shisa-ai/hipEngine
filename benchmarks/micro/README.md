@@ -222,6 +222,25 @@ HIP. Those are comparison anchors, not pass thresholds for this W7900/ROCm-7.15
 run; hardware, stack, matrix, lane, and same-HSACO differences must be stated
 before treating a deviation as inconsistent.
 
+### W7900 result and decision
+
+The 2026-07-28 same-HSACO control passes **240/240** correctness rows. Redline
+is first on **208**, beats HIP on **239** at median **2.792x**, and beats Vulkan
+on **208** at median **1.696x**. Under the formal <=10% sample-range gate, it
+wins **212/213** stable HIP pairs at median **2.810x** and **115/134** stable
+Vulkan pairs at **1.523x**. The separate direct hipEngine dispatch control
+passes 16/16 and beats hipGraph on every row at median **3.059x serial / 7.881x
+independent**, but it loses the Vulkan GPU-timestamp floor. Full provenance and
+raw hashes are in
+[`2026-07-28-gfx1100-redline-transport-spike.json`](../results/2026-07-28-gfx1100-redline-transport-spike.json).
+
+This admits a same-HSACO **microbenchmark transport claim only**. A broad
+long-lived process faulted at address zero on row 49 after 48 passing rows;
+family-isolated processes completed the deduplicated matrix. Process isolation
+is a benchmark workaround, not a runtime fix. Redline remains default-off and
+unvendored until the lifecycle fault is minimized and fixed upstream and a
+strict hipEngine decode-graph replay passes bit-exact and end-to-end gates.
+
 ## Paired Runner Inventory
 
 All timing runners below support both `serial_latency` and
