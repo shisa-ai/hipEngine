@@ -48,6 +48,66 @@ def _ring_spans(capacity: int = 512) -> KVLiveSpans:
     )
 
 
+def test_laguna_global_online_prefill_admits_model_scale_capacity() -> None:
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans,
+        laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans,
+    )
+
+    capacity = 131_072
+    spans = KVLiveSpans.paged_dense(
+        block_table=_tensor(0x1000, (capacity // 256,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        token_positions=_tensor(0x3000, (capacity,), "int64"),
+        evict_mask=_tensor(0x4000, (capacity,), "bool"),
+        row_positions=_tensor(0x5000, (1,), "int64"),
+        capacity=capacity,
+        block_size=256,
+        storage_dtype="bf16",
+    )
+    calls: list[tuple[object, ...]] = []
+
+    class FakeFn:
+        argtypes = None
+        restype = None
+
+        def __call__(self, *args):
+            calls.append(args)
+            return 0
+
+    library = SimpleNamespace(
+        hipengine_laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans=FakeFn(),
+        hipengine_laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans=FakeFn(),
+    )
+    common = (
+        0x6000,
+        0x7000,
+        0x8000,
+        0x9000,
+        0xA000,
+        0xB000,
+        spans,
+        128,
+        capacity,
+        48,
+        8,
+        128,
+        128**-0.5,
+    )
+    laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans(
+        *common,
+        library=library,
+        runtime=SimpleNamespace(),
+    )
+    laguna_global_attention_prefill_qrow4_dense_initial_online_bf16_spans(
+        *common,
+        start_position=0,
+        library=library,
+        runtime=SimpleNamespace(),
+    )
+    assert len(calls) == 2
+
+
 def test_kv_live_spans_sliding_ring_requires_complete_absolute_metadata() -> None:
     spans = _ring_spans()
 
