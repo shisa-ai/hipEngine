@@ -184871,3 +184871,14 @@ Vulkan local sizes verbatim will close the measured gap.
   audit was attempted before implementation and remains blocked by missing
   `/home/lhl/amd-gpu-tuning/reference/atlas`. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-attention-triangular-bf16-wmma-qk-rejected.json`.
+
+## 2026-07-27 — Admit the Laguna closure sweep
+
+- Extended the strict long-context profiler with one fixed anti-overtuning
+  set: **512/1K/4K/32K/64K/128K**. Arbitrary length lists remain rejected,
+  and the existing LPF-5/LAP-0 sets and alternating timing order are
+  unchanged.
+- Focused validation passes all **32 tests** in
+  `tests/test_laguna_long_context_profile.py`, plus `py_compile` and
+  `git diff --check`. This is harness-only preparation; no production runtime
+  or kernel changed.
