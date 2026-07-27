@@ -3897,13 +3897,17 @@ Use measured staged milestones rather than the peak as a promise:
 | 128K milestone | Throughput | Wall | Interpretation |
 | --- | ---: | ---: | --- |
 | Current LC-0 control | **72.139 tok/s** | 1,816.9 s | Exact scalar online global route |
-| First architectural milestone | **>=150 tok/s** | <=873.8 s | At least 2.07x current; block streaming is materially working |
-| Main long-context target | **>=300 tok/s** | <=436.9 s | At least 4.15x current; tiled global attention is comparator-independent |
-| Roofline-informed stretch | **>=450 tok/s** | <=291.3 s | At least 6.22x current; still well above all-attention ideal floors |
+| First architectural milestone | **>=150 tok/s** | <=873.8 s | At least 2.07x current; trace-backed global wall must fall about 2.75x if other work is unchanged |
+| Main long-context target | **>=300 tok/s** | <=436.9 s | At least 4.15x current; requires comparator-independent tiled compute near the FP32 global roof or companion non-global wins |
+| Roofline-informed stretch | **>=450 tok/s** | <=291.3 s | At least 6.22x current; requires global plus SWA/linear/capacity progress, not a global-only kernel |
 
-Rebuild these milestones after the first cached 16K/64K family trace measures
-actual global-attention wall. They are campaign targets, not promotion gates
-or claims.
+LC-0 now makes these trace-informed campaign targets rather than inferred
+promises. At measured 64K rates, the 128K split projects about
+**1,482 s global + 87 s SWA + 159 s remaining linear work**, with another
+**89 s** between that simple projection and the actual control. Thus 300 is
+already close to an FP32-global-roof system target if non-global work stays
+fixed, while 450 necessarily depends on later LC stages too. These remain
+targets, not promotion gates or claims.
 
 #### Fast architectural-development protocol
 
@@ -3943,20 +3947,67 @@ The campaign intentionally uses cheap evidence while far from the target:
   tokens, finite outputs, and full tracked-allocation recovery pass.
 - **Done:** admit the fixed **16K/64K** cached trace set so LC-0 can attribute
   both useful scaling points without profiling the 30-minute 128K row.
-- Trace one cached 16K and one 64K control. Attribute all 12 global layers,
-  36 SWA layers, projections, MoE, and residual families without profiling
-  the 30-minute 128K row.
-- Record global-attention achieved FLOP/s, K/V bytes, GQA reread factor,
-  dispatches, resource tuple, and wall-growth fit. Replace inferred
-  linear/quadratic shares with trace-backed values.
+- **Done:** trace cached 16K and 64K controls and attribute all 12 global
+  layers, 36 SWA layers, projections, MoE, and residual families without
+  profiling the 30-minute 128K row.
+- **Done:** record global-attention achieved FLOP/s, requested K/V bytes, GQA
+  reread factor, dispatches, resource tuple, and wall-growth fit. The
+  instruction-requested traffic is explicitly not a physical DRAM counter.
 - **Done:** freeze a bounded-state CPU-reference block-streaming oracle against
   dense GQA at partial query/key tiles, positions 511/512/513, global/SWA
   masks, and the final 128K position.
+
+The cached trace is stable against the unprofiled LC-0 control:
+**309.180 tok/s** at 16K (**+0.399%**) and **132.790 tok/s** at 64K
+(**-0.031%**). Its kernel span misses complete wall by only
+**11.5/19.7 ms**, so long-context prefill is kernel-bound rather than
+submission-bound.
+
+| Component | 16K wall | Share | 64K wall | Share | 16K -> 64K |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Global attention | **22.670 s** | **42.78%** | **370.549 s** | **75.08%** | **16.345x** |
+| SWA attention | **10.462 s** | **19.74%** | **43.499 s** | **8.81%** | **4.158x** |
+| Complete wall minus attention | **19.860 s** | **37.48%** | **79.483 s** | **16.10%** | **4.002x** |
+| Complete wall | **52.992 s** | 100% | **493.532 s** | 100% | **9.313x** |
+
+The trace therefore resolves the scaling model: global attention is
+quadratic, while both SWA and the remaining model are linear after the
+512-token window fills. Logical global QK+PV reaches only
+**1.746/1.709 TFLOP/s** at 16K/64K; SWA reaches
+**1.047/1.020 TFLOP/s**. Holding the measured 64K rates projects
+**1,728.3 seconds** at 128K versus the observed **1,816.9 seconds**
+(**-4.88%**), so the mixed-attention model explains about 95% of the full
+128K wall before capacity/cache/thermal residuals.
+
+The root cause is repeated load work inside the scalar topology:
+
+| Family | Current tile | GQA heads/KV | Load-request amplification | 64K requested K+V |
+| --- | ---: | ---: | ---: | ---: |
+| Global | qrow6, 22 row groups | 6 | **131.76x** | **108.861 TB** |
+| SWA | qrow4, 32 row groups | 9 | **288.00x** | **11.046 TB** |
+
+These are executed BF16 K/V vector-load requests after position 512 relative
+to loading each K/V vector once per KV head and 128-query tile. They exclude
+the first-512 library route, metadata, cache-line effects, and cache hits; the
+implied request rates exceed DRAM bandwidth precisely because many rereads hit
+cache. They are not physical DRAM measurements. The dominant global symbol is
+local32/VGPR88/SGPR128/LDS0/scratch0 with grid **48 x 22 workgroups** per
+launch; SWA is local32/VGPR80/SGPR128/LDS0/scratch0 with **72 x 32**.
+
+Evidence:
+[`LC-0 attribution`](../benchmarks/results/2026-07-27-gfx1151-laguna-lc0-long-context-attribution.json).
 
 #### LC-1 — real block-streamed global attention
 
 - Replace token-serial Q-row scanning for qualified prompt prefill with fixed
   query and K/V tiles, initially **16-32 query rows x 64-128 key rows**.
+- The first bounded geometry is **Q16 x K64**, local128: four wave32s retain
+  four query rows each while one approximately 33-KiB LDS tile stages 64
+  BF16 K/V rows plus bounded metadata. It preserves per-query token order and
+  the existing generic `KVLiveSpans` path.
+- Before cross-head sharing, Q16 reduces the post-512 global request
+  amplification from about **132x to 48x**: eight query-row groups times six
+  query heads per K/V head. LC-2 then targets the remaining six-way reread.
 - Carry online row max, denominator, and output state across K/V tiles. Never
   materialize the complete score matrix or compute masked upper-triangle
   blocks.
@@ -3976,6 +4027,11 @@ The campaign intentionally uses cheap evidence while far from the target:
   cooperative workgroup and reuse it across the complete six-head group
   instead of launching independent query-head waves that reread the same
   cache.
+- One SWA K/V head serves **nine** query heads. After the global cooperative
+  body passes its mandatory 128K gate, reuse the same tile-sharing design for
+  SWA rather than leaving its measured **288x** request amplification in
+  place. The SWA companion protects 4K/16K and has linear, not quadratic,
+  payoff at longer context.
 - Co-design LDS layout, query fragments, and output accumulators with LC-1;
   report physical K/V bytes and reuse rather than assuming a theoretical 6x.
 - Preserve score/token order in the exact FP32 lane. Any reassociated or

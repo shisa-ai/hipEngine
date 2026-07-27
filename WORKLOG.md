@@ -185090,3 +185090,51 @@ Vulkan local sizes verbatim will close the measured gap.
   tests/test_laguna_long_context_profile.py` (**32 passed**), `py_compile`,
   and `git diff --check`. Next run the cached-only rocprofv3 child and attach
   the all-family summary before implementing LC-1.
+
+## 2026-07-27 — Complete LC-0 cached long-context attribution
+
+- Ran cached-only `rocprofv3 --kernel-trace` at clean revision
+  `51063e45344b08983e401cfd888be4bdf351efdc` over one 64K-capacity resident
+  model load, warmup 128, then the fixed 16K/64K trace set. Exact command and
+  summary command are preserved in
+  `benchmarks/results/2026-07-27-gfx1151-laguna-lc0-long-context-attribution.json`.
+  The profiled rows are **309.180/132.790 tok/s**, within
+  **+0.399%/-0.031%** of the unprofiled LC-0 control, with expected tokens
+  **81/69407**, exact positions, and zero tracked active allocations after
+  teardown. Repeated rocprof async-signal wait warnings occurred during the
+  64K run, but the GPU remained 100% active at about 2.65 GHz/140 W and the
+  child, CSV, lifecycle, and profiler finalization all completed normally.
+- The 16K trace has **23,210** timed dispatches, **52.980 s** kernel span,
+  **62.504 s** concurrent kernel sum, and **52.992 s** complete wall. The 64K
+  trace has **91,537** timed dispatches, **493.512 s** span,
+  **531.825 s** concurrent sum, and **493.532 s** wall. Span misses wall by
+  only **11.5/19.7 ms**; long-context is kernel-bound, not submission-bound.
+- Global/SWA/complete-wall-minus-attention is
+  **22.670/10.462/19.860 seconds** at 16K and
+  **370.549/43.499/79.483 seconds** at 64K. Their 4x-context growth is
+  **16.345x/4.158x/4.002x**, directly measuring the expected
+  quadratic/linear/linear split. At 64K, global attention owns **75.08%** of
+  complete wall and all attention owns **83.90%**. Logical global QK+PV is
+  only **1.746/1.709 TFLOP/s** at 16K/64K; SWA is
+  **1.047/1.020 TFLOP/s**.
+- The post-512 global scalar body is qrow6, local32/VGPR88/SGPR128/LDS0/
+  scratch0 with 48x22 workgroups per launch. Across 22 row groups and six
+  query heads per K/V head, executed BF16 K/V load requests are
+  **131.08x/131.76x** the once-per-KV-head/query-tile floor at 16K/64K
+  (**6.800/108.861 TB** requested). SWA qrow4 is
+  local32/VGPR80/SGPR128/LDS0/scratch0 with 72x32 workgroups; nine query heads
+  per K/V head times 32 row groups yields **288x**
+  (**2.696/11.046 TB** requested). These counts include cache hits and are
+  explicitly not physical DRAM counters.
+- Holding the measured 64K logical attention rates and linear remainder
+  projects a **1,728.3-second** 128K wall, within **-4.88%** of the measured
+  **1,816.9 seconds**. LC-0 is complete. LC-1 starts with an exact
+  Q16xK64/local128 block-streamed global body, reducing the current load
+  request factor from about 132x to 48x before LC-2 shares each tile across
+  six global query heads. The cooperative companion must also cover SWA's
+  nine-head group after the global 128K gate.
+- Raw child/trace/attached-summary SHA-256 values are
+  `ceb17e15797341a27a5cd0c997e4cbc5e6b75f0505342cacde01716f74ec068f`,
+  `0fb22dbfa0f4f4a3dc96d89e0d9377acb38b6ae4e0d27daf3bc4230eea7dfd8c`,
+  and `2400bc23ad520e9472215aa0c5d5fa174fe33377d06554475dd9cd5c70afedea`.
+  The uncommitted raw CSV has **116,825 lines / 47,101,276 bytes**.

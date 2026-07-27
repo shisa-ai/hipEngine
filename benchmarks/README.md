@@ -85,6 +85,18 @@ Vulkan parity is a floor.
 [`hipEngine LC-0`](results/2026-07-27-gfx1151-laguna-lc0-attack-control.json) ·
 [`Vulkan baseline`](results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json).
 
+Cached-only LC-0 tracing is stable at **309.180/132.790 tok/s** for 16K/64K
+and resolves the slowdown. Global attention grows
+**22.670 -> 370.549 seconds (16.345x)**, SWA grows
+**10.462 -> 43.499 seconds (4.158x)**, and complete wall minus attention grows
+**19.860 -> 79.483 seconds (4.002x)** as context grows 4x. At 64K, global
+alone is **75.08%** of complete wall and all attention is **83.90%**; kernel
+span is within **19.7 ms** of wall. The post-512 scalar global qrow6 topology
+issues about **131.76x** the ideal once-per-KV-head/tile K/V loads across 22
+row groups and six GQA heads; SWA qrow4 issues **288x** across 32 groups and
+nine heads. These include cache hits and are not physical DRAM counters.
+[`LC-0 attribution`](results/2026-07-27-gfx1151-laguna-lc0-long-context-attribution.json).
+
 Payload-only P8 has also passed admission for the Q4 selected-down
 64x32/local64 body at producer rows >=512. Three traced pp512 arms cut its 72
 M512 launches **217.416 -> 212.090 ms (-2.450%)** at
