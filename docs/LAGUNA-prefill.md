@@ -1915,6 +1915,19 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
+65. **Rejected and removed:** reduce only rows>1 routed width while preserving
+   exact model-declared top-10 c=1 decode. The mechanism has enough wall
+   ceiling: five counter-rotated pp512 samples measure
+   **648.578/684.313/720.130 tok/s** for top-10/top-9/top-8. Both approximate
+   widths fail the clean ten-prompt, four-category, 320-step absolute gate.
+   Top-8 reaches max KL **0.671401** and top-9 **0.452960**, each at
+   **314/320** top-1; Poolside-only KL remains deceptively small at
+   **0.00018003/0.00004888**. The runtime setter, routing-replay changes,
+   harness selector, category lanes, and focused tests are removed.
+   Production remains top-10 for prefill and decode.
+   Evidence:
+   [`top-8`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk8-absolute-rejected.json) ·
+   [`top-9`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk9-absolute-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1939,7 +1952,9 @@ to Q4 selected down:
    widening the workgroup, exchanging full results through LDS, or weakening
    P8's complete next-K32 payload coverage. Do not pair-share those payload
    gathers through wave shuffles; coalescing already removes the physical
-   traffic duplication.
+   traffic duplication. Do not reduce the model's routed width: prefill-only
+   top-8/top-9 are now category-rejected despite reaching
+   **720.130/684.313 tok/s** in pp512 screening.
 3. Do not widen the 128-row attention slice or retry a library-QK plus scalar
    fused-softmax/PV tail: M256 remains slower after exhaustive algorithm
    tuning, and row8/row16 fused tails lose production despite removing the

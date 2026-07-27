@@ -1718,11 +1718,8 @@ should be boring.
   **648.578/684.313/720.130 tok/s**. Each mode is internally deterministic
   and selects token 2930, while cross-mode hidden/logit/KV hashes differ as
   expected for approximate routing.
-- The top-8 absolute lane is rejected and removed: max KL is **0.671401**
-  with **314/320** top-1, and every category exceeds 0.05. Keep the setter,
-  multi-arm harness mode, and replacement `prefill_topk9_absolute` lane only
-  through its canonical ten-prompt/320-step gate. On rejection remove all
-  three. On admission replace the diagnostic setter
-  with a gfx1151 prefill-shape capability, keep top-10 c=1 decode, run clean
-  selector-unset publication and tracing, then remove the temporary category
-  lane after its artifact is immutable.
+- Top-8 is rejected at max KL **0.671401** and top-9 is also rejected at
+  **0.452960**, both with **314/320** top-1. The removal trigger is satisfied:
+  the runtime setter, multi-arm harness mode, both category
+  comparisons/configurations, and focused tests are removed. Production
+  remains model-declared top-10 for prefill and decode.
