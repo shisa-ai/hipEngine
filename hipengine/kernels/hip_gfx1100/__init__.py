@@ -45,9 +45,6 @@ LAGUNA_IQ3_WAVE10_FUSED = True
 # passes actual-layer, full-state, clean-context, and complete-category gates.
 # Rows>1 and other backends retain the compact-grid tile2 fallback.
 LAGUNA_IQ2_GRID64 = True
-# Shared c=1 token/position publication is admitted only as a default-off W7900
-# runtime screen. Separate publication remains the default and rollback.
-LAGUNA_SHARED_CONTROL_PUBLICATION = False
 # Clean P2.1 exact split profiles and the complete category/heldout gate admit
 # independent global/SWA crossovers. Registered single-block readers remain the
 # below-threshold and explicit-disable fallback on gfx1100; other backends do
@@ -142,7 +139,6 @@ __all__ = [
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
-    "LAGUNA_SHARED_CONTROL_PUBLICATION",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
