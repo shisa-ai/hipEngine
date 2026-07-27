@@ -194,7 +194,7 @@ def test_global_head_wave0_tree_wrapper_validates_before_build(
         )
 
 
-def test_global_head_wave0_tree_package_registry_scope_fallback_and_default_off_owner() -> None:
+def test_global_head_wave0_tree_package_registry_scope_fallback_and_no_owner() -> None:
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.hip_gfx1100 import attention
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
@@ -226,12 +226,12 @@ def test_global_head_wave0_tree_package_registry_scope_fallback_and_default_off_
         assert not is_registered(KernelKey(backend, _LAYER, _QUANT, _VARIANT))
 
     runtime_source = _RUNTIME.read_text(encoding="utf-8")
-    assert _VARIANT in runtime_source
+    assert _VARIANT not in runtime_source
     assert _SYMBOL not in runtime_source
     import hipengine.kernels.hip_gfx1100 as backend
 
-    assert backend.LAGUNA_GLOBAL_HEAD_WAVE0_TREE is False
-    assert "LAGUNA_GLOBAL_HEAD_WAVE0_TREE = False" in inspect.getsource(backend)
+    assert not hasattr(backend, "LAGUNA_GLOBAL_HEAD_WAVE0_TREE")
+    assert _VARIANT not in inspect.getsource(backend)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

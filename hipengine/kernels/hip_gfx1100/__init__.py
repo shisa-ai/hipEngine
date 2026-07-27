@@ -66,9 +66,6 @@ LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
 # category evidence admits exact c=1 head RMSNorm+RoPE+BF16 KV append fusion.
 # Rows/prefill and other backends retain the registered two-launch fallback.
 LAGUNA_HEAD_KV_FUSION = True
-# The exact global-only wave-0 RMS tree remains a default-off W7900 screen until
-# full-state, topology, clean-context, and complete-category gates adjudicate it.
-LAGUNA_GLOBAL_HEAD_WAVE0_TREE = False
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -129,7 +126,6 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
-    "LAGUNA_GLOBAL_HEAD_WAVE0_TREE",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_IQ2_GRID64",
