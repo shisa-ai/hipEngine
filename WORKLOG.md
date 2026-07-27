@@ -184786,3 +184786,20 @@ Vulkan local sizes verbatim will close the measured gap.
   `09419c1e01b0e6aa9d33a939332ce6362acdaa4aabc661563e97940f01ec3712`.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-topk9-absolute-rejected.json`.
+
+## 2026-07-27 — Add normalized-weight routing replay
+
+- Extended the diagnostic-only Laguna prefill routing replay to copy each
+  sparse layer's normalized F32 route weights beside its selected expert IDs.
+  Ordinary prefill/generation keeps both capture buffers absent and retains
+  its prior dispatch path.
+- Added final-one/final-two tail-mass quantiles plus a frozen threshold table
+  reporting eligible rows and actual removed-lane fraction. This is the
+  measurement prerequisite for any model-wide low-mass route screen; no
+  pruning policy or production default is introduced.
+- RED proved the prior ID-only capture rejected the new pointer/plane
+  contract. GREEN passes
+  `tests/test_laguna_routing_replay.py tests/test_laguna_gguf_runner.py`
+  (**21 passed**), plus `py_compile` and `git diff --check`. The required
+  lineage audit remains blocked by the absent external
+  `/home/lhl/amd-gpu-tuning/reference/atlas`.
