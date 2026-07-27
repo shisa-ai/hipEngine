@@ -324,11 +324,11 @@ Post-wave0 re-ranking selected and repository-admitted only the 12 global
 current-P4 head+KV calls. The exact local256 wave-0 primitive preserves every
 F32 Q/K, BF16 K/V, metadata, and `KVLiveSpans` field across all **12/12** actual
 global layers; direct cached-C layers 0/44 improve **20.57-22.55%** event/wall.
-The same body regresses SWA **7.21-7.38%**, so SWA remains untouched. A false/
-default-off global-only owner now passes exact shared-weight 16-transition state
-and cache-only **12 candidate + 36 retained SWA / 678-model-kernel** tracing.
-Retained current-P4 global remains the default; clean/category adjudication and
-the topline are unchanged.
+The same body regresses SWA **7.21-7.38%**, so SWA remains untouched. A
+temporary false/default-off global-only owner passed exact shared-weight state
+and **12 candidate + 36 retained SWA / 678-kernel** tracing, but the frozen short
+gate failed child/span guards across the two orders. Runtime ownership is
+removed; retained current-P4 global and the canonical topline remain unchanged.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -2550,10 +2550,10 @@ plus dynamic 1,024 B, scratch0, with no compiler and clean teardown.
 Applying only the smallest selected event/wall gain to the immutable global
 family still models **0.013982 ms/token** and h32 **63.270 -> 63.326 tok/s
 (+0.089%)**, **1.724%** below Vulkan. This remains a planning ceiling, not
-full-model throughput. A separate gfx1100 capability is now false/default-off;
-explicit selection substitutes only the exact global key and fails closed to
-retained current-P4 global on default, disable, backend, or key miss. SWA stays
-on current-P4 and rows/prefill stay unchanged.
+full-model throughput. A separately committed temporary gfx1100 capability was
+false/default-off; explicit selection substituted only the exact global key and
+failed closed to retained current-P4 global on default, disable, backend, or key
+miss. SWA stayed on current-P4 and rows/prefill stayed unchanged.
 
 Shared-weight `mixed_ja_en_review` proves bulk prefill, all **48 hidden + 47
 routed** boundaries, 16 decode transitions, full logits/IDs, active K/V and
@@ -2564,15 +2564,19 @@ retained SWA calls/token**, zero retained-global decode calls, unchanged **45
 IQ3 wave10 / 678 model kernels/token**, local256/VGPR16/SGPR128/dynamic-LDS1024/
 scratch0, and no compiler.
 
-Commit this default-off runtime unit before measurement. Then both process
-orders at short/512/1K/3968 must improve the inclusive global-head family and
-complete kernel sum, keep span within +0.5% and child throughput within -0.5%,
-and retain exact topology/resources/IDs/lifecycle/no-compiler. Any failed row
-stops before categories with no rerun, third order, or pooled waiver. Evidence:
+The frozen short gate improves global-head work **28.728%/26.407%** and complete
+kernel sum **0.273%/0.013%** in orders A/B. Order A nevertheless regresses
+profiled-child throughput **0.859%**, and order B regresses median dispatch span
+**0.810%**, both beyond the 0.5% guards. Pooled child **-0.466%** and span
+**+0.299%** are inside guard but cannot waive either per-order failure. Stop
+before 512/1K/3968 and categories without rerun. Remove capability/plan/session/
+CLI seams; retain the exact primitive, current-P4 global/SWA, and registered
+unfused fallback. Evidence:
 [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-design.json),
 [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-correctness.json),
+[`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-runtime-correctness.json),
 and
-[`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-runtime-correctness.json).
+[`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-rejected.json).
 
 ## 9. Do not chase without new evidence
 
@@ -2636,7 +2640,7 @@ and
 | What happened after sign-bit ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-design.json), [`certification`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-rejected.json): primitive only after clean rejection. Package/key/backend, edge, CPU, actual-layer, codegen, full-state, and exact **2-IQ4/45-wave10/676-kernel** trace gates pass. Both short orders nevertheless regress inclusive IQ4 **25.515%/25.191%**, kernel sum **0.202%/0.303%**, and span **0.681%/2.198%**. Runtime integration is removed before long contexts/categories; canonical **63.270 tok/s / 678 kernels** remains. |
 | What happened after IQ4 ownership rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json): primitive only after clean rejection. Primitive/all-layer/full-state and **12-candidate/zero-scalar/678-kernel** trace gates pass, and both short orders improve global attention **10.97%/12.12%**. Order A still regresses kernel sum **0.0949%** and span **1.3203%**, so runtime integration is removed before longer contexts/categories; canonical **63.270 tok/s / 678 kernels** remains. |
 | What happened to the gated one-page composite? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-rejected.json): primitive only after category rejection. Full state and exact **12-composite/zero-gate/666-kernel** topology pass; both short orders improve family/kernel/span/child and aggregate h32 reaches **63.853 tok/s (+0.809%)** with every category decode row positive. Train aggregate TTFT still regresses **0.780%** beyond +0.5%, so runtime integration is removed without rerun and canonical **63.270 tok/s / 678 kernels** remains. |
-| What is selected after wave-0 MoE-tail rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-correctness.json), and [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-runtime-correctness.json): a separately registered global-only current-P4 head+KV wave-0 tree with a false/default-off runtime owner. Synthetic/CPU and all **12/12** actual global layers pass; direct cached-C layers 0/44 improve **20.57-22.55%** event/wall. Full state is exact and tracing proves **12 candidate + 36 retained SWA / 678 kernels**. The same source regresses SWA **7.21-7.38%** and is forbidden there. Clean/category gates remain pending, so no default or topline change exists. |
+| What is selected after wave-0 MoE-tail rejection? | [`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-design.json), [`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-correctness.json), [`runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-rejected.json): primitive only after clean rejection. Synthetic/CPU/**12/12** actual and full-state/**12 candidate + 36 retained SWA / 678-kernel** gates pass. Both short orders improve global-head work **28.728%/26.407%** and kernel sum **0.273%/0.013%**, but order A child regresses **0.859%** and order B span regresses **0.810%**. Runtime integration is removed before long contexts/categories; current-P4 and canonical **63.270 tok/s** remain. |
 | Does exact local64 dim2 ownership improve the complete clean SWA path? | [`...swa-local64-dim2-reducer-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-rejected.json): no. Primitive/full-state/trace gates pass and short reducer/SWA improve **0.244%/0.060%**, but context-512 reducer/SWA regress **0.073%/0.247%** across both process orders. The frozen any-context rule stops 1K/near-4K and categories; runtime selector/capability integration is removed while the exact primitive remains diagnostic. |
 | Does load-free IQ3 sign-bit insertion improve complete clean decode? | [`...iq3-signbit-rejected.json`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-rejected.json): not under the frozen rule. Primitive/full-state/trace gates pass, and both short orders improve producer/inclusive/kernel-sum time, but dispatch span regresses **0.571%/1.931%** and order-A profiled-child throughput regresses **1.124%**, outside the 0.5% guards. Remaining profiles/categories stop; runtime schedule/CLI integration is removed while the exact primitive remains diagnostic. |
 | Does the post-sign-bit wave-top10 router improve clean full-model decode? | [`design`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-design.json), [`primitive`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json), [`runtime`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-runtime-correctness.json), and [`rejection`](../benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-rejected.json): no. Primitive event/wall improve split **23.26%/23.23%** and old D11 **4.83%/4.84%**, but both clean short orders regress router-family time **14.42%/13.69%** and kernel sum **0.736%/1.422%**. Runtime integration is removed; categories are skipped and the exact primitive remains diagnostic. |
@@ -2852,7 +2856,9 @@ unchanged. Post-wave0 re-ranking then selects only the 12 global current-P4
 head+KV calls. The exact wave-0 primitive passes synthetic/CPU/all-12 actual,
 codegen, and cache-only symbol gates; direct cached-C layers 0/44 improve
 **20.57-22.55%**, while SWA regresses and is excluded. Its false/default-off
-owner now passes exact 16-transition full state and cache-only **12 candidate +
-36 retained SWA / 678-kernel** topology/resource gates. Clean and category
-adjudication are pending; current-P4 global and canonical **63.270 tok/s** remain
-the defaults.
+owner passed exact 16-transition full state and cache-only **12 candidate + 36
+retained SWA / 678-kernel** topology/resource gates. Both short orders improve
+global-head work and kernel sum, but order A fails the child-throughput guard
+(**-0.859%**) and order B fails span (**+0.810%**). Runtime integration is
+removed before long contexts/categories; current-P4 global and canonical
+**63.270 tok/s** remain the defaults.
