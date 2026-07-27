@@ -3130,7 +3130,129 @@ changelog changes. Do not retry the unchanged synchronization premise. Evidence:
 and
 [`rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-rejected.json).
 
-## 9. Do not chase without new evidence
+## 9. Stopping point and gfx1151 Q4_K_M handoff (2026-07-27)
+
+### 9.1 Frozen gfx1100 result
+
+This is a good stopping point for small host/runtime work. The retained W7900
+h32 result remains **63.270 tok/s / 15.805224 ms/token / 678 model
+kernels/token**. Matched device-pinned Vulkan remains **64.418 tok/s /
+15.523554 ms/token**, leaving **0.281670 ms/token** or **1.814%** more throughput
+to match. The most recent retained win is IQ3 wave10 fusion at commit
+`7f1d77ab6` (**2026-07-27 02:17:18 +0900**); it moved h32 **62.318 -> 63.270
+tok/s (+1.528%)** at **723 -> 678 model kernels/token**. Every subsequent
+candidate was either retained only as a diagnostic primitive or removed after a
+full-model guard failed.
+
+The final host candidate is closed, not pending. Single-fence pinned async
+readback improved its isolated boundary **82.129 -> 51.353 us/token
+(-37.472%)**, but both frozen short process orders failed: order A span/child
+regressed **0.618%/0.503%**, and order B model-kernel sum regressed **0.126%**.
+The runtime integration is removed at `482696290`; canonical throughput and
+rollups do not change. See the [design](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-design.json),
+[runtime gate](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-runtime-correctness.json),
+and [rejection](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-rejected.json).
+
+### 9.2 Next gfx1100 work must have a larger premise
+
+The current short residual profile is the planning basis, not a promise that
+saving a leaf transfers one-for-one to wall time. Closing the matched Vulkan gap
+requires at least **0.282 ms/token** of clean end-to-end saving. The next lane
+should start only when it can plausibly clear that bar or compose with another
+independent large surface.
+
+| Rank | Surface in the post-wave10 short trace | Required new premise | First gate |
+| ---: | --- | --- | --- |
+| 1 | Mixed Q5/Q6 projection **1.930 ms/token**, IQ2 selected **1.896 ms/token**, Q5 attention output **1.558 ms/token**, IQ3 wave10 **1.441 ms/token** | A materially different packed-dot/dequant/reduction schedule. Local-size changes, metadata-only rewrites, SWAR pair variants, and exact owner substitutions are already closed. A changed rounding schedule is admissible only as a quality-gated kernel, never as prompt-specific score tuning. | Actual first/last weights and source/ISA screen, then full state and complete 18-prompt train/heldout categories at KL <=0.05/top-1 >=90%. |
+| 2 | SWA reducer **1.492 ms/token** plus score producer **0.238 ms/token** at short, growing sharply with context | A new cooperative/tiled online-softmax or value schedule that keeps the 72-query-head parallelism. Do not retry dim2/local-size/barrier-only variants or the rejected GQA3 collapse. | Live 70/128/257/512 endpoints, exact/quality oracle, full 512/1K/3968 state and both process orders before categories. |
+| 3 | Q4 LM head **0.267 ms/token** plus the scalar argmax/readback boundary | Produce reduction candidates while the LM-head producer already owns output tiles, or fuse a mathematically valid final reduction without removing required logits. This must eliminate a logits reread or launch; changing only host ownership/synchronization is closed. | Full 100,352-logit equality or quality gate, minimum-index ties, unchanged device ownership, trace-proven launch/read reduction, then complete model/category gates. |
+| 4 | Submission spacing after the arithmetic lanes above | Only a genuinely device-resident multi-launch/persistent schedule with a new correctness premise. Unchanged HIP graph replay, direct AQL, C-side packet batching, shared scalar publication, paired/mapped/pinned readback, and one-doorbell experiments are closed. | One immutable full-cycle trace showing the new owner and a saving larger than profiling variance before any broad implementation. |
+
+Source for the residual family sizes:
+[`...q5-swar-output-only-design.json`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-output-only-design.json).
+The acceptance rule remains metric improvement **and** every mechanical/quality
+check; an isolated positive leaf is not retainable by itself.
+
+### 9.3 gfx1151 Q4_K_M is a different optimization target
+
+Do not infer portability from both devices accepting wave32 code. The Radeon
+8060S/gfx1151 is a UMA system with different CU/cache/occupancy and driver
+behavior from the discrete W7900/gfx1100. The local Qwen3.6 Q4_K_M file declares
+41 blocks, of which the runtime correctly excludes trailing NextN block 40 and
+executes **40 AR layers: 10 full-attention + 30 GDN/linear-attention**. It uses
+hidden 2,048, 256 experts, top-8 routing, and vocabulary 248,320. Relevant weight
+roles are:
+
+| Qwen3.6 Q4_K_M role | Stored type | Consequence for Laguna transfer |
+| --- | --- | --- |
+| Expert gate/up | Q4_K, production decode repacked to Q4T16 | Laguna raw-Q5/Q6 mixed-attention bodies do not apply. Pairing/metadata ideas may be retuned against the existing T16 route. |
+| Expert down | Q5_K for 37 AR layers and Q6_K for 3 | Laguna Q5/Q6 scheduling ideas are relevant only conceptually; gfx1151 already has independently gated Q5T16/Q6T16 selected-down pair reuse. |
+| Output head | Q6_K, production decode repacked to Q6T16 | Laguna's retained raw-Q4 local32 LM-head kernel is the wrong quant/layout. Only the ownership/partitioning idea transfers; gfx1151 already retains a measured 5+3 C8 partition. |
+| Embedding, dense attention/GDN/shared projections | Mostly Q8_0 | The largest historical gfx1151 decode family is dense Q8, which none of Laguna's IQ2/IQ3/Q5 bodies accelerate. |
+| Attention | 10 full-attention layers; no Laguna-style SWA | Global paged-attention concepts can be reconsidered, but all SWA score/reducer kernels and thresholds are inapplicable. The other 30 layers need GDN-specific work. |
+
+The pre-later-tuning gfx1151 decode closure profile recorded **708 kernel
+dispatches/token** and, at 4K, about **8.541 ms/token dense Q8**, **4.189 ms/token
+selected MoE**, **1.858 ms/token Q6 LM head**, **1.005 ms/token full attention**,
+**0.768 ms/token router**, and **0.742 ms/token GDN**. Treat those values only as
+an attribution prior: later physical-C8 promotions changed the route, and the
+other agent's final clean commit/artifact must become the measurement baseline
+at handoff. Evidence:
+[`...gfx1151-gguf-decode-closure-profile.json`](../benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json).
+
+### 9.4 Transfer matrix
+
+| Laguna/gfx1100 result | gfx1151 Q4_K_M disposition | Handoff action |
+| --- | --- | --- |
+| Four-axis registry, backend fail-closed capabilities, CPU-reference/full-state gates, immutable trace hashes, counterbalanced process orders, category/heldout anti-gaming gate | **Directly reusable** | Reuse the method unchanged. Never alias a gfx1100 key/default into gfx1151 without its own model/hardware gate. |
+| Resident weights, repacked-cache source binding, session pool, native scheduler, state reset/continuation, `KVLiveSpans`, lifecycle accounting | **Directly reusable and largely already shared** | Preserve these runtime wins when swapping hardware. Revalidate memory on gfx1151 UMA and keep the 128K lifecycle blocker separate from kernel speed. |
+| Fixed quant metadata hoists, one-wave/two-output ownership, shared activation reads, duplicate-expert reuse, mixed launch collapse | **Portable design pattern; retune required** | Apply to the actual Q4T16/Q5T16/Q6T16/Q8T16 roles and physical C1/C2/C4/C8 shapes. Existing gfx1151 pair-reuse wins show the concept is useful, but their thresholds are distribution- and width-specific. |
+| Laguna mixed Q5/Q6 attention projection and Q5 attention-output defaults | **Wrong Qwen role/layout** | Do not port the body. Qwen dense attention is Q8_0; investigate selected-MoE T16 or dense-Q8 equivalents instead. |
+| Laguna Q4 local32 LM head | **Wrong output quant; geometry lesson only** | Qwen output is Q6T16. Start from the retained gfx1151 5+3 partition, not the Laguna local32 source. A producer-integrated argmax is a new experiment and must preserve full logits/sampling semantics. |
+| IQ2 grid64 and IQ3 wave10 fusion | **Not applicable** | Q4_K_M has no IQ2/IQ3 AR weights. Do not spend the gfx1151 window porting these kernels. |
+| SWA tile16/split/wave-local reducers and global/SWA threshold table | **SWA portion not applicable; full-attention idea only** | Keep Qwen's existing full-attention split-K/fixed256 routes. Reuse only the threshold-measurement method; do not copy 65/127/257 thresholds or 72-head geometry. |
+| Exact head+KV, reducer+gate, MoE-tail+next-RMS and grouped-combine fusions | **Model-level fusion pattern; independent math/shape gate required** | Audit Qwen's 10 full-attention and 30 GDN boundaries for an equivalent consumer/producer pair. Preserve an unfused registered fallback and all state bytes. |
+| Laguna prefill tiled F16, SWA wave32, grouped down/combine | **Mostly model-specific** | Keep the current gfx1151 GDN LCP/direct-conv and compact T16 prefill routes. Port only a quant-neutral scheduler/lifecycle improvement, never the Laguna kernel body by name. |
+| Laguna graph/AQL findings | **Do not transfer the conclusion** | Qwen gfx1151 graph replay is independently retained; Laguna's unchanged-graph/AQL failures do not invalidate it. Continue from the final gfx1151 graph owner and compare against same-run eager. |
+| Shared control publication; paired-device, mapped-host, and pinned-async argmax readback | **Rejected; do not port** | These passed correctness/topology but failed complete clean Laguna guards. gfx1151's prior no-read 128K diagnostic also did not solve lifecycle. Reopen only with a materially different device-side producer/consumer boundary. |
+| gfx1100 local32/local64/local320 choices, VGPR/LDS ceilings, context crossovers | **Architecture-specific evidence only** | Recompile and reprofile on gfx1151. The retained C8 Q6 5+3 partition versus gfx1100 6+2 is direct evidence that identical math needs backend-specific geometry. |
+
+Representative already-retained gfx1151 analogues are
+[Q4T16 selected-expert pair reuse](../benchmarks/results/2026-07-20-gfx1151-gguf-selected-expert-pairreuse-c8-retained.json),
+[Q5T16 selected-down pair reuse](../benchmarks/results/2026-07-20-gfx1151-gguf-q5t16-selected-down-pairreuse-c8-retained.json),
+[Q6T16 selected-down pair reuse](../benchmarks/results/2026-07-20-gfx1151-gguf-q6t16-selected-down-pairreuse-c8-retained.json),
+[Q6T16 LM-head 5+3 partitioning](../benchmarks/results/2026-07-20-gfx1151-gguf-q6t16-lm-head-chunk5-c8-retained.json),
+[paged-attention token offsets](../benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-token-offsets-c8-retained.json),
+[value-vector2](../benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-value-vector2-c8-retained.json),
+and [GDN state cache24](../benchmarks/results/2026-07-20-gfx1151-gguf-gdn-shared-statecache24-c8-retained.json).
+They demonstrate the correct transfer rule: carry the ownership/reuse hypothesis,
+then choose a separate gfx1151 registry key and promote only on its own clean
+shape and serving evidence.
+
+### 9.5 Hardware-swap checklist
+
+1. Let the gfx1151 agent finish and commit its logical unit. Record its final
+   commit, model fingerprint, backend defaults, artifact hashes, and unresolved
+   blockers; do not use the July attribution profile as a new baseline if the
+   final route changed.
+2. Before swapping GPUs, require a clean tracked tree and idle device. Warm each
+   architecture's JIT cache outside `rocprofv3`; never reuse a gfx1100 code object
+   as gfx1151 evidence.
+3. Freeze separate matrices for **prefill versus decode** and **C1 versus packed
+   C2/C4/C8**. A Laguna c=1 win does not imply a Qwen physical-C8 win, and a C8
+   reuse win may regress unique/random or C1 routing.
+4. Reprofile the complete final gfx1151 cycle first. Rank Q8 dense, selected MoE,
+   Q6 LM head, full attention, router, and GDN from that trace; select the next
+   surface from current numbers rather than stale family totals.
+5. Keep backend capabilities and fallbacks separate. Every new gfx1151 kernel
+   needs CPU/model correctness, expected-symbol/resource tracing, both clean
+   process orders, relevant contexts/widths, and complete prompt categories
+   before default promotion.
+6. On return to gfx1100, resume only one of section 9.2's materially new
+   algorithms. Do not reopen the closed scalar owner/readback, local-size-only,
+   or unchanged submission experiments.
+
+## 10. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
 - **Unchanged D10/D13/D15/D17 boundaries:** all have complete rejection
@@ -3157,7 +3279,7 @@ and
 - **Single-prompt promotion:** all future acceptance remains the complete
   category/heldout suite under the repository anti-gaming rule.
 
-## 10. Evidence map
+## 11. Evidence map
 
 | Question | Evidence |
 | --- | --- |
