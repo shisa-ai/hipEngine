@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "kind": "hipengine_laguna_q4_p8_row64_current_body_screen",
+  "created_at": "2026-07-27T03:29:39.603365+00:00",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "layer": 1
+  },
+  "scope": "Actual gate/up weights with natural per-expert count replay at M256 and M512. Timings include one BF16-to-D8 activation pack plus one or two selected gate/up launches.",
+  "candidate": {
+    "geometry": "MMQ128x64, local128, four wave32 column owners, direct T16 decode, split16 D8 arithmetic, activation double buffer, raw-prefetch P8",
+    "difference_from_prior_row64_screen": "The prior row64 screen predates direct wave-column decode, activation double buffering, and the retained raw-prefetch P8 schedule.",
+    "resident_layout_changed": false,
+    "arithmetic_changed": false
+  },
+  "commands": [
+    "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-grouped-exact,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq128x64-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8 --warmups 4 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-row64-current-leaf.json",
+    "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --rows 256,512 --modes t16-grouped-exact,t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8,t16-mmq-d8-f32-row64-ge64,t16-mmq-d8-f32-row64-ge96 --warmups 4 --samples 9 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-row64-hybrid-leaf.json"
+  ],
+  "results": {
+    "all_experts": {
+      "M256": {
+        "production_median_ms": 4.387148857116699,
+        "candidate_median_ms": 5.0044552485148115,
+        "candidate_delta_percent": 14.071947613541525,
+        "production_padded_factor": 2.9875,
+        "candidate_padded_factor": 5.65
+      },
+      "M512": {
+        "production_median_ms": 6.528241475423177,
+        "candidate_median_ms": 7.25739860534668,
+        "candidate_delta_percent": 11.169262715027971,
+        "production_padded_factor": 1.85625,
+        "candidate_padded_factor": 3.0875
+      }
+    },
+    "best_density_partition": {
+      "threshold_rows": 96,
+      "M256": {
+        "production_median_ms": 4.374804178873698,
+        "candidate_median_ms": 4.613547007242839,
+        "candidate_delta_percent": 5.457235752749375,
+        "row64_experts": 1
+      },
+      "M512": {
+        "production_median_ms": 6.545860290527344,
+        "candidate_median_ms": 6.943031946818034,
+        "candidate_delta_percent": 6.067523999432066,
+        "row64_experts": 5
+      }
+    }
+  },
+  "correctness": {
+    "focused_cpu_reference_test": "passed",
+    "candidate_and_production_bf16_checksums_equal": true,
+    "candidate_and_production_mismatch_counts_vs_grouped_exact_equal": true,
+    "finite": true
+  },
+  "decision": "Reject and remove both the all-expert and density-partitioned row64 routes. The increased accumulator lifetime and second-launch cost exceed the reduced expert-weight rereads even when only 1-14 dense experts use row64.",
+  "raw_artifacts": [
+    {
+      "path": "/tmp/laguna-q4-row64-current-leaf.json",
+      "sha256": "0f6c5f491450497254bcfb737c41d34e601dfc9d8aee37ed6bf1c0ed82df7a99"
+    },
+    {
+      "path": "/tmp/laguna-q4-row64-hybrid-leaf.json",
+      "sha256": "41f4d1ff38df53453a45d526cd753805701a49d15baf42fdd9b7460b7b557ef0"
+    }
+  ],
+  "production": {
+    "changed": false,
+    "pp512_tokens_per_second": 645.803162,
+    "pp512_wall_ms": 792.811231
+  }
+}
