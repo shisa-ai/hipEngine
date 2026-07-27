@@ -106,6 +106,15 @@ def _parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument(
+        "--compare-swa-attention-hipblaslt",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--swa-attention-hipblaslt",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
         "--moe-branch-concurrency",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -186,7 +195,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if (
         args.compare_long_attention_hipblaslt
-        and args.compare_block_attention_hipblaslt
+        and (
+            args.compare_block_attention_hipblaslt
+            or args.compare_swa_attention_hipblaslt
+        )
+    ):
+        raise ValueError("only one long-attention comparison may be active")
+    if (
+        args.compare_block_attention_hipblaslt
+        and args.compare_swa_attention_hipblaslt
     ):
         raise ValueError("only one long-attention comparison may be active")
     if (
@@ -197,9 +214,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "--compare-block-attention-hipblaslt and "
             "--block-attention-hipblaslt are mutually exclusive"
         )
+    if (
+        args.compare_swa_attention_hipblaslt
+        and args.swa_attention_hipblaslt
+    ):
+        raise ValueError(
+            "--compare-swa-attention-hipblaslt and "
+            "--swa-attention-hipblaslt are mutually exclusive"
+        )
     comparison = bool(
         args.compare_long_attention_hipblaslt
         or args.compare_block_attention_hipblaslt
+        or args.compare_swa_attention_hipblaslt
     )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
@@ -247,6 +273,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_moe_shared_priority_range: tuple[int, int] | None = None
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
+    active_swa_attention_hipblaslt = False
     rows: list[dict[str, Any]] = []
     load_started = time.perf_counter()
     try:
@@ -276,6 +303,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_block_attention_hipblaslt
                 else args.block_attention_hipblaslt
             ),
+            prefill_swa_attention_hipblaslt=(
+                False
+                if args.compare_swa_attention_hipblaslt
+                else args.swa_attention_hipblaslt
+            ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -288,6 +320,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_block_attention_hipblaslt = (
             owner.prefill_block_attention_hipblaslt
+        )
+        active_swa_attention_hipblaslt = (
+            owner.prefill_swa_attention_hipblaslt
         )
         load_seconds = time.perf_counter() - load_started
         owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
@@ -310,6 +345,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_block_attention_hipblaslt:
                         owner.set_prefill_block_attention_hipblaslt(
+                            mode == "candidate"
+                        )
+                    if args.compare_swa_attention_hipblaslt:
+                        owner.set_prefill_swa_attention_hipblaslt(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -459,6 +498,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "block_attention_hipblaslt_requested": (
                 args.block_attention_hipblaslt
+            ),
+            "compare_swa_attention_hipblaslt": (
+                args.compare_swa_attention_hipblaslt
+            ),
+            "swa_attention_hipblaslt": active_swa_attention_hipblaslt,
+            "swa_attention_hipblaslt_requested": (
+                args.swa_attention_hipblaslt
             ),
             "timed_order": "ascending then alternating direction by repetition",
             "timing_scope": "reset complete through synchronized first-token projection; load excluded",

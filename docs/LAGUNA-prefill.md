@@ -4097,16 +4097,37 @@ Evidence:
   plus 4K-block online state consumes each widened global K/V block once per
   KV-head batch and has passed the mandatory 128K gate. It closes LC-1 and
   the global half of LC-2 without an extra replicated-head sidecar.
-- One SWA K/V head serves **nine** query heads. After the global cooperative
-  body passes its mandatory 128K gate, reuse the same tile-sharing design for
-  SWA rather than leaving its measured **288x** request amplification in
-  place. The SWA companion protects 4K/16K and has linear, not quadratic,
-  payoff at longer context.
+- **SWA side closed and retained:** one SWA K/V head serves nine query heads.
+  For every consecutive non-evicted M128 tile beginning at position 512, gather
+  exactly 511 historical BF16 ring rows plus 128 current BF16-rounded rows into
+  a fixed 639-key union. One packed eight-way F32 QK/PV batch applies a
+  row-shifted 512-key diagonal mask. Decode, verifier, partial rows, explicit
+  eviction, nonconsecutive positions, and unmeasured backends retain the
+  generic span-aware route.
+- All 32 zero-workspace QK/PV algorithms were screened; QK25/PV18 improves the
+  complete wrap leaf **3.313 -> 0.684 ms (4.846x)** with maximum absolute
+  output error **3.818e-8**. Scratch is fixed at **33,554,432 bytes**.
+- Complete-model one-run gates improve
+  **579.394 -> 670.326 tok/s (+15.694%)** at 1K,
+  **469.356 -> 579.269 (+23.418%)** at 4K,
+  **334.430 -> 392.424 (+17.341%)** at 16K, and
+  **163.985 -> 177.222 (+8.072%)** at 64K. The 512 path is structurally
+  unchanged. All paired tokens, positions, determinism, and lifecycle checks
+  pass.
+- Mandatory 128K improves the retained LC-1 route
+  **99.100 -> 103.520 tok/s (+4.460%)**, or
+  **1,322.622 -> 1,266.148 seconds**, saving **56.474 seconds**. This is
+  **+43.501%** versus the original LC-0 control and **+57.844%** versus
+  same-GGUF llama.cpp Vulkan. Token 22746 and final position 131071 match.
+  LC-2 is therefore closed; LC-3 query-chunk widening is next.
 - Co-design LDS layout, query fragments, and output accumulators with LC-1;
   report physical K/V bytes and reuse rather than assuming a theoretical 6x.
 - Preserve score/token order in the exact FP32 lane. Any reassociated or
   reduced-precision lane must pass the complete quality gate before default
   promotion.
+
+Evidence:
+[`rolling-SWA tensorized production`](../benchmarks/results/2026-07-28-gfx1151-laguna-lc2-swa-hipblaslt-production.json).
 
 #### LC-3 — widen the attention query chunk
 

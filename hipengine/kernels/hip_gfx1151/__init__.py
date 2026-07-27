@@ -113,6 +113,10 @@ LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT = True
 # QK/PV calls. This cuts 128K scratch 4.298 GB -> 143.753 MB and improves the
 # complete-model long route another 12.52% while preserving its >4K gate.
 LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT = True
+# Rolling M128 SWA gathers the exact 511 historical BF16 ring rows plus 128
+# current BF16-rounded rows into one 639-key tensorized QK/PV union. The
+# complete 4K/16K/64K/128K gate improves every shape and remains bounded.
+LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT = True
 # Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
 # 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
 # The post-350 wave-column screen keeps row-vector D8 activation staging, maps
@@ -450,6 +454,7 @@ __all__ = [
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
     "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
+    "LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_CACHED_META",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",

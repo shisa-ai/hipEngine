@@ -26,6 +26,8 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans,
     laguna_dense_initial_causal_softmax_wave_rows_f32_spans,
     laguna_dense_initial_query_head_transpose_f32,
+    laguna_swa_union_bf16_to_f32_spans,
+    laguna_swa_union_softmax_wave_rows_f32,
 )
 from hipengine.kvcache import KVLiveSpans
 
@@ -76,6 +78,8 @@ _PACKED_ALGORITHM_INDEX = {
     (72, 384, "pv"): 18,
     (72, 512, "qk"): 1,
     (72, 512, "pv"): 3,
+    (72, 639, "qk"): 25,
+    (72, 639, "pv"): 18,
     (48, 4096, "qk"): 20,
     (48, 4096, "pv"): 25,
 }
@@ -880,4 +884,154 @@ class LagunaAttentionHipblasLt:
         self._buffers.clear()
 
 
-__all__ = ["LagunaAttentionHipblasLt"]
+class LagunaSwaAttentionHipblasLt(LagunaAttentionHipblasLt):
+    """Tensorized rolling M128 attention over one 512-token SWA window."""
+
+    _WINDOW = 512
+    _UNION_CONTEXT = _WINDOW + _ROWS - 1
+
+    def __init__(
+        self,
+        *,
+        library_path: str = "libhipblaslt.so",
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        super().__init__(
+            library_path=library_path,
+            runtime=runtime,
+            packed_queries=True,
+            wave_rows_softmax=True,
+            max_context=640,
+            max_q_heads=72,
+        )
+
+    @staticmethod
+    def supports(
+        *,
+        rows: int,
+        start_position: int,
+        num_q_heads: int,
+        num_kv_heads: int,
+        head_dim: int,
+        sliding_window: int,
+    ) -> bool:
+        return (
+            int(rows) == _ROWS
+            and int(start_position) >= 512
+            and int(num_q_heads) == 72
+            and int(num_kv_heads) == _KV_HEADS
+            and int(head_dim) == _HEAD_DIM
+            and int(sliding_window) == 512
+        )
+
+    def launch(
+        self,
+        query_ptr: int,
+        current_key_ptr: int,
+        current_value_ptr: int,
+        key_cache_ptr: int,
+        value_cache_ptr: int,
+        out_ptr: int,
+        spans: KVLiveSpans,
+        *,
+        rows: int,
+        start_position: int,
+        num_q_heads: int,
+        num_kv_heads: int,
+        head_dim: int,
+        sliding_window: int,
+        scale: float,
+        stream: int = 0,
+        kv_library=None,
+        query_is_packed: bool = False,
+        unpack_output: bool = True,
+        qk_algorithm_index: int | None = None,
+        pv_algorithm_index: int | None = None,
+    ) -> None:
+        if self._closed:
+            raise RuntimeError("Laguna SWA hipBLASLt route is closed")
+        if not self.supports(
+            rows=rows,
+            start_position=start_position,
+            num_q_heads=num_q_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            sliding_window=sliding_window,
+        ):
+            raise ValueError("unsupported Laguna rolling-SWA hipBLASLt shape")
+        assert self.head_major_f32 is not None
+        laguna_swa_union_bf16_to_f32_spans(
+            current_key_ptr,
+            current_value_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            self.key_f32.ptr,
+            self.value_f32.ptr,
+            spans,
+            rows,
+            num_kv_heads,
+            head_dim,
+            start_position,
+            sliding_window=sliding_window,
+            stream=stream,
+            library=kv_library,
+            runtime=self.runtime,
+        )
+        query_head_major_ptr = int(query_ptr)
+        if not query_is_packed:
+            query_head_major_ptr = self.head_major_f32.ptr
+            laguna_dense_initial_query_head_transpose_f32(
+                query_ptr,
+                query_head_major_ptr,
+                rows,
+                num_q_heads,
+                head_dim,
+                to_head_major=True,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+        problems = self._problem(num_q_heads, self._UNION_CONTEXT)
+        problems.qk.launch(
+            self.key_f32.ptr,
+            query_head_major_ptr,
+            self.scores_f32.ptr,
+            stream=stream,
+            algorithm_index=qk_algorithm_index,
+        )
+        laguna_swa_union_softmax_wave_rows_f32(
+            self.scores_f32.ptr,
+            rows,
+            num_q_heads,
+            scale,
+            union_context=self._UNION_CONTEXT,
+            sliding_window=sliding_window,
+            stream=stream,
+            library=kv_library,
+            runtime=self.runtime,
+        )
+        output_head_major_ptr = (
+            self.head_major_f32.ptr if unpack_output else int(out_ptr)
+        )
+        problems.pv.launch(
+            self.value_f32.ptr,
+            self.scores_f32.ptr,
+            output_head_major_ptr,
+            stream=stream,
+            algorithm_index=pv_algorithm_index,
+        )
+        if unpack_output:
+            laguna_dense_initial_query_head_transpose_f32(
+                output_head_major_ptr,
+                out_ptr,
+                rows,
+                num_q_heads,
+                head_dim,
+                to_head_major=False,
+                stream=stream,
+                library=kv_library,
+                runtime=self.runtime,
+            )
+
+
+__all__ = ["LagunaAttentionHipblasLt", "LagunaSwaAttentionHipblasLt"]

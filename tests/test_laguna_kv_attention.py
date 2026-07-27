@@ -181,6 +181,168 @@ def test_laguna_long_hipblaslt_shape_and_algorithm_bands() -> None:
         ) == pv_index
 
 
+def test_laguna_swa_hipblaslt_shape_contract() -> None:
+    from hipengine.runtime.laguna_attention_hipblaslt import (
+        LagunaSwaAttentionHipblasLt,
+    )
+
+    assert LagunaSwaAttentionHipblasLt.supports(
+        rows=128,
+        start_position=512,
+        num_q_heads=72,
+        num_kv_heads=8,
+        head_dim=128,
+        sliding_window=512,
+    )
+    assert not LagunaSwaAttentionHipblasLt.supports(
+        rows=127,
+        start_position=512,
+        num_q_heads=72,
+        num_kv_heads=8,
+        head_dim=128,
+        sliding_window=512,
+    )
+    assert not LagunaSwaAttentionHipblasLt.supports(
+        rows=128,
+        start_position=384,
+        num_q_heads=72,
+        num_kv_heads=8,
+        head_dim=128,
+        sliding_window=512,
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_swa_hipblaslt_matches_online_route_after_ring_wrap() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+    )
+    from hipengine.runtime.laguna_attention_hipblaslt import (
+        LagunaSwaAttentionHipblasLt,
+    )
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    config = SimpleNamespace(
+        block_count=1,
+        layer_types=(SLIDING_ATTENTION,),
+        head_counts=(72,),
+        head_count_kv=8,
+        key_length=128,
+        value_length=128,
+        sliding_window=512,
+    )
+    cache = allocate_laguna_kv_cache(
+        config,
+        context_length=640,
+        backend="hip_gfx1151",
+        runtime=runtime,
+        swa_prefill_variant="swa_context_rows_qrow2_online_spans",
+    )
+    route = LagunaSwaAttentionHipblasLt(runtime=runtime)
+    rng = np.random.default_rng(0x1C2)
+    seed_rows = 512
+    rows = 128
+    keys = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(
+        np.float32
+    )
+    values = rng.normal(0.0, 0.12, size=keys.shape).astype(np.float32)
+    queries = rng.normal(0.0, 0.12, size=(rows, 72, 128)).astype(np.float32)
+    baseline = np.empty_like(queries)
+    candidate = np.empty_like(queries)
+    allocations = []
+    try:
+        key_rows = malloc(keys.nbytes, runtime=runtime)
+        value_rows = malloc(values.nbytes, runtime=runtime)
+        query_rows = malloc(queries.nbytes, runtime=runtime)
+        baseline_out = malloc(baseline.nbytes, runtime=runtime)
+        candidate_out = malloc(candidate.nbytes, runtime=runtime)
+        allocations.extend(
+            (key_rows, value_rows, query_rows, baseline_out, candidate_out)
+        )
+        for buffer, array in (
+            (key_rows, keys),
+            (value_rows, values),
+            (query_rows, queries),
+        ):
+            copy_host_to_device(
+                buffer,
+                host_array_ptr(array),
+                array.nbytes,
+                runtime=runtime,
+            )
+        cache.prepare_rows(tuple(range(seed_rows)))
+        cache.append_rows(
+            0,
+            key_rows.ptr,
+            value_rows.ptr,
+            seed_rows,
+            library=library,
+        )
+        cache.commit_rows()
+        cache.prepare_rows(tuple(range(seed_rows, seed_rows + rows)))
+        row_nbytes = 8 * 128 * np.dtype(np.float32).itemsize
+        current_key_ptr = key_rows.ptr + seed_rows * row_nbytes
+        current_value_ptr = value_rows.ptr + seed_rows * row_nbytes
+        cache.attend_prefill(
+            0,
+            query_rows.ptr,
+            current_key_ptr,
+            current_value_ptr,
+            baseline_out.ptr,
+            rows,
+            library=library,
+        )
+        state = cache.layer(0)
+        route.launch(
+            query_rows.ptr,
+            current_key_ptr,
+            current_value_ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            candidate_out.ptr,
+            state.spans,
+            rows=rows,
+            start_position=seed_rows,
+            num_q_heads=72,
+            num_kv_heads=8,
+            head_dim=128,
+            sliding_window=512,
+            scale=128**-0.5,
+            kv_library=library,
+        )
+        runtime.device_synchronize()
+        for host, device in (
+            (baseline, baseline_out),
+            (candidate, candidate_out),
+        ):
+            copy_device_to_host(
+                host_array_ptr(host),
+                device,
+                host.nbytes,
+                runtime=runtime,
+            )
+        cache.discard_rows()
+    finally:
+        route.close()
+        cache.free()
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    np.testing.assert_allclose(candidate, baseline, rtol=2e-3, atol=2e-4)
+
+
 def test_kv_live_spans_sliding_ring_requires_complete_absolute_metadata() -> None:
     spans = _ring_spans()
 
