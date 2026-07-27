@@ -3800,36 +3800,215 @@ code was removed unless a separately exact decode primitive retained value.
 | 2026-07-27 17:10 | Low-mass route pruning | 641.668 -> 687.804 tok/s | **+7.190%**, but max KL **3.649289** |
 | 2026-07-27 17:29 | Triangular BF16-WMMA QK | 0.085120 -> 0.104837 ms at context 256 | **+23.16%**; context 512 **+32.92%** |
 
-### Ranked optimization avenues after the pause
+### Long-context optimization is the next active campaign
 
-There are two different targets and they should not be conflated:
+The pp512-to-700 expert lane remains valid but is no longer the next task.
+Gate/up plus down still occupy about **503.595 ms** of the clean
+**782.577-ms** pp512 wall, and a credible future body must reduce physical
+weight bytes or create real cross-tile reuse. That lane resumes after the
+first long-context architecture target closes or a fresh profile proves global
+attention is no longer dominant. Do not repeat row64, K64 staging,
+non-temporal loads, grid reordering, pair-shared prefetch, metadata-only
+repacks, or paired-SiLU fusion without a genuinely new premise.
 
-1. **Selected-expert physical traffic for 700 at pp512.** Gate/up plus down
-   occupy about **503.595 ms** of the clean **782.577-ms** wall. A credible
-   next body must reduce physical weight bytes or create real cross-tile reuse
-   without extending accumulator lifetimes. Roughly a 10% reduction in this
-   window is enough to reach 700. Do not repeat row64, K64 staging,
-   non-temporal loads, grid reordering, pair-shared prefetch, metadata-only
-   repacks, or paired-SiLU fusion without a genuinely new premise.
-2. **Exact block-streamed global attention above 512.** Process fixed K/V
-   blocks with online softmax/output accumulation, preferably using qualified
-   hipBLASLt QK/PV subproblems, without materializing the full score matrix or
-   computing masked upper-triangle work. This is the highest-impact 32K–128K
-   avenue and needs its own CPU-reference, wrap/eviction, long-context, and
-   absolute-quality gates.
-3. **Matched resident-capacity buckets and lazy KV allocation.** Re-measure
-   pp512 in small versus 128K capacity in one counterbalanced session. If the
-   **4.928%** singleton gap repeats, bucket/lazily grow KV and position state;
-   if it does not, close it as variance.
-4. **Context-qualified matrix chunks above 2,048.** Screen 4,096/8,192 rows
-   while leaving attention at 128. Fewer model-wide chunk passes can help long
-   prompts, but scratch pressure and expert row-tile distribution may erase
-   the gain; retain only same-session, multi-length wins.
-5. **Library capability watch.** Recheck gfx1151 grouped GEMM and
-   causal/FlashAttention support when ROCm/Tensile changes. Today the source-F16
-   grouping ceiling is only **2.891 ms**, `GroupedGemm` exposes zero applicable
-   algorithms, and the retained short attention path already beats the custom
-   triangular WMMA screen.
+The next active task is exact long-context global attention. The same-GGUF,
+same-device llama.cpp Vulkan baseline uses the clean `c0bc8591e` build,
+batch 2,048, ubatch 512, F16 KV, FlashAttention, one resident model load, and
+one pass per shape:
+
+| Shape | hipEngine current | llama.cpp Vulkan | hipEngine over Vulkan |
+| ---: | ---: | ---: | ---: |
+| 512 | **622.009 tok/s** | 341.999 tok/s | **+81.874%** |
+| 4K | **470.270** | 333.502 | **+41.010%** |
+| 16K | LC-0 control pending | 280.349 | pending |
+| 64K | **131.997** | 126.624 | **+4.243%** |
+| 128K | **72.323** | 65.584 | **+10.275%** |
+
+The ordinary repeated pp512 production median is **654.249 tok/s**, or
+**91.301%** above this Vulkan run. The one-pass table uses the 128K-capacity
+hipEngine closure session where available. KV numerical policy differs
+(hipEngine BF16 versus Vulkan F16), and llama-bench uses its own prompt
+stream/timing boundary, so this is a source/performance floor rather than a
+quality-equivalent comparator. It nevertheless answers the architectural
+question: hipEngine already wins every overlapping absolute row. Vulkan parity
+is not the target.
+
+Evidence:
+[`same-GGUF Vulkan long baseline`](../benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json) ·
+[`hipEngine six-shape closure`](../benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json).
+
+#### Laguna-specific long-context roofline
+
+Do not use a Qwen3.x/GDN long-context curve as Laguna's optimal shape. Laguna
+has **48 attention layers**: **12 global** layers (`layer % 4 == 0`) and
+**36 sliding-window** layers with a 512-token window. Global attention has
+48 query heads, while SWA has 72; both use eight KV heads and head dimension
+128.
+
+At 128K, causal QK plus PV therefore requires about **2.533 PFLOP** in the
+12 global layers:
+
+```text
+4 FLOP per head-dimension/pair
+* 128 dimensions
+* 48 query heads
+* 12 global layers
+* (131072 * 131073 / 2) causal pairs
+= 2.533 PFLOP
+```
+
+The 36 bounded SWA layers add at most about **0.089 PFLOP**, only **3.52%** of
+the global-attention arithmetic. Projections, MoE, norms, routing, KV traffic,
+and softmax remain additional mostly-linear work.
+
+The gfx1151 theoretical roofs imply deliberately optimistic global-only lower
+bounds of about **85.3 seconds** at 29.7-TFLOP FP32/VOPD or **42.7 seconds**
+at 59.39-TFLOP BF16 WMMA. Neither is an end-to-end promise: they omit
+softmax, cache traffic, every linear/model family, occupancy, and achievable
+clock/issue efficiency. They do show that the current **1,812.3-second**
+hipEngine and **1,998.5-second** Vulkan walls are not hardware-optimal.
+Required global arithmetic divided by complete wall is only
+**1.398/1.268 TFLOP/s** for hipEngine/Vulkan.
+
+Use measured staged milestones rather than the peak as a promise:
+
+| 128K milestone | Throughput | Wall | Interpretation |
+| --- | ---: | ---: | --- |
+| Current production control | **72.323 tok/s** | 1,812.3 s | Exact scalar online global route |
+| First architectural milestone | **>=150 tok/s** | <=873.8 s | At least 2.07x current; block streaming is materially working |
+| Main long-context target | **>=300 tok/s** | <=436.9 s | At least 4.15x current; tiled global attention is comparator-independent |
+| Roofline-informed stretch | **>=450 tok/s** | <=291.3 s | At least 6.22x current; still well above global-only ideal floors |
+
+Rebuild these milestones after the first cached 16K/64K family trace measures
+actual global-attention wall. They are campaign targets, not promotion gates
+or claims.
+
+#### Fast architectural-development protocol
+
+The campaign intentionally uses cheap evidence while far from the target:
+
+1. Add one fixed **4K/16K/64K/128K** attack set to the strict profiler and
+   capture the missing current 16K hipEngine control. Arbitrary user-selected
+   lists remain rejected.
+2. During architecture development, run one cached-build control/candidate
+   pass at **4K/16K/64K** in one 128K-capacity resident session. Rotate order
+   or use a same-session selector when the candidate can switch safely.
+3. A directional screen passes only when 4K is at least **0.98x** control,
+   16K and 64K are both strictly positive, and at least one of 16K/64K is
+   **>=1.10x**. Exact smaller wins may be retained under repository policy,
+   but they do not close the major stage.
+4. Before starting the next major stage, run one full **128K** candidate gate.
+   It must be strictly faster than the retained control, preserve exact final
+   position and deterministic next token, keep logits finite, and return all
+   tracked allocations to baseline. A stage that misses 128K remains open or
+   changes premise.
+5. Keep one pp512 non-regression sample at **>=0.98x** current when dispatch or
+   shared code changes. A route qualified only above 512 should leave pp512
+   structurally unchanged.
+6. These one-pass rows are development evidence only. Production promotion
+   still requires counterbalanced repetitions, the ten-prompt 320-step
+   KL/top-1 gate, h16/h32 E2E, decode within 2%, complete state/lifecycle, and
+   the ordinary benchmark rollup.
+
+#### LC-0 — baseline, harness, and attribution
+
+- **Done:** capture the same-GGUF Vulkan 512/4K/16K/64K/128K baseline above.
+- Admit the fixed 4K/16K/64K/128K hipEngine attack set and capture current
+  production 16K in the same 128K-capacity session as the existing rows.
+- Trace one cached 16K and one 64K control. Attribute all 12 global layers,
+  36 SWA layers, projections, MoE, and residual families without profiling
+  the 30-minute 128K row.
+- Record global-attention achieved FLOP/s, K/V bytes, GQA reread factor,
+  dispatches, resource tuple, and wall-growth fit. Replace inferred
+  linear/quadratic shares with trace-backed values.
+- Freeze CPU-reference fixtures for dense causal block merge at tile
+  boundaries, partial query/key tiles, position 511/512/513, and the final
+  128K position.
+
+#### LC-1 — real block-streamed global attention
+
+- Replace token-serial Q-row scanning for qualified prompt prefill with fixed
+  query and K/V tiles, initially **16-32 query rows x 64-128 key rows**.
+- Carry online row max, denominator, and output state across K/V tiles. Never
+  materialize the complete score matrix or compute masked upper-triangle
+  blocks.
+- Start with FP32 query/dot/output accumulation and BF16 cache widening so the
+  first route isolates scheduling/reuse from a new numerical approximation.
+- Register a separate dense-prefill primitive with the existing generic
+  `KVLiveSpans` attention chain as its exact fallback. Decode, verifier,
+  partial, wrapped, and evicted paths remain unchanged.
+- A BF16-WMMA/MFMA QK/PV body is a separate quality-gated substage. The
+  rejected small triangular WMMA screen does not close a genuinely tiled
+  block-streamed design, but its resource/performance failure must inform the
+  new geometry.
+
+#### LC-2 — share K/V across Laguna GQA heads
+
+- One global K/V head serves six query heads. Load each K/V tile once per
+  cooperative workgroup and reuse it across the complete six-head group
+  instead of launching independent query-head waves that reread the same
+  cache.
+- Co-design LDS layout, query fragments, and output accumulators with LC-1;
+  report physical K/V bytes and reuse rather than assuming a theoretical 6x.
+- Preserve score/token order in the exact FP32 lane. Any reassociated or
+  reduced-precision lane must pass the complete quality gate before default
+  promotion.
+
+#### LC-3 — widen the attention query chunk
+
+- Screen attention rows **256/512/1,024/2,048** independently of matrix rows.
+  llama.cpp's comparator uses ubatch 512; hipEngine currently slices every
+  matrix chunk into 128-row attention transactions.
+- Widen only after LC-1/LC-2 can reuse query and K/V tiles. Merely placing more
+  independent scalar Q-row workgroups in one launch is not an architectural
+  win.
+- Gate pending-position views, preappend ordering, dense initial state, partial
+  tails, and final cache/cursor equivalence at every admitted query size.
+
+#### LC-4 — dense-initial contiguous cache specialization
+
+- Ordinary prompt prefill has dense positions, no eviction, and identity cache
+  order. Specialize the retained tiled route to direct contiguous K/V
+  addressing with no per-token position, eviction, or physical-slot reads.
+- Keep the full `KVLiveSpans` ABI and generic registered fallback. Never infer
+  dense order for continuation, verifier, wrapped SWA, decode, or an explicitly
+  evicted span.
+- Fold preappend and packed-query production into the tile only after the
+  standalone attention body wins 128K.
+
+#### LC-5 — matrix chunks above 2,048
+
+- Lift the current 2,048-row policy only after overflow, allocation, scratch,
+  routing-capacity, and transaction-state RED tests exist.
+- Screen matrix rows **4,096/8,192** while independently retaining the best
+  LC-3 attention query tile. Current M2,048 scratch is about 1.756 GB; expected
+  linear growth fits the available 128K session headroom but must be measured.
+- Larger matrix chunks reduce repeated whole-model/weight passes and target
+  the remaining linear component. They cannot substitute for LC-1 because
+  global QK/PV remains quadratic.
+
+#### LC-6 — capacity buckets, lazy KV, and secondary bandwidth work
+
+- Counterbalance pp512/4K in small versus 128K resident-capacity sessions. If
+  the observed pp512 **4.928%** gap repeats, bucket or lazily grow KV/position
+  allocations; otherwise close it as variance.
+- Recheck Q8 KV or another compressed-cache lane only after LC-1/LC-2 tracing
+  proves K/V bandwidth is the remaining limiter. Compression is a new quality
+  surface and does not enter the exact first pass.
+- Recheck gfx1151 causal/FlashAttention and grouped-GEMM library capabilities
+  when ROCm/Tensile changes. Today the retained short hipBLASLt route stops at
+  context 512, AOTriton lacks the admitted Laguna geometry, source-F16 grouping
+  saves only 2.891 ms, and `GroupedGemm` exposes zero applicable algorithms.
+
+Long-context stop rules:
+
+- do not use the hybrid Qwen3.x/GDN curve as Laguna's roofline;
+- do not materialize O(N^2) scores or add unbounded context-sized scratch;
+- do not generalize a dense-prompt route to verifier/decode/eviction semantics;
+- do not promote BF16 query arithmetic from a primitive tolerance check alone;
+- do not move to the next major LC stage after a failed 128K gate;
+- do not pay for repeated 128K medians while an architecture is still outside
+  the directional band.
 
 Approximate expert routing is closed under the current **0.05** KL contract:
 there is too little quality headroom, and both top-width and low-mass screens
@@ -4001,6 +4180,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-candidate.json`

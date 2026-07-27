@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "kind": "external_llamacpp_vulkan_laguna_long_context_baseline",
+  "created_at": "2026-07-27T19:46:38+09:00",
+  "status": "accepted_read_only_diagnostic",
+  "performance_claim": false,
+  "purpose": "One-pass same-GGUF Vulkan baseline for the Laguna long-context optimization campaign.",
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "size_bytes_reported_by_llama_bench": 75169369088,
+    "parameters": 117561977600,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "Vulkan",
+    "driver": "RADV STRIX_HALO",
+    "uma": true,
+    "subgroup_size": 64,
+    "shared_memory_bytes": 65536,
+    "fp16": "dot2",
+    "bf16": false,
+    "integer_dot_product": true,
+    "matrix_core_api": "VK_KHR_cooperative_matrix"
+  },
+  "llamacpp": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "build_number": 10107,
+    "tracked_clean": true,
+    "binary_sha256": "cbda2edf0cd97f7577ce28f52b2f2ecb2d2cfa7a7c326b2e1af94d2081527f"
+  },
+  "protocol": {
+    "command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 128,512,4096,16384,65536,131072 -n 0 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 --progress",
+    "model_loads": 1,
+    "batch": 2048,
+    "ubatch": 512,
+    "kv_dtype": "f16",
+    "flash_attention": true,
+    "gpu_layers": -1,
+    "repetitions": 1,
+    "warmup": "The leading 128-row diagnostic warms clocks; every reported campaign shape follows it under the same resident model load.",
+    "timing_scope": "llama-bench prompt processing; model load excluded",
+    "failed_setup_attempt": "An optional /usr/bin/time wrapper was absent and exited 127 before model load or benchmark work. It produced no sample and is excluded."
+  },
+  "results": [
+    {
+      "length": 128,
+      "role": "clock_warmup_diagnostic",
+      "seconds": 0.866057198,
+      "tok_s": 147.796243
+    },
+    {
+      "length": 512,
+      "role": "baseline",
+      "seconds": 1.497079707,
+      "tok_s": 341.999158
+    },
+    {
+      "length": 4096,
+      "role": "baseline",
+      "seconds": 12.281773218,
+      "tok_s": 333.502331
+    },
+    {
+      "length": 16384,
+      "role": "baseline",
+      "seconds": 58.441467134,
+      "tok_s": 280.348882
+    },
+    {
+      "length": 65536,
+      "role": "baseline",
+      "seconds": 517.562015668,
+      "tok_s": 126.624439
+    },
+    {
+      "length": 131072,
+      "role": "mandatory_long_context_gate",
+      "seconds": 1998.537640591,
+      "tok_s": 65.583954
+    }
+  ],
+  "hipengine_comparison": {
+    "artifact": "benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json",
+    "production_headline_512_tok_s": 654.248662477172,
+    "closure_single_pass": [
+      {
+        "length": 512,
+        "hipengine_tok_s": 622.0086131263688,
+        "vulkan_tok_s": 341.999158,
+        "hipengine_over_vulkan_pct": 81.87431125966947
+      },
+      {
+        "length": 4096,
+        "hipengine_tok_s": 470.27000702735654,
+        "vulkan_tok_s": 333.502331,
+        "hipengine_over_vulkan_pct": 41.009511273058095
+      },
+      {
+        "length": 65536,
+        "hipengine_tok_s": 131.99668741021623,
+        "vulkan_tok_s": 126.624439,
+        "hipengine_over_vulkan_pct": 4.242663148317072
+      },
+      {
+        "length": 131072,
+        "hipengine_tok_s": 72.3225233270318,
+        "vulkan_tok_s": 65.583954,
+        "hipengine_over_vulkan_pct": 10.27472257471973
+      }
+    ],
+    "headline_512_over_vulkan_pct": 91.30124948353586,
+    "retention_512_to_128k_pct": {
+      "hipengine_headline": 11.054286768152968,
+      "vulkan": 19.176641949510298
+    },
+    "retention_64k_to_128k_pct": {
+      "hipengine": 54.79116540422682,
+      "vulkan": 51.79407270661235
+    },
+    "wall_growth_64k_to_128k": {
+      "hipengine": 3.6502235081966545,
+      "vulkan": 3.8614457400077056
+    },
+    "missing_control": "hipEngine has no admitted 16K production-control row yet; LC-0 must capture it before the first candidate."
+  },
+  "laguna_topology_roofline": {
+    "layers": 48,
+    "global_attention_layers": 12,
+    "sliding_window_attention_layers": 36,
+    "sliding_window": 512,
+    "global_query_heads": 48,
+    "sliding_query_heads": 72,
+    "global_kv_heads": 8,
+    "head_dim": 128,
+    "global_causal_qk_pv_flops_at_128k": 2533294117748736,
+    "global_causal_qk_pv_petaflops_at_128k": 2.533294117748736,
+    "swa_qk_pv_petaflops_upper_at_128k": 0.089060441849856,
+    "swa_over_global_attention_flops_pct": 3.515598178114486,
+    "idealized_global_only_seconds_at_fp32_29_7_tflops": 85.29609824069819,
+    "idealized_global_only_seconds_at_bf16_wmma_59_39_tflops": 42.655230135523425,
+    "system_equivalent_global_tflops_at_128k": {
+      "hipengine": 1.397813590432094,
+      "vulkan": 1.2675738831716976
+    },
+    "qualification": "The idealized seconds omit softmax, KV traffic, SWA, projections, MoE, and all other model work. System-equivalent TFLOP/s divides required global QK+PV arithmetic by complete prompt wall and is not a kernel-throughput measurement."
+  },
+  "assessment": {
+    "finding": "hipEngine already beats the same-GGUF Vulkan baseline at every overlapping measured shape, including 64K and 128K. Both engines are far below the Laguna-specific global-attention roof; Vulkan parity is a floor, not the optimization target.",
+    "next_action": "Make the exact block-streamed global-attention campaign the next active Laguna work. Use one-pass 4K/16K/64K directional screens and require a positive, correct 128K gate before advancing each major stage.",
+    "raw_json_sha256": "d8852baa96d927b1a7db86c6896704b017fce6d3fe0c6ab673ab2cac370a8ccf",
+    "raw_stderr_sha256": "aea09b93a9f68630c110922a1be164dd91bf939c6c7313c6ceae21f41d04c6ae"
+  }
+}

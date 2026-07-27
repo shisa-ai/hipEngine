@@ -184952,3 +184952,56 @@ Vulkan local sizes verbatim will close the measured gap.
   rejected screens, and ranked next steps. Latest-sprint production improved
   **354.820 -> 654.249 tok/s (+84.389%)**; the pre-campaign control improved
   **76.226 -> 654.249 tok/s (+758.301%)**.
+
+## 2026-07-27 — Baseline same-GGUF Vulkan long context and pivot to LC
+
+- Audited the read-only comparator at
+  `/home/lhl/llama.cpp/llama.cpp-vulkan`: clean revision
+  `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`, build 10107, binary SHA-256
+  `cbda2edf0cd97f7577ce28f52b2f2ecb2d2cfa7a7c326b2e1af94d2081527f`.
+  The model is the exact Laguna S 2.1 Q4_K_M production GGUF,
+  SHA-256
+  `7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`,
+  on Radeon 8060S gfx1151 / RADV STRIX_HALO.
+- Ran one resident model load with a leading 128-row clock diagnostic and one
+  pass at each campaign shape:
+  `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m
+  /models/gguf/laguna-s-2.1-Q4_K_M.gguf -p
+  128,512,4096,16384,65536,131072 -n 0 -r 1 --no-warmup -o json -fa on
+  -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 --progress`.
+  The 512/4K/16K/64K/128K rows are
+  **341.999/333.502/280.349/126.624/65.584 tok/s**, or
+  **1.497/12.282/58.441/517.562/1,998.538 seconds**.
+- Against the one-pass 128K-capacity hipEngine closure, hipEngine is
+  **+81.874%/+41.010%/+4.243%/+10.275%** at
+  512/4K/64K/128K. A matched hipEngine 16K row remains LC-0 work.
+  The headline 512-to-128K retention is **11.054%** for hipEngine versus
+  **19.177%** for Vulkan because hipEngine starts much faster. The tail does
+  not regress more sharply: 64K-to-128K retention is
+  **54.791% versus 51.794%**, and wall growth is
+  **3.650x versus 3.861x**.
+- Corrected the theoretical model to Laguna itself rather than a
+  Qwen3.x/GDN comparator. Laguna has 48 attention layers: 12 global with 48
+  query heads and 36 SWA with 72 query heads and window 512. Both use eight
+  KV heads of dimension 128. At 128K, global causal QK+PV is about
+  **2.533 PFLOP**; SWA adds at most **0.089 PFLOP**, or **3.52%** as much
+  attention arithmetic. Complete-wall equivalent global throughput is only
+  **1.398 TFLOP/s** for hipEngine and **1.268 TFLOP/s** for Vulkan.
+- Made exact long-context global attention the next active Laguna campaign
+  and paused, but did not close, the pp512-to-700 expert lane. The ordered
+  LC-0 through LC-6 plan starts with trace-backed control attribution and an
+  exact block-streamed online-softmax body, then shares each K/V tile across
+  the six Laguna GQA query heads, widens attention rows, specializes dense
+  contiguous prefill, raises matrix chunks, and finally addresses capacity
+  buckets/secondary bandwidth work. Rough development uses one-pass
+  4K/16K/64K screens and a mandatory positive, correct one-pass 128K gate
+  before advancing each major stage; production still requires the complete
+  quality, repetition, E2E, decode, state, and lifecycle gates.
+- Raw llama-bench JSON SHA-256:
+  `d8852baa96d927b1a7db86c6896704b017fce6d3fe0c6ab673ab2cac370a8ccf`;
+  stderr SHA-256:
+  `aea09b93a9f68630c110922a1be164dd91bf939c6c7313c6ceae21f41d04c6ae`.
+  Published
+  `benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json`
+  and updated `docs/LAGUNA-prefill.md`, `docs/PLAN.md`,
+  `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
