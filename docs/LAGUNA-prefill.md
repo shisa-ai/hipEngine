@@ -1590,6 +1590,19 @@ Immediate execution queue:
    read costs more than the native exponential. All LUT surfaces are removed;
    shared SiLU remains closed. Evidence:
    [`2026-07-27-gfx1151-laguna-shared-silu-bf16-lut-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-shared-silu-bf16-lut-rejected.json).
+46. **Rejected and removed before integration:** put two recursively quantized
+   D4 activation planes into production's 128-column x 32-row direct-wave
+   body as a possible quality midpoint between the fast one-plane D4 gate and
+   exact split16 D8. The production-geometry CPU-reference gate passes, but
+   the second plane increases LDS and packed-dot work enough to regress the
+   pack-inclusive actual leaf at every natural shape:
+   **3.729 -> 4.107 ms (+10.12%)** at M128,
+   **4.434 -> 5.864 ms (+32.25%)** at M256, and
+   **6.882 -> 10.100 ms (+46.76%)** at M512. No absolute category run is
+   warranted; all candidate surfaces are removed. Residual activation planes
+   are closed unless an accompanying mechanism removes equivalent weight
+   traffic. Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json).
 
 ### Next exact and quality-gated attacks
 

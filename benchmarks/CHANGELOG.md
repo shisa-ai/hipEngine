@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-27
 
+- [rejected and removed quality-gated gfx1151 Laguna Q4 D4x2 direct wave] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / a second residual activation plane passes the CPU-reference gate but regresses the pack-inclusive actual leaf **3.729 -> 4.107 ms (+10.12%)**, **4.434 -> 5.864 ms (+32.25%)**, and **6.882 -> 10.100 ms (+46.76%)** at M128/M256/M512; every candidate surface is removed and production remains **639.114 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json`.
+
 - [rejected and removed exact gfx1151 Laguna shared-SiLU LUT] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / an exhaustive 256-KiB BF16 `gate * sigmoid(gate)` table is bit-exact across all 65,536 gate encodings but regresses isolated M512 **0.021211 -> 0.021876 ms (+3.136%, 2/21 wins)**; timestamp-unioned tracing confirms the secondary queue is hidden except **0.826 ms**, so every candidate surface is removed and production remains **639.114 tok/s**; `benchmarks/results/2026-07-27-gfx1151-laguna-shared-silu-bf16-lut-rejected.json`.
 
 - [retained exact gfx1151 Laguna Q6 WMMA activation-prefetch production] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / carry each next compact Q8 activation half-row beside retained next-weight prefetch during current integer-WMMA compute; clean selector-unset 512/1K/4K improves **636.073/568.765/464.061 -> 639.114/569.880/464.280 tok/s (+0.478%/+0.196%/+0.047%)**, the actual leaf improves **4.104 -> 4.045 ms (-1.440%, 20/21 wins)**, and cached tracing cuts the 23-call pp512 Q6 body **101.963 -> 100.367 ms (-1.565%)** with zero resident/LDS/scratch growth and exact complete state; `benchmarks/results/2026-07-27-gfx1151-laguna-q6-wmma-activation-prefetch-production.json`.

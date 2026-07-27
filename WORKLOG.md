@@ -183971,3 +183971,23 @@ Vulkan local sizes verbatim will close the measured gap.
 - The required lineage audit is still blocked by the absent read-only
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-shared-silu-bf16-lut-rejected.json`.
+
+## 2026-07-27 — Reject two-plane Q4 direct-wave quality midpoint
+
+- RED added a production-geometry, two-residual-plane parameter and failed on
+  the existing one-plane-only row-vector contract. GREEN instantiated two
+  recursive D4 planes in the retained 128-column x 32-row wave-column direct
+  decode and activation-double-buffer geometry. The uneven/empty-expert
+  CPU-reference KL/top-1 gate passes.
+- Twenty-one counter-rotated, burst-three, pack-inclusive actual layer-1
+  samples reject the midpoint at every natural shape:
+  **3.729037 -> 4.106506 ms (+10.122%)** at M128,
+  **4.434310 -> 5.864457 ms (+32.252%)** at M256, and
+  **6.882146 -> 10.100494 ms (+46.764%)** at M512. Raw SHA-256:
+  `d8ea6bf1a5c0e2d5415ea6d182e40b0aee6d038c14e9a30d6dc3240a630a4486`.
+- The second plane's LDS loads and packed dots are already more expensive
+  than exact split16 D8, so it cannot economically repair the rejected
+  one-plane D4-gate quality near-miss. No full-model run is warranted; every
+  kernel, wrapper, harness, and test surface was removed. Production remains
+  **639.114 tok/s**. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-d4x2-wave-direct-rejected.json`.
