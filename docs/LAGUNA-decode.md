@@ -309,13 +309,14 @@ stay unchanged. Evidence:
 [`gated runtime`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-runtime-correctness.json),
 [`gated rejection`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-rejected.json).
 
-Post-gated re-ranking now selects a distinct exact internal D9 contraction: let
-wave 0 reproduce the retained 256-thread RMS tree after one LDS publication,
-then publish the identical scalar with one final barrier. Actual layers 1/47
-are BF16-bit exact and improve event/wall **2.76-2.86%**; codegen contracts
-**9 -> 2 barriers** and **266 -> 225 instructions** at fixed LDS1024. This is a
-selected design only: no repository primitive, runtime owner, default, or
-canonical topline has changed.
+Post-gated re-ranking selected and repository-admitted a distinct exact internal
+D9 contraction: wave 0 reproduces the retained 256-thread RMS tree after one
+LDS publication, then publishes the identical scalar with one final barrier.
+All **47/47** actual sparse-layer hidden/norm outputs are BF16-bit exact;
+repeated layers 1/47 improve event/wall **2.78-2.87%**. Codegen contracts
+**9 -> 2 barriers** and **266 -> 225 instructions** at fixed LDS1024, while
+cache-only tracing proves local256/VGPR16/LDS1024/scratch0. The primitive is
+separately registered, but runtime ownership/default/topline remain unchanged.
 
 Scope: resident batch-1 autoregressive decode of
 `Laguna-S-2.1-UD-Q2_K_XL.gguf` on one AMD Radeon Pro W7900 (`gfx1100`). This
@@ -2425,23 +2426,32 @@ publishes the same scalar for the unchanged normalization pass. The retained D9
 body plus the registered BF16 add + BF16 add + F32-weight RMSNorm chain remain
 required fallbacks.
 
-The one frozen W7900 actual-input screen uses layers 1/47, 50 warmups, 15
-counterbalanced repetitions, and 1,000 launches/sample. Hidden and normalized
-BF16 outputs are byte-exact. Layer 1 event/wall improves **2.862%/2.765%**;
-layer 47 improves **2.843%/2.864%**. Integrated Clang-22 codegen changes
-logical VGPR **13 -> 14** while staying in the expected allocated-VGPR16 class,
-keeps SGPR24/LDS1024/private/spills0, contracts **266 -> 225 instructions** and
-**1,404 -> 1,276 B**, and removes seven of nine barriers. Tracked ownership
-returns to zero.
+The separately registered gfx1100 primitive now passes **4/4** focused
+RED/GREEN coverage, hidden17/3072 edge fixtures against both retained D9 and the
+registered add+add+RMSNorm fallback, and ten independent CPU-reference cases at
+KL **0** / top-1 **100%**. The one repository actual-input process proves all
+**47/47** sparse-layer hidden and normalized outputs byte-exact, then repeats
+layers 1/47 with 50 warmups, 15 counterbalanced repetitions, and 1,000
+launches/sample. Layer 1 event/wall improves **2.851%/2.806%**; layer 47
+improves **2.777%/2.866%**.
 
-Applying only the smallest endpoint ratio to the immutable D9 family models
-**0.010967 ms/token** and h32 **63.270 -> 63.314 tok/s (+0.069%)**. That is a
-planning ceiling, not throughput evidence, and still leaves **1.744%** to
-Vulkan. The design therefore freezes a separately registered gfx1100 primitive,
-all-47-layer/CPU/codegen/cache-only-trace admission, then a separate false/
-default-off full-state owner and both clean context/category orders. No runtime
-or benchmark rollup changes in this unit. Evidence:
-[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-design.json).
+Integrated Clang-22 codegen changes logical VGPR **13 -> 14**, keeps
+SGPR24/LDS1024/private/spills0, contracts **266 -> 225 instructions** and
+**1,404 -> 1,276 B**, and removes seven of nine barriers. A non-profiled exact-
+cache preflight precedes `rocprofv3`; the distinct symbol executes at grid/local
+**256/256**, allocated VGPR16/SGPR128/LDS1024/scratch0, **13.320 us**, exact
+finite outputs, complete teardown, and no compiler under profiling.
+
+Applying only the smallest design endpoint ratio to the immutable D9 family
+models **0.010967 ms/token** and h32 **63.270 -> 63.314 tok/s (+0.069%)**. That
+remains a planning ceiling, not throughput evidence, and still leaves **1.744%**
+to Vulkan. Runtime capability/session/CLI ownership is deliberately absent. A
+separate false/default-off unit must pass full state, exact 47-candidate/
+678-kernel tracing, both clean context orders, then both complete category
+orders. No benchmark rollup changes in this unit. Evidence:
+[`design`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-design.json)
+and
+[`primitive`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-correctness.json).
 
 ## 9. Do not chase without new evidence
 
@@ -2709,7 +2719,8 @@ all-positive endpoint, codegen, and cache-only trace gates, but runtime ownershi
 and the canonical **63.270 tok/s / 678-kernel** topline remain unchanged.
 Post-gated ranking excludes every rejected owner and selects only D9's internal
 RMS synchronization: an exact wave-0 tree preserves both BF16 boundaries and
-all FP32 association while contracting **9 -> 2 barriers**. Actual layers 1/47
-improve event/wall **2.76-2.86%** with exact bytes; the conservative modeled h32
-is **63.314 tok/s**, not a performance claim. Repository admission is pending,
-so defaults/topline remain unchanged.
+all FP32 association while contracting **9 -> 2 barriers**. The separately
+registered primitive passes CPU, **47/47** actual-layer, codegen, and cache-only
+symbol/resource gates; repeated endpoint event/wall improves **2.78-2.87%**.
+The conservative modeled h32 is **63.314 tok/s**, not a performance claim.
+Runtime ownership is absent, so defaults/topline remain unchanged.

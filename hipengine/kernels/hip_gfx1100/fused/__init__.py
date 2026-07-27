@@ -30,6 +30,7 @@ from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
     laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out,
+    laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out,
     laguna_weighted_top10_routed_hidden_bf16_out,
     plan_paro_combine_build,
     register_paro_combine_kernels,
@@ -96,6 +97,7 @@ __all__ = [
     "gguf_rmsnorm_f32_f32_weight",
     "gguf_rmsnorm_f32_f32_weight_out_f32",
     "laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out",
+    "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out",
     "laguna_softplus_head_gate_f32_bf16_out",
     "laguna_weighted_top10_routed_hidden_bf16_out",
     "laguna_softplus_head_gate_f32_out",

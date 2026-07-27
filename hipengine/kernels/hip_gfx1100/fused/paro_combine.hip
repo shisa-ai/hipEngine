@@ -454,6 +454,59 @@ __global__ void laguna_aggregate_moe_tail_next_rmsnorm_out_kernel(
   }
 }
 
+__global__ void laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_out_kernel(
+    const uint16_t* __restrict__ routed,
+    const uint16_t* __restrict__ shared,
+    const uint16_t* __restrict__ post_attention,
+    const float* __restrict__ norm_weight,
+    uint16_t* __restrict__ norm_out,
+    uint16_t* __restrict__ hidden_out,
+    int64_t features,
+    float eps) {
+  const int tid = threadIdx.x;
+  float sumsq = 0.0f;
+  for (int64_t idx = tid; idx < features; idx += blockDim.x) {
+    const uint16_t moe_bits = float_to_bf16_bits(
+        bf16_bits_to_float(routed[idx]) + bf16_bits_to_float(shared[idx]));
+    const uint16_t hidden_bits = float_to_bf16_bits(
+        bf16_bits_to_float(post_attention[idx]) + bf16_bits_to_float(moe_bits));
+    hidden_out[idx] = hidden_bits;
+    const float hidden = bf16_bits_to_float(hidden_bits);
+    sumsq += hidden * hidden;
+  }
+
+  __shared__ float partial[256];
+  partial[tid] = sumsq;
+  __syncthreads();
+  if (tid < 32) {
+    float wave0 = partial[tid];
+    wave0 += partial[tid + 128];
+    float wave1 = partial[tid + 32];
+    wave1 += partial[tid + 160];
+    float wave2 = partial[tid + 64];
+    wave2 += partial[tid + 192];
+    float wave3 = partial[tid + 96];
+    wave3 += partial[tid + 224];
+    wave0 += wave2;
+    wave1 += wave3;
+    wave0 += wave1;
+#pragma unroll
+    for (int stride = 16; stride > 0; stride >>= 1) {
+      wave0 += __shfl_down(wave0, stride, 32);
+    }
+    if (tid == 0) {
+      partial[0] = wave0;
+    }
+  }
+  __syncthreads();
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(features) + eps);
+
+  for (int64_t idx = tid; idx < features; idx += blockDim.x) {
+    norm_out[idx] = float_to_bf16_bits(
+        bf16_bits_to_float(hidden_out[idx]) * inv_rms * norm_weight[idx]);
+  }
+}
+
 template <typename scalar_t, typename norm_weight_t, bool weighted_selected, bool paro_reduction>
 __global__ void moe_tail_next_rmsnorm_out_kernel(
     const scalar_t* __restrict__ selected_values,
@@ -1259,6 +1312,38 @@ extern "C" int hipengine_laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out(
   }
   hipLaunchKernelGGL(
       laguna_aggregate_moe_tail_next_rmsnorm_out_kernel,
+      dim3(1),
+      dim3(256),
+      0,
+      stream,
+      routed,
+      shared,
+      post_attention,
+      norm_weight,
+      norm_out,
+      hidden_out,
+      features,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out(
+    const uint16_t* routed,
+    const uint16_t* shared,
+    const uint16_t* post_attention,
+    const float* norm_weight,
+    uint16_t* norm_out,
+    uint16_t* hidden_out,
+    int64_t features,
+    float eps,
+    hipStream_t stream) {
+  if (features <= 0 || routed == nullptr || shared == nullptr ||
+      post_attention == nullptr || norm_weight == nullptr ||
+      norm_out == nullptr || hidden_out == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_out_kernel,
       dim3(1),
       dim3(256),
       0,
