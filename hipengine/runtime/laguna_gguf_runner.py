@@ -269,7 +269,6 @@ class LagunaEagerScratch:
     argmax_block_indices: DeviceBuffer
     argmax_id: DeviceBuffer
     argmax_value: DeviceBuffer
-    control: DeviceBuffer | None = None
     _closed: bool = False
 
     @classmethod
@@ -277,7 +276,6 @@ class LagunaEagerScratch:
         cls,
         config: LagunaGGUFConfig,
         *,
-        shared_control: bool = False,
         runtime: HipRuntime | None = None,
     ) -> "LagunaEagerScratch":
         max_heads = max(int(value) for value in config.head_counts)
@@ -315,41 +313,18 @@ class LagunaEagerScratch:
         )
         buffers: list[DeviceBuffer] = []
         try:
-            if shared_control:
-                control = malloc(2 * _I64_NBYTES, runtime=runtime)
-                buffers.append(control)
-                buffers.extend(
-                    malloc(nbytes, runtime=runtime) for nbytes in sizes[2:]
-                )
-                token_id = DeviceBuffer(control.ptr, _I64_NBYTES)
-                position = DeviceBuffer(
-                    control.ptr + _I64_NBYTES,
-                    _I64_NBYTES,
-                )
-                return cls(
-                    max_query_width,
-                    max_heads,
-                    token_id,
-                    position,
-                    *buffers[1:],
-                    control=control,
-                )
             buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
-            return cls(max_query_width, max_heads, *buffers)
         except Exception:
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
             raise
+        return cls(max_query_width, max_heads, *buffers)
 
     @property
     def buffers(self) -> tuple[DeviceBuffer, ...]:
-        control = (
-            (self.token_id, self.position)
-            if self.control is None
-            else (self.control,)
-        )
         return (
-            *control,
+            self.token_id,
+            self.position,
             self.hidden,
             self.norm,
             self.query,
@@ -1294,22 +1269,6 @@ def resolve_laguna_head_kv_fusion(
     return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
 
 
-def resolve_laguna_shared_control_publication(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the measured backend's default-off shared c=1 control owner."""
-
-    capability = backend_package_capability(
-        backend,
-        "LAGUNA_SHARED_CONTROL_PUBLICATION",
-        None,
-    )
-    if capability is None:
-        return False
-    return bool(capability) if requested is None else bool(requested)
-
-
 def resolve_laguna_mixed_attention_projections(
     backend: str,
     requested: bool | None = None,
@@ -1843,7 +1802,6 @@ class LagunaGGUFResidentSession:
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
         use_head_kv_fusion: bool | None = None,
-        use_shared_control_publication: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
@@ -1877,12 +1835,6 @@ class LagunaGGUFResidentSession:
         self.use_split_attention = use_split_attention
         self.use_split_gate_fusion = use_split_gate_fusion
         self.use_swa_split_wave_local = use_swa_split_wave_local
-        self.use_shared_control_publication = (
-            resolve_laguna_shared_control_publication(
-                self.backend,
-                use_shared_control_publication,
-            )
-        )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
@@ -2068,12 +2020,6 @@ class LagunaGGUFResidentSession:
                 self.global_split_min_live is not None
                 or self.swa_split_min_live is not None
             )
-            if self.use_shared_control_publication:
-                self.scratch = LagunaEagerScratch.allocate(
-                    config,
-                    shared_control=True,
-                    runtime=self.runtime,
-                )
             self.kv_cache = allocate_laguna_kv_cache(
                 config,
                 context_length=self.context_length,
@@ -2089,21 +2035,10 @@ class LagunaGGUFResidentSession:
                 use_split_attention=self.use_split_attention,
                 use_split_gate_fusion=self.use_split_gate_fusion,
                 use_swa_split_wave_local=self.use_swa_split_wave_local,
-                prepublished_row_position=(
-                    self.scratch.position
-                    if self.use_shared_control_publication
-                    and self.scratch is not None
-                    else None
-                ),
             )
             self.use_split_gate_fusion = self.kv_cache.split_gate_fusion
             self.use_swa_split_wave_local = self.kv_cache.swa_split_wave_local
-            if self.scratch is None:
-                self.scratch = LagunaEagerScratch.allocate(
-                    config,
-                    shared_control=False,
-                    runtime=self.runtime,
-                )
+            self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
                 runtime=self.runtime,
@@ -2192,17 +2127,8 @@ class LagunaGGUFResidentSession:
         assert self.kernel_plan is not None
         assert self.libraries is not None
         try:
-            if self.use_shared_control_publication:
-                assert self.scratch.control is not None
-                _copy_i64_pair(
-                    self.scratch.control,
-                    token,
-                    next_position,
-                    self.runtime,
-                )
-            else:
-                _copy_i64(self.scratch.token_id, token, self.runtime)
-                _copy_i64(self.scratch.position, next_position, self.runtime)
+            _copy_i64(self.scratch.token_id, token, self.runtime)
+            _copy_i64(self.scratch.position, next_position, self.runtime)
             self.kv_cache.prepare_position(next_position)
             launch_gguf_embedding(
                 self.weights.root("token_embedding"),
@@ -2545,8 +2471,7 @@ class LagunaGGUFResidentSession:
         assert self.kv_cache is not None
         assert self.scratch is not None
         self.kv_cache.reset()
-        if not self.use_shared_control_publication:
-            _copy_i64(self.scratch.position, -1, self.runtime)
+        _copy_i64(self.scratch.position, -1, self.runtime)
         self.position = -1
         self.last_result = None
 
@@ -3589,25 +3514,14 @@ class LagunaGGUFResidentSession:
             scratch = self.moe_scratch
             self.moe_scratch = None
             release(lambda: scratch.free(runtime=self.runtime))
-
-        def release_scratch() -> None:
-            if self.scratch is not None:
-                scratch = self.scratch
-                self.scratch = None
-                release(lambda: scratch.free(runtime=self.runtime))
-
-        def release_kv_cache() -> None:
-            if self.kv_cache is not None:
-                cache = self.kv_cache
-                self.kv_cache = None
-                release(cache.free)
-
-        if self.use_shared_control_publication:
-            release_kv_cache()
-            release_scratch()
-        else:
-            release_scratch()
-            release_kv_cache()
+        if self.scratch is not None:
+            scratch = self.scratch
+            self.scratch = None
+            release(lambda: scratch.free(runtime=self.runtime))
+        if self.kv_cache is not None:
+            cache = self.kv_cache
+            self.kv_cache = None
+            release(cache.free)
         if self.swa_rope is not None:
             tables = self.swa_rope
             self.swa_rope = None
@@ -3677,23 +3591,6 @@ def _validate_laguna_weight_contract(
 
 def _copy_i64(buffer: DeviceBuffer, value: int, runtime: HipRuntime) -> None:
     host = ctypes.c_int64(int(value))
-    runtime.memcpy(
-        buffer.ptr,
-        ctypes.addressof(host),
-        ctypes.sizeof(host),
-        HipMemcpyKind.HOST_TO_DEVICE,
-    )
-
-
-def _copy_i64_pair(
-    buffer: DeviceBuffer,
-    first: int,
-    second: int,
-    runtime: HipRuntime,
-) -> None:
-    if buffer.nbytes != 2 * _I64_NBYTES:
-        raise ValueError("Laguna control publication requires two int64 values")
-    host = (ctypes.c_int64 * 2)(int(first), int(second))
     runtime.memcpy(
         buffer.ptr,
         ctypes.addressof(host),
