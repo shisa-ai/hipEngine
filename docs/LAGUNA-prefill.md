@@ -1714,6 +1714,30 @@ Immediate execution queue:
    Evidence:
    [`candidate`](../benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json) ·
    [`production`](../benchmarks/results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-production.json).
+53. **Refreshed production attribution:** clean revision `285b2638c`
+   records **2,417** pp512 dispatches, **1,112.508 ms** inclusive kernel sum,
+   and **853.021 ms** kernel span. The caller queue contains **781.331 ms**
+   of work; the **331.178-ms** secondary queue is almost entirely overlapped.
+   The main ceilings are selected Q4 gate/up **333.998 ms**, selected Q4/Q6
+   down **170.295 ms**, source-F16 **122.924 ms**, attention **68.058 ms**,
+   norm/RoPE/gate **26.331 ms**, and router **22.976 ms**. Row-qualified
+   source-F16 falls another **1.744 ms** versus the prior trace. This confirms
+   that launch/submission and the shared branch are not the remaining
+   61.383-ms route to 700.
+54. **Rejected and removed:** retain the first two M128 attention slices but
+   merge rows 256..511 into one packed-query M256 x context512 hipBLASLt
+   composite. The route passes the widened helper/CPU-reference gate, but its
+   larger masked dense contraction regresses steady pp512 wall
+   **792.662 -> 811.343 ms (+18.680 ms, -2.302% throughput)**. All 32
+   zero-workspace QK and PV algorithms were screened for 48 and 72 query
+   heads; the best four indices can recover only **0.783 ms** across the
+   12 full and 36 SWA layers. The candidate code, selectors, widened scratch,
+   and tests are removed. The naïve generic M256-online control is separately
+   worse at **~504–506 tok/s** versus **~646–648** for M128 production.
+   Attention-row widening is closed unless a fused causal library kernel
+   avoids computing the masked upper triangle.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-production-trace-attention-m256-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-production-trace-attention-m256-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1721,15 +1745,20 @@ The activation-only Q4 repair branch is exhausted and removed. Raw-nibble P8
 prefetch is now exact Q4 gate/up production and has transferred successfully
 to Q4 selected down:
 
-1. **Publication complete:** clean selector-unset
-   **645.803/575.942/468.311 tok/s** after the row-qualified source-F16
-   schedule. Refresh the all-family trace from `8acbb3764`.
-2. Attack the refreshed largest caller-stream family with a mechanism
+1. **Trace complete:** clean selector-unset production remains
+   **645.803/575.942/468.311 tok/s**. The refreshed pp512 trace attributes
+   **504.292 ms** to selected gate/up plus down and leaves attention at
+   **68.058 ms**.
+2. Attack the selected-expert path with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
    metadata-carrying, non-temporal, packed-metadata, pure axis-swap, and
    two/four-row-group launch-order schedules are now rejected.
-3. Reopen a closed family only if the new trace leaves a **>=5%**
+3. Do not widen the 128-row attention slice through another dense
+   QK/softmax/PV formulation: M256 remains slower even after exhaustive
+   library-algorithm tuning. Reopen attention only for a fused causal
+   primitive that avoids the masked upper triangle.
+4. Reopen any other closed family only if a future trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
    without a new numerical representation.
@@ -3522,6 +3551,8 @@ Do not repeat:
   **580.394 -> 577.374 tok/s (-0.52%, 1/7 wins)** and adds **4.088 ms** at
   the paired median wall;
 - qgroup9, paired-row exact attention, or row2 score materialization;
+- dense M256 attention-row merging or generic M256 online attention without a
+  fused causal primitive;
 - single-wave qrow4 two-head GQA fusion; exact K/V reuse regresses all measured
   512/1K/4K diagnostic lengths;
 - nine-wave qrow4 GQA token-tile sharing; exact current/cache K/V reuse

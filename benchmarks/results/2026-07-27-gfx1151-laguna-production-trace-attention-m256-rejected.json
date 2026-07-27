@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-27",
+  "kind": "hipengine_laguna_production_trace_and_attention_m256_screen",
+  "status": "rejected_and_removed",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16"
+  },
+  "repo": {
+    "revision": "285b2638cbb3f54bc5df780ca61166272b24cf48",
+    "tracked_clean": true
+  },
+  "production_trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-production-trace-cUNM5z --output-file laguna-production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --lengths 512,1024,4096 --chunk-size 2048 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-production-trace-cUNM5z/child.json",
+    "pp512_profiled_tok_s": 597.554642116366,
+    "pp512_dispatches": 2417,
+    "pp512_kernel_sum_ms": 1112.508273,
+    "pp512_kernel_span_ms": 853.021269,
+    "queue_1_sum_ms": 781.330596,
+    "queue_1_span_ms": 853.021269,
+    "queue_2_sum_ms": 331.177677,
+    "queue_2_span_ms": 764.047703,
+    "families_ms": {
+      "selected_q4_gate_up": 333.997725,
+      "activation_reduce_residual": 268.949456,
+      "selected_q4_q6_down": 170.294567,
+      "source_f16_projection": 122.924196,
+      "dense_shared_quant_projection": 91.397757,
+      "attention": 68.058327,
+      "norm_rope_gate": 26.331376,
+      "router": 22.976076
+    },
+    "child_sha256": "9d9020be6704e5ffc57b81c430e7f2d9391ccd5495f2145df2ed299a3611d1aa",
+    "raw_trace_sha256": "8b136bab730c3f86c479fe7c9deda612d538ba84ce7fd82808ccdbc5d2b434fd",
+    "summary_sha256": "bb5525ef0b9322c0d5d43b7686fe9456a7a6e8f614f88a7fced10c41cf740712"
+  },
+  "candidate": {
+    "summary": "Keep the first two M128 attention tiles and merge only rows 256..511 into one packed-query M256 x context512 F32 hipBLASLt QK/softmax/PV composite.",
+    "scratch_growth_bytes": 18874368,
+    "fallbacks_unchanged": true,
+    "resident_weights_unchanged": true
+  },
+  "correctness": {
+    "red": "M256 preappend and hipBLASLt support fixtures failed before implementation.",
+    "green": "The widened cache/transpose/softmax/packed-QK/PV route matched sampled CPU-reference rows at M256 x context512; the established M128 helper remained green.",
+    "focused_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu tests/test_laguna_gguf_runner.py::test_laguna_prefill_policy_decouples_matrix_and_attention_rows tests/test_laguna_kv_attention.py::test_laguna_kv_bulk_slice_uses_resident_row_position_view",
+    "post_removal_result": "3 passed"
+  },
+  "performance": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u - [same-resident-session counter-rotated pp512 A/B; set_prefill_attention_merge_last256(False/True)]",
+    "samples": [
+      {
+        "repetition": 0,
+        "production_ms": 846.1524919839576,
+        "candidate_ms": 811.2499450799078
+      },
+      {
+        "repetition": 1,
+        "production_ms": 792.3168849665672,
+        "candidate_ms": 813.5862689232454
+      },
+      {
+        "repetition": 2,
+        "production_ms": 794.1241270164028,
+        "candidate_ms": 811.4356030710042
+      },
+      {
+        "repetition": 3,
+        "production_ms": 792.6623930688947,
+        "candidate_ms": 811.0984510276467
+      }
+    ],
+    "steady_production_median_ms": 792.6623930688947,
+    "candidate_median_ms": 811.342774075456,
+    "candidate_wall_change_ms": 18.680381006561294,
+    "candidate_wall_change_percent": 2.356665516472342,
+    "steady_production_median_tok_s": 645.9244244169652,
+    "candidate_median_tok_s": 631.0526488465422,
+    "candidate_throughput_change_percent": -2.3023958211811357,
+    "next_tokens": [
+      2930
+    ]
+  },
+  "algorithm_screen": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u - [all 32 zero-workspace M256xcontext512 QK and PV algorithms; 4 warmups; median of 5 x 40 launches]",
+    "all_workspace_bytes": 0,
+    "best_indices": {
+      "qheads48_qk": 25,
+      "qheads48_pv": 2,
+      "qheads72_qk": 16,
+      "qheads72_pv": 23
+    },
+    "modeled_48_layer_saving_ms": 0.7833112354278564,
+    "conclusion": "Exhaustive algorithm tuning cannot erase the measured 18.680 ms full-model regression."
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The larger dense contraction performs too much masked QK/PV work. Its best possible algorithm gain is below 0.8 ms across the model.",
+    "candidate_surfaces_removed": true,
+    "production_tok_s": 645.8031621993913,
+    "remaining_700_gap_ms": 61.3826595602744,
+    "next": "Return to physical-byte or cross-row reuse in the selected expert path."
+  }
+}
