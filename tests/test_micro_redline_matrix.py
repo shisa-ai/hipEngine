@@ -335,6 +335,23 @@ def test_three_backend_comparison_rejects_mismatched_independent_hip_redline_lan
         )
 
 
+def test_tri_comparator_matches_native_dispatch_count_aliases() -> None:
+    module = _load_module()
+
+    hip = {
+        "sweep": "grid",
+        "node_count": 941,
+        "grid_blocks": 8192,
+    }
+    redline = {
+        "sweep": "grid",
+        "dispatch_count": 941,
+        "grid_blocks": 8192,
+    }
+
+    assert module._row_key("dispatch", hip) == module._row_key("dispatch", redline)
+
+
 def test_family_command_uses_matched_independent_lane_count(tmp_path: Path) -> None:
     module = _load_module()
     command = module.build_family_command(

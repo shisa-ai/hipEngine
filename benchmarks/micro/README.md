@@ -137,6 +137,7 @@ approximately six minutes for the stricter matrix.
 | --- | --- |
 | `timing_contract.py` | Shared mode, control, metric, correctness, and comparison gates |
 | `redline_matrix.py` | Optional pinned-source Redline runner, normalizer, and tri-comparator |
+| `redline_dispatch.py` | Direct profiled-PM4 dispatch/grid floor control |
 | `REDLINE-NOTICE` | Apache-2.0 attribution required by the derived Redline orchestration |
 | `comparison_claim.py` | Shared source, device, raw-identity, and matrix claim gate for joint wrappers |
 | `runners/micro_timing_hip.hpp` | HIP event and multi-stream timing helpers |
@@ -193,8 +194,33 @@ python3 benchmarks/micro/redline_matrix.py \
 
 The core runner covers the ten timer-substitutable families. Dispatch/grid is a
 separate direct-PM4 floor control because its native HIP harness already owns an
-inner hipGraph; the matrix manifest states whether that control and the
-same-HSACO control were run rather than silently treating either as covered.
+inner hipGraph. `redline_dispatch.py` compiles hipEngine's current
+`gmb_noop_kernel`, uses the inspected kernarg ABI, measures every profiled replay
+sample directly, and validates every output element after both single and burst
+replay. Example:
+
+```bash
+python3 benchmarks/micro/redline_dispatch.py \
+  --redline-root /home/lhl/redline \
+  --rocm-root "$THEROCK_ROOT" \
+  --hipcc "$THEROCK_ROOT/bin/hipcc" \
+  --bundler "$THEROCK_ROOT/lib/llvm/bin/clang-offload-bundler" \
+  --llvm-readobj "$THEROCK_ROOT/lib/llvm/bin/llvm-readobj" \
+  --environment-json /tmp/hipengine-redline-micro/environment.json \
+  --environment-ref /tmp/hipengine-redline-micro/environment.json \
+  --build-dir /tmp/hipengine-redline-micro/build/redline/dispatch \
+  --out /tmp/hipengine-redline-micro/redline-dispatch.json
+```
+
+The matrix manifest states whether this control and the same-HSACO control were
+run rather than silently treating either as covered. The external sanity
+reference is [ROCm issue #6409 comment 5061942739](https://github.com/ROCm/ROCm/issues/6409#issuecomment-5061942739):
+on an RX 7900 XTX with ROCm 7.14 and identical HIP/Redline HSACO, Redline Q2
+beat HIP on `227/240` rows (median `2.34x`) and Vulkan on `192/240` (median
+`1.43x`), with a `6.88x` median serialized dispatch-grid advantage over direct
+HIP. Those are comparison anchors, not pass thresholds for this W7900/ROCm-7.15
+run; hardware, stack, matrix, lane, and same-HSACO differences must be stated
+before treating a deviation as inconsistent.
 
 ## Paired Runner Inventory
 
