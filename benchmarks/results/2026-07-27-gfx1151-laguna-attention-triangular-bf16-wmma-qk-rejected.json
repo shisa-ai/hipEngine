@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-27T17:25:00+09:00",
+  "kind": "hipengine_laguna_attention_triangular_bf16_wmma_qk_screen",
+  "status": "rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "base_revision": "99f1aa01e164e9372abd434caf3fa1a851cb2177",
+    "production_changed": false,
+    "candidate_code_removed": true
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "scope": "dense-initial M128 packed-query QK at contexts 256/384/512",
+    "mechanism": "skip complete causal-mask QK tiles, consume resident BF16 K directly, round packed F32 Q to BF16 in registers, share GQA key work across six or nine wave32 query-head owners, and preserve the production F32 softmax/PV/output path",
+    "arithmetic": "BF16 WMMA inputs with F32 accumulation",
+    "resident_delta_bytes": 0,
+    "scratch_delta_bytes": 0
+  },
+  "correctness": {
+    "red": "the production-shape global/SWA primitive test failed on the missing wrapper",
+    "green": "48-head global and 72-head SWA QK passed the CPU tolerance fixture; complete attention passed at contexts 128/256/384/512",
+    "qk_rtol": 0.002,
+    "qk_atol": 0.0002,
+    "attention_rtol": 0.002,
+    "attention_atol": 0.0002,
+    "finite": true
+  },
+  "trace_results": {
+    "context_256": {
+      "tuned_packed_f32_hipblaslt_qk_ms": 0.08512,
+      "lds_shared_8_plus_1_wave_bf16_wmma_ms": 0.148839,
+      "direct_8_plus_1_wave_bf16_wmma_ms": 0.114495,
+      "direct_9_wave_bf16_wmma_ms": 0.104837,
+      "best_candidate_regression_percent": 23.164079
+    },
+    "context_512": {
+      "tuned_packed_f32_hipblaslt_qk_ms": 0.156053,
+      "direct_9_wave_bf16_wmma_ms": 0.207429,
+      "candidate_regression_percent": 32.921507
+    },
+    "best_candidate_resources": {
+      "workgroup_threads": 288,
+      "vgpr": 144,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes_per_thread": 0
+    }
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu tests/test_laguna_kv_attention.py::test_laguna_dense_initial_triangular_qk_bf16_wmma_matches_cpu --tb=short",
+    "trace_256": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-tri-qk-wave9-trace --output-file tri-qk -- .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu[256]",
+    "trace_512": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-tri-qk-wave9-c512-trace --output-file tri-qk -- .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu[512]"
+  },
+  "raw_trace_sha256": {
+    "lds_shared_context256": "43044947ba942cac999a94cad8a4f601e42ad591cf120a81494797a6f45593a9",
+    "direct_8_plus_1_context256": "2cb5423202ec77b2dea7b363e9b349ddb8cbf595e5edae94968bd82f4c7a6ae5",
+    "direct_9_context256": "a4918ed3cd09ba890aebffe89448d4b9bb31cf7a8c65252407c4160e306cc1d6",
+    "direct_9_context512": "5df19b03c02af81a9c9d36d287b404bf987d526fcdb1f6a7f588ecd4a4e81dae"
+  },
+  "decision": {
+    "result": "reject",
+    "reason": "Even after removing all LDS barriers and folding the ninth SWA query head into one workgroup, BF16 query conversion and 144-VGPR pressure leave QK 23.16% slower at context 256 and 32.92% slower at context 512.",
+    "production": "Retain packed F32 hipBLASLt QK.",
+    "reopen_only_if": "a native triangular F32 contraction or a packed BF16 query producer removes the conversion/register premise without consuming additional absolute quality budget"
+  }
+}

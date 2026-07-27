@@ -184848,3 +184848,26 @@ Vulkan local sizes verbatim will close the measured gap.
   category lane/helper, catalog/refactor entries, and focused tests.
   Production remains model-declared top-10 for prefill and decode. Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-route-tail15-absolute-rejected.json`.
+
+## 2026-07-27 — Reject triangular BF16-WMMA Laguna QK
+
+- RED added a production-shape direct-cache QK fixture and failed on the
+  missing HIP/Python primitive. GREEN covered global 48-head and SWA 72-head
+  `KVLiveSpans`; QK passed the CPU tolerance gate and the complete
+  softmax/PV attention route passed at contexts 128/256/384/512.
+- The first body skipped complete causal-mask tiles, shared each resident
+  BF16 K tile across GQA heads through 512 B LDS, and rounded packed F32 Q to
+  BF16 for native WMMA. At context 256 its 8+1-wave launches totaled
+  **0.148839 ms** versus tuned packed F32 hipBLASLt QK **0.086002 ms**.
+- The bounded repair removed all LDS/barriers and used direct per-wave cache
+  vectors. Folding all nine SWA query heads into one local288 workgroup
+  improved the candidate to **0.104837 ms**, but the paired library QK was
+  **0.085120 ms (+23.16% candidate regression)**. Context 512 remains
+  **0.207429 vs 0.156053 ms (+32.92%)**. The best body is
+  local288/VGPR144/SGPR128/LDS0/scratch0.
+- Removed every candidate kernel/export, wrapper, runtime flag, and fixture;
+  the four production code/test files are byte-identical to revision
+  `99f1aa01e`. Production remains **654.249 tok/s**. The required lineage
+  audit was attempted before implementation and remains blocked by missing
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-attention-triangular-bf16-wmma-qk-rejected.json`.
