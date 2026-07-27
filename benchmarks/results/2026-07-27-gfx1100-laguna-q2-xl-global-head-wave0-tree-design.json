@@ -1,0 +1,339 @@
+{
+  "actual_input_screen": {
+    "all_variant_outputs_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_head_kv_local_variants_actual.py",
+    "harness_sha256": "366b67da7df796407c71f02c3cee91244d594003478da59b08c183c47223514a",
+    "library_sha256": "4bf98e1e75e7c2432f4cf833a6e40e4acfea90c296928dca79bf44c01a19b3d8",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 1000,
+      "warmups_per_mode": 50
+    },
+    "raw_sha256": "5a1122f392c758341f8451a73d5b752fdb67a9d7263c06135496a96a58afeb0f",
+    "rejected_swa_rows": [
+      {
+        "all_fields_exact": true,
+        "candidate_event_us": 5.224964141845703,
+        "candidate_wall_us": 5.235112039372325,
+        "control_event_us": 4.873082160949707,
+        "control_wall_us": 4.882846027612686,
+        "event_delta_pct": 7.220932651531942,
+        "exact_fields": [
+          "evict",
+          "k",
+          "key_cache",
+          "live_counts",
+          "q",
+          "token_position",
+          "value_cache"
+        ],
+        "kind": "swa",
+        "layer": 1,
+        "position": 69,
+        "q_heads": 72,
+        "rotary_dim": 128,
+        "wall_delta_pct": 7.214358383769648
+      },
+      {
+        "all_fields_exact": true,
+        "candidate_event_us": 5.224565029144287,
+        "candidate_wall_us": 5.238731158897281,
+        "control_event_us": 4.8655619621276855,
+        "control_wall_us": 4.878886975347996,
+        "event_delta_pct": 7.378450214199139,
+        "exact_fields": [
+          "evict",
+          "k",
+          "key_cache",
+          "live_counts",
+          "q",
+          "token_position",
+          "value_cache"
+        ],
+        "kind": "swa",
+        "layer": 47,
+        "position": 69,
+        "q_heads": 72,
+        "rotary_dim": 128,
+        "wall_delta_pct": 7.37553842438865
+      }
+    ],
+    "selected_global_rows": [
+      {
+        "all_fields_exact": true,
+        "candidate_event_us": 4.555357933044434,
+        "candidate_wall_us": 4.557262174785137,
+        "control_event_us": 5.762730121612549,
+        "control_wall_us": 5.774849094450474,
+        "event_delta_pct": -20.95139218892076,
+        "exact_fields": [
+          "evict",
+          "k",
+          "key_cache",
+          "live_counts",
+          "q",
+          "token_position",
+          "value_cache"
+        ],
+        "kind": "global",
+        "layer": 0,
+        "position": 69,
+        "q_heads": 48,
+        "rotary_dim": 64,
+        "wall_delta_pct": -21.084307135149484
+      },
+      {
+        "all_fields_exact": true,
+        "candidate_event_us": 4.709519863128662,
+        "candidate_wall_us": 4.744224017485976,
+        "control_event_us": 5.779169082641602,
+        "control_wall_us": 5.792499054223299,
+        "event_delta_pct": -18.50870262172729,
+        "exact_fields": [
+          "evict",
+          "k",
+          "key_cache",
+          "live_counts",
+          "q",
+          "token_position",
+          "value_cache"
+        ],
+        "kind": "global",
+        "layer": 44,
+        "position": 69,
+        "q_heads": 48,
+        "rotary_dim": 64,
+        "wall_delta_pct": -18.09711191878448
+      }
+    ],
+    "source_sha256": "f683faf866a8774c1495a5edd4ba82bd7668271fe8bc1b1cdc7e6e20b1237d16",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "3f5491f6aa1ae5e3af77b98fd0b9cb2cada94621b6d0b1a0ca16810b688afb7f",
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40070789172,
+      "peak_allocations": 1205,
+      "total_allocated_bytes": 40070789172,
+      "total_freed_bytes": 40070789172
+    },
+    "tracked_peak": {
+      "active_allocations": 1205,
+      "current_allocated_bytes": 40070789172,
+      "peak_allocated_bytes": 40070789172,
+      "peak_allocations": 1205,
+      "total_allocated_bytes": 40070789172,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "base_revision": "722e87f6b",
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_ms_per_token": 15.805224168463194,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "retained_combined_head_kv_ms_per_token": 0.24617471428571427,
+    "retained_global_head_kv_calls_per_token": 12,
+    "retained_global_head_kv_ms_per_token": 0.07725910714285714,
+    "retained_head_kv_calls_per_token": 48,
+    "retained_swa_head_kv_calls_per_token": 36,
+    "retained_swa_head_kv_ms_per_token": 0.16891560714285714
+  },
+  "candidate": {
+    "calls_per_token": 12,
+    "changed": "after one 256-partial publication, wave 0 gathers eight lane-aligned values, replays strides 128/64/32, uses five wave32 shuffles for strides 16..1, and publishes the identical scalar with one final barrier",
+    "dynamic_lds_bytes": 1024,
+    "local_size": 256,
+    "model_kernels_per_token": 678,
+    "preserved": [
+      "complete KVLiveSpans ABI and page-256 translation",
+      "all F32 Q/K and RNE BF16 K/V stores",
+      "metadata update and ownership",
+      "each source square and retained stride128/64/32/16/8/4/2/1 FP32 association",
+      "rsqrtf, norm, partial-RoPE and output association"
+    ],
+    "registry_key": "hip_gfx1100/head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/global_wave0_tree_f32_bf16_spans",
+    "required_fallback": "retained current-P4 global head+KV body; current-P4 SWA body remains sole SWA route",
+    "scope": "global c=1 only; all SWA, rows/prefill, gfx1151, registry miss, and explicit disable retain current-P4"
+  },
+  "closed_screens": {
+    "head_geometry": {
+      "decision": "select local256 wave0 for global only; do not alter SWA",
+      "local128_global_positive_swa_negative": true,
+      "local32_nonpositive_or_materially_slower": true,
+      "local64_block_and_wave0_global_positive_swa_negative": true
+    },
+    "pre_timing_exactness_red": {
+      "description": "first local64 source allowed square+add contraction and failed global query bit equality before timing; replaced with explicit rounded multiply/add boundary",
+      "library_sha256": "fc73f26ad337d484e2ce138b8f96bf159db4d8bc2a6f6dffb396957398ba3d9b",
+      "reused_for_selection": false,
+      "source_sha256": "f1e06c3f281385ed5623981878f30376b3e3bc25f7bcdf3d0a834d690e2cf873",
+      "timing_rows_emitted": 0
+    },
+    "router_projection_expert_tiles": {
+      "decision": "reject out of tree; every endpoint/mode regresses event and wall",
+      "description": "exact local256 expert tile2/4/8 reuse hidden loads without touching selection",
+      "harness_sha256": "99899ec7ade65d16ecdd391fe229b45e2cd848ad90e60735bd942d22590dbd52",
+      "library_sha256": "ed4155d494feb5ef4459ab5b6cba31841d539ccca169e16c2731eb43a7c71c9b",
+      "raw_sha256": "c3981d566440aceb29b2afa0803c3641ddeeb33e7947bd6041faebf369a92ca9",
+      "rows": [
+        {
+          "all_exact": true,
+          "event_delta_pct": {
+            "tile2": 8.163655359085054,
+            "tile4": 18.616404042644152,
+            "tile8": 45.47903202123111
+          },
+          "layer": 1,
+          "wall_delta_pct": {
+            "tile2": 8.071043981788527,
+            "tile4": 18.470941997720946,
+            "tile8": 45.402904258767606
+          }
+        },
+        {
+          "all_exact": true,
+          "event_delta_pct": {
+            "tile2": 8.20927885534628,
+            "tile4": 18.46070357306313,
+            "tile8": 45.44998758481904
+          },
+          "layer": 47,
+          "wall_delta_pct": {
+            "tile2": 8.129037887978852,
+            "tile4": 18.5000776467517,
+            "tile8": 45.395352650889606
+          }
+        }
+      ],
+      "source_sha256": "b7d3a632a3c794fa48be9c95ffe76e23e71cfe8bbef0e3ee2c72b417436439d1",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "0181a26e68c59b3c7a3765b173ea6efdf6e50990dce9ecca4e7d1753092715b0"
+    }
+  },
+  "codegen": {
+    "allocated_expectation": "local256, VGPR16 class, SGPR128, dynamic LDS1024, scratch0",
+    "analysis_sha256": "bf977541486f7410c66475066e52c28b415e577f8dd1a91a270648be82945833",
+    "baseline_global": {
+      "ds_bpermute_b32": 0,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 4,
+      "sgpr_count": 69,
+      "sgpr_spill_count": 0,
+      "static_instructions": 814,
+      "text_bytes": 3976,
+      "v_fma_f32": 6,
+      "v_mul_f32_e32": 19,
+      "vgpr_count": 15,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate_global_local256_wave0": {
+      "ds_bpermute_b32": 10,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 4,
+      "sgpr_count": 67,
+      "sgpr_spill_count": 0,
+      "static_instructions": 662,
+      "text_bytes": 3296,
+      "v_fma_f32": 0,
+      "v_mul_f32_e32": 19,
+      "vgpr_count": 12,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "codegen_sha256": "6ec51288f5af917a9480aa5bc68b8f5c829611c6968d9efd8ca23022b852f03d",
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22",
+    "delta": {
+      "ds_bpermute_b32": 10,
+      "s_barrier": 0,
+      "sgpr_count": -2,
+      "static_instructions": -152,
+      "text_bytes": -680,
+      "vgpr_count": -3
+    },
+    "disasm_sha256": "bc8d62151d69ea47d1b7bf0409960a5c64ba6e23a664dd29afaaf70c38aee3f9",
+    "dynamic_barriers": {
+      "baseline": 9,
+      "candidate": 2
+    },
+    "fatbin_sha256": "e4b4cfe2e954585a651b59e41a3278b9aa8aa99bbfdf1dbda8fee22655307992",
+    "hsaco_sha256": "cfbe5e9fd304ece2edfdff3988d52e3e711b6c621e0e212787f8a70f51415fb5",
+    "library_sha256": "4bf98e1e75e7c2432f4cf833a6e40e4acfea90c296928dca79bf44c01a19b3d8",
+    "readobj_sha256": "50526e2f9024cc312553782be535deb39e72861cec8d9ba2ee8b729afdc4fd1d",
+    "symbols_sha256": "2abffd459108f986aba91e11694ecd8cc5f20c40b7656df9957dfe12cb33b83f"
+  },
+  "date": "2026-07-27",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_global_head_wave0_tree_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "note": "only already-catalogued unrelated external drift",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "global_layers": 12,
+    "head_dim": 128,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "swa_layers": 36
+  },
+  "modeled_ceiling": {
+    "conservative_ratio": 0.8190288808121552,
+    "modeled_h32_decode_tok_s": 63.32623920586723,
+    "modeled_improvement_pct": 0.08854063944541135,
+    "modeled_saving_ms_per_token": 0.01398166708709647,
+    "note": "planning ceiling from the smallest selected endpoint event/wall gain applied only to the immutable global-head family; not measured full-model throughput",
+    "remaining_to_vulkan_pct": 1.7244037158918424
+  },
+  "next_action": "Commit selection evidence/docs only. Then add a primitive-only global sibling with RED/GREEN, synthetic/CPU/all-12-actual/codegen/cache-only trace gates. Runtime ownership is a later separate default-off unit requiring full state and exact 12-candidate/36-retained-SWA/678-kernel tracing before clean/category adjudication.",
+  "performance_claim": false,
+  "production_scope": {
+    "benchmark_rollup_changed": false,
+    "canonical_topline_changed": false,
+    "capability_or_runtime_owner_added": false,
+    "default_changed": false,
+    "production_files_changed": false,
+    "source_hashes": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "abc66cdeb8251c95776144d1b6bb0a9117f1636cc3f291caa09e037aa32d87cb",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "9d890915873820869cca3a93c61c53d0db37576bc24c1466e475f7e6499e4f30",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3431a3aa152422bba6dc228247cd05885b0c9e4c2ddb3a7751283bfa7c4d05a9"
+    }
+  },
+  "residual_rank": {
+    "excluded": "all rejected/closed Q5/Q6/IQ2/IQ3/IQ4, attention, SWA-reducer, selector/composite-router, add/norm, D9-wave0, graph/packet/AQL, and prompt-conditioned premises",
+    "open_family_rank": {
+      "global_head_kv_ms_per_token": 0.07725910714285714,
+      "head_kv_all_ms_per_token": 0.246175,
+      "router_projection_ms_per_token": 0.319143
+    },
+    "rank_output_sha256": "e3eac267b8bcd6e4253f013f591f1b0af19ce9926f11bb8798b23bcc3aa2312d",
+    "roots": [
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-a",
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-b"
+    ],
+    "stable_samples": 28,
+    "trace_sha256": [
+      "54964fbb65dacdeb2e2e96b85e696ccab648bacd6a663ae20e83247f3118c60d",
+      "216d9226032da2365efd6d24e53de93dabda4b9d4436d597865ebaf3d52ac2f8"
+    ]
+  },
+  "schema": 1,
+  "status": "selected_pending_primitive_admission"
+}
