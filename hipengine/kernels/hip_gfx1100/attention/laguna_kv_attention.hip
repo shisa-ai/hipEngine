@@ -1813,6 +1813,32 @@ __global__ void laguna_dense_initial_cache_block_bf16_to_f32_kernel(
   }
 }
 
+__global__ void
+laguna_dense_initial_contiguous_cache_block_bf16_to_f32_kernel(
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    float* __restrict__ key_f32,
+    float* __restrict__ value_f32,
+    const int64_t* __restrict__ live_counts,
+    int64_t logical_start,
+    int64_t count,
+    int64_t context,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  if (live_counts[0] < context) return;
+  const int64_t width = num_kv_heads * head_dim;
+  const int64_t total = count * width;
+  const int64_t cache_base = logical_start * width;
+  for (int64_t index =
+           static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < total;
+       index += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t cache_index = cache_base + index;
+    key_f32[index] = laguna_bf16_bits_to_float(key_cache[cache_index]);
+    value_f32[index] = laguna_bf16_bits_to_float(value_cache[cache_index]);
+  }
+}
+
 __global__ void laguna_swa_union_bf16_to_f32_kernel(
     const float* __restrict__ current_key,
     const float* __restrict__ current_value,
@@ -2388,6 +2414,59 @@ extern "C" int hipengine_laguna_dense_initial_cache_block_bf16_to_f32_spans(
         num_kv_heads,
         head_dim);
   }
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans(
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* key_f32,
+    float* value_f32,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    int64_t logical_start,
+    int64_t count,
+    int64_t context,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int global_layout,
+    hipStream_t stream) {
+  if (key_cache == nullptr || value_cache == nullptr || key_f32 == nullptr ||
+      value_f32 == nullptr || base_offsets == nullptr ||
+      live_counts == nullptr || token_positions == nullptr ||
+      evict_mask == nullptr || logical_start < 0 || count <= 0 ||
+      context <= 0 || logical_start + count > context ||
+      context > capacity || capacity <= 0 || num_kv_heads != 8 ||
+      head_dim != 128 || global_layout != 1 || block_size != 256 ||
+      block_table_len <= 0 ||
+      (capacity + block_size - 1) / block_size > block_table_len) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = count * num_kv_heads * head_dim;
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      laguna_dense_initial_contiguous_cache_block_bf16_to_f32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      key_cache,
+      value_cache,
+      key_f32,
+      value_f32,
+      live_counts,
+      logical_start,
+      count,
+      context,
+      num_kv_heads,
+      head_dim);
   return static_cast<int>(hipGetLastError());
 }
 

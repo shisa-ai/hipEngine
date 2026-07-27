@@ -87,6 +87,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES,
     LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX,
     LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT,
+    LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE,
     LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS,
     LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT,
     LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT,
@@ -254,6 +255,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES is True
     assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX is True
     assert LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT is True
+    assert LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE is True
     assert LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS == 2_048
     assert LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT is True
     assert LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT is True
@@ -414,6 +416,19 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert backend_package_capability(
         "hip_gfx1100",
         "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
+        None,
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE",
+            None,
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE",
         None,
     ) is None
     assert (

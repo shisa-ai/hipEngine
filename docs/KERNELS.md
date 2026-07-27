@@ -249,6 +249,20 @@ unmeasured paths remain M128. Complete 4K/16K/64K improves
 lifecycle recovery. Evidence:
 `benchmarks/results/2026-07-28-gfx1151-laguna-lc3-global-m2048-production.json`.
 
+LC-4 specializes only the metadata-qualified dense-initial global block widen.
+Because production allocates global KV in identity physical order, the
+retained kernel directly streams `logical_start * width + index` and removes
+per-element position, eviction, block-table, and physical-slot work. Paired
+M2048/4K timing improves **0.250249 -> 0.234780 ms (-6.181%)**, stays
+bit-exact to the generic widen, and leaves attention within maximum absolute
+**3.446e-8** of qrow6. Trace resources fall VGPR24 -> VGPR16 with local256,
+SGPR128, LDS0, and scratch0. The 4K/16K/64K aggregate A/B is mixed within
+one-run noise; mandatory 128K is neutral at **149.249 versus 149.684 tok/s
+(-0.291%)**, with exact state and lifecycle. gfx1151 promotes
+`LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE`; complete `KVLiveSpans` and the
+generic span-aware kernel remain the fallback. Evidence:
+`benchmarks/results/2026-07-28-gfx1151-laguna-lc4-dense-contiguous-cache.json`.
+
 The subsequent Q4 row64/local256 screen is rejected and removed. Eight waves
 split 64 routed rows while preserving 32 FP32 accumulators/lane. Natural
 routing nevertheless reduces M256/M512 tiles only **5.44%/16.84%**.

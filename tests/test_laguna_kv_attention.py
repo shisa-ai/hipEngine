@@ -2860,6 +2860,152 @@ def test_laguna_dense_initial_blas_helpers_match_cpu() -> None:
     )
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_dense_initial_contiguous_global_cache_block_matches_spans() -> None:
+    """The dense contiguous global-cache lane must equal the full span ABI."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+        laguna_dense_initial_cache_block_bf16_to_f32_spans,
+        laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans,
+    )
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    context = 512
+    logical_start = 256
+    count = 256
+    kv_heads = 8
+    head_dim = 128
+    config = SimpleNamespace(
+        block_count=1,
+        layer_types=(FULL_ATTENTION,),
+        head_counts=(48,),
+        head_count_kv=kv_heads,
+        key_length=head_dim,
+        value_length=head_dim,
+        sliding_window=512,
+    )
+    cache = allocate_laguna_kv_cache(
+        config,
+        context_length=context,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    state = cache.layer(0)
+    rng = np.random.default_rng(0x1C4)
+    key_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(context, kv_heads, head_dim)).astype(
+            np.float32
+        )
+    )
+    value_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=key_bits.shape).astype(np.float32)
+    )
+    output_shape = (count, kv_heads, head_dim)
+    allocations = []
+    try:
+        output_nbytes = np.empty(output_shape, dtype=np.float32).nbytes
+        generic_key = malloc(output_nbytes, runtime=runtime)
+        generic_value = malloc(generic_key.nbytes, runtime=runtime)
+        contiguous_key = malloc(generic_key.nbytes, runtime=runtime)
+        contiguous_value = malloc(generic_key.nbytes, runtime=runtime)
+        allocations.extend(
+            (generic_key, generic_value, contiguous_key, contiguous_value)
+        )
+        copy_host_to_device(
+            state.key_cache,
+            host_array_ptr(key_bits),
+            key_bits.nbytes,
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            state.value_cache,
+            host_array_ptr(value_bits),
+            value_bits.nbytes,
+            runtime=runtime,
+        )
+        live_count = np.asarray([context], dtype=np.int64)
+        token_positions = np.arange(context, dtype=np.int64)
+        evict_mask = np.zeros(context, dtype=np.bool_)
+        for tensor, host in (
+            (state.spans.live_counts, live_count),
+            (state.spans.token_positions, token_positions),
+            (state.spans.evict_mask, evict_mask),
+        ):
+            runtime.memcpy(
+                tensor.ptr,
+                host_array_ptr(host),
+                host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+            )
+        common = (
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            state.spans,
+            logical_start,
+            count,
+            context,
+            kv_heads,
+            head_dim,
+        )
+        laguna_dense_initial_cache_block_bf16_to_f32_spans(
+            common[0],
+            common[1],
+            generic_key.ptr,
+            generic_value.ptr,
+            *common[2:],
+            library=library,
+            runtime=runtime,
+        )
+        laguna_dense_initial_contiguous_cache_block_bf16_to_f32_spans(
+            common[0],
+            common[1],
+            contiguous_key.ptr,
+            contiguous_value.ptr,
+            *common[2:],
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for generic, contiguous in (
+            (generic_key, contiguous_key),
+            (generic_value, contiguous_value),
+        ):
+            expected = np.empty(output_shape, dtype=np.float32)
+            actual = np.empty_like(expected)
+            copy_device_to_host(
+                host_array_ptr(expected),
+                generic,
+                expected.nbytes,
+                runtime=runtime,
+            )
+            copy_device_to_host(
+                host_array_ptr(actual),
+                contiguous,
+                actual.nbytes,
+                runtime=runtime,
+            )
+            np.testing.assert_array_equal(actual, expected)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        cache.free()
+
+
 def _attention_reference(
     query: np.ndarray,
     keys: np.ndarray,

@@ -1629,6 +1629,7 @@ class LagunaGGUFResidentSession:
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         prefill_long_attention_hipblaslt: bool | None = None,
         prefill_block_attention_hipblaslt: bool | None = None,
+        prefill_dense_contiguous_cache: bool | None = None,
         prefill_swa_attention_hipblaslt: bool | None = None,
         q6_qmicro: bool | None = None,
         q6_compact_activation: bool | None = None,
@@ -1809,6 +1810,15 @@ class LagunaGGUFResidentSession:
             )
             if prefill_block_attention_hipblaslt is None
             else prefill_block_attention_hipblaslt
+        )
+        self.prefill_dense_contiguous_cache = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE",
+                False,
+            )
+            if prefill_dense_contiguous_cache is None
+            else prefill_dense_contiguous_cache
         )
         self.prefill_swa_attention_hipblaslt = bool(
             backend_package_capability(
@@ -2336,6 +2346,11 @@ class LagunaGGUFResidentSession:
         """Select bounded-state blocks within qualified long attention."""
 
         self.prefill_block_attention_hipblaslt = bool(enabled)
+
+    def set_prefill_dense_contiguous_cache(self, enabled: bool) -> None:
+        """Select direct identity addressing for qualified global prompt KV."""
+
+        self.prefill_dense_contiguous_cache = bool(enabled)
 
     def set_prefill_swa_attention_hipblaslt(self, enabled: bool) -> None:
         """Select tensorized rolling M128 SWA attention."""
@@ -3571,6 +3586,10 @@ class LagunaGGUFResidentSession:
                         kv_library=self.libraries.kv_attention,
                         query_is_packed=query_is_packed,
                         unpack_output=not leave_output_packed,
+                        dense_contiguous_cache=(
+                            self.prefill_dense_contiguous_cache
+                            and layer.attention_type == FULL_ATTENTION
+                        ),
                     )
                     if leave_output_packed:
                         if packed_output_begin is None:

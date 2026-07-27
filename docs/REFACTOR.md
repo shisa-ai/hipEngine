@@ -54,6 +54,18 @@ should be removed or collapsed.
   it into the final chunk policy after those stages choose their retained
   geometry. Never remove the generic span-aware fallback.
 
+## Laguna dense-contiguous global-cache widen
+
+- Added and promoted on gfx1151 in LC-4 after the exact 4K block sub-window
+  improved **0.250249 -> 0.234780 ms (-6.181%)** and the complete-model gates
+  remained neutral with exact state through 128K.
+- Keep `prefill_dense_contiguous_cache`, the profile comparison switch, and
+  the generic span-aware block kernel through LC-5/LC-6 for rollback and
+  non-dense semantics. After one release plus the final six-shape sweep,
+  collapse the selector if no regression appears. Never remove or weaken the
+  complete `KVLiveSpans` fallback for continuation, verifier, eviction, SWA,
+  decode, or unmeasured backends.
+
 ## Laguna MoE shared/routed branch-concurrency candidate
 
 - Added 2026-07-26 as an exact, default-off session and profile-harness

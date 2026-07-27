@@ -38,6 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
 LAP0_LENGTHS = (128, 512, 1024, 4096)
 ATTACK_LENGTHS = (4096, 16384, 65536, 131072)
+ATTACK_DIRECTIONAL_LENGTHS = (4096, 16384, 65536)
 LC1_128K_GATE_LENGTHS = (131072,)
 LC0_TRACE_LENGTHS = (16384, 65536)
 FINAL_SWEEP_LENGTHS = (512, 1024, 4096, 32768, 65536, 131072)
@@ -45,6 +46,7 @@ PROFILE_LENGTH_SETS = (
     DEFAULT_LENGTHS,
     LAP0_LENGTHS,
     ATTACK_LENGTHS,
+    ATTACK_DIRECTIONAL_LENGTHS,
     LC1_128K_GATE_LENGTHS,
     LC0_TRACE_LENGTHS,
     FINAL_SWEEP_LENGTHS,
@@ -107,6 +109,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--block-attention-hipblaslt",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
+        "--compare-dense-contiguous-cache",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--dense-contiguous-cache",
         action=argparse.BooleanOptionalAction,
         default=None,
     )
@@ -198,18 +209,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "--compare-long-attention-hipblaslt and "
             "--long-attention-hipblaslt are mutually exclusive"
         )
-    if (
-        args.compare_long_attention_hipblaslt
-        and (
-            args.compare_block_attention_hipblaslt
-            or args.compare_swa_attention_hipblaslt
+    active_comparisons = sum(
+        bool(value)
+        for value in (
+            args.compare_long_attention_hipblaslt,
+            args.compare_block_attention_hipblaslt,
+            args.compare_dense_contiguous_cache,
+            args.compare_swa_attention_hipblaslt,
         )
-    ):
-        raise ValueError("only one long-attention comparison may be active")
-    if (
-        args.compare_block_attention_hipblaslt
-        and args.compare_swa_attention_hipblaslt
-    ):
+    )
+    if active_comparisons > 1:
         raise ValueError("only one long-attention comparison may be active")
     if (
         args.compare_block_attention_hipblaslt
@@ -227,9 +236,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "--compare-swa-attention-hipblaslt and "
             "--swa-attention-hipblaslt are mutually exclusive"
         )
+    if args.compare_dense_contiguous_cache and args.dense_contiguous_cache:
+        raise ValueError(
+            "--compare-dense-contiguous-cache and "
+            "--dense-contiguous-cache are mutually exclusive"
+        )
     comparison = bool(
         args.compare_long_attention_hipblaslt
         or args.compare_block_attention_hipblaslt
+        or args.compare_dense_contiguous_cache
         or args.compare_swa_attention_hipblaslt
     )
     if not args.model.is_file():
@@ -279,6 +294,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
+    active_dense_contiguous_cache = False
     active_attention_rows = 128
     active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
@@ -311,6 +327,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_block_attention_hipblaslt
                 else args.block_attention_hipblaslt
             ),
+            prefill_dense_contiguous_cache=(
+                False
+                if args.compare_dense_contiguous_cache
+                else args.dense_contiguous_cache
+            ),
             prefill_swa_attention_hipblaslt=(
                 False
                 if args.compare_swa_attention_hipblaslt
@@ -331,6 +352,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_swa_attention_hipblaslt = (
             owner.prefill_swa_attention_hipblaslt
+        )
+        active_dense_contiguous_cache = (
+            owner.prefill_dense_contiguous_cache
         )
         active_attention_rows = owner.prefill_attention_chunk_size
         active_global_attention_rows = (
@@ -361,6 +385,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_swa_attention_hipblaslt:
                         owner.set_prefill_swa_attention_hipblaslt(
+                            mode == "candidate"
+                        )
+                    if args.compare_dense_contiguous_cache:
+                        owner.set_prefill_dense_contiguous_cache(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -488,6 +516,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 128,
                 active_attention_rows,
             ),
+            "dense_contiguous_cache": active_dense_contiguous_cache,
             "chunks_per_length": {
                 str(length): math.ceil(length / args.chunk_size) for length in lengths
             },
@@ -509,6 +538,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "compare_block_attention_hipblaslt": (
                 args.compare_block_attention_hipblaslt
+            ),
+            "compare_dense_contiguous_cache": (
+                args.compare_dense_contiguous_cache
+            ),
+            "dense_contiguous_cache_requested": (
+                args.dense_contiguous_cache
             ),
             "block_attention_hipblaslt": (
                 active_block_attention_hipblaslt
