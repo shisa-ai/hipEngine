@@ -184255,3 +184255,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `27ec87ae3f42c05d48491e0d99bc7ddc2f55a2f911a7f1ef26af553fbc6a24b5`.
   Evidence:
   `benchmarks/results/2026-07-27-gfx1151-laguna-q4-down-p8-all-family-profile.json`.
+
+## 2026-07-27 — Reject Q4 P8 hybrid row-group launch order
+
+- RED added production-shaped two/four-row-group parameters and initially
+  failed on the absent wrapper selector. GREEN retained the exact
+  128-column x 32-row/local128 D8 direct-wave P8 body while mapping adjacent
+  routed-row workgroups inside each output-column tile. Both schedules pass
+  the uneven/empty-expert CPU-reference fixture and are BF16-bit identical.
+- Twenty-one counter-rotated burst-five actual layer-1 samples reject both
+  variants at the primary M512 shape: retained P8 **6.7168 ms**, row-group2
+  **6.7696 ms (+0.787%)**, and row-group4 **6.7332 ms (+0.245%)**.
+  Row-group2 improves M256 only **4.4217 -> 4.4074 ms (-0.323%)**; row-group4
+  is neutral/regressive.
+- Removed the HIP templates/exports, Python selectors, benchmark modes, and
+  fixture parameters. Production stays **643.141 tok/s**. Launch order alone
+  does not create the required physical-byte reuse; the next gate requires
+  explicit shared residency or byte reduction. Raw SHA-256:
+  `5d440eade0f551fcb73025b3e5048d39c4ff28315baee538de6472f186a993e6`.
+  Evidence:
+  `benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json`.

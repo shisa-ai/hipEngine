@@ -1676,6 +1676,19 @@ Immediate execution queue:
    full-model run is warranted and every non-temporal surface is removed.
    Evidence:
    [`2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-nontemporal-rejected.json).
+51. **Rejected and removed before integration:** interleave two or four
+   adjacent routed-row workgroups inside each output-column tile while keeping
+   the exact production 128-column x 32-row/local128 D8 P8 body unchanged.
+   This hybrid order targets L2 reuse without repeating the rejected
+   64-row/local256 accumulator or LDS schedules. Both variants pass the
+   uneven/empty-expert CPU-reference gate and are BF16-bit identical.
+   Counter-rotated actual layer-1 timing rejects them at the primary M512
+   shape: retained P8 **6.7168 ms**, row-group2 **6.7696 ms (+0.787%)**, and
+   row-group4 **6.7332 ms (+0.245%)**. Row-group2 saves only **0.323%** at
+   M256. Every candidate surface is removed; launch order alone remains
+   closed without explicit shared residency or physical-byte reduction.
+   Evidence:
+   [`2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json`](../benchmarks/results/2026-07-27-gfx1151-laguna-q4-p8-rowgroup-order-rejected.json).
 
 ### Next exact and quality-gated attacks
 
@@ -1689,8 +1702,8 @@ to Q4 selected down:
 2. Attack the refreshed largest caller-stream family with a mechanism
    that changes physical bytes, cross-tile reuse, or a measured
    synchronization/latency limiter. Payload-only P8 is retained; decoded,
-   metadata-carrying, non-temporal, and packed-metadata schedules are now
-   rejected.
+   metadata-carrying, non-temporal, packed-metadata, pure axis-swap, and
+   two/four-row-group launch-order schedules are now rejected.
 3. Reopen a closed family only if the new trace leaves a **>=5%**
    perfect-removal ceiling or a newly supported library algorithm changes a
    prior premise. No further activation-only D4 role policy is admissible
