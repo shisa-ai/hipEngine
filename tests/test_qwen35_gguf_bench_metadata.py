@@ -66,6 +66,16 @@ def test_correctness_fingerprints_are_dtype_and_order_sensitive() -> None:
     assert bench._token_ids_sha256([1, 2, 3]) != bench._token_ids_sha256([3, 2, 1])
 
 
+def test_reusable_graph_replay_resets_host_window_counter() -> None:
+    class Graph:
+        replayed_steps = 128
+
+    graph = Graph()
+    bench._reset_reusable_graph_replay(graph)
+
+    assert graph.replayed_steps == 0
+
+
 def test_decode_graph_disabled_reason_tracks_production_graph_capability() -> None:
     class NoGraphSession:
         pass
