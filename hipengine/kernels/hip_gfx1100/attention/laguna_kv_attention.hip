@@ -1262,7 +1262,8 @@ template <
     int kOwnedQueries,
     int kValueStage,
     bool kVectorValueStage,
-    bool kDirectVectorStore = false>
+    bool kDirectVectorStore = false,
+    bool kAssumeSoftmaxDomain = false>
 __global__ __launch_bounds__(256)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1409,8 +1410,16 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
 #pragma unroll
       for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
         const int score_idx = q_local * scan_slots + token;
+        const float shifted_score =
+            shared_scores[score_idx] - warp_buf[q_local][0];
+        if constexpr (kAssumeSoftmaxDomain) {
+          // Every visible score participates in the maximum, so score-max is
+          // finite and non-positive. Preserve compiler `expf` exactly while
+          // exposing the bounded softmax domain.
+          __builtin_assume(shifted_score <= 0.0f);
+        }
         const float weight = visible
-            ? expf(shared_scores[score_idx] - warp_buf[q_local][0])
+            ? expf(shifted_score)
             : 0.0f;
         shared_scores[score_idx] = weight;
         local_sum[q_local] += weight;
@@ -6238,6 +6247,80 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_d
       (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
           kOwnedQueries,
           kValueStage,
+          true,
+          true>),
+      dim3(24),
+      dim3(256),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * scan_slots) * sizeof(float) +
+      static_cast<size_t>(scan_slots) * sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
           true,
           true>),
       dim3(24),

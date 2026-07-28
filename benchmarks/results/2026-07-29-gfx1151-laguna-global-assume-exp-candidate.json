@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "date": "2026-07-29",
+  "status": "primitive_candidate",
+  "performance_claim": false,
+  "source_revision": "7f20e490c19cff366c7213dbc3f051228b917b80",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna",
+    "attention_family": "global decode",
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "capacity": 4096
+  },
+  "candidate": {
+    "registry_variant": "global_context_fused_exact_gated_gqa2_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "change": "Preserve compiler expf and all retained arithmetic, but expose the exact score-minus-maximum non-positive domain with __builtin_assume."
+  },
+  "correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "result": "1 passed",
+    "scan_slots": [
+      513,
+      576,
+      639
+    ],
+    "explicit_eviction_position": 200,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "cpu_reference_rtol": 0.0003,
+    "cpu_reference_atol": 0.0003,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0
+  },
+  "leaf": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --require-cached-build --allow-dirty --output /tmp/laguna-global-assume-exp-leaf.json",
+    "raw_sha256": "5a45e2f42603c94652d331001d6f04af454b883daf144c8019fc507a4f80ad65",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_ms": 0.08517248153686524,
+        "candidate_ms": 0.08318315505981445,
+        "latency_change_percent": -2.3356446133247277
+      },
+      {
+        "live_count": 576,
+        "control_ms": 0.09650580406188965,
+        "candidate_ms": 0.09470638275146484,
+        "latency_change_percent": -1.8645731496841678
+      },
+      {
+        "live_count": 639,
+        "control_ms": 0.10637709617614746,
+        "candidate_ms": 0.10433172225952149,
+        "latency_change_percent": -1.9227578023365943
+      }
+    ]
+  },
+  "code_object": {
+    "library_sha256": "7b9a84711bed6c5867b18fdeda3bc457b2cffc728a6db9dfab59049073433f8c",
+    "code_object_sha256": "0edab8961d2ec31cfabc8b1e621deb812335a7944b7fa599a3c8e3c18d552d8c",
+    "control": {
+      "text_bytes": 4448,
+      "static_instructions": 830,
+      "native_exp_instructions": 3,
+      "logical_vgpr": 28,
+      "logical_sgpr": 34,
+      "static_lds_bytes": 64,
+      "private_bytes": 0,
+      "spills": 0
+    },
+    "candidate": {
+      "text_bytes": 4448,
+      "static_instructions": 829,
+      "native_exp_instructions": 3,
+      "logical_vgpr": 28,
+      "logical_sgpr": 34,
+      "static_lds_bytes": 64,
+      "private_bytes": 0,
+      "spills": 0
+    }
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-q6-lm-head-chunk5-compiler-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory $TRACE_DIR --output-file global-assume-exp -- uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16-direct-assume-exp --samples 3 --warmups 3 --burst 1 --require-cached-build --allow-dirty --compiler-version-file /tmp/gfx1151-q6-lm-head-chunk5-compiler-version.txt --output $TRACE_DIR/leaf.json",
+    "kernel_trace_sha256": "9109f81aace0114ada6981e8e0fbde30fffe9135a90d3ceeb9edb6326d63784a",
+    "control_median_us": 90.49,
+    "candidate_median_us": 88.526,
+    "latency_change_percent": -2.170405569676205,
+    "dispatches_per_variant": 21,
+    "workgroup_size": 256,
+    "grid_size": 6144,
+    "allocated_vgpr": 32,
+    "allocated_sgpr": 128,
+    "scratch_bytes": 0,
+    "expected_kernel_observed": true
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_by_missing_read_only_reference",
+    "detail": "/home/lhl/amd-gpu-tuning/reference/atlas is absent; this candidate is an in-tree specialization, not a port."
+  },
+  "decision": "Admit the exact primitive and proceed to a default-off production A/B. Do not promote from the leaf alone."
+}
