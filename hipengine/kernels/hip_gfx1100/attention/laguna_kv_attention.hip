@@ -1258,7 +1258,7 @@ void laguna_global_attention_split_exact_gated_fixedshape_reduce_kernel(
 // keeps all 48 local256 workgroups and the fixed-shape reducer's eight-wave
 // token partition/softmax merge order, then uses four dimension waves.
 // Dynamic LDS scales with the live scan rather than the 4096-slot capacity.
-template <int kOwnedQueries>
+template <int kOwnedQueries, int kValueStage>
 __global__ __launch_bounds__(256)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1285,6 +1285,8 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   float* shared_scores = dynamic_shared;
   int32_t* shared_physical = reinterpret_cast<int32_t*>(
       shared_scores + kOwnedQueries * scan_slots);
+  uint16_t* shared_value = reinterpret_cast<uint16_t*>(
+      shared_physical + scan_slots);
   __shared__ float warp_buf[kOwnedQueries][kNumWarps];
 
   const int owner = static_cast<int>(blockIdx.x);
@@ -1429,14 +1431,49 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   const int dim = (wave & 3) * 32 + lane;
   const int q_head = q_head_base + q_local;
   float acc = 0.0f;
-  for (int token = 0; token < context_len; ++token) {
-    const float weight =
-        shared_scores[q_local * scan_slots + token] * warp_buf[q_local][0];
-    if (!(weight > 0.0f)) continue;
-    const int physical_slot = shared_physical[token];
-    const int value_offset =
-        (physical_slot * kNumKvHeads + kv_head) * kHeadDim + dim;
-    acc += weight * laguna_bf16_bits_to_float(value_cache[value_offset]);
+  if constexpr (kValueStage > 0) {
+    for (int stage_base = 0; stage_base < context_len;
+         stage_base += kValueStage) {
+      const int stage_count =
+          context_len - stage_base < kValueStage
+              ? context_len - stage_base
+              : kValueStage;
+      for (int idx = tid; idx < stage_count * kHeadDim;
+           idx += static_cast<int>(blockDim.x)) {
+        const int stage_token = idx / kHeadDim;
+        const int value_dim = idx - stage_token * kHeadDim;
+        const int physical_slot =
+            shared_physical[stage_base + stage_token];
+        uint16_t value = 0;
+        if (physical_slot >= 0) {
+          const int value_offset =
+              (physical_slot * kNumKvHeads + kv_head) * kHeadDim + value_dim;
+          value = value_cache[value_offset];
+        }
+        shared_value[idx] = value;
+      }
+      __syncthreads();
+      for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
+        const int token = stage_base + stage_token;
+        const float weight =
+            shared_scores[q_local * scan_slots + token] *
+            warp_buf[q_local][0];
+        if (!(weight > 0.0f)) continue;
+        acc += weight * laguna_bf16_bits_to_float(
+            shared_value[stage_token * kHeadDim + dim]);
+      }
+      __syncthreads();
+    }
+  } else {
+    for (int token = 0; token < context_len; ++token) {
+      const float weight =
+          shared_scores[q_local * scan_slots + token] * warp_buf[q_local][0];
+      if (!(weight > 0.0f)) continue;
+      const int physical_slot = shared_physical[token];
+      const int value_offset =
+          (physical_slot * kNumKvHeads + kv_head) * kHeadDim + dim;
+      acc += weight * laguna_bf16_bits_to_float(value_cache[value_offset]);
+    }
   }
   const int output_idx = q_head * kHeadDim + dim;
   out[output_idx] = acc;
@@ -5876,8 +5913,75 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_
   const size_t shared_bytes = static_cast<size_t>(scan_slots) *
       (sizeof(float) + sizeof(int32_t));
   hipLaunchKernelGGL(
-      laguna_global_attention_fused_exact_gated_fixedshape_kernel<1>,
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<1, 0>),
       dim3(48),
+      dim3(256),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  const size_t shared_bytes =
+      static_cast<size_t>(kOwnedQueries * scan_slots) * sizeof(float) +
+      static_cast<size_t>(scan_slots) * sizeof(int32_t) +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage>),
+      dim3(24),
       dim3(256),
       shared_bytes,
       stream,

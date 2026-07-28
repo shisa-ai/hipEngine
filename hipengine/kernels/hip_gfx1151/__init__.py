@@ -261,6 +261,9 @@ LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE = True
 # The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
 # removes the score plane/launch while preserving reduction association.
 LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
+# Pair adjacent global query heads and reuse each staged 64-slot V tile.
+# The exact natural-live leaf and seven resident-model pairs admit it.
+LAGUNA_GLOBAL_GQA2_VSTAGE64_FIXEDSHAPE = True
 LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 LAGUNA_SPLIT_GATE_FUSION = True
@@ -652,6 +655,7 @@ __all__ = [
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",
     "LAGUNA_GLOBAL_FUSED_FIXEDSHAPE",
+    "LAGUNA_GLOBAL_GQA2_VSTAGE64_FIXEDSHAPE",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",

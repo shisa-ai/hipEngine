@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T02:51:40+09:00",
+  "kind": "hipengine_laguna_global_gqa2_vstage64_retained",
+  "status": "accepted",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "2155f7d5233fbbaa65debb3a65dc776c7eeb2b0d",
+    "tracked_clean": false,
+    "reason": "same-source rollback/candidate gate before retained logical-unit commit"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "implementation": {
+    "control": "exact fused global GQA1 fixed-shape",
+    "candidate": "exact fused global GQA2 fixed-shape with 64-slot V staging",
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "capacity": 4096,
+    "control_workgroups": 48,
+    "candidate_workgroups": 24,
+    "value_stage_slots": 64,
+    "production_variant": "global_context_fused_exact_gated_gqa2_vstage64_fixedshape_spans for live counts at most 4000",
+    "rollback_variant": "global_context_fused_exact_gated_gqa1_fixedshape_spans"
+  },
+  "leaf": {
+    "repetitions": 9,
+    "warmups": 5,
+    "burst": 50,
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.13403010368347168,
+        "candidate_median_ms": 0.12175113677978516,
+        "latency_change_percent": -9.16134999991105,
+        "f32_context_byte_exact": true,
+        "gated_bf16_byte_exact": true
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.16797414779663086,
+        "candidate_median_ms": 0.1471558952331543,
+        "latency_change_percent": -12.393724175151977,
+        "f32_context_byte_exact": true,
+        "gated_bf16_byte_exact": true
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.18548881530761718,
+        "candidate_median_ms": 0.16282228469848634,
+        "latency_change_percent": -12.21989076351604,
+        "f32_context_byte_exact": true,
+        "gated_bf16_byte_exact": true
+      }
+    ]
+  },
+  "resident_model_ab": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "repetitions": 7,
+    "control_decode_tok_s": 18.034298449433802,
+    "candidate_decode_tok_s": 18.2370897328481,
+    "throughput_change_percent": 1.124475587353202,
+    "saved_ms_per_token": 0.6165871878821901,
+    "control_decode_seconds": [
+      7.0458606239408255,
+      7.041494854027405,
+      7.043936886941083,
+      7.042136978940107,
+      7.043518573977053,
+      7.041659891023301,
+      7.041412189020775
+    ],
+    "candidate_decode_seconds": [
+      6.964032156043686,
+      6.963263751938939,
+      6.9656421459512785,
+      6.963830406079069,
+      6.965308504062705,
+      6.962674521957524,
+      6.963759838952683
+    ],
+    "candidate_wins": 7,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "trajectory_exact": true,
+    "lifecycle_exact": true
+  },
+  "correctness": {
+    "cpu_reference_live_counts": [
+      513,
+      576,
+      639
+    ],
+    "explicit_eviction_position": 200,
+    "candidate_vs_rollback_f32_byte_exact": true,
+    "candidate_vs_rollback_gated_bf16_byte_exact": true,
+    "full_128_token_trajectory_exact": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "focused_tests": "2 passed"
+  },
+  "trace": {
+    "directory": "/tmp/laguna-global-gqa2-vstage64-final-trace.L7xMdk",
+    "control_kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<1, 0>",
+    "candidate_kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64>",
+    "observations_each": 12,
+    "control_median_us": 160.662,
+    "candidate_median_us": 140.644,
+    "candidate_change_percent": -12.459,
+    "control": {
+      "workgroups": 48,
+      "workgroup_size": 256,
+      "vgpr_count": 24,
+      "static_lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroups": 24,
+      "workgroup_size": 256,
+      "vgpr_count": 32,
+      "static_lds_bytes": 512,
+      "dynamic_lds_bytes_at_live_513_576_639": [
+        22540,
+        23296,
+        24052
+      ],
+      "scratch_bytes": 0
+    }
+  },
+  "commands": {
+    "leaf": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64 --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-gqa2-vstage64-leaf.json",
+    "resident_model_ab": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-gqa2-vstage64 --allow-dirty --output /tmp/laguna-p512-d128-global-gqa2-vstage64-ab.json",
+    "trace": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-gqa2-vstage64-final-trace.L7xMdk --output-file globalgqa2vstage -- .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64 --samples 1 --warmups 1 --burst 2 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-gqa2-vstage64-final-traced-leaf.json",
+    "focused_tests": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback"
+  },
+  "notes": [
+    "The prior global GQA2 screen lost 0.126% without staged V reuse; sharing each V tile across the query pair reverses the result.",
+    "GQA1 remains registered rollback for live counts above 4000, and all non-natural capacities/shapes retain the prior exact routes.",
+    "A clean selector-unset production snapshot follows after the logical-unit commit."
+  ]
+}

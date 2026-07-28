@@ -1131,6 +1131,21 @@ production **0.126%**, and is removed. Non-natural shapes/capacities, peer
 backends, and rollback retain the exact split/fixed-shape route. Evidence:
 [`retained fused one-head global`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json).
 
+The exact GQA2 global successor recovers the reuse missing from the earlier
+occupancy-only screen. Twenty-four local256 workgroups each own two adjacent
+GQA6 heads, share K as before, and now stage 64 V slots x D128 so each BF16 V
+load feeds both exact PV chains. Softmax and per-head PV association are
+unchanged. At live 513/576/639, the nine-sample leaf improves GQA1
+**9.16%/12.39%/12.22%** with byte-exact F32 context and gated BF16, including
+explicit eviction. Seven resident-model p512/d128 pairs improve
+**18.034298 -> 18.237090 tok/s (+1.124%, -0.617 ms/token)** with every
+candidate faster and all trajectories/state exact. Cached tracing records
+local256/VGPR32/SGPR128/static-LDS512/scratch0; launch-time dynamic LDS is
+22,540-24,052 bytes over the measured live range. gfx1151 promotes it at the
+natural capacity/shape through live 4000; GQA1 remains exact rollback above
+that LDS bound, and non-natural/peer paths are unchanged. Evidence:
+[`retained global GQA2 V-stage64`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-retained.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
