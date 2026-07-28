@@ -1841,12 +1841,13 @@ should be boring.
   explicit serial rollback until a short context-crossover check confirms the
   inherited **127/65/257** thresholds on gfx1151.
 
-## Laguna source-F16 decode one-barrier selector
+## Laguna source-F16 decode fixed-K selector
 
-- Added 2026-07-28 as `HIPENGINE_LAGUNA_F16_DECODE=auto|gemv|onebarrier`.
-  gfx1151 `auto` now selects the exact same-grid single/triple siblings for
-  rows==1. Explicit `gemv` remains the campaign rollback; peer backends retain
-  GEMV.
+- Added 2026-07-28 as
+  `HIPENGINE_LAGUNA_F16_DECODE=auto|gemv|onebarrier|fixedk`.
+  gfx1151 `auto` now selects exact K3072/K6144/K9216 fixed-K single/triple
+  siblings for rows==1. Explicit `onebarrier` retains the prior exact generic-K
+  default, `gemv` retains the two-barrier root, and peer backends retain GEMV.
 - The primitive preserves every output byte and improves all six natural
   roles **0.57-1.71%**, with weighted leaf family
   **31.316 -> 31.097 ms/token (-0.698%)**. If full-state, cached trace, and
@@ -1860,3 +1861,10 @@ should be boring.
   **18,288 = 144 x 127** candidate calls with zero retained decode GEMVs.
   Keep explicit `gemv` through LD-2, then collapse the positive selector as
   described above.
+- The fixed-K successor also satisfies promotion: the six-role family moves
+  **30.952 -> 24.482 ms/token (-20.90%)**, seven exact production pairs move
+  **14.786076 -> 16.391201 tok/s (+10.856%)**, and cache-only tracing records
+  **18,288/18,288** fixed-K calls with no fallback. Keep `onebarrier` for one
+  release/bisection window; then remove positive `fixedk` selector semantics
+  and make it unconditional for qualified gfx1151 K widths. Permanently retain
+  the generic registered path for unsupported K/rows/backends.

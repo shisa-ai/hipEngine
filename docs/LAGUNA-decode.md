@@ -3430,6 +3430,26 @@ Weighted family time moves **31.571 -> 33.466 ms/token (+6.00%)**. Remove the
 candidate. LD-2 now treats both eight waves/output and one workgroup/output as
 required; further exact screens must preserve the full grid.
 
+The successful LD-2 successor does exactly that. Separate K3072/K6144/K9216
+specializations keep the retained local256/eight-wave/one-output grid and every
+arithmetic operation, but make the natural K width compile-time constant and
+fully unroll each thread's 12/24/36-iteration loop. All single/triple F32/BF16
+outputs are byte-exact. Every natural role improves: QKV **20.98-21.15%**,
+gate **15.91-15.98%**, and output **19.16-26.93%**. Weighted family time moves
+**30.952 -> 24.482 ms/token (-20.90%, -6.469 ms/token)**, reaching the prior
+**25.368-ms** unchanged-byte target.
+
+Seven same-session p512/d128 pairs then improve retained one-barrier
+**14.786076 -> 16.391201 tok/s (+10.856%, -6.623 ms/token)**. Every fixed-K
+sample beats every control; all generated IDs/hashes, final token **74107**,
+position **638**, and allocation lifecycle match. Cache-only tracing records
+all **18,288 = 144 x 127** fixed-K calls with zero fallback at
+local256/VGPR24/LDS512/scratch0. gfx1151 now defaults fixed-K; explicit
+`HIPENGINE_LAGUNA_F16_DECODE=onebarrier` retains the exact generic-K rollback.
+LD-2's declared family-floor objective is complete. Re-profile the new wall,
+then return priority to attention rather than perturbing the now
+**228-231 GB/s** large F16 stream.
+
 LD-3 was screened with measured production inputs, not a format assumption. A
 raw block32 Q8_0 side representation cuts resident source-F16
 bytes **46.875%**. At actual layer-0 full-attention and layer-47 SWA inputs,
@@ -3473,6 +3493,7 @@ geometry only with a reduction-order-preserving design.
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
+[`retained F16 fixed-K owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json) ·
 [`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
 [`rejected F16 exact block2 owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-block2-exact-rejected.json) ·
 [`candidate F16 Q8 real-input screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-real-input-candidate.json) ·
@@ -3484,8 +3505,9 @@ Evidence:
 #### Next decode attack
 
 The next pause target is **at least 18 tok/s** at p512/d128 under the existing
-state and quality contract. Same-GGUF Vulkan at **23.348 tok/s** is the
-directional comparator target.
+state and quality contract. Fixed-K LD-2 production now reaches
+**16.391 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
+comparator target.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
@@ -3557,21 +3579,15 @@ closed unless a future design preserves the retained 288-wave concurrency.
    tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
    reducer is performance-rejected. Pause SWA value ownership and move to
    LD-2; the retained GQA3 score owner remains the exact production default.
-2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
-   **25.368-ms** unchanged-byte family floor. The eight-wave/eight-output block
-   is exact but performance-rejected because it cuts physical-wave concurrency
-   eightfold. The exact same-grid one-barrier sibling is now
-   retained at **-0.698%** weighted family time. Seven same-session p512/d128
-   pairs improve **14.758912 -> 14.800191 tok/s (+0.280%)**, every candidate
-   beats every control, trajectories match, and cached tracing records all
-   **18,288** intended calls with zero fallback GEMVs. The exact local128
-   follow-up is also closed at **+25.79%** weighted family time despite
-   unchanged VGPR/LDS/scratch. The exact local256 two-output block is closed at
-   **+6.00%** weighted family time: retaining eight waves/output is
-   insufficient if the output grid is halved. Continue toward the F16 family
-   floor while preserving both eight physical waves/output and one
-   workgroup/output; do not repeat launch-only local-size or multi-output
-   substitution.
+2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
+   K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
+   geometry and every arithmetic operation. The weighted family reaches
+   **24.482 ms/token**, beating the declared **25.368-ms** target, and exact
+   production reaches **16.391201 tok/s (+10.856%)** versus one-barrier.
+   Trace coverage is **18,288/18,288** with zero fallback. Local128, wave-owned
+   multi-output, and local256 block2 are closed at **+25.79%**, **+107.99%**,
+   and **+6.00%** family regressions. Stop F16 geometry work unless a new
+   byte-reduction or cache-counter premise appears.
 3. **LD-3 — decode-only compressed source-F16 representation.** Closed for
    plain block32 Q8_0/Q8_1, structural layer subsets, and one-sided residual
    weight/activation repair. The best fast all-layer row reaches

@@ -196,6 +196,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="counterbalance exact source-F16 GEMV against the one-barrier sibling",
     )
+    parser.add_argument(
+        "--compare-f16-decode-fixedk",
+        action="store_true",
+        help="counterbalance one-barrier source-F16 decode against fixed-K",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -292,6 +297,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_dense_contiguous_cache,
             args.compare_swa_attention_hipblaslt,
             args.compare_f16_decode_onebarrier,
+            args.compare_f16_decode_fixedk,
         )
     )
     if active_comparisons > 1:
@@ -323,6 +329,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_dense_contiguous_cache
         or args.compare_swa_attention_hipblaslt
         or args.compare_f16_decode_onebarrier
+        or args.compare_f16_decode_fixedk
     )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
@@ -396,6 +403,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     original_f16_decode_mode = os.environ.get("HIPENGINE_LAGUNA_F16_DECODE")
     if args.compare_f16_decode_onebarrier:
         os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = "gemv"
+    if args.compare_f16_decode_fixedk:
+        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = "onebarrier"
     load_started = time.perf_counter()
     try:
         owner = LagunaGGUFResidentSession(
@@ -525,6 +534,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
                             "onebarrier" if mode == "candidate" else "gemv"
                         )
+                    if args.compare_f16_decode_fixedk:
+                        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
+                            "fixedk" if mode == "candidate" else "onebarrier"
+                        )
                     owner.reset_state()
                     started = time.perf_counter()
                     result = owner.prefill(token_stream[:length], use_bulk=True)
@@ -587,7 +600,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         if owner is not None:
             owner.close()
-        if args.compare_f16_decode_onebarrier:
+        if (
+            args.compare_f16_decode_onebarrier
+            or args.compare_f16_decode_fixedk
+        ):
             if original_f16_decode_mode is None:
                 os.environ.pop("HIPENGINE_LAGUNA_F16_DECODE", None)
             else:
@@ -729,6 +745,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_f16_decode_onebarrier": (
                 args.compare_f16_decode_onebarrier
             ),
+            "compare_f16_decode_fixedk": args.compare_f16_decode_fixedk,
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,
             "swa_split_tile16_min_live": active_swa_split_tile16_min_live,

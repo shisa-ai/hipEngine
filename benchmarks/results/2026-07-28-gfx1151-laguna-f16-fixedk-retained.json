@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T11:00:00+00:00",
+  "kind": "hipengine_laguna_f16_decode_fixedk_retained",
+  "status": "retained_default",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "source": {
+    "base_revision": "3a9be397a69f9fb456bf733d9cd1bff93bb451c4",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/linear/laguna_f16_projection.hip"
+  },
+  "change": {
+    "scope": "all 48 rows==1 source-F16 QKV, gate, and attention-output projections",
+    "specializations": [3072, 6144, 9216],
+    "geometry": "unchanged local256, eight wave32s/output, one workgroup/output",
+    "arithmetic": "unchanged thread-local K sequence, wave32 shuffle tree, ordered eight-wave sum, and output conversion",
+    "optimization": "make natural K compile-time constant and fully unroll each thread's 12/24/36-iteration loop",
+    "default": "gfx1151 auto selects fixedk_onebarrier",
+    "rollback": "HIPENGINE_LAGUNA_F16_DECODE=onebarrier",
+    "fallback": "generic one-barrier/GEMV remains registered for other K, rows, and backends"
+  },
+  "primitive_gate": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_f16_decode_onebarrier_leaf.py --candidate fixedk --samples 7 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-fixedk-directional.json",
+    "raw_sha256": "d2cd27635680a0cd75293df543ece23f7e68297932eabf4121643a37789a616b",
+    "red": "3 expected ImportError failures before fixed-K wrappers/kernel existed",
+    "green": "3 byte-exact K3072/K6144/K9216 single/triple fixtures",
+    "all_six_natural_roles_byte_exact": true,
+    "all_six_natural_roles_faster": true,
+    "roles": [
+      {
+        "name": "full_qkv",
+        "control_ms": 0.2793654251098633,
+        "candidate_ms": 0.2207656669616699,
+        "latency_change_percent": -20.976023831563417
+      },
+      {
+        "name": "swa_qkv",
+        "control_ms": 0.37990528106689453,
+        "candidate_ms": 0.299561824798584,
+        "latency_change_percent": -21.148286236685266
+      },
+      {
+        "name": "full_gate",
+        "control_ms": 0.0033454799652099607,
+        "candidate_ms": 0.002813279926776886,
+        "latency_change_percent": -15.908032448781206
+      },
+      {
+        "name": "swa_gate",
+        "control_ms": 0.0034216201305389406,
+        "candidate_ms": 0.0028749799728393557,
+        "latency_change_percent": -15.976062123923828
+      },
+      {
+        "name": "full_output",
+        "control_ms": 0.22662273406982422,
+        "candidate_ms": 0.16558502197265626,
+        "latency_change_percent": -26.93362267810332
+      },
+      {
+        "name": "swa_output",
+        "control_ms": 0.3066697883605957,
+        "candidate_ms": 0.24790992736816406,
+        "latency_change_percent": -19.160629192250024
+      }
+    ],
+    "modeled_family": {
+      "control_ms_per_token": 30.95188449382782,
+      "candidate_ms_per_token": 24.482449983358382,
+      "latency_change_percent": -20.901585206417796,
+      "saving_ms_per_token": 6.469434510469437
+    }
+  },
+  "production_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-f16-decode-fixedk --allow-dirty --output /tmp/laguna-p512-d128-f16-fixedk-ab.json",
+    "raw_sha256": "6a75d142bbac12c68c5c587a477d5990308cdd09ef8fe8509f74390a81447edb",
+    "protocol": "one loaded model; seven counterbalanced one-barrier/fixed-K resets; p512 plus 127 synchronized eager C1 decode calls",
+    "control_decode_tok_s": 14.786075608259619,
+    "candidate_decode_tok_s": 16.391201255803313,
+    "throughput_change_percent": 10.855656971259208,
+    "control_decode_seconds": 8.589162084972486,
+    "candidate_decode_seconds": 7.748059340985492,
+    "saving_ms_per_token": 6.622856251866082,
+    "all_candidate_samples_faster_than_all_controls": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "production_trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-fixedk-trace.dLHL3q --output-file fixedk -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-f16-fixedk-trace.dLHL3q/bench.json",
+    "sha256": "6e8df5da29c671d52e435e6817822c5bf0560c96cf2b9dc9b88b50f9d2320dc5",
+    "total_fixedk_calls": 18288,
+    "expected_calls": "144 projection calls/token x 127 decode transitions",
+    "triple_k3072_calls": 6096,
+    "single_k3072_calls": 6096,
+    "single_k6144_calls": 1524,
+    "single_k9216_calls": 4572,
+    "fallback_decode_calls": 0,
+    "resources": {
+      "local_size": 256,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "require_cached_build": true
+  },
+  "validation": {
+    "focused_tests": 90,
+    "files": [
+      "tests/test_laguna_f16_projection.py",
+      "tests/test_gfx1151_backend.py",
+      "tests/test_laguna_long_context_profile.py"
+    ],
+    "cpu_reference_contract": "byte-exact to retained GEMV/one-barrier outputs",
+    "quality_gate": "exact arithmetic; no changed-association category gate required"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "gfx1100_default_changed": false,
+    "production_decode_tok_s": 16.391201255803313,
+    "production_wall_ms_per_token": 61.008341267602304,
+    "previous_canonical_tok_s": 14.800190834758007,
+    "change_from_previous_canonical_percent": 10.749931800263312,
+    "cumulative_from_pre_transfer_tok_s": 11.466687,
+    "cumulative_change_percent": 42.94626909937729,
+    "next": "Re-profile the new production wall; source-F16 should fall near its unchanged-byte floor and attention should regain first priority."
+  }
+}
