@@ -7,11 +7,15 @@ import pytest
 
 from scripts.laguna_long_context_profile import (
     ATTACK_LENGTHS,
+    DECODE_OUTPUT_TOKENS,
+    EAGER_DECODE_CONTEXT_LIMIT,
     FINAL_SWEEP_LENGTHS,
     LAP0_LENGTHS,
     LC0_TRACE_LENGTHS,
     PROFILE_LENGTH_SETS,
+    STANDARD_DECODE_LENGTHS,
     _parse_chunk_size,
+    _parse_decode_output_tokens,
     _parse_lengths,
     _summarize_samples,
     _timing_order,
@@ -34,6 +38,12 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert LC0_TRACE_LENGTHS in PROFILE_LENGTH_SETS
     assert FINAL_SWEEP_LENGTHS == (512, 1024, 4096, 32768, 65536, 131072)
     assert FINAL_SWEEP_LENGTHS in PROFILE_LENGTH_SETS
+    assert STANDARD_DECODE_LENGTHS == (512,)
+    assert STANDARD_DECODE_LENGTHS in PROFILE_LENGTH_SETS
+    assert DECODE_OUTPUT_TOKENS == (1, 128)
+    assert EAGER_DECODE_CONTEXT_LIMIT == 4096
+    assert _parse_decode_output_tokens("1") == 1
+    assert _parse_decode_output_tokens("128") == 128
     assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)
     assert [
         _parse_chunk_size(value)
@@ -56,6 +66,8 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
         match="128, 256, 512, 1024, or 2048",
     ):
         _parse_chunk_size("64")
+    with pytest.raises(argparse.ArgumentTypeError, match="1 or 128"):
+        _parse_decode_output_tokens("32")
 
 
 def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:
@@ -76,6 +88,38 @@ def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:
                 {"length": 1024, "prefill_seconds": 1.0, "next_token_id": 1},
             ]
         )
+
+
+def test_lpf5_timing_summary_preserves_fixed_horizon_decode() -> None:
+    summary = _summarize_samples(
+        [
+            {
+                "length": 512,
+                "prefill_seconds": 1.0,
+                "next_token_id": 7,
+                "output_tokens": 128,
+                "decode_seconds": 8.0,
+                "final_token_id": 9,
+                "generated_ids_sha256": "abc",
+            },
+            {
+                "length": 512,
+                "prefill_seconds": 1.1,
+                "next_token_id": 7,
+                "output_tokens": 128,
+                "decode_seconds": 10.0,
+                "final_token_id": 9,
+                "generated_ids_sha256": "abc",
+            },
+        ]
+    )
+
+    assert summary["output_tokens"] == 128
+    assert summary["decode_forward_calls"] == 127
+    assert summary["decode_median_seconds"] == 9.0
+    assert summary["decode_median_tok_s"] == pytest.approx(127 / 9)
+    assert summary["final_token_ids"] == [9, 9]
+    assert summary["repeat_generated_ids_deterministic"] is True
 
 
 def _row(

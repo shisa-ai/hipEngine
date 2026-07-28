@@ -185576,3 +185576,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json`.
   LC-0 through LC-6 and the anti-overtuning sweep are closed at a valid pause
   point. The next decision is a fresh cached 64K trace, not an assumed kernel.
+
+## 2026-07-28 — Admit fixed-horizon Laguna decode in the six-shape harness
+
+- RED extends the long-context profile summary contract with one fixed
+  **128-output-token** horizon: the synchronized prefill result is output token
+  one and decode timing covers exactly **127** subsequent synchronized
+  `forward_token` calls. It records the first/final token, complete generated
+  ID SHA-256, prefill/final positions, decode wall/rate, and repeat
+  determinism without changing the existing prefill timing boundary.
+- GREEN adds `--decode-output-tokens {1,128}` with default **1**, so every
+  retained prefill-only command and artifact remains structurally unchanged
+  apart from explicit horizon/position metadata. Capacity validation now
+  requires `max(prompt_lengths) + output_tokens - 1`. The standard fixed
+  horizon is **p512/d128** at capacity 4,096; the current eager global
+  attention ABI fails closed above that capacity, so long-context rows remain
+  prefill-only rather than implying unsupported long-context decode.
+- `PYTHONPATH=. .venv/bin/python3 -m pytest -q
+  tests/test_laguna_long_context_profile.py` passes **33/33**. Python
+  compilation and `git diff --check` pass. A dirty-worktree cached GPU smoke
+  at p512/d128 passes exact positions (**511/638**), deterministic hashes,
+  and allocation recovery at **627.434 prefill / 11.466 decode tok/s**.
+  An intentionally broader capacity-4,224 smoke rejected before publication
+  at the eager global-attention 4,096-token guard. The next logical unit is a
+  repeated tracked-clean p512/d128 snapshot followed by the requested
+  `docs/LAGUNA-prefill.md` current-state summary table.

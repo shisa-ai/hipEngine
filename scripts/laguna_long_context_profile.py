@@ -42,6 +42,9 @@ ATTACK_DIRECTIONAL_LENGTHS = (4096, 16384, 65536)
 LC1_128K_GATE_LENGTHS = (131072,)
 LC0_TRACE_LENGTHS = (16384, 65536)
 FINAL_SWEEP_LENGTHS = (512, 1024, 4096, 32768, 65536, 131072)
+STANDARD_DECODE_LENGTHS = (512,)
+DECODE_OUTPUT_TOKENS = (1, 128)
+EAGER_DECODE_CONTEXT_LIMIT = 4096
 PROFILE_LENGTH_SETS = (
     DEFAULT_LENGTHS,
     LAP0_LENGTHS,
@@ -50,6 +53,7 @@ PROFILE_LENGTH_SETS = (
     LC1_128K_GATE_LENGTHS,
     LC0_TRACE_LENGTHS,
     FINAL_SWEEP_LENGTHS,
+    STANDARD_DECODE_LENGTHS,
 )
 DEFAULT_CHUNK_SIZE = 128
 PROFILE_CHUNK_SIZES = (128, 256, 512, 1024, 2048)
@@ -76,6 +80,13 @@ def _parse_lengths(value: str) -> tuple[int, ...]:
     return lengths
 
 
+def _parse_decode_output_tokens(value: str | int) -> int:
+    output_tokens = int(value)
+    if output_tokens not in DECODE_OUTPUT_TOKENS:
+        raise argparse.ArgumentTypeError("decode output tokens must be 1 or 128")
+    return output_tokens
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", nargs="?", type=Path, default=DEFAULT_MODEL)
@@ -91,6 +102,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--warmup-rows", type=int, default=DEFAULT_CHUNK_SIZE)
+    parser.add_argument(
+        "--decode-output-tokens",
+        type=_parse_decode_output_tokens,
+        default=1,
+        help="total output horizon including the synchronized first prefill token",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -177,7 +194,7 @@ def _summarize_samples(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         raise ValueError("long-context timing samples must be finite and positive")
     length = lengths.pop()
     median = statistics.median(seconds)
-    return {
+    summary = {
         "length": length,
         "samples_seconds": seconds,
         "median_seconds": median,
@@ -185,6 +202,31 @@ def _summarize_samples(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "next_token_ids": [int(sample["next_token_id"]) for sample in samples],
         "repeat_deterministic": len({int(sample["next_token_id"]) for sample in samples}) == 1,
     }
+    output_tokens = {int(sample.get("output_tokens", 1)) for sample in samples}
+    if len(output_tokens) != 1:
+        raise ValueError("long-context summary samples must have one output horizon")
+    output_horizon = output_tokens.pop()
+    summary["output_tokens"] = output_horizon
+    if output_horizon > 1:
+        decode_seconds = [float(sample["decode_seconds"]) for sample in samples]
+        if any(not math.isfinite(value) or value <= 0.0 for value in decode_seconds):
+            raise ValueError("long-context decode samples must be finite and positive")
+        decode_calls = output_horizon - 1
+        decode_median = statistics.median(decode_seconds)
+        final_token_ids = [int(sample["final_token_id"]) for sample in samples]
+        generated_hashes = [str(sample["generated_ids_sha256"]) for sample in samples]
+        summary.update(
+            {
+                "decode_forward_calls": decode_calls,
+                "decode_samples_seconds": decode_seconds,
+                "decode_median_seconds": decode_median,
+                "decode_median_tok_s": decode_calls / decode_median,
+                "final_token_ids": final_token_ids,
+                "generated_ids_sha256": generated_hashes,
+                "repeat_generated_ids_deterministic": len(set(generated_hashes)) == 1,
+            }
+        )
+    return summary
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -195,8 +237,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if args.chunk_size not in PROFILE_CHUNK_SIZES:
         raise ValueError(f"Laguna profiling chunk size must be one of {PROFILE_CHUNK_SIZES}")
-    if args.context_length < max(lengths):
-        raise ValueError("largest LPF-5 length exceeds admitted context")
+    output_tokens = int(args.decode_output_tokens)
+    required_context = max(lengths) + output_tokens - 1
+    if args.context_length < required_context:
+        raise ValueError(
+            "largest Laguna prompt plus output horizon exceeds admitted context"
+        )
+    if output_tokens > 1 and args.context_length > EAGER_DECODE_CONTEXT_LIMIT:
+        raise ValueError(
+            "fixed-horizon eager decode requires context length at most "
+            f"{EAGER_DECODE_CONTEXT_LIMIT}"
+        )
     if args.repetitions <= 0:
         raise ValueError("LPF-5 repetitions must be positive")
     if args.warmup_rows <= 0 or args.warmup_rows > args.chunk_size:
@@ -268,11 +319,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
-        build_profile=f"laguna_prefill_long_context_matrix{args.chunk_size}",
+        build_profile=(
+            f"laguna_prefill_long_context_matrix{args.chunk_size}"
+            if output_tokens == 1
+            else f"laguna_p512_d{output_tokens}_matrix{args.chunk_size}"
+        ),
         timing_protocol=(
-            "prefill_only_"
-            + "_".join(str(length) for length in lengths)
-            + f"_matrix{args.chunk_size}_attention128"
+            (
+                "prefill_only_"
+                + "_".join(str(length) for length in lengths)
+                + f"_matrix{args.chunk_size}_attention128"
+            )
+            if output_tokens == 1
+            else (
+                f"p{lengths[0]}_d{output_tokens}_eager_c1_"
+                f"matrix{args.chunk_size}_attention128"
+            )
         ),
         warmups=1,
         repetitions=args.repetitions,
@@ -396,15 +458,37 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     result = owner.prefill(token_stream[:length], use_bulk=True)
                     runtime.device_synchronize()
                     elapsed = time.perf_counter() - started
+                    prefill_final_position = int(owner.position)
+                    generated = [int(result.next_token_id)]
+                    decode_seconds = 0.0
+                    if output_tokens > 1:
+                        decode_started = time.perf_counter()
+                        while len(generated) < output_tokens:
+                            result = owner.forward_token(result.next_token_id)
+                            generated.append(int(result.next_token_id))
+                        runtime.device_synchronize()
+                        decode_seconds = time.perf_counter() - decode_started
                     row = {
                         "length": length,
                         "chunks": math.ceil(length / args.chunk_size),
                         "prefill_seconds": elapsed,
                         "prefill_tok_s": length / elapsed,
-                        "next_token_id": int(result.next_token_id),
+                        "next_token_id": generated[0],
+                        "prefill_final_position": prefill_final_position,
                         "final_position": int(owner.position),
                         "repetition": repetition,
+                        "output_tokens": output_tokens,
                     }
+                    if output_tokens > 1:
+                        row.update(
+                            {
+                                "decode_forward_calls": output_tokens - 1,
+                                "decode_seconds": decode_seconds,
+                                "decode_tok_s": (output_tokens - 1) / decode_seconds,
+                                "final_token_id": generated[-1],
+                                "generated_ids_sha256": _sha256_json(generated),
+                            }
+                        )
                     if comparison:
                         row["mode"] = mode
                     rows.append(row)
@@ -417,7 +501,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         f"rep={repetition} length={length}{mode_text} "
                         f"chunks={row['chunks']} "
                         f"prefill={row['prefill_tok_s']:.3f} tok/s "
-                        f"next={result.next_token_id}",
+                        f"next={generated[0]}"
+                        + (
+                            f" decode={row['decode_tok_s']:.3f} tok/s "
+                            f"final={generated[-1]}"
+                            if output_tokens > 1
+                            else ""
+                        ),
                         file=sys.stderr,
                         flush=True,
                     )
@@ -455,6 +545,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             == summaries["candidate"][str(length)]["next_token_ids"]
             for length in lengths
         )
+        mode_generated_ids_match = all(
+            summaries["control"][str(length)].get("generated_ids_sha256")
+            == summaries["candidate"][str(length)].get("generated_ids_sha256")
+            for length in lengths
+        )
     else:
         summaries = {
             str(length): _summarize_samples(
@@ -464,9 +559,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
         summary_rows = list(summaries.values())
         mode_next_tokens_match = True
-    positions_exact = all(int(row["final_position"]) == int(row["length"]) - 1 for row in rows)
+        mode_generated_ids_match = True
+    positions_exact = all(
+        int(row["prefill_final_position"]) == int(row["length"]) - 1
+        and int(row["final_position"])
+        == int(row["length"]) + output_tokens - 2
+        for row in rows
+    )
     deterministic = all(
         bool(summary["repeat_deterministic"]) for summary in summary_rows
+    )
+    generated_deterministic = all(
+        bool(summary.get("repeat_generated_ids_deterministic", True))
+        for summary in summary_rows
     )
     recovered = bool(
         tracked_after["current_allocated_bytes"] == tracked_before["current_allocated_bytes"]
@@ -475,7 +580,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     passed = bool(
         positions_exact
         and deterministic
+        and generated_deterministic
         and mode_next_tokens_match
+        and mode_generated_ids_match
         and recovered
     )
     prompt_payload = args.prompts.read_bytes()
@@ -487,7 +594,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "status": "accepted_attribution_baseline" if passed else "rejected",
         "pass": passed,
         "performance_claim": False,
-        "scope": "Laguna S 2.1 c=1 prefill-only matrix-chunk attribution baseline",
+        "scope": (
+            "Laguna S 2.1 c=1 prefill-only matrix-chunk attribution baseline"
+            if output_tokens == 1
+            else "Laguna S 2.1 c=1 prefill plus fixed-horizon eager-decode sweep"
+        ),
         "provenance": provenance,
         "repo": repo,
         "model": {
@@ -521,6 +632,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 str(length): math.ceil(length / args.chunk_size) for length in lengths
             },
             "context_length": args.context_length,
+            "output_tokens_including_first": output_tokens,
+            "decode_forward_calls_per_run": output_tokens - 1,
             "repetitions": args.repetitions,
             "warmup_rows": args.warmup_rows,
             "q6_qmicro_permute": active_q6_qmicro_permute,
@@ -559,7 +672,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.swa_attention_hipblaslt
             ),
             "timed_order": "ascending then alternating direction by repetition",
-            "timing_scope": "reset complete through synchronized first-token projection; load excluded",
+            "timing_scope": (
+                "prefill: reset complete through synchronized first-token projection; "
+                "decode: exactly output_tokens-1 synchronized forward_token calls; "
+                "load excluded"
+            ),
             "prompt_suite": str(args.prompts.resolve()),
             "prompt_suite_sha256": _sha256_bytes(prompt_payload),
             "token_stream_sha256": _sha256_json(token_stream),
@@ -572,7 +689,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "pass": passed,
             "final_positions_exact": positions_exact,
             "repeat_next_token_deterministic": deterministic,
+            "repeat_generated_ids_deterministic": generated_deterministic,
             "control_candidate_next_tokens_match": mode_next_tokens_match,
+            "control_candidate_generated_ids_match": mode_generated_ids_match,
             "tracked_returned_to_baseline": recovered,
             "boundary_fixture_evidence": [
                 "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
@@ -590,11 +709,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "hip_total_bytes": gpu_total,
         },
         "command": [str(Path(sys.executable).resolve()), *sys.argv],
-        "notes": [
-            "This is an attribution baseline, not a speedup or long-context support claim.",
-            "The deterministic stream repeats the longest canonical prompt without its leading BOS.",
-            "Run once under cached-only rocprofv3 and attach a raw-trace summary separately.",
-        ],
+        "notes": (
+            [
+                "This is an attribution baseline, not a speedup or long-context support claim.",
+                "The deterministic stream repeats the longest canonical prompt without its leading BOS.",
+                "Run once under cached-only rocprofv3 and attach a raw-trace summary separately.",
+            ]
+            if output_tokens == 1
+            else [
+                "This is a fixed-shape eager c=1 decode snapshot, not a decode speedup claim.",
+                "Decode throughput covers 127 synchronized forward_token calls after the first prefill-produced token.",
+                "The eager global-attention decode ABI currently admits cache capacity at most 4096.",
+            ]
+        ),
     }
 
 
