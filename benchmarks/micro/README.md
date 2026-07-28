@@ -244,9 +244,14 @@ create/drop churn. Redline remains default-off and unvendored until the
 lifecycle fault is minimized and fixed upstream and the broader model/server
 gates pass. See [`docs/REDLINE.md`](../../docs/REDLINE.md) for the complete
 fault/test ledger, lifetime audit, raw hashes, and next diagnostic matrix. The
-same binary also loses context on RX 7900 XTX after 172 passing rows (later and
-with an HSA timeout rather than W7900's address-zero message); that incomplete
-cross-device prefix is diagnostic only.
+same binary also loses context on RX 7900 XTX after 172 passing rows. Although
+userspace surfaces only an HSA timeout, its kernel journal proves the same
+address-zero gfxhub fault followed by queue-removal failures, repeated
+full-device resets, and VRAM loss. Four later full processes per card pass under
+both production ROCm 7.14 and the original 7.15 nightly; that bounded
+non-reproduction leaves version causality unresolved and does not clear the
+historical faults. See
+[`2026-07-28-gfx1100-redline-rocm714-715-lifecycle-diagnostic.json`](../results/2026-07-28-gfx1100-redline-rocm714-715-lifecycle-diagnostic.json).
 
 ## Paired Runner Inventory
 

@@ -2,13 +2,14 @@
   "schema_version": 1,
   "kind": "hipengine_redline_cross_device_lifecycle_diagnostic",
   "date": "2026-07-28",
-  "status": "gpu_context_loss_reproduced_variant",
+  "status": "gpu_vm_fault_and_reset_reproduced_variant",
   "performance_claim": false,
   "decision": {
     "same_fault_class_as_w7900": true,
-    "same_exact_signature_or_row": false,
+    "same_kernel_address_zero_signature_as_w7900": true,
+    "same_exact_userspace_signature_or_row": false,
     "enable_redline_by_default": false,
-    "reason": "The RX 7900 XTX also loses the GPU context in the one-process matrix, but later and with an HSA completion timeout rather than the W7900 address-zero message. The incomplete 172-row prefix cannot support a performance claim."
+    "reason": "The RX 7900 XTX also incurs an address-zero gfxhub VM fault and full-device reset in the one-process matrix, but later and surfaced to userspace as an HSA completion timeout rather than the W7900 address-zero abort. The incomplete 172-row prefix cannot support a performance claim."
   },
   "hardware": {
     "gpu": "AMD Radeon RX 7900 XTX",
@@ -72,9 +73,40 @@
       "hip": "HipError(719): hipMalloc: unspecified launch failure"
     },
     "stderr": "radv/amdgpu: The CS has been cancelled because the context is lost. This context is innocent.",
-    "explicit_address_zero_message_observed": false,
-    "kernel_log_available": false,
-    "kernel_log_reason": "dmesg read denied: Operation not permitted",
+    "explicit_userspace_address_zero_message_observed": false,
+    "kernel_log_available": true,
+    "kernel_log_source": "unprivileged journalctl -k correlation recovered after dmesg denied access",
+    "kernel_fault": {
+      "timestamp_local": "2026-07-28T12:29:55+09:00",
+      "pci": "0000:10:00.0",
+      "process": "hipfire-6409-be",
+      "pid": 1385921,
+      "gfxhub_fault_records": 10,
+      "address": "0x0000000000000000",
+      "source_id": 0,
+      "ring": 24,
+      "vmid": 8,
+      "pasid": 33335,
+      "client": 10
+    },
+    "kernel_recovery": {
+      "first_remove_queue_failure_seconds_after_fault": 2,
+      "messages": [
+        "MES failed to respond to msg=REMOVE_QUEUE",
+        "failed to remove hardware queue from MES",
+        "Failed to evict process queues",
+        "destroy queue failed"
+      ],
+      "successful_mode1_gpu_resets": 3,
+      "reset_indices": [
+        3,
+        4,
+        5
+      ],
+      "vram_lost_each_reset": true,
+      "amdgpu_device_coredump_created_each_reset": true,
+      "causality_warning": "Queue-removal failures are logged after the first VM fault. They prove teardown/recovery failure but do not prove that queue removal caused the original invalid access."
+    },
     "fresh_process_post_fault_hip_smoke": {
       "hip_init": "pass",
       "device_count": 1,
@@ -82,7 +114,7 @@
       "hip_device_synchronize": "pass",
       "hip_free": "pass"
     },
-    "interpretation": "GPU1 is not clean: it exhibits the same broad lifecycle/context-loss class as GPU0, but not the same exact manifestation. W7900 fails at row 49 serial q8 with an address-zero VM fault and abort; RX 7900 XTX reaches row 173 independent q6, times out on a Redline completion signal, then reports process-local HIP/Vulkan context loss while the harness continues."
+    "interpretation": "GPU1 is not clean: kernel correlation proves the same address-zero gfxhub VM-fault and GPU-reset class as GPU0, but not the same row, profiled topology, or userspace manifestation. W7900 fails at row 49 serial q8 and aborts; RX 7900 XTX reaches row 173 independent q6, times out on a Redline completion signal, then loses HIP/Vulkan context and undergoes three full-device resets with VRAM loss while the harness continues."
   },
   "setup_failures_not_gpu_faults": [
     {
@@ -101,12 +133,15 @@
       "same pinned binary and Redline/Hipfire source",
       "same gfx1100 architecture and TheRock ROCm stack",
       "one-process mixed HIP/Redline/Vulkan matrix eventually loses useful GPU context",
-      "failure appears after many passing correctness-gated rows in packed-dot"
+      "failure appears after many passing correctness-gated rows in packed-dot",
+      "kernel reports address-zero gfxhub faults on ring 24, vmid 8, client 10",
+      "amdgpu queue removal fails and full-device reset loses VRAM"
     ],
     "different": [
       "W7900 first fails at row 49 serial q8; RX 7900 XTX first fails at row 173 independent q6",
-      "W7900 reports address nil/page-not-present and aborts; RX 7900 XTX reports an HSA completion timeout then context loss and returns an incomplete artifact",
-      "exact root cause equivalence is not yet proven"
+      "W7900 surfaces address nil/page-not-present to userspace and aborts; RX 7900 XTX surfaces an HSA completion timeout then context loss and returns an incomplete artifact",
+      "RX uses a profiled two-lane multi-queue path while the W7900 failing row is serial single-queue",
+      "the exact originating resource remains unproven despite the now-matched kernel fault class"
     ]
   },
   "raw_evidence": {
@@ -114,12 +149,14 @@
     "results_sha256": "e2216c2f7e3f760b8999f2794010ac42755780da4a8e586de34b30ef447f05f1",
     "stdout_sha256": "3b55f6c88a5aec494ccd49c2230e4a3b049be73faa9eab4ed5c5c841b6ffa133",
     "stderr_sha256": "1e69d73660157f39723ff3ce50ca07397259bd5e081eb6cd63f3448ecc447577",
+    "kernel_journal_sha256": "d7a24b1c4fb2cec2bd05f0cf6769363c7b2427a0feb2b13c5fd0e8cb2a171cea",
     "status_sha256": "aad493c7373c62231c2b9fef028cc5b1505d345a711c14d1a904f1445653d2bd",
     "rocm_smi_before_sha256": "f14bb97a8e6d2c0ffa9a7dabc55ea9ac8e14b1c5eef670a11fcdedfcd069daa3",
     "rocm_smi_after_sha256": "beda52501a20694e1c8e6bba749be5d445764ef20771b6dc531911ea7eb47d99"
   },
   "related": {
     "w7900_transport_artifact": "benchmarks/results/2026-07-28-gfx1100-redline-transport-spike.json",
+    "runtime_version_artifact": "benchmarks/results/2026-07-28-gfx1100-redline-rocm714-715-lifecycle-diagnostic.json",
     "fault_dossier": "docs/REDLINE.md"
   }
 }

@@ -3497,20 +3497,32 @@ tracked-memory recovery.
 Integration remains **blocked and default-off**. A separate broad process passed
 its first 48 rows, then faulted on the first packed-dot Redline replay with a
 GPU page fault at address zero; fresh family-isolated processes pass the
-deduplicated 240/240 matrix, including packed-dot 16/16. Process isolation is a
-benchmark workaround, not a production fix. The narrow GGUF graph gate is now
-positive, but the lifecycle defect must be minimized and fixed upstream
-(ownership is not yet proven between Redline, adapters, and ROCr), followed by
-natural-prompt/category, 4K-context, concurrency, cancellation, and server
-lifecycle validation before any package-default promotion. The full failure
-signature, run ledger, lifetime audit, ruled-out hypotheses, raw hashes, and
-next minimization matrix are maintained in [`docs/REDLINE.md`](../docs/REDLINE.md).
-A same-binary RX 7900 XTX cross-device diagnostic passes rows 1-172, then its
-Redline independent q6 packed-dot replay times out and both HIP and Vulkan lose
-the process context; this is the same broad lifecycle-failure class but not the
-same W7900 row/signature, and the incomplete prefix carries no performance
-claim. See
-[`2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json`](results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json).
+deduplicated 240/240 matrix, including packed-dot 16/16. A same-binary RX 7900
+XTX diagnostic passes rows 1-172 before Redline independent q6 times out. Kernel
+journals now prove that **both** cards hit address-zero gfxhub faults on ring 24
+/ vmid 8 / client 10, followed by MES queue-removal failures, full-device
+resets, and VRAM loss. The RX userspace timeout is therefore a different
+manifestation of the same kernel fault/reset class, though the originating
+single- versus multi-queue resource remains unknown.
+
+Production ROCm 7.14 was installed and tested with the same binary: four fresh
+240-row processes per card pass, 1,920/1,920 rows total. A return to the original
+7.15 nightly also passes four processes per card and 1,920/1,920 rows, plus a
+W7900 mixed-library-tail control. No new kernel fault appears. Thus 7.14 did not
+reproduce in this bounded window, but it is **not a proven fix** and 7.15 is not
+alone sufficient; exact repeatability and runtime-version causality remain
+unresolved. See
+[`2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json`](results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json)
+and
+[`2026-07-28-gfx1100-redline-rocm714-715-lifecycle-diagnostic.json`](results/2026-07-28-gfx1100-redline-rocm714-715-lifecycle-diagnostic.json).
+
+Process isolation or pinning a runtime is not yet a production fix. The narrow
+GGUF graph gate is positive, but the lifecycle defect must be made deterministic,
+minimized, and fixed upstream (ownership remains open across Redline, adapters,
+ROCr, and amdgpu), followed by natural-prompt/category, 4K-context, concurrency,
+cancellation, and server lifecycle validation. The complete run ledger,
+lifetime audit, kernel correlations, ruled-out hypotheses, and next minimization
+matrix are maintained in [`docs/REDLINE.md`](../docs/REDLINE.md).
 
 The retained synthetic Laguna-shape IQ2_XS primitive packet is
 [`2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).
