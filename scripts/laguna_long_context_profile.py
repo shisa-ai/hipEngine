@@ -232,9 +232,9 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance retained vec16 copies against direct LDS stores",
     )
     parser.add_argument(
-        "--compare-swa-fast-exp",
+        "--compare-swa-bounded-exp",
         action="store_true",
-        help="counterbalance exact saturated SWA decode against native exponential",
+        help="counterbalance generic and bounded-domain accurate SWA exponential",
     )
     parser.add_argument(
         "--compare-global-fixedshape-reduce",
@@ -374,7 +374,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_swa_gqa3_vstage64,
             args.compare_swa_gqa3_vstage64_vec16,
             args.compare_swa_gqa3_vstage64_vec16_direct,
-            args.compare_swa_fast_exp,
+            args.compare_swa_bounded_exp,
             args.compare_global_fixedshape_reduce,
             args.compare_global_fused_fixedshape,
             args.compare_global_gqa2_vstage64,
@@ -420,7 +420,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_swa_gqa3_vstage64
         or args.compare_swa_gqa3_vstage64_vec16
         or args.compare_swa_gqa3_vstage64_vec16_direct
-        or args.compare_swa_fast_exp
+        or args.compare_swa_bounded_exp
         or args.compare_global_fixedshape_reduce
         or args.compare_global_fused_fixedshape
         or args.compare_global_gqa2_vstage64
@@ -607,8 +607,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_gqa3_vstage64_vec16_direct_fixed512 = (
             owner.kv_cache.swa_gqa3_vstage64_vec16_direct_fixed512
         )
-        active_swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512 = (
-            owner.kv_cache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512
+        active_swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512 = (
+            owner.kv_cache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512
         )
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
@@ -700,8 +700,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.kv_cache.swa_gqa3_vstage64_vec16_direct_fixed512 = (
                             mode == "candidate"
                         )
-                    if args.compare_swa_fast_exp:
-                        owner.set_decode_swa_fast_exp(mode == "candidate")
+                    if args.compare_swa_bounded_exp:
+                        owner.set_decode_swa_bounded_exp(mode == "candidate")
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
@@ -952,7 +952,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_swa_gqa3_vstage64_vec16_direct": (
                 args.compare_swa_gqa3_vstage64_vec16_direct
             ),
-            "compare_swa_fast_exp": args.compare_swa_fast_exp,
+            "compare_swa_bounded_exp": args.compare_swa_bounded_exp,
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
@@ -995,8 +995,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "swa_gqa3_vstage64_vec16_direct_fixed512": (
                 active_swa_gqa3_vstage64_vec16_direct_fixed512
             ),
-            "swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512": (
-                active_swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512
+            "swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512": (
+                active_swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512
             ),
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce
