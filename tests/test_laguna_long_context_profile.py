@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from scripts.laguna_long_context_profile import (
     LC0_TRACE_LENGTHS,
     PROFILE_LENGTH_SETS,
     STANDARD_DECODE_LENGTHS,
+    _parse_args,
     _parse_chunk_size,
     _parse_decode_output_tokens,
     _parse_lengths,
@@ -68,6 +70,30 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
         _parse_chunk_size("64")
     with pytest.raises(argparse.ArgumentTypeError, match="1 or 128"):
         _parse_decode_output_tokens("32")
+
+
+def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = Path("/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "laguna_long_context_profile.py",
+            str(model),
+            "--direct-gguf",
+            "--safety-reserve-gib",
+            "0",
+            "--quant-label",
+            "UD-Q2_K_XL",
+        ],
+    )
+
+    args = _parse_args()
+
+    assert args.model == model
+    assert args.direct_gguf is True
+    assert args.safety_reserve_gib == 0.0
+    assert args.quant_label == "UD-Q2_K_XL"
 
 
 def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:

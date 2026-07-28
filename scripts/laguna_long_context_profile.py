@@ -173,7 +173,10 @@ def _parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--direct-gguf", action="store_true")
+    parser.add_argument("--safety-reserve-gib", type=float, default=8.0)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
+    parser.add_argument("--quant-label", default="Q4_K_M mixed GGUF v3")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     return parser.parse_args()
 
@@ -250,6 +253,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if args.repetitions <= 0:
         raise ValueError("LPF-5 repetitions must be positive")
+    if args.safety_reserve_gib < 0.0:
+        raise ValueError("--safety-reserve-gib must be non-negative")
     if args.warmup_rows <= 0 or args.warmup_rows > args.chunk_size:
         raise ValueError("LPF-5 warmup rows must fit one retained chunk")
     if (
@@ -316,7 +321,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolved_backend=args.backend,
         target_arch=args.backend.removeprefix("hip_"),
         model_path=args.model,
-        quant="gguf_q4_k_m",
+        quant=args.quant_label,
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         build_profile=(
@@ -369,8 +374,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             runtime=runtime,
             compiler_version=_compiler_version(args.compiler_version_file),
             require_cached_build=args.require_cached_build,
+            safety_reserve_nbytes=int(args.safety_reserve_gib * 2**30),
             progress=_progress,
-            repacked_cache=args.repacked_cache,
+            repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
             prefill_global_attention_chunk_size=args.attention_rows,
@@ -586,7 +592,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and recovered
     )
     prompt_payload = args.prompts.read_bytes()
-    manifest_path = args.repacked_cache / "manifest.json"
+    active_cache = None if args.direct_gguf else args.repacked_cache
+    manifest_path = None if active_cache is None else active_cache / "manifest.json"
     return {
         "schema": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -604,10 +611,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": {
             "path": str(args.model.resolve()),
             "sha256": args.model_sha256,
-            "quant": "Q4_K_M mixed GGUF v3",
-            "repacked_cache": str(args.repacked_cache.resolve()),
+            "quant": args.quant_label,
+            "repacked_cache": None if active_cache is None else str(active_cache.resolve()),
             "repacked_cache_manifest_sha256": (
-                _sha256_bytes(manifest_path.read_bytes()) if manifest_path.is_file() else None
+                _sha256_bytes(manifest_path.read_bytes())
+                if manifest_path is not None and manifest_path.is_file()
+                else None
             ),
         },
         "platform": {
@@ -632,6 +641,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 str(length): math.ceil(length / args.chunk_size) for length in lengths
             },
             "context_length": args.context_length,
+            "direct_gguf": bool(args.direct_gguf),
+            "safety_reserve_gib": float(args.safety_reserve_gib),
             "output_tokens_including_first": output_tokens,
             "decode_forward_calls_per_run": output_tokens - 1,
             "repetitions": args.repetitions,
