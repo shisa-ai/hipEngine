@@ -1118,6 +1118,22 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
 
 
+def test_laguna_raw_k_prefill_rowbatch_is_default_off_and_explicit() -> None:
+    from hipengine.runtime.laguna_gguf_runner import (
+        resolve_laguna_raw_k_prefill_rowbatch,
+    )
+
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 0
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151") == 0
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 4) == 4
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 8) == 8
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 0) == 0
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151", 8)
+    with pytest.raises(ValueError, match="row batch"):
+        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 16)
+
+
 def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
     assert resolve_laguna_head_kv_fusion("hip_gfx1100")
     assert not resolve_laguna_head_kv_fusion("hip_gfx1100", False)

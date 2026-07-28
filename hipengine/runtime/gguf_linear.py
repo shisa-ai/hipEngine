@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from typing import Iterator, Mapping
 
 from hipengine.core.hip import get_hip_runtime
-from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.backends import (
+    backend_package_capability,
+    load_backend_kernel_package,
+)
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import register_dense_gemv_kernels
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_dual_gemv_bf16_bf16_out,
@@ -117,6 +120,20 @@ _ROWTILE_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q6_k": 256,
     "gguf_q8_0": 32,
 }
+
+# Large-prefill exact row reuse for raw Q5_K/Q6_K. Execution owners select a
+# fixed four- or eight-row slab through the context-local policy below; zero is
+# the scalar fallback. Keeping the policy context-local avoids backend/quant
+# branches in model code and remains safe for concurrent request owners.
+_RAW_K_PREFILL_ROWBATCHES = frozenset({0, 4, 8})
+_RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset({"gguf_q5_k", "gguf_q6_k"})
+_RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
+    {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
+)
+_raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
+    "raw_k_prefill_rowbatch",
+    default=0,
+)
 
 # Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
 # the raw GGUF K-block alignment constraints enforced before dispatching to
@@ -601,6 +618,26 @@ def _resolve_use_q4k_rowtile(kwarg: bool | None) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def raw_k_prefill_rowbatch() -> int:
+    """Return the execution owner's exact raw-Q5/Q6 prefill row slab."""
+
+    return int(_raw_k_prefill_rowbatch.get())
+
+
+@contextlib.contextmanager
+def raw_k_prefill_rowbatch_session(row_batch: int) -> Iterator[None]:
+    """Temporarily select fixed row reuse for one bulk-prefill execution owner."""
+
+    selected = int(row_batch)
+    if selected not in _RAW_K_PREFILL_ROWBATCHES:
+        raise ValueError("raw-K prefill row batch must be one of 0, 4, or 8")
+    token = _raw_k_prefill_rowbatch.set(selected)
+    try:
+        yield
+    finally:
+        _raw_k_prefill_rowbatch.reset(token)
+
+
 def _rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -635,6 +672,42 @@ def _rowtile_dispatch(
             dispatch.key.layer,
             dispatch.key.quant,
             rowtile_variant,
+        ),
+        "raw",
+    )
+
+
+def _raw_k_prefill_rowbatch_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    row_batch: int,
+) -> GGUFLinearDispatch:
+    """Select exact fixed-grid-Y Q5/Q6 row reuse for rows above small-B."""
+
+    selected = int(row_batch)
+    if selected not in {4, 8} or rows <= _ROWTILE_MAX_ROWS:
+        return dispatch
+    if (
+        not backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+            False,
+        )
+        or dispatch.abi != "raw"
+        or dispatch.key.quant not in _RAW_K_PREFILL_ROWBATCH_QUANTS
+        or dispatch.key.variant not in _RAW_K_PREFILL_ROWBATCH_VARIANTS
+        or in_features % 256 != 0
+    ):
+        return dispatch
+    output_variant = dispatch.key.variant[len("prefill_") :]
+    return GGUFLinearDispatch(
+        KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            f"rowbatch{selected}_{output_variant}",
         ),
         "raw",
     )
@@ -729,6 +802,7 @@ def launch_gguf_linear(
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
+    raw_k_rowbatch = raw_k_prefill_rowbatch()
     mmq_session = _q8_mmq_prefill_session.get()
     cache_key = (
         generation(),
@@ -743,6 +817,7 @@ def launch_gguf_linear(
         f_gemv,
         use_wmma,
         f_rowtile,
+        raw_k_rowbatch,
         bool(use_q4_pack8_wmma),
         registered_variant,
         bool(_native_batch_decode_session_enabled),
@@ -790,6 +865,12 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_rowtile=f_rowtile,
+        )
+        dispatch = _raw_k_prefill_rowbatch_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            row_batch=raw_k_rowbatch,
         )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
@@ -2032,6 +2113,8 @@ __all__ = [
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
     "q8_mmq_prefill_session",
+    "raw_k_prefill_rowbatch",
+    "raw_k_prefill_rowbatch_session",
     "resolve_gguf_linear_dispatch",
     "resolve_q8_mmq_prefill_policy",
     "set_wmma_prefill_enabled",
