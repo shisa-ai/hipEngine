@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T06:33:01+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_persistent_gqa9_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "8642a5024a3d4cc56ea1dfe8397d7be0084fb3a9",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "geometry": "32 persistent local256 workgroups; each produces two of 8 KV-head x 8 K64 score tasks, enters a grid-wide atomic rendezvous, then maps 288 exact head/dimension reducers over its resident waves",
+    "arithmetic": "the reduction phase replays the retained slot-order maximum, compiler expf, denominator, PV FMA, divide, gate, and stores",
+    "reason_for_screen": "retain llama.cpp Vulkan's full-GQA K64 ownership and grid breadth while avoiding a cooperative launch and host-visible producer/reducer phase boundary"
+  },
+  "correctness": {
+    "red": "wrapped/evicted oracle failed because the persistent wrapper did not exist",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py -k swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "positions": "512-519 with explicit eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate persistent-gqa9-k64 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-persistent-gqa9-k64-leaf.json",
+    "raw_sha256": "bfecc32301fc3a5ba7cc7752aef304b45bc26b3c1bb87f5e01c8762127b75f06",
+    "control_median_ms": 0.09829939842224121,
+    "candidate_median_ms": 0.3951567077636719,
+    "latency_change_percent": 301.9930071863632,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-persistent-gqa9-trace.clkXdT -o persistentgqa9 -- env PYTHONPATH=. HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate persistent-gqa9-k64 --samples 3 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "raw_sha256": "a6fc7961d7573a61c8ff890b4981fb47373fb64c298e04edbcc11ae7e537ca41",
+    "candidate": {
+      "grid_blocks": 32,
+      "workgroup_size": 256,
+      "allocated_vgpr": 40,
+      "allocated_sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "steady_observations_us": [
+        386.525,
+        387.567,
+        387.446,
+        384.561
+      ],
+      "steady_median_us": 386.9855
+    },
+    "control": {
+      "grid_blocks": 24,
+      "workgroup_size": 384,
+      "allocated_vgpr": 144,
+      "allocated_sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    },
+    "finding": "The candidate has no register, LDS, or scratch occupancy cliff. Its score-plane writes and reads plus grid rendezvous are the structural cost."
+  },
+  "production": {
+    "run_performed": false,
+    "reason": "The exact cache-hot leaf is 4.02x slower, so the candidate fails before the 78.8-GB resident-model gate."
+  },
+  "decision": {
+    "retained": false,
+    "all_candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 19.249443240044645,
+    "reason": "A normal launch removes the cooperative API but cannot make a globally ordered score-plane repair free. The exact producer/rendezvous/reducer boundary dominates despite low resource allocation.",
+    "llamacpp_lesson": "The transferable mechanism is fused full-GQA K/V reuse and tensorized Br16/Bc64 work inside each tile, not split breadth by itself. A new candidate must keep reuse in one fused phase or carry an independently gated high-precision repair."
+  }
+}

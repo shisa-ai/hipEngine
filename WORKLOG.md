@@ -188779,3 +188779,26 @@ Vulkan local sizes verbatim will close the measured gap.
   the kernel, registry, runtime, test, and comparison seams. Production stays
   **19.249443 tok/s**. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vec16-rejected.json`.
+
+## 2026-07-29 06:33 JST — Reject persistent exact SWA GQA9/K64 score repair
+
+- Close the normal-launch alternative to the rejected cooperative/global
+  phase boundary. Thirty-two persistent local256 blocks each produce two of
+  the Vulkan-shaped 8-KV-head x 8-K64 score tasks, rendezvous through a
+  per-cache monotonic device counter, then replay the retained exact
+  slot-order maximum, compiler `expf`, denominator, PV FMA, divide, gate, and
+  stores.
+- RED is the absent wrapper. GREEN passes the wrapped positions 512-519 plus
+  explicit eviction fixture; F32 context and gated BF16 outputs are byte-exact
+  to the retained GQA3 direct-store/assumed-domain owner.
+- The nine-sample leaf rejects the topology **0.098299 -> 0.395157 ms
+  (+301.99%)**. Cached tracing records the expected 32 local256 blocks at
+  **VGPR40/SGPR128/LDS0/scratch0**, so there is no spill, register, or LDS
+  occupancy repair to pursue. The full score-plane write/read plus grid
+  rendezvous is structurally dominant.
+- Stop before the 78.8-GB resident-model gate, remove the kernel/wrapper/
+  registry/test/harness seams, and retain production **19.249443 tok/s**. The
+  llama.cpp Vulkan lesson is now bounded: full-GQA K/V reuse transfers only
+  when QK, online state, and PV remain fused/tensorized; split breadth alone
+  does not. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-persistent-gqa9-rejected.json`.

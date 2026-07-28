@@ -1329,6 +1329,18 @@ remove the cooperative-launch/global-score boundary rather than repeat this
 geometry. Evidence:
 [`rejected GQA2 direct-vec16 staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vec16-rejected.json).
 
+The normal-launch persistent exact GQA9/K64 follow-up is also rejected and
+fully removed. Thirty-two local256 workgroups produce two K64 tasks each,
+rendezvous through a monotonic device counter, and replay the retained ordered
+softmax/PV reduction. Wrapped/evicted F32/BF16 output is byte-exact, but the
+leaf regresses **0.098299 -> 0.395157 ms (+301.99%)**. Cached tracing records
+VGPR40/SGPR128/LDS0/scratch0, ruling out spills or an LDS occupancy cliff; the
+full score-plane traffic and grid rendezvous are structurally dominant. The
+Vulkan transfer boundary is now explicit: retain full-GQA K/V reuse only when
+it stays fused with QK/softmax/PV, and do not reconstruct its split topology
+with an exact global score repair. Evidence:
+[`rejected persistent exact GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-persistent-gqa9-rejected.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
