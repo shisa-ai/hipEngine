@@ -188260,3 +188260,32 @@ Vulkan local sizes verbatim will close the measured gap.
   retained SWA V copy if 24-workgroup occupancy still loses. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-production.json`;
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-vstage64-wall-reprofile.json`.
+
+## 2026-07-29 02:52 JST — Retain exact global GQA2 V-stage64
+
+- RED fails on the absent global GQA2 V-stage64 wrapper. GREEN templates the
+  fused natural global body by owned query count and V-stage width. Twenty-four
+  local256 workgroups own adjacent GQA6 heads, reuse K across the pair, and
+  stage 64 V slots x D128 so each BF16 V load feeds both PV chains. Maximum,
+  denominator, per-head PV association, gate, and store order remain exact.
+- The focused CPU-reference gate covers live513/576/639 plus explicit eviction
+  at position 200. F32 context and gated BF16 are byte-exact against GQA1; the
+  kernel/default rollback bundle passes **2/2**. Nine-sample leaves improve
+  **0.134030 -> 0.121751 ms (-9.16%)**,
+  **0.167974 -> 0.147156 ms (-12.39%)**, and
+  **0.185489 -> 0.162822 ms (-12.22%)**.
+- All seven counterbalanced p512/d128 resident-model pairs improve
+  **18.034298 -> 18.237090 tok/s (+1.124%, -0.617 ms/token)**. Every candidate
+  wins; generated hash `94f803...bda32`, next/final tokens, position, and
+  lifecycle state match exactly. This reverses the earlier unstaged GQA2
+  **-0.126%** result: 24 workgroups are sufficient only when both K and V are
+  reused.
+- Cached tracing names GQA1 `<1,0>` and GQA2 `<2,64>` at local256,
+  VGPR **24/32**, SGPR128, static-LDS512, and scratch0. GQA2 uses
+  22,540-24,052 bytes dynamic LDS across the measured live range; the
+  12-observation kernel median is **160.662 -> 140.644 us (-12.46%)**.
+  Promote only natural capacity4096/48Q/8KV/D128 gfx1151 global decode through
+  live4000, keeping worst-case dynamic plus static LDS below the 64-KiB
+  workgroup limit. GQA1 remains registered rollback above that bound;
+  non-natural capacities/shapes and peer backends are unchanged. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-retained.json`.

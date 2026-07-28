@@ -3535,6 +3535,7 @@ Evidence:
 [`retained fused-GQA3 V-stage64 SWA owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-retained.json) ·
 [`clean fused-GQA3 V-stage64 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-production.json) ·
 [`post-V-stage64 wall re-profile`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vstage64-wall-reprofile.json) ·
+[`retained global GQA2 V-stage64`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-retained.json) ·
 [`rejected fused-GQA2 shared-V owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json) ·
 [`rejected GQA9 K64 split-K family`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json) ·
 [`rejected GQA2 LDS-V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json) ·
@@ -3568,13 +3569,14 @@ quality contract. Fixed-K LD-2 production reached
 Exact fused one-head global attention now reaches **17.097 tok/s**.
 Exact fused-GQA3/local384 SWA reaches **17.140 tok/s**. Reusing each staged
 64-slot V tile across its three owned query heads reaches **18.032 tok/s** in
-seven exact pairs and **18.027 tok/s** in clean production. The next bounded
-milestone is **20 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the
-directional comparator target.
+seven exact pairs and **18.027 tok/s** in clean production. Exact global GQA2
+with the same staged-V reuse then reaches **18.237 tok/s** in seven exact
+pairs. The next bounded milestone is **20 tok/s**; same-GGUF Vulkan at
+**23.348 tok/s** remains the directional comparator target.
 
-The clean post-V-stage census records **816 dispatches/token**, **53.265 ms**
-median kernel sum, and **55.855 ms** median dispatch span. Exact attention is
-still the dominant implementation gap:
+The pre-global-GQA2 clean post-V-stage census records **816
+dispatches/token**, **53.265 ms** median kernel sum, and **55.855 ms** median
+dispatch span. Exact attention is still the dominant implementation gap:
 
 | Current family | hipEngine ms/token | Vulkan logger ms/token | Delta |
 | --- | ---: | ---: | ---: |
@@ -3591,8 +3593,10 @@ Relative to the clean post-GQA3 census, V-stage64 improves attention
 unchanged. Source-F16 remains at comparator parity; attention now explains
 about **61.8%** of the remaining wall gap. Reaching the existing **3.0-ms**
 attention checkpoint models about **20.10 tok/s**. Next screen the exact
-global GQA2 body with the V reuse it previously lacked; if 24-workgroup
-occupancy still loses, retain GQA1 and vectorize the SWA staging loads.
+global GQA2 body with the V reuse it previously lacked. That screen is now
+retained: the leaf wins **9.16-12.39%** and all seven p512/d128 pairs improve
+**18.034298 -> 18.237090 tok/s (+1.124%)**. Re-profile clean production, then
+vectorize the SWA staging loads.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
@@ -3826,6 +3830,18 @@ workgroups; it regresses resident production
 attention on this 40-CU device, block breadth is worth more than GQA K reuse at
 the current 513-639-token scan.
 
+V staging reverses that earlier global result. The exact GQA2 body keeps its
+24 local256 paired-head workgroups but adds a 64-slot x D128 LDS V tile, so
+each load now feeds both per-head PV chains. At live 513/576/639 the
+nine-sample leaf improves GQA1 **9.16%/12.39%/12.22%**, with F32 context and
+gated BF16 byte-exact after explicit eviction. Seven resident-model pairs move
+**18.034298 -> 18.237090 tok/s (+1.124%, -0.617 ms/token)**; every candidate
+wins and the full 128-token trajectory/state is exact. Tracing names
+`<2,64>` at local256/VGPR32/SGPR128/static-LDS512/scratch0, with 22,540-24,052
+bytes of launch-time dynamic LDS over the measured live range. gfx1151
+promotes GQA2 V-stage64 only at natural capacity/shape through live 4000;
+GQA1 remains rollback above that LDS bound.
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
@@ -3878,7 +3894,11 @@ and shape/backend fallbacks.
    win even when its cache-hot leaf loses. The exact fused one-head global
    owner adds **+0.188%** and reaches **17.097044 tok/s** while preserving all
    48 workgroups; global GQA2 is closed at **-0.126%** because 24 workgroups
-   undersubscribe the 40 CUs. Exact fused-GQA3/local384 then reduces saturated
+   undersubscribe the 40 CUs when it has K reuse alone. The repaired global
+   GQA2 V-stage64 body also reuses V across its query pair, wins the leaf
+   **9.16-12.39%**, and improves all seven resident pairs
+   **18.034298 -> 18.237090 tok/s (+1.124%)**, so it supersedes GQA1 at the
+   natural shape. Exact fused-GQA3/local384 then reduces saturated
    SWA K ownership **5 -> 3** while keeping 288 active PV waves; all seven
    resident pairs improve **17.100489 -> 17.139971 tok/s (+0.231%)**, so it is
    now the natural-shape gfx1151 default with fused-GQA2 rollback. Total
@@ -3909,9 +3929,9 @@ and shape/backend fallbacks.
    static one-third SWA depth policies are worse at max KL
    **0.470646/0.762249/0.737907**. The errors partly cancel across depth, so
    layer-bounded deployment is closed as fragile and prompt-overfit-prone.
-   Re-running exact global GQA2 on the post-GQA3 baseline is also neutral-
+   Re-running unstaged exact global GQA2 on the post-GQA3 baseline is neutral-
    negative (**17.082284 -> 17.074471 tok/s, -0.0457%**) and confirms the
-   existing 24-workgroup undersubscription closure. Source review sharpens the
+   24-workgroup schedule needs both K and V reuse. Source review sharpens the
    comparator gap: Vulkan uses a real subgroup64 cooperative-matrix
    **Br16 x Bc64** GQA9 tile before its K64 merge, whereas the rejected HIP
    kernel copied only GQA ownership and split breadth. A true compensated-WMMA
