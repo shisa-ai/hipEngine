@@ -134,8 +134,11 @@ Shared-weight M128 full state passes at KL **0.002081**, and clean A/B moves
 lane nevertheless rejects D8 at maximum KL **0.400292** despite **566/576
 (98.264%)** top-1. Package production remains MMQ-off/rowbatch8. D4->D8 leaves
 28 KL violations in both variants and improves/worsens 275/301 individual
-steps, so WPF-1B next screens a two-stage per-K16 Q8 residual correction rather
-than assuming still finer single-stage grouping will pass.
+steps. A separately registered two-stage per-K16 Q8 residual primitive now
+represents activation as `d*q + dr*qr`: all ten actual M128 roles pass at max
+KL **8.241e-7** / **100%** top-1, and every N>=1024 role remains
+**3.673-10.989x** faster inclusive. It has no runtime owner yet; next switch
+only the explicit MMQ-on path and rerun full state.
 
 The actual GGUF inventory gives this active linear ledger:
 
@@ -208,7 +211,7 @@ The relevant lesson is dataflow, not API or literal constants:
 | WPF-0 profile + roofline | Complete | Clean 512/4K wall and all-family trace, actual tensor/FLOP ledger, 729.067-GB/s read ceiling, llama.cpp HIP/Vulkan audit, and compact artifact published. |
 | WPF-C0 shared-source capacity transfer | Rejected/removed | The bundle was performance-positive but failed the mandatory 576-step quality gate at max KL 1.11869; no copied capability default is retained. |
 | WPF-1 exact dense/shared row reuse | **Complete; rowbatch8 retained gfx1100 default** | Full state is bit-exact. Scalar **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K; selector-unset publication is **79.585/74.512**. rowbatch4 and scalar remain explicit rollback/crossover routes; gfx1151 is fail-closed. |
-| WPF-1B dense/shared Q8_1 MMQ | **D4/D8 rejected; residual correction next** | D4 reaches **129.572/116.116 tok/s** but max KL **0.624304** fails. D8 reaches **129.083/115.802 tok/s** and improves max KL to **0.400292**, still 8x over the gate. Keep rowbatch8 production default; screen one two-stage per-K16 Q8 residual producer before deciding whether to end WPF-1B. |
+| WPF-1B dense/shared Q8_1 MMQ | **D4/D8 rejected; D8R8 residual primitive admitted, runtime next** | D8R8/S8 reaches max actual-role KL **8.241e-7**, 100% top-1, and **3.673-10.989x** inclusive speedup for every N>=1024 role. Keep rowbatch8 production default; switch only the explicit MMQ-on owner and rerun full state before short/category work. |
 | WPF-2 routed IQ MMQ | Pending WPF-1B reprofile | Compact by expert, quantize gate/up before top-10 expansion, pack down rows after SiLU, and tile raw IQ2/IQ3/IQ4 weights across routed rows. Publish distinct-expert and physical traffic. |
 | WPF-3 short attention | Deferred | Start only if the fresh post-WPF-2 profile makes attention the largest or gives it a >=5% perfect-removal ceiling at both active 512/1K shapes. |
 | WPF-4 launch/fusion | Deferred | Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |

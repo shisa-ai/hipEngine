@@ -474,6 +474,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         # gfx1100-only until an independent gfx1151 gate.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),
         ("activation_quant", "q8_1_d8s8_f32", "bf16"),
+        ("activation_quant", "q8_1_d8r8s8_f32", "bf16"),
         *(
             (
                 "linear_prefill_policy",
@@ -489,7 +490,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 f"mmq32_q8_1_{producer}_f32_bf16_{output_dtype}_out",
             )
             for quant in ("gguf_q5_k", "gguf_q6_k")
-            for producer in ("d4s4", "d8s8")
+            for producer in ("d4s4", "d8s8", "d8r8s8")
             for output_dtype in ("bf16", "f32")
         ),
         # Q4 local32 LM-head ownership is W7900-only pending an independent gate.

@@ -19,16 +19,22 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     build_gguf_k_mmq_prefill,
     gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out,
     gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_f32_out,
+    gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out,
+    gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out,
     gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out,
     gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_f32_out,
     gguf_q6_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out,
     gguf_q6_k_mmq32_q8_1_d4s4_f32_bf16_f32_out,
+    gguf_q6_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out,
+    gguf_q6_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out,
     gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out,
     gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_f32_out,
     gguf_q8_1_d4s4_f32_quantize_bf16,
+    gguf_q8_1_d8r8s8_f32_quantize_bf16,
     gguf_q8_1_d8s8_f32_quantize_bf16,
     plan_gguf_k_mmq_prefill_build,
     q8_1_d4s4_f32_nbytes,
+    q8_1_d8r8s8_f32_nbytes,
     q8_1_d8s8_f32_nbytes,
     register_gguf_k_mmq_prefill_kernels,
 )
@@ -178,6 +184,74 @@ def _unpack_d8_cpu(packed: np.ndarray) -> np.ndarray:
     return (quants * scales[..., None]).reshape(rows, blocks * 128)
 
 
+def _pack_d8r8_cpu(x_bf16: np.ndarray) -> np.ndarray:
+    x = _bf16_to_f32(np.ascontiguousarray(x_bf16, dtype=np.uint16))
+    rows, hidden = x.shape
+    packed = np.zeros((rows, hidden // 128, 352), dtype=np.uint8)
+    for row in range(rows):
+        for block in range(hidden // 128):
+            values = x[row, block * 128 : (block + 1) * 128].reshape(8, 16)
+            scales = np.zeros((8,), dtype=np.float32)
+            residual_scales = np.zeros((8,), dtype=np.float32)
+            sums = np.zeros((8,), dtype=np.float32)
+            quants = np.zeros((8, 16), dtype=np.int8)
+            residual_quants = np.zeros((8, 16), dtype=np.int8)
+            for group in range(8):
+                group_values = values[group]
+                scales[group] = np.max(np.abs(group_values)) / np.float32(127.0)
+                partial = np.asarray(
+                    [
+                        ((group_values[i] + group_values[i + 1]) + group_values[i + 2])
+                        + group_values[i + 3]
+                        for i in range(0, 16, 4)
+                    ],
+                    dtype=np.float32,
+                )
+                partial[:2] = partial[:2] + partial[2:]
+                sums[group] = partial[0] + partial[1]
+                if scales[group] != 0.0:
+                    quants[group] = np.clip(
+                        _round_away(group_values / scales[group]), -128, 127
+                    ).astype(np.int8)
+                residual = group_values - quants[group].astype(np.float32) * scales[group]
+                residual_scales[group] = np.max(np.abs(residual)) / np.float32(127.0)
+                if residual_scales[group] != 0.0:
+                    residual_quants[group] = np.clip(
+                        _round_away(residual / residual_scales[group]), -128, 127
+                    ).astype(np.int8)
+            packed[row, block, :32] = scales.view(np.uint8)
+            packed[row, block, 32:64] = residual_scales.view(np.uint8)
+            packed[row, block, 64:96] = sums.view(np.uint8)
+            packed[row, block, 96:224] = quants.reshape(128).view(np.uint8)
+            packed[row, block, 224:] = residual_quants.reshape(128).view(np.uint8)
+    return packed
+
+
+def _unpack_d8r8_cpu(packed: np.ndarray) -> np.ndarray:
+    rows, blocks, _ = packed.shape
+    scales = packed[..., :32].copy().view(np.float32).reshape(rows, blocks, 8)
+    residual_scales = (
+        packed[..., 32:64].copy().view(np.float32).reshape(rows, blocks, 8)
+    )
+    quants = (
+        packed[..., 96:224]
+        .copy()
+        .view(np.int8)
+        .astype(np.float32)
+        .reshape(rows, blocks, 8, 16)
+    )
+    residual_quants = (
+        packed[..., 224:]
+        .copy()
+        .view(np.int8)
+        .astype(np.float32)
+        .reshape(rows, blocks, 8, 16)
+    )
+    reconstructed = quants * scales[..., None]
+    reconstructed += residual_quants * residual_scales[..., None]
+    return reconstructed.reshape(rows, blocks * 128)
+
+
 def test_q5_q6_mmq_contract_registry_and_backend_scope() -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
@@ -185,6 +259,7 @@ def test_q5_q6_mmq_contract_registry_and_backend_scope() -> None:
     register_gfx1151_kernels(replace=True)
     assert q8_1_d4s4_f32_nbytes(33, 512) == 33 * 4 * 160
     assert q8_1_d8s8_f32_nbytes(33, 512) == 33 * 4 * 192
+    assert q8_1_d8r8s8_f32_nbytes(33, 512) == 33 * 4 * 352
     with pytest.raises(ValueError, match="multiple of 128"):
         q8_1_d4s4_f32_nbytes(33, 384 + 64)
     with pytest.raises(ValueError, match="multiple of 256"):
@@ -225,6 +300,23 @@ def test_q5_q6_mmq_contract_registry_and_backend_scope() -> None:
             "hip_gfx1151",
             "activation_quant",
             "q8_1_d8s8_f32",
+            "bf16",
+        )
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="activation_quant",
+            quant="q8_1_d8r8s8_f32",
+            variant="bf16",
+        )
+        is gguf_q8_1_d8r8s8_f32_quantize_bf16
+    )
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "activation_quant",
+            "q8_1_d8r8s8_f32",
             "bf16",
         )
     )
@@ -320,12 +412,40 @@ def test_q5_q6_mmq_contract_registry_and_backend_scope() -> None:
             assert not is_registered(
                 KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
             )
+    for quant, bf16_fn, f32_fn in (
+        (
+            "gguf_q5_k",
+            gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out,
+            gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out,
+        ),
+        (
+            "gguf_q6_k",
+            gguf_q6_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out,
+            gguf_q6_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out,
+        ),
+    ):
+        for output_dtype, fn in (("bf16", bf16_fn), ("f32", f32_fn)):
+            key = KernelKey(
+                "hip_gfx1100",
+                "linear",
+                quant,
+                f"mmq32_q8_1_d8r8s8_f32_bf16_{output_dtype}_out",
+            )
+            assert resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            ) is fn
+            assert not is_registered(
+                KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
+            )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("rows", [17, 33])
 @pytest.mark.parametrize("quant", ["q5", "q6"])
-@pytest.mark.parametrize("layout", ["d4", "d8"])
+@pytest.mark.parametrize("layout", ["d4", "d8", "d8r8"])
 def test_q5_q6_mmq_matches_q8_oracle_and_quality_gate(
     rows: int,
     quant: str,
@@ -335,11 +455,15 @@ def test_q5_q6_mmq_matches_q8_oracle_and_quality_gate(
 
     hidden, out_features = 512, 48
     rng = np.random.default_rng(
-        20260729 + rows + (quant == "q6") + (layout == "d8")
+        20260729
+        + rows
+        + (quant == "q6")
+        + (layout == "d8")
+        + 2 * (layout == "d8r8")
     )
     x_bf16 = _bf16_bits(rng.normal(0.0, 0.125, size=(rows, hidden)).astype(np.float32))
     packed = np.zeros(
-        (rows, hidden // 128, 160 if layout == "d4" else 192),
+        (rows, hidden // 128, {"d4": 160, "d8": 192, "d8r8": 352}[layout]),
         dtype=np.uint8,
     )
     out_bf16 = np.zeros((rows, out_features), dtype=np.uint16)
@@ -352,6 +476,9 @@ def test_q5_q6_mmq_matches_q8_oracle_and_quality_gate(
         if layout == "d8":
             bf16_wrapper = gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out
             f32_wrapper = gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_f32_out
+        elif layout == "d8r8":
+            bf16_wrapper = gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out
+            f32_wrapper = gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out
     else:
         qweight = make_q6_k_weight(out_features, hidden)
         reference_fn = gguf_q6_k_gemv
@@ -360,11 +487,14 @@ def test_q5_q6_mmq_matches_q8_oracle_and_quality_gate(
         if layout == "d8":
             bf16_wrapper = gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out
             f32_wrapper = gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_f32_out
-    quantize = (
-        gguf_q8_1_d4s4_f32_quantize_bf16
-        if layout == "d4"
-        else gguf_q8_1_d8s8_f32_quantize_bf16
-    )
+        elif layout == "d8r8":
+            bf16_wrapper = gguf_q6_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out
+            f32_wrapper = gguf_q6_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out
+    quantize = {
+        "d4": gguf_q8_1_d4s4_f32_quantize_bf16,
+        "d8": gguf_q8_1_d8s8_f32_quantize_bf16,
+        "d8r8": gguf_q8_1_d8r8s8_f32_quantize_bf16,
+    }[layout]
 
     runtime = get_hip_runtime()
     library = build_gguf_k_mmq_prefill(load=True)
@@ -414,9 +544,17 @@ def test_q5_q6_mmq_matches_q8_oracle_and_quality_gate(
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
-    expected_packed = _pack_cpu(x_bf16) if layout == "d4" else _pack_d8_cpu(x_bf16)
+    expected_packed = {
+        "d4": _pack_cpu,
+        "d8": _pack_d8_cpu,
+        "d8r8": _pack_d8r8_cpu,
+    }[layout](x_bf16)
     np.testing.assert_array_equal(packed, expected_packed)
-    reconstructed = _unpack_cpu(packed) if layout == "d4" else _unpack_d8_cpu(packed)
+    reconstructed = {
+        "d4": _unpack_cpu,
+        "d8": _unpack_d8_cpu,
+        "d8r8": _unpack_d8r8_cpu,
+    }[layout](packed)
     q8_reference = reference_fn(reconstructed, qweight)
     np.testing.assert_allclose(out_f32, q8_reference, rtol=2e-2, atol=1e-2)
     np.testing.assert_array_equal(out_bf16, _bf16_bits(out_f32))
