@@ -364,6 +364,7 @@ client 10 are broad gfx11 KFD/gfxhub attribution fields.
 | [ROCm/ROCm#5616](https://github.com/ROCm/ROCm/issues/5616) | Address-zero gfx11 fault followed by failed `REMOVE_QUEUE` and reset. | gfx1103/ring 88/`SQC (inst)` under OpenCL, memory pressure, firmware, and sleep/resume discussion. The known gfx1150 MES `0x83` firmware problem discussed there is not our Navi31 MES `0x88`. |
 | [ROCm/amdgpu#204](https://github.com/ROCm/amdgpu/issues/204) | Navi31 RX 7900 GRE and an RX 7900 XTX commenter report ring-24/client-10 faults; disabling pinned memory avoided one reproducer. | Fault addresses are nonzero and the decoded client is SDMA0, not SQC data. This is evidence that ring/client alone are insufficient, not an exact match. |
 | [ROCm/ROCm#2205](https://github.com/ROCm/ROCm/issues/2205) | Repeated multi-card gfx11 bandwidth loops fault on ring 24/client 10 and then damage MES restore/reset. | 2023 report, nonzero address and SDMA0/1 clients. Structurally similar stress, different producer. |
+| [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437) | hipEngine's same-kernel/firmware-package/ROCm-7.15 gfx1151 report also reaches intermittent AQL/MES forward-progress loss. Its strongest capture has an active non-empty HQD with 32 unread packets. | The primary failure has no VM fault, queue error, MES timeout, reset, or VRAM loss and clears on SIGTERM. It occurs during a long 128K prefill without requiring queue recreation; Redline faults during short recreate-heavy work. Treat it as an adjacent scheduler/progress class, not the same bug. Its rejected `sched_policy=2` control did fault inside `AqlQueue::ExecutePM4`, but at a nonzero VA from CPF, not address-zero SQC data. |
 | [ROCm/TheRock#1271](https://github.com/ROCm/TheRock/issues/1271), [#2655](https://github.com/ROCm/TheRock/issues/2655), and [#5993](https://github.com/ROCm/TheRock/issues/5993) | gfx11 VM faults can precede `REMOVE_QUEUE` failure, repeated reset, and device loss across HIP and Vulkan. | Mostly gfx115x/gfx1102, nonzero/memory-pressure or graphics faults, and known firmware/long-compute cases. Useful recovery-path precedents, not matches for our short address-zero SQC-data dispatch. |
 
 No public GitHub result contained the exact complete `0x00801431` status at the
@@ -409,7 +410,13 @@ time of the search. Both hipEngine cards do.
    way a HIP queue can be released without queue-owned completion proof. A
    Redline-only lifecycle stress followed by HIP-added and Vulkan-added arms is
    required; row order alone cannot clear a backend.
-6. **There is no upstream fix to claim yet.** The closest fault report is open,
+6. **The prior gfx1151 stall is an adjacent control, not a unified theory.**
+   `#6437` proves that the same broad stack can stop retiring AQL work without a
+   VM fault, but its unread-queue/no-reset/clean-SIGTERM state is the opposite
+   of this fail-stop null read. A Redline minimizer that stalls with a stable
+   non-empty HQD instead of faulting would materially strengthen a connection;
+   current evidence does not.
+7. **There is no upstream fix to claim yet.** The closest fault report is open,
    the old kernel race fixes and long-compute workaround are already present,
    and the newer MES flush patch affects recovery only. Disabling CWSR is not a
    defensible workaround because the closest report later reproduced the same
