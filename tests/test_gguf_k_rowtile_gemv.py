@@ -20,8 +20,18 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     register_gguf_k_gemv_kernels,
     gguf_q5_k_gemv_bf16_bf16_out,
+    gguf_q5_k_gemv_bf16_f32_out,
+    gguf_q5_k_gemv_rowbatch4_bf16_bf16_out,
+    gguf_q5_k_gemv_rowbatch4_bf16_f32_out,
+    gguf_q5_k_gemv_rowbatch8_bf16_bf16_out,
+    gguf_q5_k_gemv_rowbatch8_bf16_f32_out,
     gguf_q5_k_gemv_rowtile_bf16_bf16_out,
     gguf_q6_k_gemv_bf16_bf16_out,
+    gguf_q6_k_gemv_bf16_f32_out,
+    gguf_q6_k_gemv_rowbatch4_bf16_bf16_out,
+    gguf_q6_k_gemv_rowbatch4_bf16_f32_out,
+    gguf_q6_k_gemv_rowbatch8_bf16_bf16_out,
+    gguf_q6_k_gemv_rowbatch8_bf16_f32_out,
     gguf_q6_k_gemv_rowtile_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
@@ -121,6 +131,21 @@ def test_gguf_k_rowtile_registry_binds() -> None:
             assert callable(resolve(backend="hip_gfx1100", layer="linear", quant=quant, variant=variant))
 
 
+@pytest.mark.parametrize("quant", ("gguf_q5_k", "gguf_q6_k"))
+def test_gguf_k_large_prefill_rowbatch_registry_binds(quant: str) -> None:
+    register_gguf_k_gemv_kernels()
+    for row_batch in (4, 8):
+        for output_dtype in ("bf16", "f32"):
+            assert callable(
+                resolve(
+                    backend="hip_gfx1100",
+                    layer="linear",
+                    quant=quant,
+                    variant=f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+                )
+            )
+
+
 _SHAPES = [(256, 16), (512, 48), (1024, 64)]
 _ROWS = [2, 3, 4, 8]
 
@@ -164,3 +189,47 @@ def test_q5k_q6k_rowtile_bit_exact_vs_per_row(rows) -> None:
     ref6 = _run(gguf_q6_k_gemv_bf16_bf16_out, xb, qw6, np.zeros((rows, out_f), np.uint16)).copy()
     got6 = _run(gguf_q6_k_gemv_rowtile_bf16_bf16_out, xb, qw6, np.zeros((rows, out_f), np.uint16)).copy()
     np.testing.assert_array_equal(got6, ref6)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [9, 17])
+def test_q5k_q6k_large_prefill_rowbatch_tails_are_bit_exact(rows: int) -> None:
+    """Fixed rowbatch4/8 must preserve scalar rows, including partial tails."""
+
+    from tests.test_gguf_k_gemv import make_q5_k_weight, make_q6_k_weight
+
+    in_f, out_f = 512, 48
+    rng = np.random.default_rng(20260728 + rows)
+    xb = _bf16_bits(rng.standard_normal((rows, in_f)).astype(np.float32) * 0.1)
+    cases = (
+        (
+            make_q5_k_weight(out_f, in_f),
+            gguf_q5_k_gemv_bf16_bf16_out,
+            gguf_q5_k_gemv_bf16_f32_out,
+            gguf_q5_k_gemv_rowbatch4_bf16_bf16_out,
+            gguf_q5_k_gemv_rowbatch4_bf16_f32_out,
+            gguf_q5_k_gemv_rowbatch8_bf16_bf16_out,
+            gguf_q5_k_gemv_rowbatch8_bf16_f32_out,
+        ),
+        (
+            make_q6_k_weight(out_f, in_f),
+            gguf_q6_k_gemv_bf16_bf16_out,
+            gguf_q6_k_gemv_bf16_f32_out,
+            gguf_q6_k_gemv_rowbatch4_bf16_bf16_out,
+            gguf_q6_k_gemv_rowbatch4_bf16_f32_out,
+            gguf_q6_k_gemv_rowbatch8_bf16_bf16_out,
+            gguf_q6_k_gemv_rowbatch8_bf16_f32_out,
+        ),
+    )
+    for weight, scalar_bf16, scalar_f32, *rowbatch in cases:
+        expected_bf16 = _run(
+            scalar_bf16, xb, weight, np.zeros((rows, out_f), np.uint16)
+        ).copy()
+        expected_f32 = _run(
+            scalar_f32, xb, weight, np.zeros((rows, out_f), np.float32)
+        ).copy()
+        for index, wrapper in enumerate(rowbatch):
+            dtype = np.uint16 if index % 2 == 0 else np.float32
+            expected = expected_bf16 if index % 2 == 0 else expected_f32
+            actual = _run(wrapper, xb, weight, np.zeros((rows, out_f), dtype)).copy()
+            np.testing.assert_array_equal(actual, expected)
