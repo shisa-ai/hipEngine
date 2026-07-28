@@ -35,17 +35,18 @@ should be removed or collapsed.
   Quant-specific crossover policy stays on registered Q5_K/Q6_K plugin keys;
   N48/N72 and all key/shape/backend misses retain exact rowbatch8. gfx1151
   excludes the producer, policy, and MMQ keys and rejects explicit enablement.
-- D4 and D8 runtime candidates are performance-positive but rejected by the
-  complete quality lane at maximum KL **0.624304/0.400292**. Do not promote
-  either policy. The default-off owner now selects the separately registered
-  two-stage per-K16 Q8 residual primitive; keep it only while residual
-  full-state/full-quality admission is actively compared.
-- Promote the gfx1100 package default and remove the public positive selector
-  only after full state, 512/1K end-to-end performance, and both orders of the
-  complete 18-prompt train+heldout quality lane pass. If the residual candidate
-  also fails, remove the public owner/policy and runtime D4/D8 ABI assumptions;
-  diagnostic primitive keys may remain only with explicit evidence value.
-  Preserve rowbatch8 as the mandatory exact fallback either way.
+- D4, D8, and D8R8 runtime candidates are performance-positive but rejected by
+  the complete quality lane at maximum KL **0.624304/0.400292/0.964321**. Do
+  not promote any direct policy and do not add D16 or another blind precision
+  sibling. The default-off owner currently selects D8R8 only as diagnostic
+  infrastructure for measuring mismatch/risk density.
+- Before WPF-1R, either repurpose this owner behind bounded fail-closed exact
+  repair or remove the public positive selector, direct runtime policy, and
+  D4/D8/D8R8 ABI assumptions. Diagnostic primitive keys may remain only with
+  explicit evidence value. Promote a future gfx1100 package default and remove
+  its opt-in only after exact repaired BF16 output, full state, 512/1K
+  performance, and both orders of the complete 18-prompt lane pass. Preserve
+  the winning exact rowbatch route as mandatory fallback either way.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
