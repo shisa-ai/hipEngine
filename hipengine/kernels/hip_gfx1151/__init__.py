@@ -353,14 +353,9 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "laguna_f32_weight",
             "global_wave0_tree_f32_bf16_spans",
         ),
-        # D9, its wave-0 RMS tree, and its exact top-10 split sibling are
-        # W7900-only until gfx1151 receives independent correctness and
-        # performance gates.
-        (
-            "moe_tail+next_rmsnorm",
-            "bf16",
-            "laguna_aggregate_gguf_f32_weight_out",
-        ),
+        # D9's scalar RMS tree is shared after the independent gfx1151
+        # correctness/performance gate. Its rejected wave-0 RMS tree and exact
+        # top-10 split sibling remain W7900-only.
         (
             "moe_tail+next_rmsnorm",
             "bf16",

@@ -187218,3 +187218,24 @@ Vulkan local sizes verbatim will close the measured gap.
   benchmark rollup plus `docs/LAGUNA-prefill.md` current-state table. The next
   optimization decision requires a fresh production gfx1151 decode census
   because attention's share has changed materially.
+
+## 2026-07-28 — Open gfx1151 D9 MoE-tail/RMSNorm transfer screen
+
+- The fresh production p512/d128 kernel census after head/KV and split-attention
+  promotion measures **66.554 ms/token** of device work. Source-F16 projections
+  now lead at **30.712 ms/token (46.1%)**, split attention consumes about
+  **14.629 ms/token (22.0%)**, and selected Q4 gate/up consumes
+  **8.552 ms/token (12.8%)**. Most merged gfx1100 quant schedules therefore do
+  not match this Q4_K_M model; the next directly reusable structural win is D9.
+- Alias only the retained scalar
+  `laguna_aggregate_gguf_f32_weight_out` D9 composite for gfx1151; keep the
+  rejected wave-0 tree and top-10 weighted sibling excluded. RED confirms the
+  gfx1151 key/plan are absent, then the focused runtime/rollback bundle passes
+  **7/7**.
+- Native gfx1151 GPU checks at hidden **17/3072** are byte-exact to the
+  registered BF16 add/add/F32-weight RMSNorm chain, with KL **0** and top-1
+  **100%**. A cached no-compiler trace names the candidate at
+  local256/VGPR16/SGPR128/LDS1024/scratch0; trace SHA-256 is
+  `2a7b47f7...00d4`. The profiler now exposes
+  `--no-moe-tail-next-rmsnorm` as the matched full-model rollback. Performance
+  admission remains pending.

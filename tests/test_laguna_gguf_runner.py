@@ -168,7 +168,8 @@ def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:
         "f32",
         "top1_i64",
     )
-    assert plan.moe_tail_next_rmsnorm is None
+    assert plan.moe_tail_next_rmsnorm is not None
+    assert plan.moe_tail_next_rmsnorm_key in plan.kernel_keys
 
 
 def test_laguna_eager_scratch_is_bounded_by_max_head_width_and_frees() -> None:
@@ -1247,8 +1248,11 @@ def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() ->
     ) == retained
 
 
-def test_laguna_d9_plan_is_gfx1100_only_and_explicitly_disableable() -> None:
-    plan = resolve_laguna_eager_kernel_plan(_config(), backend="hip_gfx1100")
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_laguna_d9_plan_is_gfx11_shared_and_explicitly_disableable(
+    backend: str,
+) -> None:
+    plan = resolve_laguna_eager_kernel_plan(_config(), backend=backend)
     assert plan.moe_tail_next_rmsnorm is not None
     assert (
         plan.moe_tail_next_rmsnorm_key.layer,
@@ -1263,7 +1267,7 @@ def test_laguna_d9_plan_is_gfx1100_only_and_explicitly_disableable() -> None:
 
     fallback = resolve_laguna_eager_kernel_plan(
         _config(),
-        backend="hip_gfx1100",
+        backend=backend,
         use_moe_tail_next_rmsnorm=False,
     )
     assert fallback.moe_tail_next_rmsnorm is None

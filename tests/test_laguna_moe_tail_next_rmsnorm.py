@@ -40,10 +40,20 @@ def _libs():
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
+    target_arch = os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100")
+    with hip_target_arch_environment(target_arch):
         return (
-            build_paro_combine(load=True, compiler_version=compiler_version),
-            build_gguf_ops(load=True, compiler_version=compiler_version),
+            build_paro_combine(
+                load=True,
+                compiler_version=compiler_version,
+                require_cached=require_cached,
+            ),
+            build_gguf_ops(
+                load=True,
+                compiler_version=compiler_version,
+                require_cached=require_cached,
+            ),
         )
 
 
