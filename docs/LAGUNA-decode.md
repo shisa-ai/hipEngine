@@ -4045,6 +4045,17 @@ without a comparison selector; IDs, state, and lifecycle remain exact.
 Evidence:
 [`clean mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-production.json).
 
+The clean post-promotion trace keeps **816 dispatches/token** and measures
+**49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention is now
+**4.873 ms/token = 3.583 SWA + 1.280 global**, down **10.84%** from the
+preceding 5.466-ms census. Same-GGUF llama.cpp Vulkan remains at **0.909 ms**,
+so attention still leaves **3.964 ms/token** and **45.0%** of the complete
+clean wall gap on the table. The priority therefore does not change: audit
+the comparator's fused cooperative dataflow against mixed32, then admit only
+a structurally new exact or fully category-gated candidate.
+Evidence:
+[`post-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-mixed32-wall-reprofile.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

@@ -188847,3 +188847,24 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked bytes after teardown. Production is now **+68.913%** over the
   11.466687 sprint start. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-production.json`.
+
+## 2026-07-29 07:02 JST — Re-profile the mixed32 production wall
+
+- A tracked-clean, require-cached `rocprofv3 --kernel-trace` run on
+  `af77eb1bb` segments all 127 p512/d128 decode transitions at the unchanged
+  **816 dispatches/token**. No compiler runs under profiling.
+- Median kernel sum is **49.432 ms/token** and span is **51.982 ms/token**.
+  Attention is **4.873 ms = 3.583 SWA + 1.280 global**, versus the preceding
+  direct-store census's **5.466 = 4.152 + 1.314 ms**. Mixed32 therefore cuts
+  attention **10.84%** and kernel span **1.11%** without launch removal.
+- llama.cpp Vulkan remains at **0.909 ms/token** attention. The residual
+  attention gap is **3.964 ms**, or **45.0%** of the complete clean
+  **8.800-ms/token** wall gap. Attention remains the first priority, but the
+  next candidate must be structurally distinct from the rejected exact
+  full-score-plane/cooperative repairs and approximate online merge.
+- The broad lineage audit is presently unable to start because the manifest's
+  external `atlas` and `nano-vllm-amd` paths are absent. The pinned Poolside
+  llama.cpp Laguna comparator is present, clean, and exactly at recorded
+  revision `04b2b72c`; use it for the source-level comparator audit.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-mixed32-wall-reprofile.json`.

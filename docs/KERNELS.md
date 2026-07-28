@@ -1363,6 +1363,14 @@ active, all three trajectories/state/lifecycle are exact, and peer/non-natural
 routes remain unchanged. Evidence:
 [`clean mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-production.json).
 
+The clean post-promotion census keeps **816 dispatches/token** and measures
+**49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
+**5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.
+The remaining attention path is still **3.964 ms/token** slower than the
+same-GGUF llama.cpp Vulkan comparator and explains **45.0%** of the clean wall
+gap. Evidence:
+[`post-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-mixed32-wall-reprofile.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
