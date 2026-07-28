@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T04:15:46+09:00",
+  "kind": "hipengine_laguna_global_gqa2_vstage64_vec16_direct_production",
+  "status": "accepted",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "efa7b95c10515e920014f61882d296ee95927773",
+  "tracked_clean": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "repetitions": 3,
+    "matrix_chunk": 2048,
+    "attention_chunk": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-vec16-direct-production.json",
+    "raw_output_sha256": "441a5a400541d354bfacbaef418407a22f218b25e848e474533813923dad869b"
+  },
+  "production": {
+    "decode_median_tok_s": 19.146417141683663,
+    "decode_median_ms_per_token": 52.229092921145025,
+    "decode_median_seconds": 6.633094800985418,
+    "decode_samples_tok_s": [
+      19.136600110596365,
+      19.146417141683663,
+      19.153279692944064
+    ],
+    "decode_samples_seconds": [
+      6.63649756310042,
+      6.633094800985418,
+      6.63071818696335
+    ],
+    "prefill_median_tok_s": 654.3207016612126,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "repeat_deterministic": true,
+    "lifecycle_exact": true,
+    "global_direct_store_selected": true,
+    "swa_direct_store_selected": true
+  },
+  "comparison": {
+    "prior_clean_swa_direct_store_tok_s": 19.085293944533475,
+    "throughput_change_percent": 0.3202633259295151,
+    "saved_ms_per_token": 0.16727063009207654,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 66.97427200797983,
+    "same_source_seven_pair_control_tok_s": 19.077501765851913,
+    "same_source_seven_pair_candidate_tok_s": 19.13453683833422,
+    "same_source_change_percent": 0.29896510131319776
+  },
+  "correctness": {
+    "f32_context_vs_rollback_byte_exact": true,
+    "gated_bf16_vs_rollback_byte_exact": true,
+    "eviction_cpu_reference_pass": true,
+    "generated_trajectory_exact": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "allocation_lifecycle_pass": true
+  }
+}

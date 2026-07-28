@@ -3911,6 +3911,11 @@ p512/d128 pairs improve **19.077502 -> 19.134537 tok/s (+0.2990%,
 direct global form through live4000; the aggregate vec16 owner remains exact
 rollback. Evidence:
 [`retained global direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json).
+Three tracked-clean selector-unset runs measure
+**19.136600/19.146417/19.153280 tok/s**, median **19.146417**. That is
+**+0.3203% / -0.1673 ms/token** versus the prior clean 19.085294 packet and
+**+66.974%** over the sprint start, with exact IDs/state/lifecycle. Evidence:
+[`clean global direct-store production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-production.json).
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
