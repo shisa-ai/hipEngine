@@ -1120,6 +1120,7 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
 
 def test_laguna_raw_k_prefill_rowbatch_is_default_off_and_explicit() -> None:
     from hipengine.runtime.laguna_gguf_runner import (
+        LagunaGGUFResidentSession,
         resolve_laguna_raw_k_prefill_rowbatch,
     )
 
@@ -1132,6 +1133,14 @@ def test_laguna_raw_k_prefill_rowbatch_is_default_off_and_explicit() -> None:
         resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151", 8)
     with pytest.raises(ValueError, match="row batch"):
         resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 16)
+
+    session = object.__new__(LagunaGGUFResidentSession)
+    session.backend = "hip_gfx1100"
+    session.raw_k_prefill_rowbatch = 0
+    session.set_raw_k_prefill_rowbatch(8)
+    assert session.raw_k_prefill_rowbatch == 8
+    session.set_raw_k_prefill_rowbatch(0)
+    assert session.raw_k_prefill_rowbatch == 0
 
 
 def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
