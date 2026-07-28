@@ -237,6 +237,16 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
     assert aggregate["512"]["families"]["embedding"]["calls_per_pass"] == [4]
 
 
+def test_lpf5_trace_segments_non_q4_gguf_embedding_requests() -> None:
+    rows = _request_rows(100, 1)
+    rows[0]["Kernel_Name"] = "gguf_q5_k_embedding_bf16_out_kernel"
+
+    segments = _segment_requests(rows)
+
+    assert [(item["length"], item["chunks"]) for item in segments] == [(128, 1)]
+    assert _summarize_segment(segments[0])["families"]["embedding"]["calls"] == 1
+
+
 def test_lpf5_trace_attributes_structural_blas_attention_composite() -> None:
     rows = [
         _row(0, "gguf_q4_k_embedding_bf16_out_kernel", 0, 10, grid_y=128),
@@ -476,6 +486,16 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
         ),
         ("qk_t16_selected_direct_gemv_kernel<unsigned short, 6>", "selected_q4_q6_down"),
         ("qk_t16_selected_grouped_smallm_kernel<unsigned short, 6>", "selected_q4_q6_down"),
+        (
+            "gguf_iq2_xs_selected_dual_silu_gemv_tile2_kernel",
+            "selected_iq_gate_up",
+        ),
+        (
+            "gguf_iq3_xxs_selected_dual_silu_gemv_kernel",
+            "selected_iq_gate_up",
+        ),
+        ("gguf_iq3_xxs_selected_gemv_kernel", "selected_iq_down"),
+        ("gguf_iq4_xs_selected_gemv_kernel", "selected_iq_down"),
         ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
         ("laguna_sigmoid_correction_topk_f32_kernel", "router"),
         ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
