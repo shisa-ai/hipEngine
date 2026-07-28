@@ -3959,6 +3959,12 @@ through live4000; explicit false restores the generic-domain direct-store
 body. Evidence:
 [`global exp-domain candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json) ·
 [`global exp-domain retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-retained.json).
+Three tracked-clean selector-unset runs then measure
+**19.236922/19.250313/19.249443 tok/s**, median **19.249443**. That is
+**+0.0371% / -0.0193 ms/token** versus the prior clean 19.242300 packet and
+**+67.873%** over the sprint start, with exact IDs, state, and lifecycle.
+Evidence:
+[`clean global exp-domain production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-production.json).
 
 The next bounded attack is still the Vulkan-informed cooperative Br16/Bc64
 QK/PV tile, but it must preserve compiler-`expf` results and each head's
