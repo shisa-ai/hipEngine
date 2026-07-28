@@ -67,6 +67,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+    raw_k_prefill_rowbatch_session,
 )
 from hipengine.runtime.f16_weight_linear import (
     launch_f16_weight_linear,
@@ -1463,6 +1464,38 @@ def resolve_laguna_iq2_grid64(
     return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
 
 
+def resolve_laguna_raw_k_prefill_rowbatch(
+    backend: str,
+    requested: int | None = None,
+) -> int:
+    """Resolve fixed Q5/Q6 prefill row reuse with a scalar fail-closed default."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "LAGUNA_RAW_K_PREFILL_ROWBATCH",
+            0,
+        )
+        if requested is None
+        else requested
+    )
+    try:
+        row_batch = int(selected)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Laguna raw-K prefill row batch must be 0, 4, or 8") from exc
+    if row_batch not in {0, 4, 8}:
+        raise ValueError("Laguna raw-K prefill row batch must be 0, 4, or 8")
+    if row_batch and not backend_package_capability(
+        backend,
+        "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+        False,
+    ):
+        raise ValueError(
+            f"Laguna raw-K prefill row batch is not supported on {backend!r}"
+        )
+    return row_batch
+
+
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -2100,6 +2133,7 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
+        raw_k_prefill_rowbatch: int | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2243,6 +2277,10 @@ class LagunaGGUFResidentSession:
         self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
             self.backend,
             use_iq2_grid64,
+        )
+        self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
+            self.backend,
+            raw_k_prefill_rowbatch,
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -3575,33 +3613,34 @@ class LagunaGGUFResidentSession:
                 libraries=self.libraries.embedding_libraries,
                 runtime=self.runtime,
             )
-            for layer_id in range(config.block_count):
-                self._run_layer_rows(
-                    layer_id,
-                    rows=rows,
-                    stage_verifier_kv=stage_verifier_kv,
-                    routing_capture=routing_capture,
-                    routing_weight_capture=routing_weight_capture,
-                    stream=stream,
-                )
-                depth = layer_id + 1
-                capture_laguna_hidden_rows(
-                    scratch.hidden.ptr,
-                    depth=depth,
-                    rows=rows,
-                    targets=capture_rows,
-                    hidden_size=config.hidden_size,
-                    runtime=self.runtime,
-                    stream=stream,
-                )
-                capture_laguna_hidden_tap(
-                    scratch.hidden.ptr + (rows - 1) * config.hidden_size * _BF16_NBYTES,
-                    depth=depth,
-                    targets=capture_last,
-                    hidden_size=config.hidden_size,
-                    runtime=self.runtime,
-                    stream=stream,
-                )
+            with raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch):
+                for layer_id in range(config.block_count):
+                    self._run_layer_rows(
+                        layer_id,
+                        rows=rows,
+                        stage_verifier_kv=stage_verifier_kv,
+                        routing_capture=routing_capture,
+                        routing_weight_capture=routing_weight_capture,
+                        stream=stream,
+                    )
+                    depth = layer_id + 1
+                    capture_laguna_hidden_rows(
+                        scratch.hidden.ptr,
+                        depth=depth,
+                        rows=rows,
+                        targets=capture_rows,
+                        hidden_size=config.hidden_size,
+                        runtime=self.runtime,
+                        stream=stream,
+                    )
+                    capture_laguna_hidden_tap(
+                        scratch.hidden.ptr + (rows - 1) * config.hidden_size * _BF16_NBYTES,
+                        depth=depth,
+                        targets=capture_last,
+                        hidden_size=config.hidden_size,
+                        runtime=self.runtime,
+                        stream=stream,
+                    )
             if stage_verifier_kv:
                 self._staged_verifier_tokens = tokens
             else:
@@ -5390,6 +5429,7 @@ __all__ = [
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
+    "resolve_laguna_raw_k_prefill_rowbatch",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",

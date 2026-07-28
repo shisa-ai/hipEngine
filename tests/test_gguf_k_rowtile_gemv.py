@@ -146,6 +146,162 @@ def test_gguf_k_large_prefill_rowbatch_registry_binds(quant: str) -> None:
             )
 
 
+def test_raw_k_prefill_rowbatch_dispatch_is_exactly_scoped() -> None:
+    from hipengine.kernels.registry import KernelKey
+    from hipengine.runtime.gguf_linear import (
+        GGUFLinearDispatch,
+        _raw_k_prefill_rowbatch_dispatch,
+    )
+
+    for quant in ("gguf_q5_k", "gguf_q6_k"):
+        for output_dtype in ("bf16", "f32"):
+            base = GGUFLinearDispatch(
+                KernelKey(
+                    "hip_gfx1100",
+                    "linear",
+                    quant,
+                    f"prefill_bf16_{output_dtype}_out",
+                ),
+                "raw",
+            )
+            for row_batch in (4, 8):
+                selected = _raw_k_prefill_rowbatch_dispatch(
+                    base,
+                    rows=128,
+                    in_features=3072,
+                    row_batch=row_batch,
+                )
+                assert selected.key.variant == (
+                    f"rowbatch{row_batch}_bf16_{output_dtype}_out"
+                )
+                assert selected.abi == "raw"
+            for rows in (1, 2, 8):
+                assert (
+                    _raw_k_prefill_rowbatch_dispatch(
+                        base,
+                        rows=rows,
+                        in_features=3072,
+                        row_batch=8,
+                    )
+                    is base
+                )
+            assert (
+                _raw_k_prefill_rowbatch_dispatch(
+                    base,
+                    rows=128,
+                    in_features=3073,
+                    row_batch=8,
+                )
+                is base
+            )
+            assert (
+                _raw_k_prefill_rowbatch_dispatch(
+                    base,
+                    rows=128,
+                    in_features=3072,
+                    row_batch=0,
+                )
+                is base
+            )
+
+    q8 = GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q8_0",
+            "prefill_bf16_bf16_out",
+        ),
+        "raw",
+    )
+    assert (
+        _raw_k_prefill_rowbatch_dispatch(
+            q8,
+            rows=128,
+            in_features=3072,
+            row_batch=8,
+        )
+        is q8
+    )
+
+
+def test_raw_k_prefill_rowbatch_session_is_nested_and_fail_closed() -> None:
+    from hipengine.runtime.gguf_linear import (
+        raw_k_prefill_rowbatch,
+        raw_k_prefill_rowbatch_session,
+    )
+
+    assert raw_k_prefill_rowbatch() == 0
+    with raw_k_prefill_rowbatch_session(8):
+        assert raw_k_prefill_rowbatch() == 8
+        with raw_k_prefill_rowbatch_session(4):
+            assert raw_k_prefill_rowbatch() == 4
+        assert raw_k_prefill_rowbatch() == 8
+    assert raw_k_prefill_rowbatch() == 0
+    with pytest.raises(ValueError, match="row batch"):
+        with raw_k_prefill_rowbatch_session(16):
+            pass
+
+
+def test_launch_gguf_linear_honors_raw_k_prefill_rowbatch_session() -> None:
+    from types import SimpleNamespace
+
+    from hipengine.kernels.registry import KernelKey, register
+    from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
+    from hipengine.runtime.gguf_linear import (
+        clear_gguf_linear_dispatch_cache,
+        launch_gguf_linear,
+        raw_k_prefill_rowbatch_session,
+    )
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "rowbatch8_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def candidate(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    raw = SimpleNamespace(tensor=SimpleNamespace(ptr=200))
+    weight = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k"),
+        allocation=lambda name: raw,
+    )
+    register(key, candidate, replace=True)
+    clear_gguf_linear_dispatch_cache()
+    try:
+        with raw_k_prefill_rowbatch_session(8):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=300,
+                rows=128,
+                in_features=3072,
+                out_features=72,
+                backend="hip_gfx1100",
+                runtime="runtime-sentinel",
+            )
+    finally:
+        register(key, original, replace=True)
+        clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 200, 300, 128, 3072, 72),
+            {"stream": 0, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
 _SHAPES = [(256, 16), (512, 48), (1024, 64)]
 _ROWS = [2, 3, 4, 8]
 

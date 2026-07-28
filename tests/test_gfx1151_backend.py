@@ -108,7 +108,7 @@ from hipengine.kernels.hip_gfx1151 import (
     TARGET_ARCH,
     register_gfx1151_kernels,
 )
-from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
 
 def test_auto_backend_selects_supported_hip_arches() -> None:
@@ -827,6 +827,45 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == 4096
     )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_ROWBATCH",
+        )
+        == 0
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+        )
+        is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_ROWBATCH",
+        )
+        == 0
+    )
+    for quant in ("gguf_q5_k", "gguf_q6_k"):
+        for row_batch in (4, 8):
+            for output_dtype in ("bf16", "f32"):
+                assert not is_registered(
+                    KernelKey(
+                        "hip_gfx1151",
+                        "linear",
+                        quant,
+                        f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+                    )
+                )
     assert (
         backend_package_capability(
             "hip_gfx1100",

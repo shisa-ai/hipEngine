@@ -295,6 +295,10 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 # Same-commit production-protocol 128K A/B rejects predecessor two-wave
 # (382.041 vs 392.219 tok/s), so LCP-3 conservatively inherits its 64K ceiling.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
+# WPF-1 is a W7900 raw-Q5/Q6 candidate. gfx1151 retains its independently
+# admitted Q4_K_M/T16 matrix schedules and must not inherit this selector.
+GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
+GGUF_RAW_K_PREFILL_ROWBATCH = 0
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
@@ -455,6 +459,14 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "moe_linear",
             "gguf_iq4_xs",
             "selected_weighted_down_gemv_decode_bf16_bf16_out",
+        ),
+        # WPF-1 fixed-grid-Y raw Q5/Q6 row reuse is W7900-only pending an
+        # independent gfx1151 gate. Keep every output/slab key unaliased.
+        *(
+            ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
+            for quant in ("gguf_q5_k", "gguf_q6_k")
+            for row_batch in (4, 8)
+            for output_dtype in ("bf16", "f32")
         ),
         # Q4 local32 LM-head ownership is W7900-only pending an independent gate.
         (
@@ -635,6 +647,8 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+    "GGUF_RAW_K_PREFILL_ROWBATCH",
+    "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",
