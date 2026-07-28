@@ -346,6 +346,14 @@ Registered by `hipengine.kernels.cpu_reference.register_cpu_reference_kernels()`
 
 Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `attention_decode`, and causal-GQA `full_attn_prefill`; varlen full-attn is covered by direct NumPy unit tests. Run committed fixtures with `python3 scripts/check_fixtures.py`.
 
+Laguna gfx1151 source-F16 decode also has separately registered rows==1
+`onebarrier_*` single/triple siblings. They preserve the local256 grid,
+arithmetic, and VGPR16/LDS512/scratch0 resources while removing the generic
+reducer's second broadcast barrier. All six natural roles are byte-exact and
+improve **0.57-1.71%** at the leaf; the weighted family moves
+**31.316 -> 31.097 ms/token (-0.698%)**. Runtime ownership remains default-off
+pending exact full-state, cached production-trace, and clean decode gates.
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

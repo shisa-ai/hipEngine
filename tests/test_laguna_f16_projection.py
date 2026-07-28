@@ -31,7 +31,9 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
         laguna_f16w_gemv_bf16_f32_out,
         laguna_f16w_tiled_bf16_f32_out,
         laguna_f16w_triple_gemv_bf16_f32_out,
+        laguna_f16w_triple_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_triple_tiled_bf16_f32_out,
+        laguna_f16w_onebarrier_gemv_bf16_f32_out,
         register_laguna_f16_projection_kernels,
     )
 
@@ -71,6 +73,24 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
             variant="tiled_bf16_f32_out",
         )
         is laguna_f16w_triple_tiled_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="fp16_weight",
+            variant="onebarrier_bf16_f32_out",
+        )
+        is laguna_f16w_onebarrier_gemv_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_triple",
+            quant="fp16_weight",
+            variant="onebarrier_bf16_f32_out",
+        )
+        is laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
     )
 
 
@@ -439,6 +459,133 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
         actual_f32_input_bf16,
         bf16_to_float32(float_array_to_bf16_bits(actual_f32_input)),
     )
+
+
+@pytest.mark.parametrize("in_features", [256, 512])
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_projection_onebarrier_matches_gemv_bytes(
+    in_features: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection,
+        laguna_f16w_gemv_bf16_bf16_out,
+        laguna_f16w_gemv_bf16_f32_out,
+        laguna_f16w_onebarrier_gemv_bf16_bf16_out,
+        laguna_f16w_onebarrier_gemv_bf16_f32_out,
+        laguna_f16w_triple_gemv_bf16_f32_out,
+        laguna_f16w_triple_onebarrier_gemv_bf16_f32_out,
+    )
+
+    rng = np.random.default_rng(0xF161 + in_features)
+    rows = 1
+    out_a, out_b, out_c = 17, 8, 9
+    x_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    weights = tuple(
+        rng.normal(0.0, 0.1, size=(width, in_features)).astype(np.float16)
+        for width in (out_a, out_b, out_c)
+    )
+    runtime = get_hip_runtime()
+    library = build_laguna_f16_projection(load=True)
+    allocations = []
+    try:
+        dx = _upload(x_bits, runtime, allocations)
+        device_weights = tuple(
+            _upload(weight, runtime, allocations) for weight in weights
+        )
+        baseline_a = _alloc((rows, out_a), np.float32, runtime, allocations)
+        baseline_b = _alloc((rows, out_b), np.float32, runtime, allocations)
+        baseline_c = _alloc((rows, out_c), np.float32, runtime, allocations)
+        candidate_a = _alloc((rows, out_a), np.float32, runtime, allocations)
+        candidate_b = _alloc((rows, out_b), np.float32, runtime, allocations)
+        candidate_c = _alloc((rows, out_c), np.float32, runtime, allocations)
+        baseline_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
+        candidate_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
+
+        laguna_f16w_gemv_bf16_f32_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            baseline_a.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            candidate_a.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_gemv_bf16_bf16_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            baseline_bf16.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_onebarrier_gemv_bf16_bf16_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            candidate_bf16.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_triple_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            baseline_a.ptr,
+            baseline_b.ptr,
+            baseline_c.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            out_c,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_triple_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            candidate_a.ptr,
+            candidate_b.ptr,
+            candidate_c.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            out_c,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for baseline, candidate, shape, dtype in (
+            (baseline_a, candidate_a, (rows, out_a), np.float32),
+            (baseline_b, candidate_b, (rows, out_b), np.float32),
+            (baseline_c, candidate_c, (rows, out_c), np.float32),
+            (baseline_bf16, candidate_bf16, (rows, out_a), np.uint16),
+        ):
+            np.testing.assert_array_equal(
+                _download(candidate, shape, dtype, runtime),
+                _download(baseline, shape, dtype, runtime),
+            )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
 
 
 @pytest.mark.parametrize("rows", [2, 3, 4, 5, 17])
