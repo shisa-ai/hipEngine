@@ -1,0 +1,232 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_prefill_roofline_plan",
+  "status": "accepted_diagnostic_plan_evidence",
+  "performance_claim": false,
+  "created_at": "2026-07-28T16:14:12+09:00",
+  "scope": "Short-first 512/4096 prefill attribution and roofline for Laguna S 2.1 UD-Q2_K_XL on one Radeon Pro W7900; no long-context or retained-default throughput claim",
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "vram_bytes": 48301604864,
+    "measured_stream_read_gb_s_decimal": {
+      "bytes": 4294967296,
+      "warmups": 20,
+      "repetitions": 31,
+      "min": 728.237,
+      "median": 729.067,
+      "max": 729.86,
+      "median_ms": 5.891046,
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 /tmp/laguna_w7900_read_bw 4294967296 20 31",
+      "source_sha256": "f8428855459e563be25b83cd79f460f45190f1203b5074e2dd4e79c1c69763f8",
+      "binary_sha256": "9e89a3b96ce783c46ac3aee868fe22b8dd0b7278f118e5ba4d62167235fe0bb8"
+    },
+    "measured_bf16_wmma_reference_tflop_s": 84.8,
+    "measured_bf16_wmma_reference_source": "docs/ROOFLINE.md W7900 4096^3 torch.matmul reference; reused as a compute ceiling, not freshly remeasured here"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "file_bytes": 39684584480,
+    "tensor_bytes": 39680849600,
+    "logical_parameters": 117561977600,
+    "resident_control_bytes": 40076777172,
+    "active_linear_parameters_per_token": 7832371200,
+    "active_linear_gflop_per_token": 15.6647424,
+    "tensor_bytes_by_type": {
+      "Q4_K": 173408256,
+      "F32": 149138432,
+      "Q5_K": 2143274496,
+      "Q6_K": 444024000,
+      "IQ3_XXS": 14489223168,
+      "IQ2_XS": 21416116224,
+      "IQ4_XS": 855638016,
+      "Q8_0": 10027008
+    },
+    "active_linear_ledger": {
+      "attention_dense": {
+        "logical_parameters_per_token": 2803138560,
+        "gflop_per_token": 5.60627712,
+        "source_encoded_bytes_once": 1976339136
+      },
+      "dense_mlp": {
+        "logical_parameters_per_token": 113246208,
+        "gflop_per_token": 0.226492416,
+        "source_encoded_bytes_once": 82870272
+      },
+      "router": {
+        "logical_parameters_per_token": 36962304,
+        "gflop_per_token": 0.073924608,
+        "source_encoded_bytes_once": 147849216
+      },
+      "shared_mlp": {
+        "logical_parameters_per_token": 443547648,
+        "gflop_per_token": 0.887095296,
+        "source_encoded_bytes_once": 326172672
+      },
+      "selected_mlp": {
+        "logical_parameters_per_token": 4435476480,
+        "gflop_per_token": 8.87095296,
+        "source_encoded_active_route_equivalent_bytes_per_token": 1435975680,
+        "source_encoded_all_experts_bytes_once": 36760977408
+      }
+    }
+  },
+  "clean_control": {
+    "revision": "67ab7e5a8d2a49a0f9f0d9524072e3ec80473877",
+    "protocol": "direct GGUF, matrix128, attention128, one repetition, cached-only builds, safety reserve 0 GiB",
+    "wall": {
+      "512": {
+        "seconds": 12.27216182416305,
+        "tok_s": 41.72044072886221,
+        "next_token": 2930
+      },
+      "4096": {
+        "seconds": 112.50558102596551,
+        "tok_s": 36.407082765562286,
+        "next_token": 7772
+      },
+      "artifact_sha256": "269517c2a86950c3c1a6ed99ba981f10b49c26d6693973151a87fafff20aa2a7"
+    },
+    "profiled_repeat": {
+      "512": {
+        "tok_s": 41.43773742886182,
+        "kernel_sum_s": 12.303415804,
+        "kernel_span_s": 12.356689228,
+        "dispatches": 4214,
+        "dense_shared_quant_s": 8.509884152,
+        "dense_shared_quant_share": 0.6916684185568471,
+        "selected_iq_s": 2.734114786,
+        "selected_iq_share": 0.22222404164468733,
+        "attention_s": 1.022529238,
+        "attention_share": 0.08310937826449485
+      },
+      "4096": {
+        "tok_s": 36.24548257021647,
+        "kernel_sum_s": 112.589174697,
+        "kernel_span_s": 113.007463627,
+        "dispatches": 33726,
+        "dense_shared_quant_s": 68.352701367,
+        "dense_shared_quant_share": 0.6070983427221205,
+        "selected_iq_s": 21.885515246,
+        "selected_iq_share": 0.19438383223696508,
+        "attention_s": 22.054476437,
+        "attention_share": 0.1958845199492137
+      },
+      "child_sha256": "9ba9ca827b1215808350f68900b91456ef5c6ea23d6a226c9b0e6cf6a75f7937",
+      "summary_sha256": "b24d297eec1b5a829ff9d60b9fd7730e0072fc5c1452b43f5d58ece378b63a9f",
+      "raw_csv_sha256": "87f0295235e975ac859f6525ed88327d7ad039c798e6605997baac28edc6f5b3"
+    }
+  },
+  "preliminary_shared_source_transfer": {
+    "status": "exact diagnostic candidate; package-default admission and repeated gate remain separate work",
+    "protocol": "matrix2048, attention rows2048 with packed/block/global/SWA hipBLASLt capability bundle, one repetition",
+    "resident_bytes": 43581154004,
+    "rows": {
+      "512": {
+        "tok_s": 44.23449983239299,
+        "control_tok_s": 41.55363840294001,
+        "delta_percent": 6.451568460641233,
+        "next_token": 2930
+      },
+      "1024": {
+        "tok_s": 43.77303482197071,
+        "control_tok_s": 39.453184687081595,
+        "delta_percent": 10.949306549399008,
+        "next_token": 95
+      },
+      "4096": {
+        "tok_s": 43.02063949360159,
+        "control_tok_s": 36.24374364564263,
+        "delta_percent": 18.698112187905025,
+        "next_token": 7772
+      }
+    },
+    "candidate_sha256": "e3bf269f305825eb76095703372542147b2e337559a047724806012f9810227e",
+    "control_sha256": "29a64e91172c7ee0a2a132c979daeef40720e40c9eba327b7cc4b7e6ef638589",
+    "correctness": "next tokens, final positions, deterministic repeat fields, and tracked lifecycle pass",
+    "interpretation": "The transfer is a useful capacity and 4K geometry candidate, but it does not address the 69.17% dense/shared Q5/Q6 wall at 512. Literal gfx1151 quant/MMQ policies remain excluded."
+  },
+  "derived_current_efficiency": {
+    "512_whole_linear_tflop_s": 0.6518797898541705,
+    "512_whole_linear_percent_of_84_8_tflop_s": 0.7687261672808615,
+    "512_dense_shared_source_encoded_traffic_gb": 1221.31562496,
+    "512_dense_shared_source_encoded_gb_s": 143.51730330817315,
+    "512_dense_shared_percent_of_stream_read": 19.685063692112408,
+    "512_selected_active_route_equivalent_traffic_gb": 735.21954816,
+    "512_selected_active_route_equivalent_gb_s": 268.9058820517274,
+    "512_selected_percent_of_stream_read": 36.88356489239807,
+    "caveat": "The dense/shared estimate excludes the separately attributed 147,849,216-byte router set. Encoded-equivalent rates are source-byte ledgers, not DRAM counters; cache reuse, metadata, activation traffic, and redundant loads require counter confirmation."
+  },
+  "roofline": {
+    "formula": "roof wall is max(active FLOPs / 84.8 TFLOP/s, source bytes under stated one-scan policy / 729.067 GB/s); attention adds the existing 5.084 TFLOP 4K QK+PV ledger",
+    "512_matrix128_one_expert_scan_per_chunk": {
+      "source_bytes_gb": 157.176834816,
+      "bandwidth_floor_s": 0.21558626959662144,
+      "bandwidth_ceiling_tok_s": 2374.9193348815375
+    },
+    "512_matrix512_one_scan": {
+      "source_bytes_gb": 39.294208704,
+      "bandwidth_floor_s": 0.05389656739915536,
+      "compute_floor_s": 0.09457957675471698,
+      "roof_tok_s": 5413.430864972283
+    },
+    "4096_matrix128_one_expert_scan_per_chunk": {
+      "bandwidth_floor_s": 1.7246901567729715,
+      "bandwidth_ceiling_tok_s": 2374.9193348815375
+    },
+    "4096_matrix2048_two_scans": {
+      "source_bytes_gb": 78.588417408,
+      "bandwidth_floor_s": 0.10779313479831072,
+      "compute_floor_s_including_attention": 0.8165894442264151,
+      "roof_tok_s": 5015.984505996511
+    },
+    "planning_targets": {
+      "long_context_defer_gate_tok_s": {
+        "512": 400,
+        "4096": 300
+      },
+      "short_campaign_target_tok_s": {
+        "512": 800,
+        "4096": 700
+      },
+      "target_fraction_of_roof_percent": {
+        "512": 14.777035644599304,
+        "4096": 13.955405138315217
+      }
+    },
+    "caveats": [
+      "All-expert source bytes are a conservative upper bound for one compacted chunk; a retained routed-MMQ candidate must publish routing-aware distinct-expert bytes and physical counters.",
+      "The compute reference is a dense BF16 WMMA ceiling; IQ integer-dot and dequantized K-quant kernels require their own measured achieved rate.",
+      "Model load, lm-head single-row work, activation bytes, quantization, and non-linear kernels are outside the simplified max-of-floors model."
+    ]
+  },
+  "llama_cpp_review": {
+    "hip": "For rows above the <=8 MMVQ cutoff, ggml-cuda/HIP selects mul_mat_q, quantizes source rows once to layout-qualified Q8_1, compacts/scatters MUL_MAT_ID rows, and launches RDNA-family 256-thread MMQ tiles for Q5_K/Q6_K/IQ2_XS/IQ3_XXS/IQ4_XS. Gate/up broadcast quantization is deduplicated before top-k scatter.",
+    "vulkan": "The audited RADV routed comparator uses the medium local128/two-wave64 64-column x 64-row K32 MMQ, stages quant/activation tiles, and reuses each loaded weight across many prompt rows. Literal subgroup/tile constants do not transfer to wave32 HIP.",
+    "hipengine_gap": "The control dense/shared gguf_k_prefill_out kernels launch one output-column owner per prompt row (Grid_Size_Y=128), so the same Q5/Q6 weight is reread for every row. The first port seam is exact grid-y row batching/MMQ, not another attention variant."
+  },
+  "transfer_lessons": [
+    "gfx1151 is a hypothesis source, not a geometry oracle: its 256-row Qwen chunk policy regressed gfx1100 by 6.4-8.8%.",
+    "Compiler/resource behavior is architecture-local: a fully unrolled selected-MoE body spilled at 256 VGPR on gfx1100 until outer-loop rolling removed spills.",
+    "Some launch seams transfer independently: router logits 512->256 threads, router select 512->128, and stream-ordered metadata won on gfx1100 after their own gates.",
+    "Wave widening is not monotonic: gfx1151 retained four-wave Q8 through 64K, while gfx1100 retained two-wave only through 4K.",
+    "Counterbalanced process order is mandatory for small wins; the gfx1151 AOTriton queue screen changed verdict after reverse-order and 15-sample measurement.",
+    "Reprofile immediately after each promotion; for Q2 XL the short priority is dense/shared Q5/Q6, then routed IQ MMQ, then attention."
+  ],
+  "next_order": [
+    "Exact dense/shared raw-Q5/Q6 row reuse: extend the existing small-B exact rowtile premise to fixed grid-y row batches, measure natural K3072/K6144/K9216 and output widths, then full 512/4K.",
+    "If exact row batching remains below target, add source-faithful Q8_1 integer MMQ for Q5/Q6 with bounded quality gates and no persistent sidecar.",
+    "Port routed IQ2/IQ3/IQ4 compact MMQ with producer-row quantization before top-10 expansion and expert-major tiles; publish distinct-expert and physical traffic.",
+    "Reprofile; only then optimize short attention or launch/fusion residuals.",
+    "Do not run 16K/64K/128K until the 512>=400 and 4096>=300 exact repeated gate passes; do not reopen the full long campaign before 512>=800 and 4096>=700 or a measured roofline blocker is documented."
+  ],
+  "raw_sources": {
+    "control_wall": "/tmp/laguna-q2-xl-gfx1100-short-control-wall.json",
+    "profile_child": "/tmp/laguna-q2-xl-gfx1100-short-control-rocprof-20260728/child.json",
+    "profile_summary": "/tmp/laguna-q2-xl-gfx1100-short-control-rocprof-20260728/summary.json",
+    "raw_csv_committed": false,
+    "candidate": "/tmp/2026-07-28-gfx1100-laguna-q2-xl-merged-prefill-4k-candidate.json"
+  }
+}

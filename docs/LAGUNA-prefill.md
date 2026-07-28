@@ -1,6 +1,199 @@
-# Laguna S 2.1 Prefill Attack Plan
+# Laguna S 2.1 Prefill Attack Plans
 
 Last updated: 2026-07-28
+
+## Active W7900 / gfx1100 UD-Q2_K_XL short-prefill port
+
+Status: **short-first optimization active; 16K+ work deferred**. This section
+is the authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna
+`UD-Q2_K_XL` port. The longer gfx1151/Q4 campaign record begins below and
+remains evidence, not a source of automatic defaults or tile geometry.
+
+The first W7900 profile changes the optimization order. At 512 rows, scalar
+raw-Q5/Q6 dense and shared projections consume **8.509884 of 12.303416
+seconds (69.167%)**. Selected IQ2/IQ3/IQ4 experts consume **2.734115 seconds
+(22.222%)** and all attention consumes **1.022529 seconds (8.311%)**. More
+attention transfer is therefore the wrong first move. The immediate order is:
+
+1. exact raw-Q5/Q6 row reuse and matrix tiling;
+2. compact routed IQ2/IQ3/IQ4 MMQ;
+3. reprofile, then optimize attention only if it has become the largest
+   remaining family;
+4. reduce launches/fusions only after span-minus-sum becomes material.
+
+No 16K, 64K, or 128K performance sweep is allowed until the repeated exact
+512/4K gate reaches at least **400/300 tok/s**. The full long-context campaign
+stays closed until 512/4K reaches **800/700 tok/s**, or a fresh measured
+roofline proves an explicit lower ceiling. This prevents 30-minute diagnostics
+from consuming the iteration loop while short prefill is still 10-20x below a
+conservative practical target.
+
+### Frozen target and current evidence
+
+| Item | W7900 contract |
+| --- | --- |
+| Model | `/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf` |
+| SHA-256 | `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679` |
+| Logical / tensor size | 117.562B parameters / 39,680,849,600 tensor bytes |
+| Backend | `hip_gfx1100`, AMD Radeon Pro W7900, one explicitly selected device |
+| Primary shapes | prefill-only 512 and 4,096 tokens; BF16 KV; exact positions and deterministic next token |
+| Control | clean `67ab7e5a8`, matrix128 / attention128, direct GGUF, cached-only builds |
+| Control wall | **41.720 tok/s at 512**, **36.407 tok/s at 4K** |
+| Profile repeat | **41.438 / 36.245 tok/s**, raw trace SHA-256 `87f02952...f6f5b3` |
+| Compact evidence | [`2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) |
+
+The first shared-source transfer candidate uses M2048 matrix/global
+transactions, the packed/block F32 attention path, dense initial cache, and
+rolling M128 SWA. One exact diagnostic moves the matrix128 control
+**41.554/39.453/36.244 -> 44.234/43.773/43.021 tok/s** at
+512/1K/4K (**+6.452%/+10.949%/+18.698%**) with identical next tokens, final
+positions, deterministic fields, and allocation teardown. A stopped follow-up
+reproduced 4K at **43.188 tok/s** before 16K/64K were intentionally skipped.
+This proves a useful capacity/4K transfer; it is not evidence that every copied
+attention capability or gfx1151 policy should transfer. It also raises tracked
+residency **40.077 -> 43.581 GB**, leaving little room for persistent sidecars.
+Repeated clean admission remains a separate work item.
+
+### What transfers from gfx1151, and what does not
+
+| Seam | Prior evidence | W7900 rule |
+| --- | --- | --- |
+| Matrix chunk capacity | M2048 is retained on gfx1151; copied bundle gives +18.70% at W7900 4K | Admit M2048 only through independent 512/4K correctness, memory, and wall gates. Preserve M128 fallback. |
+| Qwen chunk geometry | gfx1151's 256-row linear/MoE policy regressed W7900 **6.4-8.8%** | Never copy chunk/tile width by architecture name. Screen natural 128/256/512 rows. |
+| Wave widening | gfx1151 keeps four-wave Q8 through 64K; W7900 keeps two-wave only through 4K | Wave count and crossover are backend capabilities, not shared constants. |
+| Compiler resources | A selected-MoE body became VGPR256/private176B/75 spills on W7900 until the outer loop rolled | Every candidate records VGPR/SGPR/LDS/private/spills and rejects a spill-based “win”. |
+| Launch seams | Router logits 512->256 threads, selector 512->128, and stream-ordered metadata transferred after independent gates | Transfer small launch hypotheses only with exact 512/4K A/B evidence. |
+| Queue overlap | gfx1151's first AOTriton on/off order gave a false negative; reverse order and 15 samples found the small win | Counterbalance process order. No favorable rerun or pooled waiver. |
+| Quant arithmetic | gfx1151 Q4_K_M uses selected Q4/Q6 T16 D8/D4 MMQ; Q2 XL uses raw IQ2/IQ3/IQ4 experts and mostly raw Q5/Q6 dense/shared weights | Do not alias `LAGUNA_DENSE_Q4_PREFILL_MODE`, selected-MMQ, F16, concurrency, or queue policies. Add separate registered gfx1100 keys. |
+| Hotspot migration | Tiled Conv mattered on gfx1151 but fell to 0.87-1.09% on W7900 after transfer | Reprofile immediately after every promotion and discard the source architecture's remaining checklist. |
+
+The broad capability candidate is deliberately narrower than a backend alias:
+it shares source-compatible Laguna attention implementations while keeping
+quant/MMQ, source-F16, MoE-concurrency, and queue policies architecture-scoped.
+Any unsupported exact key must fail closed to the registered M128/unfused path.
+
+### W7900 profile and roofline
+
+The corrected request segmenter recognizes the Q2 XL Q5_K embedding and IQ
+selected families. The clean cached-only trace is:
+
+| Shape | Kernel sum / span | Dispatches | Dense/shared Q5/Q6 | Selected IQ | Attention |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 | 12.303416 / 12.356689 s | 4,214 | 8.509884 s / 69.167% | 2.734115 s / 22.222% | 1.022529 s / 8.311% |
+| 4K | 112.589175 / 113.007464 s | 33,726 | 68.352701 s / 60.710% | 21.885515 s / 19.438% | 22.054476 s / 19.588% |
+
+Span-minus-sum is only **53.273 ms (0.433%)** at 512 and **418.289 ms
+(0.372%)** at 4K. Graph/submission work is therefore deferred. The top Q5/Q6
+body is `gguf_k_prefill_out_kernel<...,5|6>` with `Grid_Size_Y=128`: one
+output-column owner is repeated for every prompt row. It does not tile the row
+dimension, so it rereads the same encoded weight for every token.
+
+The actual GGUF inventory gives this active linear ledger:
+
+| Family | Logical parameters/token | GFLOP/token | Source bytes for one complete weight scan |
+| --- | ---: | ---: | ---: |
+| Attention projections | 2.803B | 5.606 | 1.976 GB |
+| Dense layer MLP | 0.113B | 0.226 | 0.083 GB |
+| Routers | 0.037B | 0.074 | 0.148 GB |
+| Shared experts | 0.444B | 0.887 | 0.326 GB |
+| Selected experts (top-10 active arithmetic) | 4.435B | 8.871 | 1.436 GB active-route equivalent/token |
+| **Total** | **7.832B** | **15.665** | — |
+
+All 256 selected-expert tensors across 47 sparse layers occupy **36.761 GB**.
+A 128-row top-10 chunk can activate nearly every expert; the conservative
+one-scan bound therefore uses all 36.761 GB until a candidate publishes its
+routing-aware distinct-expert count. The dense/shared Q5/Q6 source set is
+2.385 GB; adding the separately attributed router set gives 2.533 GB for all
+non-selected linear weights. The current scalar 512 path implies **1,221.316
+GB** of dense/shared source-encoded reads and only **143.517 GB/s**, or
+**19.69%** of the measured stream ceiling. Its selected active-route
+equivalent is **735.220 GB** and
+**268.906 GB/s**. These are encoded-equivalent ledgers, not DRAM counters.
+
+A fresh 4-GiB vector-read kernel on GPU0 measures
+**728.237/729.067/729.860 GB/s min/median/max** over 31 samples. The existing
+W7900 4096-cube BF16 WMMA reference is **84.8 TFLOP/s**. At 15.665 GFLOP per
+token, the dense-linear compute ceiling is **5,413 tok/s**. Combining those
+measured ceilings with conservative source bytes gives:
+
+| Shape/policy | BW floor | Compute floor | Simplified roof |
+| --- | ---: | ---: | ---: |
+| 512, M128, one all-expert+dense scan per four chunks | 0.2156 s | 0.0946 s | **2,375 tok/s** |
+| 512, M512, one scan | 0.0539 s | 0.0946 s | **5,413 tok/s** |
+| 4K, M128, 32 scans | 1.7247 s | 0.8166 s including 5.084-TFLOP attention ledger | **2,375 tok/s** |
+| 4K, M2048, two scans | 0.1078 s | 0.8166 s | **5,016 tok/s** |
+
+This is a target model, not a performance claim. It excludes activation and
+metadata traffic, quantization, nonlinear kernels, the final one-row lm-head,
+and achieved efficiency of each IQ integer-dot body. Even so, **800/700 tok/s**
+is only **14.78%/13.96%** of the simplified 512/4K roof. The current
+**0.652 TFLOP/s** at 512 is only **0.769%** of the measured BF16 reference, so
+the 10-20x short target is conservative rather than aspirational.
+
+### llama.cpp dataflow to transfer
+
+The relevant lesson is dataflow, not API or literal constants:
+
+- llama.cpp HIP selects MMQ above its `MMVQ_MAX_BATCH_SIZE=8` cutoff. It packs
+  source rows to layout-qualified Q8_1 once, uses ID helpers to compact routed
+  rows, deduplicates gate/up broadcast quantization before top-k scatter, and
+  provides Q5_K/Q6_K/IQ2_XS/IQ3_XXS/IQ4_XS MMQ instances. The RDNA family
+  table uses 256-thread workgroups and row bands 8..64.
+- The audited llama.cpp Vulkan RADV path runs the **medium** routed shader:
+  local128 over two wave64 subgroups, BM64 x BN64 x BK32, with quant and
+  activation tiles staged and reused. It is not the small 32x32 shader and is
+  not a wave32 geometry prescription.
+- hipEngine already has the right primitives in pieces: an exact Q5/Q6
+  small-B rowtile, Q6/Q4 WMMA controls, compact MoE metadata, and guarded Q8_1
+  precedents. The missing 512 seam is a fixed grid-Y row batch/MMQ that reuses
+  each loaded Q5/Q6 weight across prompt rows while preserving the chosen
+  arithmetic contract.
+
+### WPF execution order
+
+`WPF-*` labels mean “W7900 prefill” and are independent of the historical
+`LAP-*` gfx1151 labels.
+
+| Task | State | Gate / next action |
+| --- | --- | --- |
+| WPF-0 profile + roofline | Complete | Clean 512/4K wall and all-family trace, actual tensor/FLOP ledger, 729.067-GB/s read ceiling, llama.cpp HIP/Vulkan audit, and compact artifact published. |
+| WPF-C0 shared-source capacity transfer | Candidate measured | M2048/packed/block/global/SWA bundle is exact and +6.45%/+18.70% at 512/4K once. Run focused tests plus counterbalanced repeated 512/4K before package-default commit; keep M128 rollback and no quant-policy aliases. |
+| WPF-1 exact dense/shared row reuse | **Next** | Extend the existing exact Q5/Q6 small-B rowtile premise to fixed rowbatch4/8 grid-Y tiles. Gate natural K3072/K6144/K9216 and N48/72/1024/3072/6144/9216 roles, actual first/last layers, then full 512/4K. |
+| WPF-1B dense/shared Q8_1 MMQ | Conditional | If exact row batching remains below 400/300, add source-faithful Q5/Q6 integer-dot MMQ. Quantize a producer row once, preserve raw resident weights, and use the full quality lane for changed arithmetic. |
+| WPF-2 routed IQ MMQ | Pending WPF-1 reprofile | Compact by expert, quantize gate/up before top-10 expansion, pack down rows after SiLU, and tile raw IQ2/IQ3/IQ4 weights across routed rows. Publish distinct-expert and physical traffic. |
+| WPF-3 short attention | Deferred | Start only if the fresh post-WPF-2 profile makes attention the largest or gives it a >=5% perfect-removal ceiling at both 512 and 4K. |
+| WPF-4 launch/fusion | Deferred | Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
+| WPF-5 long context | Hard deferred | One 16K diagnostic is allowed after exact 400/300; full 16K/64K/128K work only after 800/700 or a documented measured blocker. |
+
+### Admission and stop rules
+
+For every WPF kernel or owner:
+
+1. RED first against NumPy/CPU or the registered exact GPU fallback. Exact
+   candidates preserve BF16/F32 bytes on synthetic edges and actual first/last
+   production roles. Reassociated/Q8_1 candidates must additionally pass
+   KL <= 0.05, top-1 >= 90%, and the complete 18-prompt train+heldout lane.
+2. Record kernel name, grid/local size, VGPR/SGPR/LDS/private/spills, duration,
+   and a cached-only `rocprofv3` trace. Any private memory or spill regression
+   requires an explicit measured justification.
+3. Use one resident weight set. No full Q5/Q6/IQ sidecar fits the 48-GiB
+   budget. Scratch aliases through phase liveness and must preserve teardown.
+4. Gate 512 and 4K in both process orders with exact IDs/positions/state,
+   deterministic repeats, finite logits, and allocation recovery. A per-order
+   regression is not waived by pooling. Small wins use at least 15 samples or
+   the established full-model repetition protocol.
+5. Promote only architecture-qualified package capabilities and registered
+   four-axis keys. Keep the unfused/M128/exact fallback. Never add backend or
+   quant branches to generic runner/model dispatch.
+6. Reprofile after promotion. Stop working a family once another family is
+   larger, the candidate misses its prospective gate, or its perfect-removal
+   ceiling falls below 5%.
+
+Do not copy gfx1151's Q4/D8/D4, F16, queue, concurrency, qmicro, prefetch, or
+wave-width defaults into gfx1100. Do not optimize the fixed prompt or route
+IDs. Do not resume long-context sweeps merely because M2048 now completes 4K.
+
+## Retained gfx1151 / Q4_K_M campaign record
 
 Status: active successor to the completed LPF/AR-O campaign in
 [`LAGUNA.md`](LAGUNA.md). The prior bounded tasks are closed; this plan starts a
