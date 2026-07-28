@@ -139,7 +139,6 @@ class LagunaKVCache:
         swa_gqa3_vstage64_fixed512: bool,
         swa_gqa3_vstage64_vec16_fixed512: bool,
         swa_gqa3_vstage64_vec16_direct_fixed512: bool,
-        swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -185,9 +184,6 @@ class LagunaKVCache:
         )
         self.swa_gqa3_vstage64_vec16_direct_fixed512 = bool(
             swa_gqa3_vstage64_vec16_direct_fixed512
-        )
-        self.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512 = bool(
-            swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512
         )
         self.runtime = runtime
         self.position = -1
@@ -485,17 +481,6 @@ class LagunaKVCache:
                             (
                                 (
                                     (
-                                        "swa_context_fused_exact_gated_gqa3_"
-                                        "vstage64_vec16_direct_bounded_exp_"
-                                        "fixed512_spans"
-                                    )
-                                    if (
-                                        self.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512
-                                        and self.swa_gqa3_vstage64_vec16_direct_fixed512
-                                        and live_count == 512
-                                        and state.capacity == 512
-                                    )
-                                    else (
                                         "swa_context_fused_exact_gated_"
                                         "gqa3_vstage64_vec16_direct_"
                                         "fixed512_spans"
@@ -1657,7 +1642,6 @@ def allocate_laguna_kv_cache(
                 selected_swa_gqa3_vstage64_vec16_direct_fixed512
                 and split_enabled
             ),
-            swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512=False,
             runtime=runtime,
         )
     except Exception:

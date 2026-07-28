@@ -188604,3 +188604,23 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused owner/setter, long-context harness, and complete category-harness
   validation is **56 passed**. Production remains on generic accurate `expf`;
   commit the clean A/B wiring before the seven-pair exact wall screen.
+
+## 2026-07-29 05:23 JST — Reject bounded SWA exponential and close the seam
+
+- Seven tracked-clean p512/d128 pairs confirm only a small wall signal:
+  compiler-`expf`/bounded medians are **19.164777/19.229973 tok/s
+  (+0.340%)**, all seven candidate samples win, and each mode is internally
+  deterministic. Cross-mode generated trajectories differ, so this is not an
+  exact production candidate.
+- The complete saturated-512 category gate runs all 18 canonical/held-out
+  prompts and **576** teacher-forced steps. Bounded range reduction retains
+  **558/576 top-1 (96.88%)**, but max KL is **1.888082**—**37.76x** the 0.05
+  limit. Category maxima are code **0.466482**, general English **0.165590**,
+  general Japanese **1.888082**, and mixed Japanese/English **0.926633**.
+- Reject the bounded rewrite and close manual/native exponential work. Remove
+  both dead candidate primitives and the runtime/category measurement seams;
+  production remains on compiler `expf`. The next exact screen may use
+  compiler assumptions to remove impossible guards without changing the
+  expression, then moves to cooperative QK/PV ownership and scheduling.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-rejected.json`.

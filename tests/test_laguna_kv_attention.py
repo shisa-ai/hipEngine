@@ -3132,8 +3132,6 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
         build_laguna_kv_attention,
         laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
-        laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_bounded_exp_fixed512_bf16_spans,
-        laguna_swa_attention_decode_fused_gated_gqa3_vstage64_vec16_direct_fast_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_fixed512_bf16_spans,
     )
@@ -3232,7 +3230,6 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
             128,
             128**-0.5,
         )
-        fast_exp_total_mismatches = 0
         for position in range(512, 520):
             cache.prepare_position(position)
             cache.append(
@@ -3315,63 +3312,6 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
             np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
-            laguna_swa_attention_decode_fused_gated_gqa3_vstage64_vec16_direct_fast_exp_fixed512_bf16_spans(
-                *common,
-                candidate_out.ptr,
-                gate_device.ptr,
-                candidate_gated.ptr,
-                *tail,
-                sliding_window=512,
-                library=library,
-                runtime=runtime,
-            )
-            runtime.device_synchronize()
-            for host, device in (
-                (candidate, candidate_out),
-                (candidate_gate_bits, candidate_gated),
-            ):
-                copy_device_to_host(
-                    host_array_ptr(host),
-                    device,
-                    host.nbytes,
-                    runtime=runtime,
-                )
-            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
-            np.testing.assert_allclose(
-                candidate,
-                control,
-                rtol=2e-5,
-                atol=2e-6,
-            )
-            fast_exp_mismatches = int(
-                np.count_nonzero(candidate_gate_bits != control_gate_bits)
-            )
-            fast_exp_total_mismatches += fast_exp_mismatches
-            assert fast_exp_mismatches <= 1
-            laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_bounded_exp_fixed512_bf16_spans(
-                *common,
-                candidate_out.ptr,
-                gate_device.ptr,
-                candidate_gated.ptr,
-                *tail,
-                sliding_window=512,
-                library=library,
-                runtime=runtime,
-            )
-            runtime.device_synchronize()
-            for host, device in (
-                (candidate, candidate_out),
-                (candidate_gate_bits, candidate_gated),
-            ):
-                copy_device_to_host(
-                    host_array_ptr(host),
-                    device,
-                    host.nbytes,
-                    runtime=runtime,
-                )
-            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
-            assert np.array_equal(candidate, control)
-            assert np.array_equal(candidate_gate_bits, control_gate_bits)
             laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_fixed512_bf16_spans(
                 *common,
                 candidate_out.ptr,
@@ -3396,7 +3336,6 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
             np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
-        assert fast_exp_total_mismatches <= 1
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
@@ -3690,7 +3629,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.swa_gqa3_vstage64_fixed512
         assert gfx1151_cache.swa_gqa3_vstage64_vec16_fixed512
         assert gfx1151_cache.swa_gqa3_vstage64_vec16_direct_fixed512
-        assert not gfx1151_cache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512
         assert gfx1151_cache.allocation_count == 245
         resolved_variants = []
 
@@ -3706,8 +3644,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         gfx1151_cache.position = 64
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.position = 511
-        gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
-        gfx1151_cache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512 = True
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         assert resolved_variants == [
             (
@@ -3730,13 +3666,6 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
                 (
                     "swa_context_fused_exact_gated_"
                     "gqa3_vstage64_vec16_direct_fixed512_spans"
-                ),
-            ),
-            (
-                "laguna_attention_decode",
-                (
-                    "swa_context_fused_exact_gated_gqa3_vstage64_"
-                    "vec16_direct_bounded_exp_fixed512_spans"
                 ),
             ),
         ]

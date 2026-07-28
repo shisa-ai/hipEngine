@@ -1165,14 +1165,17 @@ The bounded-domain successor keeps the accurate high/low `log2(e)` range
 reduction, hardware `exp2`, and `ldexp`; it deletes only generic overflow,
 NaN, and positive-domain guards that finite score-minus-max inputs cannot
 exercise. Positions 512-519 plus eviction and the leaf are F32/BF16
-byte-exact. Nine leaf samples improve **0.105985 -> 0.101133 ms (-4.58%)**.
-Generated ISA removes 128 compares and 128 conditional masks, shrinks text
-**17,920 -> 16,628 B (-7.21%)**, and keeps logical
-VGPR138/SGPR33/LDS24576/scratch0. Three steady trace observations improve
-**106.199 -> 95.620 us (-9.96%)** with unchanged profiler resources. This is
-again a primitive admission, not production; next require an exact
-resident-model wall win. Evidence:
-[`bounded-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-candidate.json).
+byte-exact. Nine leaf samples improve **0.105985 -> 0.101133 ms (-4.58%)**,
+and generated ISA removes 128 compares plus 128 conditional masks. The real
+model disproves fixture exactness: seven production pairs improve only
+**19.164777 -> 19.229973 tok/s (+0.340%)**, generated trajectories differ,
+and the complete category gate reaches max KL **1.888082** with **558/576
+(96.88%)** top-1. Reject and remove both manual/native exponential primitives
+and their measurement seams. Production stays on compiler `expf`; further
+attention work must preserve its results exactly and attack QK/PV ownership or
+scheduling. Evidence:
+[`bounded-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-candidate.json) ·
+[`bounded-exp rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-rejected.json).
 
 Tracked-clean selector-unset production measures
 **19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is

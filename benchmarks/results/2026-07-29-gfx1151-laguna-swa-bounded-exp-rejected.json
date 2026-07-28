@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T05:23:12+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_bounded_exp_rejection",
+  "status": "rejected_quality",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "revision": "b5c6f303f",
+    "candidate_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-candidate.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "production_screen": {
+    "workload": "p512/d128, matrix chunk 2048, 127 synchronized decode calls, seven counterbalanced pairs",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-bounded-exp --output /tmp/laguna-p512-d128-swa-bounded-exp-ab.json",
+    "raw_sha256": "137240785e1f63347e6c589ca181105e7d73d4a756ac9e712cc0828b24aba7eb",
+    "control_median_tok_s": 19.164777478566343,
+    "candidate_median_tok_s": 19.2299734579352,
+    "speedup_percent": 0.3401864667709864,
+    "control_median_seconds": 6.626740130013786,
+    "candidate_median_seconds": 6.604273286066018,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "repeat_deterministic_per_mode": true,
+    "cross_mode_generated_ids_exact": false
+  },
+  "category_gate": {
+    "workload": "18 canonical/held-out prompts expanded to 512 input tokens; three counterbalanced free-running repetitions; 32 teacher-forced steps per prompt",
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison swa_decode_bounded_exp --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-swa-bounded-exp-category.raw.json",
+    "raw_sha256": "298e490b4e92bf0a77d4b850fac24c730ad46c08fde60277d76dffd94bd9cfde",
+    "teacher_forced_steps": 576,
+    "teacher_forced_top1_matches": 558,
+    "teacher_forced_top1_agreement": 0.96875,
+    "teacher_forced_max_kl": 1.8880817680711408,
+    "teacher_forced_finite": true,
+    "oracle_pass": true,
+    "h16_decode_speedup": 1.003364717304865,
+    "h32_decode_speedup": 1.0034189005417178,
+    "category_max_kl": {
+      "code": 0.4664816522901623,
+      "general_en": 0.16558990395674636,
+      "general_ja": 1.8880817680711408,
+      "mixed_ja_en": 0.9266331176175238
+    },
+    "thresholds": {
+      "max_kl": 0.05,
+      "minimum_top1_suite_and_category": 0.9
+    },
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ]
+  },
+  "decision": {
+    "retained": false,
+    "production_default_unchanged": true,
+    "reason": "The bounded range-reduction rewrite buys only 0.34% decode and still exceeds the KL budget by 37.76x on the complete category gate.",
+    "next": "Close approximate/manual exponential rewrites. Preserve the compiler's exact expf and attack impossible guards through exact compiler assumptions, then cooperative QK/PV ownership and scheduling."
+  }
+}

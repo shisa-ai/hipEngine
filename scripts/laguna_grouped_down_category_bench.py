@@ -200,20 +200,6 @@ ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON = CategoryComparison(
     require_shape_screen=False,
     require_performance_gate=False,
 )
-SWA_DECODE_BOUNDED_EXP_COMPARISON = CategoryComparison(
-    name="swa_decode_bounded_exp",
-    modes=("swa_decode_exact", "swa_decode_bounded_exp"),
-    aggregate_key="swa_decode_bounded_exp_vs_exact",
-    screen_kind="not_applicable",
-    screen_status="not_applicable",
-    screen_decision_key="not_applicable",
-    require_positive_wall=False,
-    execution_mode="swa_decode",
-    require_exact_free_running=False,
-    screen_requires_model=False,
-    require_shape_screen=False,
-    require_performance_gate=False,
-)
 _GLOBAL_PREFILL_VARIANTS = {
     "global_exact": "global_context_rows_spans",
     "global_qrow2_online": "global_context_rows_qrow2_online_spans",
@@ -282,7 +268,6 @@ _COMPARISONS = {
         PREFILL_350_COMPARISON,
         PRODUCTION_ABSOLUTE_COMPARISON,
         ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
-        SWA_DECODE_BOUNDED_EXP_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -343,24 +328,6 @@ def _mode_order(
         if (int(prompt_index) + int(repetition)) % 2 == 0
         else tuple(reversed(modes))
     )
-
-
-def _prompt_token_ids(
-    prompt: Mapping[str, Any],
-    *,
-    comparison: CategoryComparison = GROUPED_DOWN_COMPARISON,
-) -> tuple[int, ...]:
-    token_ids = tuple(int(value) for value in prompt["token_ids"])
-    if comparison.execution_mode != "swa_decode":
-        return token_ids
-    if not token_ids:
-        raise ValueError("Laguna SWA decode quality prompt has no token IDs")
-    if len(token_ids) >= 512:
-        return token_ids[:512]
-    repeated = token_ids[1:] if len(token_ids) > 1 else token_ids
-    required = 512 - len(token_ids)
-    repeats = (required + len(repeated) - 1) // len(repeated)
-    return token_ids + (repeated * repeats)[:required]
 
 
 @contextmanager
@@ -431,10 +398,6 @@ def _session_for_mode(
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
         session.set_selected_down_mode(mode)
-    elif comparison.execution_mode == "swa_decode":
-        session.set_decode_swa_bounded_exp(
-            mode == SWA_DECODE_BOUNDED_EXP_COMPARISON.modes[1]
-        )
     elif comparison.execution_mode not in {
         "f16_prefill",
         "global_prefill",
@@ -486,15 +449,6 @@ def _oracle_for_candidate(
                 swa_prefill_variant=lane.swa_prefill_variant,
                 session_configurator=configure_session,
             )
-    if comparison.execution_mode == "swa_decode":
-        def configure_session(session: LagunaGGUFResidentSession) -> None:
-            session.set_decode_swa_bounded_exp(True)
-
-        return _oracle_gate(
-            owner,
-            args,
-            session_configurator=configure_session,
-        )
     return _oracle_gate(owner, args)
 
 
@@ -509,15 +463,11 @@ def _run_target_mode(
     comparison: CategoryComparison = GROUPED_DOWN_COMPARISON,
 ) -> dict[str, Any]:
     session = _session_for_mode(owner, args, mode, comparison=comparison)
-    prompt_token_ids = _prompt_token_ids(prompt, comparison=comparison)
-    prompt_token_ids_sha256 = _sha256_bytes(
-        json.dumps(prompt_token_ids, separators=(",", ":")).encode()
-    )
     try:
         prefill_started = time.perf_counter()
         result = _prefill_for_mode(
             session,
-            prompt_token_ids,
+            prompt["token_ids"],
             mode,
             comparison,
         )
@@ -550,13 +500,13 @@ def _run_target_mode(
         return {
             "prompt_id": prompt["id"],
             "category": prompt["category"],
-            "prompt_tokens": len(prompt_token_ids),
-            "prompt_token_ids_sha256": prompt_token_ids_sha256,
+            "prompt_tokens": prompt["prompt_tokens"],
+            "prompt_token_ids_sha256": prompt["token_ids_sha256"],
             "mode": mode,
             "repetition": int(repetition),
             "prefill_seconds": prefill_seconds,
             "ttft_seconds": prefill_seconds,
-            "prefill_tok_s": len(prompt_token_ids) / prefill_seconds,
+            "prefill_tok_s": prompt["prompt_tokens"] / prefill_seconds,
             "checkpoints": checkpoints,
         }
     finally:
@@ -784,10 +734,6 @@ def _teacher_forced_prompt(
     comparison: CategoryComparison = GROUPED_DOWN_COMPARISON,
 ) -> dict[str, Any]:
     baseline_mode, candidate_mode = comparison.modes
-    prompt_token_ids = _prompt_token_ids(prompt, comparison=comparison)
-    prompt_token_ids_sha256 = _sha256_bytes(
-        json.dumps(prompt_token_ids, separators=(",", ":")).encode()
-    )
     sessions = {
         mode: _session_for_mode(owner, args, mode, comparison=comparison)
         for mode in comparison.modes
@@ -800,7 +746,7 @@ def _teacher_forced_prompt(
         results = {
             mode: _prefill_for_mode(
                 sessions[mode],
-                prompt_token_ids,
+                prompt["token_ids"],
                 mode,
                 comparison,
             )
@@ -847,8 +793,8 @@ def _teacher_forced_prompt(
     return {
         "prompt_id": prompt["id"],
         "category": prompt["category"],
-        "prompt_tokens": len(prompt_token_ids),
-        "prompt_token_ids_sha256": prompt_token_ids_sha256,
+        "prompt_tokens": prompt["prompt_tokens"],
+        "prompt_token_ids_sha256": prompt["token_ids_sha256"],
         "steps": steps,
     }
 
@@ -1017,9 +963,6 @@ def _load_shape_screen(
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     comparison = _COMPARISONS[str(args.comparison)]
-    workload_lane = (
-        "decode" if comparison.execution_mode == "swa_decode" else "prefill"
-    )
     horizons = tuple(int(value) for value in args.output_horizons)
     if horizons != RETAINED_HORIZONS:
         raise ValueError(
@@ -1063,7 +1006,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
-        build_profile=f"laguna_{workload_lane}_{comparison.name}_category",
+        build_profile=f"laguna_prefill_{comparison.name}_category",
         timing_protocol=(
             f"same_owner_balanced_{comparison.modes[0]}_vs_"
             f"{comparison.modes[1]}_category_h16_h32"
@@ -1242,17 +1185,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 comparison.execution_mode
                 in {"f16_prefill", "cumulative_prefill"}
             ),
-            "decode_route": (
-                "generic versus bounded-domain accurate SWA exponential"
-                if comparison.execution_mode == "swa_decode"
-                else "identical exact c=1 path for both modes"
-            ),
-            "prompt_expansion": (
-                "preserve the leading token once, then repeat each canonical "
-                "prompt's post-leading token sequence to exactly 512 tokens"
-                if comparison.execution_mode == "swa_decode"
-                else None
-            ),
+            "decode_route": "identical exact c=1 path for both modes",
             "prefill_lane_configurations": (
                 {
                     mode: {
@@ -1316,11 +1249,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "both freeze the same exact grouped-down and dense/shared routes."
                 if comparison.execution_mode == "cumulative_prefill"
                 else (
-                    "Both modes prefill the same category-generic 512-token "
-                    "expansion. Only full-ring SWA decode selects accurate "
-                    "versus bounded-domain accurate exponential."
-                    if comparison.execution_mode == "swa_decode"
-                    else (
                     "Compensated WMMA applies only to the 36 SWA layers from M16; all "
                     "12 full-attention layers stay exact tiled, M2-15 stay exact tiled, "
                     "and rows==1 stays on GEMV."
@@ -1342,19 +1270,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             )
                         )
                     )
-                    )
                 )
             ),
             "Teacher forcing feeds baseline-route top-1 IDs to both routes and compares "
             "full logits.",
             "Complete free-running IDs are reported, while KL/top-1 thresholds remain "
             "authoritative.",
-            (
-                "AR decode compares the retained exact direct-store SWA route "
-                "with bounded-domain accurate exponential at full 512-token rings."
-                if comparison.execution_mode == "swa_decode"
-                else "AR decode uses the identical exact c=1 route in both modes."
-            ),
+            "AR decode uses the identical exact c=1 route in both modes.",
         ],
     }
 
