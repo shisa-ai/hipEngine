@@ -3516,6 +3516,7 @@ geometry only with a reduction-order-preserving design.
 
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
+[`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
 [`retained F16 fixed-K owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json) ·
 [`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
@@ -3532,7 +3533,8 @@ Evidence:
 The next pause target is **at least 18 tok/s** at p512/d128 under the existing
 state and quality contract. Fixed-K LD-2 production now reaches
 **16.391 tok/s**. The first post-reprofile LD-1 reducer win raises that to
-**16.834 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
+**16.834 tok/s**, and the natural-shape global reducer reaches
+**16.847 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
 comparator target.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
@@ -3607,6 +3609,17 @@ Cached tracing records **4,572 = 36 x 127** fixed reducers, no generic
 fallback, and local128/VGPR16/LDS0/scratch0. Live below 512 retains the
 generic exact owner.
 
+The exact global counterpart is smaller but positive at every measured
+production live count. It keeps the dynamic score/span ABI, all 48 local256
+workgroups, and every scalar/FMA operation while specializing only
+48Q/8KV/D128/capacity-4096 dimensions, scratch strides, and bounded address
+arithmetic. Complete score+reduce improves **0.7-2.0%** at live 513/576/639.
+Seven counterbalanced pairs move **16.832097 -> 16.846689 tok/s (+0.087%,
+0.051 ms/token saved)** with every candidate faster and every trajectory exact.
+Tracing records **1,524 = 12 x 127** fixed reducers, zero generic fallback,
+and local256/VGPR24/LDS512/scratch0. Non-natural shapes/capacities and peer
+backends retain the generic reducer.
+
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
@@ -3614,11 +3627,14 @@ generic exact owner.
    attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
    The retained GQA3 score owner is LD-1a. The exact saturated-512 reducer is
    retained at **+2.731%** production and lowers the SWA reducer from about
-   **9.959 to 8.322 ms/token**, but attention remains roughly
-   **12.14 ms/token**. LD-1b's full-F32 and exact-QK/
+   **9.959 to 8.322 ms/token**. The natural global specialization is also
+   retained at **+0.087%**, putting the global reducer at about
+   **2.628 ms/token**, but total attention remains roughly
+   **12.09 ms/token**. LD-1b's full-F32 and exact-QK/
    tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
-   reducer is performance-rejected. Pause SWA value ownership and move to
-   LD-2; the retained GQA3 score owner remains the exact production default.
+   reducer is performance-rejected. Further attention work requires a
+   materially different exact value-reuse topology that preserves the current
+   wave breadth.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches
@@ -3634,13 +3650,16 @@ generic exact owner.
    **50.154 ms/token** but max KL **0.497301**; no tested scope clears
    **0.05**. Reopen only for a materially different calibrated representation
    with a predeclared full-model quality premise, not another Q8 residual pass.
-4. **LD-4 — dense/shared Q4 decode.** Closed for raw residency and
-   reduction-order-changing thread geometry. Pack8 is only **33.33%** larger
-   than raw; raw local128 loses **63.6-85.4%** at actual shapes and raw wave32
-   has no family-wide win. The shape-tuned pack8 owner is a repeatable
-   **+1.225%** full-cycle win but fails quality at max KL **1.002942** despite
-   **99.31%** top-1. Reopen only with an exact/reduction-order-preserving
-   multi-output consumer or new counter evidence.
+4. **LD-4 — selected and dense/shared Q4 decode.** Raw residency and
+   reduction-order-changing thread geometry remain closed. Pack8 is only
+   **33.33%** larger than raw; raw local128 loses **63.6-85.4%** at actual
+   shapes and raw wave32 has no family-wide win. The shape-tuned pack8 owner
+   is a repeatable **+1.225%** full-cycle win but fails quality at max KL
+   **1.002942** despite **99.31%** top-1. Reopen only the exact seam proven by
+   LD-2: compile-time-specialize the existing selected gate/up and down
+   consumers for natural K while preserving their full grid, reduction order,
+   resident T16 bytes, and BF16 boundary. Selected Q4 is **13.711 ms/token**,
+   co-equal with attention; it is the next bounded implementation screen.
 5. **LD-5 — replay and residual fusion.** Launch/submission work is bounded to
    roughly 2.18 ms/token. It follows attention and F16; launch-count reduction
    alone is not a promotion gate.

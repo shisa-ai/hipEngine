@@ -1154,6 +1154,106 @@ __global__ __launch_bounds__(256) void laguna_global_attention_split_exact_gated
   }
 }
 
+// Natural Laguna global-attention reducer specialization. The live length
+// remains dynamic, while the production 48Q/8KV/D128/capacity-4096 shape and
+// scratch stride become compile-time constants. Grid, reduction tree, scalar
+// slot order, and per-dimension FMA order match the generic exact owner.
+__global__ __launch_bounds__(256)
+void laguna_global_attention_split_exact_gated_fixedshape_reduce_kernel(
+    const uint16_t* value_cache,
+    float* score_scratch,
+    const int32_t* physical_scratch,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    const int64_t* live_counts,
+    const int64_t* row_positions,
+    int scan_slots) {
+  constexpr int kCapacity = 4096;
+  constexpr int kScratchStride = 4096;
+  constexpr int kNumKvHeads = 8;
+  constexpr int kHeadDim = 128;
+  constexpr int kKvGroup = 6;
+  constexpr int kNumWarps = 8;
+  const int q_head = static_cast<int>(blockIdx.x);
+  int context_len = static_cast<int>(
+      live_counts[0] < kCapacity ? live_counts[0] : kCapacity);
+  context_len = context_len < scan_slots ? context_len : scan_slots;
+  if (context_len <= 0 || row_positions[0] < 0) return;
+
+  __shared__ float warp_buf[kNumWarps];
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const int warp = static_cast<int>(threadIdx.x) >> 5;
+  const int scratch_base = q_head * kScratchStride;
+
+  float local_max = -3.4028234663852886e38f;
+  for (int token = warp; token < context_len; token += kNumWarps) {
+    if (lane == 0) {
+      local_max = fmaxf(local_max, score_scratch[scratch_base + token]);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    local_max = fmaxf(local_max, __shfl_down(local_max, offset));
+  }
+  if (lane == 0) warp_buf[warp] = local_max;
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float max_score = warp_buf[0];
+#pragma unroll
+    for (int item = 1; item < kNumWarps; ++item) {
+      max_score = fmaxf(max_score, warp_buf[item]);
+    }
+    warp_buf[0] = max_score;
+  }
+  __syncthreads();
+  const float max_score = warp_buf[0];
+
+  float local_sum = 0.0f;
+  for (int token = warp; token < context_len; token += kNumWarps) {
+    if (lane == 0) {
+      const int idx = scratch_base + token;
+      const bool visible = physical_scratch[idx] >= 0;
+      const float weight =
+          visible ? expf(score_scratch[idx] - max_score) : 0.0f;
+      score_scratch[idx] = weight;
+      local_sum += weight;
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    local_sum += __shfl_down(local_sum, offset);
+  }
+  if (lane == 0) warp_buf[warp] = local_sum;
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float total_sum = warp_buf[0];
+#pragma unroll
+    for (int item = 1; item < kNumWarps; ++item) total_sum += warp_buf[item];
+    warp_buf[0] = 1.0f / fmaxf(total_sum, 1.0e-20f);
+  }
+  __syncthreads();
+  const float inv_denom = warp_buf[0];
+  const int kv_head = q_head / kKvGroup;
+  const int q_offset = q_head * kHeadDim;
+  for (int dim = static_cast<int>(threadIdx.x);
+       dim < kHeadDim;
+       dim += static_cast<int>(blockDim.x)) {
+    float acc = 0.0f;
+    for (int token = 0; token < context_len; ++token) {
+      const int idx = scratch_base + token;
+      const float weight = score_scratch[idx] * inv_denom;
+      if (!(weight > 0.0f)) continue;
+      const int physical_slot = physical_scratch[idx];
+      const int value_offset =
+          (physical_slot * kNumKvHeads + kv_head) * kHeadDim + dim;
+      acc += weight * laguna_bf16_bits_to_float(value_cache[value_offset]);
+    }
+    const int output_idx = q_offset + dim;
+    out[output_idx] = acc;
+    gated_out[output_idx] = laguna_float_to_bf16_bits(
+        acc * laguna_softplus_f32(gate[q_head]));
+  }
+}
+
 __global__ void laguna_global_attention_prefill_bf16_kernel(
     const float* query,
     const float* current_key,
@@ -5075,6 +5175,82 @@ extern "C" int hipengine_laguna_global_attention_decode_split_exact_gated_bf16_s
       num_q_heads,
       num_kv_heads,
       head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      capacity != 4096 || block_size != 256 || block_table_len != 16 ||
+      scratch_stride != 4096 || scan_slots <= 0 || scan_slots > 4096 ||
+      num_q_heads != 48 || num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_scores_kernel,
+      dim3(48, static_cast<unsigned int>(scan_slots)),
+      dim3(32),
+      0,
+      stream,
+      query,
+      key_cache,
+      score_scratch,
+      physical_scratch,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      capacity,
+      block_size,
+      scratch_stride,
+      scan_slots,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  int error = static_cast<int>(hipGetLastError());
+  if (error != static_cast<int>(hipSuccess)) return error;
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_gated_fixedshape_reduce_kernel,
+      dim3(48),
+      dim3(256),
+      0,
+      stream,
+      value_cache,
+      score_scratch,
+      physical_scratch,
+      out,
+      gate,
+      gated_out,
+      live_counts,
+      row_positions,
+      static_cast<int>(scan_slots));
   return static_cast<int>(hipGetLastError());
 }
 
