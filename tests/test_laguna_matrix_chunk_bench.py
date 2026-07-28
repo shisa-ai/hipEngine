@@ -179,9 +179,14 @@ def test_laguna_matrix_chunk_session_fixes_global_and_swa_attention(
 ) -> None:
     captured: dict = {}
 
+    selected_modes: list[tuple[str, str]] = []
+
     def fake_session(*args, **kwargs):
         captured.update(kwargs)
-        return SimpleNamespace()
+        return SimpleNamespace(
+            set_selected_gate_up_mode=lambda mode: selected_modes.append(("gate", mode)),
+            set_selected_down_mode=lambda mode: selected_modes.append(("down", mode)),
+        )
 
     monkeypatch.setattr(matrix_bench, "LagunaGGUFResidentSession", fake_session)
     monkeypatch.setattr(matrix_bench, "_compiler_version", lambda _path: "hipcc")
@@ -192,6 +197,7 @@ def test_laguna_matrix_chunk_session_fixes_global_and_swa_attention(
         compiler_version_file=None,
         require_cached_build=True,
         attention_rows=128,
+        grouped_exact_iq=True,
     )
 
     matrix_bench._session(owner, args, matrix_rows=512)
@@ -199,6 +205,10 @@ def test_laguna_matrix_chunk_session_fixes_global_and_swa_attention(
     assert captured["prefill_chunk_size"] == 512
     assert captured["prefill_attention_chunk_size"] == 128
     assert captured["prefill_global_attention_chunk_size"] == 128
+    assert selected_modes == [
+        ("gate", "grouped_exact"),
+        ("down", "grouped_exact"),
+    ]
 
 
 def test_laguna_matrix_chunk_reports_routing_occupancy_and_tails() -> None:

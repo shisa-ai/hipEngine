@@ -36,7 +36,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
     gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+    gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+    gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out,
+    gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+    gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+    gguf_iq3_xxs_selected_grouped_prefill_compact_bf16_bf16_out,
+    gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+    gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq4_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out,
@@ -145,12 +152,14 @@ def _run_dual_grouped(
     gate: np.ndarray,
     up: np.ndarray,
     wmma: bool,
+    fused_silu: bool = False,
 ) -> np.ndarray:
     x_bf16 = np.ascontiguousarray(x_bf16, dtype=np.uint16)
     gate = np.ascontiguousarray(gate, dtype=np.uint8)
     up = np.ascontiguousarray(up, dtype=np.uint8)
     out_features = int(gate.shape[1])
-    out = np.zeros((meta.compact_rows, 2 * out_features), dtype=np.uint16)
+    out_columns = out_features if fused_silu else 2 * out_features
+    out = np.zeros((meta.compact_rows, out_columns), dtype=np.uint16)
     buffers: list[Any] = []
     try:
         x_buf = _device_buffer(x_bf16, buffers)
@@ -245,8 +254,36 @@ def test_iq_selected_prefill_registry_and_build_plan() -> None:
         ): gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
         (
             "gguf_iq3_xxs",
+            "selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        ): gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        (
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_bf16_bf16_out",
+        ): gguf_iq3_xxs_selected_grouped_prefill_compact_bf16_bf16_out,
+        (
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+        ): gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+        (
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        ): gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        (
+            "gguf_iq3_xxs",
             "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
         ): gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
+        (
+            "gguf_iq3_xxs",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+        ): gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+        (
+            "gguf_iq3_xxs",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        ): gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        (
+            "gguf_iq3_xxs",
+            "selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out",
+        ): gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out,
         ("gguf_iq3_xxs", "selected_dual_wmma_prefill_compact_bf16_bf16_out"): (
             gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out
         ),
@@ -431,7 +468,7 @@ def test_grouped_iq3_auto_uses_measured_four_rows_per_expert_crossover(
 
 
 @pytest.mark.parametrize("in_features", [2048, 3072])
-def test_grouped_iq3_rowbatch4_is_bit_exact_across_batch_boundaries(
+def test_grouped_iq3_rowbatch_variants_are_bit_exact_across_batch_boundaries(
     libraries, in_features: int
 ) -> None:
     grouped_library, _ = libraries
@@ -449,8 +486,34 @@ def test_grouped_iq3_rowbatch4_is_bit_exact_across_batch_boundaries(
         up=up,
         wmma=False,
     )
-    actual = _run_dual_grouped(
+    for wrapper in (
         gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+        gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+    ):
+        actual = _run_dual_grouped(
+            wrapper,
+            grouped_library,
+            x_bf16=x_bf16,
+            meta=meta,
+            gate=gate,
+            up=up,
+            wmma=False,
+        )
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_grouped_iq3_fused_silu_variants_preserve_projection_boundaries(
+    libraries,
+) -> None:
+    grouped_library, _ = libraries
+    meta = _compact_meta([0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17])
+    in_features = 3072
+    out_features = 19
+    x_bf16 = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
+    gate = _make_iq3_weight(meta.num_experts, out_features, in_features)
+    up = _distinct_up(gate, 98)
+    projected = _run_dual_grouped(
+        gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
         grouped_library,
         x_bf16=x_bf16,
         meta=meta,
@@ -458,7 +521,62 @@ def test_grouped_iq3_rowbatch4_is_bit_exact_across_batch_boundaries(
         up=up,
         wmma=False,
     )
-    np.testing.assert_array_equal(actual, expected)
+    gate_f32 = _bf16_u16_to_f32(projected[:, :out_features])
+    up_f32 = _bf16_u16_to_f32(projected[:, out_features:])
+    expected = _f32_to_bf16_u16(
+        gate_f32
+        * (np.float32(1.0) / (np.float32(1.0) + np.exp(-gate_f32)))
+        * up_f32
+    )
+    for wrapper in (
+        gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+        gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out,
+    ):
+        actual = _run_dual_grouped(
+            wrapper,
+            grouped_library,
+            x_bf16=x_bf16,
+            meta=meta,
+            gate=gate,
+            up=up,
+            wmma=False,
+            fused_silu=True,
+        )
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_grouped_iq3_down_variants_are_bit_exact_across_batch_boundaries(
+    libraries,
+) -> None:
+    grouped_library, direct_library = libraries
+    meta = _compact_meta([0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33])
+    in_features = 1024
+    out_features = 23
+    x_bf16 = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
+    qweight = _make_iq3_weight(meta.num_experts, out_features, in_features)
+    expected = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        direct_library,
+        x_bf16=x_bf16,
+        selected=meta.selected,
+        qweight=qweight,
+        threads=128,
+    )
+    for wrapper in (
+        gguf_iq3_xxs_selected_grouped_prefill_compact_bf16_bf16_out,
+        gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+        gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+    ):
+        actual = _run_single_grouped(
+            wrapper,
+            grouped_library,
+            x_bf16=x_bf16,
+            meta=meta,
+            qweight=qweight,
+            wmma=False,
+        )
+        np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("counts", _COUNTS)

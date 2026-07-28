@@ -485,7 +485,19 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         backend_package_capability(
             "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
         )
-        == 256
+        == 512
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_SELECTED_GATE_UP_MODE", None
+        )
+        == "grouped_exact"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_SELECTED_DOWN_MODE", None
+        )
+        == "grouped_exact"
     )
     assert (
         backend_package_capability(

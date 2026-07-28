@@ -80,6 +80,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-rows", type=int, default=ATTENTION_ROWS)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--grouped-exact-iq",
+        action="store_true",
+        help="run exact expert-major IQ down reuse for every matrix capacity",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--quant-label", default="Q4_K_M mixed GGUF v3")
@@ -543,7 +549,7 @@ def _session(
     matrix_rows: int,
 ) -> LagunaGGUFResidentSession:
     assert owner.weights is not None
-    return LagunaGGUFResidentSession(
+    session = LagunaGGUFResidentSession(
         resident_weights=owner.weights,
         context_length=args.context_length,
         backend=args.backend,
@@ -554,6 +560,10 @@ def _session(
         prefill_attention_chunk_size=args.attention_rows,
         prefill_global_attention_chunk_size=args.attention_rows,
     )
+    if args.grouped_exact_iq:
+        session.set_selected_gate_up_mode("grouped_exact")
+        session.set_selected_down_mode("grouped_exact")
+    return session
 
 
 def _all_hidden_capture_targets(
@@ -876,7 +886,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not math.isfinite(args.safety_reserve_gib) or args.safety_reserve_gib < 0.0:
         raise ValueError("matrix screen safety reserve must be finite and nonnegative")
     repo = _repo_state()
-    if not repo["tracked_clean"]:
+    if not repo["tracked_clean"] and not args.allow_dirty:
         raise RuntimeError("retained Laguna matrix screen requires a clean tracked worktree")
 
     provenance = collect_artifact_provenance(
@@ -1048,6 +1058,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "matrix_rows": list(matrix_rows),
             "attention_rows": ATTENTION_ROWS,
             "global_attention_rows": ATTENTION_ROWS,
+            "grouped_exact_iq": bool(args.grouped_exact_iq),
             "repetitions": args.repetitions,
             "warmup_rows_per_mode": args.warmup_rows,
             "mode_order": "rotating Latin order by length and repetition",

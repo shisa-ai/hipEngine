@@ -147,6 +147,38 @@ __device__ inline float dot_iq4_segment(
 }
 
 template <int ROW_BATCH>
+__device__ inline void reduce_block_batched(
+    float (&value)[ROW_BATCH],
+    float* __restrict__ wave_sums) {
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      value[row] += __shfl_down(value[row], offset);
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      wave_sums[row * 8 + wave] = value[row];
+    }
+  }
+  __syncthreads();
+  if (tid == 0) {
+    const int waves = (blockDim.x + 31) >> 5;
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      value[row] = 0.0f;
+      for (int wave_idx = 0; wave_idx < waves; ++wave_idx) {
+        value[row] += wave_sums[row * 8 + wave_idx];
+      }
+    }
+  }
+}
+
+template <int ROW_BATCH>
 __device__ inline void reduce_block_pairs_batched(
     float (&value_a)[ROW_BATCH],
     float (&value_b)[ROW_BATCH],
@@ -266,7 +298,7 @@ __global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_kernel(
   }
 }
 
-template <int ROW_BATCH>
+template <int ROW_BATCH, bool FUSE_SILU>
 __device__ __forceinline__ void iq2_xs_grouped_rowbatch_body(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ gate_weight,
@@ -281,7 +313,8 @@ __device__ __forceinline__ void iq2_xs_grouped_rowbatch_body(
     float* __restrict__ wave_sums_gate,
     float* __restrict__ wave_sums_up) {
   const int groups8 = in_features / 8;
-  const int64_t out_stride = static_cast<int64_t>(2) * out_features;
+  const int64_t out_stride =
+      static_cast<int64_t>(FUSE_SILU ? 1 : 2) * out_features;
   for (int64_t row_base = begin; row_base < end; row_base += ROW_BATCH) {
     float gate_acc[ROW_BATCH] = {};
     float up_acc[ROW_BATCH] = {};
@@ -308,10 +341,20 @@ __device__ __forceinline__ void iq2_xs_grouped_rowbatch_body(
       for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
         const int64_t row = row_base + row_idx;
         if (row < end) {
-          out[row * out_stride + out_col] =
-              float_to_bf16_bits(gate_acc[row_idx]);
-          out[row * out_stride + out_features + out_col] =
-              float_to_bf16_bits(up_acc[row_idx]);
+          if constexpr (FUSE_SILU) {
+            const float gate = bf16_bits_to_float(
+                float_to_bf16_bits(gate_acc[row_idx]));
+            const float up = bf16_bits_to_float(
+                float_to_bf16_bits(up_acc[row_idx]));
+            const float sig = 1.0f / (1.0f + expf(-gate));
+            out[row * out_stride + out_col] =
+                float_to_bf16_bits(gate * sig * up);
+          } else {
+            out[row * out_stride + out_col] =
+                float_to_bf16_bits(gate_acc[row_idx]);
+            out[row * out_stride + out_features + out_col] =
+                float_to_bf16_bits(up_acc[row_idx]);
+          }
         }
       }
     }
@@ -319,7 +362,7 @@ __device__ __forceinline__ void iq2_xs_grouped_rowbatch_body(
   }
 }
 
-template <int ROW_BATCH>
+template <int ROW_BATCH, bool FUSE_SILU>
 __launch_bounds__(256, 2)
 __global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel(
     const uint16_t* __restrict__ x,
@@ -345,7 +388,7 @@ __global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kerne
       static_cast<int64_t>(out_col) * row_bytes;
   __shared__ float wave_sums_gate[ROW_BATCH * 8];
   __shared__ float wave_sums_up[ROW_BATCH * 8];
-  iq2_xs_grouped_rowbatch_body<ROW_BATCH>(
+  iq2_xs_grouped_rowbatch_body<ROW_BATCH, FUSE_SILU>(
       x,
       gate_weight,
       up_weight,
@@ -389,15 +432,15 @@ __global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_kerne
   __shared__ float wave_sums_up[4 * 8];
   const int64_t rows = end - begin;
   if (rows == 1) {
-    iq2_xs_grouped_rowbatch_body<1>(
+    iq2_xs_grouped_rowbatch_body<1, false>(
         x, gate_weight, up_weight, out, begin, end, in_features, out_features,
         out_col, weight_offset, wave_sums_gate, wave_sums_up);
   } else if (rows == 2) {
-    iq2_xs_grouped_rowbatch_body<2>(
+    iq2_xs_grouped_rowbatch_body<2, false>(
         x, gate_weight, up_weight, out, begin, end, in_features, out_features,
         out_col, weight_offset, wave_sums_gate, wave_sums_up);
   } else {
-    iq2_xs_grouped_rowbatch_body<4>(
+    iq2_xs_grouped_rowbatch_body<4, false>(
         x, gate_weight, up_weight, out, begin, end, in_features, out_features,
         out_col, weight_offset, wave_sums_gate, wave_sums_up);
   }
@@ -489,11 +532,12 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_kernel(
   }
 }
 
-// Batch four independent compact rows through one pair of block barriers. Each
-// row keeps the exact RT1 lane dot, wave32 shuffle tree, and serial wave-0..7
+// Batch independent compact rows through one pair of block barriers. Each row
+// keeps the exact RT1 lane dot, wave32 shuffle tree, and serial wave-0..7
 // accumulation; only the synchronization schedule is interleaved.
+template <int ROW_BATCH, bool FUSE_SILU>
 __launch_bounds__(256, 2)
-__global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_kernel(
+__global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch_kernel(
     const uint16_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,
     const uint8_t* __restrict__ gate_weight,
@@ -516,10 +560,10 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_ker
   const int64_t weight_offset =
       static_cast<int64_t>(expert) * expert_bytes +
       static_cast<int64_t>(out_col) * row_bytes;
-  constexpr int ROW_BATCH = 4;
   __shared__ float wave_sums_gate[ROW_BATCH * 8];
   __shared__ float wave_sums_up[ROW_BATCH * 8];
-  const int64_t out_stride = static_cast<int64_t>(2) * out_features;
+  const int64_t out_stride =
+      static_cast<int64_t>(FUSE_SILU ? 1 : 2) * out_features;
 
   if (groups8 > blockDim.x) {
     for (int64_t row_base = begin; row_base < end; row_base += ROW_BATCH) {
@@ -548,10 +592,20 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_ker
         for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
           const int64_t row = row_base + row_idx;
           if (row < end) {
-            out[row * out_stride + out_col] =
-                float_to_bf16_bits(gate_acc[row_idx]);
-            out[row * out_stride + out_features + out_col] =
-                float_to_bf16_bits(up_acc[row_idx]);
+            if constexpr (FUSE_SILU) {
+              const float gate = bf16_bits_to_float(
+                  float_to_bf16_bits(gate_acc[row_idx]));
+              const float up = bf16_bits_to_float(
+                  float_to_bf16_bits(up_acc[row_idx]));
+              const float sig = 1.0f / (1.0f + expf(-gate));
+              out[row * out_stride + out_col] =
+                  float_to_bf16_bits(gate * sig * up);
+            } else {
+              out[row * out_stride + out_col] =
+                  float_to_bf16_bits(gate_acc[row_idx]);
+              out[row * out_stride + out_features + out_col] =
+                  float_to_bf16_bits(up_acc[row_idx]);
+            }
           }
         }
       }
@@ -591,10 +645,78 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_ker
       for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
         const int64_t row = row_base + row_idx;
         if (row < end) {
-          out[row * out_stride + out_col] =
-              float_to_bf16_bits(gate_acc[row_idx]);
-          out[row * out_stride + out_features + out_col] =
-              float_to_bf16_bits(up_acc[row_idx]);
+          if constexpr (FUSE_SILU) {
+            const float gate = bf16_bits_to_float(
+                float_to_bf16_bits(gate_acc[row_idx]));
+            const float up = bf16_bits_to_float(
+                float_to_bf16_bits(up_acc[row_idx]));
+            const float sig = 1.0f / (1.0f + expf(-gate));
+            out[row * out_stride + out_col] =
+                float_to_bf16_bits(gate * sig * up);
+          } else {
+            out[row * out_stride + out_col] =
+                float_to_bf16_bits(gate_acc[row_idx]);
+            out[row * out_stride + out_features + out_col] =
+                float_to_bf16_bits(up_acc[row_idx]);
+          }
+        }
+      }
+    }
+    __syncthreads();
+  }
+}
+
+// One block owns one IQ3 (expert, output-column) down row and reuses its
+// decoded weight segments across compact routed rows. Row batching preserves
+// each selected-single dot and reduction boundary while amortizing barriers.
+template <int ROW_BATCH>
+__launch_bounds__(256, 2)
+__global__ void gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int in_features,
+    int out_features,
+    int num_experts) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= num_experts) return;
+  const int64_t begin = expert_start_compact[expert];
+  const int64_t end = expert_start_compact[expert + 1];
+  if (begin >= end) return;
+
+  const int groups8 = in_features / 8;
+  const int row_bytes = (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int64_t weight_offset =
+      static_cast<int64_t>(expert) * expert_bytes +
+      static_cast<int64_t>(out_col) * row_bytes;
+  __shared__ float wave_sums[ROW_BATCH * 8];
+
+  for (int64_t row_base = begin; row_base < end; row_base += ROW_BATCH) {
+    float acc[ROW_BATCH] = {};
+    for (int group = threadIdx.x; group < groups8; group += blockDim.x) {
+      const IQ3Segment segment =
+          load_iq3_segment(qweight + weight_offset, group);
+#pragma unroll
+      for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+          acc[row_idx] += dot_iq3_segment(
+              segment, x + row * in_features + group * 8);
+        }
+      }
+    }
+    reduce_block_batched(acc, wave_sums);
+    if (threadIdx.x == 0) {
+#pragma unroll
+      for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+          out[row * out_features + out_col] =
+              float_to_bf16_bits(acc[row_idx]);
         }
       }
     }
@@ -1075,6 +1197,36 @@ int launch_grouped_dual(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename Kernel>
+int launch_grouped_single(
+    Kernel kernel,
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int threads,
+    hipStream_t stream) {
+  if (!valid_common(
+          x, expert_start_compact, qweight, out, compact_rows, in_features,
+          out_features, num_experts)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  kernel<<<dim3(out_features, num_experts), dim3(threads), 0, stream>>>(
+      x,
+      expert_start_compact,
+      qweight,
+      out,
+      static_cast<int>(compact_rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features),
+      static_cast<int>(num_experts));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <int QTYPE>
 int launch_wmma_dual(
     const uint16_t* x,
@@ -1161,7 +1313,85 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowba
     int64_t num_experts,
     hipStream_t stream) {
   return launch_grouped_dual(
-      (gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4>),
+      (gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4, false>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel<8, false>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4, true>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel<8, true>),
       x,
       expert_start_compact,
       gate_weight,
@@ -1239,7 +1469,7 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowb
     int64_t num_experts,
     hipStream_t stream) {
   return launch_grouped_dual(
-      gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_kernel,
+      (gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4, false>),
       x,
       expert_start_compact,
       gate_weight,
@@ -1250,6 +1480,156 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowb
       out_features,
       num_experts,
       256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch_kernel<8, false>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4, true>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch_kernel<8, true>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_single(
+      (gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<1>),
+      x,
+      expert_start_compact,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      in_features == 1024 ? 128 : 256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_single(
+      (gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<4>),
+      x,
+      expert_start_compact,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      in_features == 1024 ? 128 : 256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_single(
+      (gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<8>),
+      x,
+      expert_start_compact,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      in_features == 1024 ? 128 : 256,
       stream);
 }
 

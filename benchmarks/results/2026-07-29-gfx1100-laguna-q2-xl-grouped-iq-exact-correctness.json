@@ -1,0 +1,166 @@
+{
+  "schema_version": 2,
+  "kind": "hipengine_laguna_grouped_iq_exact_correctness",
+  "status": "accepted_runtime_correctness_pending_clean_publication",
+  "performance_claim": false,
+  "created_at": "2026-07-29",
+  "platform": {
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "rocm_version": "HIP 7.2.53211-3d9ef42",
+    "gpu_queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "implementation": {
+    "scope": "exact expert-major reuse for Laguna raw-IQ sparse down projections",
+    "selected_gate_up": "retained route-major exact arithmetic followed by one stable expert-major gather",
+    "selected_down": {
+      "gguf_iq3_xxs": "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+      "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out"
+    },
+    "restore": "registered sorted-lane exact weighted reducer restores token-major output",
+    "unsupported_quant_or_key_policy": "fail closed to the registered exact route-major chain",
+    "package_defaults_pending_clean_publication": {
+      "LAGUNA_PREFILL_MATRIX_ROWS": 512,
+      "LAGUNA_SELECTED_GATE_UP_MODE": "grouped_exact",
+      "LAGUNA_SELECTED_DOWN_MODE": "grouped_exact"
+    },
+    "explicit_rollbacks": [
+      "prefill_chunk_size=128",
+      "prefill_chunk_size=256",
+      "selected_gate_up_mode=direct",
+      "selected_down_mode=direct"
+    ],
+    "rejected_during_development": [
+      "IQ2/IQ3 grouped rowbatch16: VGPR256; IQ3 also used 40 bytes scratch per thread",
+      "grouped gate/up arithmetic: actual tiny activations did not preserve retained pair16/local64 K partition"
+    ]
+  },
+  "correctness": {
+    "pass": true,
+    "primitive": {
+      "bf16_bit_exact": true,
+      "covered_shapes": [
+        "M17 and M33 tails",
+        "K1024 and K3072",
+        "IQ2_XS dual gate/up",
+        "IQ3_XXS dual gate/up and single down",
+        "IQ4_XS single down"
+      ]
+    },
+    "actual_layers": {
+      "layer_1_iq2_to_iq3": "bit exact",
+      "layer_47_iq3_to_iq4": "bit exact",
+      "checked_boundaries": [
+        "post-SiLU compact rows",
+        "all routed down rows",
+        "final MoE output"
+      ]
+    },
+    "full_state": {
+      "matrix_rows": [128, 256, 512],
+      "length": 512,
+      "all_48_hidden_boundaries": true,
+      "logits_sha256_equal": true,
+      "kv_sha256_equal": true,
+      "kv_live_spans_equal": true,
+      "routing_shared_prefix_equal": true,
+      "same_mode_repeat_deterministic": true,
+      "lifecycle_exact": true,
+      "max_kl_divergence": 0.0,
+      "top1_agreement": 1.0,
+      "selected_matrix_rows": 512
+    },
+    "cpu_registry_build_tests": {
+      "command": "PYTHONPATH=. uv run pytest -q tests/test_cpu_reference.py tests/test_kernel_registry.py tests/test_build.py",
+      "passed": 25,
+      "failed": 0
+    },
+    "focused_tests": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_iq2_xs_selected_prefill.py tests/test_gguf_iq_selected_prefill.py tests/test_laguna_long_context_profile.py tests/test_laguna_matrix_chunk_bench.py tests/test_gfx1151_backend.py tests/test_laguna_gguf_runner.py::test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build tests/test_laguna_moe_gpu.py::test_laguna_grouped_exact_quant_miss_fails_closed_to_direct tests/test_laguna_moe_gpu.py::test_laguna_selected_down_default_is_backend_qualified tests/test_laguna_moe_gpu.py::test_laguna_selected_gate_up_default_is_backend_qualified tests/test_laguna_moe_gpu.py::test_laguna_q2_xl_actual_sparse_layer_matches_quant_oracle",
+      "passed": 124,
+      "failed": 0
+    }
+  },
+  "dirty_admission_measurements": {
+    "claim_status": "same-worktree admission evidence; clean package-resolved publication required",
+    "protocol": "direct GGUF, attention128, rowbatch32, lengths 512/1024, one warmup, three counterbalanced repetitions, one queue, cached builds",
+    "matrix256": {
+      "control_tok_s": {"512": 86.17481233520934, "1024": 79.9244568155525},
+      "candidate_tok_s": {"512": 96.64286412970195, "1024": 89.04909028120788},
+      "improvement_percent": {"512": 12.147461086161915, "1024": 11.41657238498719}
+    },
+    "matrix512": {
+      "control_tok_s": {"512": 86.12894397071169, "1024": 79.88683762341127},
+      "candidate_tok_s": {"512": 98.28859317723995, "1024": 90.55512855720463},
+      "improvement_percent": {"512": 14.117959243367917, "1024": 13.354253655757375},
+      "candidate_improvement_over_matrix256_percent": {"512": 1.7028976348727687, "1024": 1.691244987726237}
+    }
+  },
+  "profiler": {
+    "command_scope": "package-resolved M512/attention128 512-token prefill after non-profiled require-cached preflight",
+    "child_pass": true,
+    "next_token_id": 2930,
+    "tracked_returned_to_zero": true,
+    "compiler_spawned": false,
+    "trace_dispatches": 3223,
+    "target_kernels": [
+      {
+        "name": "gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<8>",
+        "calls": 90,
+        "workgroup_size_x": 128,
+        "grid_size_x": 393216,
+        "grid_size_y": 256,
+        "vgpr_count": 48,
+        "sgpr_count": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0,
+        "duration_ns_min_mean_max": [4000674, 8138303, 12246183]
+      },
+      {
+        "name": "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+        "calls": 4,
+        "workgroup_size_x": 128,
+        "grid_size_x": 393216,
+        "grid_size_y": 256,
+        "vgpr_count": 64,
+        "sgpr_count": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0,
+        "duration_ns_min_mean_max": [3843153, 8442160, 13138670]
+      }
+    ]
+  },
+  "source_artifacts": [
+    {
+      "path": "/tmp/laguna-wpf2-m256-grouped-exact-ab.json",
+      "sha256": "7f4e6321e06e800756230b2c791d41c669bf740fb5be00decb7cbb0b63e0525f"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-m512-grouped-exact-ab.json",
+      "sha256": "4964c27d55938e8368b6f6e29b1afe3e47e8f659cb3b243b8f3c63ec2dbca2a0"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-grouped-exact-matrix128-256-512-full-state.json",
+      "sha256": "38e2e66b193ea3c4a0054276653cab1a51af8d3094f74e9b64a3875671fe8c15"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-m512-default-runtime-trace/trace_kernel_trace.csv",
+      "sha256": "7b54c976a8d0c1a841d49cb07c95bec824615590627aead985ad84588dff09e5"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-m512-default-runtime-profile-child.json",
+      "sha256": "480a083a004444fbf6a30ec943d38f9398179332d8e98ab3788f414d7033fff9"
+    }
+  ],
+  "limitations": [
+    "Admission A/B and profiler rows were produced from the uncommitted implementation and are not canonical retained topline evidence.",
+    "A fresh clean package-resolved 512/1K publication is required after the implementation commit.",
+    "No 4K or longer run was performed because the active short gate remains below 150 tok/s."
+  ]
+}
