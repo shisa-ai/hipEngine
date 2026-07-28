@@ -127,12 +127,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--compare-raw-k-prefill-rowbatch",
         action="store_true",
-        help="compare scalar raw Q5/Q6 prefill with fixed rowbatch4/8",
+        help="compare scalar raw Q5/Q6 prefill with fixed rowbatch4/8/16/32",
     )
     parser.add_argument(
         "--raw-k-prefill-rowbatch",
         type=int,
-        choices=(0, 4, 8),
+        choices=(0, 4, 8, 16, 32),
         help="explicit raw Q5/Q6 row slab; comparison defaults candidate to 8",
     )
     parser.add_argument(
@@ -306,7 +306,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("only one Laguna prefill comparison may be active")
     if args.compare_raw_k_prefill_rowbatch and args.raw_k_prefill_rowbatch == 0:
         raise ValueError(
-            "--compare-raw-k-prefill-rowbatch requires candidate rowbatch4 or rowbatch8"
+            "--compare-raw-k-prefill-rowbatch requires candidate rowbatch4/8/16/32"
         )
     if args.compare_raw_k_prefill_mmq and args.raw_k_prefill_mmq is not None:
         raise ValueError(

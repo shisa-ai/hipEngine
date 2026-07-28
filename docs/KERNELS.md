@@ -318,27 +318,39 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `atten
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
-WPF-1 adds separately registered exact raw-Q5_K/Q6_K prefill rowbatch4/8
-primitives in `quant/gguf_k_gemv.{hip,py}`. Fixed grid Y lets one workgroup
-reconstruct each encoded weight once for four/eight BF16 prompt rows while
-preserving every row's scalar thread-local K order and wave/cross-wave reduction
-tree. Arbitrary positive lengths, including partial tails, are bit-exact for
-BF16 and F32 output. Ten actual UD-Q2_K_XL M128 role shapes improve
-**1.268-2.412x** with rowbatch4 and **1.340-3.347x** with rowbatch8; K3072/N72
-prefers rowbatch4, while rowbatch8 wins the other nine roles. Cached W7900
-tracing names all four Q5/Q6 BF16/F32 rowbatch8 bodies at
-local128/VGPR24/SGPR128/LDS512/scratch0 and grid Y 16 for M128.
+WPF-1 adds separately registered exact raw-Q5_K/Q6_K prefill
+rowbatch4/8/16/32 primitives in `quant/gguf_k_gemv.{hip,py}`. Fixed grid Y lets
+one workgroup reconstruct each encoded weight once per row slab while
+preserving every row's scalar thread-local K order and wave/cross-wave
+reduction tree. Arbitrary positive lengths, including partial tails through 33
+rows, are BF16/F32-bit exact. The original ten-role M128 screen improved
+**1.268-2.412x** with rowbatch4 and **1.340-3.347x** with rowbatch8.
 
-The gfx1100 package now selects rowbatch8 by default only around Laguna bulk
-row-layer execution. One shared-weight full-state gate is bit-exact across all
-48 hidden boundaries, logits, active K/V, and every `KVLiveSpans` field. A
-three-repeat scalar/rowbatch8 A/B improves **40.636 -> 79.009 tok/s** at 512
-and **39.174 -> 73.654 tok/s** at 1K; clean selector-unset publication is
-**79.585/74.512 tok/s**. Explicit zero and rowbatch4 remain rollback/crossover
-routes; rows <=8, unsupported shapes/dtypes/layouts/quants, and gfx1151 retain
-the registered scalar/backend fallback.
-Evidence: [`primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch-primitive.json) ·
-[`production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json).
+The WPF-1W extension is exact on all ten actual UD-Q2_K_XL roles. Their one-each
+event sum moves rowbatch8 **45.1883 ms** to rowbatch16 **41.2040 ms
+(1.0967x)** and rowbatch32 **39.2782 ms (1.1505x)**. Rowbatch16 beats eight on
+eight roles; rowbatch32 wins the other eight but leaves N48/N72 to the retained
+smaller-slab route and later end-to-end policy selection. Cached
+W7900 tracing names all eight new Q5/Q6 BF16/F32 bodies at local128. RB16 uses
+VGPR40/SGPR128/LDS512/scratch0 in rocprof (code-object VGPR38, SGPR69/70, no
+spills/private). RB32 uses VGPR80/SGPR128/LDS1024/scratch0 (code-object VGPR73,
+SGPR107, zero VGPR/private spills, but 14/5 Q5/Q6 SGPR spills). The measured
+RB32 timings include that scalar-spill cost. HIP's occupancy query still admits
+**8 workgroups / 32 wave32 waves per CU**, the hardware maximum, for every new
+body; runtime `SQ_WAVE_CYCLES` is unavailable on this profiler stack.
+
+The gfx1100 package still selects rowbatch8 by default only around Laguna bulk
+row-layer execution. The fresh shared-weight M128 gate proves rowbatch16,
+rowbatch32, and an RB32 repeat bit-exact across all 48 hidden boundaries,
+logits, active K/V, every `KVLiveSpans` field, IDs, positions, and lifecycle.
+Diagnostic complete-pass wall is RB8 **1.4096 s**, RB16 **1.3335 s**, and RB32
+**1.3020 s**. Explicit zero/4/8/16/32 are available on gfx1100 while gfx1151
+excludes every key; rows <=8 and unsupported shapes/dtypes/layouts/quants retain
+the registered scalar/backend fallback. Clean pp512/pp1K A/B remains required
+before changing the rowbatch8 default.
+Evidence: [`rowbatch4/8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch-primitive.json) ·
+[`rowbatch8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) ·
+[`rowbatch16/32 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch16-32-primitive.json).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

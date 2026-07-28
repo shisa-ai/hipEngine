@@ -25,6 +25,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_gemv_rowbatch4_bf16_f32_out,
     gguf_q5_k_gemv_rowbatch8_bf16_bf16_out,
     gguf_q5_k_gemv_rowbatch8_bf16_f32_out,
+    gguf_q5_k_gemv_rowbatch16_bf16_bf16_out,
+    gguf_q5_k_gemv_rowbatch16_bf16_f32_out,
+    gguf_q5_k_gemv_rowbatch32_bf16_bf16_out,
+    gguf_q5_k_gemv_rowbatch32_bf16_f32_out,
     gguf_q5_k_gemv_rowtile_bf16_bf16_out,
     gguf_q6_k_gemv_bf16_bf16_out,
     gguf_q6_k_gemv_bf16_f32_out,
@@ -32,6 +36,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q6_k_gemv_rowbatch4_bf16_f32_out,
     gguf_q6_k_gemv_rowbatch8_bf16_bf16_out,
     gguf_q6_k_gemv_rowbatch8_bf16_f32_out,
+    gguf_q6_k_gemv_rowbatch16_bf16_bf16_out,
+    gguf_q6_k_gemv_rowbatch16_bf16_f32_out,
+    gguf_q6_k_gemv_rowbatch32_bf16_bf16_out,
+    gguf_q6_k_gemv_rowbatch32_bf16_f32_out,
     gguf_q6_k_gemv_rowtile_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
@@ -134,7 +142,7 @@ def test_gguf_k_rowtile_registry_binds() -> None:
 @pytest.mark.parametrize("quant", ("gguf_q5_k", "gguf_q6_k"))
 def test_gguf_k_large_prefill_rowbatch_registry_binds(quant: str) -> None:
     register_gguf_k_gemv_kernels()
-    for row_batch in (4, 8):
+    for row_batch in (4, 8, 16, 32):
         for output_dtype in ("bf16", "f32"):
             assert callable(
                 resolve(
@@ -144,6 +152,24 @@ def test_gguf_k_large_prefill_rowbatch_registry_binds(quant: str) -> None:
                     variant=f"rowbatch{row_batch}_bf16_{output_dtype}_out",
                 )
             )
+
+
+def test_raw_k_prefill_rowbatch16_32_are_not_aliased_to_gfx1151() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import KernelKey, is_registered
+
+    register_gfx1151_kernels(replace=True)
+    for quant in ("gguf_q5_k", "gguf_q6_k"):
+        for row_batch in (16, 32):
+            for output_dtype in ("bf16", "f32"):
+                assert not is_registered(
+                    KernelKey(
+                        "hip_gfx1151",
+                        "linear",
+                        quant,
+                        f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+                    )
+                )
 
 
 def test_raw_k_prefill_rowbatch_dispatch_is_exactly_scoped() -> None:
@@ -164,7 +190,7 @@ def test_raw_k_prefill_rowbatch_dispatch_is_exactly_scoped() -> None:
                 ),
                 "raw",
             )
-            for row_batch in (4, 8):
+            for row_batch in (4, 8, 16, 32):
                 selected = _raw_k_prefill_rowbatch_dispatch(
                     base,
                     rows=128,
@@ -231,14 +257,14 @@ def test_raw_k_prefill_rowbatch_session_is_nested_and_fail_closed() -> None:
     )
 
     assert raw_k_prefill_rowbatch() == 0
-    with raw_k_prefill_rowbatch_session(8):
-        assert raw_k_prefill_rowbatch() == 8
-        with raw_k_prefill_rowbatch_session(4):
-            assert raw_k_prefill_rowbatch() == 4
-        assert raw_k_prefill_rowbatch() == 8
+    with raw_k_prefill_rowbatch_session(32):
+        assert raw_k_prefill_rowbatch() == 32
+        with raw_k_prefill_rowbatch_session(16):
+            assert raw_k_prefill_rowbatch() == 16
+        assert raw_k_prefill_rowbatch() == 32
     assert raw_k_prefill_rowbatch() == 0
     with pytest.raises(ValueError, match="row batch"):
-        with raw_k_prefill_rowbatch_session(16):
+        with raw_k_prefill_rowbatch_session(64):
             pass
 
 
@@ -348,9 +374,9 @@ def test_q5k_q6k_rowtile_bit_exact_vs_per_row(rows) -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [9, 17])
+@pytest.mark.parametrize("rows", [9, 17, 33])
 def test_q5k_q6k_large_prefill_rowbatch_tails_are_bit_exact(rows: int) -> None:
-    """Fixed rowbatch4/8 must preserve scalar rows, including partial tails."""
+    """Fixed rowbatch4/8/16/32 preserves scalar rows and partial tails."""
 
     from tests.test_gguf_k_gemv import make_q5_k_weight, make_q6_k_weight
 
@@ -366,6 +392,10 @@ def test_q5k_q6k_large_prefill_rowbatch_tails_are_bit_exact(rows: int) -> None:
             gguf_q5_k_gemv_rowbatch4_bf16_f32_out,
             gguf_q5_k_gemv_rowbatch8_bf16_bf16_out,
             gguf_q5_k_gemv_rowbatch8_bf16_f32_out,
+            gguf_q5_k_gemv_rowbatch16_bf16_bf16_out,
+            gguf_q5_k_gemv_rowbatch16_bf16_f32_out,
+            gguf_q5_k_gemv_rowbatch32_bf16_bf16_out,
+            gguf_q5_k_gemv_rowbatch32_bf16_f32_out,
         ),
         (
             make_q6_k_weight(out_f, in_f),
@@ -375,6 +405,10 @@ def test_q5k_q6k_large_prefill_rowbatch_tails_are_bit_exact(rows: int) -> None:
             gguf_q6_k_gemv_rowbatch4_bf16_f32_out,
             gguf_q6_k_gemv_rowbatch8_bf16_bf16_out,
             gguf_q6_k_gemv_rowbatch8_bf16_f32_out,
+            gguf_q6_k_gemv_rowbatch16_bf16_bf16_out,
+            gguf_q6_k_gemv_rowbatch16_bf16_f32_out,
+            gguf_q6_k_gemv_rowbatch32_bf16_bf16_out,
+            gguf_q6_k_gemv_rowbatch32_bf16_f32_out,
         ),
     )
     for weight, scalar_bf16, scalar_f32, *rowbatch in cases:

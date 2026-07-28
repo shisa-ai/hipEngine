@@ -1483,9 +1483,13 @@ def resolve_laguna_raw_k_prefill_rowbatch(
     try:
         row_batch = int(selected)
     except (TypeError, ValueError) as exc:
-        raise ValueError("Laguna raw-K prefill row batch must be 0, 4, or 8") from exc
-    if row_batch not in {0, 4, 8}:
-        raise ValueError("Laguna raw-K prefill row batch must be 0, 4, or 8")
+        raise ValueError(
+            "Laguna raw-K prefill row batch must be 0, 4, 8, 16, or 32"
+        ) from exc
+    if row_batch not in {0, 4, 8, 16, 32}:
+        raise ValueError(
+            "Laguna raw-K prefill row batch must be 0, 4, 8, 16, or 32"
+        )
     if row_batch and not backend_package_capability(
         backend,
         "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
