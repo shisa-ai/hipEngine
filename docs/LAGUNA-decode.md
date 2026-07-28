@@ -3531,6 +3531,7 @@ geometry only with a reduction-order-preserving design.
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained fused-GQA2 SWA owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
+[`retained fused-GQA3 local384 SWA owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-local384-retained.json) ·
 [`rejected fused-GQA2 shared-V owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json) ·
 [`rejected GQA9 K64 split-K family`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json) ·
 [`rejected GQA2 LDS-V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json) ·
@@ -3561,6 +3562,7 @@ state and quality contract. Fixed-K LD-2 production now reaches
 **16.976 tok/s**. Its exact gate/up tile8 successor reaches
 **17.007 tok/s**, and exact fused-GQA2 SWA reaches **17.065 tok/s**.
 Exact fused one-head global attention now reaches **17.097 tok/s**.
+Exact fused-GQA3/local384 SWA now reaches **17.140 tok/s**.
 Same-GGUF Vulkan at **23.348 tok/s** remains the
 directional comparator target.
 
@@ -3737,13 +3739,19 @@ It is F32/BF16 byte-exact but neutral:
 execute concurrently, and exchanging them for one extra LDS barrier changes no
 resident-model traffic. Remove it without a production screen.
 
-The next ordinary-launch geometry is fused GQA3/local384. Nine query heads
+The next ordinary-launch geometry, fused GQA3/local384, is retained. Nine query heads
 divide exactly into three owners per KV head, and each workgroup's 12 waves map
 directly to three heads x four dimension partitions. The layer therefore keeps
 **24 x 12 = 288 active PV waves** versus retained GQA2's **40 x 8 = 320**, while
 reducing K owners/reads per KV head **5 -> 3**. It preserves the local score
 plane, one ordinary dispatch, exact arithmetic, and avoids all global phase
-boundaries.
+boundaries. Saturated ring wrap and explicit eviction are F32/BF16 byte-exact.
+The cache-hot leaf is tied at **0.082480 -> 0.082807 ms (+0.397%)**, but every
+resident-model pair wins: p512/d128 moves **17.100489 -> 17.139971 tok/s
+(+0.231%, -0.135 ms/token)** with identical 128-token trajectories and state.
+Cached tracing records 24 local384 blocks, VGPR104/SGPR128/LDS8192/scratch0.
+gfx1151 selects it only at the natural saturated shape; fused-GQA2 remains the
+exact rollback.
 
 LD-1e applies the same fusion to global attention while preserving breadth.
 One local256 workgroup remains assigned to each of 48 query heads, so the
@@ -3816,7 +3824,11 @@ and shape/backend fallbacks.
    win even when its cache-hot leaf loses. The exact fused one-head global
    owner adds **+0.188%** and reaches **17.097044 tok/s** while preserving all
    48 workgroups; global GQA2 is closed at **-0.126%** because 24 workgroups
-   undersubscribe the 40 CUs. Total attention still remains far
+   undersubscribe the 40 CUs. Exact fused-GQA3/local384 then reduces saturated
+   SWA K ownership **5 -> 3** while keeping 288 active PV waves; all seven
+   resident pairs improve **17.100489 -> 17.139971 tok/s (+0.231%)**, so it is
+   now the natural-shape gfx1151 default with fused-GQA2 rollback. Total
+   attention still remains far
    above the **3.0 ms/token** target. LD-1b's full-F32 and exact-QK/
    tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
    reducer, SWA one-head fusion, and paired shared-V GQA2 owner are
@@ -3831,9 +3843,10 @@ and shape/backend fallbacks.
    from one to four/five active PV waves per block restores cache-hot parity
    (**+0.44%**) but still regresses production **3.963%**; the global
    score/grid phase boundary is the blocker. Exact per-head LDS weight/
-   denominator caching is then neutral at **-0.097%** in the leaf. Next test
-   fused GQA3/local384: 24 ordinary blocks retain 288 active PV waves while
-   reducing K ownership **5 -> 3** without a global phase.
+   denominator caching is then neutral at **-0.097%** in the leaf. The retained
+   GQA3/local384 result closes ordinary GQA ownership at saturated SWA; the next
+   attention step must re-profile the production wall before selecting another
+   exact seam.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

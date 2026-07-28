@@ -188111,3 +188111,35 @@ Vulkan local sizes verbatim will close the measured gap.
   reducing K owners/reads **5 -> 3** without global scratch or cooperative
   synchronization. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-weightcache-rejected.json`.
+
+## 2026-07-29 00:57 JST — Retain exact fused GQA3/local384 SWA decode
+
+- RED fails on the absent local384 registry key. GREEN assigns three ordinary
+  local384 owners to each KV head; all 12 waves map directly to three query
+  heads x four dimension partitions. This keeps **288 active PV waves** while
+  reducing saturated K owners/readers per KV head **5 -> 3** versus retained
+  fused-GQA2. The wave32 QK tree, scalar logical-slot softmax/denominator,
+  per-dimension FMA order, divide, gate, and stores are unchanged. Saturated
+  wrap and explicit eviction are F32/BF16 byte-exact; the focused kernel and
+  runtime selector gate passes **3/3**.
+- The nine-sample cache-hot leaf is tied:
+  **0.082480 -> 0.082807 ms (+0.397%)**. The resident-model gate exposes the
+  intended cache benefit: all seven p512/d128 pairs improve
+  **17.100489 -> 17.139971 tok/s (+0.231%, -0.135 ms/token)**. Every generated
+  128-token hash, next/final token, final position, and lifecycle state match.
+  Relative to the prior canonical **17.097044**, the new retained topline is
+  **+0.251%**.
+- Cached `rocprofv3 --kernel-trace --stats` names the expected kernel at
+  **24 local384 blocks / 288 wave32 tasks**, VGPR104/SGPR128/LDS8192/scratch0;
+  the first observed call is **68.489 us**. Promote only natural saturated
+  72Q/8KV/D128/SWA512 gfx1151 decode. Retained fused-GQA2 remains rollback;
+  shorter live counts, non-natural shapes, and peer backends keep the exact
+  split chain.
+- The broader attention run reports **22 passed** plus one unrelated stale
+  allocation assertion: an unchanged base-HEAD test expects 243 while the
+  already-shipping split workspace allocates and a later test asserts 245.
+  Per the focused-repair rule, do not widen this kernel unit to that pre-existing
+  test debt. The lineage helper remains blocked by the absent
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was ported.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-local384-retained.json`.

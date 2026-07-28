@@ -25,6 +25,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
     laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
+    laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
 )
@@ -45,7 +46,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--burst", type=int, default=50)
     parser.add_argument(
         "--candidate",
-        choices=("fixed512", "fused-gqa2"),
+        choices=("fixed512", "fused-gqa2", "fused-gqa3-local384"),
         default="fixed512",
     )
     parser.add_argument("--compiler-version-file", type=Path)
@@ -194,14 +195,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             HEAD_DIM**-0.5,
         )
 
-        control_kernel = (
-            laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans
-            if args.candidate == "fused-gqa2"
-            else laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans
-        )
+        control_kernel = {
+            "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
+            "fused-gqa2": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
+            "fused-gqa3-local384": laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
+        }[args.candidate]
         candidate_kernel = {
             "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
             "fused-gqa2": laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
+            "fused-gqa3-local384": laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
         }[args.candidate]
 
         def control() -> None:
@@ -238,7 +240,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         context_exact = np.array_equal(control_context_host, candidate_context_host)
         gated_exact = np.array_equal(control_gated_host, candidate_gated_host)
         if not context_exact or not gated_exact:
-            raise AssertionError("fixed512 reducer is not byte-exact")
+            raise AssertionError(f"{args.candidate} reducer is not byte-exact")
 
         for _ in range(args.warmups):
             control()
