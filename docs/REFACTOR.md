@@ -2032,3 +2032,19 @@ should be boring.
   IDs/state/lifecycle. gfx1151 now defaults the capability true. Keep explicit
   false rollback through this campaign, then collapse positive selector
   semantics while retaining the generic-domain registered rollback.
+
+## Laguna gfx1151 exact global exp32 selector
+
+- Added 2026-07-29 as the session-scoped
+  `LagunaKVCache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape`
+  field, `LagunaGGUFResidentSession.set_decode_global_exp32(...)`, and
+  `--compare-global-exp32`. False restores the retained serial-issue
+  assume-exp sibling.
+- The primitive is byte-exact at live 513/576/639 and improves the leaf
+  **2.25%/3.22%/3.79%**. Promote only if cached tracing is spill-free and the
+  tracked-clean counterbalanced p512/d128 screen is exact and positive.
+- Promotion gate satisfied 2026-07-29: cached tracing improves
+  **88.486 -> 85.601 us (-3.26%)** at VGPR56/scratch0, and all seven resident
+  pairs improve **19.547209 -> 19.556569 tok/s (+0.0479%)** with exact state.
+- After the decode campaign, collapse positive selector semantics while
+  retaining the serial-issue primitive as the compiler/codegen rollback.

@@ -189098,3 +189098,25 @@ Vulkan local sizes verbatim will close the measured gap.
   retained 24-block global GQA2 kernel, where it does not reduce workgroup
   count. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-exp32-rejected.json`.
+
+## 2026-07-29 08:52 JST — Retain exact global GQA2 wave32 exp issue
+
+- Add a template sibling to the retained 24-block global GQA2 direct-store
+  owner. Each wave's lanes issue 32 independent compiler `expf` calls, then
+  shuffle weights to lane 0 so every strided token sum retains its original
+  order. QK/PV, dynamic LDS, launches, and resident state are unchanged.
+- RED is the absent wrapper. GREEN passes evicted live513/576/639 with F32
+  context and gated BF16 byte identity. Nine-sample leaves improve
+  **2.25%/3.22%/3.79%**.
+- Cached tracing records the intended `<2,64,true,true,true,true>` kernel and
+  improves **88.486 -> 85.601 us (-3.26%)** at
+  VGPR56/SGPR128/LDS512/scratch0.
+- All seven p512/d128 resident pairs improve
+  **19.547209 -> 19.556569 tok/s (+0.0479%, -0.0245 ms/token)**. Tokens
+  **2930/74107**, trajectory SHA `94f803f7...ebda32`, final position 638,
+  determinism, and allocation lifecycle remain exact.
+- Promote only inside the qualified gfx1151 natural global
+  direct-store/assume-exp route through live4000. Serial issue remains
+  rollback. Focused owner/runner/profile validation reports **36 passed**.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-retained.json`.
