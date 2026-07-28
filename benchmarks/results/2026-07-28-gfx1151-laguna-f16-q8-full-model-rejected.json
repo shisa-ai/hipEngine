@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T10:07:36.695749+00:00",
+  "kind": "hipengine_laguna_f16_decode_q8_full_model_rejection",
+  "status": "rejected_correctness",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "revision": "1b6a0d981a1847641f0301af5ce7e30c23f2c431",
+    "model": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "decode_tokens": 16,
+    "teacher_forced": true,
+    "prefill": "exact production path",
+    "quality_gate": {
+      "maximum_kl": 0.05,
+      "top1_agreement": 0.9
+    },
+    "one_plane_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --decode-tokens 16 --modes all,qkv_gate,output --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-decode-q8-full-gate-directional.json",
+    "scope_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --decode-tokens 16 --modes all --scopes full,swa,even,odd,first24,last24,mod1,mod2,mod3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-decode-q8-full-gate-scopes.json",
+    "repair_note": "Two diagnostic-only residual experiments were run before their kernels and harness paths were removed: a second Q8 weight plane and a second Q8 activation plane."
+  },
+  "sidecar": {
+    "source_f16_bytes": 5606277120,
+    "one_plane_q8_0_bytes": 2978334720,
+    "one_plane_byte_change_percent": -46.875,
+    "one_plane_build_seconds": 9.746045696083456,
+    "weight_count": 240
+  },
+  "full_layer_stage_ablation": [
+    {
+      "mode": "combined",
+      "median_decode_wall_ms_per_token": 50.15387246385217,
+      "mean_kl": 0.055975021651581684,
+      "maximum_kl": 0.49730146620194593,
+      "top1_agreement": 0.9375,
+      "passed": false
+    },
+    {
+      "mode": "qkv_gate_only",
+      "median_decode_wall_ms_per_token": 57.589543517678976,
+      "mean_kl": 0.09419650195404111,
+      "maximum_kl": 0.5890654960302321,
+      "top1_agreement": 0.875,
+      "passed": false
+    },
+    {
+      "mode": "output_only",
+      "median_decode_wall_ms_per_token": 59.93665894493461,
+      "mean_kl": 0.10596254638294447,
+      "maximum_kl": 0.6192457014439653,
+      "top1_agreement": 0.875,
+      "passed": false
+    }
+  ],
+  "structural_scope_ablation": [
+    {
+      "scope": "full_attention_12",
+      "maximum_kl": 0.2389770028176022,
+      "top1_agreement": 1.0,
+      "passed": false
+    },
+    {
+      "scope": "sliding_attention_36",
+      "maximum_kl": 0.43360386244185756,
+      "top1_agreement": 1.0,
+      "passed": false
+    },
+    {
+      "scope": "odd_layers_24",
+      "maximum_kl": 0.20558188413826295,
+      "top1_agreement": 1.0,
+      "passed": false
+    },
+    {
+      "scope": "last_24_layers",
+      "maximum_kl": 0.1655078633488135,
+      "top1_agreement": 1.0,
+      "passed": false
+    },
+    {
+      "scope": "other_even_depth_and_mod4_groups",
+      "maximum_kl_range": [
+        0.3005558071267788,
+        0.910352604475774
+      ],
+      "top1_agreement_minimum": 0.8125,
+      "passed": false
+    }
+  ],
+  "repair_ablation": [
+    {
+      "candidate": "two Q8 weight planes plus one Q8 activation plane",
+      "resident_q8_bytes": 5956669440,
+      "resident_change_vs_source_f16_percent": 6.25,
+      "median_decode_wall_ms_per_token": 64.5110234618187,
+      "mean_kl": 0.05937860753268285,
+      "maximum_kl": 0.46322388666315656,
+      "top1_agreement": 0.9375,
+      "passed": false
+    },
+    {
+      "candidate": "one Q8 weight plane plus two Q8 activation planes",
+      "resident_q8_bytes": 2978334720,
+      "median_decode_wall_ms_per_token": 58.503153442870826,
+      "mean_kl": 0.10949315639170147,
+      "maximum_kl": 0.8811353047123757,
+      "top1_agreement": 0.9375,
+      "passed": false
+    }
+  ],
+  "decision": {
+    "retain": false,
+    "production_changed": false,
+    "production_decode_tokens_per_second": 14.800191,
+    "cleanup": "Residual repair kernels and harness paths were removed. The reusable one-plane full-model diagnostic remains.",
+    "conclusion": "One-plane Q8 speed depends on cancellation between weight and activation errors. Every full-layer stage, structural subset, and one-sided residual repair misses the strict Laguna max-KL gate. Do not integrate this representation."
+  }
+}

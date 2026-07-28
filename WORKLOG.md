@@ -187684,3 +187684,25 @@ Vulkan local sizes verbatim will close the measured gap.
   full-model KL/top-1, with QKV+gate-only/output-only ablations if the combined
   path fails. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-real-input-candidate.json`.
+
+## 2026-07-28 19:08 JST — Reject source-F16 Q8 full-model decode
+
+- Add a reusable all-layer diagnostic sidecar and strict teacher-forced
+  full-logit gate. Prefill remains exact. The harness can isolate QKV+gate,
+  output, global/SWA, depth halves, even/odd, and mod-4 layer groups without
+  any token- or prompt-conditioned ownership.
+- Combined all-48 Q8 reaches a directional **50.154 ms/token**, but max KL is
+  **0.497301** at **15/16** top-1. QKV+gate-only and output-only are worse at
+  max KL **0.589065/0.619246**. Every structural subset fails; the best
+  24-layer scopes still reach max KL **0.165508/0.205582**.
+- A second Q8 weight plane reconstructs the F16 fixture closely but grows
+  resident bytes **6.25% beyond source F16**, reaches only
+  **64.511 ms/token**, and still fails at max KL **0.463224**. A second
+  activation plane reaches **58.503 ms/token** but regresses max KL to
+  **0.881135**. This isolates error cancellation in the plain one-plane path,
+  not a repair opportunity.
+- Remove both residual experiment kernels, wrappers, tests, and harness paths.
+  Keep only the reusable one-plane full-model diagnostic. Production remains
+  exact at **14.800191 tok/s**. LD-3 closes for plain Q8 and one-sided
+  residual repair. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-full-model-rejected.json`.

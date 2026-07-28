@@ -3420,23 +3420,29 @@ and retained at VGPR16/LDS512/scratch0; halving the physical waves is the
 failure. Exact one-output F16 owners below eight physical waves/output are now
 closed on gfx1151.
 
-LD-3 is therefore open with measured production inputs, not a format
-assumption. A raw block32 Q8_0 side representation cuts resident source-F16
+LD-3 was screened with measured production inputs, not a format assumption. A
+raw block32 Q8_0 side representation cuts resident source-F16
 bytes **46.875%**. At actual layer-0 full-attention and layer-47 SWA inputs,
 one Q8_1 activation pack plus existing dp4a consumers cuts QKV+gate
 **70.2-84.9%** and output **85.6%**. The 12-full/36-SWA model is
 **31.236 -> 6.675 ms/token (-78.63%)**, a modeled **24.562-ms/token** saving.
-Projection error is encouraging—maximum normalized RMSE **0.00974** and
-minimum cosine **0.999952**—but is not a model-quality gate. Nothing is
-retained from this screen. The immediate task is an all-48-layer diagnostic
-sidecar with teacher-forced full-model KL/top-1, followed by stage ablations
-if the combined path misses the gate.
+Projection error looked encouraging—maximum normalized RMSE **0.00974** and
+minimum cosine **0.999952**—but the full-model gate rejects the premise.
+Combined all-layer ownership reaches **50.154 ms/token** directionally, yet
+teacher-forced max KL is **0.497301** at **15/16** top-1. QKV+gate-only and
+output-only are worse at max KL **0.589065/0.619246**. Every structural scope
+also fails: even the best 24-layer screens peak at **0.165508/0.205582**.
+A second Q8 weight plane grows the sidecar beyond source F16 and still reaches
+max KL **0.463224**; a second activation plane regresses it to **0.881135**.
+The apparent one-plane accuracy depends on cancellation between the two error
+surfaces. Residual experiment kernels are removed and nothing is retained.
 
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
 [`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
 [`candidate F16 Q8 real-input screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-real-input-candidate.json) ·
+[`rejected F16 Q8 full-model screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-full-model-rejected.json) ·
 [`tensorized SWA decode leaf`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-leaf.json) ·
 [`decode roofline/Qwen/Vulkan review`](../benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json).
 
@@ -3528,13 +3534,12 @@ closed unless a future design preserves the retained 288-wave concurrency.
    unchanged VGPR/LDS/scratch. Continue toward the F16 family floor without
    reducing below eight physical waves/output; do not repeat launch-only
    local-size substitution.
-3. **LD-3 — decode-only compressed source-F16 representation.** The
-   real-input Q8 screen passes direction: **31.236 -> 6.675 ms/token**
-   modeled family time with maximum normalized RMSE **0.00974**. Build the
-   all-layer sidecar and run teacher-forced full-model KL/top-1 for combined,
-   QKV+gate-only, and output-only ownership. Promotion still requires the
-   complete category/heldout quality gate and a positive production p512/d128
-   result; the current side representation is diagnostic only.
+3. **LD-3 — decode-only compressed source-F16 representation.** Closed for
+   plain block32 Q8_0/Q8_1, structural layer subsets, and one-sided residual
+   weight/activation repair. The best fast all-layer row reaches
+   **50.154 ms/token** but max KL **0.497301**; no tested scope clears
+   **0.05**. Reopen only for a materially different calibrated representation
+   with a predeclared full-model quality premise, not another Q8 residual pass.
 4. **LD-4 — dense/shared raw-layout decode.** Pack8 expands active dense/shared
    bytes and still trails Vulkan, but the ceiling is only a few milliseconds.
    Reopen only with actual-byte/counter evidence.
@@ -3580,6 +3585,7 @@ runs the heldout category gate at KL at most 0.05 and top-1 at least 90%.
 
 | Question | Evidence |
 | --- | --- |
+| Can the real-input source-F16 Q8 direction pass the full-model gate? | [`...f16-q8-full-model-rejected.json`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-full-model-rejected.json): no. Combined all-layer max KL is **0.497301**; stage-only, structural subsets, and one-sided weight/activation residual repairs all fail. Production remains exact. |
 | Is compressed source-F16 decode worth a full-model gate on gfx1151? | [`...f16-q8-real-input-candidate.json`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-real-input-candidate.json): yes directionally—actual-input modeled family time falls **31.236 -> 6.675 ms/token (-78.63%)**, with projection normalized RMSE at most **0.00974**. It is not yet a full-model quality or production claim. |
 | Is 93.67 tok/s reproducible? | [`...llamacpp-vulkan-review.json`](../benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json) |
 | What is the retained hipEngine row? | [`...iq3-wave10-fused-retained.json`](../benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json) |
