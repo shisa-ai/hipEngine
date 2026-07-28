@@ -43,6 +43,11 @@ TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 # retain the exact LPF-1 tile; decode retains the separately registered GEMV.
 LAGUNA_F16_PREFILL_STRATEGY = "wmma_comp_swa"
 LAGUNA_F16_PREFILL_MIN_ROWS = 16
+# Exact rows==1 source-F16 single/triple siblings keep the local256 grid and
+# reduction order while removing the generic reducer's second broadcast
+# barrier. All six natural roles improve at the gfx1151 leaf; production stays
+# default-off until full-state, cached-trace, and clean decode gates pass.
+LAGUNA_F16_DECODE_ONEBARRIER = False
 # Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
 # 2048-row projection/MoE transactions while attention and physical KV writes
 # remain independently tiled at 128. M2048 is byte-identical at pp512, keeps
@@ -594,6 +599,7 @@ __all__ = [
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",
+    "LAGUNA_F16_DECODE_ONEBARRIER",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",

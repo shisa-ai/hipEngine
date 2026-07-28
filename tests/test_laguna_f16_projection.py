@@ -329,6 +329,56 @@ def test_laguna_f16_projection_runtime_auto_uses_measured_gfx1151_threshold(
     ) is None
 
 
+def test_laguna_f16_projection_runtime_uses_gfx1151_onebarrier_decode(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime import f16_weight_linear as dispatch
+
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_DECODE", "onebarrier")
+    calls = []
+
+    def fake_resolve(key):
+        calls.append(key)
+        return lambda *args, **kwargs: None
+
+    monkeypatch.setattr(dispatch, "_resolve", fake_resolve)
+    weight = SimpleNamespace(
+        backend="hip_gfx1151",
+        spec=SimpleNamespace(layout="dense_f16", quant_key="fp16"),
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
+    )
+    dispatch.launch_f16_weight_linear(
+        weight,
+        x_ptr=10,
+        out_ptr=20,
+        rows=1,
+        in_features=3072,
+        out_features=48,
+        backend="hip_gfx1151",
+    )
+    dispatch.launch_f16_weight_linear_triple(
+        weight,
+        weight,
+        weight,
+        x_ptr=10,
+        out_a_ptr=20,
+        out_b_ptr=21,
+        out_c_ptr=22,
+        rows=1,
+        in_features=3072,
+        out_a_features=6144,
+        out_b_features=1024,
+        out_c_features=1024,
+        backend="hip_gfx1151",
+    )
+
+    assert [key.variant for key in calls] == [
+        "onebarrier_bf16_f32_out",
+        "onebarrier_bf16_f32_out",
+    ]
+    assert [key.layer for key in calls] == ["linear", "linear_triple"]
+
+
 @pytest.mark.parametrize("q_heads", [48, 72])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> None:

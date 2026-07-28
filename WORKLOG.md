@@ -187609,3 +187609,18 @@ Vulkan local sizes verbatim will close the measured gap.
   full state, cached production dispatch, and a positive clean p512/d128 gate.
   Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-candidate.json`.
+
+## 2026-07-28 18:10 JST — Add default-off source-F16 decode owner
+
+- Add the gfx1151 capability default false and
+  `HIPENGINE_LAGUNA_F16_DECODE=auto|gemv|onebarrier`. Rows==1 BF16 single and
+  triple dispatch can now select the separately registered one-barrier keys;
+  rows>1 prefill and gfx1100 defaults remain unchanged.
+- Extend the retained p512/d128 harness with a same-session counterbalanced
+  comparison. It toggles only the decode env selector between resets, records
+  complete generated-ID hashes, preserves/restores the caller's environment,
+  and keeps the candidate explicit until production gates pass.
+- Focused runtime/backend/source-F16 and long-profile tests pass **34 + 31**.
+  Production remains the retained GEMV route. Next run one same-session
+  full-state/performance gate, then cache-only trace the complete model before
+  promoting the capability.

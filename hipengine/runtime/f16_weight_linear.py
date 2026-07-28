@@ -18,6 +18,8 @@ SOURCE_QUANT_FP16 = "fp16"
 F16_WEIGHT = "fp16_weight"
 _ENV_PREFILL_MODE = "HIPENGINE_LAGUNA_F16_PREFILL"
 _PREFILL_MODES = frozenset({"auto", "gemv", "tiled", "wmma_comp_swa"})
+_ENV_DECODE_MODE = "HIPENGINE_LAGUNA_F16_DECODE"
+_DECODE_MODES = frozenset({"auto", "gemv", "onebarrier"})
 
 
 def _variant(activation_dtype: str, output_dtype: str) -> str:
@@ -60,6 +62,31 @@ def _prefill_strategy(
             else "tiled"
         )
     return str(strategy) if strategy == "tiled" and rows >= minimum > 0 else None
+
+
+def _decode_strategy(
+    *,
+    rows: int,
+    activation_dtype: str,
+    backend: str,
+) -> str | None:
+    if rows != 1 or activation_dtype != "bf16":
+        return None
+    mode = os.environ.get(_ENV_DECODE_MODE, "auto").strip().lower() or "auto"
+    if mode not in _DECODE_MODES:
+        expected = ", ".join(sorted(_DECODE_MODES))
+        raise ValueError(f"{_ENV_DECODE_MODE} must be one of: {expected}")
+    if mode == "gemv":
+        return None
+    if mode == "onebarrier":
+        return mode
+    return (
+        "onebarrier"
+        if backend_package_capability(
+            backend, "LAGUNA_F16_DECODE_ONEBARRIER", False
+        )
+        else None
+    )
 
 
 def _backend(weights: tuple[GGUFDeviceWeight, ...], backend: str | None) -> str:
@@ -128,12 +155,16 @@ def launch_f16_weight_linear(
 ) -> None:
     resolved_backend = _backend((weight,), backend)
     variant = _variant(activation_dtype, output_dtype)
-    strategy = _prefill_strategy(
-        rows=rows,
-        activation_dtype=activation_dtype,
-        backend=resolved_backend,
-        compensated_wmma_eligible=compensated_wmma_eligible,
+    strategy = _decode_strategy(
+        rows=rows, activation_dtype=activation_dtype, backend=resolved_backend
     )
+    if strategy is None:
+        strategy = _prefill_strategy(
+            rows=rows,
+            activation_dtype=activation_dtype,
+            backend=resolved_backend,
+            compensated_wmma_eligible=compensated_wmma_eligible,
+        )
     if strategy is not None:
         variant = f"{strategy}_{variant}"
     key = KernelKey(resolved_backend, "linear", F16_WEIGHT, variant)
@@ -212,12 +243,16 @@ def launch_f16_weight_linear_triple(
 ) -> None:
     resolved_backend = _backend((weight_a, weight_b, weight_c), backend)
     variant = "bf16_f32_out"
-    strategy = _prefill_strategy(
-        rows=rows,
-        activation_dtype="bf16",
-        backend=resolved_backend,
-        compensated_wmma_eligible=compensated_wmma_eligible,
+    strategy = _decode_strategy(
+        rows=rows, activation_dtype="bf16", backend=resolved_backend
     )
+    if strategy is None:
+        strategy = _prefill_strategy(
+            rows=rows,
+            activation_dtype="bf16",
+            backend=resolved_backend,
+            compensated_wmma_eligible=compensated_wmma_eligible,
+        )
     if strategy is not None:
         variant = f"{strategy}_{variant}"
     key = KernelKey(resolved_backend, "linear_triple", F16_WEIGHT, variant)

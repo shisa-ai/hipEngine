@@ -1840,3 +1840,17 @@ should be boring.
   127 calls, and preserves the complete trajectory/lifecycle. Keep the
   explicit serial rollback until a short context-crossover check confirms the
   inherited **127/65/257** thresholds on gfx1151.
+
+## Laguna source-F16 decode one-barrier selector
+
+- Added 2026-07-28 as `HIPENGINE_LAGUNA_F16_DECODE=auto|gemv|onebarrier`.
+  gfx1151 `auto` remains GEMV while explicit `onebarrier` selects the exact
+  same-grid single/triple siblings for rows==1. The explicit modes support the
+  immediate same-session production and trace gates.
+- The primitive preserves every output byte and improves all six natural
+  roles **0.57-1.71%**, with weighted leaf family
+  **31.316 -> 31.097 ms/token (-0.698%)**. If full-state, cached trace, and
+  clean p512/d128 gates transfer positively, keep `gemv` only through the
+  active decode campaign and then collapse the gfx1151 positive selection
+  into the default dispatch. Remove the candidate and selector if any
+  production gate regresses.
