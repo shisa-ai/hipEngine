@@ -1097,6 +1097,20 @@ selects it only for gated natural-shape capacity-4096 global decode; peer
 backends and other shapes/capacities retain the generic exact route. Evidence:
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json).
 
+The fused global successor keeps all **48 local256 workgroups / 384 wave32s**
+and the exact four-products-per-lane QK sequence, eight-wave
+maximum/denominator association, token-order PV FMA, reciprocal, gate, and
+stores. It removes the global score/physical round-trip and one launch; dynamic
+LDS is only 8 bytes per live scan slot plus the 64-byte warp buffer. Complete
+leaves improve **7.89-17.55%** at live 513/576/639. Seven resident-model
+p512/d128 pairs improve **17.064962 -> 17.097044 tok/s (+0.188%, -0.110
+ms/token)** with every candidate faster and every trajectory/state exact.
+Cached tracing records 48 blocks, local256/VGPR24/SGPR128/scratch0. A
+two-head GQA2 sibling reduces K reads but leaves only 24 workgroups, regresses
+production **0.126%**, and is removed. Non-natural shapes/capacities, peer
+backends, and rollback retain the exact split/fixed-shape route. Evidence:
+[`retained fused one-head global`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

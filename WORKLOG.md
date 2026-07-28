@@ -187948,3 +187948,30 @@ Vulkan local sizes verbatim will close the measured gap.
   Canonical p512/d128 is now **17.065241 tok/s / 58.599 ms/token**,
   cumulative **+48.825%** from 11.466687. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json`.
+
+## 2026-07-28 23:15 JST — Retain exact fused one-head global decode
+
+- RED fails on the absent fused global wrapper. GREEN preserves the retained
+  four-products-per-lane QK order, wave32 tree, eight-wave maximum/denominator
+  partition and merge, token-order PV FMA, reciprocal, gate, and stores.
+  Live 257 plus the production 513/576/639 points are F32/BF16 byte-exact.
+  The focused kernel/runtime selector gate passes **2/2**.
+- First reject exact two-head GQA2. It halves K reads but leaves only 24
+  local256 workgroups on 40 CUs. The leaf improves **9.542%** at live 513 but
+  regresses **1.185%/1.037%** at live 576/639; three resident pairs regress
+  **17.057510 -> 17.036046 tok/s (-0.126%)**, with every candidate below every
+  control. Remove its wrapper, registration, and test surface.
+- Retain one-head fusion, which keeps all **48 local256 workgroups / 384
+  wave32s** and does not increase K reads versus the split score producer.
+  Complete leaves improve **17.548%/7.890%/7.930%** at live 513/576/639.
+  Seven resident p512/d128 pairs all win:
+  **17.064962 -> 17.097044 tok/s (+0.188%, -0.110 ms/token)**. All IDs,
+  hashes, final token 74107/position 638, state, and lifecycle match.
+- Cached native tracing records the intended 48-block body at
+  local256/VGPR24/SGPR128/scratch0; dynamic LDS is 8 bytes per live scan slot
+  plus a 64-byte warp buffer. Promote only natural 48Q/8KV/D128/capacity-4096
+  gfx1151 global decode. Exact split plus fixed-shape reduction remains
+  rollback and the route for peer backends/non-natural shapes. Canonical
+  p512/d128 is now **17.097044 tok/s / 58.490 ms/token**, cumulative
+  **+49.102%** from 11.466687. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json`.

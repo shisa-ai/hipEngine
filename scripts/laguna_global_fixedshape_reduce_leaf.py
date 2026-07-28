@@ -24,6 +24,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
+    laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
 )
@@ -43,6 +44,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--samples", type=int, default=9)
     parser.add_argument("--warmups", type=int, default=5)
     parser.add_argument("--burst", type=int, default=50)
+    parser.add_argument(
+        "--candidate",
+        choices=("fixedshape", "fused-gqa1"),
+        default="fixedshape",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -194,9 +200,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 HEAD_DIM,
                 HEAD_DIM**-0.5,
             )
+            control_kernel = (
+                laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans
+                if args.candidate.startswith("fused-")
+                else laguna_global_attention_decode_split_exact_gated_bf16_spans
+            )
+            candidate_kernel = {
+                "fixedshape": laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
+                "fused-gqa1": laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
+            }[args.candidate]
 
             def control() -> None:
-                laguna_global_attention_decode_split_exact_gated_bf16_spans(
+                control_kernel(
                     *common,
                     control_context.ptr,
                     gate_device.ptr,
@@ -207,7 +222,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 )
 
             def candidate() -> None:
-                laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans(
+                candidate_kernel(
                     *common,
                     candidate_context.ptr,
                     gate_device.ptr,
@@ -234,7 +249,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             gated_exact = np.array_equal(control_gated_host, candidate_gated_host)
             if not context_exact or not gated_exact:
                 raise AssertionError(
-                    f"fixed-shape reducer is not byte-exact at {live_count=}"
+                    f"{args.candidate} is not byte-exact at {live_count=}"
                 )
 
             for _ in range(args.warmups):
@@ -286,6 +301,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         return {
             "schema": 1,
             "kind": "hipengine_laguna_global_fixedshape_reduce_leaf",
+            "candidate_kind": args.candidate,
             "status": "directional_candidate",
             "performance_claim": False,
             "source_revision": subprocess.run(

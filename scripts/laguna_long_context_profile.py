@@ -217,6 +217,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance exact global reduction against its natural shape",
     )
     parser.add_argument(
+        "--compare-global-fused-fixedshape",
+        action="store_true",
+        help="counterbalance fixed-shape global reduction against one-head fusion",
+    )
+    parser.add_argument(
         "--compare-selected-natural-decode",
         action="store_true",
         help="counterbalance selected-MoE decode against natural-shape siblings",
@@ -326,6 +331,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_swa_fixed512_reduce,
             args.compare_swa_fused_fixed512,
             args.compare_global_fixedshape_reduce,
+            args.compare_global_fused_fixedshape,
             args.compare_selected_natural_decode,
             args.compare_selected_natural_tile8_decode,
         )
@@ -363,6 +369,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_swa_fixed512_reduce
         or args.compare_swa_fused_fixed512
         or args.compare_global_fixedshape_reduce
+        or args.compare_global_fused_fixedshape
         or args.compare_selected_natural_decode
         or args.compare_selected_natural_tile8_decode
     )
@@ -431,6 +438,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_swa_split_fixed512_reduce = False
     active_swa_fused_fixed512 = False
     active_global_split_fixedshape_reduce = False
+    active_global_fused_fixedshape = False
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
@@ -533,6 +541,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
         )
+        active_global_fused_fixedshape = owner.kv_cache.global_fused_fixedshape
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
@@ -596,6 +605,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.kv_cache.swa_fused_fixed512 = mode == "candidate"
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
+                            mode == "candidate"
+                        )
+                    if args.compare_global_fused_fixedshape:
+                        owner.kv_cache.global_fused_fixedshape = (
                             mode == "candidate"
                         )
                     if args.compare_selected_natural_decode:
@@ -821,6 +834,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
+            "compare_global_fused_fixedshape": (
+                args.compare_global_fused_fixedshape
+            ),
             "compare_selected_natural_decode": (
                 args.compare_selected_natural_decode
             ),
@@ -839,6 +855,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce
             ),
+            "global_fused_fixedshape": active_global_fused_fixedshape,
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (
                 args.long_attention_hipblaslt

@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T23:15:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_fused_gqa1_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "ecdb5b8026b7d86b9967175e7c1e527bdfe056ae",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "runtime": "hipengine/runtime/laguna_kv.py"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "scope": "all 12 global-attention layers during exact eager decode",
+    "shape": "48 query heads, 8 KV heads, D128, capacity 4096, dynamic live scan",
+    "geometry": "48 local256 workgroups and 384 wave32s per layer; one workgroup per query head",
+    "arithmetic": "unchanged four-products-per-lane QK sequence, wave32 reduction, eight-wave maximum and denominator partition/merge, per-dimension token-order value FMA, reciprocal, softplus gate, F32 store, and RNE-BF16 store",
+    "optimization": "fuse QK, softmax, PV, gate, and stores; remove the global score/physical plane round-trip and one launch while preserving the full 48-workgroup breadth",
+    "dynamic_lds": "8 bytes per live scan slot plus a 64-byte softmax warp buffer",
+    "fallback": "non-natural shapes, peer backends, disabled split attention, and explicit capability rollback retain exact split scores plus fixed-shape reduction"
+  },
+  "red_green": {
+    "red": "focused attention gate failed because the fused global wrapper was absent",
+    "green": "live 257 F32 context and gated BF16 output are byte-exact against the split fixed-shape route; the 513/576/639 leaf and all seven complete trajectories are also exact",
+    "focused_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -m pytest -q tests/test_laguna_split_gate_fusion.py::test_laguna_split_exact_gated_reducers_match_unfused_chain tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "focused_result": "2 passed"
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa1 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-fused-gqa1-leaf.json",
+    "raw_sha256": "13cb14858df843477583885762d15af2f20aba8ad959782ea5865e36a46443f1",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.16019943237304687,
+        "candidate_median_ms": 0.13208707809448242,
+        "latency_change_percent": -17.548348244518674
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.18160615921020506,
+        "candidate_median_ms": 0.16727687835693358,
+        "latency_change_percent": -7.890305546677889
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.20077592849731446,
+        "candidate_median_ms": 0.18485483169555664,
+        "latency_change_percent": -7.92978367522319
+      }
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "rejected_gqa2": {
+    "description": "two adjacent query heads per local256 workgroup halve K reads but collapse the layer to 24 workgroups, below the 40-CU breadth",
+    "leaf_result": "live 513 improves 9.542%, but live 576/639 regress 1.185%/1.037%",
+    "production_result": "three resident pairs regress 17.057510 -> 17.036046 tok/s (-0.126%) and all candidate samples lose",
+    "leaf_raw_sha256": "210892cb449cf1d9ff87f0a9696355fbd225e3be7178730937fdaf9ad60aa554",
+    "production_raw_sha256": "aa2371d3baa78e332828be09a7721100642e3d013d92f1f3d9b5bab5328769c9",
+    "decision": "removed"
+  },
+  "production_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-fused-fixedshape --allow-dirty --output /tmp/laguna-p512-d128-global-fused-gqa1-ab.json",
+    "raw_sha256": "cd3770cb4460d0460ba2ed379b37beca118a7afe58d8a720e5b3f0fe44551092",
+    "protocol": "one loaded 78.8 GB resident model; seven counterbalanced fixed-shape-split/fused-one-head resets; p512 plus 127 synchronized eager C1 decode calls",
+    "control_decode_tok_s": 17.064962208297473,
+    "candidate_decode_tok_s": 17.097043759837383,
+    "throughput_change_percent": 0.18799661639046228,
+    "control_wall_ms_per_token": 58.599602377892836,
+    "candidate_wall_ms_per_token": 58.48964382656007,
+    "saving_ms_per_token": 0.10995855133276677,
+    "all_candidate_samples_faster_than_all_controls": true,
+    "control_candidate_generated_ids_match": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "kernel_trace": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --stats --output-format csv -d /tmp/laguna-global-fused-gqa1-final-trace.urA2P8 --output-file gqa1 -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa1 --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-fused-gqa1-final-trace.urA2P8/bench.json",
+    "trace_sha256": "edcdaee84a1ff3b1a09d57fc67688fccd2887c1b07045541a67f8a042c8dad8c",
+    "stats_sha256": "e06020723e1a6b9b0d5f954c667bc11bac943e8ca3066706895f8e58bad84cea",
+    "expected_kernel_observed": true,
+    "calls": 6,
+    "average_duration_us": 171.1,
+    "min_duration_us": 157.134,
+    "max_duration_us": 183.423,
+    "resources": {
+      "workgroup_size": 256,
+      "grid_blocks": 48,
+      "vgpr": 24,
+      "sgpr": 128,
+      "scratch_bytes": 0,
+      "dynamic_lds_bytes_per_scan_slot": 8
+    },
+    "require_cached_build": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "gfx1100_default_changed": false,
+    "prior_canonical_decode_tok_s": 17.065240880653963,
+    "production_decode_tok_s": 17.097043759837383,
+    "canonical_change_percent": 0.18636056417740132,
+    "production_wall_ms_per_token": 58.48964382656007,
+    "cumulative_from_pre_transfer_tok_s": 11.466687,
+    "cumulative_change_percent": 49.101861416792694,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "next": "Continue attention first with larger SWA K-reuse groups only if at least 40 workgroups remain, then profile launch/persistent opportunities after exact fused coverage"
+  }
+}
