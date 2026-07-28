@@ -188919,3 +188919,15 @@ Vulkan local sizes verbatim will close the measured gap.
   focused owner/runner/profile validation reports **37 passed**.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-retained.json`.
+
+## 2026-07-29 07:40 JST — Publish clean mixed32 exp4 production
+
+- Three tracked-clean, require-cached, selector-unset p512/d128 runs on
+  `64395d59d` measure **19.417147/19.424487/19.429963 tok/s**, median
+  **19.424487**. The exp4 capability is active without a comparison selector
+  and improves **0.288% / 0.148 ms/token** over clean serial-exp mixed32.
+- All runs preserve next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, lifecycle, and zero
+  tracked bytes after teardown. Production is now **+69.399%** over the
+  11.466687 sprint start. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-production.json`.
