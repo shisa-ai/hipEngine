@@ -15,11 +15,12 @@ seconds (69.167%)**. Selected IQ2/IQ3/IQ4 experts consume **2.734115 seconds
 (22.222%)** and all attention consumes **1.022529 seconds (8.311%)**. More
 attention transfer is therefore the wrong first move. The immediate order is:
 
-1. exact raw-Q5/Q6 row reuse and matrix tiling;
-2. compact routed IQ2/IQ3/IQ4 MMQ;
-3. reprofile, then optimize attention only if it has become the largest
+1. exact raw-Q5/Q6 row reuse and matrix tiling (**WPF-1 retained**);
+2. source-faithful Q5/Q6 Q8_1 integer-dot MMQ (**WPF-1B next**);
+3. compact routed IQ2/IQ3/IQ4 MMQ;
+4. reprofile, then optimize attention only if it has become the largest
    remaining family;
-4. reduce launches/fusions only after span-minus-sum becomes material.
+5. reduce launches/fusions only after span-minus-sum becomes material.
 
 While repeated exact prefill remains below **200 tok/s** at either 512 or 1K,
 all active W7900 iteration is restricted to those two shapes: **do not run 4K
@@ -42,7 +43,18 @@ target.
 | Control | clean `67ab7e5a8`, matrix128 / attention128, direct GGUF, cached-only builds |
 | Control wall | **41.720 tok/s at 512**, **36.407 tok/s at 4K** |
 | Profile repeat | **41.438 / 36.245 tok/s**, raw trace SHA-256 `87f02952...f6f5b3` |
-| Compact evidence | [`2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) |
+| WPF-1 scalar A/B | **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K (**+94.431%/+88.018%**) |
+| Current selector-unset | **79.585/74.512 tok/s** at 512/1K, rowbatch8, revision `d3e748db5` |
+| Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) |
+
+WPF-1 is the first retained W7900 prefill default. One shared resident-weight
+process preserves logits bit-for-bit, all 48 hidden boundaries, active K/V,
+every `KVLiveSpans` field, positions, tokens, and lifecycle across scalar,
+rowbatch4, rowbatch8, and a rowbatch8 repeat. Rowbatch4 reaches
+**69.441/65.280 tok/s** at 512/1K but is dominated by rowbatch8 end-to-end.
+The selector-unset publication resolves only rowbatch8 and requires no resident
+weight or persistent scratch growth. Both short shapes remain below 200 tok/s,
+so 4K stays closed.
 
 The first shared-source transfer candidate uses M2048 matrix/global
 transactions, the packed/block F32 attention path, dense initial cache, and
@@ -89,6 +101,19 @@ Span-minus-sum is only **53.273 ms (0.433%)** at 512 and **418.289 ms
 body is `gguf_k_prefill_out_kernel<...,5|6>` with `Grid_Size_Y=128`: one
 output-column owner is repeated for every prompt row. It does not tile the row
 dimension, so it rereads the same encoded weight for every token.
+
+The post-WPF-1 cached trace is now:
+
+| Shape | Kernel sum / span | Dispatches | Dense/shared Q5/Q6 | Selected IQ | Attention |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 | 6.305941 / 6.358115 s | 4,210 | 2.838547 s / 45.014% | 2.482874 s / 39.374% | 0.945927 s / 15.001% |
+| 1K | 13.633213 / 13.736498 s | 8,426 | 5.659063 s / 41.509% | 4.985759 s / 36.571% | 2.911707 s / 21.357% |
+
+Exact row reuse nearly halves complete wall, but dense/shared remains the
+largest family at both active shapes and both rates remain below 200 tok/s.
+WPF-1B therefore precedes routed-IQ WPF-2. Its goal is source-faithful Q8_1
+producer-row quantization plus Q5/Q6 integer-dot MMQ; changed arithmetic must
+pass the full quality lane before any default change.
 
 The actual GGUF inventory gives this active linear ledger:
 
@@ -145,11 +170,11 @@ The relevant lesson is dataflow, not API or literal constants:
   local128 over two wave64 subgroups, BM64 x BN64 x BK32, with quant and
   activation tiles staged and reused. It is not the small 32x32 shader and is
   not a wave32 geometry prescription.
-- hipEngine already has the right primitives in pieces: an exact Q5/Q6
+- hipEngine already had the right primitives in pieces: an exact Q5/Q6
   small-B rowtile, Q6/Q4 WMMA controls, compact MoE metadata, and guarded Q8_1
-  precedents. The missing 512 seam is a fixed grid-Y row batch/MMQ that reuses
-  each loaded Q5/Q6 weight across prompt rows while preserving the chosen
-  arithmetic contract.
+  precedents. WPF-1 now closes the exact fixed-grid-Y rowbatch seam. The next
+  missing seam is source-faithful Q8_1 producer-row quantization feeding a true
+  Q5/Q6 integer-dot MMQ without a persistent weight sidecar.
 
 ### WPF execution order
 
@@ -160,9 +185,9 @@ The relevant lesson is dataflow, not API or literal constants:
 | --- | --- | --- |
 | WPF-0 profile + roofline | Complete | Clean 512/4K wall and all-family trace, actual tensor/FLOP ledger, 729.067-GB/s read ceiling, llama.cpp HIP/Vulkan audit, and compact artifact published. |
 | WPF-C0 shared-source capacity transfer | Rejected/removed | The bundle was performance-positive but failed the mandatory 576-step quality gate at max KL 1.11869; no copied capability default is retained. |
-| WPF-1 exact dense/shared row reuse | **Runtime admitted default-off; state gate next** | Exact fixed rowbatch4/8 Q5/Q6 kernels pass natural role/tail gates and improve primitive wall 1.268-3.347x. The context-local gfx1100 selector is wired with scalar and gfx1151 fail-closed behavior; gate actual first/last layers and full state, then benchmark only 512/1K while below 200 tok/s. |
-| WPF-1B dense/shared Q8_1 MMQ | Conditional | If exact row batching remains below 200 tok/s at 512/1K, add source-faithful Q5/Q6 integer-dot MMQ. Quantize a producer row once, preserve raw resident weights, and use the full quality lane for changed arithmetic. |
-| WPF-2 routed IQ MMQ | Pending WPF-1 reprofile | Compact by expert, quantize gate/up before top-10 expansion, pack down rows after SiLU, and tile raw IQ2/IQ3/IQ4 weights across routed rows. Publish distinct-expert and physical traffic. |
+| WPF-1 exact dense/shared row reuse | **Complete; rowbatch8 retained gfx1100 default** | Full state is bit-exact. Scalar **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K; selector-unset publication is **79.585/74.512**. rowbatch4 and scalar remain explicit rollback/crossover routes; gfx1151 is fail-closed. |
+| WPF-1B dense/shared Q8_1 MMQ | **Next** | Post-WPF-1 dense/shared remains largest at **45.014%/41.509%** and both active shapes remain below 200 tok/s. Add source-faithful Q5/Q6 integer-dot MMQ, quantize each producer row once, preserve raw resident weights, and use the full quality lane for changed arithmetic. |
+| WPF-2 routed IQ MMQ | Pending WPF-1B reprofile | Compact by expert, quantize gate/up before top-10 expansion, pack down rows after SiLU, and tile raw IQ2/IQ3/IQ4 weights across routed rows. Publish distinct-expert and physical traffic. |
 | WPF-3 short attention | Deferred | Start only if the fresh post-WPF-2 profile makes attention the largest or gives it a >=5% perfect-removal ceiling at both active 512/1K shapes. |
 | WPF-4 launch/fusion | Deferred | Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | Hard deferred | Resume 4K only after exact 512/1K both reach 200 tok/s; full 16K/64K/128K work remains closed until 800/700 at 512/4K or a documented measured blocker. |

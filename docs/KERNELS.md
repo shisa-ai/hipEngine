@@ -326,10 +326,19 @@ tree. Arbitrary positive lengths, including partial tails, are bit-exact for
 BF16 and F32 output. Ten actual UD-Q2_K_XL M128 role shapes improve
 **1.268-2.412x** with rowbatch4 and **1.340-3.347x** with rowbatch8; K3072/N72
 prefers rowbatch4, while rowbatch8 wins the other nine roles. Cached W7900
-tracing names both Q5/Q6 rowbatch8 bodies at local128/VGPR24/SGPR128/LDS512/
-scratch0. This is primitive admission only: runtime ownership and defaults are
-absent, and scalar `prefill_bf16_{bf16,f32}_out` remains the registered fallback.
-Evidence: [`2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch-primitive.json`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch-primitive.json).
+tracing names all four Q5/Q6 BF16/F32 rowbatch8 bodies at
+local128/VGPR24/SGPR128/LDS512/scratch0 and grid Y 16 for M128.
+
+The gfx1100 package now selects rowbatch8 by default only around Laguna bulk
+row-layer execution. One shared-weight full-state gate is bit-exact across all
+48 hidden boundaries, logits, active K/V, and every `KVLiveSpans` field. A
+three-repeat scalar/rowbatch8 A/B improves **40.636 -> 79.009 tok/s** at 512
+and **39.174 -> 73.654 tok/s** at 1K; clean selector-unset publication is
+**79.585/74.512 tok/s**. Explicit zero and rowbatch4 remain rollback/crossover
+routes; rows <=8, unsupported shapes/dtypes/layouts/quants, and gfx1151 retain
+the registered scalar/backend fallback.
+Evidence: [`primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch-primitive.json) ·
+[`production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
