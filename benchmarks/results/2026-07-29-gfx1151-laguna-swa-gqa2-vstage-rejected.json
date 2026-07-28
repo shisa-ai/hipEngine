@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T00:23:46+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa2_vstage_rejected",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "cd2e22cdd64bb6de5c42b788e52ce65e4a2a7578",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "scan_slots": 512,
+    "sliding_window": 512,
+    "workgroups": 40,
+    "workgroup_size": 256
+  },
+  "optimization": "Keep the retained fused-GQA2 one-dispatch score and query/dimension ownership, but stage chronological BF16 V rows through LDS so both adjacent query heads reuse each V element without changing softmax or FMA order.",
+  "protocol": {
+    "samples": 9,
+    "warmups": 5,
+    "burst": 50,
+    "command_template": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa2-vstage{64,128} --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa2-vstage{64,128}-leaf.json"
+  },
+  "vstage64": {
+    "lds_value_bytes": 16384,
+    "modeled_total_lds_bytes": 22528,
+    "staging_rounds": 8,
+    "control_median_ms": 0.08365874290466309,
+    "candidate_median_ms": 0.09958798408508301,
+    "latency_change_percent": 19.04073695988091,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "75d8f2d8d2bc388d8e059f6a4a58ef6d94f5617a9afcbcdc9256dfa2002249a5"
+  },
+  "vstage128": {
+    "lds_value_bytes": 32768,
+    "modeled_total_lds_bytes": 38912,
+    "staging_rounds": 4,
+    "control_median_ms": 0.08270613670349121,
+    "candidate_median_ms": 0.09691515922546387,
+    "latency_change_percent": 17.180130868539134,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "f1ebc16da42d189c36ed2bf55390f38655f543019af4a89885440b11fffa85b6"
+  },
+  "decision": {
+    "retained": false,
+    "all_candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 17.097043759837383,
+    "reason": "The DRAM-read reduction does not repay LDS fill/read traffic and 8 or 16 block barriers. Doubling the batch halves the staging rounds but remains 17.18% slower.",
+    "next": "Rebuild the exact cooperative GQA9 kernel so its post-grid-sync phase assigns all 288 (query-head, 32-dimension) PV tasks across resident waves instead of using only one wave per local256 block."
+  }
+}

@@ -188041,3 +188041,25 @@ Vulkan local sizes verbatim will close the measured gap.
   scalar/FMA order while targeting the same modeled KV-head row-read reduction
   **14 -> 10** without serializing the two query heads. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json`.
+
+## 2026-07-29 00:24 JST — Reject exact GQA2 LDS-V staging
+
+- RED fails on the absent 64-slot candidate registry key. GREEN adds temporary
+  64/128-slot siblings inside the retained one-dispatch, 40-workgroup fused-
+  GQA2 topology. Both keep all eight original query/dimension waves and replay
+  every head's scalar slot-order softmax, denominator, per-dimension FMA,
+  divide, gate, and store. Saturated wrap plus explicit eviction is F32/BF16
+  byte-exact for both batch sizes; the focused file passes **2/2**.
+- Reject both before runtime integration. V-stage64 uses 16 KiB for values
+  (22 KiB total modeled LDS) and eight staging rounds; its complete leaf moves
+  **0.083659 -> 0.099588 ms (+19.04%)**. V-stage128 uses 32 KiB for values
+  (38 KiB total modeled LDS) and four rounds; it still moves
+  **0.082706 -> 0.096915 ms (+17.18%)**. The modeled KV-head row reads fall
+  **14 -> 10**, but LDS fill/read traffic plus **16/8** added barriers dominate.
+- Remove both kernels, C/Python wrappers, registry keys, tests, and leaf-harness
+  options. Production remains **17.097044 tok/s / 58.490 ms/token**. Next
+  rebuild the exact cooperative GQA9 path so the post-grid-sync phase maps all
+  **288 = 72 heads x 4 dimension partitions** PV tasks across resident waves;
+  the first cooperative prototype used one wave per local256 block and left
+  seven waves idle. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json`.
