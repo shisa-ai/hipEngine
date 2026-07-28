@@ -326,11 +326,12 @@ reduction tree. Arbitrary positive lengths, including partial tails through 33
 rows, are BF16/F32-bit exact. The original ten-role M128 screen improved
 **1.268-2.412x** with rowbatch4 and **1.340-3.347x** with rowbatch8.
 
-The WPF-1W extension is exact on all ten actual UD-Q2_K_XL roles. Their one-each
-event sum moves rowbatch8 **45.1883 ms** to rowbatch16 **41.2040 ms
-(1.0967x)** and rowbatch32 **39.2782 ms (1.1505x)**. Rowbatch16 beats eight on
-eight roles; rowbatch32 wins the other eight but leaves N48/N72 to the retained
-smaller-slab route and later end-to-end policy selection. Cached
+The WPF-1W extension is exact on all ten actual UD-Q2_K_XL roles. Their
+**unweighted diagnostic** one-each event sum moves rowbatch8 **45.1883 ms** to
+rowbatch16 **41.2040 ms (1.0967x)** and rowbatch32 **39.2782 ms (1.1505x)**;
+these ratios are not end-to-end forecasts. Rowbatch16 beats eight on eight
+roles; rowbatch32 wins the other eight but leaves N48/N72 to retained smaller
+slabs and explicit crossover/bisection. Cached
 W7900 tracing names all eight new Q5/Q6 BF16/F32 bodies at local128. RB16 uses
 VGPR40/SGPR128/LDS512/scratch0 in rocprof (code-object VGPR38, SGPR69/70, no
 spills/private). RB32 uses VGPR80/SGPR128/LDS1024/scratch0 (code-object VGPR73,
@@ -339,18 +340,23 @@ RB32 timings include that scalar-spill cost. HIP's occupancy query still admits
 **8 workgroups / 32 wave32 waves per CU**, the hardware maximum, for every new
 body; runtime `SQ_WAVE_CYCLES` is unavailable on this profiler stack.
 
-The gfx1100 package still selects rowbatch8 by default only around Laguna bulk
-row-layer execution. The fresh shared-weight M128 gate proves rowbatch16,
-rowbatch32, and an RB32 repeat bit-exact across all 48 hidden boundaries,
-logits, active K/V, every `KVLiveSpans` field, IDs, positions, and lifecycle.
-Diagnostic complete-pass wall is RB8 **1.4096 s**, RB16 **1.3335 s**, and RB32
-**1.3020 s**. Explicit zero/4/8/16/32 are available on gfx1100 while gfx1151
-excludes every key; rows <=8 and unsupported shapes/dtypes/layouts/quants retain
-the registered scalar/backend fallback. Clean pp512/pp1K A/B remains required
-before changing the rowbatch8 default.
+The gfx1100 package now selects rowbatch32 by default only around Laguna bulk
+row-layer execution. The shared-weight M128 gate proves rowbatch16, rowbatch32,
+and an RB32 repeat bit-exact across all 48 hidden boundaries, logits, active
+K/V, every `KVLiveSpans` field, IDs, positions, and lifecycle. Diagnostic
+complete-pass wall is RB8 **1.4096 s**, RB16 **1.3335 s**, and RB32 **1.3020
+s**. Clean paired RB32 improves pp512/pp1K **79.023/73.610 -> 85.174/78.946
+tok/s (+7.783%/+7.249%)**, every candidate sample wins, and selector-unset
+publishes **85.481/79.555 (+7.408%/+6.768% over the RB8 headline)**. Explicit
+zero/4/8/16/32 remain on gfx1100 while gfx1151 excludes every key; rows <=8 and
+unsupported shapes/dtypes/layouts/quants retain the registered scalar/backend
+fallback. M256/M512 must retrace RB32 grid Y, launch waves, duration, and
+runtime occupancy; the same code object's SGPR spills are compile-time
+invariant, but M128 does not establish achieved scheduling at wider grids.
 Evidence: [`rowbatch4/8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch-primitive.json) ·
 [`rowbatch8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) ·
-[`rowbatch16/32 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch16-32-primitive.json).
+[`rowbatch16/32 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch16-32-primitive.json) ·
+[`rowbatch32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
@@ -358,20 +364,21 @@ one K32 interval for 32 raw output columns and 32 producer rows, then reuses
 both tiles through packed integer dots. A single row-major K128 Q8_1 block
 stores four FP32 scales/sums plus 128 int8 values, so the same producer pack can
 feed both quant families without a weight sidecar. All actual M128 roles are
-finite at maximum KL **5.6163e-5** and minimum top-1 **96.094%** versus retained
-rowbatch8. Inclusive quantize+MMQ improves every N>=1024 role by
+finite at maximum KL **5.6163e-5** and minimum top-1 **96.094%** versus the
+then-retained rowbatch8. Inclusive quantize+MMQ improves every N>=1024 role by
 **4.798-16.452x**; the N48/N72 gates lose and remain fallback-only. Cached
 W7900 tracing records the producer at local256/VGPR24/LDS0/scratch0 and Q5/Q6
 MMQ at local128/VGPR48/56/SGPR128/LDS3072/scratch0. A default-off
 `raw_k_prefill_mmq` execution owner now lazily allocates one bounded Q8_1
 workspace, caches one `(pointer, rows, K, stream)` producer pack, and consults
 registered Q5/Q6 crossover policies. It selects only N>=1024; N48/N72 and all
-key/shape/backend misses retain exact rowbatch8. gfx1151 excludes all seven
-producer/policy/MMQ keys. The D4 runtime screen improves rowbatch8
+key/shape/backend misses retain the active exact rowbatch owner. gfx1151
+excludes all seven producer/policy/MMQ keys. The D4 runtime screen improved the
+then-retained rowbatch8
 **79.119/73.781 -> 129.572/116.116 tok/s** at 512/1K, and its M128 full-state
 sample passes at KL **0.034789**, but the mandatory 18-prompt/576-step lane
 rejects it at maximum KL **0.624304** despite **97.743%** top-1. The gfx1100
-package default therefore remains exact rowbatch8. Keep D4 default-off only as
+package default remains exact and is now rowbatch32. Keep D4 default-off only as
 an accuracy-refinement baseline; finer producer scales or bounded correction
 must pass the same complete lane before promotion.
 Evidence: [`WPF-1B primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) ·
@@ -392,7 +399,8 @@ state passes at KL **0.002081**, same top-1, and byte-exact candidate repeat
 across all 48 hidden boundaries/KV/live spans. Clean default-off A/B moves
 **79.179/73.808 -> 129.083/115.802 tok/s** at 512/1K, but the complete
 576-step lane rejects D8 at maximum KL **0.400292** despite **98.264%** top-1.
-The package default therefore remains MMQ-off/rowbatch8. D4->D8 improves only
+The package default therefore remains MMQ-off and is now exact rowbatch32.
+D4->D8 improves only
 275/576 teacher steps while worsening 301/576 and leaves 28 steps above the KL
 limit in both variants. The completed two-stage residual screen below is the
 last blind precision variant; future changed arithmetic requires exact repair.
@@ -415,7 +423,7 @@ hidden boundaries/KV/live spans. Clean default-off A/B moves
 **562/576 (97.569%)** top-1; category top-1 remains above 90%. Reducing maximum
 actual-role KL roughly 68x versus D8 while worsening the autoregressive maximum
 closes D16 and further blind residual precision screens. D4/D8/D8R8 remain
-explicit diagnostics, package production remains MMQ-off/rowbatch8, and any
+explicit diagnostics, package production remains MMQ-off/rowbatch32, and any
 future MMQ owner must use bounded fail-closed exact repair against the newly
 widened exact baseline.
 Evidence: [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) ·

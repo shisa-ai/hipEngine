@@ -9,37 +9,43 @@ is the authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna
 `UD-Q2_K_XL` port. The longer gfx1151/Q4 campaign record begins below and
 remains evidence, not a source of automatic defaults or tile geometry.
 
-The post-WPF-1 W7900 profile and completed WPF-1B quality screens set the
-optimization order. Exact rowbatch8 leaves dense/shared raw Q5/Q6 at
-**2.838547 seconds (45.014%)** of pp512 kernel time, selected IQ2/IQ3/IQ4 at
-**2.482874 seconds (39.374%)**, and attention at **0.945927 seconds
-(15.001%)**. The large Q5/Q6 leaf reaches only about **1.067 TFLOP/s** and
-**45.8 GB/s**: it is primarily dequant/instruction-issue limited, not near the
-W7900 compute or measured 729-GB/s read roofs. The immediate execution order
-is:
+The post-WPF-1 rowbatch8 profile selected WPF-1W; the completed clean WPF-1W
+gate now promotes exact rowbatch32 at **85.481/79.555 tok/s** for 512/1K. Its
+fresh all-family trace leaves dense/shared raw Q5/Q6 at **2.417919/4.844460
+seconds**, selected IQ2/IQ3/IQ4 at **2.447247/4.925955 seconds**, and attention at
+**0.909824/2.817675 seconds**. The large Q5/Q6 leaf remains
+instruction/dequant limited, while routed IQ now narrowly leads pp512. The
+remaining execution order is:
 
-1. widen exact raw-Q5/Q6 reuse to rowbatch16, then rowbatch32 (**WPF-1W**);
-2. screen isolated M256/M512 matrix chunks with every attention tile fixed at
-   128 (**WPF-C1**);
-3. build exact-first expert-major IQ2/IQ3 row reuse at the winning matrix
+1. screen isolated M256/M512 matrix chunks with every attention tile fixed at
+   128 and retrace rowbatch32 at each winning capacity (**WPF-C1**);
+2. build exact-first expert-major IQ2/IQ3 row reuse at the winning matrix
    capacity (**WPF-2**);
-4. reprice the fast Q5/Q6 MMQ against that exact baseline and promote only a
-   bounded, fail-closed device-side exact-repair route (**WPF-1R**);
-5. reprofile, then optimize attention without repeating closed gfx1151
-   geometries;
-6. reduce launches/fusions only after span-minus-sum becomes material.
+3. reprofile against the 150-tok/s wall budget; run WPF-1R only if its
+   prospective density/traffic/speed gates pass, and treat attention as queued
+   threshold work rather than waiting for it to become the largest family;
+4. optimize the binding WPF-1R and/or WPF-3 path without repeating closed
+   arithmetic or gfx1151 geometries;
+5. reduce launches/fusions only after span-minus-sum becomes material.
 
 Quality-lane calibration is diagnostic only. It cannot waive the repository
 KL/top-1 contract or promote D4, D8, D8R8, or another approximate variant.
 
-While repeated exact prefill remains below **200 tok/s** at either 512 or 1K,
+While repeated exact prefill remains below **150 tok/s** at either 512 or 1K,
 all active W7900 iteration is restricted to those two shapes: **do not run 4K
-or longer prefill**. Once both short shapes reach 200 tok/s, a 4K gate may
+or longer prefill**. Once both short shapes reach 150 tok/s, a 4K gate may
 resume. The full long-context campaign stays closed until 512/4K reaches
 **800/700 tok/s**, or a fresh measured roofline proves an explicit lower
 ceiling. This prevents multi-minute diagnostics from consuming the iteration
-loop while short prefill is still 10-20x below a conservative practical
-target.
+loop while short prefill remains far below a practical target.
+
+The 150 gate is still dependency-critical, not guaranteed by the exact-first
+queue. Its wall budgets are **3.413/6.827 seconds** at 512/1K. In the current
+trace, perfect removal of every selected-IQ kernel leaves **3.412/7.831
+seconds** of kernel span: essentially zero practical margin at 512 and a hard
+**1.004-second** deficit at 1K. WPF-C1 may lower that floor, but WPF-2 alone
+cannot cross both gates. WPF-1R and/or WPF-3 is therefore an explicit threshold
+dependency unless the post-C1 profile proves otherwise.
 
 ### Frozen target and current evidence
 
@@ -49,24 +55,25 @@ target.
 | SHA-256 | `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679` |
 | Logical / tensor size | 117.562B parameters / 39,680,849,600 tensor bytes |
 | Backend | `hip_gfx1100`, AMD Radeon Pro W7900, one explicitly selected device |
-| Active iteration shapes | prefill-only 512 and 1,024 tokens until both reach 200 tok/s; BF16 KV; exact positions and deterministic next token |
+| Active iteration shapes | prefill-only 512 and 1,024 tokens until both reach 150 tok/s; BF16 KV; exact positions and deterministic next token |
 | Control | clean `67ab7e5a8`, matrix128 / attention128, direct GGUF, cached-only builds |
 | Control wall | **41.720 tok/s at 512**, **36.407 tok/s at 4K** |
 | Profile repeat | **41.438 / 36.245 tok/s**, raw trace SHA-256 `87f02952...f6f5b3` |
 | WPF-1 scalar A/B | **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K (**+94.431%/+88.018%**) |
-| Current selector-unset | **79.585/74.512 tok/s** at 512/1K, rowbatch8, revision `d3e748db5` |
+| WPF-1W paired RB8 -> RB16 / RB32 | RB16 **+5.445%/+5.220%**; RB32 **79.023/73.610 -> 85.174/78.946 tok/s (+7.783%/+7.249%)** at 512/1K; every RB32 sample wins |
+| Current selector-unset | **85.481/79.555 tok/s** at 512/1K, rowbatch32, revision `39427ec15`; **+7.408%/+6.768%** over the prior headline |
 | Rejected WPF-1B screens | D4 **129.572/116.116 tok/s**, max KL **0.624304**; D8 **129.083/115.802**, max KL **0.400292**; D8R8 **123.466/111.324**, max KL **0.964321** at 512/1K |
-| Active limiter | Q5 K3072/N12288/M128 rowbatch8: **9.060 ms**, about **1.067 TFLOP/s** and **45.8 GB/s** effective encoded reads; dequant/instruction issue is the primary diagnosis |
-| Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) |
+| Current attribution | RB32 dense/shared **2.418/4.844 s (41.602%/38.259%)**; selected IQ **2.447/4.926 s (42.106%/38.902%)**; attention **0.910/2.818 s (15.653%/22.252%)** at 512/1K |
+| Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 RB8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1W RB32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) |
 
-WPF-1 is the first retained W7900 prefill default. One shared resident-weight
-process preserves logits bit-for-bit, all 48 hidden boundaries, active K/V,
-every `KVLiveSpans` field, positions, tokens, and lifecycle across scalar,
-rowbatch4, rowbatch8, and a rowbatch8 repeat. Rowbatch4 reaches
-**69.441/65.280 tok/s** at 512/1K but is dominated by rowbatch8 end-to-end.
-The selector-unset publication resolves only rowbatch8 and requires no resident
-weight or persistent scratch growth. Both short shapes remain below 200 tok/s,
-so 4K stays closed.
+WPF-1 established the first retained W7900 prefill default. One shared
+resident-weight process preserves logits bit-for-bit, all 48 hidden boundaries,
+active K/V, every `KVLiveSpans` field, positions, tokens, and lifecycle across
+scalar, rowbatch4, rowbatch8, rowbatch16, rowbatch32, and an RB32 repeat. WPF-1W
+supersedes rowbatch8 with rowbatch32 after clean paired gains at both short
+shapes. The selector-unset publication resolves only RB32 and adds no resident
+weight or persistent scratch. Both short shapes remain below 150 tok/s, so 4K
+stays closed.
 
 The rejected broad shared-source candidate combined M2048 matrix/global
 transactions with packed/block F32 attention, dense initial cache, and rolling
@@ -112,23 +119,33 @@ body is `gguf_k_prefill_out_kernel<...,5|6>` with `Grid_Size_Y=128`: one
 output-column owner is repeated for every prompt row. It does not tile the row
 dimension, so it rereads the same encoded weight for every token.
 
-The post-WPF-1 cached trace is now:
+The now-superseded post-WPF-1 rowbatch8 cached trace was:
 
 | Shape | Kernel sum / span | Dispatches | Dense/shared Q5/Q6 | Selected IQ | Attention |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 512 | 6.305941 / 6.358115 s | 4,210 | 2.838547 s / 45.014% | 2.482874 s / 39.374% | 0.945927 s / 15.001% |
 | 1K | 13.633213 / 13.736498 s | 8,426 | 5.659063 s / 41.509% | 4.985759 s / 36.571% | 2.911707 s / 21.357% |
 
-Exact row reuse nearly halves complete wall, but the large retained Q5 role
-still reaches only about **1.067 TFLOP/s** and **45.8 GB/s**, respectively
-about 1.7% of FP32 peak and 6.3% of the measured read ceiling. Its
-per-element `q5_k_weight(...)` block locate, metadata loads, 6-bit scale
-unpack, nibble/high-bit extraction, scale/offset, and one resulting FMA make
-dequant/instruction issue the primary limiter. Wider exact slabs amortize that
-chain without changing per-row arithmetic, so WPF-1W now precedes changed-math
-work. Rowbatch16 and rowbatch32 must still be admitted independently because
-larger accumulator arrays can increase VGPR pressure, lower wave residency, or
-spill.
+That rowbatch8 trace selected WPF-1W but is no longer the performance headline.
+The large Q5 role's per-element `q5_k_weight(...)` block locate, metadata loads,
+6-bit scale unpack, nibble/high-bit extraction, scale/offset, and resulting FMA
+made dequant/instruction issue the primary limiter. Exact wider slabs amortize
+that chain without changing any row arithmetic. The retained RB32 actual-role
+K3072/N12288 leaf is **5.977 ms** versus RB8 **9.021 ms**.
+
+The fresh post-WPF-1W cached trace is:
+
+| Shape | Kernel sum / span | Dispatches | Dense/shared Q5/Q6 | Selected IQ | Attention |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 | **5.812069 / 5.859423 s** | 4,210 | **2.417919 s / 41.602%** | **2.447247 s / 42.106%** | **0.909824 s / 15.653%** |
+| 1K | **12.662342 / 12.756807 s** | 8,426 | **4.844460 s / 38.259%** | **4.925955 s / 38.902%** | **2.817675 s / 22.252%** |
+
+RB32 keeps zero scratch/private memory and theoretical 32 waves/CU despite
+code-object SGPR107 with 14/5 Q5/Q6 scalar spills. Those compile-time counts
+remain invariant if WPF-C1 dispatches the same body, but M128 proves neither
+M256/M512 grid geometry nor achieved scheduling. Every C1 candidate must retrace
+the selected symbol, grid Y, launch waves, duration, and available runtime
+occupancy counters at its winning matrix capacity.
 
 WPF-1B proves substantial but unretainable changed-arithmetic headroom. D4,
 D8/S8, and two-stage D8R8/S8 improve clean 512/1K to
@@ -138,15 +155,25 @@ the complete 576-step lane becomes worse: max KL **0.964321** and **562/576
 (97.569%)** top-1. D4 and D8 were already rejected at max KL
 **0.624304/0.400292**. This non-monotonic autoregressive sensitivity closes
 blind D16 or further residual-precision variants; it does not weaken the
-quality contract. Production remains exact rowbatch8.
+quality contract. Production remains exact rowbatch32.
 
-Any future WPF-1R path starts by measuring BF16 mismatch and conservative
-rounding-risk density on all actual Q5/Q6 roles. The device queue is bounded
-and fail-closed, groups repair work by output weight row rather than issuing
-one scattered full-row read per coordinate, and recomputes uncertain outputs
-with the exact retained traversal. Queue overflow runs the complete exact
-projection. Build it only after WPF-1W, WPF-C1, and exact-first WPF-2 establish
-the baseline it must beat.
+WPF-1R starts by measuring BF16 mismatch, conservative rounding-risk density,
+distinct touched output-weight-row density, and modeled repair bytes on every
+actual Q5/Q6 role. Its prospective stop rules are frozen before implementation:
+reject sparse repair if any role exceeds **5% uncertain output coordinates**,
+**20% touched output weight rows**, or **25% of the exact family's modeled
+source reads**. The device queue is capped to the admitted density and
+fail-closed; any overflow runs the complete exact projection, and any overflow
+in a timed/category promotion run rejects the sparse route. The sparse-repair route remains the
+threshold-track campaign only with BF16-bit-exact repaired outputs, at least
+**1.25x repaired-inclusive Q5/Q6 family speedup** and **1.10x
+complete-prefill speedup** versus the winning exact baseline at both 512 and
+1K, with every process order non-regressive. Missing a density/traffic/overflow
+gate stops this sparse formulation; missing the speed target ends further
+WPF-1R tuning and transfers priority to WPF-3. Any smaller exact, measured,
+non-regressive subtarget win is still retained under the repository evidence
+policy rather than discarded. Build it only after WPF-C1 and exact-first WPF-2
+establish the baseline it must beat.
 
 The actual GGUF inventory gives this active linear ledger:
 
@@ -197,19 +224,20 @@ activation and metadata traffic, quantization, nonlinear kernels, the final
 one-row lm-head, and achieved efficiency of each IQ integer-dot body. Even so, **800/700 tok/s**
 is only **14.78%/13.96%** of the simplified 512/4K roof. The original
 41.720-tok/s control delivered **0.652 TFLOP/s** of active linear math; retained
-rowbatch8 at 79.585 tok/s now delivers **1.247 TFLOP/s**, still only **1.470%**
-of the measured BF16 reference. The 10-20x short target is conservative rather
-than aspirational.
+rowbatch32 at 85.481 tok/s now delivers **1.339 TFLOP/s**, still only **1.579%**
+of the measured BF16 reference. The simplified roof still leaves substantial
+software headroom.
 
 ### Cross-campaign calibration and the IQ format boundary
 
 The gfx1151 Q4_K_M and W7900 Q2 XL artifacts have the same network dimensions
 and therefore the same **15.6647424 GFLOP/token** active-linear ledger. This
 makes one directional comparison useful: gfx1151 Q4 began its matrix512 /
-attention128 campaign at **76.226 tok/s**, close to W7900's current **79.585
-tok/s**, then reached **654.249 tok/s (8.583x its own starting row)** after the
-full LAP campaign. Those endpoints are **1.247 versus 10.249 TFLOP/s** of
-active linear math. The similar starting rows despite W7900's larger CU and
+attention128 campaign at **76.226 tok/s**, close to W7900's WPF-1 rowbatch8
+checkpoint at **79.585 tok/s**; WPF-1W now reaches **85.481**. Q4 then reached
+**654.249 tok/s (8.583x its own starting row)** after the full LAP campaign.
+Current endpoints are **1.339 versus 10.249 TFLOP/s** of active linear math.
+The similar early rows despite W7900's larger CU and
 measured read ceilings are strong evidence of remaining software headroom, not
 proof that codebook cost is a fixed percentage of the gap. Quantization,
 devices, memory systems, and retained schedules differ. In particular,
@@ -291,16 +319,16 @@ The relevant lesson is dataflow, not API or literal constants:
 | --- | --- | --- |
 | WPF-0 profile + roofline | Complete | Clean 512/4K wall and all-family trace, actual tensor/FLOP ledger, 729.067-GB/s read ceiling, llama.cpp HIP/Vulkan audit, and compact artifact published. |
 | WPF-C0 shared-source capacity transfer | Rejected/removed | The bundle was performance-positive but failed the mandatory 576-step quality gate at max KL 1.11869; no copied capability default is retained. |
-| WPF-1 retained exact dense/shared row reuse | **Complete; rowbatch8 retained gfx1100 default** | Full state is bit-exact. Scalar **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K; selector-unset publication is **79.585/74.512**. rowbatch4 and scalar remain rollback/crossover routes; gfx1151 is fail-closed. |
-| **WPF-1W exact rowbatch widening** | **Primitive/full-state admitted; clean 512/1K next** | Rowbatch16/32 are separately registered and exact through partial 33-row tails, ten actual roles, all 48 hidden boundaries, logits/KV/live spans, and repeat/lifecycle. Actual-role one-each sum improves RB8 **45.1883 ms** to **41.2040/39.2782 ms (1.0967x/1.1505x)**. RB32 keeps scratch/private zero and theoretical 32 waves/CU but has measured 14/5 Q5/Q6 SGPR spills; clean 512/1K must justify them before any default change. |
-| **WPF-C1 isolated matrix capacity** | Pending WPF-1W | Screen M256/M512 with every attention/global/SWA tile forced to 128. Require complete state exact versus M128, deterministic repeats, admission/peak memory, and 512/1K non-regression. M512 adds about **314 MiB** planned scratch and raises average selected rows/expert from about 5 to 20. |
+| WPF-1 retained exact dense/shared row reuse | **Complete; superseded by WPF-1W** | Full state is bit-exact. Scalar **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K; RB8 selector-unset reached **79.585/74.512** before WPF-1W. rowbatch4/scalar remain explicit rollback/crossover routes; gfx1151 is fail-closed. |
+| **WPF-1W exact rowbatch widening** | **Complete; rowbatch32 retained gfx1100 default** | RB16/RB32 are exact through partial 33-row tails, ten actual roles, all 48 hidden boundaries, logits/KV/live spans, and repeat/lifecycle. The **unweighted diagnostic** ten-role sum moves RB8 **45.1883 ms** to RB16/RB32 **41.2040/39.2782 ms**; it is not an end-to-end forecast. Clean paired RB32 improves **+7.783%/+7.249%**, every sample wins, and selector-unset publishes **85.481/79.555 tok/s (+7.408%/+6.768% over RB8)**. RB32 remains scratch/private0 and theoretical 32 waves/CU despite 14/5 Q5/Q6 SGPR spills. |
+| **WPF-C1 isolated matrix capacity** | **Next** | Screen M256/M512 with every attention/global/SWA tile forced to 128. Require complete state exact versus M128, deterministic repeats, admission/peak memory, and 512/1K non-regression. M512 adds about **314 MiB** planned scratch and raises average selected rows/expert from about 5 to 20. Re-run cached resource/occupancy tracing at RB32 for each retained capacity: code-object spills are invariant only if the same symbol executes, while grid Y, launch waves, tails, duration, and achieved scheduling change. |
 | **WPF-2 exact-first routed IQ reuse** | Pending WPF-C1 | Compact by expert; widen generic IQ2 rowbatch and deliberately template IQ3 beyond its current hard-coded four; reuse expanded gate/up weights before top-10 expansion and pack down only after SiLU. Preserve IQ lookup/sign semantics and the existing scale/accumulation boundary; screen 1-KiB grid staging only with measured ISA/resource evidence. Publish routing counts, full/tail occupancy, resources, and physical traffic. Do not repeat rejected P2 `dp4a`; if exact reuse is insufficient, reprice the retained P6 signed-byte IQ2+D4 integer-MMQ32 primitive at the winning matrix capacity, then require complete quality plus bounded fail-closed exact repair. IQ4 follows only if the reprofile justifies it. |
 | WPF-1B approximate dense/shared Q8_1 MMQ | **D4/D8/D8R8 rejected** | Fastest clean candidates reach **129.572/116.116**, **129.083/115.802**, and **123.466/111.324 tok/s**, but all fail max-KL quality. D8R8 is the final blind-precision screen: max KL **0.964321**, **562/576** top-1. Keep exact production. |
-| **WPF-1R guarded exact repair** | Pending WPF-2 baseline | Measure mismatch/risk density first. Emit a conservative device-side risk bound, group uncertain work by output weight row, and use a bounded fail-closed queue; overflow recomputes the full exact projection. Price repair against the winning exact rowbatch/matrix baseline. |
-| WPF-3 short attention | Deferred until reprofile | Start only if the fresh post-WPF-2 profile makes attention largest or gives it a >=5% perfect-removal ceiling at both active shapes. Scope against closed gfx1151 single-wave qrow4 two-head, nine-wave qrow4 sharing, and generic M256 attention screens; require a materially different gfx1100 causal primitive. |
+| **WPF-1R guarded exact repair** | Pending WPF-2 baseline and frozen go/no-go | Proceed with sparse output repair only at <=5% uncertain coordinates, <=20% touched output rows, and <=25% exact-family modeled repair reads. Require zero promotion-run overflow and BF16-bit-exact outputs. Below 1.25x repaired family or 1.10x complete 512/1K speedup, retain any smaller exact/non-regressive win but end further WPF-1R tuning and prioritize WPF-3. |
+| **WPF-3 short attention** | Queued after WPF-2 threshold reprofile | Trigger when attention blocks the 150-tok/s wall budget, not only when it becomes largest. Current attention already consumes **26.7%/41.3%** of the 512/1K target wall and has >5% perfect-removal ceilings. After WPF-2, start if either measured exact shape remains below 157.5 tok/s (150 plus 5% margin). Scope against closed gfx1151 single-wave qrow4 two-head, nine-wave qrow4 sharing, and generic M256 attention screens; require a materially different gfx1100 causal primitive. |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
-| WPF-4 launch/fusion | Deferred | Post-WPF-1 span-minus-sum is only **0.82%/0.75%** at 512/1K. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
-| WPF-5 long context | Hard deferred | Resume 4K only after exact 512/1K both reach 200 tok/s; full 16K/64K/128K work remains closed until 800/700 at 512/4K or a documented measured blocker. |
+| WPF-4 launch/fusion | Deferred | Post-WPF-1W span-minus-sum is only **0.81%/0.74%** at 512/1K. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
+| WPF-5 long context | Hard deferred | Resume 4K only after exact 512/1K both reach 150 tok/s; full 16K/64K/128K work remains closed until 800/700 at 512/4K or a documented measured blocker. |
 
 ### Admission and stop rules
 
@@ -313,12 +341,14 @@ For every WPF kernel or owner:
 2. Record kernel name, grid/local size, VGPR/SGPR/LDS/private/spills, duration,
    and a cached-only `rocprofv3` trace. Any private memory or spill regression
    requires an explicit measured justification.
-3. Use one resident weight set. No full Q5/Q6/IQ sidecar fits the 48-GiB
-   budget. Scratch aliases through phase liveness and must preserve teardown.
-4. While either 512 or 1K is below 200 tok/s, gate only those two shapes in
+3. Use one resident weight set. No persistent full-family Q5/Q6/IQ alternate
+   weight sidecar fits the 48-GiB budget. Bounded producer/risk/repair queues
+   such as the current 4,325,376-byte M128 D8R8 workspace are allowed when
+   capacity is explicit, liveness-aliased, fail-closed, and teardown-exact.
+4. While either 512 or 1K is below 150 tok/s, gate only those two shapes in
    both process orders with exact IDs/positions/state, deterministic repeats,
    finite logits, and allocation recovery. Do not spend iteration time on 4K.
-   After both short shapes cross 200 tok/s, restore the 4K gate. A per-order
+   After both short shapes cross 150 tok/s, restore the 4K gate. A per-order
    regression is not waived by pooling. Small wins use at least 15 samples or
    the established full-model repetition protocol.
 5. Promote only architecture-qualified package capabilities and registered

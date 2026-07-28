@@ -69,12 +69,13 @@ numbers below.
   speculative proposal/verify/commit infrastructure are available as retained
   runtime and benchmark paths.
 - The same Laguna family is supported on W7900/gfx1100 with the
-  `UD-Q2_K_XL` GGUF. Its current exact raw-Q5/Q6 rowbatch8 prefill default
-  measures **79.585/74.512 tok/s** at 512/1K, versus same-process scalar
-  **40.636/39.174 tok/s** (**+94.431%/+88.018%**). Full logits, all 48 hidden
-  boundaries, active K/V, and every `KVLiveSpans` field are bit-exact. Because
-  both short shapes remain below 200 tok/s, 4K and longer prefill stay deferred
-  ([production evidence](benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json)).
+  `UD-Q2_K_XL` GGUF. Its current exact raw-Q5/Q6 rowbatch32 prefill default
+  measures **85.481/79.555 tok/s** at 512/1K, **+7.408%/+6.768%** over the
+  preceding rowbatch8 headline. Paired RB8->RB32 improves **7.783%/7.249%**
+  with every candidate sample faster. Full logits, all 48 hidden boundaries,
+  active K/V, and every `KVLiveSpans` field are bit-exact. Because both short
+  shapes remain below 150 tok/s, 4K and longer prefill stay deferred
+  ([production evidence](benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted
@@ -941,7 +942,7 @@ request examples, feature contracts, diagnostics, and current limitations.
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | Implementation status and concrete milestones |
 | [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
 | [`docs/LAGUNA.md`](docs/LAGUNA.md) | Laguna S 2.1 gfx1151 support contract, implementation record, DFlash boundary, and evidence index |
-| [`docs/LAGUNA-prefill.md`](docs/LAGUNA-prefill.md) | Laguna prefill plans: W7900 WPF-1 rowbatch8 retained with WPF-1B next, plus the gfx1151 campaign record |
+| [`docs/LAGUNA-prefill.md`](docs/LAGUNA-prefill.md) | Laguna prefill plans: W7900 WPF-1W rowbatch32 retained with isolated matrix-capacity work next, plus the gfx1151 campaign record |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |

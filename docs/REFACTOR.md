@@ -16,17 +16,19 @@ should be removed or collapsed.
 
 ## Laguna raw-Q5/Q6 prefill rowbatch selector
 
-- Added 2026-07-28 as the default-off WPF-1 runtime admission seam, then
-  promoted rowbatch8 on gfx1100 after actual-weight/full-state and repeated
-  512/1K gates passed exactly. `LagunaGGUFResidentSession(...,
+- Added 2026-07-28 as the default-off WPF-1 runtime admission seam, promoted
+  rowbatch8 after its exact gates, then promoted rowbatch32 after WPF-1W clean
+  paired 512/1K gains of **7.783%/7.249%** and selector-unset publication at
+  **85.481/79.555 tok/s**. `LagunaGGUFResidentSession(...,
   raw_k_prefill_rowbatch=0|4|8|16|32)` scopes fixed-grid-Y Q5/Q6 row reuse to one
-  bulk-prefill execution owner; zero is the scalar rollback. gfx1151 explicitly
-  excludes all sixteen W7900 keys and remains zero.
-- WPF-1W adds exact rowbatch16/32 candidates while rowbatch8 remains default.
-  Keep all widths only through the clean 512/1K policy screen. After promotion,
-  remove widths that are dominated end-to-end; retain zero for scalar rollback
-  and whichever smaller slab owns N48/N72 or a measured crossover. Preserve the
-  scalar registered fallback for unsupported shapes/backends.
+  bulk-prefill execution owner; zero is scalar rollback. gfx1151 excludes all
+  sixteen W7900 keys and remains zero.
+- Keep 8/16/32 through WPF-C1: the unweighted actual-role screen leaves N48 to
+  RB8, N72 narrowly to RB16, and large roles to RB32, while M256/M512 change
+  grid/tail scheduling. After C1 and its fresh resource trace, either add one
+  shape-qualified registered policy or remove dominated widths. Retain zero and
+  the scalar registered fallback for unsupported shapes/backends; rowbatch4 is
+  removable once no retained crossover/bisection still uses it.
 
 ## Laguna raw-Q5/Q6 prefill MMQ selector
 
@@ -34,7 +36,8 @@ should be removed or collapsed.
   `LagunaGGUFResidentSession(..., raw_k_prefill_mmq=True|False)` lazily owns one
   bounded producer-row Q8_1 workspace and library only on supported gfx1100.
   Quant-specific crossover policy stays on registered Q5_K/Q6_K plugin keys;
-  N48/N72 and all key/shape/backend misses retain exact rowbatch8. gfx1151
+  N48/N72 and all key/shape/backend misses retain the current exact rowbatch32
+  owner unless an explicit smaller slab is selected. gfx1151
   excludes the producer, policy, and MMQ keys and rejects explicit enablement.
 - D4, D8, and D8R8 runtime candidates are performance-positive but rejected by
   the complete quality lane at maximum KL **0.624304/0.400292/0.964321**. Do
@@ -43,11 +46,16 @@ should be removed or collapsed.
   infrastructure for measuring mismatch/risk density.
 - Before WPF-1R, either repurpose this owner behind bounded fail-closed exact
   repair or remove the public positive selector, direct runtime policy, and
-  D4/D8/D8R8 ABI assumptions. Diagnostic primitive keys may remain only with
-  explicit evidence value. Promote a future gfx1100 package default and remove
-  its opt-in only after exact repaired BF16 output, full state, 512/1K
-  performance, and both orders of the complete 18-prompt lane pass. Preserve
-  the winning exact rowbatch route as mandatory fallback either way.
+  D4/D8/D8R8 ABI assumptions. Bounded liveness-aliased workspace is allowed;
+  a persistent full-family alternate weight sidecar is not. Stop this sparse
+  formulation above 5% uncertain coordinates, 20% touched output rows, 25%
+  modeled exact-family reads, or on any promotion-run overflow. Below 1.25x
+  repaired-family / 1.10x complete 512/1K speedup, retain any smaller exact,
+  non-regressive win but end further WPF-1R tuning and prioritize WPF-3.
+  Diagnostic primitive keys may remain only with explicit evidence value.
+  Promote only after exact repaired BF16 output, full
+  state, and both orders of the complete 18-prompt lane pass. Preserve the
+  winning exact rowbatch route as mandatory fallback either way.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
