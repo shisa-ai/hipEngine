@@ -100,13 +100,13 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
-# WPF-2's exact expert-major IQ down route selects M512 with both global and
-# SWA attention fixed at 128. All M128/M256/M512 boundaries, K/V/live spans,
-# routing, repeats, and lifecycle are byte-identical; M512 compounds the grouped
-# M256 route by about 1.7% at both 512/1K and improves the old direct route by
-# 14.12%/13.35%. Explicit direct/M128/M256 routes remain exact rollbacks.
+# WPF-2b's exact expert-major IQ2 gate/up route compounds grouped IQ3/IQ4 down
+# at M512 with both attention capacities fixed at 128. Complete state is KL0 and
+# dirty paired 512/1K admission improves 19.65%/18.01%. Explicit grouped_exact
+# gate/up preserves the preceding route-major rollback; direct/M128/M256 remain
+# exact fallbacks for unsupported quant/shape keys.
 LAGUNA_PREFILL_MATRIX_ROWS = 512
-LAGUNA_SELECTED_GATE_UP_MODE = "grouped_exact"
+LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
