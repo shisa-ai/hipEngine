@@ -3,19 +3,19 @@
 Last updated: **2026-07-29**
 
 The current W7900 Laguna UD-Q2_K_XL short-prefill packet is
-[`2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json`](results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json).
-Exact matrix512/attention128 now gathers source hidden rows once, reuses each
-local64/pair16 IQ2 gate/up decode across up to eight expert-major rows, and
-retains grouped IQ3/IQ4 down. Clean package-resolved publication moves the
-preceding exact packet **99.230/91.559 -> 118.705/107.804 tok/s** at 512/1K
-(**+19.626%/+17.743%**). Complete logits, all 48 hidden boundaries,
+[`2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json`](results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json).
+Exact matrix512/attention128 retains pair16 grouped IQ gate/up/down and now
+assigns four adjacent causal SWA rows to one local32 wave after the measured
+C256 crossover, with exact wave32 below it. Clean package-resolved publication
+moves the preceding exact packet **118.705/107.804 -> 131.919/125.960 tok/s**
+at 512/1K (**+11.131%/+16.842%**). Complete logits, all 48 hidden boundaries,
 shared-prefix routing, active K/V, every `KVLiveSpans` field, repeats, and
-lifecycle are exact at KL 0. Cached tracing cuts gate/up **62.549%/62.850%**,
-total selected IQ **45.021%/45.343%**, and kernel span
-**16.309%/15.133%** without changing **1,479/2,962** dispatches. The new body
-is local64/VGPR104/SGPR128/LDS512B/scratch0; c=1 and unsupported quant keys
-retain exact route-major fallbacks. Both rates remain below 150 tok/s, so 4K
-and longer prefill remain intentionally unopened.
+lifecycle are exact at KL 0. Cached tracing cuts SWA
+**55.411%/59.449%**, all attention **50.675%/52.612%**, and kernel span
+**9.643%/14.228%** without changing **1,479/2,962** dispatches. The qrow4 body
+is local32/VGPR72/SGPR128/LDS0/scratch0; explicit local128 and qualified wave32
+remain exact fallbacks. Both rates remain below 150 tok/s, so 4K and longer
+prefill remain intentionally unopened.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
@@ -503,8 +503,10 @@ regresses **508.788 -> 508.023 tok/s (-0.150%, +1.515 ms)** and wins only
 [`artifact`](results/2026-07-26-gfx1151-laguna-q4-down-activation-doublebuf-rejected.json).
 
 Latest retained hipEngine revisions in this scoreboard:
-`a80a4cfbfeb84594c366deb4cf142332acd0c619` for the exact gfx1100 Laguna
-matrix256 short-prefill default and `b2dea14c999d304c79c58575c01f8d99e2c3a00c`
+`c435d4cdfb0d2e9f4564e13730627e530d293466` for the exact gfx1100 Laguna
+qrow4/C256 SWA short-prefill default and clean production measurement,
+`a80a4cfbfeb84594c366deb4cf142332acd0c619` for the preceding exact matrix256
+short-prefill default, and `b2dea14c999d304c79c58575c01f8d99e2c3a00c`
 for its package-resolved clean publication harness,
 `b58461a5e` for exact next-K32 Q6 WMMA weight prefetch in gfx1151 Laguna
 production,

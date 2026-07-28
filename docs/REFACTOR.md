@@ -81,10 +81,11 @@ should be removed or collapsed.
   qualified policy after no-override deep-state KL0 and paired 512/1K gains of
   **11.230%/16.774%**. Explicit local128, wave32, qrow2, qrow4, and online
   variants remain available for rollback and the separate arithmetic screen.
-- After clean package publication, remove only benchmark comparison plumbing
-  that no longer owns a rollback. Preserve the local128 unfused fallback and
-  the qualified wave32 route. Do not collapse exact qrow4 into the online
-  qrow2/qrow4 variants: those change softmax association and require an
+- Clean publication is complete at **131.919/125.960 tok/s** with cached SWA
+  reductions of **55.411%/59.449%**. No benchmark-only comparison plumbing is
+  committed. Preserve the local128 unfused fallback and qualified wave32 route
+  through the separate online-arithmetic decision. Do not collapse exact qrow4
+  into online qrow2/qrow4: those change softmax association and require an
   independent complete quality decision.
 
 ## Laguna P6 IQ2 MMQ32 diagnostic

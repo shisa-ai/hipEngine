@@ -69,14 +69,14 @@ numbers below.
   speculative proposal/verify/commit infrastructure are available as retained
   runtime and benchmark paths.
 - The same Laguna family is supported on W7900/gfx1100 with the
-  `UD-Q2_K_XL` GGUF. Its current exact matrix512/attention128/rowbatch32
-  prefill default reuses local64/pair16 IQ2 gate/up and grouped IQ3/IQ4 down
-  weights by expert. Clean package-resolved throughput is **118.705/107.804
-  tok/s** at 512/1K, **+19.626%/+17.743%** over the preceding exact packet.
-  Full logits, all 48 hidden boundaries, routing prefixes, active K/V, and
-  every `KVLiveSpans` field are bit-exact at KL 0. Because both short shapes
-  remain below 150 tok/s, 4K and longer prefill stay deferred
-  ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json)).
+  `UD-Q2_K_XL` GGUF. Its exact matrix512/attention128/rowbatch32 prefill
+  default combines pair16 grouped IQ gate/up/down with adjacent-row qrow4 SWA
+  after a measured C256 crossover. Clean package-resolved throughput is
+  **131.919/125.960 tok/s** at 512/1K, **+11.131%/+16.842%** over the preceding
+  exact packet. Full logits, all 48 hidden boundaries, routing prefixes,
+  active K/V, and every `KVLiveSpans` field are bit-exact at KL 0. Because both
+  short shapes remain below 150 tok/s, 4K and longer prefill stay deferred
+  ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted
