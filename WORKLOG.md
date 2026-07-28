@@ -188445,3 +188445,15 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`. This is an in-tree codegen repair,
   not a port; Python/JSON, focused CPU/runtime, resident-model, lifecycle, and
   cached native-trace gates complete independently.
+
+## 2026-07-29 03:57 JST — Publish clean SWA direct-store production
+
+- On tracked-clean `0c48e6bfb`, three selector-unset p512/d128 runs reach
+  **19.072126/19.085294/19.089552 tok/s**, median **19.085294 tok/s /
+  52.396 ms/token**. This is **+0.1015% / -0.0532 ms/token** versus the prior
+  clean 19.065940 packet and **+66.441%** versus the 11.466687 sprint start.
+- The benchmark enforced the cached gfx1151 build and production queue policy.
+  Generated hash `94f803...bda32`, next token 2930, final token 74107, final
+  position 638, deterministic state, and allocation lifecycle are exact.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-production.json`.

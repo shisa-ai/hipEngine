@@ -1136,7 +1136,14 @@ natural SWA; the aggregate vec16 owner remains registered rollback. A
 128-slot direct stage is not retained: the earlier exact stage-width screen
 regresses stage64 **0.107446 -> 0.109075 ms (+1.516%)**. Evidence:
 [`retained direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-retained.json) ·
+[`clean direct-store production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-production.json) ·
 [`rejected stage128`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage128-vec16-rejected.json).
+
+Tracked-clean selector-unset production measures
+**19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is
+**+0.1015% / -0.0532 ms/token** versus the preceding clean 19.065940 packet
+and **+66.441%** over the 11.466687 sprint start. Generated IDs, next/final
+tokens, final position, and allocation lifecycle remain exact.
 
 The global-attention sibling keeps the retained dynamic-live score ABI and all
 48 local256 reducer workgroups, but specializes the production
