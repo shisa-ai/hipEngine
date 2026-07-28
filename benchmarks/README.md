@@ -3505,6 +3505,12 @@ natural-prompt/category, 4K-context, concurrency, cancellation, and server
 lifecycle validation before any package-default promotion. The full failure
 signature, run ledger, lifetime audit, ruled-out hypotheses, raw hashes, and
 next minimization matrix are maintained in [`docs/REDLINE.md`](../docs/REDLINE.md).
+A same-binary RX 7900 XTX cross-device diagnostic passes rows 1-172, then its
+Redline independent q6 packed-dot replay times out and both HIP and Vulkan lose
+the process context; this is the same broad lifecycle-failure class but not the
+same W7900 row/signature, and the incomplete prefix carries no performance
+claim. See
+[`2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json`](results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json).
 
 The retained synthetic Laguna-shape IQ2_XS primitive packet is
 [`2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).

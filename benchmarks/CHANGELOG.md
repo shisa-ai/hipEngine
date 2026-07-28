@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-28
 
+- [blocked cross-device Redline lifecycle diagnostic; no performance claim] Radeon RX 7900 XTX / same gfx1100 Redline-HIP-Vulkan binary / one-process 240-row matrix: **172/240 rows pass all backends**, then Redline independent q6 packed-dot times out on HSA completion and the process loses HIP/Vulkan context; this confirms the broad failure class on GPU1 but differs from W7900's row-49 address-zero abort; `benchmarks/results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json`.
+
 - [retained experimental graph transport; package default blocked] Radeon Pro W7900 / Qwen3.6-35B-A3B UD-Q4_K_M / repeated-token p512/d128 c=1 graph: native hipGraph **92.812 -> 100.357 tok/s (+8.129%)** with strict retained PM4, bit-identical logits/IDs, **1.0273x** capture-inclusive post-load wall, and a four-run/512-launch persistent soak at **0.095%** range/median; the separate long-process address-zero fault still blocks default integration; `benchmarks/results/2026-07-28-gfx1100-redline-gguf-graph-spike.json`.
 
 - [accepted same-HSACO micro transport; production integration blocked] Radeon Pro W7900 / TheRock HIP 7.15 / 240-row Redline-HIP-Vulkan matrix: Redline beats HIP **239/240 at median 2.792x** and Vulkan **208/240 at 1.696x**, with 240/240 correctness, while direct hipEngine dispatch beats hipGraph **3.059x/7.881x** serial/independent; a broad-process address-zero GPU page fault requires an upstream lifecycle fix before default integration; `benchmarks/results/2026-07-28-gfx1100-redline-transport-spike.json`.

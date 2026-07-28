@@ -672,10 +672,10 @@ actual native fallback is always reported. Same-HSACO W7900 micro evidence and
 a narrow Qwen3.6 GGUF repeated-token p512/d128 graph gate are accepted: strict
 PM4 is bit-identical and improves decode throughput 8.129%, including a stable
 four-run persistent soak. Package-default promotion remains blocked on an
-upstream lifecycle fix for the reproduced long-process address-zero GPU fault,
-then natural-prompt/category, 4K-context, concurrency, cancellation, and server
-lifecycle gates. Process isolation is not an acceptable runtime workaround. See
-[REDLINE.md](REDLINE.md) for the complete fault ledger and minimization plan.
+upstream lifecycle fix for the W7900 address-zero and RX 7900 XTX context-loss
+variants, then natural-prompt/category, 4K-context, concurrency, cancellation,
+and server lifecycle gates. Process isolation is not an acceptable runtime
+workaround. See [REDLINE.md](REDLINE.md) for the complete fault ledger and minimization plan.
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
