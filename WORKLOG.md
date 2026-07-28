@@ -187203,3 +187203,18 @@ Vulkan local sizes verbatim will close the measured gap.
   read all three live thresholds from `owner.kv_cache`, then rerun the
   under-five-minute clean publication rather than publishing inconsistent
   metadata.
+
+## 2026-07-28 — Publish gfx1151 split-attention production default
+
+- After the telemetry-only repair, clean selector-unset commit `43e9893e9`
+  records resolved thresholds **127/65/257**, gated reduction, and wave-local
+  SWA. Decode is **14.519070/14.530294/14.528110 tok/s**, median
+  **14.528110**. Against retained head/KV this is **+26.486647%** and saves
+  **2.315376 seconds** over 127 calls; against the post-merge unfused/unsplit
+  baseline it is **+26.698414%**.
+- Paired pp512 is **653.992 tok/s**, effectively the retained 654.249
+  headline. All IDs, trajectory hash, final position, repeat determinism, and
+  allocation recovery pass. Publish the retained artifact and update the
+  benchmark rollup plus `docs/LAGUNA-prefill.md` current-state table. The next
+  optimization decision requires a fresh production gfx1151 decode census
+  because attention's share has changed materially.

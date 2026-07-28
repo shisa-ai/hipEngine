@@ -51,17 +51,19 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
-A native gfx1151 port of the retained gfx1100 current-P4 head-RMSNorm +
-partial-RoPE + BF16 KV-write composites improves tracked-clean p512/d128 eager
-c=1 decode **11.466687 -> 11.485885 tok/s (+0.167%)**. It removes 48 launches
-per token; all three candidate samples beat all controls, while global/SWA
-boundary fixtures, the complete 128-token trajectory, IDs, positions, and
-tracked-allocation teardown remain exact. Selector-unset production resolves
-the composite and reproduces the win; explicit False retains the registered
-unfused chain. Paired pp512 is **652.318 tok/s**, within normal variance of the
+Two exact gfx1100 structural transfers now improve tracked-clean p512/d128
+gfx1151 eager c=1 decode **11.466687 -> 14.528110 tok/s (+26.698%)**. Native
+head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
+**11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
+**127/65/257** threshold bundle reaches **14.528110 tok/s (+26.487%
+incremental)**. CPU-oracle, F32/BF16/`KVLiveSpans` byte, reducer-bit-exact,
+complete 128-token trajectory, ID/position, native trace, and lifecycle gates
+all pass. Split scratch adds only **1.573 MB**; explicit disables retain both
+unfused and serial chains. Paired pp512 is **653.992 tok/s**, effectively the
 retained **654.249 tok/s** short headline. The eager global-attention ABI still
 caps decode cache capacity at 4,096, so the long-context publication below
 remains prefill-only.
+[`retained split-attention artifact`](results/2026-07-28-gfx1151-laguna-split-attention-retained.json) ·
 [`retained head/KV artifact`](results/2026-07-28-gfx1151-laguna-head-kv-fusion-retained.json).
 
 The user-requested 512/1K/4K/32K/64K/128K closure sweep now passes in one

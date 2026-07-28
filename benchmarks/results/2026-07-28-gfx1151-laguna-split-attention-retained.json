@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_gfx1151_split_attention_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "timed_decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_rows": 2048,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-split-attention-production-final.json",
+    "candidate_addition": "--decode-split-attention",
+    "timing_scope": "decode exactly 127 synchronized eager forward_token calls after the prefill-produced first token; model load excluded"
+  },
+  "baseline": {
+    "revision": "c70470bde50858742794ca765d13ba7b60fc4335",
+    "head_kv_fusion": true,
+    "split_attention": false,
+    "decode_seconds": [
+      11.058493791031651,
+      11.05538216396235,
+      11.057049877941608
+    ],
+    "decode_tokens_per_second": [
+      11.484384980438834,
+      11.487617353833931,
+      11.485884698174342
+    ],
+    "median_seconds": 11.057049877941608,
+    "median_tokens_per_second": 11.485884698174342,
+    "resident_nbytes": 78806349844,
+    "raw_sha256": "67ab502f801c4f0e1b171f452649817d512c18abb5c49df98c98df583d360374"
+  },
+  "candidate": {
+    "revision": "e7bb9bfacd03c6096c186ef0eedbd773f8d6a3a8",
+    "split_attention_requested": true,
+    "decode_seconds": [
+      8.738158236956224,
+      8.737724908976816,
+      8.739483959972858
+    ],
+    "decode_tokens_per_second": [
+      14.533955160354033,
+      14.534675939445622,
+      14.531750453649716
+    ],
+    "median_seconds": 8.738158236956224,
+    "median_tokens_per_second": 14.533955160354033,
+    "change_percent": 26.537533174646754,
+    "wall_change_percent": -20.97206457946332,
+    "resident_nbytes": 78807922708,
+    "raw_sha256": "6aca74eeaf867eff17493783148a66c486e28374217866b3e771807240cc0a52"
+  },
+  "production": {
+    "revision": "43e9893e93dab43729a260b00db76d0a29344184",
+    "split_attention_requested": null,
+    "global_split_min_live": 127,
+    "swa_split_min_live": 65,
+    "swa_split_tile16_min_live": 257,
+    "split_gate_fusion": true,
+    "swa_split_wave_local": true,
+    "decode_seconds": [
+      8.7471168510383,
+      8.740359855000861,
+      8.74167362996377
+    ],
+    "decode_tokens_per_second": [
+      14.519069787540893,
+      14.530294187754297,
+      14.528110448402355
+    ],
+    "median_seconds": 8.74167362996377,
+    "median_tokens_per_second": 14.528110448402355,
+    "change_percent": 26.486647134038964,
+    "wall_change_percent": -20.940271352098407,
+    "saved_seconds_per_127_calls": 2.315376247977838,
+    "saved_milliseconds_per_call": 18.231309039195573,
+    "prefill_median_tokens_per_second": 653.9917287887938,
+    "resident_nbytes": 78807922708,
+    "resident_growth_bytes": 1572864,
+    "raw_sha256": "b99882be8411a86976c870e063cd5d7b571717703dc96e03588bc9d290a16af0"
+  },
+  "implementation": {
+    "source": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "registration": "ten exact global/SWA split producer and reducer variants aliased under gfx1151",
+    "threshold_bundle": {
+      "global_min_live": 127,
+      "swa_min_live": 65,
+      "swa_tile16_min_live": 257
+    },
+    "features": [
+      "global exact split scores and gated reduce",
+      "SWA exact split scores and gated reduce",
+      "SWA tile16 score crossover",
+      "SWA wave-local gated reduction"
+    ],
+    "fallback": "explicit use_split_attention=False retains serial global/SWA attention"
+  },
+  "correctness": {
+    "serial_vs_split_cpu_oracle_across_wraps": true,
+    "gated_reducers_bit_exact_to_unfused_chain": true,
+    "wave_local_reducers_bit_exact_to_retained_chain": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_after": 0
+  },
+  "profile": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -f csv --output-directory /tmp/laguna-gfx1151-split-attn-trace-20260728 -- uv run pytest -q tests/test_laguna_split_gate_fusion.py::test_laguna_split_exact_gated_reducers_match_unfused_chain tests/test_laguna_split_reduce_wave_local.py::test_laguna_swa_split_wave_local_matches_retained_reducer",
+    "split_specializations_observed": 9,
+    "all_kernel_scratch_bytes": 0,
+    "trace_sha256": "2e54f0ff1fe7203bbd0a40cb6f1d4a23ffaae77a7562b1a91529d3255925b65c"
+  },
+  "cumulative": {
+    "post_merge_unfused_unsplit_tokens_per_second": 11.466686899093393,
+    "production_tokens_per_second": 14.528110448402355,
+    "change_percent": 26.69841407766189
+  }
+}
