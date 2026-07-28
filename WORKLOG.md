@@ -188895,3 +188895,27 @@ Vulkan local sizes verbatim will close the measured gap.
   production remains **19.368763 tok/s**. The restored cached oracle passes.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pcache4-rejected.json`.
+
+## 2026-07-29 07:30 JST — Retain exact mixed32 four-lane exp issue
+
+- Transfer the useful barrier-free part of Vulkan's probability parallelism:
+  lanes 0..3 issue one independent compiler `expf` for each four-slot batch
+  and shuffle the four weights back to the unchanged ordered denominator/PV
+  chains. There is no new LDS, barrier, launch, or repair plane.
+- RED is the absent wrapper. GREEN passes positions 512-519 plus explicit
+  eviction with F32 context and gated BF16 byte identity. Nine leaf samples
+  improve **0.091487 -> 0.089135 ms (-2.57%)**. Cached tracing names the
+  `<64,true,true,true,true,true>` template and its stable window improves
+  **85.414 -> 83.584 us (-2.14%)** at unchanged
+  VGPR104/SGPR128/LDS24576/scratch0.
+- Seven queue-matched resident p512/d128 pairs improve
+  **19.368030 -> 19.432503 tok/s (+0.333%, -0.171 ms/token)**; every candidate
+  beats every control. Next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, and lifecycle remain
+  exact.
+- Promote only inside the existing gfx1151 gated saturated
+  72Q/8KV/D128/SWA512 mixed32 route. Serial-exp mixed32 remains explicit
+  rollback; shorter/non-natural and peer-backend routes are unchanged. The
+  focused owner/runner/profile validation reports **37 passed**.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-retained.json`.

@@ -3117,7 +3117,8 @@ template <
     bool kVectorValueStage,
     bool kDirectVectorStore = false,
     bool kAssumeSoftmaxDomain = false,
-    bool kMixed32Owners = false>
+    bool kMixed32Owners = false,
+    bool kSoftmaxExp4 = false>
 __global__ __launch_bounds__(384)
 void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
     const float* query,
@@ -3317,7 +3318,28 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
 #pragma unroll
       for (int local_base = 0; local_base < kValueStage; local_base += 4) {
         float weights[4] = {};
-        if (active_output && lane == 0) {
+        if constexpr (kSoftmaxExp4) {
+          float lane_weight = 0.0f;
+          if (active_output && lane < 4) {
+            const int idx = stage_base + local_base + lane;
+            const bool visible = shared_physical[idx] >= 0;
+            const float shifted_score =
+                shared_scores[q_local][idx] * scale - wave_max;
+            if constexpr (kAssumeSoftmaxDomain) {
+              __builtin_assume(shifted_score <= 0.0f);
+            }
+            lane_weight = visible ? expf(shifted_score) : 0.0f;
+          }
+#pragma unroll
+          for (int item = 0; item < 4; ++item) {
+            weights[item] = __shfl(lane_weight, item, 32);
+            if (active_output && lane == 0 &&
+                shared_physical[stage_base + local_base + item] >= 0) {
+              wave_denom =
+                  laguna_ordered_add_f32(wave_denom, weights[item]);
+            }
+          }
+        } else if (active_output && lane == 0) {
 #pragma unroll
           for (int item = 0; item < 4; ++item) {
             const int idx = stage_base + local_base + item;
@@ -3341,7 +3363,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
         if (active_output) {
 #pragma unroll
           for (int item = 0; item < 4; ++item) {
-            const float weight = __shfl(weights[item], 0, 32);
+            const float weight = kSoftmaxExp4
+                ? weights[item]
+                : __shfl(weights[item], 0, 32);
             const int value_idx =
                 (local_base + item) * kHeadDim + dim;
             output_acc = fmaf(
@@ -8019,6 +8043,67 @@ hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_d
   hipLaunchKernelGGL(
       (laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<
           64,
+          true,
+          true,
+          true,
+          true>),
+      dim3(32),
+      dim3(384),
+      0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      token_positions,
+      evict_mask,
+      row_positions,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 512 ||
+      sliding_window != 512 || scratch_stride != 512 ||
+      scan_slots != 512 || num_q_heads != 72 || num_kv_heads != 8 ||
+      head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<
+          64,
+          true,
           true,
           true,
           true,

@@ -1943,6 +1943,23 @@ should be boring.
   while permanently retaining the registered 24-block GQA3 and generic
   fallbacks.
 
+## Laguna gfx1151 mixed32 exact exp4 selector
+
+- Added 2026-07-29 as the default-off
+  `LagunaKVCache.swa_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512`
+  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp4(...)`, and
+  `--compare-swa-mixed32-exp4`. False restores the retained serial-exp
+  mixed32 sibling; it never selects a different geometry, arithmetic order,
+  or non-natural route.
+- Promotion gate satisfied: the exact four-lane issue schedule improves the
+  leaf **0.091487 -> 0.089135 ms (-2.57%)** and all seven resident p512/d128
+  pairs **19.368030 -> 19.432503 tok/s (+0.333%, -0.171 ms/token)** with
+  complete sample separation and identical trajectories/state/lifecycle.
+- Keep the explicit false rollback through clean production publication and
+  the next attention checkpoint. Then collapse the positive selector into the
+  qualified gfx1151 mixed32 dispatch while permanently retaining the
+  registered serial-exp mixed32 sibling for compiler/codegen bisection.
+
 ## Laguna gfx1151 exact global exp-domain selector
 
 - Added 2026-07-29 as the default-off

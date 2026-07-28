@@ -4072,6 +4072,23 @@ block-wide synchronization boundary.
 Evidence:
 [`rejected mixed32 P-cache4`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pcache4-rejected.json).
 
+The barrier-free Vulkan transfer is retained. Instead of lane 0 issuing four
+independent compiler `expf` calls serially for each four-slot batch, mixed32
+exp4 lets lanes 0..3 issue one each and shuffles the results back to every
+lane. Lane 0 still adds weights into the denominator in the original item
+order, and every dimension keeps the original PV FMA order. There is no new
+LDS, barrier, launch, or repair plane. Wrapped/evicted F32/BF16 output is
+byte-exact. The leaf improves **0.091487 -> 0.089135 ms (-2.57%)** and the
+stable cached kernel window improves **85.414 -> 83.584 us (-2.14%)** at
+unchanged **32 local384 blocks, VGPR104/SGPR128/LDS24576/scratch0**. All seven
+resident p512/d128 pairs improve
+**19.368030 -> 19.432503 tok/s (+0.333%, -0.171 ms/token)**; every candidate
+beats every control and the complete generated trajectory, positions, and
+lifecycle state are exact. gfx1151 now selects exp4 only within the
+already-qualified saturated mixed32 route. The serial-exp mixed32 sibling
+remains explicit rollback and other shapes/backends are unchanged. Evidence:
+[`retained mixed32 exp4`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-retained.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

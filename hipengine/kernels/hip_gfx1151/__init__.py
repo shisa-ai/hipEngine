@@ -309,6 +309,10 @@ LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Balance each KV head's nine queries as 2+2+2+3 across 32 local384 blocks.
 # Exact seven-pair resident decode admits the one-phase mixed owner.
 LAGUNA_SWA_MIXED32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
+# Issue each four-slot exact softmax batch across lanes 0..3, then shuffle the
+# weights back into the unchanged ordered denominator/PV chains. Seven
+# resident pairs admit the resource-neutral sibling at saturated SWA512.
+LAGUNA_SWA_MIXED32_EXP4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -708,6 +712,7 @@ __all__ = [
     "LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_FIXED512",
     "LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
     "LAGUNA_SWA_MIXED32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "LAGUNA_SWA_MIXED32_EXP4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
     "LAGUNA_SWA_SPLIT_FIXED512_REDUCE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
