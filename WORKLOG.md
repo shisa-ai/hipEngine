@@ -188345,3 +188345,18 @@ Vulkan local sizes verbatim will close the measured gap.
   Promote only saturated natural-shape gfx1151 SWA. Scalar V-stage64 remains
   registered rollback; shorter/non-natural/peer paths are unchanged. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-retained.json`.
+
+## 2026-07-29 03:19 JST — Publish SWA vec16 production
+
+- On tracked-clean `8aef53b5a`, three selector-unset p512/d128 runs reach
+  **18.801765/18.814192/18.815353 tok/s**, median **18.814192 tok/s /
+  53.151 ms/token**. This is **+3.204% / -1.703 ms/token** versus prior clean
+  global-GQA2 production at 18.230064 tok/s and **+64.077%** versus the
+  11.466687 tok/s sprint start.
+- Generated hash `94f803...bda32`, next token 2930, final token 74107,
+  position 638, deterministic repeats, and allocation lifecycle all pass.
+  Raw SHA-256 is `135a3586...b007`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-production.json`.
+- Next screen the same aligned vec16 copy in global GQA2 V-stage64. Keep the
+  scalar global path as rollback and require positive natural-live leaves
+  before a resident-model gate.
