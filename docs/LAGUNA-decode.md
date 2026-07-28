@@ -3952,9 +3952,13 @@ primitive. It remains byte-exact to the retained direct-store route and CPU
 oracle at live513/576/639 with explicit eviction. The leaf improves
 **1.86-2.34%**, and a cached trace improves aggregate median
 **90.490 -> 88.526 us (-2.17%)** at unchanged allocated VGPR32/scratch0.
-Because only 12 layers are global, this is not promoted from leaf evidence:
-the next gate is a counterbalanced p512/d128 resident-model A/B. Evidence:
-[`global exp-domain candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json).
+Seven tracked-clean p512/d128 pairs improve
+**19.235596 -> 19.243968 tok/s (+0.0435%, -0.0226 ms/token)** with all seven
+candidate wins and exact generated IDs/state/lifecycle. gfx1151 promotes it
+through live4000; explicit false restores the generic-domain direct-store
+body. Evidence:
+[`global exp-domain candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json) ·
+[`global exp-domain retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-retained.json).
 
 The next bounded attack is still the Vulkan-informed cooperative Br16/Bc64
 QK/PV tile, but it must preserve compiler-`expf` results and each head's

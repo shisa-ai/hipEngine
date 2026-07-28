@@ -1938,3 +1938,8 @@ should be boring.
   retain explicit false rollback through the decode campaign. On rejection,
   remove the field, setter, comparison lane, capability, and registered
   primitive rather than carrying a dead global fork.
+- Promotion gate satisfied 2026-07-29: all seven pairs improve
+  **19.235596 -> 19.243968 tok/s (+0.0435%, -0.0226 ms/token)** with exact
+  IDs/state/lifecycle. gfx1151 now defaults the capability true. Keep explicit
+  false rollback through this campaign, then collapse positive selector
+  semantics while retaining the generic-domain registered rollback.
