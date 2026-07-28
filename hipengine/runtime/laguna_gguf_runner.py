@@ -3041,6 +3041,15 @@ class LagunaGGUFResidentSession:
 
         self.use_selected_natural_tile8_decode = bool(enabled)
 
+    def set_decode_swa_assume_exp(self, enabled: bool) -> None:
+        """Select exact domain-specialized SWA expf or its rollback."""
+
+        if self.kv_cache is None:
+            raise RuntimeError("Laguna KV cache is not available")
+        self.kv_cache.swa_gqa3_vstage64_vec16_direct_assume_exp_fixed512 = bool(
+            enabled
+        )
+
     @property
     def resident_nbytes(self) -> int:
         self._check_open()
