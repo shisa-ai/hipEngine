@@ -1217,7 +1217,14 @@ VGPR/SGPR stay 28/34. All seven resident-model pairs improve
 **19.077502 -> 19.134537 tok/s (+0.2990%, -0.1562 ms/token)** with exact
 trajectories/state. gfx1151 selects the direct form through live4000; aggregate
 vec16 remains rollback and GQA1 remains fallback above the LDS bound. Evidence:
-[`retained global direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json).
+[`retained global direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json) ·
+[`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-production.json).
+
+Tracked-clean selector-unset production measures
+**19.136600/19.146417/19.153280 tok/s**, median **19.146417**. This is
+**+0.3203% / -0.1673 ms/token** versus the preceding clean 19.085294 packet
+and **+66.974%** over the 11.466687 sprint start. Generated IDs, next/final
+tokens, final position, and allocation lifecycle remain exact.
 
 ### Laguna post-350 selected-expert screens
 

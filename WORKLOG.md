@@ -188481,3 +188481,16 @@ Vulkan local sizes verbatim will close the measured gap.
   only natural capacity4096/live<=4000 gfx1151 global attention; retain the
   aggregate vec16 owner as exact rollback. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json`.
+
+## 2026-07-29 04:15 JST — Publish clean global direct-store production
+
+- On tracked-clean `efa7b95c1`, three selector-unset p512/d128 runs reach
+  **19.136600/19.146417/19.153280 tok/s**, median **19.146417 tok/s /
+  52.229 ms/token**. This is **+0.3203% / -0.1673 ms/token** versus the prior
+  clean 19.085294 packet and **+66.974%** versus the 11.466687 sprint start.
+- Cached gfx1151 kernels and the production two-queue policy are enforced;
+  telemetry confirms both SWA and global direct-store owners are selected.
+  Generated hash `94f803...bda32`, next token 2930, final token 74107, final
+  position 638, deterministic state, and allocation lifecycle are exact.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-production.json`.
