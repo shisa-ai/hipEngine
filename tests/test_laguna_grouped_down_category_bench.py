@@ -16,6 +16,7 @@ from scripts.laguna_grouped_down_category_bench import (
     MODES,
     PREFILL_350_COMPARISON,
     PRODUCTION_ABSOLUTE_COMPARISON,
+    SWA_DECODE_FAST_EXP_COMPARISON,
     SWA_QROW2_COMPARISON,
     SWA_QROW2_ONLINE_COMPARISON,
     _aggregate,
@@ -24,6 +25,7 @@ from scripts.laguna_grouped_down_category_bench import (
     _oracle_for_candidate,
     _paired_free_running,
     _promotion_gate,
+    _prompt_token_ids,
     _teacher_forced_quality,
 )
 
@@ -77,6 +79,35 @@ def test_attention_hipblaslt_comparison_adds_only_attention_candidate() -> None:
     assert lane.selected_down_mode == production.selected_down_mode
     assert lane.f16_projection_mode == production.f16_projection_mode
     assert lane.dense_q4_prefill_mode == production.dense_q4_prefill_mode
+
+
+def test_swa_fast_exp_category_saturates_ring_and_switches_only_candidate(
+    monkeypatch,
+) -> None:
+    calls: list[bool] = []
+
+    class FakeSession:
+        def set_decode_swa_fast_exp(self, enabled: bool) -> None:
+            calls.append(enabled)
+
+    monkeypatch.setattr(
+        benchmark,
+        "_session",
+        lambda _owner, _args: FakeSession(),
+    )
+    for mode in SWA_DECODE_FAST_EXP_COMPARISON.modes:
+        benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=SWA_DECODE_FAST_EXP_COMPARISON,
+        )
+
+    assert calls == [False, True]
+    assert _prompt_token_ids(
+        {"token_ids": (1, 2, 3)},
+        comparison=SWA_DECODE_FAST_EXP_COMPARISON,
+    ) == (1, 2, 3) + (2, 3) * 254 + (2,)
 
 
 def _rows(

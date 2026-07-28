@@ -1887,3 +1887,18 @@ should be boring.
   unconditional for the qualified gfx1151 shape. Permanently retain the
   natural tile16 and generic registered owners for unsupported
   shapes/backends.
+
+## Laguna gfx1151 SWA native-exp decode selector
+
+- Added 2026-07-29 as the default-off
+  `LagunaKVCache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512` field,
+  `LagunaGGUFResidentSession.set_decode_swa_fast_exp(...)`, and
+  `--compare-swa-fast-exp`/`swa_decode_fast_exp` benchmark lanes. It changes
+  only the exponential in saturated 72Q/8KV/D128/SWA512 decode; the retained
+  accurate-exp direct-store body remains the rollback.
+- Promote only if counterbalanced p512/d128 wall is positive and the complete
+  saturated-512 18-prompt/576-step gate passes KL <= 0.05 and top-1 >= 90%.
+  On promotion, make the gfx1151 capability select native exponential and keep
+  the false setter through the current decode campaign. On rejection, remove
+  the runtime field/setter and both comparison lanes; keep the registered
+  candidate primitive only if it remains useful for numerical bisection.
