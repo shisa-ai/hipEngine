@@ -200,10 +200,10 @@ ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON = CategoryComparison(
     require_shape_screen=False,
     require_performance_gate=False,
 )
-SWA_DECODE_FAST_EXP_COMPARISON = CategoryComparison(
-    name="swa_decode_fast_exp",
-    modes=("swa_decode_exact", "swa_decode_fast_exp"),
-    aggregate_key="swa_decode_fast_exp_vs_exact",
+SWA_DECODE_BOUNDED_EXP_COMPARISON = CategoryComparison(
+    name="swa_decode_bounded_exp",
+    modes=("swa_decode_exact", "swa_decode_bounded_exp"),
+    aggregate_key="swa_decode_bounded_exp_vs_exact",
     screen_kind="not_applicable",
     screen_status="not_applicable",
     screen_decision_key="not_applicable",
@@ -282,7 +282,7 @@ _COMPARISONS = {
         PREFILL_350_COMPARISON,
         PRODUCTION_ABSOLUTE_COMPARISON,
         ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
-        SWA_DECODE_FAST_EXP_COMPARISON,
+        SWA_DECODE_BOUNDED_EXP_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -432,8 +432,8 @@ def _session_for_mode(
     if comparison.execution_mode == "selected_down":
         session.set_selected_down_mode(mode)
     elif comparison.execution_mode == "swa_decode":
-        session.set_decode_swa_fast_exp(
-            mode == SWA_DECODE_FAST_EXP_COMPARISON.modes[1]
+        session.set_decode_swa_bounded_exp(
+            mode == SWA_DECODE_BOUNDED_EXP_COMPARISON.modes[1]
         )
     elif comparison.execution_mode not in {
         "f16_prefill",
@@ -488,7 +488,7 @@ def _oracle_for_candidate(
             )
     if comparison.execution_mode == "swa_decode":
         def configure_session(session: LagunaGGUFResidentSession) -> None:
-            session.set_decode_swa_fast_exp(True)
+            session.set_decode_swa_bounded_exp(True)
 
         return _oracle_gate(
             owner,
@@ -1243,7 +1243,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 in {"f16_prefill", "cumulative_prefill"}
             ),
             "decode_route": (
-                "exact saturated SWA exponential versus native exponential"
+                "generic versus bounded-domain accurate SWA exponential"
                 if comparison.execution_mode == "swa_decode"
                 else "identical exact c=1 path for both modes"
             ),
@@ -1318,7 +1318,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else (
                     "Both modes prefill the same category-generic 512-token "
                     "expansion. Only full-ring SWA decode selects accurate "
-                    "versus native exponential."
+                    "versus bounded-domain accurate exponential."
                     if comparison.execution_mode == "swa_decode"
                     else (
                     "Compensated WMMA applies only to the 36 SWA layers from M16; all "
@@ -1351,7 +1351,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "authoritative.",
             (
                 "AR decode compares the retained exact direct-store SWA route "
-                "with native exponential at full 512-token rings."
+                "with bounded-domain accurate exponential at full 512-token rings."
                 if comparison.execution_mode == "swa_decode"
                 else "AR decode uses the identical exact c=1 route in both modes."
             ),

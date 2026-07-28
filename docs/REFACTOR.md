@@ -1888,23 +1888,24 @@ should be boring.
   natural tile16 and generic registered owners for unsupported
   shapes/backends.
 
-## Laguna gfx1151 SWA native-exp decode selector
+## Laguna gfx1151 SWA exponential decode selector
 
 - Added 2026-07-29 as the default-off
-  `LagunaKVCache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512` field,
-  `LagunaGGUFResidentSession.set_decode_swa_fast_exp(...)`, and
-  `--compare-swa-fast-exp`/`swa_decode_fast_exp` benchmark lanes. It changes
-  only the exponential in saturated 72Q/8KV/D128/SWA512 decode; the retained
-  accurate-exp direct-store body remains the rollback.
+  `LagunaKVCache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512` field,
+  `LagunaGGUFResidentSession.set_decode_swa_bounded_exp(...)`, and
+  `--compare-swa-bounded-exp`/`swa_decode_bounded_exp` benchmark lanes. It
+  changes only generic versus softmax-domain accurate range handling in
+  saturated 72Q/8KV/D128/SWA512 decode; the retained generic `expf`
+  direct-store body remains the rollback.
 - Promote only if counterbalanced p512/d128 wall is positive and the complete
-  saturated-512 18-prompt/576-step gate passes KL <= 0.05 and top-1 >= 90%.
-  On promotion, make the gfx1151 capability select native exponential and keep
-  the false setter through the current decode campaign. On rejection, remove
-  the runtime field/setter and both comparison lanes; keep the registered
-  candidate primitive only if it remains useful for numerical bisection.
+  exact trajectory/state gate passes. On promotion, make the gfx1151
+  capability select bounded-domain exponential and keep the false setter
+  through the current decode campaign. On rejection, remove the runtime
+  field/setter and both comparison lanes; keep the registered candidate
+  primitive only if it remains useful for numerical bisection.
 - Raw native exponential is rejected: seven production pairs improve
   **19.130955 -> 19.309790 tok/s (+0.935%)**, but the complete category gate
-  reaches max KL **1.452698** despite **566/576** top-1. Keep the selector and
-  saturated category lane only through the immediate bounded-domain
-  exponential successor screen, then satisfy the rejection cleanup trigger;
-  they are now measurement infrastructure, not promotable semantics.
+  reaches max KL **1.452698** despite **566/576** top-1. Its runtime field,
+  setter, and comparison names are removed. The bounded-domain successor now
+  owns that temporary measurement seam; raw native exponential survives only
+  as a separately registered primitive/leaf bisection control.

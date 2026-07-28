@@ -188590,3 +188590,17 @@ Vulkan local sizes verbatim will close the measured gap.
   this exact candidate and require a positive seven-pair p512/d128 wall before
   production promotion. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-candidate.json`.
+
+## 2026-07-29 05:07 JST — Replace raw-native screen with bounded exponential
+
+- Remove the rejected raw-native runtime field, session setter, production
+  comparison flag, and category mode. Keep its separately registered primitive
+  only as a numerical/ISA bisection control.
+- Reuse the default-off measurement seam under explicit bounded-domain names:
+  `set_decode_swa_bounded_exp`, `--compare-swa-bounded-exp`, and
+  `swa_decode_bounded_exp`. The cache selector resolves the exact bounded
+  registry sibling only at saturated 72Q/8KV/D128/SWA512 and still requires
+  the retained direct-store capability.
+- Focused owner/setter, long-context harness, and complete category-harness
+  validation is **56 passed**. Production remains on generic accurate `expf`;
+  commit the clean A/B wiring before the seven-pair exact wall screen.

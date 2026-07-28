@@ -309,21 +309,21 @@ def test_laguna_selected_natural_tile8_decode_switch_is_session_scoped() -> None
     assert session.use_selected_natural_tile8_decode is False
 
 
-def test_laguna_swa_fast_exp_switch_is_session_scoped() -> None:
+def test_laguna_swa_bounded_exp_switch_is_session_scoped() -> None:
     session = object.__new__(runner_module.LagunaGGUFResidentSession)
     session.kv_cache = SimpleNamespace(
-        swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512=False,
+        swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512=False,
     )
 
-    session.set_decode_swa_fast_exp(True)
+    session.set_decode_swa_bounded_exp(True)
     assert (
-        session.kv_cache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512
+        session.kv_cache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512
         is True
     )
 
-    session.set_decode_swa_fast_exp(False)
+    session.set_decode_swa_bounded_exp(False)
     assert (
-        session.kv_cache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512
+        session.kv_cache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512
         is False
     )
 

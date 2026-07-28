@@ -3041,12 +3041,12 @@ class LagunaGGUFResidentSession:
 
         self.use_selected_natural_tile8_decode = bool(enabled)
 
-    def set_decode_swa_fast_exp(self, enabled: bool) -> None:
-        """Select native-exp saturated SWA decode or its exact rollback."""
+    def set_decode_swa_bounded_exp(self, enabled: bool) -> None:
+        """Select bounded-domain saturated SWA decode or its exact rollback."""
 
         if self.kv_cache is None:
             raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512 = bool(
+        self.kv_cache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512 = bool(
             enabled
         )
 
