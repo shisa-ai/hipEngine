@@ -187706,3 +187706,36 @@ Vulkan local sizes verbatim will close the measured gap.
   exact at **14.800191 tok/s**. LD-3 closes for plain Q8 and one-sided
   residual repair. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-full-model-rejected.json`.
+
+## 2026-07-28 19:35 JST — Close Laguna LD-4 Q4 raw/geometry decode
+
+- Correct the rank-2 Q4_K resident-byte premise before changing
+  materialization. Raw GGUF stores `144/256 = 0.5625` byte/weight. The pack8
+  sidecar stores 0.5-byte quants plus 0.25-byte FP32 scale/min, or
+  **0.75 byte/weight / +33.33%**, not a multi-fold expansion.
+- Actual-weight HIP-event screens cover dense gate K3072/N12288, shared gate
+  K3072/N1024, and Q4 shared down K1024/N3072. Raw local128 loses to production
+  pack8 local32 by **63.6%/74.4%/85.4%**. Raw wave32 fixed-metadata is
+  **+2.1%/-1.0%/+17.9%**; its only positive row is a launch-floor shared gate,
+  so raw residency is rejected.
+- Pack8 itself exposes a larger architecture seam: local128 improves dense and
+  shared gate **28.60%/14.23%**, while local64 improves shared down **6.01%**.
+  Add a temporary gfx1151 registry owner plus same-session long-profile A/B;
+  focused backend/profile RED/GREEN passes **58/58**.
+- Exact full-cycle command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-q4-pack8-decode-threads --allow-dirty --output /tmp/laguna-p512-d128-q4-pack8-threads-ab.json`.
+  All seven candidates beat every control and improve
+  **14.797582 -> 14.978817 tok/s (+1.225%, -0.818 ms/token)**, but the
+  deterministic trajectory changes final token **74107 -> 340**.
+- Run the complete 18-prompt train+heldout suite with two shared-weight
+  sessions, 32 baseline-top1 teacher-forced transitions/prompt, full-vocabulary
+  logits, and registry switching immediately before each control/candidate
+  decode call. Aggregate top-1 is **572/576 = 99.31%**, but max KL is
+  **1.002942**; heldout mixed JA/EN independently reaches **0.660855**.
+  Both exceed the **0.05** contract. Candidate ownership and temporary A/B
+  plumbing are removed without rerunning the model.
+- Production remains the generic pack8 local32 owner at
+  **14.800191 tok/s / 67.567 ms/token**. LD-4 is closed for raw residency and
+  reduction-order-changing geometry; reopen only with an exact/reduction-order-
+  preserving consumer. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-q4-pack8-decode-geometry-rejected.json`.

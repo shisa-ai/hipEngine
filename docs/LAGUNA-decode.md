@@ -3437,12 +3437,36 @@ max KL **0.463224**; a second activation plane regresses it to **0.881135**.
 The apparent one-plane accuracy depends on cancellation between the two error
 surfaces. Residual experiment kernels are removed and nothing is retained.
 
+LD-4's byte audit corrects the earlier premise. Rank-2 Q4_K pack8 stores
+**0.75 byte/weight** (0.5-byte packed quants plus 0.25-byte FP32 scale/min)
+versus raw GGUF's **0.5625 byte/weight**, so the resident expansion is
+**33.33%**, not a multi-fold decode-traffic increase. On actual dense/shared
+weights, the existing raw local128 consumer loses to the production pack8
+owner by **63.6-85.4%**. The barrier-free raw wave32 fixed-metadata consumer is
+still **2.1% slower** on dense gate and **17.9% slower** on shared down; its
+only positive row is a launch-floor **1.0%** shared-gate result. Raw residency
+is therefore closed.
+
+A separate pack8 geometry screen found a real but inadmissible speed seam.
+Relative to production local32, local128 improves the K3072/N12288 dense gate
+**28.60%** and K3072/N1024 shared gate **14.23%**; local64 improves the
+K1024/N3072 shared down **6.01%**. Seven same-session p512/d128 pairs move
+**14.797582 -> 14.978817 tok/s (+1.225%, -0.818 ms/token)**, with every
+candidate faster. The changed reduction partitions are not quality-safe:
+the candidate deterministically changes the 128-token trajectory
+(final token **74107 -> 340**), and the full 18-prompt/576-step teacher-forced
+gate reaches **99.31%** top-1 but max KL **1.002942**. Heldout mixed-JA/EN also
+reaches **0.660855**, both far above **0.05**. Remove the architecture owner
+and A/B plumbing; production remains **14.800191 tok/s**. Reopen Q4 pack8
+geometry only with a reduction-order-preserving design.
+
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
 [`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
 [`candidate F16 Q8 real-input screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-real-input-candidate.json) ·
 [`rejected F16 Q8 full-model screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-full-model-rejected.json) ·
+[`rejected Q4 pack8 geometry screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-q4-pack8-decode-geometry-rejected.json) ·
 [`tensorized SWA decode leaf`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-leaf.json) ·
 [`decode roofline/Qwen/Vulkan review`](../benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json).
 
@@ -3540,9 +3564,13 @@ closed unless a future design preserves the retained 288-wave concurrency.
    **50.154 ms/token** but max KL **0.497301**; no tested scope clears
    **0.05**. Reopen only for a materially different calibrated representation
    with a predeclared full-model quality premise, not another Q8 residual pass.
-4. **LD-4 — dense/shared raw-layout decode.** Pack8 expands active dense/shared
-   bytes and still trails Vulkan, but the ceiling is only a few milliseconds.
-   Reopen only with actual-byte/counter evidence.
+4. **LD-4 — dense/shared Q4 decode.** Closed for raw residency and
+   reduction-order-changing thread geometry. Pack8 is only **33.33%** larger
+   than raw; raw local128 loses **63.6-85.4%** at actual shapes and raw wave32
+   has no family-wide win. The shape-tuned pack8 owner is a repeatable
+   **+1.225%** full-cycle win but fails quality at max KL **1.002942** despite
+   **99.31%** top-1. Reopen only with an exact/reduction-order-preserving
+   multi-output consumer or new counter evidence.
 5. **LD-5 — replay and residual fusion.** Launch/submission work is bounded to
    roughly 2.18 ms/token. It follows attention and F16; launch-count reduction
    alone is not a promotion gate.

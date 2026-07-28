@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T10:33:00+00:00",
+  "kind": "hipengine_laguna_q4_pack8_decode_geometry",
+  "status": "rejected_quality",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "source": {
+    "revision": "c6fb9410a50653d70339f10af285dc2900bc9c8b",
+    "tracked_clean": false,
+    "candidate_removed": true
+  },
+  "byte_audit": {
+    "raw_gguf_bytes_per_weight": 0.5625,
+    "pack8_bytes_per_weight": 0.75,
+    "pack8_expansion_percent": 33.33333333333333,
+    "pack8_components": {
+      "packed_quants_bytes_per_weight": 0.5,
+      "fp32_scale_min_bytes_per_weight": 0.25
+    }
+  },
+  "actual_weight_leaf": {
+    "protocol": "actual Laguna rank-2 Q4_K weights; deterministic BF16 rows; HIP-event medians; 7-11 warmups, 9-11 samples, 40-80 launches/sample",
+    "rows": [
+      {
+        "slot": "layers.0.ffn_gate",
+        "shape_k_n": [3072, 12288],
+        "production_local32_ms": 0.056401824951171874,
+        "pack8_local128_ms": 0.040268337726593016,
+        "pack8_change_percent": -28.604548236774118,
+        "raw_local128_ms": 0.0922677218914032,
+        "raw_local128_vs_production_percent": 63.58995825273581,
+        "raw_wave32_fixed_meta_ms": 0.05755972266197205,
+        "raw_wave32_vs_production_percent": 2.052943697837062
+      },
+      {
+        "slot": "layers.1.ffn_gate_shexp",
+        "shape_k_n": [3072, 1024],
+        "production_local32_ms": 0.007572674751281738,
+        "pack8_local128_ms": 0.006495162844657898,
+        "pack8_change_percent": -14.228947393276892,
+        "raw_local128_ms": 0.013205724954605102,
+        "raw_local128_vs_production_percent": 74.38653300631886,
+        "raw_wave32_fixed_meta_ms": 0.0074950501322746275,
+        "raw_wave32_vs_production_percent": -1.0250621023169093
+      },
+      {
+        "slot": "layers.6.ffn_down_shexp",
+        "shape_k_n": [1024, 3072],
+        "production_local32_ms": 0.0065567746758461,
+        "pack8_local64_ms": 0.0061625376343727115,
+        "pack8_change_percent": -6.012667217705103,
+        "raw_local128_ms": 0.0121567502617836,
+        "raw_local128_vs_production_percent": 85.40747338118442,
+        "raw_wave32_fixed_meta_ms": 0.007727474719285965,
+        "raw_wave32_vs_production_percent": 17.854815840362768
+      }
+    ]
+  },
+  "production_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-q4-pack8-decode-threads --allow-dirty --output /tmp/laguna-p512-d128-q4-pack8-threads-ab.json",
+    "protocol": "one loaded model; seven counterbalanced control/candidate resets; p512 plus 127 synchronized eager C1 decode calls",
+    "control_decode_tok_s": 14.797581634976016,
+    "candidate_decode_tok_s": 14.978817214381163,
+    "throughput_change_percent": 1.2247648560138602,
+    "control_decode_seconds": 8.582483484991826,
+    "candidate_decode_seconds": 8.47864008101169,
+    "saving_ms_per_token": 0.8176645982687868,
+    "all_candidate_samples_faster_than_all_controls": true,
+    "control_final_token_id": 74107,
+    "candidate_final_token_id": 340,
+    "control_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "candidate_generated_ids_sha256": "9b5f36720b850743c248fe7d7d33c5624669b10316152a217fbe44655328a087",
+    "tracked_allocations_recovered": true
+  },
+  "quality_gate": {
+    "protocol": "same-owner 18-prompt train+heldout suite; 32 baseline-top1 teacher-forced transitions/prompt; full-vocabulary logits; control local32 versus candidate shape-tuned pack8 owner",
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "steps": 576,
+    "top1_matches": 572,
+    "top1_agreement": 0.9930555555555556,
+    "max_kl_divergence": 1.0029422115513327,
+    "finite": true,
+    "thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_top1_agreement": 0.9
+    },
+    "categories": {
+      "code": {
+        "steps": 192,
+        "top1_matches": 192,
+        "top1_agreement": 1.0,
+        "max_kl_divergence": 0.023906658584733193
+      },
+      "general_en": {
+        "steps": 128,
+        "top1_matches": 125,
+        "top1_agreement": 0.9765625,
+        "max_kl_divergence": 0.019591823942532793
+      },
+      "general_ja": {
+        "steps": 128,
+        "top1_matches": 128,
+        "top1_agreement": 1.0,
+        "max_kl_divergence": 1.0029422115513327
+      },
+      "mixed_ja_en": {
+        "steps": 128,
+        "top1_matches": 127,
+        "top1_agreement": 0.9921875,
+        "max_kl_divergence": 0.6608554262010453
+      }
+    },
+    "pass": false
+  },
+  "decision": {
+    "retain": false,
+    "reason": "The repeatable 1.225% full-cycle win changes reduction association and exceeds the maximum-KL contract by 20.1x.",
+    "production_decode_tok_s": 14.800190834758007,
+    "production_rollback": "unchanged generic pack8 local32 owner",
+    "reopen_condition": "reduction-order-preserving Q4 consumer or materially new counter evidence"
+  }
+}
