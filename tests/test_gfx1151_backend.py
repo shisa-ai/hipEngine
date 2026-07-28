@@ -481,9 +481,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == 2048
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
+        )
+        == 256
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_PREFILL_CACHED_META", None

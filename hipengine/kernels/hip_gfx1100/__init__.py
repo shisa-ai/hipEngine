@@ -100,6 +100,11 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
+# WPF-C1's direct-GGUF short gate selects M256 with both global and SWA
+# attention fixed at 128. M256 is bit-exact across all 48 hidden boundaries,
+# complete K/V/live spans, and shared-prefix routing, and improves M128 at both
+# 512/1K while using half M512's planned row/MoE scratch.
+LAGUNA_PREFILL_MATRIX_ROWS = 256
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
 # shapes. Zero/4/8/16/32 remain explicit routes; unsupported shapes fall back.
@@ -143,6 +148,7 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
+    "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
