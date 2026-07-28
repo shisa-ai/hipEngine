@@ -355,9 +355,15 @@ MMQ at local128/VGPR48/56/SGPR128/LDS3072/scratch0. A default-off
 workspace, caches one `(pointer, rows, K, stream)` producer pack, and consults
 registered Q5/Q6 crossover policies. It selects only N>=1024; N48/N72 and all
 key/shape/backend misses retain exact rowbatch8. gfx1151 excludes all seven
-producer/policy/MMQ keys. No package default or end-to-end claim exists yet;
-full-state and the complete quality lane remain mandatory before promotion.
-Evidence: [`WPF-1B primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json).
+producer/policy/MMQ keys. The D4 runtime screen improves rowbatch8
+**79.119/73.781 -> 129.572/116.116 tok/s** at 512/1K, and its M128 full-state
+sample passes at KL **0.034789**, but the mandatory 18-prompt/576-step lane
+rejects it at maximum KL **0.624304** despite **97.743%** top-1. The gfx1100
+package default therefore remains exact rowbatch8. Keep D4 default-off only as
+an accuracy-refinement baseline; finer producer scales or bounded correction
+must pass the same complete lane before promotion.
+Evidence: [`WPF-1B primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) ·
+[`D4 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
