@@ -32,9 +32,10 @@ The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16
 KV-write composites are now registered under the peer `hip_gfx1151` key. The
 shared gfx11 source is compiled as a native gfx1151 code object; the global and
 SWA variants retain the complete `KVLiveSpans` ABI and the registered unfused
-head-RMSNorm/RoPE then KV-write chain. Automatic gfx1151 selection remains off
-until a clean p512/d128 performance gate passes; the long-context profiler
-exposes `--head-kv-fusion` / `--no-head-kv-fusion` for that bounded screen.
+head-RMSNorm/RoPE then KV-write chain. The clean p512/d128 candidate improves
+**11.466687 -> 11.483587 tok/s (+0.147%)**, with all three candidate samples
+above every control sample, so gfx1151 selects it by default. The long-context
+profiler retains `--no-head-kv-fusion` as the explicit rollback.
 
 The native gfx1151 fixture is bit-exact at global positions 0/255/256/4095 and
 SWA positions 0/511/512/1023, including F32 query/key outputs, BF16 K/V bytes,

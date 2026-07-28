@@ -1818,3 +1818,8 @@ should be boring.
   through the next decode campaign. If it is neutral or negative, restore the
   gfx1151 alias exclusions and remove the profiler selector and candidate
   tests instead of carrying a dead backend path.
+- The promotion trigger is satisfied: clean p512/d128 improves
+  **11.466687 -> 11.483587 tok/s (+0.147%)**, and all three candidate samples
+  beat all three controls with identical trajectory/state. Keep explicit
+  False through the next split-attention transfer screen, then collapse the
+  positive CLI selector if it is no longer needed for attribution.
