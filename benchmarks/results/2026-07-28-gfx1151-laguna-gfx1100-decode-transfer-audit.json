@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_gfx1100_to_gfx1151_decode_transfer_audit",
+  "status": "accepted_attribution_and_transfer_closure",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "headline": {
+    "post_merge_baseline_tokens_per_second": 11.466686899093393,
+    "retained_production_tokens_per_second": 14.555265338545087,
+    "change_percent": 26.935229562218986,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32"
+  },
+  "transfer_matrix": [
+    {
+      "candidate": "current-P4 head RMSNorm + partial RoPE + BF16 KV write",
+      "status": "retained",
+      "incremental_change_percent": 0.167422,
+      "reason": "native gfx1151 byte-exact gate and every candidate sample above every control"
+    },
+    {
+      "candidate": "global/SWA/tile16 split attention with gated wave-local reducers",
+      "status": "retained",
+      "incremental_change_percent": 26.486647,
+      "reason": "exact full trajectory and large architecture-local p512 crossover"
+    },
+    {
+      "candidate": "D9 scalar MoE-tail + next RMSNorm",
+      "status": "retained",
+      "incremental_change_percent": 0.176828,
+      "reason": "byte-exact hidden17/3072, reverse-order confirmation, 94 launches removed per token"
+    },
+    {
+      "candidate": "SWA token4 exact decode",
+      "status": "not_selected",
+      "reason": "the retained split path owns p512 live counts from 65 onward; token4 is only a short-live fallback candidate"
+    },
+    {
+      "candidate": "global single-page decode",
+      "status": "not_selected",
+      "reason": "p512 spans multiple global pages and the unchanged candidate was rejected on gfx1100"
+    },
+    {
+      "candidate": "staged-F32 add + RMSNorm",
+      "status": "not_selected",
+      "reason": "unchanged runtime owner was rejected on gfx1100; current add+RMSNorm is only 0.640% of device kernel time and the measured leaf gain implies about 0.023% wall"
+    },
+    {
+      "candidate": "Q5/IQ2/IQ3/Q4-LM-head decode schedules",
+      "status": "inapplicable",
+      "reason": "the Laguna Q4_K_M file does not contain the required source quant families at those roles"
+    }
+  ],
+  "final_production_census": {
+    "revision": "13486db2185744382102543db5636dc8ab4edf01",
+    "workload": "p512/d128 eager c=1 under rocprofv3",
+    "decode_segments": 127,
+    "kernels_per_token": 869,
+    "pre_d9_kernels_per_token": 963,
+    "d9_calls_per_token": 47,
+    "median_kernel_sum_ms_per_token": 66.527943,
+    "families": [
+      {
+        "name": "source-F16 projections",
+        "milliseconds_per_token": 30.9806,
+        "percent_of_kernel_sum": 46.5678
+      },
+      {
+        "name": "split global/SWA attention",
+        "milliseconds_per_token": 14.6172,
+        "percent_of_kernel_sum": 21.9715
+      },
+      {
+        "name": "selected Q4 gate/up",
+        "milliseconds_per_token": 8.5492,
+        "percent_of_kernel_sum": 12.8505
+      },
+      {
+        "name": "add + RMSNorm",
+        "milliseconds_per_token": 0.4261,
+        "percent_of_kernel_sum": 0.6405
+      }
+    ],
+    "next_target": "gfx1151-native source-F16 c=1 projection kernels",
+    "profiler_child_tokens_per_second": 14.183773679131123,
+    "profiler_child_is_not_a_topline_claim": true,
+    "trace_sha256": "e97c5ac061d3de226f1595bec0f0bfd85a8453b06b72eb7d7d72a6fc17bd305b",
+    "child_sha256": "ba1fd27507da17521b24e9b5d18ea11cc5861cd86f8efbbbbf24f8740395830c"
+  },
+  "lineage_audit": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_source_comparison",
+    "reason": "missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout",
+    "in_tree_catalog_and_commit_audit_complete": true
+  }
+}
