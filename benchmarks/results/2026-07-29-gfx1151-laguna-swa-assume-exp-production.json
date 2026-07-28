@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T05:45:09+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_assume_exp_production",
+  "status": "accepted_clean_default",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "revision": "1ab2fc919d757c9cb7de2d5a36dc26e1520fd822",
+    "retained_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-retained.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1; 127 synchronized decode transitions; matrix chunk 2048",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-swa-assume-exp-production-clean.json",
+    "raw_sha256": "a1dbfd5e1dd1a3fb935f8cc29e580159e98207fbf6b4ee0529d0596e56cef8f9",
+    "repetitions": 3
+  },
+  "performance": {
+    "decode_samples_tok_s": [
+      19.231939711662573,
+      19.24806603742238,
+      19.242299817577134
+    ],
+    "decode_median_tok_s": 19.242299817577134,
+    "decode_median_seconds": 6.600042677018791,
+    "previous_clean_tok_s": 19.146417,
+    "incremental_speedup_percent": 0.5007872625835574,
+    "saved_ms_per_token": 0.2602533311148818,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_speedup_percent": 67.8104566521885
+  },
+  "correctness": {
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "lifecycle_pass": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "allocation_bytes_after": 0
+  }
+}

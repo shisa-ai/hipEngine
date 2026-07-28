@@ -1193,6 +1193,11 @@ selects the assumed-domain sibling at the saturated natural SWA shape; the
 generic-domain direct-store body remains exact rollback. Evidence:
 [`assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-candidate.json) ·
 [`assume-exp retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-retained.json).
+Three tracked-clean default runs measure
+**19.231940/19.248066/19.242300 tok/s**, median **19.242300** and **+0.501%**
+over the preceding clean 19.146417 packet. IDs, state, and lifecycle remain
+exact. Evidence:
+[`assume-exp production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-production.json).
 
 Tracked-clean selector-unset production measures
 **19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is

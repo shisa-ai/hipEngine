@@ -188677,3 +188677,15 @@ Vulkan local sizes verbatim will close the measured gap.
   campaign rollback. Cumulative p512/d128 decode is now **+67.842%** over the
   11.466687 sprint start. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-retained.json`.
+
+## 2026-07-29 05:45 JST — Publish clean SWA exp-domain production
+
+- Three tracked-clean selector-unset p512/d128 runs measure
+  **19.231940/19.248066/19.242300 tok/s**, median **19.242300**. The promoted
+  capability is active in the artifact and improves **0.501% / 0.260
+  ms/token** over the preceding clean 19.146417 packet.
+- All three runs preserve next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, lifecycle, and zero
+  tracked bytes after teardown. Production is now **+67.810%** over the
+  11.466687 sprint start. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-production.json`.

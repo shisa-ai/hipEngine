@@ -3940,6 +3940,12 @@ VGPR144/LDS24576/scratch0. Seven tracked-clean production pairs improve
 sample separation and exact IDs/state. gfx1151 promotes this only at saturated
 natural SWA; the generic-domain direct-store route remains rollback. Evidence:
 [`retained exact exp-domain specialization`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-retained.json).
+Three tracked-clean selector-unset runs then measure
+**19.231940/19.248066/19.242300 tok/s**, median **19.242300**. That is
+**+0.501% / -0.260 ms/token** versus the prior clean 19.146417 packet and
+**+67.810%** over the 11.466687 sprint start, with exact IDs, state, and
+lifecycle. Evidence:
+[`clean exp-domain production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-production.json).
 
 The next bounded attack is still the Vulkan-informed cooperative Br16/Bc64
 QK/PV tile, but it must preserve compiler-`expf` results and each head's

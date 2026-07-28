@@ -53,9 +53,9 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 
 Three exact gfx1100 structural transfers plus twelve gfx1151-native owners now
 improve paired p512/d128 gfx1151 eager c=1 decode
-**11.466687 -> 19.245912 tok/s (+67.842%)**. The latest exact SWA
-specialization leaves compiler `expf` intact and exposes only the
-score-minus-maximum non-positive domain. Seven tracked-clean pairs improve
+**11.466687 -> 19.242300 tok/s (+67.810%)** in clean default production. The
+latest exact SWA specialization leaves compiler `expf` intact and exposes
+only the score-minus-maximum non-positive domain. Seven tracked-clean pairs improve
 **19.140826 -> 19.245912 tok/s (+0.549%, -0.285 ms/token)** with complete
 sample separation and exact generated state.
 Native
@@ -104,6 +104,10 @@ score-minus-maximum domain. Its leaf improves **8.13%**, cached tracing
 improves **27.61%**, and all seven resident-model pairs move
 **19.140826 -> 19.245912 tok/s (+0.549%, -0.285 ms/token)** with identical
 generated IDs, positions, state, and lifecycle.
+Three tracked-clean selector-unset runs measure
+**19.231940/19.248066/19.242300 tok/s**, median **19.242300**. This is
+**+0.501% / -0.260 ms/token** versus the preceding clean 19.146417 packet and
+**+67.810%** over the sprint start.
 The exact saturated-512 SWA successor retains the full
 **72-workgroup/288-wave** reducer grid and scalar/FMA order while specializing
 the natural 72Q/8KV/D128 ring. It moves the same-session GQA3 control
