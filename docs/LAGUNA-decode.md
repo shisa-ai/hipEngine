@@ -3295,6 +3295,137 @@ shape and serving evidence.
    algorithms. Do not reopen the closed scalar owner/readback, local-size-only,
    or unchanged submission experiments.
 
+### 9.6 gfx1151 Q4_K_M measured roofline and next attack (2026-07-28)
+
+#### Same-GGUF Vulkan control and decode roofline
+
+The same Q4_K_M GGUF now has a one-run llama.cpp Vulkan decode control on the
+same 8060S. It is a directional implementation comparator, not a bit-exact
+backend race: Vulkan uses F16 KV and llama-bench's random stream, while
+hipEngine uses BF16 KV and the retained deterministic trajectory.
+
+| Backend | Decode | Wall/token | Qualification |
+| --- | ---: | ---: | --- |
+| hipEngine production | **14.555 tok/s** | **68.704 ms** | Three-repeat p512/d128; 127 eager C1 calls |
+| llama.cpp Vulkan `c0bc8591e` | **23.348 tok/s** | **42.830 ms** | One-run same-GGUF `tg128`, FA on, depth 512 |
+| Gap | **+60.412% Vulkan** | **25.874 ms** | Large implementation gap, not launch-count noise |
+
+The dry resident plan gives an active encoded-weight proxy of
+**9.173128 GB/token**: every dense/router/output tensor once, 10/256 of each
+rank-3 expert tensor, and one embedding row. Raw GGUF bytes under the same
+counting rule are **9.031374 GB/token**. This is not a DRAM counter—it excludes
+activations, KV and metadata and cannot see cache reuse—but it is the right
+first-order streaming ledger.
+
+| Roofline row | Result |
+| --- | ---: |
+| Practical read anchor | **221 GB/s** |
+| hipEngine resident-byte floor at 221 GB/s | **41.507 ms / 24.092 tok/s** |
+| hipEngine resident-byte floor at theoretical 256 GB/s | **35.833 ms / 27.908 tok/s** |
+| Current hipEngine wall proxy | **133.52 GB/s / 60.42%** of 221 |
+| Current hipEngine device-sum proxy | **137.88 GB/s / 62.39%** |
+| Vulkan raw-byte wall proxy | **210.87 GB/s / 95.42%** |
+
+The Vulkan performance logger perturbs its wall
+**42.830 -> 45.182 ms/token**, so its family rows are attribution-only. The
+logged graph reports about **1,114 operation invocations/token**, more than
+hipEngine's **869 kernels/token**. Vulkan is not faster because it launches
+less work. hipEngine's unprofiled wall exceeds its traced device sum by only
+**2.176 ms/token (3.17%)**, and the trace contains no device overlap.
+
+| Family | hipEngine | Vulkan logger | Recoverable gap | Finding |
+| --- | ---: | ---: | ---: | --- |
+| Source-F16 attention projections | **30.981 ms** | **24.759 ms** | **6.222 ms** | 5.606 GB family already reaches **180.96 GB/s / 81.88%** of the read anchor |
+| All 48 attention layers | **14.613 ms** | **0.909 ms** | **13.703 ms** | **52.96%** of the whole wall gap |
+| Selected Q4 gate/up | **8.550 ms** | **7.464 ms** | **1.086 ms** | Secondary |
+| Selected Q4/Q6 down | **5.131 ms** | **4.525 ms** | **0.606 ms** | Secondary |
+| F16 plus attention | **45.593 ms** | **25.668 ms** | **19.925 ms** | **77.01%** of the whole wall gap |
+
+The attention split is more decisive than its total suggests. Score production
+costs only **2.034 ms/token**. Global reduction costs **2.623 ms**, and the 36
+SWA reductions cost **9.956 ms**. The retained reducer launches one workgroup
+per query head and replays the slot-order value scan independently. At live
+512, the physically unique K+V payload is only **100.66 MB/token**, while
+query-head repetition models **830.47 MB/token** because one KV head serves
+six global or nine SWA heads. Vulkan's fused D128 FlashAttention completes the
+12 global layers in **0.227 ms** and the 36 SWA layers in **0.683 ms**.
+
+Vulkan source review also prevents a second wrong transfer:
+
+- C1 uses the one-row MMV/MMV-ID family, not the prefill MMQ path.
+- On AMD, Q4_K with K at least 2,048 may reuse Q8_1 activation packing and
+  integer dot; Q6_K is deliberately excluded from MMVQ and stays on floating
+  dequant.
+- RADV uses subgroup64 on this device, while the current HIP bodies are
+  wave32. Geometry must be measured independently rather than copied.
+- FlashAttention fuses score, softmax and PV. It does not materialize
+  hipEngine's score plane and then run the current scalar-order value reducer.
+
+#### Qwen3.5 gfx1100-to-gfx1151 lessons for Laguna decode
+
+The Qwen adaptation history is useful chiefly because it shows where
+architecture changes invalidate a nominally shared gfx11 body.
+
+| Qwen lesson | Laguna consequence |
+| --- | --- |
+| Native C2/C4/C8, C8-only pair reuse, and the 5+3 rather than 6+2 LM-head partition were separately admitted | Transfer ownership/reuse hypotheses, not widths, partitions, or thresholds |
+| Several leaf wins disappeared or reversed in p512/d128 and serving | Require actual-weight leaf, whole cycle, state, context and category gates |
+| Whole-row C4/C8 attention was exact while generic row-chunk2 changed row-local numerics | Treat split/merge width as a numerical contract, not a launch detail |
+| Collapsing workgroups can lose on the 40-CU target even when it removes bytes | A Laguna GQA body must regain grid breadth with K splits |
+| Ephemeral dense execution rows were separated from stable scheduler/KV/GDN ownership | Preserve the full `KVLiveSpans` ABI; Laguna has no GDN state to port |
+| C8 pair reuse says nothing about C1 latency | Keep C1, C2/C4/C8 and verifier-shaped admissions separate |
+
+Two prior failures sharpen the grid rule. The gfx1151 prefill qhead3 screen
+collapsed 72 SWA workgroups to 24 and lost **18.1–29.7%** despite 3x K/V
+reuse. The W7900 decode GQA3 screen lost **61–90%** at the leaf. Therefore the
+next grouped-GQA body must split the 512-key axis into enough independent
+K64/K128 tiles to expose roughly **40–80+ workgroups/layer**, then merge
+bounded partials. One block per KV head is not a valid gfx1151 design.
+
+Simple F16 thread substitution is also closed. In one full p512/d128 screen
+each, changing only rows==1 F16 single/triple launches from local256 to
+local64/local128 regressed **14.555 -> 13.855 tok/s (-4.811%)** and
+**14.263 tok/s (-2.005%)**. Both also changed the generated trajectory, so
+quality work was skipped. Retain local256. The next F16 premise is structurally
+different: one local256 block owns eight output columns, each wave owns one
+column, and eight per-lane partial sequences reconstruct the current
+256-thread reduction order without cross-wave LDS/barriers.
+
+Evidence:
+[`decode roofline/Qwen/Vulkan review`](../benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json).
+
+#### Next decode attack
+
+The next pause target is **at least 18 tok/s** at p512/d128 under the existing
+state and quality contract. Same-GGUF Vulkan at **23.348 tok/s** is the
+directional comparator target.
+
+1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
+   topology, not its D256/qgroup8 constants. Register separate qgroup6 global
+   and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
+   score/softmax/PV, and merge plus gate through bounded state. First require
+   attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
+2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
+   **25.368-ms** unchanged-byte family floor with the eight-wave/eight-output
+   block. Do not repeat local-size-only screens.
+3. **LD-3 — decode-only compressed source-F16 representation.** If LD-2 cannot
+   close enough of the 6.22-ms comparator gap, capture real projection inputs
+   and screen a persistent Q8-class side representation. This is a new quality
+   and capacity surface; it needs the complete KL/top-1 gate.
+4. **LD-4 — dense/shared raw-layout decode.** Pack8 expands active dense/shared
+   bytes and still trails Vulkan, but the ceiling is only a few milliseconds.
+   Reopen only with actual-byte/counter evidence.
+5. **LD-5 — replay and residual fusion.** Launch/submission work is bounded to
+   roughly 2.18 ms/token. It follows attention and F16; launch-count reduction
+   alone is not a promotion gate.
+
+LD-1 must pass live **65/127/257/512**, global page
+**255/256/511/512/1023/1024**, SWA ring **511/512/513**, explicit
+eviction/wrap, and p128/p512/p1K/p4K depth screens before p512/d128
+publication. Every candidate preserves logits, hidden states, K/V,
+`KVLiveSpans`, reset and allocation lifecycle. Any changed F32 association also
+runs the heldout category gate at KL at most 0.05 and top-1 at least 90%.
+
 ## 10. Do not chase without new evidence
 
 - **Unchanged D8 graph replay:** measured regression and removed.
