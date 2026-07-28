@@ -278,6 +278,10 @@ LAGUNA_SWA_SPLIT_FIXED512_REDUCE = True
 # adjacent query heads, and removes the global score plane. Seven resident
 # p512/d128 pairs admit it only at the saturated natural 512-slot shape.
 LAGUNA_SWA_FUSED_FIXED512 = True
+# The exact local384 GQA3 sibling keeps all 288 query/dimension waves active
+# while reducing saturated K-cache owners per KV head from five to three.
+# Seven resident p512/d128 pairs admit it only for the natural gfx1151 shape.
+LAGUNA_SWA_GQA3_LOCAL384_FIXED512 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -667,6 +671,7 @@ __all__ = [
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_GQA3_SCORES",
     "LAGUNA_SWA_FUSED_FIXED512",
+    "LAGUNA_SWA_GQA3_LOCAL384_FIXED512",
     "LAGUNA_SWA_SPLIT_FIXED512_REDUCE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",

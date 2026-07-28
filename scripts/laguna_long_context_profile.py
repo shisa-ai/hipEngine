@@ -212,6 +212,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance saturated split SWA against exact fused attention",
     )
     parser.add_argument(
+        "--compare-swa-gqa3-local384",
+        action="store_true",
+        help="counterbalance exact fused GQA2 against local384 GQA3",
+    )
+    parser.add_argument(
         "--compare-global-fixedshape-reduce",
         action="store_true",
         help="counterbalance exact global reduction against its natural shape",
@@ -330,6 +335,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_f16_decode_fixedk,
             args.compare_swa_fixed512_reduce,
             args.compare_swa_fused_fixed512,
+            args.compare_swa_gqa3_local384,
             args.compare_global_fixedshape_reduce,
             args.compare_global_fused_fixedshape,
             args.compare_selected_natural_decode,
@@ -368,6 +374,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_f16_decode_fixedk
         or args.compare_swa_fixed512_reduce
         or args.compare_swa_fused_fixed512
+        or args.compare_swa_gqa3_local384
         or args.compare_global_fixedshape_reduce
         or args.compare_global_fused_fixedshape
         or args.compare_selected_natural_decode
@@ -538,6 +545,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             owner.kv_cache.swa_split_fixed512_reduce
         )
         active_swa_fused_fixed512 = owner.kv_cache.swa_fused_fixed512
+        active_swa_gqa3_local384_fixed512 = (
+            owner.kv_cache.swa_gqa3_local384_fixed512
+        )
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
         )
@@ -603,6 +613,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_swa_fused_fixed512:
                         owner.kv_cache.swa_fused_fixed512 = mode == "candidate"
+                    if args.compare_swa_gqa3_local384:
+                        owner.kv_cache.swa_gqa3_local384_fixed512 = (
+                            mode == "candidate"
+                        )
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
@@ -831,6 +845,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_swa_fixed512_reduce
             ),
             "compare_swa_fused_fixed512": args.compare_swa_fused_fixed512,
+            "compare_swa_gqa3_local384": args.compare_swa_gqa3_local384,
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
@@ -852,6 +867,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 active_swa_split_fixed512_reduce
             ),
             "swa_fused_fixed512": active_swa_fused_fixed512,
+            "swa_gqa3_local384_fixed512": (
+                active_swa_gqa3_local384_fixed512
+            ),
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce
             ),

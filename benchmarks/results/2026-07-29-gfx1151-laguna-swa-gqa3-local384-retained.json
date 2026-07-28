@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T00:57:09+09:00",
+  "kind": "hipengine_gfx1151_laguna_swa_gqa3_local384_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "fb984276e69043336b52647204f6e6b8080cf39c",
+    "kernel": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel",
+    "raw_leaf_sha256": "17a3e1cc1515a65b63efae79efdd359aec3b766204449c6d5b9155b9a2d1aa09",
+    "raw_production_sha256": "c27b3f5cfd15a5d69ae56804b3b83f7ae7654af608f3f580395234e1942ff60d"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "scope": "natural saturated 72Q/8KV/D128/SWA512 decode only",
+    "control": "40 local256 fused-GQA2 workgroups; five K owners per KV head; 320 active wave32 PV tasks",
+    "candidate": "24 local384 fused-GQA3 workgroups; three K owners per KV head; 288 active wave32 PV tasks",
+    "arithmetic": "unchanged exact wave32 QK tree, scalar logical-slot softmax and denominator, per-dimension FMA order, divide, softplus gate, and stores",
+    "fallback": "fused-GQA2 remains the exact saturated rollback; shorter live counts, non-natural shapes, and peer backends retain the existing exact split chain"
+  },
+  "correctness": {
+    "ring_boundary_positions": [
+      511,
+      512
+    ],
+    "explicit_eviction": true,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "generated_128_token_hash_exact": true,
+    "next_token_exact": true,
+    "final_token_exact": true,
+    "final_position_exact": true,
+    "lifecycle_exact": true,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-local384 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa3-local384-leaf.json",
+    "control_median_ms": 0.08248003959655761,
+    "candidate_median_ms": 0.08280721664428711,
+    "latency_change_percent": 0.39667421273055226,
+    "interpretation": "cache-hot parity; production owns the resident K-cache reread gate"
+  },
+  "production": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gqa3-local384 --allow-dirty --output /tmp/laguna-p512-d128-swa-gqa3-local384-ab.json",
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions per run",
+    "control_median_tok_s": 17.1004890842265,
+    "candidate_median_tok_s": 17.139971152695292,
+    "throughput_change_percent": 0.23088268571926918,
+    "control_ms_per_token": 58.47785961410896,
+    "candidate_ms_per_token": 58.34315537005722,
+    "ms_per_token_change": -0.1347042440517446,
+    "candidate_wins": 7,
+    "pairs": 7,
+    "prior_canonical_tok_s": 17.0970437598,
+    "new_canonical_change_percent": 0.2510807920854008
+  },
+  "kernel_trace": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --stats --output-format csv -d /tmp/laguna-swa-gqa3-local384-trace.StTGF8 --output-file gqa3 -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-local384 --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-gqa3-local384-trace.StTGF8/bench.json",
+    "trace_sha256": "91bfa375ffcc7553ed6244da51336a7a1c2ca11f69a5eb7c5d01fc17b2e21fed",
+    "stats_sha256": "30abc3eac89236f25c6fabae24c36a8f584a258ded5e92fc64d5227a41f75eaf",
+    "expected_kernel_observed": true,
+    "grid_blocks": 24,
+    "workgroup_size": 384,
+    "active_wave32_tasks": 288,
+    "vgpr": 104,
+    "sgpr": 128,
+    "lds_bytes": 8192,
+    "scratch_bytes": 0,
+    "first_call_duration_us": 68.489
+  },
+  "validation": {
+    "candidate_focused": "3 passed",
+    "broader_attention_bundle": "22 passed, 1 pre-existing stale allocation-count assertion failed",
+    "pre_existing_failure": "tests/test_laguna_kv_attention.py::test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down expects 243 allocations while base HEAD already allocates and later asserts 245"
+  },
+  "decision": "Retain local384 GQA3 as the gfx1151 default only for saturated natural-shape SWA decode. The resident-model win is exact and consistent despite a neutral cache-hot leaf; keep fused-GQA2 as rollback."
+}
