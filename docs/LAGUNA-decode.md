@@ -3855,6 +3855,10 @@ byte-exact. The nine-sample leaf improves **0.133491 -> 0.106533 ms
 tok/s (+3.079%)**. Tracing records `<64,true>` at 24 local384 blocks,
 VGPR144/SGPR128/LDS30720/scratch0 and **161.50 -> 112.97 us (-30.05%)**.
 Scalar V-stage64 remains exact rollback.
+Three tracked-clean selector-unset runs measure
+**18.801765/18.814192/18.815353 tok/s**, median **18.814192**. That is
+**+3.204%** over prior clean 18.230064 and **+64.077%** over the 11.466687
+sprint start, with identical IDs, final state, and allocation lifecycle.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten

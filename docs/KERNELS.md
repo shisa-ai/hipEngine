@@ -1115,8 +1115,11 @@ p512/d128 resident-model pairs improve **18.244607 -> 18.806305 tok/s
 records 24 local384 blocks, VGPR144/SGPR128/LDS30720/scratch0 and a
 four-observation median **161.50 -> 112.97 us (-30.05%)**. gfx1151 selects it
 only for saturated natural SWA; scalar V-stage64 is registered rollback.
+Tracked-clean production confirms **18.814192 tok/s**, **+3.204%** over prior
+clean 18.230064 and **+64.077%** over the 11.466687 sprint start.
 Evidence:
-[`retained vec16 V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-retained.json).
+[`retained vec16 V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-retained.json) ·
+[`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-production.json).
 
 The global-attention sibling keeps the retained dynamic-live score ABI and all
 48 local256 reducer workgroups, but specializes the production
