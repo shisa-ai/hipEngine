@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T02:38:49+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_vstage64_decode_wall_reprofile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "e420f8f3286eef64072abbf6e193019129b8bd20",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-vstage64-wall.HlmscV --output-file postvstage64 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-vstage64-wall.HlmscV/bench.json",
+    "trace_sha256": "83dcc401d8fcbc80c31175cc9d1013dd997717775d5083668f5f3d74d7a6b112",
+    "bench_sha256": "162a513ec16ee907f3acfab804c7956505ff5081912e01dce16872f2d36f6147",
+    "segmentation": "Discard the warmup128 and timed prefill512 segments, then report medians over the 127 one-row embedding-through-argmax segments.",
+    "profiler_wall_tok_s": 17.534309486511404,
+    "publication_wall_tok_s": 18.02650137103834,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true
+  },
+  "decode": {
+    "segments": 127,
+    "dispatches_per_token": 816,
+    "median_kernel_sum_ms_per_token": 53.264965,
+    "median_kernel_span_ms_per_token": 55.855307,
+    "families": {
+      "source_f16_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 24.071563
+      },
+      "attention": {
+        "calls_per_token": 48,
+        "median_ms_per_token": 8.722417
+      },
+      "selected_q4_gate_up": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 8.413358
+      },
+      "selected_q4_q6_down": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 4.833555
+      },
+      "dense_shared_quant_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 3.723309
+      },
+      "lm_head_argmax": {
+        "calls_per_token": 3,
+        "median_ms_per_token": 1.122467
+      },
+      "router": {
+        "calls_per_token": 94,
+        "median_ms_per_token": 1.067356
+      },
+      "norm_rope_gate": {
+        "calls_per_token": 145,
+        "median_ms_per_token": 1.065882
+      }
+    },
+    "attention_breakdown": {
+      "swa_vstage64_calls_per_token": 36,
+      "swa_vstage64_median_ms_per_token": 5.844494,
+      "global_fused_gqa1_calls_per_token": 12,
+      "global_fused_gqa1_median_ms_per_token": 2.877923
+    }
+  },
+  "comparison": {
+    "prior_post_gqa3_profile": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-post-gqa3-wall-reprofile.json",
+      "dispatches_per_token": 816,
+      "kernel_sum_ms_per_token": 56.254692,
+      "kernel_span_ms_per_token": 58.846115,
+      "attention_ms_per_token": 11.764084,
+      "swa_attention_ms_per_token": 8.891333
+    },
+    "changes_percent": {
+      "dispatches": 0.0,
+      "kernel_sum": -5.314626911476116,
+      "kernel_span": -5.082422178592405,
+      "attention": -25.855536223644783,
+      "swa_attention": -34.267516468003166,
+      "global_attention": 0.18003648767330738
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "logged_attention_ms_per_token": 0.909423,
+      "source_f16_ms_per_token": 24.758568,
+      "hipengine_attention_gap_ms_per_token": 7.812994,
+      "hipengine_source_f16_delta_ms_per_token": -0.687005,
+      "attention_share_of_remaining_wall_gap": 0.6179035080569575
+    }
+  },
+  "finding": {
+    "next_surface": "attention",
+    "reason": "Exact attention remains 8.722 ms/token versus Vulkan's logged 0.909 ms/token and explains 61.8% of the remaining wall gap; source-F16 remains at comparator parity.",
+    "target": "Screen exact V reuse in the previously occupancy-limited global GQA2 body, then vectorize the retained SWA V staging if global remains negative. A 3.0-ms attention family models about 20.10 tok/s."
+  }
+}

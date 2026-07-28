@@ -3533,6 +3533,8 @@ Evidence:
 [`retained fused-GQA2 SWA owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
 [`retained fused-GQA3 local384 SWA owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-local384-retained.json) ·
 [`retained fused-GQA3 V-stage64 SWA owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-retained.json) ·
+[`clean fused-GQA3 V-stage64 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-production.json) ·
+[`post-V-stage64 wall re-profile`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vstage64-wall-reprofile.json) ·
 [`rejected fused-GQA2 shared-V owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json) ·
 [`rejected GQA9 K64 split-K family`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json) ·
 [`rejected GQA2 LDS-V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json) ·
@@ -3565,31 +3567,32 @@ quality contract. Fixed-K LD-2 production reached
 **17.007 tok/s**, and exact fused-GQA2 SWA reaches **17.065 tok/s**.
 Exact fused one-head global attention now reaches **17.097 tok/s**.
 Exact fused-GQA3/local384 SWA reaches **17.140 tok/s**. Reusing each staged
-64-slot V tile across its three owned query heads now reaches
-**18.032 tok/s** in seven exact pairs. The next bounded milestone is **20
-tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
-comparator target.
+64-slot V tile across its three owned query heads reaches **18.032 tok/s** in
+seven exact pairs and **18.027 tok/s** in clean production. The next bounded
+milestone is **20 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the
+directional comparator target.
 
-The pre-V-stage clean post-GQA3 census records **816 dispatches/token**,
-**56.255 ms** median kernel sum, and **58.846 ms** median dispatch span. Exact
-attention is still the dominant implementation gap:
+The clean post-V-stage census records **816 dispatches/token**, **53.265 ms**
+median kernel sum, and **55.855 ms** median dispatch span. Exact attention is
+still the dominant implementation gap:
 
 | Current family | hipEngine ms/token | Vulkan logger ms/token | Delta |
 | --- | ---: | ---: | ---: |
-| Source-F16 projections | **24.047** | **24.759** | **-0.712** |
-| Attention total | **11.764** | **0.909** | **+10.855** |
-| └ SWA fused GQA3 | **8.891** | **0.683** | **+8.209** |
-| └ Global fused GQA1 | **2.873** | **0.227** | **+2.646** |
-| Selected gate/up | **8.395** | **7.464** | **+0.930** |
-| Selected down | **4.827** | **4.525** | **+0.301** |
+| Source-F16 projections | **24.072** | **24.759** | **-0.687** |
+| Attention total | **8.722** | **0.909** | **+7.813** |
+| └ SWA fused GQA3 V-stage64 | **5.844** | **0.683** | **+5.162** |
+| └ Global fused GQA1 | **2.878** | **0.227** | **+2.651** |
+| Selected gate/up | **8.413** | **7.464** | **+0.949** |
+| Selected down | **4.834** | **4.525** | **+0.308** |
 
-Relative to the pre-fusion fixed-K census, attention improves **13.778 ->
-11.764 ms/token (-14.62%)**, kernel sum improves **4.48%**, kernel span
-improves **4.42%**, and dispatches fall **864 -> 816**. Source-F16 has reached
-comparator parity; attention alone now explains about **70.0%** of the
-remaining wall gap. Reaching the existing **3.0-ms** attention checkpoint
-models about **20.17 tok/s**. The clean post-V-stage census must replace this
-table before the next kernel choice; source-F16 geometry remains closed.
+Relative to the clean post-GQA3 census, V-stage64 improves attention
+**11.764 -> 8.722 ms/token (-25.86%)**, SWA **8.891 -> 5.844 ms/token
+(-34.27%)**, kernel sum **5.31%**, and kernel span **5.08%** with dispatches
+unchanged. Source-F16 remains at comparator parity; attention now explains
+about **61.8%** of the remaining wall gap. Reaching the existing **3.0-ms**
+attention checkpoint models about **20.10 tok/s**. Next screen the exact
+global GQA2 body with the V reuse it previously lacked; if 24-workgroup
+occupancy still loses, retain GQA1 and vectorize the SWA staging loads.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
