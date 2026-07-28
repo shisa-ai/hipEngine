@@ -37,6 +37,7 @@ from scripts.laguna_target_ar_bench import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
 SHORT_FOCUS_LENGTHS = (512, 4096)
+WPF_SHORT_LENGTHS = (512, 1024)
 LAP0_LENGTHS = (128, 512, 1024, 4096)
 ATTACK_LENGTHS = (4096, 16384, 65536, 131072)
 ATTACK_DIRECTIONAL_LENGTHS = (4096, 16384, 65536)
@@ -49,6 +50,7 @@ EAGER_DECODE_CONTEXT_LIMIT = 4096
 PROFILE_LENGTH_SETS = (
     DEFAULT_LENGTHS,
     SHORT_FOCUS_LENGTHS,
+    WPF_SHORT_LENGTHS,
     LAP0_LENGTHS,
     ATTACK_LENGTHS,
     ATTACK_DIRECTIONAL_LENGTHS,
@@ -121,6 +123,17 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--compare-long-attention-hipblaslt",
         action="store_true",
+    )
+    parser.add_argument(
+        "--compare-raw-k-prefill-rowbatch",
+        action="store_true",
+        help="compare scalar raw Q5/Q6 prefill with fixed rowbatch4/8",
+    )
+    parser.add_argument(
+        "--raw-k-prefill-rowbatch",
+        type=int,
+        choices=(0, 4, 8),
+        help="explicit raw Q5/Q6 row slab; comparison defaults candidate to 8",
     )
     parser.add_argument(
         "--compare-block-attention-hipblaslt",
@@ -271,13 +284,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         bool(value)
         for value in (
             args.compare_long_attention_hipblaslt,
+            args.compare_raw_k_prefill_rowbatch,
             args.compare_block_attention_hipblaslt,
             args.compare_dense_contiguous_cache,
             args.compare_swa_attention_hipblaslt,
         )
     )
     if active_comparisons > 1:
-        raise ValueError("only one long-attention comparison may be active")
+        raise ValueError("only one Laguna prefill comparison may be active")
+    if args.compare_raw_k_prefill_rowbatch and args.raw_k_prefill_rowbatch == 0:
+        raise ValueError(
+            "--compare-raw-k-prefill-rowbatch requires candidate rowbatch4 or rowbatch8"
+        )
+    raw_k_candidate = (
+        8
+        if args.compare_raw_k_prefill_rowbatch
+        and args.raw_k_prefill_rowbatch is None
+        else args.raw_k_prefill_rowbatch
+    )
     if (
         args.compare_block_attention_hipblaslt
         and args.block_attention_hipblaslt
@@ -301,6 +325,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     comparison = bool(
         args.compare_long_attention_hipblaslt
+        or args.compare_raw_k_prefill_rowbatch
         or args.compare_block_attention_hipblaslt
         or args.compare_dense_contiguous_cache
         or args.compare_swa_attention_hipblaslt
@@ -407,6 +432,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_swa_attention_hipblaslt
                 else args.swa_attention_hipblaslt
             ),
+            raw_k_prefill_rowbatch=(
+                0
+                if args.compare_raw_k_prefill_rowbatch
+                else args.raw_k_prefill_rowbatch
+            ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -449,6 +479,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_prefill_long_attention_hipblaslt(
                             mode == "candidate"
                         )
+                    if args.compare_raw_k_prefill_rowbatch:
+                        owner.set_raw_k_prefill_rowbatch(
+                            int(raw_k_candidate) if mode == "candidate" else 0
+                        )
                     if args.compare_block_attention_hipblaslt:
                         owner.set_prefill_block_attention_hipblaslt(
                             mode == "candidate"
@@ -486,6 +520,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "final_position": int(owner.position),
                         "repetition": repetition,
                         "output_tokens": output_tokens,
+                        "raw_k_prefill_rowbatch": owner.raw_k_prefill_rowbatch,
                     }
                     if output_tokens > 1:
                         row.update(
@@ -662,6 +697,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_long_attention_hipblaslt": (
                 args.compare_long_attention_hipblaslt
             ),
+            "compare_raw_k_prefill_rowbatch": (
+                args.compare_raw_k_prefill_rowbatch
+            ),
+            "raw_k_prefill_rowbatch_requested": args.raw_k_prefill_rowbatch,
+            "raw_k_prefill_rowbatch_candidate": raw_k_candidate,
             "compare_block_attention_hipblaslt": (
                 args.compare_block_attention_hipblaslt
             ),

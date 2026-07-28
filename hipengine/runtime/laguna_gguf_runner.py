@@ -2898,6 +2898,14 @@ class LagunaGGUFResidentSession:
             mode,
         )
 
+    def set_raw_k_prefill_rowbatch(self, row_batch: int) -> None:
+        """Select exact raw-Q5/Q6 row reuse for subsequent bulk prefill."""
+
+        self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
+            self.backend,
+            row_batch,
+        )
+
     def set_f16_prefill_mode(self, mode: str) -> None:
         """Select the explicit rows>1 source-F16 projection route."""
 

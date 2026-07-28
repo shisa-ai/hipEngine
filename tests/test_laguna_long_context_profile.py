@@ -16,6 +16,7 @@ from scripts.laguna_long_context_profile import (
     PROFILE_LENGTH_SETS,
     SHORT_FOCUS_LENGTHS,
     STANDARD_DECODE_LENGTHS,
+    WPF_SHORT_LENGTHS,
     _parse_args,
     _parse_chunk_size,
     _parse_decode_output_tokens,
@@ -35,6 +36,8 @@ from scripts.laguna_long_context_trace_summary import (
 def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert SHORT_FOCUS_LENGTHS == (512, 4096)
     assert SHORT_FOCUS_LENGTHS in PROFILE_LENGTH_SETS
+    assert WPF_SHORT_LENGTHS == (512, 1024)
+    assert WPF_SHORT_LENGTHS in PROFILE_LENGTH_SETS
     assert LAP0_LENGTHS == (128, 512, 1024, 4096)
     assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
     assert ATTACK_LENGTHS == (4096, 16384, 65536, 131072)
@@ -88,6 +91,9 @@ def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.Monkey
             "0",
             "--quant-label",
             "UD-Q2_K_XL",
+            "--compare-raw-k-prefill-rowbatch",
+            "--raw-k-prefill-rowbatch",
+            "8",
         ],
     )
 
@@ -97,6 +103,8 @@ def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.Monkey
     assert args.direct_gguf is True
     assert args.safety_reserve_gib == 0.0
     assert args.quant_label == "UD-Q2_K_XL"
+    assert args.compare_raw_k_prefill_rowbatch is True
+    assert args.raw_k_prefill_rowbatch == 8
 
 
 def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:
