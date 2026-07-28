@@ -1835,3 +1835,8 @@ should be boring.
   one follow-up context crossover check. If the full-model gate is neutral or
   negative, restore all ten gfx1151 alias exclusions and remove the profiler
   selector/test rather than carrying partial split registrations.
+- The promotion trigger is satisfied: clean p512/d128 improves
+  **11.485885 -> 14.533955 tok/s (+26.538%)**, saves **2.318892 seconds** over
+  127 calls, and preserves the complete trajectory/lifecycle. Keep the
+  explicit serial rollback until a short context-crossover check confirms the
+  inherited **127/65/257** thresholds on gfx1151.
