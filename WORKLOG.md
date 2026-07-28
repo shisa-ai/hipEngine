@@ -187146,3 +187146,17 @@ Vulkan local sizes verbatim will close the measured gap.
   `LAGUNA_HEAD_KV_FUSION=True` for gfx1151; explicit False remains the
   registered two-launch rollback. Run a clean selector-unset production
   publication before updating the canonical benchmark row.
+
+## 2026-07-28 — Publish gfx1151 head/KV production default
+
+- Clean selector-unset commit `c70470bde` resolves head/KV fusion and measures
+  **11.484385/11.487617/11.485885 tok/s**, median **11.485885**. Against the
+  clean post-merge control this is **+0.167422%**, saving **18.512 ms** over
+  127 calls or **0.145764 ms/call**. The paired pp512 median is
+  **652.318 tok/s**, within normal variance of the retained 654.249 headline.
+- All three production runs retain IDs **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, deterministic repeats, and full
+  allocation recovery. Publish the retained artifact and update the benchmark
+  rollup plus the `docs/LAGUNA-prefill.md` pause-point table. Next transfer
+  screen is split global/SWA decode attention; IQ-specific gfx1100 schedules
+  remain inapplicable to this Q4_K_M model.

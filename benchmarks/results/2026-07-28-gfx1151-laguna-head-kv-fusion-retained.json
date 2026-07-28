@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_gfx1151_head_kv_fusion_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "timed_decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_rows": 2048,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "baseline_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-postmerge-baseline.json",
+    "candidate_addition": "--head-kv-fusion",
+    "production_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-head-kv-production.json",
+    "timing_scope": "decode exactly 127 synchronized eager forward_token calls after the prefill-produced first token; model load excluded"
+  },
+  "baseline": {
+    "revision": "47e3d7472d4fd6841bc4f3c7c8a9472ab34ee923",
+    "head_kv_fusion": false,
+    "decode_seconds": [
+      11.074969099950977,
+      11.075561853009276,
+      11.077840361045673
+    ],
+    "decode_tokens_per_second": [
+      11.46730061762088,
+      11.466686899093393,
+      11.46432841247516
+    ],
+    "median_seconds": 11.075561853009276,
+    "median_tokens_per_second": 11.466686899093393,
+    "raw_sha256": "00b2041c4f4a5c2b563a1ab2c5e88b1af600198e6fa63eae9d1ca6638d5d79d4"
+  },
+  "candidate": {
+    "revision": "77935e5345a799a933885235e1fb1aab6aa46451",
+    "head_kv_fusion_requested": true,
+    "decode_seconds": [
+      11.060079962015152,
+      11.057241888949648,
+      11.059262157068588
+    ],
+    "decode_tokens_per_second": [
+      11.482737958149494,
+      11.485685243706287,
+      11.483587078078916
+    ],
+    "median_seconds": 11.059262157068588,
+    "median_tokens_per_second": 11.483587078078916,
+    "change_percent": 0.14738502179614255,
+    "all_candidate_samples_above_all_control_samples": true,
+    "raw_sha256": "39046f23df24783b01b86a9e35f4067ead38539395e54083c40afa788f33fe8b"
+  },
+  "production": {
+    "revision": "c70470bde50858742794ca765d13ba7b60fc4335",
+    "head_kv_fusion_requested": null,
+    "head_kv_fusion_resolved": true,
+    "decode_seconds": [
+      11.058493791031651,
+      11.05538216396235,
+      11.057049877941608
+    ],
+    "decode_tokens_per_second": [
+      11.484384980438834,
+      11.487617353833931,
+      11.485884698174342
+    ],
+    "median_seconds": 11.057049877941608,
+    "median_tokens_per_second": 11.485884698174342,
+    "change_percent": 0.1674223709942524,
+    "saved_milliseconds_per_127_calls": 18.511975067667663,
+    "saved_milliseconds_per_call": 0.1457635832099816,
+    "prefill_median_tokens_per_second": 652.3175533302349,
+    "raw_sha256": "67ab502f801c4f0e1b171f452649817d512c18abb5c49df98c98df583d360374"
+  },
+  "implementation": {
+    "source": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "registration": "native gfx1151 aliases for global_f32_bf16_spans and swa_f32_bf16_spans",
+    "effect": "replace 48 head-RMSNorm+RoPE then KV-write pairs with 48 composite launches per decode token",
+    "fallback": "explicit use_head_kv_fusion=False retains the exact registered two-launch chain",
+    "excluded": "global_wave0_tree_f32_bf16_spans remains gfx1100-only and rejected at full-model scope"
+  },
+  "correctness": {
+    "global_positions": [
+      0,
+      255,
+      256,
+      4095
+    ],
+    "swa_positions": [
+      0,
+      511,
+      512,
+      1023
+    ],
+    "f32_query_key_bit_exact": true,
+    "bf16_key_value_bit_exact": true,
+    "kv_live_spans_metadata_exact": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_after": 0
+  },
+  "profile": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -f csv --output-directory /tmp/laguna-gfx1151-head-kv-trace-20260728 -- uv run pytest -q tests/test_laguna_head_kv_fusion.py::test_laguna_p4_fused_head_kv_is_bit_exact_to_registered_chain",
+    "global_and_swa_composites_observed": true,
+    "workgroup_size": 256,
+    "vgpr_count": 16,
+    "sgpr_count": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "trace_sha256": "a7589b165b9ab375d982147df0bd536b4b7af8cc82cc315c6ae3545da0b79d35"
+  }
+}
