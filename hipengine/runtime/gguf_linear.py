@@ -38,7 +38,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     gguf_q8_1_d4s4_f32_quantize_bf16,
-    q8_1_d4s4_f32_nbytes,
+    gguf_q8_1_d8s8_f32_quantize_bf16,
     register_gguf_k_mmq_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
@@ -788,7 +788,7 @@ def _raw_k_mmq_prefill_dispatch(
     )
     if variant is None:
         return dispatch
-    required = q8_1_d4s4_f32_nbytes(rows, in_features)
+    required = policy.workspace_nbytes(rows, in_features)
     if required > session.workspace_nbytes:
         raise ValueError(
             "raw-K MMQ workspace is too small: "
@@ -801,7 +801,7 @@ def _raw_k_mmq_prefill_dispatch(
             dispatch.key.quant,
             variant,
         ),
-        "raw_k_mmq_d4s4",
+        policy.abi,
     )
 
 
@@ -1712,6 +1712,60 @@ def _launch_raw_k_mmq_d4s4(
     )
 
 
+def _launch_raw_k_mmq_d8s8(
+    fn,
+    weight,
+    x_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    session = _raw_k_mmq_prefill_session.get()
+    if session is None:
+        raise RuntimeError("raw-K MMQ launch escaped its prefill workspace session")
+
+    workspace_ptr = session.workspace_ptr
+    workspace_nbytes = session.workspace_nbytes
+    for name, ptr, nbytes in (
+        ("BF16 activation input", int(x_ptr), int(rows) * int(in_features) * 2),
+        ("output", int(out_ptr), int(rows) * int(out_features) * 4),
+    ):
+        if max(workspace_ptr, ptr) < min(
+            workspace_ptr + workspace_nbytes,
+            ptr + nbytes,
+        ):
+            raise ValueError(f"raw-K MMQ workspace overlaps {name}")
+
+    stream = int(kwargs.get("stream", 0))
+    runtime = kwargs.get("runtime") or get_hip_runtime()
+    mmq_kwargs = {
+        "stream": stream,
+        "runtime": runtime,
+        "library": session.library,
+    }
+    producer_signature = (int(x_ptr), int(rows), int(in_features), stream)
+    if producer_signature != session.producer_signature:
+        gguf_q8_1_d8s8_f32_quantize_bf16(
+            x_ptr,
+            session.workspace_ptr,
+            rows,
+            in_features,
+            **mmq_kwargs,
+        )
+        session.producer_signature = producer_signature
+    fn(
+        session.workspace_ptr,
+        weight.allocation("raw").tensor.ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+
+
 def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
@@ -2250,6 +2304,7 @@ _LAUNCH_ABI = {
     "pack8": _launch_pack8,
     "raw": _launch_raw,
     "raw_k_mmq_d4s4": _launch_raw_k_mmq_d4s4,
+    "raw_k_mmq_d8s8": _launch_raw_k_mmq_d8s8,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,

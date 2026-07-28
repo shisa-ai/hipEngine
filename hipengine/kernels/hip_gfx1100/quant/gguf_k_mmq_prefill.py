@@ -29,6 +29,10 @@ class RawKMMQPrefillPolicy:
 
     min_rows: int = 9
     min_out_features: int = 1_024
+    abi: str = "raw_k_mmq_d8s8"
+
+    def workspace_nbytes(self, rows: int, hidden: int) -> int:
+        return q8_1_d8s8_f32_nbytes(rows, hidden)
 
     def variant(
         self,
@@ -45,8 +49,8 @@ class RawKMMQPrefillPolicy:
         ):
             return None
         return {
-            "prefill_bf16_bf16_out": _VARIANT_BF16,
-            "prefill_bf16_f32_out": _VARIANT_F32,
+            "prefill_bf16_bf16_out": _VARIANT_D8_BF16,
+            "prefill_bf16_f32_out": _VARIANT_D8_F32,
         }.get(str(source_variant))
 
 

@@ -38,7 +38,8 @@ should be removed or collapsed.
 - The first D4 runtime candidate is performance-positive but rejected by the
   complete quality lane at max KL **0.624304**. Keep it default-off only while
   finer producer grouping or a bounded correction is actively compared. Do not
-  promote the D4 policy.
+  promote the D4 policy. The default-off owner now selects the D8/S8 sibling;
+  remove D4 runtime assumptions after D8 is accepted or rejected.
 - Promote the gfx1100 package default and remove the public positive selector
   only after full state, 512/1K end-to-end performance, and both orders of the
   complete 18-prompt train+heldout quality lane pass. Remove the MMQ owner and
