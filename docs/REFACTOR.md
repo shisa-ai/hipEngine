@@ -95,20 +95,22 @@ should be removed or collapsed.
   not promote any direct policy and do not add D16 or another blind precision
   sibling. The default-off owner currently selects D8R8 only as diagnostic
   infrastructure for measuring mismatch/risk density.
-- Before WPF-1R, either repurpose this owner behind bounded fail-closed exact
-  repair or remove the public positive selector, direct runtime policy, and
-  D4/D8/D8R8 ABI assumptions. Bounded liveness-aliased workspace is allowed;
-  a persistent full-family alternate weight sidecar is not. Stop this sparse
-  formulation above 5% uncertain coordinates, 20% touched output rows, 25%
-  modeled exact-family reads, or on any promotion-run overflow. Below 1.25x
-  repaired-family / 1.10x complete 512/1K speedup, retain any smaller exact,
-  non-regressive win but end further WPF-1R tuning and prioritize WPF-3.
-  Diagnostic primitive keys may remain only with explicit evidence value.
-  Promote only after exact repaired BF16 output, full
-  state, and both orders of the complete 18-prompt lane pass. Preserve the
-  winning exact rowbatch route as mandatory fallback either way. P6's rejected
-  IQ2 gate/up mismatch density is not evidence for or against these raw-Q5/Q6
-  roles; WPF-1R still begins with their own actual-role density/traffic screen.
+- WPF-1R now closes bounded repair on the raw-Q5/Q6 roles themselves. One
+  natural M512 pass captures all **381/381** projection tensors; 333 are
+  D8R8-eligible and 48 narrow gates remain exact. Measured BF16 mismatches touch
+  **72.266-100%** of output-weight rows in every eligible tensor and imply
+  **0.160-1.686x** exact-RB32 family reads. All 333 fail the 20% touched-row
+  stop; 331 already fail the 25% read stop. The conservative midpoint envelope
+  reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads, so all 333
+  fail all three prospective gates. No repair queue/kernel/overflow route or
+  promotion lane was added.
+- The removal trigger is active. In a separate cleanup unit, remove the public
+  positive `raw_k_prefill_mmq` selector/setter, lazy workspace/library owner,
+  direct policy/ABI dispatch, and owner-focused tests. Preserve exact
+  rowbatch32 and smaller-slab fallbacks. D4/D8/D8R8 primitive keys may remain
+  only where the published ceiling/rejection evidence justifies them; remove
+  unreferenced wrappers and policy surfaces. Then prioritize WPF-3. Evidence:
+  `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json`.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
