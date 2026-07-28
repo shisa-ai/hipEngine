@@ -38,6 +38,24 @@ struct q8_1_mmq32_cache {
   int quant_sum1;
 };
 
+struct q8_1_d8s8_f32_block {
+  float d8[8];
+  float s8[8];
+  int8_t qs[Q8_BLOCK];
+};
+static_assert(sizeof(q8_1_d8s8_f32_block) == 192,
+              "unexpected Q8_1 D8S8-F32 block size");
+
+struct q8_1_d8_mmq32_cache {
+  uint32_t qs[8];
+  float d0;
+  float d1;
+  float sum0;
+  float sum1;
+  int quant_sum0;
+  int quant_sum1;
+};
+
 struct k_mmq32_cache {
   uint32_t qs[8];
   float scale0;
@@ -210,6 +228,51 @@ __global__ void q8_1_d4s4_f32_quantize_bf16_kernel(
   }
 }
 
+__launch_bounds__(256, 2)
+__global__ void q8_1_d8s8_f32_quantize_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    q8_1_d8s8_f32_block* __restrict__ out,
+    int rows,
+    int hidden) {
+  const int row = static_cast<int>(blockIdx.x);
+  const int i0 =
+      (static_cast<int>(blockIdx.y) * 256 + static_cast<int>(threadIdx.x)) * 4;
+  if (row >= rows || i0 >= hidden) return;
+
+  float values[4];
+  float amax = 0.0f;
+  float sum = 0.0f;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    values[i] =
+        bf16_bits_to_float(x[static_cast<int64_t>(row) * hidden + i0 + i]);
+    amax = fmaxf(amax, fabsf(values[i]));
+    sum += values[i];
+  }
+#pragma unroll
+  for (int offset = 2; offset > 0; offset >>= 1) {
+    amax = fmaxf(amax, __shfl_xor(amax, offset, 32));
+    sum += __shfl_xor(sum, offset, 32);
+  }
+
+  const float d = amax == 0.0f ? 0.0f : amax / 127.0f;
+  const int block = i0 / Q8_BLOCK;
+  const int within = i0 & (Q8_BLOCK - 1);
+  q8_1_d8s8_f32_block* dst =
+      out + static_cast<int64_t>(row) * (hidden / Q8_BLOCK) + block;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    int q = d == 0.0f ? 0 : static_cast<int>(roundf(values[i] / d));
+    q = max(-128, min(127, q));
+    dst->qs[within + i] = static_cast<int8_t>(q);
+  }
+  if ((within & 15) == 0) {
+    const int group = within >> 4;
+    dst->d8[group] = d;
+    dst->s8[group] = sum;
+  }
+}
+
 template <int qtype, typename output_t>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel(
@@ -378,6 +441,175 @@ __global__ void gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel(
   }
 }
 
+template <int qtype, typename output_t>
+__launch_bounds__(128, 2)
+__global__ void gguf_k_raw_mmq32_q8_1_d8s8_f32_kernel(
+    const q8_1_d8s8_f32_block* __restrict__ xq,
+    const uint8_t* __restrict__ qweight,
+    output_t* __restrict__ out,
+    int rows,
+    int hidden,
+    int out_features) {
+  static_assert(qtype == 5 || qtype == 6, "MMQ32 supports Q5_K/Q6_K");
+  __shared__ k_mmq32_cache weight_tile[MMQ_COLS];
+  __shared__ q8_1_d8_mmq32_cache activation_tile[MMQ_ROWS];
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int output_col_base = static_cast<int>(blockIdx.x) * MMQ_COLS;
+  const int input_row_base = static_cast<int>(blockIdx.y) * MMQ_ROWS;
+  const int load_part = tid & 3;
+  const int load_index = tid >> 2;
+  const int owned_col = tid & 31;
+  const int owned_row_residue = tid >> 5;
+  const int blocks_per_weight_row = hidden / QK_K;
+  const int q8_blocks_per_row = hidden / Q8_BLOCK;
+  const int weight_row_bytes = blocks_per_weight_row *
+      (qtype == 5 ? Q5_K_BLOCK_BYTES : Q6_K_BLOCK_BYTES);
+
+  float acc[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) acc[i] = 0.0f;
+
+  const int k32_iters = hidden / Q8_GROUP;
+  for (int k32 = 0; k32 < k32_iters; ++k32) {
+    if (load_index < MMQ_COLS) {
+      const int output_col = output_col_base + load_index;
+      const bool valid_col = output_col < out_features;
+      uint32_t q0 = 0;
+      uint32_t q1 = 0;
+      float scale0 = 0.0f;
+      float scale1 = 0.0f;
+      float minimum = 0.0f;
+      if (valid_col) {
+        const int weight_block = k32 >> 3;
+        const int group32 = k32 & 7;
+        const uint8_t* block =
+            qweight + static_cast<int64_t>(output_col) * weight_row_bytes +
+            static_cast<int64_t>(weight_block) *
+                (qtype == 5 ? Q5_K_BLOCK_BYTES : Q6_K_BLOCK_BYTES);
+        const int lane8 = load_part * 8;
+        if constexpr (qtype == 5) {
+          q0 = q5_pack4_unsigned(block, group32, lane8);
+          q1 = q5_pack4_unsigned(block, group32, lane8 + 4);
+          if (load_part == 0) {
+            const float d = fp16_bytes_to_float(block);
+            const float dmin = fp16_bytes_to_float(block + 2);
+            const uint8_t* scales = block + 4;
+            scale0 = d * static_cast<float>(q45_scale(scales, group32));
+            minimum = dmin * static_cast<float>(q45_min(scales, group32));
+          }
+        } else {
+          q0 = q6_pack4_unsigned(block, group32, lane8);
+          q1 = q6_pack4_unsigned(block, group32, lane8 + 4);
+          if (load_part == 0) {
+            const float d = fp16_bytes_to_float(block + 208);
+            const int8_t* scales =
+                reinterpret_cast<const int8_t*>(block + 192);
+            scale0 = d * static_cast<float>(scales[2 * group32]);
+            scale1 = d * static_cast<float>(scales[2 * group32 + 1]);
+          }
+        }
+      }
+      weight_tile[load_index].qs[2 * load_part] = q0;
+      weight_tile[load_index].qs[2 * load_part + 1] = q1;
+      if (load_part == 0) {
+        weight_tile[load_index].scale0 = scale0;
+        weight_tile[load_index].scale1 = scale1;
+        weight_tile[load_index].minimum = minimum;
+      }
+    }
+
+    if (load_index < MMQ_ROWS) {
+      const int input_row = input_row_base + load_index;
+      const bool valid_row = input_row < rows;
+      uint32_t q0 = 0;
+      uint32_t q1 = 0;
+      float d0 = 0.0f;
+      float d1 = 0.0f;
+      float sum0 = 0.0f;
+      float sum1 = 0.0f;
+      int quant_sum0 = 0;
+      int quant_sum1 = 0;
+      if (valid_row) {
+        const q8_1_d8s8_f32_block& block =
+            xq[static_cast<int64_t>(input_row) * q8_blocks_per_row + (k32 >> 2)];
+        const int group = (k32 & 3) * 2;
+        const int8_t* group_qs = block.qs + group * 16;
+        const uint32_t* words = reinterpret_cast<const uint32_t*>(
+            group_qs + load_part * 8);
+        q0 = words[0];
+        q1 = words[1];
+        if (load_part == 0) {
+          d0 = block.d8[group];
+          d1 = block.d8[group + 1];
+          sum0 = block.s8[group];
+          sum1 = block.s8[group + 1];
+#pragma unroll
+          for (int lane = 0; lane < 16; ++lane) {
+            quant_sum0 += static_cast<int>(group_qs[lane]);
+            quant_sum1 += static_cast<int>(group_qs[lane + 16]);
+          }
+        }
+      }
+      activation_tile[load_index].qs[2 * load_part] = q0;
+      activation_tile[load_index].qs[2 * load_part + 1] = q1;
+      if (load_part == 0) {
+        activation_tile[load_index].d0 = d0;
+        activation_tile[load_index].d1 = d1;
+        activation_tile[load_index].sum0 = sum0;
+        activation_tile[load_index].sum1 = sum1;
+        activation_tile[load_index].quant_sum0 = quant_sum0;
+        activation_tile[load_index].quant_sum1 = quant_sum1;
+      }
+    }
+    __syncthreads();
+
+    const k_mmq32_cache weight = weight_tile[owned_col];
+#pragma unroll
+    for (int row_group = 0; row_group < 8; ++row_group) {
+      const int row_local = row_group * 4 + owned_row_residue;
+      const int input_row = input_row_base + row_local;
+      if (input_row >= rows) continue;
+      const q8_1_d8_mmq32_cache activation = activation_tile[row_local];
+      int dot0 = 0;
+      int dot1 = 0;
+#pragma unroll
+      for (int word = 0; word < 4; ++word) {
+        dot0 = dp4a_u8_s8(weight.qs[word], activation.qs[word], dot0);
+        dot1 = dp4a_u8_s8(
+            weight.qs[word + 4], activation.qs[word + 4], dot1);
+      }
+      if constexpr (qtype == 5) {
+        acc[row_group] += weight.scale0 *
+            (activation.d0 * static_cast<float>(dot0) +
+             activation.d1 * static_cast<float>(dot1)) -
+            weight.minimum * (activation.sum0 + activation.sum1);
+      } else {
+        dot0 -= 32 * activation.quant_sum0;
+        dot1 -= 32 * activation.quant_sum1;
+        acc[row_group] +=
+            activation.d0 * weight.scale0 * static_cast<float>(dot0) +
+            activation.d1 * weight.scale1 * static_cast<float>(dot1);
+      }
+    }
+    __syncthreads();
+  }
+
+  const int output_col = output_col_base + owned_col;
+  if (output_col >= out_features) return;
+#pragma unroll
+  for (int row_group = 0; row_group < 8; ++row_group) {
+    const int row_local = row_group * 4 + owned_row_residue;
+    const int input_row = input_row_base + row_local;
+    if (input_row < rows) {
+      store_output<output_t>(
+          out,
+          static_cast<int64_t>(input_row) * out_features + output_col,
+          acc[row_group]);
+    }
+  }
+}
+
 int launch_quantize(
     const uint16_t* x,
     q8_1_d4s4_f32_block* out,
@@ -394,6 +626,33 @@ int launch_quantize(
       static_cast<unsigned int>((hidden + 1023) / 1024));
   hipLaunchKernelGGL(
       q8_1_d4s4_f32_quantize_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(hidden));
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_quantize_d8(
+    const uint16_t* x,
+    q8_1_d8s8_f32_block* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (x == nullptr || out == nullptr || rows <= 0 || hidden <= 0 ||
+      (hidden % Q8_BLOCK) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(256);
+  const dim3 grid(
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>((hidden + 1023) / 1024));
+  hipLaunchKernelGGL(
+      q8_1_d8s8_f32_quantize_bf16_kernel,
       grid,
       block,
       0,
@@ -438,6 +697,39 @@ int launch_mmq(
   return static_cast<int>(hipGetLastError());
 }
 
+template <int qtype, typename output_t>
+int launch_mmq_d8(
+    const q8_1_d8s8_f32_block* xq,
+    const uint8_t* qweight,
+    output_t* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || out == nullptr ||
+      rows <= 0 || hidden <= 0 || (hidden % QK_K) != 0 ||
+      out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(MMQ_THREADS);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + MMQ_COLS - 1) / MMQ_COLS),
+      static_cast<unsigned int>((rows + MMQ_ROWS - 1) / MMQ_ROWS));
+  hipLaunchKernelGGL(
+      (gguf_k_raw_mmq32_q8_1_d8s8_f32_kernel<qtype, output_t>),
+      grid,
+      block,
+      0,
+      stream,
+      xq,
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(hidden),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_q8_1_d4s4_f32_quantize_bf16(
@@ -449,6 +741,20 @@ extern "C" int hipengine_gguf_q8_1_d4s4_f32_quantize_bf16(
   return launch_quantize(
       x,
       reinterpret_cast<q8_1_d4s4_f32_block*>(out),
+      rows,
+      hidden,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q8_1_d8s8_f32_quantize_bf16(
+    const uint16_t* x,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_quantize_d8(
+      x,
+      reinterpret_cast<q8_1_d8s8_f32_block*>(out),
       rows,
       hidden,
       stream);
@@ -474,3 +780,24 @@ HIPENGINE_GGUF_K_MMQ_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_MMQ_EXPORTS(gguf_q6_k, 6)
 
 #undef HIPENGINE_GGUF_K_MMQ_EXPORTS
+
+#define HIPENGINE_GGUF_K_MMQ_D8_EXPORTS(NAME, QTYPE) \
+extern "C" int hipengine_##NAME##_mmq32_q8_1_d8s8_f32_bf16_bf16_out( \
+    const void* xq, const uint8_t* qweight, uint16_t* out, int64_t rows, \
+    int64_t hidden, int64_t out_features, hipStream_t stream) { \
+  return launch_mmq_d8<QTYPE, uint16_t>( \
+      reinterpret_cast<const q8_1_d8s8_f32_block*>(xq), qweight, out, \
+      rows, hidden, out_features, stream); \
+} \
+extern "C" int hipengine_##NAME##_mmq32_q8_1_d8s8_f32_bf16_f32_out( \
+    const void* xq, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t hidden, int64_t out_features, hipStream_t stream) { \
+  return launch_mmq_d8<QTYPE, float>( \
+      reinterpret_cast<const q8_1_d8s8_f32_block*>(xq), qweight, out, \
+      rows, hidden, out_features, stream); \
+}
+
+HIPENGINE_GGUF_K_MMQ_D8_EXPORTS(gguf_q5_k, 5)
+HIPENGINE_GGUF_K_MMQ_D8_EXPORTS(gguf_q6_k, 6)
+
+#undef HIPENGINE_GGUF_K_MMQ_D8_EXPORTS
