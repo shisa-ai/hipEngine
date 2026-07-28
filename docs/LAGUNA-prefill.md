@@ -21,12 +21,14 @@ attention transfer is therefore the wrong first move. The immediate order is:
    remaining family;
 4. reduce launches/fusions only after span-minus-sum becomes material.
 
-No 16K, 64K, or 128K performance sweep is allowed until the repeated exact
-512/4K gate reaches at least **400/300 tok/s**. The full long-context campaign
-stays closed until 512/4K reaches **800/700 tok/s**, or a fresh measured
-roofline proves an explicit lower ceiling. This prevents 30-minute diagnostics
-from consuming the iteration loop while short prefill is still 10-20x below a
-conservative practical target.
+While repeated exact prefill remains below **200 tok/s** at either 512 or 1K,
+all active W7900 iteration is restricted to those two shapes: **do not run 4K
+or longer prefill**. Once both short shapes reach 200 tok/s, a 4K gate may
+resume. The full long-context campaign stays closed until 512/4K reaches
+**800/700 tok/s**, or a fresh measured roofline proves an explicit lower
+ceiling. This prevents multi-minute diagnostics from consuming the iteration
+loop while short prefill is still 10-20x below a conservative practical
+target.
 
 ### Frozen target and current evidence
 
@@ -36,7 +38,7 @@ conservative practical target.
 | SHA-256 | `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679` |
 | Logical / tensor size | 117.562B parameters / 39,680,849,600 tensor bytes |
 | Backend | `hip_gfx1100`, AMD Radeon Pro W7900, one explicitly selected device |
-| Primary shapes | prefill-only 512 and 4,096 tokens; BF16 KV; exact positions and deterministic next token |
+| Active iteration shapes | prefill-only 512 and 1,024 tokens until both reach 200 tok/s; BF16 KV; exact positions and deterministic next token |
 | Control | clean `67ab7e5a8`, matrix128 / attention128, direct GGUF, cached-only builds |
 | Control wall | **41.720 tok/s at 512**, **36.407 tok/s at 4K** |
 | Profile repeat | **41.438 / 36.245 tok/s**, raw trace SHA-256 `87f02952...f6f5b3` |
@@ -157,13 +159,13 @@ The relevant lesson is dataflow, not API or literal constants:
 | Task | State | Gate / next action |
 | --- | --- | --- |
 | WPF-0 profile + roofline | Complete | Clean 512/4K wall and all-family trace, actual tensor/FLOP ledger, 729.067-GB/s read ceiling, llama.cpp HIP/Vulkan audit, and compact artifact published. |
-| WPF-C0 shared-source capacity transfer | Candidate measured | M2048/packed/block/global/SWA bundle is exact and +6.45%/+18.70% at 512/4K once. Run focused tests plus counterbalanced repeated 512/4K before package-default commit; keep M128 rollback and no quant-policy aliases. |
-| WPF-1 exact dense/shared row reuse | **Next** | Extend the existing exact Q5/Q6 small-B rowtile premise to fixed rowbatch4/8 grid-Y tiles. Gate natural K3072/K6144/K9216 and N48/72/1024/3072/6144/9216 roles, actual first/last layers, then full 512/4K. |
-| WPF-1B dense/shared Q8_1 MMQ | Conditional | If exact row batching remains below 400/300, add source-faithful Q5/Q6 integer-dot MMQ. Quantize a producer row once, preserve raw resident weights, and use the full quality lane for changed arithmetic. |
+| WPF-C0 shared-source capacity transfer | Rejected/removed | The bundle was performance-positive but failed the mandatory 576-step quality gate at max KL 1.11869; no copied capability default is retained. |
+| WPF-1 exact dense/shared row reuse | **Primitive complete; runtime next** | Exact fixed rowbatch4/8 Q5/Q6 kernels pass natural role/tail gates and improve primitive wall 1.268-3.347x. Wire the gfx1100 runtime selector, gate actual first/last layers and full state, then benchmark only 512/1K while below 200 tok/s. |
+| WPF-1B dense/shared Q8_1 MMQ | Conditional | If exact row batching remains below 200 tok/s at 512/1K, add source-faithful Q5/Q6 integer-dot MMQ. Quantize a producer row once, preserve raw resident weights, and use the full quality lane for changed arithmetic. |
 | WPF-2 routed IQ MMQ | Pending WPF-1 reprofile | Compact by expert, quantize gate/up before top-10 expansion, pack down rows after SiLU, and tile raw IQ2/IQ3/IQ4 weights across routed rows. Publish distinct-expert and physical traffic. |
-| WPF-3 short attention | Deferred | Start only if the fresh post-WPF-2 profile makes attention the largest or gives it a >=5% perfect-removal ceiling at both 512 and 4K. |
+| WPF-3 short attention | Deferred | Start only if the fresh post-WPF-2 profile makes attention the largest or gives it a >=5% perfect-removal ceiling at both active 512/1K shapes. |
 | WPF-4 launch/fusion | Deferred | Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
-| WPF-5 long context | Hard deferred | One 16K diagnostic is allowed after exact 400/300; full 16K/64K/128K work only after 800/700 or a documented measured blocker. |
+| WPF-5 long context | Hard deferred | Resume 4K only after exact 512/1K both reach 200 tok/s; full 16K/64K/128K work remains closed until 800/700 at 512/4K or a documented measured blocker. |
 
 ### Admission and stop rules
 
@@ -178,8 +180,10 @@ For every WPF kernel or owner:
    requires an explicit measured justification.
 3. Use one resident weight set. No full Q5/Q6/IQ sidecar fits the 48-GiB
    budget. Scratch aliases through phase liveness and must preserve teardown.
-4. Gate 512 and 4K in both process orders with exact IDs/positions/state,
-   deterministic repeats, finite logits, and allocation recovery. A per-order
+4. While either 512 or 1K is below 200 tok/s, gate only those two shapes in
+   both process orders with exact IDs/positions/state, deterministic repeats,
+   finite logits, and allocation recovery. Do not spend iteration time on 4K.
+   After both short shapes cross 200 tok/s, restore the 4K gate. A per-order
    regression is not waived by pooling. Small wins use at least 15 samples or
    the established full-model repetition protocol.
 5. Promote only architecture-qualified package capabilities and registered
@@ -191,7 +195,8 @@ For every WPF kernel or owner:
 
 Do not copy gfx1151's Q4/D8/D4, F16, queue, concurrency, qmicro, prefetch, or
 wave-width defaults into gfx1100. Do not optimize the fixed prompt or route
-IDs. Do not resume long-context sweeps merely because M2048 now completes 4K.
+IDs. Do not run 4K or resume long-context sweeps merely because M2048 can
+complete them; the active 512/1K threshold above controls when 4K reopens.
 
 ## Retained gfx1151 / Q4_K_M campaign record
 
