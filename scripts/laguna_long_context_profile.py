@@ -100,6 +100,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--lengths", type=_parse_lengths, default=DEFAULT_LENGTHS)
     parser.add_argument("--chunk-size", type=_parse_chunk_size, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument(
+        "--package-matrix-rows",
+        action="store_true",
+        help="resolve matrix rows from backend package capability instead of --chunk-size",
+    )
+    parser.add_argument(
         "--attention-rows",
         type=_parse_chunk_size,
         help="global-attention query rows; SWA remains capped at 128",
@@ -273,6 +278,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if args.chunk_size not in PROFILE_CHUNK_SIZES:
         raise ValueError(f"Laguna profiling chunk size must be one of {PROFILE_CHUNK_SIZES}")
+    matrix_label = "package" if args.package_matrix_rows else str(args.chunk_size)
     output_tokens = int(args.decode_output_tokens)
     required_context = max(lengths) + output_tokens - 1
     if args.context_length < required_context:
@@ -384,20 +390,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         build_profile=(
-            f"laguna_prefill_long_context_matrix{args.chunk_size}"
+            f"laguna_prefill_long_context_matrix{matrix_label}"
             if output_tokens == 1
-            else f"laguna_p512_d{output_tokens}_matrix{args.chunk_size}"
+            else f"laguna_p512_d{output_tokens}_matrix{matrix_label}"
         ),
         timing_protocol=(
             (
                 "prefill_only_"
                 + "_".join(str(length) for length in lengths)
-                + f"_matrix{args.chunk_size}_attention128"
+                + f"_matrix{matrix_label}_attention128"
             )
             if output_tokens == 1
             else (
                 f"p{lengths[0]}_d{output_tokens}_eager_c1_"
-                f"matrix{args.chunk_size}_attention128"
+                f"matrix{matrix_label}_attention128"
             )
         ),
         warmups=1,
@@ -411,6 +417,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     gpu_free_before, gpu_total = runtime.mem_get_info()
     tracked_before = memory_stats()
     owner: LagunaGGUFResidentSession | None = None
+    active_matrix_rows = args.chunk_size
     active_moe_branch_concurrency = False
     active_q6_qmicro_permute = False
     active_q6_qmicro_planar = False
@@ -438,7 +445,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             progress=_progress,
             repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
-            prefill_chunk_size=args.chunk_size,
+            prefill_chunk_size=(None if args.package_matrix_rows else args.chunk_size),
             prefill_global_attention_chunk_size=args.attention_rows,
             q6_qmicro_permute=args.q6_qmicro_permute,
             q6_qmicro_planar=args.q6_qmicro_planar,
@@ -476,6 +483,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else args.raw_k_prefill_mmq
             ),
         )
+        active_matrix_rows = owner.prefill_chunk_size
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
         active_q6_qmicro_planar = owner.q6_qmicro_planar
@@ -555,7 +563,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         decode_seconds = time.perf_counter() - decode_started
                     row = {
                         "length": length,
-                        "chunks": math.ceil(length / args.chunk_size),
+                        "chunks": math.ceil(length / active_matrix_rows),
                         "prefill_seconds": elapsed,
                         "prefill_tok_s": length / elapsed,
                         "next_token_id": generated[0],
@@ -709,17 +717,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "protocol": {
             "lengths": list(lengths),
-            "chunk_size": args.chunk_size,
-            "matrix_rows": args.chunk_size,
+            "chunk_size": active_matrix_rows,
+            "matrix_rows": active_matrix_rows,
+            "package_matrix_rows_requested": bool(args.package_matrix_rows),
+            "matrix_rows_cli_fallback": args.chunk_size,
             "attention_rows": active_global_attention_rows,
             "swa_attention_rows": min(
-                args.chunk_size,
+                active_matrix_rows,
                 128,
                 active_attention_rows,
             ),
             "dense_contiguous_cache": active_dense_contiguous_cache,
             "chunks_per_length": {
-                str(length): math.ceil(length / args.chunk_size) for length in lengths
+                str(length): math.ceil(length / active_matrix_rows) for length in lengths
             },
             "context_length": args.context_length,
             "direct_gguf": bool(args.direct_gguf),
