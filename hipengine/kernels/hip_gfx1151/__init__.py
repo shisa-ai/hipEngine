@@ -226,6 +226,11 @@ LAGUNA_F16_PREFILL_MODE = "hipblaslt_range_direct"
 # BF16-to-FP16 casts per layer while preserving the established source-F16
 # input bits; the runtime setter remains the explicit rollback.
 LAGUNA_F16_BOUNDARY_FUSION = True
+# The gfx1100 current-P4 body is shape-identical for Laguna S 2.1 and compiles
+# from the shared gfx11 source as a native gfx1151 code object. Keep automatic
+# selection off until the architecture-local bit-exact and p512/d128 gates;
+# explicit True screens the candidate against the registered fallback chain.
+LAGUNA_HEAD_KV_FUSION = False
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -380,22 +385,12 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
         ),
-        # Current-P4 head/KV fusion and the global-only wave-0 tree are
-        # W7900-only until independently gated.
-        (
-            "head_rmsnorm+partial_rotary+kv_write",
-            "laguna_f32_weight",
-            "global_f32_bf16_spans",
-        ),
+        # The global-only wave-0 tree remains W7900-only. The retained scalar
+        # current-P4 global/SWA bodies are independently gated on gfx1151.
         (
             "head_rmsnorm+partial_rotary+kv_write",
             "laguna_f32_weight",
             "global_wave0_tree_f32_bf16_spans",
-        ),
-        (
-            "head_rmsnorm+partial_rotary+kv_write",
-            "laguna_f32_weight",
-            "swa_f32_bf16_spans",
         ),
         # D9, its wave-0 RMS tree, and its exact top-10 split sibling are
         # W7900-only until gfx1151 receives independent correctness and
@@ -642,6 +637,7 @@ __all__ = [
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
+    "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",

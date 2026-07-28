@@ -113,9 +113,17 @@ def test_laguna_p4_head_kv_registry_plan_and_fail_closed_validation() -> None:
             layer="head_rmsnorm+partial_rotary+kv_write",
             quant="laguna_f32_weight",
             variant="global_f32_bf16_spans",
-            missing="none",
         )
-        is None
+        is laguna_global_head_rmsnorm_rope_write_kv_f32_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="head_rmsnorm+partial_rotary+kv_write",
+            quant="laguna_f32_weight",
+            variant="swa_f32_bf16_spans",
+        )
+        is laguna_swa_head_rmsnorm_rope_write_kv_f32_spans
     )
 
     common = (0,) * 11
