@@ -1378,6 +1378,14 @@ selects exp4 only inside the already-qualified saturated mixed32 route; the
 serial-exp mixed32 sibling remains rollback. Evidence:
 [`retained mixed32 exp4`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-retained.json).
 
+Tracked-clean selector-unset production measures
+**19.417147/19.424487/19.429963 tok/s**, median **19.424487**. This is
+**+0.288% / -0.148 ms/token** over the preceding clean 19.368763 packet and
+**+69.399%** over the 11.466687 sprint start. The exp4 capability is active
+without a comparison selector and all three trajectories/state/lifecycle are
+exact. Evidence:
+[`clean mixed32 exp4 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-production.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.

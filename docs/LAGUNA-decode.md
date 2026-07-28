@@ -4089,6 +4089,14 @@ already-qualified saturated mixed32 route. The serial-exp mixed32 sibling
 remains explicit rollback and other shapes/backends are unchanged. Evidence:
 [`retained mixed32 exp4`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-retained.json).
 
+Three tracked-clean selector-unset runs confirm
+**19.417147/19.424487/19.429963 tok/s**, median **19.424487**. That is
+**+0.288% / -0.148 ms/token** versus clean serial-exp mixed32 and
+**+69.399%** over the 11.466687 sprint start. The exp4 capability is active
+without a comparison selector; IDs, state, and lifecycle remain exact.
+Evidence:
+[`clean mixed32 exp4 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-production.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
