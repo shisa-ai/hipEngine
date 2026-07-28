@@ -4173,12 +4173,23 @@ Vulkan remains at **0.909 ms**, leaving **3.568 ms/token** and **42.6%** of
 the complete wall gap in attention. Evidence:
 [`post-exp32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp32-wall-reprofile.json).
 
-The next structural gate transfers llama.cpp's decisive GQA reuse without
-copying its inexact tensorized arithmetic: one fused local512 owner handles
-four or five query heads per KV head, keeps the exact wave32 QK reduction and
-ordered softmax/PV chains, computes two output dimensions per lane, and cuts
-SWA workgroups **32 -> 16**. Unlike the rejected persistent GQA9 experiment,
-it has no global score plane, rendezvous, atomics, or reducer launch.
+The exact fused GQA4+5/local512 screen transfers more of llama.cpp's GQA
+reuse without copying its inexact tensorized arithmetic, but it is rejected.
+F32 context and gated BF16 are byte-exact; nevertheless, cutting ordinary-grid
+SWA workgroups **32 -> 16** regresses the leaf
+**0.081615 -> 0.086053 ms (+5.44%)**. The added K/V reuse cannot repay
+gfx1151 underfill even without a global score plane, rendezvous, atomics, or
+reducer launch. The implementation is removed before tracing/runtime
+integration. Evidence:
+[`rejected GQA4+5 local512`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-local512-rejected.json).
+
+The next bounded structural gate returns to the still-saturated local384
+geometry: apply the retained exact wave32 exponential issue to the existing
+24-workgroup **3+3+3 GQA3** owner and compare it directly with production
+32-workgroup **2+2+2+3**. This asks whether the shorter softmax phase moved
+the occupancy/reuse seam from 32 to 24 blocks. It changes no arithmetic or
+resident state. If it is not positive at the leaf, close every ordinary-grid
+owner below 32 workgroups and require a tensorized high-precision premise.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
@@ -4282,9 +4293,12 @@ and shape/backend fallbacks.
    launch API does not remove the global phase tax. The one-phase
    **2+2+2+3 mixed32** owner is retained instead: leaf **-5.41%**, all seven
    resident pairs **19.268862 -> 19.371717 tok/s (+0.534%)**, exact state. The
-   next material step is an independently gated tensorized high-precision
-   repair or another fused ordinary-grid reuse point with a distinct premise;
-   do not resume full-score repairs or approximate split softmax/PV.
+   exact GQA4+5/local512 successor is byte-exact but regresses the leaf
+   **5.44%** because 16 ordinary-grid blocks underfill gfx1151, so it is
+   removed. Screen 24-block GQA3 with retained wave32 exp issue once; if it
+   loses, the next material step is an independently gated tensorized
+   high-precision repair. Do not resume full-score repairs or approximate
+   split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

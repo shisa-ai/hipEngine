@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_gqa45_local512_screen",
+  "date": "2026-07-29",
+  "status": "rejected",
+  "source_revision": "2bdac03e06ea8858b12967f1d887e1291321d067",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "family": "Laguna",
+    "quant": "Q4_K"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "exact two-owner-per-KV GQA4+5 local512 fused SWA",
+    "workgroups": 16,
+    "local_size": 512,
+    "median_ms": 0.08605323791503906,
+    "samples_ms": [
+      0.08613625526428223,
+      0.08597676277160644,
+      0.08605070114135742,
+      0.08624305725097656,
+      0.08602512359619141,
+      0.08770746231079102,
+      0.08802453994750976,
+      0.08605323791503906,
+      0.08601136207580566
+    ]
+  },
+  "control": {
+    "description": "retained exact mixed32 2+2+2+3 local384 exp32 fused SWA",
+    "workgroups": 32,
+    "local_size": 384,
+    "median_ms": 0.08161520004272461,
+    "samples_ms": [
+      0.0816927433013916,
+      0.08161520004272461,
+      0.08153583526611329,
+      0.08320141792297363,
+      0.08159682273864746,
+      0.08158960342407226,
+      0.08163375854492187,
+      0.08163375854492187,
+      0.08157365798950195
+    ]
+  },
+  "result": {
+    "latency_change_percent": 5.437758983609897,
+    "performance_claim": false,
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_max_abs_error": 0.0
+  },
+  "protocol": {
+    "samples": 9,
+    "warmups": 5,
+    "burst": 50,
+    "correctness_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "benchmark_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa45-local512-vstage64-vec16-direct-exp32 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa45-local512-leaf.json"
+  },
+  "decision": {
+    "reason": "Halving ordinary-grid workgroups to 16 underfills gfx1151 enough to outweigh the additional K/V reuse.",
+    "runtime_integrated": false,
+    "implementation_removed": true,
+    "production_unchanged_tok_s": 19.530839
+  }
+}
