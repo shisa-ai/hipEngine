@@ -188969,3 +188969,16 @@ Vulkan local sizes verbatim will close the measured gap.
   are unchanged. Focused owner/runner/profile validation reports
   **38 passed**. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-retained.json`.
+
+## 2026-07-29 08:05 JST — Publish clean mixed32 exp8 production
+
+- Three tracked-clean, require-cached, selector-unset p512/d128 runs on
+  `2da3f756d` measure **19.496106/19.515697/19.519033 tok/s**, median
+  **19.515697**. The exp8 capability is active without a comparison selector
+  and improves **0.470% / 0.241 ms/token** over clean exp4.
+- All runs preserve next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, lifecycle, and zero
+  tracked bytes after teardown. Production is now **+70.195%** over the
+  11.466687 sprint start. Raw artifact SHA-256 is
+  `843aabb5...d37ae3`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-production.json`.
