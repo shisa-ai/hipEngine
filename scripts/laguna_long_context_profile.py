@@ -206,6 +206,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="counterbalance exact SWA GQA3 against its saturated-512 reducer",
     )
+    parser.add_argument(
+        "--compare-global-fixedshape-reduce",
+        action="store_true",
+        help="counterbalance exact global reduction against its natural shape",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -304,6 +309,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_f16_decode_onebarrier,
             args.compare_f16_decode_fixedk,
             args.compare_swa_fixed512_reduce,
+            args.compare_global_fixedshape_reduce,
         )
     )
     if active_comparisons > 1:
@@ -337,6 +343,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_f16_decode_onebarrier
         or args.compare_f16_decode_fixedk
         or args.compare_swa_fixed512_reduce
+        or args.compare_global_fixedshape_reduce
     )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
@@ -401,6 +408,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_split_gate_fusion = False
     active_swa_split_wave_local = False
     active_swa_split_fixed512_reduce = False
+    active_global_split_fixedshape_reduce = False
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
@@ -494,6 +502,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_split_fixed512_reduce = (
             owner.kv_cache.swa_split_fixed512_reduce
         )
+        active_global_split_fixedshape_reduce = (
+            owner.kv_cache.global_split_fixedshape_reduce
+        )
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
@@ -551,6 +562,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_swa_fixed512_reduce:
                         owner.kv_cache.swa_split_fixed512_reduce = (
+                            mode == "candidate"
+                        )
+                    if args.compare_global_fixedshape_reduce:
+                        owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -764,6 +779,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_swa_fixed512_reduce": (
                 args.compare_swa_fixed512_reduce
             ),
+            "compare_global_fixedshape_reduce": (
+                args.compare_global_fixedshape_reduce
+            ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,
             "swa_split_tile16_min_live": active_swa_split_tile16_min_live,
@@ -771,6 +789,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "swa_split_wave_local": active_swa_split_wave_local,
             "swa_split_fixed512_reduce": (
                 active_swa_split_fixed512_reduce
+            ),
+            "global_split_fixedshape_reduce": (
+                active_global_split_fixedshape_reduce
             ),
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (

@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T20:37:09+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_fixedshape_reduce_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "2f5d621f5e9ab52d15ad68ec2bae3e5cd4de0985",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "runtime": "hipengine/runtime/laguna_kv.py"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "scope": "natural-shape decode in all 12 global-attention layers",
+    "shape": "48 query heads, 8 KV heads, D128, capacity and score stride 4096",
+    "geometry": "unchanged one workgroup/query head, local256, eight wave32s/query head, 48 workgroups/layer",
+    "arithmetic": "unchanged dynamic live/span handling, scalar slot-order maximum, exponent, denominator, per-dimension FMA, divide, softplus gate, F32 store, and RNE-BF16 store",
+    "optimization": "compile-time specialize the natural head geometry, D128, capacity, and score/physical scratch stride; use bounded 32-bit address arithmetic",
+    "fallback": "non-natural shapes, non-4096 capacities, ungated attention, and peer backends retain the generic exact reducer"
+  },
+  "red_green": {
+    "red": "the focused exact gated-reducer test failed on the absent wrapper and registry variant",
+    "green": "global live 257 plus production live 513/576/639 are F32/BF16 byte-exact against the retained generic reducer",
+    "focused_tests": 35,
+    "focused_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_split_gate_fusion.py tests/test_laguna_long_context_profile.py tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback"
+  },
+  "leaf_gate": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-fixedshape-leaf-valid.json",
+    "raw_sha256": "a76be42ab92697b108403f4f677191f8292a458439d485c54e16096fa3dbef2a",
+    "scope": "complete retained exact score producer plus gated value reducer",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms_per_layer": 0.1602989387512207,
+        "candidate_median_ms_per_layer": 0.15918149948120117,
+        "latency_change_percent": -0.6970971103893331
+      },
+      {
+        "live_count": 576,
+        "control_median_ms_per_layer": 0.18558734893798828,
+        "candidate_median_ms_per_layer": 0.18192529678344727,
+        "latency_change_percent": -1.9732229462282147
+      },
+      {
+        "live_count": 639,
+        "control_median_ms_per_layer": 0.2045782470703125,
+        "candidate_median_ms_per_layer": 0.20067176818847657,
+        "latency_change_percent": -1.9095279863715398
+      }
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "production_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-fixedshape-reduce --allow-dirty --output /tmp/laguna-p512-d128-global-fixedshape-ab.json",
+    "raw_sha256": "beb3357d735004df37706f50cf7d1db66851c659f7a7716307604634bdc2888c",
+    "protocol": "one loaded model; seven counterbalanced generic/fixed-shape resets; p512 plus 127 synchronized eager C1 decode calls",
+    "control_decode_tok_s": 16.832096890902015,
+    "candidate_decode_tok_s": 16.846689267101993,
+    "throughput_change_percent": 0.08669375130194723,
+    "control_wall_ms_per_token": 59.410304401173526,
+    "candidate_wall_ms_per_token": 59.358843992586884,
+    "saving_ms_per_token": 0.05146040858664236,
+    "all_candidate_samples_faster_than_all_controls": true,
+    "control_candidate_generated_ids_match": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "production_trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-fixedshape-trace.5CpZA7 --output-file fixedshape -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-fixedshape-trace.5CpZA7/bench.json",
+    "trace_sha256": "f2cecdad438531c216d5fc3e3bcef1c05de3c81630dbb55a2c36232ebddd2b5b",
+    "fixedshape_reduce_calls": 1524,
+    "expected_calls": "12 global layers x 127 decode transitions",
+    "generic_gated_reduce_calls": 0,
+    "global_score_calls": 1524,
+    "fixedshape_reduce_total_ms": 333.707,
+    "fixedshape_reduce_ms_per_token": 2.6276141732283462,
+    "global_score_ms_per_token": 0.3820167874015748,
+    "resources": {
+      "workgroup_size": 256,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "grid_x_threads": 12288
+    },
+    "require_cached_build": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "gfx1100_default_changed": false,
+    "production_decode_tok_s": 16.846689267101993,
+    "production_wall_ms_per_token": 59.358843992586884,
+    "change_from_fixed512_canonical_percent": 0.07692277769975053,
+    "cumulative_from_pre_transfer_tok_s": 11.466687,
+    "cumulative_change_percent": 46.91854122382513,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "remaining_vulkan_lead_percent": 38.59329052619513,
+    "next": "Screen exact natural-K specializations of the selected Q4 gate/up and down consumers; exact attention still needs a materially different value-reuse topology."
+  }
+}

@@ -187837,3 +187837,23 @@ Vulkan local sizes verbatim will close the measured gap.
   **16.833740 tok/s / 59.405 ms/token**, cumulative **+46.806%** from the
   11.466687 pre-transfer baseline. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json`.
+
+## 2026-07-28 20:37 JST — Retain exact global fixed-shape reduction
+
+- Add a natural 48Q/8KV/D128/capacity-4096 global reducer that preserves the
+  retained dynamic-live score/span ABI, all 48 local256 workgroups, and every
+  scalar max/exp/denominator, per-dimension FMA, divide, gate, and store
+  operation. The focused RED fails on the absent wrapper/key; GREEN plus the
+  runtime selector bundle passes **35/35**. F32 context and gated BF16 output
+  are byte-exact at live 257/513/576/639.
+- Nine-sample complete score+reduce leaf medians improve **0.697%/1.973%/
+  1.910%** at live 513/576/639. Seven counterbalanced production pairs move
+  **16.832097 -> 16.846689 tok/s (+0.087%, -0.051 ms/token)**; every candidate
+  sample beats every control, and all generated IDs, hashes, final
+  token/position, and lifecycle state match.
+- Cache-only tracing records **1,524 = 12 x 127** fixed-shape reducers, zero
+  generic gated reducers, and local256/VGPR24/SGPR128/LDS512/scratch0. Promote
+  only gated natural-shape capacity-4096 global decode on gfx1151. Canonical
+  p512/d128 is now **16.846689 tok/s / 59.359 ms/token**, cumulative
+  **+46.919%** from 11.466687. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json`.

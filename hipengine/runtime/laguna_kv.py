@@ -126,6 +126,7 @@ class LagunaKVCache:
         swa_split_min_live: int | None,
         swa_split_tile16_min_live: int | None,
         split_gate_fusion: bool,
+        global_split_fixedshape_reduce: bool,
         swa_split_wave_local: bool,
         swa_split_gqa3_scores: bool,
         swa_split_fixed512_reduce: bool,
@@ -146,6 +147,9 @@ class LagunaKVCache:
         self.swa_split_min_live = swa_split_min_live
         self.swa_split_tile16_min_live = swa_split_tile16_min_live
         self.split_gate_fusion = bool(split_gate_fusion)
+        self.global_split_fixedshape_reduce = bool(
+            global_split_fixedshape_reduce
+        )
         self.swa_split_wave_local = bool(swa_split_wave_local)
         self.swa_split_gqa3_scores = bool(swa_split_gqa3_scores)
         self.swa_split_fixed512_reduce = bool(swa_split_fixed512_reduce)
@@ -387,7 +391,14 @@ class LagunaKVCache:
                 raise RuntimeError("Laguna split attention scratch is unavailable")
             variant = (
                 (
-                    "global_context_split_exact_gated_spans"
+                    "global_context_split_exact_gated_fixedshape_spans"
+                    if (
+                        use_gated
+                        and self.global_split_fixedshape_reduce
+                        and state.capacity == 4096
+                        and state.q_heads == 48
+                    )
+                    else "global_context_split_exact_gated_spans"
                     if use_gated
                     else "global_context_split_exact_spans"
                 )
@@ -1183,12 +1194,23 @@ def allocate_laguna_kv_cache(
             False,
         )
     )
+    selected_global_split_fixedshape_reduce = bool(
+        selected_split_gate_fusion
+        and backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE",
+            False,
+        )
+    )
     _validate_split_backend(
         backend,
         parsed_global_split,
         parsed_swa_split,
         parsed_swa_tile16,
         split_gate_fusion=selected_split_gate_fusion,
+        global_split_fixedshape_reduce=(
+            selected_global_split_fixedshape_reduce
+        ),
         swa_split_wave_local=selected_swa_split_wave_local,
         swa_split_gqa3_scores=selected_swa_split_gqa3_scores,
         swa_split_fixed512_reduce=selected_swa_split_fixed512_reduce,
@@ -1368,6 +1390,9 @@ def allocate_laguna_kv_cache(
             swa_split_min_live=parsed_swa_split,
             swa_split_tile16_min_live=parsed_swa_tile16,
             split_gate_fusion=(selected_split_gate_fusion and split_enabled),
+            global_split_fixedshape_reduce=(
+                selected_global_split_fixedshape_reduce and split_enabled
+            ),
             swa_split_wave_local=(selected_swa_split_wave_local and split_enabled),
             swa_split_gqa3_scores=(
                 selected_swa_split_gqa3_scores and split_enabled
@@ -1390,6 +1415,7 @@ def _validate_split_backend(
     swa_tile16_threshold: int | None,
     *,
     split_gate_fusion: bool,
+    global_split_fixedshape_reduce: bool,
     swa_split_wave_local: bool,
     swa_split_gqa3_scores: bool,
     swa_split_fixed512_reduce: bool,
@@ -1419,6 +1445,13 @@ def _validate_split_backend(
                     swa_tile16_threshold,
                     "swa_context_split_tile16_exact_gated_spans",
                 ),
+            )
+        )
+    if global_split_fixedshape_reduce:
+        requested.append(
+            (
+                global_threshold,
+                "global_context_split_exact_gated_fixedshape_spans",
             )
         )
     if swa_split_wave_local:

@@ -245,6 +245,10 @@ LAGUNA_HEAD_KV_FUSION = True
 # p512/d128 gate. Keep the thresholds and reducer capabilities inseparable:
 # explicit use_split_attention=False retains serial global/SWA attention.
 LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
+# The exact natural 48Q/8KV/D128/capacity-4096 reducer preserves the retained
+# dynamic-live score ABI and local256 arithmetic. Three production live points
+# and seven exact p512/d128 pairs admit it on gfx1151 only.
+LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE = True
 LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 LAGUNA_SPLIT_GATE_FUSION = True
@@ -615,6 +619,7 @@ __all__ = [
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
+    "LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",

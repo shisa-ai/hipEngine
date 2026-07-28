@@ -1042,6 +1042,18 @@ fallback at local128/VGPR16/LDS0/scratch0. gfx1151 selects it only at saturated
 generic exact route. Evidence:
 [`retained fixed512 reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json).
 
+The global-attention sibling keeps the retained dynamic-live score ABI and all
+48 local256 reducer workgroups, but specializes the production
+48Q/8KV/D128/capacity-4096 geometry and scratch strides. F32 context and gated
+BF16 output are byte-exact at live 257/513/576/639. Complete score+reduce
+improves **0.7-2.0%** at the three production live points; seven exact
+p512/d128 pairs improve **16.832097 -> 16.846689 tok/s (+0.087%, -0.051
+ms/token)**. Cache-only tracing records all **1,524 = 12 x 127** fixed-shape
+reducers, zero generic fallback, and local256/VGPR24/LDS512/scratch0. gfx1151
+selects it only for gated natural-shape capacity-4096 global decode; peer
+backends and other shapes/capacities retain the generic exact route. Evidence:
+[`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

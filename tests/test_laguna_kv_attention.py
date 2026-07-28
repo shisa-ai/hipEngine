@@ -3179,6 +3179,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.swa_split_min_live == 65
         assert gfx1151_cache.swa_split_tile16_min_live == 257
         assert gfx1151_cache.split_gate_fusion
+        assert gfx1151_cache.global_split_fixedshape_reduce
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.swa_split_fixed512_reduce
