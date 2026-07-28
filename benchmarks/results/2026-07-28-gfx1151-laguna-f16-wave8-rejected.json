@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T17:56:00+09:00",
+  "kind": "hipengine_laguna_f16_decode_wave8_rejected",
+  "status": "rejected_removed",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "scope": "source-F16 decode projections"
+  },
+  "candidate": {
+    "geometry": "one local256 block owns eight outputs; one physical wave32 owns one output and reconstructs the retained eight logical-wave partials in registers",
+    "arithmetic": "retained per-thread K sequences, wave shuffle trees, logical-wave sum order, and output conversion are unchanged",
+    "grid_change": "eight physical waves/output to one physical wave/output",
+    "cross_wave_lds_bytes": 0,
+    "cross_wave_barriers": 0
+  },
+  "correctness": {
+    "synthetic_in_features": [
+      256,
+      512
+    ],
+    "production_shapes_checked": 6,
+    "f32_and_bf16_byte_exact": true,
+    "tail_and_triple_matrix_boundary_checked": true
+  },
+  "protocol": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python -u scripts/laguna_f16_decode_wave8_leaf.py --samples 3 --warmups 2 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-wave8-smoke.json",
+    "data": "deterministic nonzero BF16 activations and FP16 weights",
+    "timing": "counterbalanced HIP-event medians",
+    "samples": 3,
+    "warmups_per_mode": 2,
+    "launches_per_sample": 5
+  },
+  "results": [
+    {
+      "shape": "full QKV K3072 N6144+1024+1024 F32",
+      "calls_per_token": 12,
+      "retained_ms": 0.28309600353240966,
+      "candidate_ms": 0.554079818725586,
+      "latency_change_percent": 95.72152620026418,
+      "retained_effective_weight_gb_s": 177.7900336704608,
+      "candidate_effective_weight_gb_s": 90.83826246508231
+    },
+    {
+      "shape": "SWA QKV K3072 N9216+1024+1024 F32",
+      "calls_per_token": 36,
+      "retained_ms": 0.3849061965942383,
+      "candidate_ms": 0.7684418201446533,
+      "latency_change_percent": 99.64392024447761,
+      "retained_effective_weight_gb_s": 179.79969304821515,
+      "candidate_effective_weight_gb_s": 90.06018957553937
+    },
+    {
+      "shape": "full gate K3072 N48 F32",
+      "calls_per_token": 12,
+      "retained_ms": 0.004127800092101097,
+      "candidate_ms": 0.010210999846458435,
+      "latency_change_percent": 147.37147193726915
+    },
+    {
+      "shape": "SWA gate K3072 N72 F32",
+      "calls_per_token": 36,
+      "retained_ms": 0.004183999821543693,
+      "candidate_ms": 0.03113040030002594,
+      "latency_change_percent": 644.0344557314138
+    },
+    {
+      "shape": "full output K6144 N3072 BF16",
+      "calls_per_token": 12,
+      "retained_ms": 0.1865739941596985,
+      "candidate_ms": 0.3805059909820557,
+      "latency_change_percent": 103.94374505182142,
+      "retained_effective_weight_gb_s": 202.3258180756364,
+      "candidate_effective_weight_gb_s": 99.20667977545772
+    },
+    {
+      "shape": "SWA output K9216 N3072 BF16",
+      "calls_per_token": 36,
+      "retained_ms": 0.3090199947357178,
+      "candidate_ms": 0.6659860134124755,
+      "latency_change_percent": 115.51550862656792,
+      "retained_effective_weight_gb_s": 183.23443454986014,
+      "candidate_effective_weight_gb_s": 85.02146120136419
+    }
+  ],
+  "modeled_family": {
+    "retained_ms_per_token": 30.817540454864506,
+    "candidate_ms_per_token": 64.09765813350677,
+    "latency_change_percent": 107.99082985673193
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-wave8-profile.yHzkvg --output-file wave8 -- .venv/bin/python -u scripts/laguna_f16_decode_wave8_leaf.py --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-wave8-profile.yHzkvg/bench.json",
+    "sha256": "52a0567c6c95d65e69f301817613d80dd5fb5ae8f2303102b7e35b8e49930614",
+    "retained": {
+      "local_size": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "local_size": 256,
+      "vgpr": 32,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": {
+    "retained": false,
+    "reason": "Removing LDS and barriers cannot offset an eight-fold loss of physical-wave concurrency plus eight serial accumulator chains per lane; effective weight bandwidth roughly halves on every large shape.",
+    "candidate_surface_removed": true,
+    "production_change": "none",
+    "next": "Screen an exact local128 owner that preserves four physical waves per output and removes only one cross-wave barrier."
+  }
+}
