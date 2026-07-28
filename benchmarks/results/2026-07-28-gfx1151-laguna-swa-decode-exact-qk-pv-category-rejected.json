@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_laguna_swa_decode_exact_qk_tensorized_pv_category",
+  "status": "rejected_quality",
+  "date": "2026-07-28",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "repo": {
+    "revision": "961fab1899230b702f6982345d6c7c000cad4da2",
+    "tracked_clean": true
+  },
+  "production_screen": {
+    "protocol": "p512/d128; 127 synchronized C1 calls; three repetitions; matched clean revision",
+    "exact_samples_tok_s": [
+      14.747550417502016,
+      14.751829423099,
+      14.757286246233846
+    ],
+    "candidate_samples_tok_s": [
+      16.53648866107819,
+      16.547822224896382,
+      16.550426785596063
+    ],
+    "exact_median_tok_s": 14.751829423099,
+    "candidate_median_tok_s": 16.547822224896382,
+    "throughput_delta_percent": 12.174712372,
+    "wall_delta_percent": -10.853348419,
+    "milliseconds_saved_per_token": 7.357289803,
+    "candidate_generated_ids_sha256": "1ff92c2c299040816141d8c803ba9807c5ad7b55ee0f90751a2149f86c4ec3ca",
+    "exact_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "both_final_token_id": 74107,
+    "both_final_position": 638,
+    "tracked_allocations_recovered": true,
+    "candidate_raw_sha256": "11d8dad15e059fc2ad8a56d8924ba61d9554c5c616e9394ee083ae575be93193",
+    "exact_raw_sha256": "4a7b75df7ccbadbf3983575833fa917ca991e952299ebf95d6715a374ee79e05"
+  },
+  "category_gate": {
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompts": 18,
+    "pairs": 54,
+    "teacher_forced_steps": 576,
+    "h16_decode_speedup": 1.1203023312016405,
+    "h32_decode_speedup": 1.1209710069450103,
+    "prefill_speedup": 1.0004545940033864,
+    "teacher_forced_top1_matches": 566,
+    "teacher_forced_top1_agreement": 0.9826388888888888,
+    "teacher_forced_max_kl": 2.678710088424761,
+    "max_kl_threshold": 0.05,
+    "category_max_kl": {
+      "code": 0.3641610271693264,
+      "general_en": 0.15633545490169978,
+      "general_ja": 2.678710088424761,
+      "mixed_ja_en": 0.5112224986707546
+    },
+    "exact_free_running_pairs": 36,
+    "same_mode_repeat_deterministic": true,
+    "poolside_oracle_pass": true,
+    "poolside_oracle_kl": 0.000017512451201671218,
+    "tracked_allocations_recovered": true,
+    "raw_path": "/tmp/laguna-swa-decode-exactqk-pv-category.raw.json",
+    "raw_sha256": "58e3197231a80f0c37418e4234cf73da3cde247fa4c37764c7b7a53f1be7e366"
+  },
+  "decision": {
+    "retained": false,
+    "production_default": "exact split SWA GQA3 scores plus wave-local gated reducer",
+    "production_topline_tok_s": 14.740486,
+    "reason": "Exact QK and exact denominator order do not rescue quality; changed PV accumulation association alone exceeds the KL contract.",
+    "next": "Screen an arithmetic-preserving local32 GQA3 reducer with 96 workgroups per SWA layer."
+  },
+  "commands": {
+    "production_candidate": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u -c '<set LAGUNA_DECODE_SWA_ATTENTION_HIPBLASLT=True; run laguna_long_context_profile.py p512/d128 r3>'",
+    "production_exact": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-tail-next-rmsnorm",
+    "category": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison swa_decode_hipblaslt --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-swa-decode-exactqk-pv-category.raw.json"
+  }
+}

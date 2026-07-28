@@ -187501,3 +187501,23 @@ Vulkan local sizes verbatim will close the measured gap.
   hipBLASLt PV, and local256/VGPR24 normalizer, all scratch-free. The session
   capability remains production-default false pending a clean p512/d128
   matched rollback.
+
+## 2026-07-28 17:20 JST — Reject exact-QK/tensorized-PV production ownership
+
+- The repaired all-layer route retains the full speed opportunity. Clean
+  p512/d128 improves **14.751829 -> 16.547822 tok/s (+12.174712%)** and wall
+  **8.609102 -> 7.674726 s (-10.853348%)**, saving
+  **7.357290 ms/token**. All candidate samples exceed all exact controls;
+  both finish at token 74107/position 638 and recover tracked allocations, but
+  their complete generated-ID hashes differ.
+- The complete 18-prompt lane confirms h16/h32 decode speedups
+  **1.120302x/1.120971x** and flat prefill. It rejects quality:
+  **566/576 = 98.26%** top-1 passes every category threshold, but max KL
+  reaches **2.678710**; only **36/54** free-running pairs remain exact.
+  Restoring exact QK and denominator order therefore proves tensorized PV
+  accumulation association alone is inadmissible across all 36 SWA layers.
+- Keep production default false at the retained exact **14.740486 tok/s**.
+  Next screen is arithmetic-preserving: one local32 block owns 32 dimensions
+  for three adjacent query heads, reuses V within the block, and uses four
+  dimension partitions per triple for **96 workgroups/layer**. This is distinct
+  from the rejected underfilled local128/local64 grouped reducers.
