@@ -4,6 +4,11 @@
 # decode default. The wider token8 screen failed the every-category h16 gate and
 # was removed; other backends retain the separately registered baseline.
 LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
+# WPF-3's exact adjacent-row SWA policy keeps wave32 below the measured
+# crossover and selects qrow4 only for complete M128 tiles at position 256+.
+# Complete M512 state is KL0 and both 512/1K same-weight gates are positive;
+# explicit local128/wave32/qrow2/qrow4 variants remain registered rollbacks.
+LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_c256_exact_spans"
 # Clean W7900 D12 leaf/profile/category evidence admits the exact local32
 # two-output Q5 schedules for c=1 attention output and query/gate projection.
 # Other backends retain the separately registered pack8 fallbacks.
@@ -157,6 +162,7 @@ __all__ = [
     "LAGUNA_SELECTED_GATE_UP_MODE",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
+    "LAGUNA_SWA_PREFILL_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
