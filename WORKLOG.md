@@ -187562,3 +187562,28 @@ Vulkan local sizes verbatim will close the measured gap.
   category harness, and gfx1151 backend contracts. `compileall` and
   `git diff --check` pass. Production decode remains the retained exact
   **14.740486 tok/s** route with no dead selector.
+
+## 2026-07-28 17:56 JST — Reject exact source-F16 wave8 ownership
+
+- RED required registered BF16/F32 and BF16/BF16 single variants plus a BF16/
+  F32 triple variant. GREEN reproduces retained GEMV bytes for K256/K512,
+  tail outputs, a triple tile crossing Q/K/V matrix boundaries, and all six
+  natural full/SWA projection shapes.
+- The source-F16 leaf rejects the topology decisively. Full/SWA QKV regress
+  **0.2831 -> 0.5541 ms (+95.7%)** and
+  **0.3849 -> 0.7684 ms (+99.6%)**; full/SWA output regress
+  **0.1866 -> 0.3805 ms (+103.9%)** and
+  **0.3090 -> 0.6660 ms (+115.5%)**. Both gate shapes also lose. The
+  call-weighted family doubles **30.818 -> 64.098 ms/token (+107.99%)**.
+- Cached tracing explains the failure. The retained local256 owner uses
+  VGPR16/LDS512/scratch0 and eight waves/output. Wave8 uses
+  VGPR32/LDS0/scratch0 but only one wave/output; large-shape effective weight
+  bandwidth falls from **177.8-202.3 GB/s** to **85.0-99.2 GB/s**. Barrier
+  removal cannot pay for eight serial partial chains and an eightfold
+  concurrency cut.
+- Remove the candidate HIP exports, wrappers, keys, tests, and leaf harness.
+  Production remains exact at **14.740486 tok/s**. Continue LD-2 with a
+  local128 exact owner that preserves four physical waves/output and removes
+  only one block barrier. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-wave8-rejected.json`;
+  trace SHA-256 `52a0567c...0614`.
