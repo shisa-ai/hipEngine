@@ -3747,6 +3747,33 @@ Evidence:
 [`short production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json) ·
 [`final six-shape sweep`](../benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
 
+### gfx1100 decode transfer closure
+
+The post-merge audit is complete for this GGUF. Three structural kernels
+transfer cleanly; the largest gfx1100 quant wins do not match Laguna Q4_K_M's
+weight roles.
+
+| gfx1100 optimization | gfx1151 decision | Measured result / reason |
+| --- | --- | --- |
+| Current-P4 head RMSNorm + partial RoPE + BF16 KV write | **Retained** | 11.466687 -> 11.485885 tok/s (**+0.167%**) |
+| Exact global/SWA/tile16 split attention | **Retained** | 11.485885 -> 14.528110 tok/s (**+26.487%**) |
+| D9 scalar MoE-tail + next RMSNorm | **Retained** | 14.529573 -> 14.555265 tok/s (**+0.177%**), reverse control 14.525706; 94 launches/token removed |
+| SWA token4 exact decode | Not selected at p512 | Split attention owns live counts >=65; token4 can only affect short-live decode |
+| Global single-page decode | Not selected | p512 spans multiple pages; unchanged candidate was already rejected on gfx1100 |
+| Staged-F32 add + RMSNorm | Closed | Rejected on gfx1100; current family is only **0.426 ms/token**, and its measured leaf gain implies about **0.023%** wall |
+| Q5/IQ2/IQ3/Q4-LM-head schedules | Inapplicable | Required quant families are absent from these Laguna weight roles |
+
+The clean post-D9 trace has exactly **869 kernels/token**, down from **963**,
+and exactly 47 D9 calls. Its **66.528 ms/token** device sum is now led by
+source-F16 projections at **30.981 ms (46.568%)**, split attention at
+**14.617 ms (21.972%)**, and selected Q4 gate/up at
+**8.549 ms (12.851%)**. The next material decode campaign is therefore a
+gfx1151-native F16 c=1 projection effort, not another forced gfx1100 quant
+port.
+
+Evidence:
+[`gfx1100-to-gfx1151 transfer audit`](../benchmarks/results/2026-07-28-gfx1151-laguna-gfx1100-decode-transfer-audit.json).
+
 ## 2026-07-27 pause point: 654 tok/s production and six-shape closure
 
 This is a valid pause point, not the end of the campaign. Clean selector-unset

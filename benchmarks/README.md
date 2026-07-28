@@ -72,6 +72,18 @@ remains prefill-only.
 [`retained split-attention artifact`](results/2026-07-28-gfx1151-laguna-split-attention-retained.json) ·
 [`retained head/KV artifact`](results/2026-07-28-gfx1151-laguna-head-kv-fusion-retained.json).
 
+The clean post-D9 production census confirms exactly **869 kernels/token**
+versus **963** before D9, with 47 D9 calls and **66.528 ms/token** median
+device work. Source-F16 projections now dominate at
+**30.981 ms/token (46.568%)**, followed by retained split attention at
+**14.617 ms/token (21.972%)** and selected Q4 gate/up at
+**8.549 ms/token (12.851%)**. The remaining merged gfx1100 wins are either
+quant-incompatible with this Q4_K_M file, bypassed by the faster p512 split
+path, or already rejected on gfx1100 with a negligible gfx1151 ceiling.
+Further material decode work therefore starts with gfx1151-native source-F16
+c=1 projection kernels.
+[`transfer audit`](results/2026-07-28-gfx1151-laguna-gfx1100-decode-transfer-audit.json).
+
 The user-requested 512/1K/4K/32K/64K/128K closure sweep now passes in one
 128K-capacity resident session. Single-sample production throughput is
 **622.009/579.152/470.270/214.698/131.997/72.323 tok/s** with exact final

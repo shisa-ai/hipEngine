@@ -187254,3 +187254,22 @@ Vulkan local sizes verbatim will close the measured gap.
   gfx1100 structural transfer and moves cumulative post-merge gfx1151 decode
   **11.466687 -> 14.555265 tok/s (+26.935230%)**. Publish the compact artifact,
   benchmark rollup, pause-point table, kernel catalog, and rollback ledger.
+
+## 2026-07-28 — Close the gfx1100-to-gfx1151 decode transfer audit
+
+- A clean selector-unset full-model trace at retained commit `13486db21`
+  segments all 127 decode transitions at exactly **869 kernels/token**, down
+  from the pre-D9 **963**, and observes exactly **47 D9 calls/token**. Median
+  device work is **66.527943 ms/token**; trace SHA-256 is
+  `e97c5ac...305b`. The profiled child is attribution-only at 14.184 tok/s;
+  the unprofiled retained topline remains **14.555265 tok/s**.
+- Source-F16 projections now own **30.9806 ms/token (46.568%)**, split
+  attention **14.6172 ms (21.972%)**, and selected Q4 gate/up
+  **8.5492 ms (12.851%)**. The residual add+RMS family is only
+  **0.4261 ms (0.640%)**.
+- Close the remaining unchanged gfx1100 candidates: token4 is bypassed by
+  split attention at p512 live counts, single-page global is inactive at p512
+  and already rejected on gfx1100, staged add/RMS was rejected on gfx1100 and
+  models only about **0.023%** wall from its measured leaf gain, and the large
+  Q5/IQ2/IQ3/Q4-head schedules do not match this GGUF's weight roles. The next
+  material decode task is gfx1151-native source-F16 c=1 projection work.
