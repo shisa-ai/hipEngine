@@ -3665,6 +3665,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.swa_gqa3_vstage64_fixed512
         assert gfx1151_cache.swa_gqa3_vstage64_vec16_fixed512
         assert gfx1151_cache.swa_gqa3_vstage64_vec16_direct_fixed512
+        assert not gfx1151_cache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512
         assert gfx1151_cache.allocation_count == 245
         resolved_variants = []
 
@@ -3680,6 +3681,8 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         gfx1151_cache.position = 64
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.position = 511
+        gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.swa_gqa3_vstage64_vec16_direct_fast_exp_fixed512 = True
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         assert resolved_variants == [
             (
@@ -3702,6 +3705,13 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
                 (
                     "swa_context_fused_exact_gated_"
                     "gqa3_vstage64_vec16_direct_fixed512_spans"
+                ),
+            ),
+            (
+                "laguna_attention_decode",
+                (
+                    "swa_context_fused_gated_gqa3_vstage64_"
+                    "vec16_direct_fast_exp_fixed512_spans"
                 ),
             ),
         ]

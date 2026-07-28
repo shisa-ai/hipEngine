@@ -188536,3 +188536,19 @@ Vulkan local sizes verbatim will close the measured gap.
   positive p512/d128 wall and the complete 18-prompt/576-step
   KL<=0.05/top-1>=90% gate. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-candidate.json`.
+
+## 2026-07-29 04:43 JST — Wire native-exp SWA production and quality screens
+
+- Add a session-scoped, default-off saturated-SWA selector ahead of the
+  retained exact direct-store route. The selector requires that production
+  gfx1151 direct-store capability and the natural 72Q/8KV/D128/live512 shape;
+  short/live-partial rings and peer fallbacks are unchanged.
+- Add a counterbalanced `--compare-swa-fast-exp` resident-model lane plus the
+  `swa_decode_fast_exp` category comparison. The category lane expands every
+  canonical prompt deterministically to exactly 512 tokens before comparing
+  32 teacher-forced decode steps, so it cannot accidentally quality-gate the
+  short-ring exact fallback.
+- RED covered the absent cache field, session setter, comparison constant, and
+  prompt expansion. GREEN is **56 passed** across the focused owner, setter,
+  long-context harness, and complete category-harness test files. Production
+  remains exact/default-off pending counterbalanced wall and category evidence.
