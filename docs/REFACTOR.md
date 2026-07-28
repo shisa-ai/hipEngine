@@ -57,15 +57,18 @@ should be removed or collapsed.
   to that registered exact chain. gfx1151 keeps its independently measured MMQ
   modes.
 - Clean publication and the all-family reprofile now pass. Keep paired `direct`
-  as the required exact fail-closed rollback. P6 is now closed without runtime
-  integration, and WPF-1R's remaining screen concerns raw Q5/Q6 rather than
-  these IQ producers. The grouped IQ2/IQ3 gate/up rowbatch8 and fused-SiLU
-  primitives are not runtime owners because local256/group8 changed
-  11/30,720 actual tiny intermediate values versus pair16/local64 production.
-  Their removal trigger is now active: remove wrappers, keys, HIP
-  instantiations, and focused tests in a separate cleanup unit before WPF-3
-  kernel work. Preserve the production grouped IQ3 single/down rowbatch8 and
-  IQ4 auto keys.
+  as the required exact fail-closed rollback. P6 and WPF-1R are closed. The
+  grouped IQ2/IQ3 gate/up rowbatch8 and fused-SiLU primitives are not runtime
+  owners because local256/group8 changed 11/30,720 actual tiny intermediate
+  values versus pair16/local64 production.
+- Post-profile review identifies one distinct exact WPF-2b premise: preserve
+  production local64/pair16 K ownership and reduction while reusing expert rows
+  at M512. Defer grouped gate/up removal only through that bounded screen; the
+  current local256/group8 bodies remain explicit controls, not candidates for
+  promotion. After WPF-2b, remove obsolete wrappers, keys, HIP instantiations,
+  and focused tests while preserving production grouped IQ3 single/down
+  rowbatch8, IQ4 auto, shared compaction metadata, and any separately gated
+  pair16 body only if it wins exact full-model admission.
 
 ## Laguna P6 IQ2 MMQ32 diagnostic
 
@@ -109,7 +112,8 @@ should be removed or collapsed.
   direct policy/ABI dispatch, and owner-focused tests. Preserve exact
   rowbatch32 and smaller-slab fallbacks. D4/D8/D8R8 primitive keys may remain
   only where the published ceiling/rejection evidence justifies them; remove
-  unreferenced wrappers and policy surfaces. Then prioritize WPF-3. Evidence:
+  unreferenced wrappers and policy surfaces. Perform this cleanup after WPF-2b
+  and before the SWA-targeted WPF-3 lane. Evidence:
   `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json`.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
