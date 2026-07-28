@@ -3868,7 +3868,16 @@ The live4000 LDS bound remains valid. Live513/576/639 leaves improve
 **18.794424 -> 19.066920 tok/s (+1.450%, -0.760 ms/token)**. Tracing records
 `<2,64,true>` at local256/VGPR32/static-LDS512/scratch32 and
 **141.09 -> 103.29 us (-26.79%)**. Scalar GQA2 remains rollback and GQA1
-remains fallback above live4000.
+remains fallback above live4000. Three tracked-clean selector runs measure
+**19.053726/19.065940/19.068436 tok/s**, median **19.065940**, with exact
+IDs/state/lifecycle.
+
+The post-vec16 clean census records **816 dispatches/token**, **50.238 ms**
+kernel sum, and **52.814 ms** span. Attention is now **5.652 ms/token**:
+**4.180 ms SWA + 1.472 ms global**, down **29.92%** from the pre-vec16
+8.065-ms packet. Against Vulkan's logged 0.909 ms, attention still contributes
+**4.742 ms** and about **49.3%** of the remaining wall gap. Re-screen vec16
+stage geometry next, beginning with SWA stage128 versus stage64.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten

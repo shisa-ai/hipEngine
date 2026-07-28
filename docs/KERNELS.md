@@ -1171,8 +1171,13 @@ store order are unchanged. Nine-sample live513/576/639 leaves improve
 trajectories/state. Tracing records 24 local256 blocks,
 VGPR32/SGPR128/static-LDS512/scratch32 and **141.09 -> 103.29 us (-26.79%)**.
 gfx1151 selects it through live4000; scalar GQA2 is rollback and GQA1 remains
-the fallback above that bound. Evidence:
-[`retained global vec16 V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-retained.json).
+the fallback above that bound.
+Tracked-clean production confirms **19.065940 tok/s**, **+1.338%** over prior
+clean 18.814192. The clean census cuts total attention **8.065 -> 5.652
+ms/token (-29.92%)** and span **55.154 -> 52.814 ms (-4.24%)**. Evidence:
+[`retained global vec16 V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-retained.json) ·
+[`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-production.json) ·
+[`wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vec16-wall-reprofile.json).
 
 ### Laguna post-350 selected-expert screens
 

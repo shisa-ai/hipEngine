@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T03:33:38+09:00",
+  "kind": "hipengine_laguna_global_gqa2_vstage64_vec16_production",
+  "status": "accepted",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "97e5c80c6eaa895f581120c57dc0571b886ee1a8",
+  "tracked_clean": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "repetitions": 3,
+    "matrix_chunk": 2048,
+    "attention_chunk": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-vstage64-vec16-production-clean.json",
+    "raw_output_sha256": "c2e950cb2eae7d298d6ef31a0652a0ddabe9e42926aa200c37502a2610052ba9"
+  },
+  "production": {
+    "decode_median_tok_s": 19.065939518147662,
+    "decode_median_ms_per_token": 52.44955272454123,
+    "decode_median_seconds": 6.661093196016736,
+    "decode_samples_tok_s": [
+      19.053725830296262,
+      19.065939518147662,
+      19.06843599410675
+    ],
+    "decode_samples_seconds": [
+      6.665363044012338,
+      6.661093196016736,
+      6.660221113008447
+    ],
+    "prefill_median_tok_s": 653.3849433597495,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "repeat_deterministic": true,
+    "lifecycle_exact": true
+  },
+  "comparison": {
+    "prior_clean_swa_vec16_tok_s": 18.8141920985223,
+    "throughput_change_percent": 1.3380719103273764,
+    "saved_ms_per_token": 0.7018127320994338,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 66.27243351237948,
+    "same_source_seven_pair_control_tok_s": 18.794423931428344,
+    "same_source_seven_pair_candidate_tok_s": 19.06691990924288,
+    "same_source_change_percent": 1.4498767230575416
+  },
+  "correctness": {
+    "f32_context_vs_rollback_byte_exact": true,
+    "gated_bf16_vs_rollback_byte_exact": true,
+    "eviction_cpu_reference_pass": true,
+    "generated_trajectory_exact": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "allocation_lifecycle_pass": true
+  }
+}
