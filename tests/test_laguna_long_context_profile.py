@@ -14,6 +14,7 @@ from scripts.laguna_long_context_profile import (
     LAP0_LENGTHS,
     LC0_TRACE_LENGTHS,
     PROFILE_LENGTH_SETS,
+    SHORT_FOCUS_LENGTHS,
     STANDARD_DECODE_LENGTHS,
     _parse_args,
     _parse_chunk_size,
@@ -32,6 +33,8 @@ from scripts.laguna_long_context_trace_summary import (
 
 
 def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
+    assert SHORT_FOCUS_LENGTHS == (512, 4096)
+    assert SHORT_FOCUS_LENGTHS in PROFILE_LENGTH_SETS
     assert LAP0_LENGTHS == (128, 512, 1024, 4096)
     assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
     assert ATTACK_LENGTHS == (4096, 16384, 65536, 131072)
