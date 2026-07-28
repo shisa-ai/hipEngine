@@ -119,6 +119,9 @@ _SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_ONLINE = (
 _SYMBOL_DENSE_INITIAL_CACHE_BF16_TO_F32 = (
     "hipengine_laguna_dense_initial_cache_bf16_to_f32_spans"
 )
+_SYMBOL_SWA_DECODE_CACHE_BF16_TO_F32 = (
+    "hipengine_laguna_swa_decode_cache_bf16_to_f32_spans"
+)
 _SYMBOL_DENSE_INITIAL_CACHE_BLOCK_BF16_TO_F32 = (
     "hipengine_laguna_dense_initial_cache_block_bf16_to_f32_spans"
 )
@@ -133,6 +136,9 @@ _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_F32 = (
 )
 _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_WAVE_ROWS_F32 = (
     "hipengine_laguna_dense_initial_causal_softmax_wave_rows_f32_spans"
+)
+_SYMBOL_SWA_DECODE_SOFTMAX_WAVE_F32 = (
+    "hipengine_laguna_swa_decode_softmax_wave_f32_spans"
 )
 _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_TILE_WAVE_ROWS_F32 = (
     "hipengine_laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans"
@@ -2935,6 +2941,49 @@ def laguna_dense_initial_cache_bf16_to_f32_spans(
     _check_launch(runtime, err)
 
 
+def laguna_swa_decode_cache_bf16_to_f32_spans(
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    key_f32_ptr: int,
+    value_f32_ptr: int,
+    spans: KVLiveSpans,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Widen one full SWA ring into chronological F32 K/V rows."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    if int(capacity) != 512:
+        raise ValueError("tensorized SWA decode requires capacity 512")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_DECODE_CACHE_BF16_TO_F32)
+    fn.argtypes = [ctypes.c_void_p] * 9 + [ctypes.c_int64] * 3 + [
+        ctypes.c_void_p
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(value_f32_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_dense_initial_cache_block_bf16_to_f32_spans(
     key_cache_ptr: int,
     value_cache_ptr: int,
@@ -3218,6 +3267,43 @@ def laguna_dense_initial_causal_softmax_wave_rows_f32_spans(
         ctypes.c_int64(parsed_context),
         ctypes.c_int64(num_q_heads),
         ctypes.c_int64(parsed_start),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_decode_softmax_wave_f32_spans(
+    scores_ptr: int,
+    spans: KVLiveSpans,
+    num_q_heads: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Normalize chronological full-ring SWA decode scores in place."""
+
+    capacity = _check_swa_spans(spans, _LAGUNA_KV_HEADS, _LAGUNA_HEAD_DIM)
+    if int(capacity) != 512 or int(num_q_heads) != 72:
+        raise ValueError("tensorized SWA decode softmax requires [72,512]")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_DECODE_SOFTMAX_WAVE_F32)
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int64] * 2 + [
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(scores_ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(num_q_heads),
         ctypes.c_float(scale),
         ctypes.c_void_p(stream),
     )
@@ -3848,6 +3934,8 @@ __all__ = [
     "laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_m128_online_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
+    "laguna_swa_decode_cache_bf16_to_f32_spans",
+    "laguna_swa_decode_softmax_wave_f32_spans",
     "laguna_swa_union_bf16_to_f32_spans",
     "laguna_swa_union_softmax_wave_rows_f32",
     "laguna_swa_head_rmsnorm_rope_write_kv_f32_spans",

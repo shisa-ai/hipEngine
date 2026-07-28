@@ -3393,6 +3393,7 @@ column, and eight per-lane partial sequences reconstruct the current
 
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
+[`tensorized SWA decode leaf`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-leaf.json) ·
 [`decode roofline/Qwen/Vulkan review`](../benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json).
 
 #### Next decode attack
@@ -3410,12 +3411,30 @@ been removed. This confirms the architecture seam: reuse K while preserving
 the 72-head reducer grid; recovering V reuse still requires split-K/fused
 ownership with enough workgroups for 40 CUs.
 
+The next exact-arithmetic shortcut was also closed. Precomputing each head's
+softmax weights once preserved the retained F32 context and BF16 gate bytes,
+but live-512 score+prepare+value measured roughly **263-282 us**, slower than
+the retained **220-229 us** score+wave-local value pair. Serial softmax
+preparation and a global weight plane lose to redundant exponentials running
+concurrently; the candidate and registry surface were removed.
+
+LD-1b instead changes contraction ownership. A full-ring C1 leaf gathers
+chronological BF16 K/V once, packs all nine query heads per KV head into two
+F32 hipBLASLt contractions, applies a 72-wave visibility-aware softmax, and
+uses the existing BF16 gate. At position 512 with ring wrap and explicit
+eviction, context max error is **3.17e-8** and the standard numerical gate
+passes. A 20-warmup/201-sample leaf improves complete gated SWA attention
+**0.251302 -> 0.073779 ms/layer (3.406x)**. This is now the bounded runtime
+candidate; it is not a production result until the full trajectory,
+allocation, trace, and matched rollback gates pass.
+
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
    score/softmax/PV, and merge plus gate through bounded state. First require
    attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
-   The retained GQA3 score owner is LD-1a, not completion of this gate.
+   The retained GQA3 score owner is LD-1a. The 3.406x tensorized full-ring leaf
+   is LD-1b and moves next into the complete runtime gate.
 2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
    **25.368-ms** unchanged-byte family floor with the eight-wave/eight-output
    block. Do not repeat local-size-only screens.

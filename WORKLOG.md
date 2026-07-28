@@ -187400,3 +187400,31 @@ Vulkan local sizes verbatim will close the measured gap.
   and update the benchmark rollup, kernel catalog, decode plan, and prefill
   summary cross-reference. LD-1 remains open: the retained score seam does not
   satisfy the <=3.0-ms full-attention gate.
+
+## 2026-07-28 16:24 JST — Retain tensorized gfx1151 SWA decode leaf
+
+- The exact once-precomputed-softmax-weight candidate passed byte identity but
+  lost at live 512: score+prepare+value was roughly **263-282 us** versus the
+  retained **220-229 us** score+wave-local reducer. Remove all code, wrappers,
+  registry keys, and test extensions; redundant wave-local exponentials are
+  concurrency, not the remaining bottleneck.
+- Screen the existing packed-F32 attention ownership at C1. The initial
+  identity-ring ceiling measured **0.063119 ms/layer** versus
+  **0.250901 ms/layer**, motivating a complete ring-aware implementation
+  rather than another local-size screen.
+- Add `LagunaSwaDecodeHipblasLt`: one raw-pointer kernel gathers the full
+  BF16 SWA ring into chronological F32 K/V while honoring complete
+  `KVLiveSpans`; hipBLASLt QK/PV owns packed 72/8 GQA; one wave per query head
+  masks absolute positions and evictions; the existing softplus gate restores
+  the production BF16 boundary. Reusable scratch is **4,378,624 bytes**.
+- RED import/shape tests failed on the absent class. GREEN wrap-plus-eviction
+  correctness passes at max context error **3.1665e-8**, mean
+  **2.3977e-9**, and gated output within `rtol=2e-3, atol=2e-4`.
+  A 20-warmup/201-sample balanced HIP-event gate improves the complete gated
+  leaf **0.251302 -> 0.073779 ms (3.406x)**.
+- Cached `rocprofv3 --kernel-trace` names the chronological gather, wave
+  softmax, hipBLASLt QK/PV, transpose, and BF16 gate. Trace SHA-256 is
+  `3a8b1769...fca5`; profiler durations are attribution-only at this scale.
+  Production selection remains unchanged pending a clean p512/d128 matched
+  rollback and trajectory/lifecycle gate. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-leaf.json`.

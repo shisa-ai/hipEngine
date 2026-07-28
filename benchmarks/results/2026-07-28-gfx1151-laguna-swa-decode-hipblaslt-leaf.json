@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_laguna_swa_decode_hipblaslt_leaf",
+  "status": "candidate_leaf_retained",
+  "date": "2026-07-28",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model_shape": {
+    "query_rows": 1,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "swa_window": 512,
+    "position": 512,
+    "explicit_eviction": true
+  },
+  "implementation": {
+    "route": "LagunaSwaDecodeHipblasLt",
+    "resident_kv": "bf16",
+    "contraction": "packed GQA F32 hipBLASLt QK/PV",
+    "qk_algorithm_index": 29,
+    "pv_algorithm_index": 8,
+    "scratch_nbytes": 4378624,
+    "fallback": "exact split SWA GQA3 score plus wave-local gated reducer"
+  },
+  "performance": {
+    "protocol": "20 warmups, 201 counterbalanced HIP-event samples",
+    "baseline_median_ms": 0.25130200386047363,
+    "candidate_including_gate_median_ms": 0.07377900183200836,
+    "speedup": 3.4061453478684567,
+    "baseline_p10_p90_ms": [
+      0.24629199504852295,
+      0.25679200887680054
+    ],
+    "candidate_p10_p90_ms": [
+      0.07269600033760071,
+      0.07457999885082245
+    ]
+  },
+  "correctness": {
+    "max_abs_context": 3.166496753692627e-08,
+    "mean_abs_context": 2.3977007046482868e-09,
+    "gated_bf16_mismatches": 2,
+    "gate": "context and BF16-gated outputs within rtol=0.002, atol=0.0002 after ring wrap and explicit eviction"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-decode-hipblaslt-leaf-20260728 -- .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap -q",
+    "path": "/tmp/laguna-swa-decode-hipblaslt-leaf-20260728/gfx1151/3666989_kernel_trace.csv",
+    "sha256": "3a8b1769897416949ab6a9df19af4a146c2fceb8abad5e628f485fbbf357fca5",
+    "expected_kernels_observed": [
+      "laguna_swa_decode_cache_bf16_to_f32_kernel",
+      "laguna_swa_decode_softmax_wave_f32_kernel",
+      "hipBLASLt QK",
+      "hipBLASLt PV",
+      "laguna_softplus_head_gate_kernel<unsigned short, false>"
+    ],
+    "note": "rocprof durations are attribution-only because profiler overhead materially perturbs this sub-0.1-ms route"
+  },
+  "commands": {
+    "correctness": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_swa_decode_hipblaslt_shape_contract tests/test_laguna_kv_attention.py::test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap -q",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_status": "blocked by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout; in-tree catalog and source inspected"
+  },
+  "production_default_changed": false,
+  "next_gate": "gfx1151-only runtime integration followed by p512/d128 trajectory, lifecycle, trace, and matched rollback throughput"
+}
