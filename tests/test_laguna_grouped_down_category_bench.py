@@ -16,6 +16,7 @@ from scripts.laguna_grouped_down_category_bench import (
     MODES,
     PREFILL_350_COMPARISON,
     PRODUCTION_ABSOLUTE_COMPARISON,
+    SWA_DECODE_HIPBLASLT_COMPARISON,
     SWA_QROW2_COMPARISON,
     SWA_QROW2_ONLINE_COMPARISON,
     _aggregate,
@@ -23,6 +24,7 @@ from scripts.laguna_grouped_down_category_bench import (
     _mode_order,
     _oracle_for_candidate,
     _paired_free_running,
+    _prompt_token_ids,
     _promotion_gate,
     _teacher_forced_quality,
 )
@@ -231,6 +233,36 @@ def test_swa_qrow2_category_resolves_explicit_session_variants(monkeypatch) -> N
         "swa_context_rows_wave32_exact_spans",
         "swa_context_rows_qrow2_m128_c128_exact_spans",
     ]
+
+
+def test_swa_decode_hipblaslt_category_uses_full_ring_and_explicit_rollback(
+    monkeypatch,
+) -> None:
+    selections: list[bool] = []
+
+    class Session:
+        def set_decode_swa_attention_hipblaslt(self, enabled: bool) -> None:
+            selections.append(bool(enabled))
+
+    monkeypatch.setattr(benchmark, "_session", lambda *_args, **_kwargs: Session())
+    for mode in SWA_DECODE_HIPBLASLT_COMPARISON.modes:
+        benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=SWA_DECODE_HIPBLASLT_COMPARISON,
+        )
+
+    prompt = {"token_ids": (1, 2, 3)}
+    expanded = _prompt_token_ids(
+        prompt,
+        comparison=SWA_DECODE_HIPBLASLT_COMPARISON,
+    )
+    assert selections == [False, True]
+    assert len(expanded) == 512
+    assert expanded[:7] == (1, 2, 3, 2, 3, 2, 3)
+    assert not SWA_DECODE_HIPBLASLT_COMPARISON.require_shape_screen
+    assert not SWA_DECODE_HIPBLASLT_COMPARISON.require_performance_gate
 
 
 def test_swa_qrow2_category_loads_exact_full_model_screen(tmp_path) -> None:
