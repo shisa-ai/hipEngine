@@ -185601,3 +185601,26 @@ Vulkan local sizes verbatim will close the measured gap.
   at the eager global-attention 4,096-token guard. The next logical unit is a
   repeated tracked-clean p512/d128 snapshot followed by the requested
   `docs/LAGUNA-prefill.md` current-state summary table.
+
+## 2026-07-28 — Publish the Laguna p512/d128 production snapshot
+
+- Ran from tracked-clean `7bf286ee85cee6bc66041f263521523217ac10c3`
+  with the exact command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-clean-3rep.json`.
+- The three eager c=1 decode samples are
+  **11.468655/11.471210/11.471379 tok/s**, median **11.471210 tok/s**, over
+  exactly **127** timed `forward_token` calls. Paired pp512 is
+  **618.112888/656.705995/654.859067 tok/s**, median **654.859067 tok/s**,
+  or **+0.093247%** versus the canonical 654.249 tok/s headline.
+- Every run produces first token **2930**, final token **74107**, prefill
+  position **511**, final position **638**, and generated-ID SHA-256
+  `94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32`.
+  Tracked allocation returns to zero. Raw artifact SHA-256 is
+  `f5554abe0134855ff8d0b55a3d4b917bfa759b882de6a06863be2d8bcef73c02`.
+- Published compact evidence
+  `benchmarks/results/2026-07-28-gfx1151-laguna-p512-d128-eager-snapshot.json`,
+  updated the benchmark rollup/changelog, and added the requested current
+  production summary table to `docs/LAGUNA-prefill.md`. The result is
+  explicitly a decode snapshot, not a decode speedup claim; long-context
+  rows remain prefill-only because eager global attention currently rejects
+  cache capacity above 4,096.
