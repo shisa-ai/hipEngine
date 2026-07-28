@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T01:39:27+09:00",
+  "kind": "hipengine_laguna_gfx1151_attention_gqa_repair_screens_rejected",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "revision": "8b9b2ee074b8adbf05b5883402c4e19408d4dcba",
+    "candidate_uncommitted": true,
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "llamacpp_source_review": {
+    "path": "scalar/coopmat1 FlashAttention selection after GQA folding",
+    "natural_shape": "GQA9, D128, live512",
+    "selected_tile": "coopmat1 Br16 x Bc64, subgroup64, local256",
+    "split_k": "8 KV heads x 8 K64 splits, followed by bounded-state merge",
+    "finding": "the rejected hipEngine online GQA9 path copied split breadth and GQA ownership, but not llama.cpp's cooperative QK/PV tile"
+  },
+  "cached_online_gqa9_ablation": {
+    "purpose": "diagnostic-only reuse of the preserved rejected binary; no cached binary is retained or admitted to production",
+    "all_36_swa_layers": {
+      "max_kl": 0.31424705764961913,
+      "mean_kl": 0.005964044816650211,
+      "top1_matches": 125,
+      "steps": 128,
+      "control_tok_s": 17.08054422639465,
+      "candidate_tok_s": 19.263462423327404,
+      "raw_sha256": "75364802a987fdfbc88b40bd36326d794b1e74849f39bc45de467c9aad3dce63"
+    },
+    "stride_3_static_layer_policies": [
+      {
+        "policy": "SWA ordinal mod 3 == 0",
+        "selected_layers": 12,
+        "max_kl": 0.47064600190049605,
+        "mean_kl": 0.0100232485414663,
+        "top1_matches": 125,
+        "steps": 128,
+        "candidate_tok_s": 17.75938638024126
+      },
+      {
+        "policy": "SWA ordinal mod 3 == 1",
+        "selected_layers": 12,
+        "max_kl": 0.7622486635302362,
+        "mean_kl": 0.010052136596489864,
+        "top1_matches": 126,
+        "steps": 128,
+        "candidate_tok_s": 17.772220353314314
+      },
+      {
+        "policy": "SWA ordinal mod 3 == 2",
+        "selected_layers": 12,
+        "max_kl": 0.7379070119258978,
+        "mean_kl": 0.011094289004104273,
+        "top1_matches": 126,
+        "steps": 128,
+        "candidate_tok_s": 17.767255813983425
+      }
+    ],
+    "stride_3_raw_sha256": "4e38c9ddeaa02218e2c8a2eec9b5e2dfbf3680e33d0ebff7544a22ceba8be7b1",
+    "decision": "reject layer-bounded online GQA9; errors partly cancel across depth and every evenly distributed one-third policy exceeds the KL limit by at least 9.4x"
+  },
+  "exact_global_gqa2_revalidation": {
+    "description": "two adjacent GQA6 query heads per local256 owner, 24 blocks, exact per-head arithmetic, half the GQA1 K readers",
+    "leaf": {
+      "live_counts": [
+        513,
+        576,
+        639
+      ],
+      "latency_change_percent": [
+        -8.29226913859471,
+        1.0840740791522752,
+        1.5278971031880584
+      ],
+      "context_f32_byte_exact": true,
+      "gated_bf16_byte_exact": true,
+      "raw_sha256": "8515791b5a8e6ed0bd5832f68818b7b2170367d14ff56584eb1ff33c7b462f15"
+    },
+    "production_directional_pair": {
+      "prompt_tokens": 512,
+      "decode_steps": 128,
+      "control_gqa1_tok_s": 17.08228374113485,
+      "candidate_gqa2_tok_s": 17.074470544014954,
+      "throughput_change_percent": -0.0457385981775027,
+      "regression_ms_per_token": 0.02678771096274346,
+      "max_kl": 0.0,
+      "top1_matches": 128,
+      "raw_sha256": "f7812f11c65a38de86f884f64b592dc36006f9bf5c30a0a663dae2979e62f556"
+    },
+    "decision": "confirm the previously closed global GQA2 seam on the post-GQA3 baseline; 24 blocks undersubscribe 40 CUs and production remains GQA1"
+  },
+  "decision": {
+    "retained": false,
+    "all_candidate_and_diagnostic_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 17.1399711527,
+    "next": "build a real HIP cooperative-matrix Br16 x Bc64 GQA attention tile with bounded split-K state and a predeclared high-precision numerical repair; do not select layers from prompt-specific sensitivity"
+  }
+}
