@@ -1,0 +1,456 @@
+{
+  "actual_role_screen": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_wpf1b_q5_q6_mmq32_actual.py",
+    "harness_sha256": "a1012c1b19d902d6dd15d632a8e77edd5824b6d1b233266da92971f8cdfc5e71",
+    "raw_json_sha256": "81e83167c00012f14108bed23967b0f2ac46bb8da2ac0b28e37d97a5e9e910ab",
+    "rows": [
+      {
+        "body_speedup_vs_rowbatch8": 0.6665719555078503,
+        "inclusive_speedup_vs_rowbatch8": 0.5536529980351947,
+        "median_event_ms": {
+          "inclusive": 0.10735966761906941,
+          "mmq_body": 0.08917267123858134,
+          "quantize": 0.023333333432674408,
+          "rowbatch8": 0.0594400018453598
+        },
+        "output_dtype": "f32",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.046553969383239746,
+          "max_kl": 2.974236849695444e-05,
+          "mean_kl": 1.3959348507341929e-05,
+          "top1": 0.9921875
+        },
+        "quant": "gguf_q5_k",
+        "role": "q5_gate48",
+        "rows": 128,
+        "shape": [
+          48,
+          3072
+        ],
+        "tensor": "blk.0.attn_gate.weight",
+        "weight_bytes": 101376,
+        "workspace_bytes": 491520
+      },
+      {
+        "body_speedup_vs_rowbatch8": 0.976071484949275,
+        "inclusive_speedup_vs_rowbatch8": 0.805524380840991,
+        "median_event_ms": {
+          "inclusive": 0.10667999585469563,
+          "mmq_body": 0.0880400041739146,
+          "quantize": 0.02310666690270106,
+          "rowbatch8": 0.08593333760897319
+        },
+        "output_dtype": "f32",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.03904882073402405,
+          "max_kl": 1.6938101907726377e-05,
+          "mean_kl": 7.006177838775329e-06,
+          "top1": 0.9921875
+        },
+        "quant": "gguf_q5_k",
+        "role": "q5_gate72",
+        "rows": 128,
+        "shape": [
+          72,
+          3072
+        ],
+        "tensor": "blk.1.attn_gate.weight",
+        "weight_bytes": 152064,
+        "workspace_bytes": 491520
+      },
+      {
+        "body_speedup_vs_rowbatch8": 4.146049429547706,
+        "inclusive_speedup_vs_rowbatch8": 4.797828092739634,
+        "median_event_ms": {
+          "inclusive": 0.13994699716567993,
+          "mmq_body": 0.16194732983907065,
+          "quantize": 0.023706667125225067,
+          "rowbatch8": 0.6714416344960531
+        },
+        "output_dtype": "f32",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.009817421436309814,
+          "max_kl": 1.63445838552434e-06,
+          "mean_kl": 1.288743078475818e-06,
+          "top1": 1.0
+        },
+        "quant": "gguf_q6_k",
+        "role": "q6_k1024",
+        "rows": 128,
+        "shape": [
+          1024,
+          3072
+        ],
+        "tensor": "blk.0.attn_k.weight",
+        "weight_bytes": 2580480,
+        "workspace_bytes": 491520
+      },
+      {
+        "body_speedup_vs_rowbatch8": 4.7841579818478435,
+        "inclusive_speedup_vs_rowbatch8": 5.516517808089259,
+        "median_event_ms": {
+          "inclusive": 0.13805400331815085,
+          "mmq_body": 0.15918733676274618,
+          "quantize": 0.023053333163261414,
+          "rowbatch8": 0.7615773677825928
+        },
+        "output_dtype": "bf16",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.01953125,
+          "max_kl": 2.435715032333974e-06,
+          "mean_kl": 1.534352691123786e-06,
+          "top1": 0.9609375
+        },
+        "quant": "gguf_q5_k",
+        "role": "q5_shared1024",
+        "rows": 128,
+        "shape": [
+          1024,
+          3072
+        ],
+        "tensor": "blk.1.ffn_gate_shexp.weight",
+        "weight_bytes": 2162688,
+        "workspace_bytes": 491520
+      },
+      {
+        "body_speedup_vs_rowbatch8": 7.668846985701645,
+        "inclusive_speedup_vs_rowbatch8": 7.009206205643395,
+        "median_event_ms": {
+          "inclusive": 0.0782803346713384,
+          "mmq_body": 0.0715470016002655,
+          "quantize": 0.009493333597977957,
+          "rowbatch8": 0.5486830075581869
+        },
+        "output_dtype": "bf16",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.005859375,
+          "max_kl": 7.142089089029469e-07,
+          "mean_kl": 3.4702964057942154e-07,
+          "top1": 0.9921875
+        },
+        "quant": "gguf_q6_k",
+        "role": "q6_shared_down3072",
+        "rows": 128,
+        "shape": [
+          3072,
+          1024
+        ],
+        "tensor": "blk.1.ffn_down_shexp.weight",
+        "weight_bytes": 2580480,
+        "workspace_bytes": 163840
+      },
+      {
+        "body_speedup_vs_rowbatch8": 16.150500844032315,
+        "inclusive_speedup_vs_rowbatch8": 15.72493670504286,
+        "median_event_ms": {
+          "inclusive": 0.32738866408665973,
+          "mmq_body": 0.31876200437545776,
+          "quantize": 0.015399999916553497,
+          "rowbatch8": 5.148166020711263
+        },
+        "output_dtype": "bf16",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.03125,
+          "max_kl": 4.63499418401625e-06,
+          "mean_kl": 2.851218596333638e-06,
+          "top1": 0.9921875
+        },
+        "quant": "gguf_q5_k",
+        "role": "q5_global_output",
+        "rows": 128,
+        "shape": [
+          3072,
+          6144
+        ],
+        "tensor": "blk.0.attn_output.weight",
+        "weight_bytes": 12976128,
+        "workspace_bytes": 983040
+      },
+      {
+        "body_speedup_vs_rowbatch8": 16.845091432442754,
+        "inclusive_speedup_vs_rowbatch8": 15.647597078213387,
+        "median_event_ms": {
+          "inclusive": 0.4955366849899292,
+          "mmq_body": 0.4603096644083659,
+          "quantize": 0.016706666598717373,
+          "rowbatch8": 7.753958384195964
+        },
+        "output_dtype": "bf16",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.04296875,
+          "max_kl": 8.517425158061087e-06,
+          "mean_kl": 6.778349870728562e-06,
+          "top1": 0.984375
+        },
+        "quant": "gguf_q5_k",
+        "role": "q5_swa_output",
+        "rows": 128,
+        "shape": [
+          3072,
+          9216
+        ],
+        "tensor": "blk.1.attn_output.weight",
+        "weight_bytes": 19464192,
+        "workspace_bytes": 1474560
+      },
+      {
+        "body_speedup_vs_rowbatch8": 14.866866051406213,
+        "inclusive_speedup_vs_rowbatch8": 15.08028622759726,
+        "median_event_ms": {
+          "inclusive": 0.5972439845403036,
+          "mmq_body": 0.6058176755905151,
+          "quantize": 0.02394700050354004,
+          "rowbatch8": 9.006610234578451
+        },
+        "output_dtype": "bf16",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.04296875,
+          "max_kl": 1.9876693841069937e-05,
+          "mean_kl": 2.7275425509287743e-06,
+          "top1": 0.984375
+        },
+        "quant": "gguf_q5_k",
+        "role": "q5_dense12288",
+        "rows": 128,
+        "shape": [
+          12288,
+          3072
+        ],
+        "tensor": "blk.0.ffn_gate.weight",
+        "weight_bytes": 25952256,
+        "workspace_bytes": 491520
+      },
+      {
+        "body_speedup_vs_rowbatch8": 18.73668706028684,
+        "inclusive_speedup_vs_rowbatch8": 16.45202724150202,
+        "median_event_ms": {
+          "inclusive": 0.8272190093994141,
+          "mmq_body": 0.7263519763946533,
+          "quantize": 0.01577366640170415,
+          "rowbatch8": 13.609429677327475
+        },
+        "output_dtype": "bf16",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.0234375,
+          "max_kl": 4.757181159220636e-06,
+          "mean_kl": 3.6793626350117847e-06,
+          "top1": 1.0
+        },
+        "quant": "gguf_q6_k",
+        "role": "q6_dense_down3072",
+        "rows": 128,
+        "shape": [
+          3072,
+          12288
+        ],
+        "tensor": "blk.0.ffn_down.weight",
+        "weight_bytes": 30965760,
+        "workspace_bytes": 1966080
+      },
+      {
+        "body_speedup_vs_rowbatch8": 14.684258055149261,
+        "inclusive_speedup_vs_rowbatch8": 13.397374398476558,
+        "median_event_ms": {
+          "inclusive": 0.5933643182118734,
+          "mmq_body": 0.5413636763890585,
+          "quantize": 0.013866999497016272,
+          "rowbatch8": 7.94952392578125
+        },
+        "output_dtype": "bf16",
+        "quality": {
+          "finite": true,
+          "max_abs": 0.03125,
+          "max_kl": 5.616270937025547e-05,
+          "mean_kl": 9.24704727367498e-06,
+          "top1": 1.0
+        },
+        "quant": "gguf_q6_k",
+        "role": "q6_final_output",
+        "rows": 128,
+        "shape": [
+          3072,
+          9216
+        ],
+        "tensor": "blk.47.attn_output.weight",
+        "weight_bytes": 23224320,
+        "workspace_bytes": 1474560
+      }
+    ],
+    "summary": {
+      "large_role_count": 8,
+      "large_role_inclusive_speedup_max": 16.45202724150202,
+      "large_role_inclusive_speedup_min": 4.797828092739634,
+      "small_role_losses": [
+        "q5_gate48",
+        "q5_gate72"
+      ],
+      "ten_role_one_each_control_event_ms_sum": 45.59476359188557,
+      "ten_role_one_each_inclusive_event_ms_sum": 3.4110736598571143,
+      "ten_role_one_each_inclusive_speedup": 13.366689828033639
+    }
+  },
+  "base_revision": "e1abdb1509db438db256d510ed199a284a743855",
+  "claim_scope": "Primitive and actual-weight M128 leaf only; no runtime owner, package default, end-to-end prefill, or benchmark-topline claim",
+  "correctness": {
+    "adjacent_command": "uv run pytest -q tests/test_gguf_k_gemv.py tests/test_gguf_k_rowtile_gemv.py tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py tests/test_kernel_registry.py tests/test_build.py",
+    "adjacent_result": "125 passed",
+    "all_actual_roles_finite": true,
+    "bf16_is_rne_of_f32": true,
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_k_mmq_prefill.py",
+    "green_result": "5 passed",
+    "max_actual_role_kl": 5.616270937025547e-05,
+    "min_actual_role_top1": 0.9609375,
+    "q8_pack_byte_exact_cpu": true,
+    "red": "ModuleNotFoundError for hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill",
+    "tracked_allocation_recovery": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 37650432,
+      "peak_allocations": 5,
+      "total_allocated_bytes": 158162432,
+      "total_freed_bytes": 158162432
+    }
+  },
+  "created_at": "2026-07-28T19:15:00+09:00",
+  "four_k_or_longer_run_performed": false,
+  "implementation": {
+    "dataflow": "One local128 block stages raw Q5_K/Q6_K and 32 producer rows per K32, then reuses both across a 32-column x 32-row result tile. One row-major 160-byte K128 Q8_1 block stores four FP32 scales/sums plus 128 int8 values and serves both quant families.",
+    "fallback": "retained exact rowbatch8; N<1024 loses the primitive screen and remains ineligible",
+    "gfx1151_fail_closed": true,
+    "library_sha256": "88fefa582a2bce170983aca92f6862e614fdb37c57744fb44c08d4b92cecaf02",
+    "persistent_scratch_delta_bytes": 0,
+    "registered_keys": [
+      "hip_gfx1100/activation_quant/q8_1_d4s4_f32/bf16",
+      "hip_gfx1100/linear/gguf_q5_k/mmq32_q8_1_d4s4_f32_bf16_bf16_out",
+      "hip_gfx1100/linear/gguf_q5_k/mmq32_q8_1_d4s4_f32_bf16_f32_out",
+      "hip_gfx1100/linear/gguf_q6_k/mmq32_q8_1_d4s4_f32_bf16_bf16_out",
+      "hip_gfx1100/linear/gguf_q6_k/mmq32_q8_1_d4s4_f32_bf16_f32_out"
+    ],
+    "resident_weight_delta_bytes": 0,
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_mmq_prefill.hip",
+    "source_sha256": "fb9c22d4efc82c64556875c13ecc6974ed1fe2a20ba6d30d7889f0d88427cd62",
+    "test": "tests/test_gguf_k_mmq_prefill.py",
+    "test_sha256": "b74b560e740fd44c4864a7ce1ee34b05fe83b4a393ecacc635eb4b2f98ae9304",
+    "wrapper": "hipengine/kernels/hip_gfx1100/quant/gguf_k_mmq_prefill.py",
+    "wrapper_sha256": "97ae01b8d75c62bdbc31d10bae344470a57d6cc1598fe94b557c5fd0156200de"
+  },
+  "kind": "hipengine_laguna_q2_xl_gfx1100_q5_q6_mmq32_primitive",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL actual raw Q5_K/Q6_K role tensors",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "next": "Wire a default-off producer-row workspace session with N>=1024 policy, prove full state, then run only 512/1K and the complete 18-prompt quality lane before promotion.",
+  "objective": "WPF-1B raw-resident Q5_K/Q6_K producer-row Q8_1 integer-dot MMQ32",
+  "performance_claim": true,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "target_arch": "gfx1100",
+    "visible_device": 0
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpf1b-q5-q6-mmq32-rocprof --output-file trace -- uv run python -u /tmp/trace_laguna_wpf1b_q5_q6_mmq32.py",
+    "compiler_spawned_under_profiler": false,
+    "harness_sha256": "93dcd1958e56388eb2b20f15da70735f4eb40494174ed6c45ec605a2319b2db2",
+    "kernels": [
+      {
+        "duration_ns": 19960,
+        "grid": [
+          32768,
+          3,
+          1
+        ],
+        "kernel": "(anonymous namespace)::q8_1_d4s4_f32_quantize_bf16_kernel(unsigned short const*, (anonymous namespace)::q8_1_d4s4_f32_block*, int, int)",
+        "lds_bytes": 0,
+        "local": [
+          256,
+          1,
+          1
+        ],
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 24
+      },
+      {
+        "duration_ns": 643522,
+        "grid": [
+          49152,
+          4,
+          1
+        ],
+        "kernel": "void (anonymous namespace)::gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<5, unsigned short>((anonymous namespace)::q8_1_d4s4_f32_block const*, unsigned char const*, unsigned short*, int, int, int)",
+        "lds_bytes": 3072,
+        "local": [
+          128,
+          1,
+          1
+        ],
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 48
+      },
+      {
+        "duration_ns": 14240,
+        "grid": [
+          32768,
+          12,
+          1
+        ],
+        "kernel": "(anonymous namespace)::q8_1_d4s4_f32_quantize_bf16_kernel(unsigned short const*, (anonymous namespace)::q8_1_d4s4_f32_block*, int, int)",
+        "lds_bytes": 0,
+        "local": [
+          256,
+          1,
+          1
+        ],
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 24
+      },
+      {
+        "duration_ns": 699323,
+        "grid": [
+          12288,
+          4,
+          1
+        ],
+        "kernel": "void (anonymous namespace)::gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<6, unsigned short>((anonymous namespace)::q8_1_d4s4_f32_block const*, unsigned char const*, unsigned short*, int, int, int)",
+        "lds_bytes": 3072,
+        "local": [
+          128,
+          1,
+          1
+        ],
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 56
+      }
+    ],
+    "prebuilt_outside_profiler": true,
+    "stdout_sha256": "4f89f40af5abefd2032ccfdbcd1e26f626a474fbe0289d84b5d9d5b41a56e9ac",
+    "trace_sha256": "4b443bef79a7cdc82abe3631e6547e0a74216e6ccd0531ccea8205b1054095f5"
+  },
+  "runtime_default_changed": false,
+  "schema": 1,
+  "source_lineage": {
+    "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "files": [
+      "ggml/src/ggml-cuda/quantize.cu",
+      "ggml/src/ggml-cuda/mmq.cuh",
+      "ggml/src/ggml-cuda/vecdotq.cuh"
+    ],
+    "repo": "/home/lhl/llama.cpp/llama.cpp-hip"
+  },
+  "status": "accepted_primitive_correctness_and_leaf_performance"
+}
