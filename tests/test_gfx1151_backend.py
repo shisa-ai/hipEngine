@@ -75,6 +75,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_F16_BOUNDARY_FUSION,
     LAGUNA_F16_DECODE_FIXEDK,
     LAGUNA_F16_DECODE_ONEBARRIER,
+    LAGUNA_SELECTED_NATURAL_DECODE,
     LAGUNA_F16_PREFILL_MIN_ROWS,
     LAGUNA_F16_PREFILL_MODE,
     LAGUNA_F16_PREFILL_STRATEGY,
@@ -267,6 +268,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_BOUNDARY_FUSION is True
     assert LAGUNA_F16_DECODE_FIXEDK is True
     assert LAGUNA_F16_DECODE_ONEBARRIER is True
+    assert LAGUNA_SELECTED_NATURAL_DECODE is True
     assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
     assert LAGUNA_MOE_BRANCH_CONCURRENCY is True
     assert LAGUNA_MOE_SHARED_AFTER_ROUTER is True
@@ -334,6 +336,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_F16_DECODE_FIXEDK", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_SELECTED_NATURAL_DECODE", None
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_SELECTED_NATURAL_DECODE", None
     ) is None
     assert (
         backend_package_capability(

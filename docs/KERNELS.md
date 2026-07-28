@@ -386,6 +386,19 @@ automatically; `HIPENGINE_LAGUNA_F16_DECODE=onebarrier` is the exact rollback
 and other backends remain unchanged. Evidence:
 [`retained fixed-K decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json).
 
+Laguna gfx1151 selected-MoE decode now also has exact natural-shape resident-
+T16 siblings: Q4 gate/up fixes `x_rows=1, rows=10, K3072, N1024`, while Q4
+and planar-Q6 down fix ten distinct intermediate rows at `K1024, N3072`.
+They preserve the local128 grid, thread-local K traversal, FMA/reduction order,
+resident bytes, and BF16 store. Actual-weight leaves improve
+**1.63%/21.19%/10.33%** with zero BF16 mismatches. Seven complete p512/d128
+pairs improve **16.850003 -> 16.976046 tok/s (+0.748%)**, and cached tracing
+records all **5,969/3,048/2,921** intended role calls with zero generic
+selected-T16 fallback. Resources are local128/SGPR128/LDS512/scratch0 with
+VGPR **200/104/80**. gfx1151 selects these siblings only for the admitted c=1
+shape; other shapes/backends retain the generic exact routes. Evidence:
+[`retained natural selected decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

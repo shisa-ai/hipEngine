@@ -211,6 +211,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="counterbalance exact global reduction against its natural shape",
     )
+    parser.add_argument(
+        "--compare-selected-natural-decode",
+        action="store_true",
+        help="counterbalance selected-MoE decode against natural-shape siblings",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -310,6 +315,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_f16_decode_fixedk,
             args.compare_swa_fixed512_reduce,
             args.compare_global_fixedshape_reduce,
+            args.compare_selected_natural_decode,
         )
     )
     if active_comparisons > 1:
@@ -344,6 +350,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_f16_decode_fixedk
         or args.compare_swa_fixed512_reduce
         or args.compare_global_fixedshape_reduce
+        or args.compare_selected_natural_decode
     )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
@@ -568,6 +575,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
                         )
+                    if args.compare_selected_natural_decode:
+                        owner.set_selected_natural_decode(
+                            mode == "candidate"
+                        )
                     owner.reset_state()
                     started = time.perf_counter()
                     result = owner.prefill(token_stream[:length], use_bulk=True)
@@ -781,6 +792,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
+            ),
+            "compare_selected_natural_decode": (
+                args.compare_selected_natural_decode
             ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,

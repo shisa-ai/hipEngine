@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -27,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
@@ -40,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
@@ -808,6 +811,129 @@ def test_p9_h3d_q4_t16_direct_dual_bf16_matches_cpu_oracle(t16_selected_library)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     actual = np.concatenate([_bf16_u16_to_f32(actual_a), _bf16_u16_to_f32(actual_b)], axis=1)
     np.testing.assert_allclose(actual, expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_laguna_t16_natural_selected_decode_matches_production_bits(
+    t16_selected_library,
+) -> None:
+    """Natural Laguna gate/up and mixed down shapes preserve exact BF16 bits."""
+
+    x_rows, rows, num_experts = 1, 10, 3
+    selected = np.array([2, 0, 1, 1, 2, 0, 2, 1, 0, 2], dtype=np.int64)
+    rng = np.random.default_rng(20260728)
+
+    gate_in, gate_out = 3072, 1024
+    gate_a = _stack_experts(
+        make_q4_k_weight,
+        gate_out,
+        gate_in,
+        num_experts,
+        seed=71,
+    )
+    gate_b = _stack_experts(
+        make_q4_k_weight,
+        gate_out,
+        gate_in,
+        num_experts,
+        seed=73,
+    )
+    gate_tiles_a = repack_gguf_q4_k_tile16(gate_a).tiles
+    gate_tiles_b = repack_gguf_q4_k_tile16(gate_b).tiles
+    gate_x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(x_rows, gate_in)).astype(np.float32)
+    )
+    gate_ref = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        gate_x,
+        selected,
+        gate_tiles_a,
+        gate_tiles_b,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    gate_actual = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
+        gate_x,
+        selected,
+        gate_tiles_a,
+        gate_tiles_b,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(gate_actual[0], gate_ref[0])
+    np.testing.assert_array_equal(gate_actual[1], gate_ref[1])
+
+    down_in, down_out = 1024, 3072
+    down_x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, down_in)).astype(np.float32)
+    )
+    q4_down = _stack_experts(
+        make_q4_k_weight,
+        down_out,
+        down_in,
+        num_experts,
+        seed=79,
+    )
+    q4_tiles = repack_gguf_q4_k_tile16(q4_down).tiles
+    q4_ref = _run_direct_single(
+        gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+        down_x,
+        selected,
+        q4_tiles,
+        down_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    q4_actual = _run_direct_single(
+        gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
+        down_x,
+        selected,
+        q4_tiles,
+        down_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(q4_actual, q4_ref)
+
+    q6_down = _stack_experts(
+        make_q6_k_weight,
+        down_out,
+        down_in,
+        num_experts,
+        seed=83,
+    )
+    q6_tiles = repack_gguf_q6_k_tile16_qmicro_planar(q6_down).tiles
+
+    def q6_ref_fn(*args, **kwargs):
+        return gguf_q6_k_t16_selected_gemv_bf16_bf16_out(
+            *args,
+            qmicro=True,
+            qmicro_planar=True,
+            **kwargs,
+        )
+
+    q6_ref = _run_direct_single(
+        q6_ref_fn,
+        down_x,
+        selected,
+        q6_tiles,
+        down_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    q6_actual = _run_direct_single(
+        gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
+        down_x,
+        selected,
+        q6_tiles,
+        down_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(q6_actual, q6_ref)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

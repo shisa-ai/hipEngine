@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T12:03:46.932806+00:00",
+  "kind": "hipengine_laguna_selected_natural_decode_retained",
+  "status": "retained",
+  "performance_claim": true,
+  "scope": "Poolside Laguna S 2.1 Q4_K_M eager c=1 selected-MoE decode",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "change": {
+    "description": "Compile-time-specialize the exact resident-T16 selected gate/up and Q4/planar-Q6 down consumers for Laguna's natural c=1/top-10 dimensions while preserving the local128 grid, per-thread K ownership, FMA/reduction order, resident bytes, and BF16 boundary.",
+    "gate_up_shape": "x_rows=1, rows=10, K3072, N1024, Q4T16 dual",
+    "down_shape": "x_rows=10, rows=10, K1024, N3072",
+    "resident_sidecar_bytes": 0,
+    "runtime_default": "hip_gfx1151 only",
+    "fallback": "generic exact selected T16 GEMV",
+    "peer_backends_changed": false
+  },
+  "actual_weight_leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --allow-dirty --samples 21 --warmups 5 --burst 20 --output /tmp/laguna-selected-natural-decode-leaf-full-v2.json",
+    "timing": "counterbalanced HIP-event median",
+    "results": {
+      "q4_gate_up": {
+        "control_ms": 0.144513,
+        "candidate_ms": 0.142154,
+        "delta_percent": -1.632,
+        "bf16_mismatches": 0
+      },
+      "q4_down": {
+        "control_ms": 0.074293,
+        "candidate_ms": 0.058550,
+        "delta_percent": -21.191,
+        "bf16_mismatches": 0
+      },
+      "q6_down": {
+        "control_ms": 0.082136,
+        "candidate_ms": 0.073648,
+        "delta_percent": -10.334,
+        "bf16_mismatches": 0
+      }
+    }
+  },
+  "production_ab": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-selected-natural-decode --allow-dirty --output /tmp/laguna-p512-d128-selected-natural-ab.json",
+    "workload": "p512/d128; 127 synchronized eager c=1 decode calls per repetition",
+    "control_tok_s": 16.8500031254358,
+    "candidate_tok_s": 16.976046369878,
+    "delta_percent": 0.7480309855369072,
+    "control_ms_per_token": 59.347169,
+    "candidate_ms_per_token": 58.906531,
+    "saved_ms_per_token": 0.440639,
+    "candidate_samples_all_above_controls": true,
+    "candidate_repetitions": 7,
+    "control_repetitions": 7
+  },
+  "correctness": {
+    "synthetic_production_shape_bf16_exact": true,
+    "actual_weight_bf16_exact": true,
+    "generated_ids_match": true,
+    "next_tokens_match": true,
+    "final_positions_exact": true,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_baseline": true,
+    "quality_contract": "Exact BF16 identity to the already CPU-qualified production selected-T16 consumers; KL=0 and top-1=100% by construction."
+  },
+  "cache_only_trace": {
+    "command": "rocprofv3 --kernel-trace --stats ... scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --require-cached-build",
+    "trace_path": "/tmp/laguna-selected-natural-full-trace.Gj0sB8/production_kernel_trace.csv",
+    "q4_gate_up": {
+      "calls": 5969,
+      "expected": "47 layers x 127 decode calls",
+      "median_us_profiled": 180.178,
+      "local": 128,
+      "vgpr": 200,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "q4_down": {
+      "calls": 3048,
+      "expected": "24 layers x 127 decode calls",
+      "median_us_profiled": 89.328,
+      "local": 128,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "q6_down": {
+      "calls": 2921,
+      "expected": "23 layers x 127 decode calls",
+      "median_us_profiled": 116.058,
+      "local": 128,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "generic_selected_t16_decode_calls": 0
+  },
+  "baseline": {
+    "pre_transfer_tok_s": 11.466687,
+    "current_tok_s": 16.976046369878,
+    "cumulative_delta_percent": 48.046653491788845,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348
+  },
+  "validation": {
+    "red": "The focused natural-shape test initially failed on missing wrappers.",
+    "green": [
+      "tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+      "tests/test_laguna_moe_gpu.py::test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151",
+      "tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys"
+    ],
+    "compiler_version_file": "/tmp/laguna_hipcc_version.txt",
+    "require_cached_build": true
+  },
+  "notes": [
+    "An initial diagnostic down leaf incorrectly broadcast one activation row; it was discarded before runtime integration. The retained body indexes ten distinct production intermediate rows.",
+    "The rocprofv3 throughput is attribution-only because profiler overhead lowers complete decode.",
+    "The retained performance claim comes from the unprofiled seven-pair production A/B."
+  ]
+}

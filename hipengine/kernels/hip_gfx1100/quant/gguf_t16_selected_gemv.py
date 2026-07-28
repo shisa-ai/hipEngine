@@ -21,12 +21,18 @@ _SOURCE = Path(__file__).with_name("gguf_t16_selected_gemv.hip")
 _OUTPUT_NAME = "gguf_t16_selected_gemv.so"
 
 _Q4_DUAL_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out"
+_Q4_DUAL_NATURAL_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out"
+)
 _Q4_DUAL_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out"
 _Q4_DUAL_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out"
 _Q4_DUAL_SILU_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out"
 _Q4_DUAL_DIRECT_Q8_DP4A_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_q8_1_dp4a_bf16_bf16_out"
 _Q4_DUAL_SILU_DIRECT_Q8_DP4A_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_q8_1_dp4a_bf16_bf16_out"
 _Q4_SINGLE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out"
+_Q4_SINGLE_NATURAL_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out"
+)
 _Q4_SINGLE_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out"
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
 _Q5_SINGLE_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out"
@@ -38,6 +44,10 @@ _Q6_QMICRO_SINGLE_DIRECT_BF16 = (
 )
 _Q6_QMICRO_PLANAR_SINGLE_DIRECT_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_selected_gemv_bf16_bf16_out"
+)
+_Q6_QMICRO_PLANAR_SINGLE_NATURAL_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_"
+    "bf16_bf16_out"
 )
 _Q6_SINGLE_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out"
 _Q6_SINGLE_DIRECT_FP16 = "hipengine_gguf_q6_k_t16_selected_gemv_fp16_fp16_out"
@@ -142,6 +152,53 @@ def gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
 
     _launch_dual_direct(
         _Q4_DUAL_DIRECT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact natural-shape Laguna Q4T16 gate/up GEMV."""
+
+    _check_laguna_natural_selected_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_features,
+        expected_x_rows=1,
+        expected_in=3072,
+        expected_out=1024,
+    )
+    _launch_dual_direct(
+        _Q4_DUAL_NATURAL_BF16,
         x_ptr,
         selected_ptr,
         tiles_a_ptr,
@@ -379,6 +436,49 @@ def gguf_q4_k_t16_selected_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact natural-shape Laguna Q4T16 down GEMV."""
+
+    _check_laguna_natural_selected_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_features,
+        expected_x_rows=10,
+        expected_in=1024,
+        expected_out=3072,
+    )
+    _launch_single_direct(
+        _Q4_SINGLE_NATURAL_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_gemv_fp16_fp16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -578,6 +678,49 @@ def gguf_q6_k_t16_selected_gemv_bf16_bf16_out(
             if qmicro
             else _Q6_SINGLE_DIRECT_BF16
         ),
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact natural-shape Laguna planar-Q6T16 down GEMV."""
+
+    _check_laguna_natural_selected_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_features,
+        expected_x_rows=10,
+        expected_in=1024,
+        expected_out=3072,
+    )
+    _launch_single_direct(
+        _Q6_QMICRO_PLANAR_SINGLE_NATURAL_BF16,
         x_ptr,
         selected_ptr,
         tiles_ptr,
@@ -1575,6 +1718,29 @@ def _launch_single_direct(
         runtime.check(int(err))
 
 
+def _check_laguna_natural_selected_shape(
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    expected_x_rows: int,
+    expected_in: int,
+    expected_out: int,
+) -> None:
+    if (
+        x_rows != expected_x_rows
+        or rows != 10
+        or in_features != expected_in
+        or out_features != expected_out
+    ):
+        raise ValueError(
+            "natural Laguna selected GEMV requires "
+            f"x_rows={expected_x_rows}, rows=10, "
+            f"in_features={expected_in}, and out_features={expected_out}"
+        )
+
+
 def _check_direct_common(x_rows: int, rows: int, in_features: int, num_experts: int) -> None:
     if x_rows <= 0:
         raise ValueError("x_rows must be positive")
@@ -1624,6 +1790,10 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         (
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
             gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        ),
+        (
+            "selected_dual_t16_natural_gemv_decode_bf16_bf16_out",
+            gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
         ),
         (
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
@@ -1693,6 +1863,27 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "moe_linear", quant_key, "selected_t16_gemv_decode_fp16_fp16_out"),
             direct_fp16,
+            replace=replace,
+        )
+
+    for quant_key, natural_fn in (
+        (
+            "gguf_q4_k_t16_v1",
+            gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
+        ),
+        (
+            "gguf_q6_k_t16_v1",
+            gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                quant_key,
+                "selected_t16_natural_gemv_decode_bf16_bf16_out",
+            ),
+            natural_fn,
             replace=replace,
         )
 
@@ -1773,6 +1964,7 @@ register_gguf_t16_selected_gemv_kernels()
 __all__ = [
     "build_gguf_t16_selected_gemv",
     "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
@@ -1782,6 +1974,7 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
@@ -1795,6 +1988,7 @@ __all__ = [
     "gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
     "gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q6_k_t16_selected_gemv_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out",
     "gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out",
     "gguf_q6_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out",

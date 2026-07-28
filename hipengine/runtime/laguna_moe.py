@@ -38,6 +38,9 @@ _I64_NBYTES = 8
 _ROUTER_LOGITS_VARIANT = "bf16_hidden"
 _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
+_SELECTED_DUAL_NATURAL_VARIANT = (
+    "selected_dual_t16_natural_gemv_decode_bf16_bf16_out"
+)
 _SELECTED_DUAL_MMQ32_D4X3_VARIANT = (
     "selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -46,6 +49,9 @@ _SELECTED_DUAL_MMQ64X32_D4X3_F32_VARIANT = (
     "prefill_compact32_bf16_bf16_out"
 )
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
+_SELECTED_DOWN_NATURAL_VARIANT = (
+    "selected_t16_natural_gemv_decode_bf16_bf16_out"
+)
 _SELECTED_DOWN_MMQ64X32_D4X3_F32_VARIANT = (
     "selected_q8_1_ds4x3_f32_mmq64x32_"
     "prefill_compact32_bf16_bf16_out"
@@ -364,12 +370,16 @@ class LagunaMoEKernelPlan:
     selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     c1_selected_gate_up_keys: Mapping[str, KernelKey]
     c1_selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
+    natural_selected_gate_up_keys: Mapping[str, KernelKey]
+    natural_selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
     selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
     c1_selected_down_keys: Mapping[str, KernelKey]
     c1_selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
+    natural_selected_down_keys: Mapping[str, KernelKey]
+    natural_selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_weighted_down_keys: Mapping[str, KernelKey]
     selected_weighted_down_routes: Mapping[str, LagunaMoESelectedRoute]
     routed_sum_key: KernelKey
@@ -440,10 +450,12 @@ class LagunaMoEKernelPlan:
             self.down_activation_quant_key,
             self.fused_selected_silu_pack_key,
             *tuple(self.c1_selected_gate_up_keys.values()),
+            *tuple(self.natural_selected_gate_up_keys.values()),
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
             *tuple(self.c1_selected_down_keys.values()),
+            *tuple(self.natural_selected_down_keys.values()),
             *tuple(self.selected_weighted_down_keys.values()),
             self.routed_sum_key,
             self.routed_sum_rows_key,
@@ -927,6 +939,28 @@ def resolve_laguna_moe_plan(
             for quant, key in c1_selected_gate_up_keys.items()
         }
     )
+    natural_selected_gate_up_keys = MappingProxyType(
+        {
+            "gguf_q4_k_t16_v1": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_q4_k_t16_v1",
+                _SELECTED_DUAL_NATURAL_VARIANT,
+            )
+        }
+    )
+    natural_selected_gate_up_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="t16_dual",
+                allocation_name="tiles",
+                library_key="selected_gate_up",
+            )
+            for quant, key in natural_selected_gate_up_keys.items()
+        }
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -987,6 +1021,29 @@ def resolve_laguna_moe_plan(
             for quant, key in c1_selected_down_keys.items()
         }
     )
+    natural_selected_down_keys = MappingProxyType(
+        {
+            quant: KernelKey(
+                backend,
+                "moe_linear",
+                quant,
+                _SELECTED_DOWN_NATURAL_VARIANT,
+            )
+            for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
+        }
+    )
+    natural_selected_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="t16_natural",
+                allocation_name="tiles",
+                library_key="selected_down",
+            )
+            for quant, key in natural_selected_down_keys.items()
+        }
+    )
     selected_weighted_down_keys = MappingProxyType(
         {
             "gguf_iq3_xxs": KernelKey(
@@ -1042,6 +1099,8 @@ def resolve_laguna_moe_plan(
         selected_gate_up_routes=selected_gate_up_routes,
         c1_selected_gate_up_keys=c1_selected_gate_up_keys,
         c1_selected_gate_up_routes=c1_selected_gate_up_routes,
+        natural_selected_gate_up_keys=natural_selected_gate_up_keys,
+        natural_selected_gate_up_routes=natural_selected_gate_up_routes,
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
         selected_down_key=keys["selected_down"],
@@ -1049,6 +1108,8 @@ def resolve_laguna_moe_plan(
         selected_down_routes=selected_down_routes,
         c1_selected_down_keys=c1_selected_down_keys,
         c1_selected_down_routes=c1_selected_down_routes,
+        natural_selected_down_keys=natural_selected_down_keys,
+        natural_selected_down_routes=natural_selected_down_routes,
         selected_weighted_down_keys=selected_weighted_down_keys,
         selected_weighted_down_routes=selected_weighted_down_routes,
         routed_sum_key=keys["routed_sum"],
@@ -1446,6 +1507,7 @@ def _launch_selected_gate_up(
     stream: int,
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
+    use_natural: bool = False,
 ) -> None:
     plan = scratch.plan
     gate = layer.weight("ffn_gate_exps")
@@ -1453,7 +1515,15 @@ def _launch_selected_gate_up(
     try:
         retained_route = plan.selected_gate_up_routes[gate.spec.quant_key]
         route = (
-            plan.c1_selected_gate_up_routes.get(gate.spec.quant_key, retained_route)
+            plan.natural_selected_gate_up_routes.get(
+                gate.spec.quant_key,
+                retained_route,
+            )
+            if use_natural and x_rows == 1
+            else plan.c1_selected_gate_up_routes.get(
+                gate.spec.quant_key,
+                retained_route,
+            )
             if x_rows == 1
             else retained_route
         )
@@ -1700,6 +1770,36 @@ def _launch_selected_down_t16(
     )
 
 
+def _launch_selected_down_t16_natural(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_intermediate.ptr,
+        scratch.selected_experts.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        lanes,
+        lanes,
+        plan.expert_count,
+        plan.expert_ffn_size,
+        plan.hidden_size,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+
+
 def _launch_selected_down_iq(
     route: LagunaMoESelectedRoute,
     plan: LagunaMoEKernelPlan,
@@ -1726,7 +1826,11 @@ def _launch_selected_down_iq(
 
 
 _SELECTED_DOWN_ABIS = MappingProxyType(
-    {"t16": _launch_selected_down_t16, "raw_iq": _launch_selected_down_iq}
+    {
+        "t16": _launch_selected_down_t16,
+        "t16_natural": _launch_selected_down_t16_natural,
+        "raw_iq": _launch_selected_down_iq,
+    }
 )
 
 
@@ -1769,6 +1873,7 @@ def _launch_weighted_selected_down(
     stream: int,
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
+    use_natural: bool = False,
 ) -> bool:
     # The composite is a c=1 decode schedule. Bulk rows retain the independent
     # selected projection plus row-wise weighted-sum fallback until measured.
@@ -1777,7 +1882,20 @@ def _launch_weighted_selected_down(
     plan = scratch.plan
     weight = layer.weight("ffn_down_exps")
     try:
-        producer_route = plan.c1_selected_down_routes[weight.spec.quant_key]
+        producer_route = (
+            plan.natural_selected_down_routes[weight.spec.quant_key]
+            if (
+                use_natural
+                and (
+                    weight.spec.quant_key == "gguf_q4_k_t16_v1"
+                    or (
+                        weight.spec.quant_key == "gguf_q6_k_t16_v1"
+                        and plan.q6_qmicro_planar
+                    )
+                )
+            )
+            else plan.c1_selected_down_routes[weight.spec.quant_key]
+        )
         producer_launch = _SELECTED_DOWN_ABIS[producer_route.abi]
     except KeyError:
         pass
@@ -2157,6 +2275,7 @@ def run_laguna_moe_c1_components(
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
+    use_selected_natural_decode: bool = False,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -2205,6 +2324,7 @@ def run_laguna_moe_c1_components(
         stream=stream,
         runtime=runtime,
         libraries=libraries,
+        use_natural=use_selected_natural_decode,
     )
     routed_down_weighted = _launch_weighted_selected_down(
         layer,
@@ -2213,6 +2333,7 @@ def run_laguna_moe_c1_components(
         stream=stream,
         runtime=runtime,
         libraries=libraries,
+        use_natural=use_selected_natural_decode,
     )
     if not routed_down_weighted:
         _launch_selected_down(
@@ -2316,6 +2437,7 @@ def run_laguna_moe_c1(
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
+    use_selected_natural_decode: bool = False,
 ) -> DeviceBuffer:
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
@@ -2327,6 +2449,7 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         shared_pair_decode_variant=shared_pair_decode_variant,
+        use_selected_natural_decode=use_selected_natural_decode,
     )
     scratch.plan.add(
         routed.ptr,
