@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_p512_d128_eager_snapshot",
+  "status": "accepted_clean_snapshot",
+  "pass": true,
+  "performance_claim": false,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-clean-3rep.json",
+    "prompt_tokens": 512,
+    "output_tokens_including_prefill_result": 128,
+    "timed_decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_rows": 2048,
+    "global_attention_chunk_rows": 2048,
+    "swa_attention_chunk_rows": 128,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "selector_unset": true,
+    "timing_scope": "prefill reset through synchronized first-token projection; decode exactly 127 synchronized eager forward_token calls; model load excluded",
+    "raw_sha256": "f5554abe0134855ff8d0b55a3d4b917bfa759b882de6a06863be2d8bcef73c02"
+  },
+  "measurement": {
+    "prefill_seconds": [
+      0.8283276571,
+      0.7796487380,
+      0.7818476150
+    ],
+    "prefill_tokens_per_second": [
+      618.1128876094,
+      656.7059947090,
+      654.8590673667
+    ],
+    "prefill_median_seconds": 0.7818476150,
+    "prefill_median_tokens_per_second": 654.8590673667,
+    "decode_seconds": [
+      11.0736607390,
+      11.0711950930,
+      11.0710314990
+    ],
+    "decode_tokens_per_second": [
+      11.4686554874,
+      11.4712096511,
+      11.4713791585
+    ],
+    "decode_median_seconds": 11.0711950930,
+    "decode_median_tokens_per_second": 11.4712096511,
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "prefill_final_position": 511,
+    "decode_final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32"
+  },
+  "continuity": {
+    "canonical_repeated_pp512_tokens_per_second": 654.249,
+    "snapshot_pp512_change_pct": 0.0932469697,
+    "decision": "The paired pp512 median reproduces the retained short-context headline; the decode value is a new eager snapshot with no before/after speedup claim."
+  },
+  "correctness": {
+    "three_generated_trajectories_exact": true,
+    "first_and_final_token_ids_exact": true,
+    "prefill_and_decode_positions_exact": true,
+    "tracked_allocation_recovered": true,
+    "tracked_allocations_after": 0,
+    "tracked_bytes_after": 0
+  },
+  "limitations": {
+    "eager_global_attention_context_capacity_max": 4096,
+    "long_context_decode_measured": false,
+    "reason": "The current eager global-attention decode ABI rejects cache capacity above 4096; the six-shape long-context publication remains prefill-only."
+  },
+  "repo": {
+    "revision": "7bf286ee85cee6bc66041f263521523217ac10c3",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  }
+}

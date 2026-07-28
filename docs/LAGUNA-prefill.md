@@ -1,6 +1,6 @@
 # Laguna S 2.1 Prefill Attack Plan
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 Status: active successor to the completed LPF/AR-O campaign in
 [`LAGUNA.md`](LAGUNA.md). The prior bounded tasks are closed; this plan starts a
@@ -3709,6 +3709,35 @@ active targets.
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.
 
+## Current production summary
+
+This is the compact pause-point view. Short repeated medians remain the
+promotion headline; the six-shape row is a clean one-pass 128K-capacity
+anti-overtuning sweep; decode is a separate three-repeat eager c=1 snapshot.
+They share the same Q4_K_M GGUF, BF16 KV, gfx1151 production defaults, and
+two-queue policy, but their timing scopes are not interchangeable.
+
+| Metric | Current result | Protocol / status |
+| --- | ---: | --- |
+| Repeated short prefill, 512/1K/4K | **654.249 / 579.699 / 468.608 tok/s** | Retained selector-unset production headline |
+| One-pass capacity sweep, 512/1K/4K/32K/64K/128K | **614.031 / 666.901 / 609.879 / 365.481 / 247.408 / 149.308 tok/s** | Clean anti-overtuning closure; exact positions and lifecycle |
+| Simple p512/d128 eager c=1 decode | **11.471 tok/s** | Median of three; exactly 127 timed `forward_token` calls |
+| Prefill paired with the decode snapshot | **654.859 tok/s** | Median of three; **+0.093%** versus the canonical pp512 headline |
+| Absolute quality | **0.049542582 max KL; 316/320 top-1** | Complete ten-prompt all-exact gate passes |
+| Next short-prefill target | **700 tok/s / 731.429 ms** | Current canonical wall **782.577 ms**; **51.148 ms** remains |
+
+All three p512/d128 runs produce token **2930** first, token **74107** last,
+position **638**, and the same complete 128-token hash. Tracked allocations
+return to zero. This is an eager-decode snapshot, not a decode optimization
+claim. The current eager global-attention ABI admits cache capacity only
+through 4,096, so the 1K–128K publication remains prefill-only; no
+long-context decode number is inferred.
+
+Evidence:
+[`p512/d128 snapshot`](../benchmarks/results/2026-07-28-gfx1151-laguna-p512-d128-eager-snapshot.json) ·
+[`short production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json) ·
+[`final six-shape sweep`](../benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
+
 ## 2026-07-27 pause point: 654 tok/s production and six-shape closure
 
 This is a valid pause point, not the end of the campaign. Clean selector-unset
@@ -4494,6 +4523,7 @@ hipEngine's stricter correctness contract.
 
 Primary Laguna evidence:
 
+- `benchmarks/results/2026-07-28-gfx1151-laguna-p512-d128-eager-snapshot.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-llamacpp-vulkan-long-context-baseline.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-prefill-six-shape-sweep.json`
 - `benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-output-gate-production.json`
