@@ -51,6 +51,29 @@ _SELECTED_DOWN_MMQ64X32_D4X3_F32_VARIANT = (
     "prefill_compact32_bf16_bf16_out"
 )
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+_IQ3_WAVE10_FUSED_VARIANT = (
+    "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
+)
+_IQ3_SELECTED_DOWN_VARIANTS = MappingProxyType(
+    {
+        1: "selected_gemv_decode_bf16_bf16_out",
+        4: "selected_gemv_decode_tile4_bf16_bf16_out",
+    }
+)
+_IQ3_C1_DOWN_VARIANTS = MappingProxyType(
+    {
+        "serial_weighted": None,
+        "wave4_reduce": "selected_gemv_decode_k1024_wave4_bf16_bf16_out",
+        "wave10_fused": None,
+    }
+)
+_IQ3_C1_WEIGHTED_DOWN_VARIANTS = MappingProxyType(
+    {
+        "serial_weighted": _SELECTED_WEIGHTED_DOWN_VARIANT,
+        "wave4_reduce": _SELECTED_WEIGHTED_DOWN_VARIANT,
+        "wave10_fused": _IQ3_WAVE10_FUSED_VARIANT,
+    }
+)
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
@@ -203,6 +226,36 @@ def resolve_laguna_router_logits_mode(
     return parsed
 
 
+def resolve_laguna_iq3_c1_down_schedule(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve the exact c=1 IQ3 producer/reducer schedule or its fallback."""
+
+    selected = (
+        "wave10_fused"
+        if requested is None
+        and bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_IQ3_WAVE10_FUSED",
+                False,
+            )
+        )
+        else backend_package_capability(
+            backend,
+            "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
+            "serial_weighted",
+        )
+        if requested is None
+        else str(requested)
+    )
+    parsed = str(selected)
+    if parsed not in _IQ3_C1_DOWN_VARIANTS:
+        raise ValueError("unsupported Laguna IQ3 c=1 down schedule")
+    return parsed
+
+
 def resolve_laguna_selected_down_mode(
     backend: str,
     requested: str | None = None,
@@ -282,6 +335,7 @@ class LagunaMoEKernelPlan:
     """Resolved registry plan and exact eager Laguna MoE dimensions."""
 
     backend: str
+    iq3_c1_down_schedule: str
     hidden_size: int
     expert_count: int
     top_k: int
@@ -308,10 +362,14 @@ class LagunaMoEKernelPlan:
     fused_selected_silu_pack_key: KernelKey
     selected_gate_up_keys: Mapping[str, KernelKey]
     selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
+    c1_selected_gate_up_keys: Mapping[str, KernelKey]
+    c1_selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
     selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
+    c1_selected_down_keys: Mapping[str, KernelKey]
+    c1_selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_weighted_down_keys: Mapping[str, KernelKey]
     selected_weighted_down_routes: Mapping[str, LagunaMoESelectedRoute]
     routed_sum_key: KernelKey
@@ -381,9 +439,11 @@ class LagunaMoEKernelPlan:
             self.selected_down_prefill_q4_key,
             self.down_activation_quant_key,
             self.fused_selected_silu_pack_key,
+            *tuple(self.c1_selected_gate_up_keys.values()),
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
+            *tuple(self.c1_selected_down_keys.values()),
             *tuple(self.selected_weighted_down_keys.values()),
             self.routed_sum_key,
             self.routed_sum_rows_key,
@@ -496,9 +556,22 @@ def resolve_laguna_moe_plan(
     q6_skip_padded_activation: bool | None = None,
     q6_qmicro_permute: bool | None = None,
     q6_qmicro_planar: bool | None = None,
+    iq3_selected_down_tile: int = 1,
+    iq3_c1_down_schedule: str | None = None,
+    use_iq2_grid64: bool = False,
 ) -> LagunaMoEKernelPlan:
     """Resolve Laguna's eager MoE stages without backend/quant branches."""
 
+    try:
+        iq3_selected_down_variant = _IQ3_SELECTED_DOWN_VARIANTS[
+            int(iq3_selected_down_tile)
+        ]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("unsupported Laguna IQ3 selected-down output tile") from exc
+    iq3_c1_schedule = resolve_laguna_iq3_c1_down_schedule(
+        backend,
+        iq3_c1_down_schedule,
+    )
     if config.expert_gating_func != "sigmoid":
         raise ValueError("Laguna MoE plan requires sigmoid expert gating")
     if not config.expert_weights_norm:
@@ -519,6 +592,25 @@ def resolve_laguna_moe_plan(
         raise ValueError("Laguna shared FFN size must be divisible by GGUF K block size 256")
 
     load_backend_kernel_package(backend)
+    if iq3_c1_schedule == "wave10_fused":
+        candidate_key = KernelKey(
+            backend,
+            "moe_linear",
+            "gguf_iq3_xxs",
+            _IQ3_WAVE10_FUSED_VARIANT,
+        )
+        if not is_registered(candidate_key):
+            iq3_c1_schedule = str(
+                backend_package_capability(
+                    backend,
+                    "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
+                    "serial_weighted",
+                )
+            )
+            if iq3_c1_schedule not in _IQ3_C1_DOWN_VARIANTS or (
+                iq3_c1_schedule == "wave10_fused"
+            ):
+                iq3_c1_schedule = "serial_weighted"
     selected_q6_qmicro = bool(
         backend_package_capability(backend, "LAGUNA_Q6_QMICRO", False)
         if q6_qmicro is None
@@ -598,6 +690,7 @@ def resolve_laguna_moe_plan(
         raise ValueError(
             "Q6 planar and permute decode are mutually exclusive"
         )
+
     keys = {
         "router_logits": KernelKey(backend, "router_logits", "f32", _ROUTER_LOGITS_VARIANT),
         "router_select": KernelKey(
@@ -759,7 +852,7 @@ def resolve_laguna_moe_plan(
                 backend,
                 "moe_linear",
                 "gguf_iq3_xxs",
-                "selected_gemv_decode_bf16_bf16_out",
+                iq3_selected_down_variant,
             ),
             "gguf_iq4_xs": KernelKey(
                 backend,
@@ -810,6 +903,30 @@ def resolve_laguna_moe_plan(
             for quant, (abi, allocation_name, library_key) in selected_gate_up_route_specs.items()
         }
     )
+    c1_selected_gate_up_keys = MappingProxyType(
+        {
+            "gguf_iq2_xs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq2_xs",
+                "selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out",
+            )
+        }
+        if use_iq2_grid64
+        else {}
+    )
+    c1_selected_gate_up_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="raw_iq_dual_silu",
+                allocation_name="raw",
+                library_key="selected_gate_up_iq",
+            )
+            for quant, key in c1_selected_gate_up_keys.items()
+        }
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -845,13 +962,38 @@ def resolve_laguna_moe_plan(
     selected_downs = MappingProxyType(
         {quant: route.function for quant, route in selected_down_routes.items()}
     )
+    iq3_c1_variant = _IQ3_C1_DOWN_VARIANTS[iq3_c1_schedule]
+    c1_selected_down_keys = MappingProxyType(
+        {}
+        if iq3_c1_variant is None
+        else {
+            "gguf_iq3_xxs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq3_xxs",
+                iq3_c1_variant,
+            )
+        }
+    )
+    c1_selected_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="raw_iq",
+                allocation_name="raw",
+                library_key="selected_down_iq",
+            )
+            for quant, key in c1_selected_down_keys.items()
+        }
+    )
     selected_weighted_down_keys = MappingProxyType(
         {
             "gguf_iq3_xxs": KernelKey(
                 backend,
                 "moe_linear",
                 "gguf_iq3_xxs",
-                _SELECTED_WEIGHTED_DOWN_VARIANT,
+                _IQ3_C1_WEIGHTED_DOWN_VARIANTS[iq3_c1_schedule],
             )
         }
     )
@@ -869,6 +1011,7 @@ def resolve_laguna_moe_plan(
     )
     return LagunaMoEKernelPlan(
         backend=backend,
+        iq3_c1_down_schedule=iq3_c1_schedule,
         hidden_size=config.hidden_size,
         expert_count=config.expert_count,
         top_k=config.expert_used_count,
@@ -897,11 +1040,15 @@ def resolve_laguna_moe_plan(
         fused_selected_silu_pack_key=keys["fused_selected_silu_pack"],
         selected_gate_up_keys=selected_gate_up_keys,
         selected_gate_up_routes=selected_gate_up_routes,
+        c1_selected_gate_up_keys=c1_selected_gate_up_keys,
+        c1_selected_gate_up_routes=c1_selected_gate_up_routes,
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
         selected_down_key=keys["selected_down"],
         selected_down_keys=selected_down_keys,
         selected_down_routes=selected_down_routes,
+        c1_selected_down_keys=c1_selected_down_keys,
+        c1_selected_down_routes=c1_selected_down_routes,
         selected_weighted_down_keys=selected_weighted_down_keys,
         selected_weighted_down_routes=selected_weighted_down_routes,
         routed_sum_key=keys["routed_sum"],
@@ -1304,7 +1451,12 @@ def _launch_selected_gate_up(
     gate = layer.weight("ffn_gate_exps")
     up = layer.weight("ffn_up_exps")
     try:
-        route = plan.selected_gate_up_routes[gate.spec.quant_key]
+        retained_route = plan.selected_gate_up_routes[gate.spec.quant_key]
+        route = (
+            plan.c1_selected_gate_up_routes.get(gate.spec.quant_key, retained_route)
+            if x_rows == 1
+            else retained_route
+        )
         launch = _SELECTED_GATE_UP_ABIS[route.abi]
     except KeyError as exc:
         raise ValueError(
@@ -1624,6 +1776,36 @@ def _launch_weighted_selected_down(
         return False
     plan = scratch.plan
     weight = layer.weight("ffn_down_exps")
+    try:
+        producer_route = plan.c1_selected_down_routes[weight.spec.quant_key]
+        producer_launch = _SELECTED_DOWN_ABIS[producer_route.abi]
+    except KeyError:
+        pass
+    else:
+        producer_launch(
+            producer_route,
+            plan,
+            weight.allocation(producer_route.allocation_name).tensor.ptr,
+            scratch,
+            lanes=plan.top_k,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+        plan.routed_sum(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            plan.top_k,
+            plan.hidden_size,
+            **_stage_kwargs(
+                "routed_sum",
+                libraries,
+                stream=stream,
+                runtime=runtime,
+            ),
+        )
+        return True
     try:
         route = plan.selected_weighted_down_routes[weight.spec.quant_key]
         launch = _SELECTED_WEIGHTED_DOWN_ABIS[route.abi]
@@ -1966,7 +2148,7 @@ def _launch_grouped_smallm_down(
         )
 
 
-def run_laguna_moe_c1(
+def run_laguna_moe_c1_components(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
@@ -1974,8 +2156,9 @@ def run_laguna_moe_c1(
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
-) -> DeviceBuffer:
-    """Run the exact staged Laguna routed plus always-on shared expert path."""
+    shared_pair_decode_variant: str | None = None,
+) -> tuple[DeviceBuffer, DeviceBuffer]:
+    """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
     plan = scratch.plan
     if scratch.max_rows < 1:
@@ -2068,6 +2251,7 @@ def run_laguna_moe_c1(
         use_wmma_prefill=False,
         use_gemv_decode=True,
         registered_decode_only=True,
+        registered_decode_variant=shared_pair_decode_variant,
     )
     if not shared_pair:
         launch_gguf_linear(
@@ -2120,11 +2304,35 @@ def run_laguna_moe_c1(
         use_wmma_prefill=False,
         use_gemv_decode=True,
     )
-    plan.add(
-        scratch.routed_output.ptr,
-        scratch.shared_output.ptr,
+    return scratch.routed_output, scratch.shared_output
+
+
+def run_laguna_moe_c1(
+    hidden_bf16_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+    libraries: Mapping[str, object] | None = None,
+    shared_pair_decode_variant: str | None = None,
+) -> DeviceBuffer:
+    """Run the exact staged Laguna routed plus always-on shared expert path."""
+
+    routed, shared = run_laguna_moe_c1_components(
+        hidden_bf16_ptr,
+        layer,
+        scratch,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        shared_pair_decode_variant=shared_pair_decode_variant,
+    )
+    scratch.plan.add(
+        routed.ptr,
+        shared.ptr,
         scratch.output.ptr,
-        h,
+        scratch.plan.hidden_size,
         **_stage_kwargs("add", libraries, stream=stream, runtime=runtime),
     )
     return scratch.output
@@ -2664,6 +2872,7 @@ __all__ = [
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",
     "laguna_moe_scratch_nbytes",
+    "resolve_laguna_iq3_c1_down_schedule",
     "resolve_laguna_moe_plan",
     "resolve_laguna_group_compact_mode",
     "resolve_laguna_router_logits_mode",
@@ -2671,6 +2880,7 @@ __all__ = [
     "resolve_laguna_dense_q4_prefill_mode",
     "resolve_laguna_selected_gate_up_mode",
     "run_laguna_moe_c1",
+    "run_laguna_moe_c1_components",
     "run_laguna_moe_rows",
     "validate_laguna_moe_layer",
 ]

@@ -1,0 +1,253 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-mapped-host-argmax-design.json",
+    "design_artifact_sha256": "96a05f4dbc3829dc374e5c2f65b78d2e91b6d69886e29fef3f7006ad5af41673",
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "runtime_correctness_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-mapped-host-argmax-runtime-correctness.json",
+    "runtime_correctness_artifact_sha256": "0afa28a82b9e37332cc6febb5b382015d85b9ad9359032fd7a9a086a998a847a"
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "action": "reject and remove mapped-host argmax runtime owner",
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "categories_run": false,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank a materially independent exact residual surface; do not retry unchanged mapped-host argmax ownership.",
+    "retry_allowed_without_materially_new_premise": false,
+    "runtime_integration_removed": true,
+    "runtime_promoted": false
+  },
+  "frozen_gate": {
+    "acceptance": {
+      "categories_allowed_only_after_all_eight_clean_orders_pass": true,
+      "cycle_span_regression_max_pct": 0.5,
+      "each_context_and_order_model_kernel_sum": "candidate <= control",
+      "mechanical": "exact IDs/finiteness, -2 device allocations/-12 bytes/+4096 pinned host bytes, 3-H2D/0-D2H candidate direction, corresponding 678-kernel multisets, selectors/resources/mapped and device lifecycle/no compiler",
+      "profiled_child_throughput_regression_min_pct": -0.5,
+      "stop_on_first_failed_context": true,
+      "third_order_rerun_or_pooled_waiver_allowed": false
+    },
+    "amendment_scope": "remove only the redundant fixed post-warmup signature assertion; retain exact corresponding-token control/candidate 678-kernel signature equality",
+    "analyzer_amendment": {
+      "path": "/tmp/laguna-mapped-argmax-clean-analyzer-amendment.json",
+      "sha256": "30ddebc09c2aaf5228cfb08729aadc8dc805991ccb61fc7cd4f95cea90c0ea1c"
+    },
+    "contract": {
+      "path": "/tmp/laguna-mapped-argmax-clean-frozen-contract.json",
+      "sha256": "51f9b950afd6d65328c1961f0122e0a57b18c47c0d93b07f63c379543427fef4"
+    },
+    "profile_rerun_allowed": false,
+    "thresholds_orders_measurements_unchanged": true,
+    "topology": {
+      "candidate": "681 dispatches = 3 H2D + 0 D2H + corresponding 678 model kernels",
+      "control": "683 dispatches = 3 H2D + 2 D2H + 678 model kernels",
+      "ownership_delta": {
+        "device_allocations": -2,
+        "device_resident_nbytes": -12,
+        "pinned_host_nbytes": 4096
+      }
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 require-cached decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "gpu0_vram_percent_after": 0,
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_mapped_host_argmax_runtime_rejection",
+  "measured_revision": "90b0d5cfb70e16cdc382ba79ce9d07d693f6ccac",
+  "model": {
+    "context_length": 4096,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47,
+    "workload": "resident c=1 greedy target AR; code_merge_intervals; 16 decode transitions; two warmup steps excluded"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "00b66bb984205a56ea49bee4556f1a09c253505f5a9db615eadff763579489df",
+    "design_commit": "37e2057f7",
+    "runtime_commit": "90b0d5cfb70e16cdc382ba79ce9d07d693f6ccac",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "713dbd9215c7371b45e3f4e0bd1317e952bb8380d4c2da72c545087f14bf8759"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+      },
+      {
+        "path": "tests/test_laguna_argmax_pair_readback_runtime.py",
+        "sha256": "9857e9e5ccc371bead1b99e4ba853b58ca01ece782090f90849c6f9667cec8bf"
+      },
+      {
+        "path": "tests/test_laguna_mapped_argmax_output_runtime.py",
+        "sha256": "eee095997a99de666137d34476d430f9dd0fcc0efaf53ed04ae6d854b455c224"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "2dc6396e4001f06d2659182218c502913cbd1bea05b7008e3080171660602c41"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "c3ac6011a29596ba3a67272def3a19cc2d4de3ca05440c749259c13b6269ac55"
+      }
+    ]
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "reason": "runtime rejected before long contexts/categories; retained default and canonical measurement are unchanged"
+  },
+  "runtime_removal": {
+    "production_matches_restore_source": true,
+    "rejection_green": {
+      "result": "3 passed",
+      "sha256": "cf426ab35f3b06fccef8290fde5325d90af130a79da1d1752031518df77c4236"
+    },
+    "rejection_red": {
+      "result": "3 failed only while mapped capability/owner, CLI, and common parser remained",
+      "sha256": "4b5ee5e0c4a75e7dbabeb2864bf10407833297399b452db67dd9a0bf915d1cb6"
+    },
+    "removed": [
+      "hip_gfx1100.LAGUNA_MAPPED_ARGMAX_OUTPUT capability/export and resolver",
+      "page-backed mapped owner and non-owning +0/+8 device views",
+      "common mapped result parser and both scalar runtime routes",
+      "session option and benchmark CLI/telemetry",
+      "temporary docs/REFACTOR.md screen row"
+    ],
+    "restore_source_commit": "37e2057f7",
+    "retained": [
+      "separate int64 ID and FP32 value device owners/reads",
+      "general HipRuntime host-register/get-device-pointer/unregister ABI",
+      "all design/full-state/trace/clean rejection evidence"
+    ]
+  },
+  "schema": 1,
+  "short_clean_gate": {
+    "checks": {
+      "all_683_681_copy_direction_model_signature_resources_compiler_pass": true,
+      "all_allocation_mapping_direction_deltas_exact": true,
+      "all_ids_finite_lifecycle_exact": true,
+      "every_order_child_inside_0_5pct": false,
+      "every_order_cycle_span_inside_0_5pct": false,
+      "every_order_model_kernel_sum_non_regressive": false,
+      "mechanical_gate_pass": false
+    },
+    "interpretation": "Order A improves complete model-kernel sum 0.201441% but fails cycle span at +1.301287% and child throughput at -0.523118%. Order B improves child throughput 1.262709% but fails model-kernel sum at +0.021047% and cycle span at +0.789559%. Pooled values cannot waive either immutable per-order failure.",
+    "official_analyzer_exit_code": 3,
+    "orders": [
+      {
+        "candidate": {
+          "bench_sha256": "e08780cb99f95dff9f7d5d78ba0dcd058cbd985ad282f604f0a38319561acdb0",
+          "mapped_host_nbytes": 4096,
+          "profiled_dispatches_per_token": 681,
+          "resident_nbytes": 40069953576,
+          "runtime_d2h_copies_per_token": 0,
+          "runtime_h2d_copies_per_token": 3,
+          "scratch_allocation_count": 22,
+          "trace_sha256": "1e94dafda0b4cb3c5b0b208250efadaf14b5afae4f18c3dc6cb0e0ee684d6a4b"
+        },
+        "control": {
+          "bench_sha256": "9e8eadf948c7a23907d11ff844691215549ae6f36fd07dba796dcb4e98c78c56",
+          "profiled_dispatches_per_token": 683,
+          "resident_nbytes": 40069953588,
+          "runtime_d2h_copies_per_token": 2,
+          "runtime_h2d_copies_per_token": 3,
+          "scratch_allocation_count": 24,
+          "trace_sha256": "c1da7c5d7a23a9b3249263c625ee3bf7606341269b5692029ba5ef5492186f84"
+        },
+        "delta": {
+          "cycle_span_pct": 1.3012869564229979,
+          "model_kernel_sum_pct": -0.20144050037929073,
+          "model_segment_span_pct": 0.8672132885847228,
+          "profiled_child_step_median_saving_us": -89.07588198781013,
+          "profiled_child_tok_s_pct": -0.5231177573858159
+        },
+        "order": "a",
+        "passed": false
+      },
+      {
+        "candidate": {
+          "bench_sha256": "3726d4035e5c3c94077f7580ef9d335fc64152cad317c83f96a60f2b41354041",
+          "mapped_host_nbytes": 4096,
+          "profiled_dispatches_per_token": 681,
+          "resident_nbytes": 40069953576,
+          "runtime_d2h_copies_per_token": 0,
+          "runtime_h2d_copies_per_token": 3,
+          "scratch_allocation_count": 22,
+          "trace_sha256": "33203bac969f15bf850f9fe6cdaee6719f11776e74f0f6ee5036f51feb88f5d5"
+        },
+        "control": {
+          "bench_sha256": "1d914c2d53a279fd0d4245bfe95c2c1b508fed355e614deef73b8e957d63cc76",
+          "profiled_dispatches_per_token": 683,
+          "resident_nbytes": 40069953588,
+          "runtime_d2h_copies_per_token": 2,
+          "runtime_h2d_copies_per_token": 3,
+          "scratch_allocation_count": 24,
+          "trace_sha256": "a90679d435e328e0fbd5d71a674c0a23ae5bc559d3c5e2fe7563957545156f1a"
+        },
+        "delta": {
+          "cycle_span_pct": 0.7895588979412338,
+          "model_kernel_sum_pct": 0.02104696849005716,
+          "model_segment_span_pct": 0.010546471222583342,
+          "profiled_child_step_median_saving_us": 212.5489991158247,
+          "profiled_child_tok_s_pct": 1.2627087515085789
+        },
+        "order": "b",
+        "passed": false
+      }
+    ],
+    "passed": false,
+    "pooled_delta_pct": {
+      "cycle_span_median_ms": 0.6434085692956115,
+      "model_kernel_sum_ms": -0.0903605444567579,
+      "model_segment_span_median_ms": 0.27190918250017404,
+      "profiled_child_tok_s": 0.6364944563498343
+    },
+    "summary": {
+      "path": "/tmp/laguna-q2-xl-mapped-argmax-clean-profile-summary.json",
+      "sha256": "a12d164755f2a27dd317f978f8070f2297c36b4cb6c31b6003a5d54d0e758cf8"
+    }
+  },
+  "status": "rejected_runtime_removed",
+  "stop_proof": {
+    "absent": {
+      "category_processes": 0,
+      "context_1024_processes": 0,
+      "context_3968_processes": 0,
+      "context_512_processes": 0,
+      "profile_reruns": 0,
+      "third_order_processes": 0
+    },
+    "manifest": {
+      "path": "/tmp/laguna-mapped-argmax-clean-stop-manifest.json",
+      "sha256": "8f5faf74444f5662e0a5fc682a8999973a527972008f7dad2b38ea59f72a9a7a"
+    },
+    "short_processes": 4
+  },
+  "validation": {
+    "adjacent_result": "109 passed",
+    "adjacent_sha256": "bca6868ef53be4e81a5309bb3d71793f07ef70f5324fcb780a045b612ac2e546",
+    "cpu_reference_registry_build_result": "25 passed",
+    "cpu_reference_registry_build_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "lineage_note": "Only already-catalogued unrelated external drift; runtime removal changes no kernel body.",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

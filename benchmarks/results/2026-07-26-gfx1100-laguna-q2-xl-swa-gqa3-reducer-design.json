@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q2_xl_swa_gqa3_reducer_design",
+  "status": "selected_design",
+  "pass": true,
+  "performance_claim": false,
+  "baseline": {
+    "revision": "21d39b1f6",
+    "h16_decode_tok_s": 61.55420990315515,
+    "h32_decode_tok_s": 60.9422647734879,
+    "ms_per_token": 16.40897337368132,
+    "dispatches_per_token": 723,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "additional_speedup_required_pct": 5.703717226951555
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "swa_layers": 36,
+    "query_heads_per_swa_layer": 72,
+    "kv_heads_per_layer": 8,
+    "query_heads_per_kv_head": 9,
+    "head_dim": 128,
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "retained_trace": {
+    "source_revision": "756a1dcd3",
+    "note": "The source revision is the committed explicit shared-Q5 candidate later promoted unchanged; its candidate traces match the retained 723-dispatch selectors and resources.",
+    "stable_processes_per_context": 2,
+    "contexts": {
+      "short": {
+        "kernel_sum_ms_per_token": 13.154691535714285,
+        "mixed_projection_ms_per_token": 2.1275369642857145,
+        "iq2_selected_ms_per_token": 1.8801647857142858,
+        "q5_output_ms_per_token": 1.5568034642857143,
+        "swa_score_ms_per_token": 0.23455875,
+        "swa_reduce_ms_per_token": 1.48094625,
+        "swa_total_ms_per_token": 1.715505,
+        "iq3_down_ms_per_token": 1.46606125,
+        "trace_sha256": [
+          "43ab7b45e2586c839c000ccec241fdfda808f1c3913d4d8b0e520c354f0e33bf",
+          "9f0e1299c1b02f9715d49c466270b19d6888680e5b0d781126a9cd3804bf11ab"
+        ]
+      },
+      "512": {
+        "kernel_sum_ms_per_token": 22.624229333333332,
+        "swa_score_ms_per_token": 0.7913460833333333,
+        "swa_reduce_ms_per_token": 8.7117735,
+        "swa_total_ms_per_token": 9.503119583333334,
+        "global_total_ms_per_token": 2.3956604166666664,
+        "trace_sha256": [
+          "df4c7208ebb5905db1c22819ffb6fd339f47f5d4b758d46be53218737924b7c4",
+          "f915fbbb40dc68f2ff0d63fb042e973d170e0dc975ae74cfb1f0fbe39f8833df"
+        ]
+      },
+      "1024": {
+        "kernel_sum_ms_per_token": 24.904889083333334,
+        "swa_score_ms_per_token": 0.7953320833333334,
+        "swa_reduce_ms_per_token": 8.71473525,
+        "swa_total_ms_per_token": 9.510067333333334,
+        "global_total_ms_per_token": 4.6537435,
+        "trace_sha256": [
+          "8e817ebf6e79c32ec842464ed17cd7738e6d918d61fb828b70ceab7223f15885",
+          "6ae51dba8619d9c0905329e48af665af623cd2aafe2f330c6b6fa405166cf8b0"
+        ]
+      },
+      "3968": {
+        "kernel_sum_ms_per_token": 38.0457185,
+        "swa_score_ms_per_token": 0.8212776666666667,
+        "swa_reduce_ms_per_token": 8.723679,
+        "swa_total_ms_per_token": 9.544956666666668,
+        "global_total_ms_per_token": 17.797340916666666,
+        "trace_sha256": [
+          "604915dbf2e6ab480e182e7e58c1c70af18dd29d9f2f275596a36d2743b23bc0",
+          "9d1f8ddb5c4d7b8fef02249b4d3b493ce5e49b960dec46d5f90cbdcc9c23c8ec"
+        ]
+      }
+    },
+    "current_swa_reducer_resources": {
+      "calls_per_token": 36,
+      "workgroup_threads": 128,
+      "grid_threads_per_call": 9216,
+      "workgroups_per_call": 72,
+      "vgpr": 24,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "selection": {
+    "candidate": "exact SWA GQA3 wave-local gated reducer",
+    "scope": "Only the split SWA value reducer at c=1; existing normal/tile16 score producers, score and physical scratch, raw BF16 KVLiveSpans, prefill, global attention, and all fallbacks remain unchanged.",
+    "ownership": "One local128 workgroup owns three adjacent query heads inside one nine-head GQA group. Each lane owns the same dimension for all three heads, replays each head's current max, denominator, and slot-order FMA chain independently, and loads/converts the shared KV-head BF16 value once per visible slot for all three accumulators.",
+    "grid_change_per_call": "72 query-head workgroups -> 24 aligned three-query-head workgroups",
+    "dispatches_per_token_delta": 0,
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "difference_from_rejected_screens": [
+      "Not Q5 output workgroup packing or activation-LDS tiling",
+      "Not either heterogeneous IQ2/shared-Q5 launch",
+      "Not online-softmax reassociation: every query head keeps the retained exact scalar max/denominator and value-FMA order",
+      "Not launch-count-only graph, packet, or AQL work"
+    ]
+  },
+  "traffic_model": {
+    "control_value_payload_bytes_per_live_slot_per_swa_layer": 18432,
+    "candidate_value_payload_bytes_per_live_slot_per_swa_layer": 6144,
+    "value_payload_reduction_pct": 66.66666666666667,
+    "control_value_payload_bytes_per_live_slot_all_36_swa_layers": 663552,
+    "candidate_value_payload_bytes_per_live_slot_all_36_swa_layers": 221184,
+    "unchanged_score_and_physical_bytes_per_live_slot_all_36_swa_layers": 20736,
+    "interpretation": "This is a source-byte traffic model, not a hardware-counter claim. It excludes cache-line effects and the extra registers/instructions for three independent softmax states; actual timing decides."
+  },
+  "source_audit": {
+    "current_kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip::laguna_swa_attention_split_exact_gated_wave_local_reduce_kernel",
+    "current_contract": "one local128 block per query head; each wave leader independently replays max/denominator while every dimension lane accumulates BF16 values in logical-slot order",
+    "prior_related_negative": "The gfx1151 physical-C8 grouped paged-attention screen had an exact direct leaf gain but regressed blocking/delayed serving; therefore this gfx1100 c=1 candidate requires complete context/category process gates even if its leaf wins.",
+    "prior_related_artifact": "benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-qhead-groups-c8-rejected.json"
+  },
+  "frozen_gates": {
+    "red": "Add a separately registered gfx1100 c=1 SWA GQA3 reducer fixture before adding runtime selection.",
+    "primitive_correctness": [
+      "F32 context and BF16 gated output byte identity versus the retained wave-local reducer",
+      "normal and tile16 score scratch",
+      "live 65/70/127/128/256/257/511/512 with reversed physical slots, wrap, stale positions, sparse eviction, tied/extreme scores, and denominator underflow",
+      "complete KVLiveSpans semantics remain owned by the unchanged score producer and scratch"
+    ],
+    "codegen": [
+      "local128 wave32",
+      "zero private segment and zero VGPR/SGPR spills",
+      "zero LDS unless a separately justified exact load-sharing variant is screened",
+      "record candidate VGPR/SGPR before actual-weight timing"
+    ],
+    "actual_weight_precondition": {
+      "layers": [1, 46],
+      "live_counts": [70, 128, 257, 512],
+      "warmups": 50,
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "requirement": "candidate HIP-event and synchronized-wall medians improve at every first/last and live-count row; remove on any failure"
+    },
+    "after_actual_weight_pass_only": [
+      "explicit/default-off runtime selector with retained reducer fallback",
+      "16-transition full logits, all hidden/routed boundaries, active KV and every span field, reset/re-prefill, and lifecycle identity",
+      "cached rocprofv3 symbol/grid/resource proof",
+      "two process orders at short/512/1K/near-4K with exact IDs and kernel/span/child guards",
+      "both complete 18-prompt category process orders before promotion"
+    ]
+  },
+  "decision": {
+    "action": "implement RED-first exact SWA GQA3 reducer",
+    "reason": "It targets a measured 1.481 ms/token short and 8.712-8.724 ms/token long reducer with a new exact GQA reuse mechanism, while the larger quant families' current ownership/packing premises are retained or mechanically closed.",
+    "completion_claim": false
+  }
+}

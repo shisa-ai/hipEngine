@@ -1,0 +1,320 @@
+{
+  "admission_plan": {
+    "clean_and_category_adjudication": [
+      "Freeze two counterbalanced process orders at short/512/1024/3968. Every order must improve inclusive IQ3 family and complete kernel-sum time, keep median span <=+0.5%, keep profiled-child throughput >=-0.5%, and pass exact 45/2/678 topology/resources/ID/finite/lifecycle checks. Stop on first failure; no third order or pooled waiver.",
+      "Only after all contexts pass, run both complete 18-prompt category/heldout orders. Require every category decode row positive and aggregate decode positive, E2E/prefill/TTFT within frozen guards, and exact IDs/state/lifecycle.",
+      "Promote as the gfx1100 c=1 default only if every gate passes; otherwise remove runtime ownership while retaining an exact separately registered diagnostic primitive."
+    ],
+    "codegen_and_trace": {
+      "compiler": "same AMD Clang 22 gfx1100 decode profile",
+      "required": {
+        "allocated_vgpr_max": 88,
+        "barriers": 1,
+        "ds_bpermute": 20,
+        "group_segment_fixed_size_max": 20,
+        "logical_sgpr_max": 26,
+        "logical_vgpr_max": 83,
+        "private_segment_fixed_size": 0,
+        "rocprof_lds_allocation_max": 512,
+        "scratch_bytes": 0,
+        "sgpr_spills": 0,
+        "static_instructions_max": 495,
+        "text_bytes_max": 2860,
+        "vgpr_spills": 0,
+        "wavefront_size": 32,
+        "workgroup_x": 320
+      },
+      "trace": "After non-profiled exact-key prebuild, cache-only rocprofv3 must name the distinct candidate at grid/local 983040/320, allocated VGPR<=88/LDS<=512/scratch0, plausible duration, finite exact output, and no compiler under profiling."
+    },
+    "commit_boundaries": [
+      "Commit this design before implementation.",
+      "Commit primitive correctness before runtime ownership.",
+      "Commit runtime correctness before clean measurement.",
+      "Commit retained default or mechanical rejection immediately after final adjudication."
+    ],
+    "correctness": [
+      "Synthetic K1024 cases cover all 128 sign selectors, all 256 IQ3 grid entries, distinct/repeated/invalid experts, signed-zero/subnormal/extreme finite BF16 activations, and signed/zero/subnormal F32 routing weights; final BF16 output must match retained wave4 plus weighted_sum byte-for-byte.",
+      "An independent CPU IQ3_XXS dequantization and slot-order weighted oracle must pass KL<=0.05 and top-1>=90%, while candidate versus registered chain remains byte-exact.",
+      "All 45 production IQ3 layer outputs must be BF16-bit exact. Repeat the frozen first/last 50-warmup/15-counterbalanced/300-launch screen once and require event and wall wins at both endpoints."
+    ],
+    "primitive_red_green": [
+      "Add a candidate-specific HIP kernel/C export, strict Python wrapper/package export, and one exact four-axis key; do not mutate retained wave4, serial_weighted, or weighted_sum primitives.",
+      "RED freezes five non-null pointers, x_rows==top_k==rows==10 for c=1 route rows, num_experts>0, K==1024, N>0, and threads==320 before library load.",
+      "Register only on hip_gfx1100 and prove gfx1151/cuda/cpu absence. The registered wave4 producer plus weighted_sum chain is the mandatory unfused fallback.",
+      "Primitive admission adds no backend capability, session/runner/CLI selector, allocation, workspace, sidecar, weight copy, or default change."
+    ],
+    "runtime_owner_after_primitive_commit": [
+      "Only after primitive admission, add a separate false gfx1100 capability and explicit session/CLI opt-in at the existing c=1 IQ3 schedule seam. Candidate selection is shape/key/backend exact; default, rows/prefill, key miss, explicit disable, gfx1151, and unsupported shapes retain wave4 plus weighted_sum.",
+      "Shared-weight mixed_ja_en_review must compare bulk prefill, one captured all-layer decode, 15 further transitions, reset, and eight-token re-prefill. Require full logits/IDs, all 48 hidden and 47 routed boundaries, active K/V and all KVLiveSpans fields, positions, ownership, lifecycle, KL=0, and top-1 100%.",
+      "A cache-only two-transition full-model trace must record exactly 90 candidate calls (45/token), zero candidate prefill calls, zero IQ3 wave4 producers, only four unchanged non-IQ3 weighted reducers (2/token), and exactly 678 model kernels/token with expected resources/IDs/finite/lifecycle/no-compiler."
+    ]
+  },
+  "baseline": {
+    "additional_h32_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "canonical_wall_ms_per_token": 16.131230401844086,
+    "commit": "b1c84950d004dfd60b23bdbd124b24bdcb3a14ab",
+    "iq3_rerank": {
+      "calls_per_token": {
+        "wave4_producer": 45,
+        "weighted_reducer_iq3_share": 45
+      },
+      "note": "The two immutable Q5-control traces are production-equivalent to b1c84950d because the rejected owner was mechanically removed and the primitive does not alter retained selection.",
+      "orders": {
+        "a": {
+          "all_weighted_reducer_ms_per_token": 0.1325861875,
+          "complete_tokens": 16,
+          "inclusive_iq3_ms_per_token": 1.5830577220744682,
+          "iq3_share_weighted_reducer_ms_per_token": 0.1269442220744681,
+          "producer_calls": 720,
+          "producer_ms_per_token": 1.4561135,
+          "trace_path": "/tmp/laguna-q2-xl-q5-swar-pair-clean-02ba85202-short-control-a/trace_kernel_trace.csv",
+          "trace_sha256": "6a6383cddf84695af1ccec0ac1e3ec7bc333f97daa149fde539597093f60a306",
+          "weighted_reducer_calls": 752
+        },
+        "b": {
+          "all_weighted_reducer_ms_per_token": 0.1342863125,
+          "complete_tokens": 16,
+          "inclusive_iq3_ms_per_token": 1.5936770638297872,
+          "iq3_share_weighted_reducer_ms_per_token": 0.12857200132978724,
+          "producer_calls": 720,
+          "producer_ms_per_token": 1.4651050625,
+          "trace_path": "/tmp/laguna-q2-xl-q5-swar-pair-clean-02ba85202-short-control-b/trace_kernel_trace.csv",
+          "trace_sha256": "0e0033ceff23e0d575c917c3cae88cd35575f15eae780a42b7b34a9ce42fffbd",
+          "weighted_reducer_calls": 752
+        }
+      },
+      "pooled_inclusive_iq3_ms_per_token": 1.5883673929521276,
+      "pooled_iq3_reducer_share_ms_per_token": 0.12775811170212767,
+      "pooled_producer_ms_per_token": 1.46060928125
+    },
+    "latest_short_kernel_sum_ms_per_token": 12.795907178571431,
+    "latest_short_source": "/tmp/laguna-q2-xl-q5-swar-pair-clean-profile-summary.json",
+    "latest_short_source_sha256": "2f40e4c5f83b8b80409dbd47664cea4c009afada1077d42144e9e34214f329c8",
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 723
+  },
+  "builder_sha256": "f47e687f44b577ed1ac693b04dc809c9c4ec0673f1b275a7a785fb036576b018",
+  "cache_only_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "candidate_calls": 2,
+    "compiler_allowed_under_profiler": false,
+    "finite": true,
+    "harness_path": "/tmp/trace_laguna_iq3_wave10_fused_candidate.py",
+    "harness_sha256": "1fcd032f28af2ec31a110892b4c96dbb70cdb6e1a25c75b95e9c8056b02cae74",
+    "kernel_rows": [
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 88,
+        "duration_ns": 289041,
+        "grid_x": 983040,
+        "kernel_name": "(anonymous namespace)::gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 320
+      },
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 88,
+        "duration_ns": 26400,
+        "grid_x": 983040,
+        "kernel_name": "(anonymous namespace)::gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 320
+      }
+    ],
+    "kernel_trace_path": "/tmp/laguna-iq3-wave10-fused-trace/trace_kernel_trace.csv",
+    "kernel_trace_sha256": "db0e37888dfc65990de4f1ddb6bd6548256abda5d4af3eb40837a41c4136d3ba",
+    "no_compiler_under_profiler": true,
+    "prebuilt_candidate_required": true,
+    "preflight_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python -u /tmp/trace_laguna_iq3_wave10_fused_candidate.py",
+    "preflight_stdout_sha256": "6caf8f67ce7f172e8f3e14f15045a81f1031146015b4a940b20b107381f1291a",
+    "profile_command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq3-wave10-fused-trace --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_iq3_wave10_fused_candidate.py",
+    "profile_stderr_sha256": "b8708f93a0634667f1a22637482db819a99c5d7358f4392e7beb671a76158823",
+    "profile_stdout_sha256": "6caf8f67ce7f172e8f3e14f15045a81f1031146015b4a940b20b107381f1291a",
+    "resource_interpretation": "rocprofv3 reports allocation granularity VGPR88/SGPR128/LDS512/scratch0. ELF metadata reports logical VGPR83, SGPR26, and fixed group segment 20 B. The first 289.041-us call is cold and not timing evidence; the second is 26.400 us."
+  },
+  "closed_before_selection": [
+    "Do not retry the load-free IQ3 sign-bit sibling: its primitive/inclusive wins failed frozen clean span/child guards and runtime selection was removed.",
+    "Do not retry IQ3 Q8_1/dot4: activation quantization regressed first/last inclusive time 13.63-16.16%.",
+    "Do not retry Vulkan-style raw-IQ3 row4 F32 association: serializing routes regressed first/last inclusive time 93.00-146.14%.",
+    "Do not restore the historical serial_weighted local128 composite: retained route-parallel wave4 already beat it and remains the exact fallback chain.",
+    "Do not repeat wave64/local-size/output-tile/codebook/LDS/DPP geometry sweeps or prompt/token-conditioned selection; those premises are closed by LAGUNA-decode.md and committed artifacts.",
+    "Do not bundle the rejected Q5 SWAR, IQ2 fixed-local64, staged add+RMSNorm, mixed-pair-reuse, weighted-hidden, compact-router, or SWA ownership candidates with this independent screen."
+  ],
+  "codegen": {
+    "candidate": {
+      "barriers": 1,
+      "ds_bpermute": 20,
+      "global_stores": 1,
+      "group_segment_fixed_size": 20,
+      "logical_sgpr": 26,
+      "logical_vgpr": 83,
+      "private_segment_fixed_size": 0,
+      "sgpr_spills": 0,
+      "static_instructions": 495,
+      "text_bytes": 2860,
+      "vgpr_spills": 0,
+      "wavefront_size": 32,
+      "workgroup_x": 320
+    },
+    "candidate_hsaco_sha256": "8266cefa20e607faf9d8abc39944805252921efce596955678be61c2fa642aaa",
+    "candidate_objdump_sha256": "f180c96901b246629c15266b9ea7a72ddaf7593d804a9feeadd65fca16349bab",
+    "candidate_readobj_sha256": "8ef452ba164a5e73bff01f2ce7c32749a957c3fc94ec787bc3ba3ffc109f68af",
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "interpretation": "The fused body stays in retained wave4's logical VGPR83 class and writes only the final output globally; its route tuple is fixed LDS. Repository admission may not exceed these source-matched ceilings."
+  },
+  "date": "2026-07-27",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation_status": {
+    "benchmark_changelog_update": false,
+    "benchmark_scoreboard_update": false,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "default": "unchanged retained wave4 producer plus weighted_sum",
+    "repository_primitive": "not implemented",
+    "runtime_owner": "not implemented"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_wave10_fused_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "path": "/tmp/laguna-iq3-wave10-fused-lineage.txt",
+    "result": "Only already-catalogued unrelated Qwen/PARO/smoke parent drift; no new parent drift affects the selected in-tree IQ3 body.",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "in_features": 1024,
+    "iq3_layers": 45,
+    "num_experts": 256,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "selected_experts": 10,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling": {
+    "canonical_h32_tok_s_before": 61.99155148671624,
+    "conservative_ratio": 0.07245298220432939,
+    "inclusive_iq3_ms_per_token_before": 1.5883673929521276,
+    "kernel_sum_ms_per_token_after": 12.680825224115933,
+    "kernel_sum_ms_per_token_before": 12.795907178571431,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "method": "Apply only the smallest first/last actual endpoint improvement across both event and wall timers (7.245298%) to the immutable pooled 45-producer plus 45/47 reducer-share IQ3 family; leave all other kernels and host intervals unchanged.",
+    "model_kernels_per_token_after": 678,
+    "model_kernels_per_token_before": 723,
+    "modeled_h32_delta_pct": 0.7185370117761547,
+    "modeled_h32_tok_s_after": 62.436983728322566,
+    "modeled_saving_ms_per_token": 0.11508195445549756,
+    "note": "The approximately 0.1151-ms/token ceiling and 45-launch contraction are planning evidence only, not a default or full-model throughput claim.",
+    "performance_claim": false,
+    "remaining_gap_pct": 3.1732082192920785
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "selected_design": {
+    "description": "Group the ten retained wave32 (route, output) owners into one local320 workgroup per output column. Each wave computes and BF16-rounds one route exactly as retained wave4; one 20-byte LDS tuple and one barrier expose those ten route values to thread 0, which replays the registered weighted reducer from +0.0 in slot order.",
+    "fallbacks": [
+      "retained selected_gemv_decode_k1024_wave4_bf16_bf16_out followed by registered weighted_sum_out on explicit disable, key miss, shape/backend miss, or rows/prefill",
+      "retained serial_weighted schedule remains the deeper exact rollback",
+      "no gfx1151 alias until independently implemented and measured"
+    ],
+    "name": "exact IQ3 K1024 ten-wave route-parallel fused weighted down",
+    "ownership_invariants": [
+      "The same 45 IQ3 layers and ten selected route rows are covered; every route/output still has one physical wave32 and all weight/activation addresses are unchanged.",
+      "Each wave retains four K256 accumulators, the same lane*8 activation groups, IQ3 codebook/sign/scale reconstruction, scalar FMA order, five-step shuffle trees, 0..3 partition addition, and BF16 route rounding.",
+      "The final thread starts from +0.0 and applies the same ten F32 routing weights with fmaf in slot order before the same BF16 output store.",
+      "No persistent weight copy, sidecar, workspace, allocation, activation quantization, prompt/token condition, or output-row tiling is introduced.",
+      "One candidate call replaces one retained producer plus one weighted-reducer call on each of 45 IQ3 layers, so the intended complete-model topology is 678 rather than 723 kernels/token; the two non-IQ3 layer reducers remain unchanged."
+    ],
+    "planned_four_axis_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq3_xxs",
+      "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
+    ],
+    "planned_wrapper": "gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out",
+    "scope": "gfx1100 c=1 only, top_k=10, raw IQ3_XXS, K1024/N3072, BF16 activation/output, F32 routing weights; retained wave4 producer plus registered weighted_sum remains fallback",
+    "why_distinct": "P0 route-parallel wave4 kept the producer and reducer as two launches. The rejected historical weighted composite serialized ten routes inside one local128 output owner, while rejected row4 serialized routes to share activations. This design preserves all ten route waves in parallel and changes only their workgroup grouping plus the producer/reducer boundary."
+  },
+  "selection_probe": {
+    "all_bf16_bit_exact": true,
+    "candidate_library_path": "/home/lhl/.cache/hipengine/build/gguf_iq_gemv_iq3_wave10_fused-92bdb4ca5a2edc9e/gguf_iq_gemv_iq3_wave10_fused.so",
+    "candidate_library_sha256": "3eccdd1abe6a40d5f5ef4b97fa52dbfcaf2afe6adb3260119136b38b3694aa86",
+    "candidate_source_path": "/tmp/gguf_iq_gemv_iq3_wave10_fused.hip",
+    "candidate_source_sha256": "7241b85d9ef60932fdefe22871cf418b0e90015f574dd1ae6c59ac7b756e9da3",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq3_wave10_fused_actual.py",
+    "harness_path": "/tmp/bench_laguna_iq3_wave10_fused_actual.py",
+    "harness_sha256": "f82dc027218cb005b2254365bfefe0a0c1e1b14a2a1ccf3b00f570e639a076e7",
+    "pooled_event_delta_pct": -7.792544056720407,
+    "pooled_wall_delta_pct": -7.368809051069802,
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 300,
+      "promotion_precondition": "Final BF16 output is bit-exact and both event and wall medians improve at both endpoints without rerun.",
+      "selected_experts": [
+        193,
+        7,
+        89,
+        221,
+        3,
+        127,
+        44,
+        255,
+        18,
+        166
+      ],
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "warmups": 50,
+      "weights": "first/last actual IQ3 layers 1/45"
+    },
+    "raw_path": "/tmp/laguna-iq3-wave10-fused-actual.json",
+    "raw_sha256": "33d5d7d5e279e5ce8bcbc202ae574174f37a5b21a3e9324a2ba9ad4a628c1a13",
+    "rows": [
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 31.211795806884766,
+        "candidate_wall_us": 31.483792699873447,
+        "control_event_us": 34.04161771138509,
+        "control_wall_us": 34.03359015161792,
+        "event_delta_pct": -8.31283027878521,
+        "kl_max": 0.0,
+        "layer_id": 1,
+        "top1_agreement": 1.0,
+        "wall_delta_pct": -7.492002578585611,
+        "weight_name": "blk.1.ffn_down_exps.weight",
+        "weight_nbytes": 308281344
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 31.369009017944336,
+        "candidate_wall_us": 31.48665651679039,
+        "control_event_us": 33.82795333862305,
+        "control_wall_us": 33.94615681221088,
+        "event_delta_pct": -7.268971598914953,
+        "kl_max": 0.0,
+        "layer_id": 45,
+        "top1_agreement": 1.0,
+        "wall_delta_pct": -7.245298220432939,
+        "weight_name": "blk.45.ffn_down_exps.weight",
+        "weight_nbytes": 308281344
+      }
+    ],
+    "stdout_sha256": "fc270a9116ef0afba20d896e6ac923cb0479346c7263ad88c23677f95a440cd9"
+  },
+  "source_sha256": {
+    "docs/LAGUNA-decode.md_before_design": "93c07569ac3ef1fb3ace83a8852e49903c8c49c4a1e0db16a8f1bfd1f59bf7f7",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "5ab15c22bfc5f3ea492a38576a1d0c4387c77bb570248c6ff5667f6fdebb6c4c"
+  },
+  "status": "candidate_selected"
+}

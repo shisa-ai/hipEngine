@@ -1,0 +1,245 @@
+{
+  "analyzer_amendment": {
+    "amended_analyzer_sha256": "48d4d77d0054e9abc436ac10cbb892553f519809c2b8d750b78271dc71f72d43",
+    "complete_change": "replace two absent profile control-field assertions with equivalent profiled_dispatch_contract and runtime_copy_contract assertions",
+    "original_analyzer_sha256": "72b199d84d0db870698f8bcb6837c8cf12df4c3c46fa93a58fd36c0128fd91b1",
+    "profiler_rerun": false,
+    "raw_short_outputs_pinned_before_amendment": true,
+    "reason": "compact runtime artifact stores control contracts under runtime_implementation rather than profile",
+    "threshold_or_measurement_change": false
+  },
+  "clean_protocol": {
+    "candidate_readback_fence_position": "final",
+    "contexts": [
+      "short"
+    ],
+    "cycle_span_regression_max_pct": 0.5,
+    "model_kernel_signature_sha256": "2f053ea1f558d881a47b374bb9579b5fa0f36930163371253a0936c40529c053",
+    "model_kernel_sum_each_order": "candidate <= control",
+    "model_kernels_per_token": {
+      "candidate": 678,
+      "control": 678
+    },
+    "ownership_delta": {
+      "device_allocations": 0,
+      "device_resident_nbytes": 0,
+      "pinned_host_nbytes": 4096
+    },
+    "process_orders": 2,
+    "profiled_child_throughput_regression_min_pct": -0.5,
+    "profiled_dispatches_per_token": {
+      "candidate": 683,
+      "control": 683
+    },
+    "rerun_third_order_or_guard_waiver_allowed": false,
+    "runtime_copy_calls_per_token": {
+      "candidate": 5,
+      "control": 5
+    },
+    "runtime_copy_directions_per_token": {
+      "candidate": {
+        "d2h": 2,
+        "h2d": 3
+      },
+      "control": {
+        "d2h": 2,
+        "h2d": 3
+      }
+    },
+    "runtime_readback_fences_per_token": {
+      "candidate": 1,
+      "control": 1
+    },
+    "stable_cycle_windows_per_arm": {
+      "short": 13
+    },
+    "stable_model_steps_per_arm": {
+      "short": 14
+    },
+    "stop_on_first_failed_context": true
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "canonical_model_kernels_per_token_unchanged": 678,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "retry_unchanged_premise_allowed": false,
+    "runtime_default_changed": false,
+    "runtime_integration_removed": true,
+    "runtime_rejected": true
+  },
+  "direct_screen": {
+    "candidate_us_per_token": 51.353381,
+    "control_us_per_token": 82.128664,
+    "delta_pct": -37.472037,
+    "modeled_h32_tok_s_not_performance_claim": 63.394,
+    "outcome": "insufficient for retention because complete clean short per-order guards fail",
+    "saving_us_per_token": 30.775283
+  },
+  "evidence": {
+    "analyzer_amendment": {
+      "path": "/tmp/laguna-pinned-async-clean-short-analyzer-amendment.json",
+      "sha256": "caea1af4fed1b24affffe2f05ed0730aad8b1671077a2f299981d3e30c08f94c"
+    },
+    "clean_contract": {
+      "path": "/tmp/laguna-pinned-async-clean-profiles-frozen-contract.json",
+      "sha256": "5ab912cd3824fb0a82cbfb98454afe217a04b601521cf65da0d47c05775bfcfe"
+    },
+    "clean_summary": {
+      "path": "/tmp/laguna-q2-xl-pinned-async-clean-profile-summary.json",
+      "sha256": "b0c043593e12ff76a6a41b114c0967ad6e8c7aa1d0e125b941b87a822d8db5ee"
+    },
+    "design": {
+      "path": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-design.json",
+      "sha256": "60eaf245c9d1ce623b1934d70ce559f1ab607f8a8bb2816fd91205b238e04d9d"
+    },
+    "runtime_correctness": {
+      "path": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-runtime-correctness.json",
+      "sha256": "3822e221d7c66808c0178c2fa9bd07f34021389b06d79f6d4ec51da3069af371"
+    },
+    "stop_proof": {
+      "path": "/tmp/laguna-pinned-async-clean-stop-proof.json",
+      "sha256": "4c0597a7ac936572bf7c6e94095a6d1d199e559b196cd90a4048cdf2dc18f985"
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+    },
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "kind": "hipengine_laguna_q2_xl_pinned_async_argmax_readback_rejected",
+  "measurement_revision": "c6a9e08a7f7603655c3f3a80de3b88ca334b0010",
+  "model": {
+    "context_length": 4096,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "prompt_id": "code_merge_intervals",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "e6007d81ad963fe2fb18cfe33667b0bff1b3686914dbaab3dc61188716ea73eb",
+    "restored_sources": [
+      {
+        "path": "hipengine/core/hip.py",
+        "sha256": "c508f62847a053c4dd1c3462426d3b141318e9602ab02c71ae94b23834652b59"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "713dbd9215c7371b45e3f4e0bd1317e952bb8380d4c2da72c545087f14bf8759"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+      },
+      {
+        "path": "tests/test_laguna_argmax_pair_readback_runtime.py",
+        "sha256": "9857e9e5ccc371bead1b99e4ba853b58ca01ece782090f90849c6f9667cec8bf"
+      },
+      {
+        "path": "tests/test_laguna_mapped_argmax_output_runtime.py",
+        "sha256": "eee095997a99de666137d34476d430f9dd0fcc0efaf53ed04ae6d854b455c224"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "c3ac6011a29596ba3a67272def3a19cc2d4de3ca05440c749259c13b6269ac55"
+      }
+    ]
+  },
+  "removal": {
+    "production_backend_runner_benchmark_and_rejection_tests_restored_byte_exact_to": "b2f1b4f84",
+    "removal_contract_green": {
+      "result": "3 passed",
+      "sha256": "02c51daf251563f2396035faf75f57a87ac5258be4afd2deacc8a724b513d8b7"
+    },
+    "removal_contract_red": {
+      "result": "3 failed",
+      "sha256": "024789e3aa75cf8bd0db39fb0bcb3f8db0a886d9752360bb92c6efc8903f7762"
+    },
+    "removed": [
+      "gfx1100 false capability/export",
+      "LagunaPinnedArgmaxReadback owner and scratch field/allocation",
+      "resolver/session option/common parser candidate path",
+      "benchmark CLI and telemetry",
+      "temporary runtime test and refactor row"
+    ],
+    "retained": [
+      "general HIP host-register/unregister ABI",
+      "separate device ID/value outputs and blocking reads",
+      "design and runtime correctness artifacts",
+      "chronological documentation of the rejected experiment"
+    ],
+    "reverse_patch_sha256": "19a49974870d3d50fb3567f824d1214b67ad1176f006b30ae2e5cdddb66478aa"
+  },
+  "schema": 1,
+  "short_result": {
+    "mechanical": {
+      "candidate_runtime_order": "3 blocking H2D, 2 async D2H, 1 final fence",
+      "control_and_candidate_dispatches_per_token": 683,
+      "control_and_candidate_model_kernels_per_token": 678,
+      "control_and_candidate_runtime_copies_per_token": 5,
+      "device_allocation_delta": 0,
+      "device_resident_nbytes_delta": 0,
+      "ids_finite_lifecycle_exact": true,
+      "ownership_and_direction_deltas_exact": true,
+      "pinned_host_nbytes_delta": 4096,
+      "topology_copy_direction_fence_model_signature_resources_no_compiler_pass": true
+    },
+    "orders": [
+      {
+        "cycle_span_pct": 0.6175741162369519,
+        "failed_guards": [
+          "cycle_span_max_plus_0_5pct",
+          "profiled_child_min_minus_0_5pct"
+        ],
+        "model_kernel_sum_pct": -0.1262227795968518,
+        "model_segment_span_pct": 2.40985421488884,
+        "order": "a",
+        "pass": false,
+        "profiled_child_step_median_saving_us": -86.2365122884512,
+        "profiled_child_tok_s_pct": -0.5029743389291186
+      },
+      {
+        "cycle_span_pct": -0.3441611567731928,
+        "failed_guards": [
+          "model_kernel_sum_non_regressive"
+        ],
+        "model_kernel_sum_pct": 0.1263625556288117,
+        "model_segment_span_pct": -0.11471096396287184,
+        "order": "b",
+        "pass": false,
+        "profiled_child_step_median_saving_us": 8.915434591472149,
+        "profiled_child_tok_s_pct": 0.05227122545994334
+      }
+    ],
+    "pooled": {
+      "cannot_waive_per_order_failures": true,
+      "cycle_span_pct": 0.3609054017227997,
+      "model_kernel_sum_pct": 2.503478393478531e-05,
+      "model_segment_span_pct": 0.3644612644842171,
+      "profiled_child_tok_s_pct": -0.234925605824865
+    },
+    "preflight_process_count": 1,
+    "profile_process_count": 4,
+    "stable_cycle_windows_per_arm": 13,
+    "stable_model_steps_per_arm": 14
+  },
+  "status": "rejected_removed_after_clean_short_gate",
+  "stop_scope": {
+    "categories_run": false,
+    "long_contexts_run": [],
+    "stop_rule_honored": true,
+    "third_order_or_rerun": false
+  }
+}

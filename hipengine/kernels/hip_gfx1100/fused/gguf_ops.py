@@ -230,6 +230,51 @@ def gguf_add_rmsnorm_bf16_f32_weight(
     )
 
 
+def gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256(
+    x_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if rows != 1:
+        raise ValueError("rows must be exactly 1")
+    _check_positive(hidden_size, "hidden_size")
+    if hidden_size > 4096:
+        raise ValueError("hidden_size must be <= 4096")
+    if hidden_size % 256:
+        raise ValueError("hidden_size must be divisible by 256")
+    if threads != 256:
+        raise ValueError("threads must be exactly 256")
+    for pointer, name in (
+        (x_ptr, "x_ptr"),
+        (add_ptr, "add_ptr"),
+        (weight_ptr, "weight_ptr"),
+        (norm_out_ptr, "norm_out_ptr"),
+        (residual_out_ptr, "residual_out_ptr"),
+    ):
+        _check_nonzero_pointer(pointer, name)
+    _launch_add_rmsnorm(
+        "hipengine_gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
+        (x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_add_rmsnorm_f32_bf16_f32_weight(
     x_ptr: int,
     add_ptr: int,
@@ -651,6 +696,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "add_rmsnorm",
+            "gguf_f32_weight",
+            "bf16_out_staged_f32_local256",
+        ),
+        gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "add_rmsnorm", "gguf_f32_weight", "f32_residual_bf16_norm_out"),
         gguf_add_rmsnorm_f32_bf16_f32_weight,
         replace=replace,
@@ -976,6 +1031,11 @@ def _check_positive(value: int, name: str) -> None:
         raise ValueError(f"{name} must be positive")
 
 
+def _check_nonzero_pointer(value: int, name: str) -> None:
+    if value == 0:
+        raise ValueError(f"{name} must be non-zero")
+
+
 def _check_threads(threads: int) -> None:
     if threads not in _ALLOWED_THREADS:
         allowed = ", ".join(str(value) for value in sorted(_ALLOWED_THREADS))
@@ -999,6 +1059,7 @@ register_gguf_ops()
 __all__ = [
     "build_gguf_ops",
     "gguf_add_rmsnorm_bf16_f32_weight",
+    "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_f32_f32_weight",
     "gguf_bf16_add",

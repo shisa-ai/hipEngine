@@ -1,0 +1,682 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_ms_per_token": 15.805224168463194,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "profiled_dispatches_per_token": 683,
+    "runtime_copies_per_token": 5,
+    "runtime_copy_breakdown": {
+      "d2h_argmax_id": 1,
+      "d2h_argmax_value": 1,
+      "h2d_kv_row_position": 1,
+      "h2d_scratch_position": 1,
+      "h2d_token": 1
+    }
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "production_source_changed": false,
+    "runtime_default_changed": false,
+    "runtime_owner_added": false,
+    "selected_for_separate_runtime_admission": true
+  },
+  "future_admission": {
+    "no_rerun_third_order_or_pooled_waiver": true,
+    "runtime_default_before_admission": false,
+    "steps": [
+      "separate default-off runtime RED/GREEN for mapped-host ownership, +0/+8 views, failure/teardown, both scalar sampling sites, and ordinary-device fallback",
+      "fresh shared-weight bulk prefill plus 16 c=1 transitions with complete logits/IDs/hidden/KV/KVLiveSpans/reset/lifecycle at KL0/top-1 100%",
+      "non-profiled require-cached preflight then one rocprof process proving 681 dispatches/token = three H2D copies + identical 678-model-kernel multiset and zero D2H copies",
+      "both frozen process orders at short/512/1K/3968 under kernel-sum/span/child guards; categories only if all clean rows pass; no rerun, third order, or pooled waiver"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+    },
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "immutable_evidence": {
+    "closed_premises": [
+      "all ranked model-kernel ownership leaves under retained or directly rejected exact routes",
+      "shared H2D token/position publication",
+      "paired-device argmax ownership with one 12-byte D2H copy",
+      "unchanged graph, host-packet, native-AQL, and prompt-conditioned routes"
+    ],
+    "lineage": {
+      "path": "/tmp/laguna-next-residual-lineage.log",
+      "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+    },
+    "rank": {
+      "path": "/tmp/laguna-post-wave0-residual-rank.txt",
+      "sha256": "e3eac267b8bcd6e4253f013f591f1b0af19ce9926f11bb8798b23bcc3aa2312d",
+      "stable_windows": 28,
+      "trace_sha256": [
+        "0b934f80b208c4f5e844ac268a4a5dbff1329402474df126f86204bcc727af4f",
+        "f758b18e39b766dd814c26b14eadfc8a67b781df492a43a0db9162a5ca282132"
+      ]
+    }
+  },
+  "kind": "hipengine_laguna_q2_xl_mapped_host_argmax_design",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "resident c=1 greedy target AR residual; actual-vocab two-stage argmax host-output screen"
+  },
+  "modeled_ceiling": {
+    "basis": "subtract only the measured complete argmax+fence+host-result boundary saving from canonical wall; leave all model kernels and other host intervals unchanged",
+    "canonical_ms_per_token": 15.805224168463194,
+    "interpretation": "planning ceiling only; not full-model throughput evidence",
+    "modeled_gain_pct": 0.2800129686802322,
+    "modeled_h32_decode_tok_s": 63.447384168566884,
+    "modeled_ms_per_token": 15.761091069463195,
+    "remaining_gap_to_matched_vulkan_pct": 1.5301735004890071,
+    "subtract_only_direct_saving_us_per_token": 44.133098999999994
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "ab58e5504ee9b85301bdec51ccd413dc81c85a233037fe2f6c846dc4975fb217",
+    "sources": [
+      {
+        "path": "hipengine/core/hip.py",
+        "sha256": "c508f62847a053c4dd1c3462426d3b141318e9602ab02c71ae94b23834652b59"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "713dbd9215c7371b45e3f4e0bd1317e952bb8380d4c2da72c545087f14bf8759"
+      },
+      {
+        "path": "hipengine/runtime/prefill_flight_recorder.py",
+        "sha256": "d071341f6b99fda7c8f997f28d5937ab29544cda0a229c6cc7947473b93da4e0"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/linear/lm_head.hip",
+        "sha256": "0559f90c2711ab21acc11acfe75d259081b3b60b735ec223f7fdbd4969172686"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/linear/lm_head.py",
+        "sha256": "16f125baa5ca0a0ad5d9e9ab83c972f3ca719d3bc699666760cb90018063c126"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "4acb4ad9300676ddf8e35d8ba48923bf00c376abf21a592cfca97d5826afca56"
+      }
+    ]
+  },
+  "revision": "f554a419cd485cae4ad838e32c9987a4091e8a17",
+  "schema": 1,
+  "screen": {
+    "cached_library": {
+      "path": "/home/lhl/.cache/hipengine/build/lm_head-08cef1b98c9d00e0/lm_head.so",
+      "sha256": "f436e7af83d7a405a01f4093ca2cba24f78b10791fff98c3648800404f7f2ab0"
+    },
+    "candidate": {
+      "d2h_copies_per_token": 0,
+      "host_mapping_nbytes": 4096,
+      "host_registration_flags": 2,
+      "id_offset": 0,
+      "value_offset": 8
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_mapped_argmax.py --json /tmp/laguna-mapped-argmax-screen.json",
+    "compiler_ran": false,
+    "contract": {
+      "path": "/tmp/laguna-mapped-argmax-design-frozen-contract.json",
+      "sha256": "f81d7a9e919a5c1ec399e3e2946006ba02354fb1aabf06490fa574585692e190"
+    },
+    "control": {
+      "d2h_copies_per_token": 2,
+      "device_output_allocations": 2,
+      "device_output_nbytes": 12
+    },
+    "correctness": {
+      "all_id_and_f32_value_bits_exact": true,
+      "all_minimum_index_ties_exact": true,
+      "all_sentinels_replaced": true,
+      "fixtures": [
+        {
+          "candidate": [
+            37,
+            1140850688
+          ],
+          "control": [
+            37,
+            1140850688
+          ],
+          "expected": [
+            37,
+            1140850688
+          ],
+          "fixture": 0,
+          "sentinel": [
+            -10000001,
+            2143289345
+          ]
+        },
+        {
+          "candidate": [
+            7956,
+            1140854784
+          ],
+          "control": [
+            7956,
+            1140854784
+          ],
+          "expected": [
+            7956,
+            1140854784
+          ],
+          "fixture": 1,
+          "sentinel": [
+            -10000002,
+            2143289346
+          ]
+        },
+        {
+          "candidate": [
+            15875,
+            1140858880
+          ],
+          "control": [
+            15875,
+            1140858880
+          ],
+          "expected": [
+            15875,
+            1140858880
+          ],
+          "fixture": 2,
+          "sentinel": [
+            -10000003,
+            2143289347
+          ]
+        },
+        {
+          "candidate": [
+            23794,
+            1140862976
+          ],
+          "control": [
+            23794,
+            1140862976
+          ],
+          "expected": [
+            23794,
+            1140862976
+          ],
+          "fixture": 3,
+          "sentinel": [
+            -10000004,
+            2143289348
+          ]
+        },
+        {
+          "candidate": [
+            31713,
+            1140867072
+          ],
+          "control": [
+            31713,
+            1140867072
+          ],
+          "expected": [
+            31713,
+            1140867072
+          ],
+          "fixture": 4,
+          "sentinel": [
+            -10000005,
+            2143289349
+          ]
+        },
+        {
+          "candidate": [
+            39632,
+            1140871168
+          ],
+          "control": [
+            39632,
+            1140871168
+          ],
+          "expected": [
+            39632,
+            1140871168
+          ],
+          "fixture": 5,
+          "sentinel": [
+            -10000006,
+            2143289350
+          ]
+        },
+        {
+          "candidate": [
+            47551,
+            1140875264
+          ],
+          "control": [
+            47551,
+            1140875264
+          ],
+          "expected": [
+            47551,
+            1140875264
+          ],
+          "fixture": 6,
+          "sentinel": [
+            -10000007,
+            2143289351
+          ]
+        },
+        {
+          "candidate": [
+            55470,
+            1140879360
+          ],
+          "control": [
+            55470,
+            1140879360
+          ],
+          "expected": [
+            55470,
+            1140879360
+          ],
+          "fixture": 7,
+          "sentinel": [
+            -10000008,
+            2143289352
+          ]
+        },
+        {
+          "candidate": [
+            63389,
+            1140883456
+          ],
+          "control": [
+            63389,
+            1140883456
+          ],
+          "expected": [
+            63389,
+            1140883456
+          ],
+          "fixture": 8,
+          "sentinel": [
+            -10000009,
+            2143289353
+          ]
+        },
+        {
+          "candidate": [
+            71308,
+            1140887552
+          ],
+          "control": [
+            71308,
+            1140887552
+          ],
+          "expected": [
+            71308,
+            1140887552
+          ],
+          "fixture": 9,
+          "sentinel": [
+            -10000010,
+            2143289354
+          ]
+        },
+        {
+          "candidate": [
+            79227,
+            1140891648
+          ],
+          "control": [
+            79227,
+            1140891648
+          ],
+          "expected": [
+            79227,
+            1140891648
+          ],
+          "fixture": 10,
+          "sentinel": [
+            -10000011,
+            2143289355
+          ]
+        },
+        {
+          "candidate": [
+            1968,
+            1140895744
+          ],
+          "control": [
+            1968,
+            1140895744
+          ],
+          "expected": [
+            1968,
+            1140895744
+          ],
+          "fixture": 11,
+          "sentinel": [
+            -10000012,
+            2143289356
+          ]
+        },
+        {
+          "candidate": [
+            10144,
+            1140899840
+          ],
+          "control": [
+            10144,
+            1140899840
+          ],
+          "expected": [
+            10144,
+            1140899840
+          ],
+          "fixture": 12,
+          "sentinel": [
+            -10000013,
+            2143289357
+          ]
+        },
+        {
+          "candidate": [
+            2632,
+            1140903936
+          ],
+          "control": [
+            2632,
+            1140903936
+          ],
+          "expected": [
+            2632,
+            1140903936
+          ],
+          "fixture": 13,
+          "sentinel": [
+            -10000014,
+            2143289358
+          ]
+        },
+        {
+          "candidate": [
+            10551,
+            1140908032
+          ],
+          "control": [
+            10551,
+            1140908032
+          ],
+          "expected": [
+            10551,
+            1140908032
+          ],
+          "fixture": 14,
+          "sentinel": [
+            -10000015,
+            2143289359
+          ]
+        }
+      ]
+    },
+    "harness": {
+      "path": "/tmp/bench_laguna_mapped_argmax.py",
+      "sha256": "ad5b0e01017112fc0028a74356c337d2c55f3f56855dc739bba834443648b00f"
+    },
+    "protocol": {
+      "alternating_two_actual_vocab_logit_buffers": true,
+      "counterbalanced": true,
+      "repetitions": 15,
+      "timed_boundary": "two-stage argmax launch + explicit device synchronize + host result availability",
+      "tokens_per_sample": 1000,
+      "warmups_per_arm": 100
+    },
+    "raw": {
+      "path": "/tmp/laguna-mapped-argmax-screen.json",
+      "sha256": "574f603f440b332451a277a38626a41f2353f8572c26ce1e0f17cd5ec672be32"
+    },
+    "samples": [
+      {
+        "candidate_us_per_token": 39.376582,
+        "control_us_per_token": 86.265579,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 0,
+        "saving_pct": 54.35423669966906,
+        "saving_us_per_token": 46.888997
+      },
+      {
+        "candidate_us_per_token": 40.631440000000005,
+        "control_us_per_token": 91.167227,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 1,
+        "saving_pct": 55.431966796577015,
+        "saving_us_per_token": 50.53578699999999
+      },
+      {
+        "candidate_us_per_token": 39.129379,
+        "control_us_per_token": 84.43942299999999,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 2,
+        "saving_pct": 53.65982190569919,
+        "saving_us_per_token": 45.31004399999999
+      },
+      {
+        "candidate_us_per_token": 39.177799,
+        "control_us_per_token": 83.175996,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 3,
+        "saving_pct": 52.897709815221205,
+        "saving_us_per_token": 43.998197
+      },
+      {
+        "candidate_us_per_token": 39.098898,
+        "control_us_per_token": 83.169916,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 4,
+        "saving_pct": 52.98913371512843,
+        "saving_us_per_token": 44.071018
+      },
+      {
+        "candidate_us_per_token": 39.125578000000004,
+        "control_us_per_token": 83.203417,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 5,
+        "saving_pct": 52.97599616611899,
+        "saving_us_per_token": 44.077839
+      },
+      {
+        "candidate_us_per_token": 40.754071,
+        "control_us_per_token": 83.173546,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 6,
+        "saving_pct": 51.001162076220716,
+        "saving_us_per_token": 42.419475
+      },
+      {
+        "candidate_us_per_token": 39.085908,
+        "control_us_per_token": 83.136375,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 7,
+        "saving_pct": 52.985792320148676,
+        "saving_us_per_token": 44.050467
+      },
+      {
+        "candidate_us_per_token": 39.115258000000004,
+        "control_us_per_token": 83.366979,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 8,
+        "saving_pct": 53.08063400018369,
+        "saving_us_per_token": 44.251720999999996
+      },
+      {
+        "candidate_us_per_token": 41.664634,
+        "control_us_per_token": 84.607196,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 9,
+        "saving_pct": 50.75521235805994,
+        "saving_us_per_token": 42.942562
+      },
+      {
+        "candidate_us_per_token": 41.315889999999996,
+        "control_us_per_token": 86.97162900000001,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 10,
+        "saving_pct": 52.49497971344196,
+        "saving_us_per_token": 45.65573900000001
+      },
+      {
+        "candidate_us_per_token": 42.119080000000004,
+        "control_us_per_token": 83.590912,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 11,
+        "saving_pct": 49.61284786556701,
+        "saving_us_per_token": 41.471832
+      },
+      {
+        "candidate_us_per_token": 39.151778,
+        "control_us_per_token": 83.239567,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 12,
+        "saving_pct": 52.96494274171321,
+        "saving_us_per_token": 44.087788999999994
+      },
+      {
+        "candidate_us_per_token": 39.137598,
+        "control_us_per_token": 83.310898,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 13,
+        "saving_pct": 53.02223485815746,
+        "saving_us_per_token": 44.1733
+      },
+      {
+        "candidate_us_per_token": 40.839493000000004,
+        "control_us_per_token": 83.29359699999999,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 14,
+        "saving_pct": 50.969228763166505,
+        "saving_us_per_token": 42.45410399999999
+      }
+    ],
+    "shape": {
+      "stage1_blocks": 98,
+      "threads": 256,
+      "vocab_size": 100352
+    },
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "574f603f440b332451a277a38626a41f2353f8572c26ce1e0f17cd5ec672be32",
+    "timing": {
+      "all_repetitions_candidate_faster": true,
+      "candidate_median_us_per_token": 39.177799,
+      "control_median_us_per_token": 83.310898,
+      "saving_pct": 52.97398066697107,
+      "saving_us_per_token": 44.133098999999994
+    },
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 804004,
+      "peak_allocations": 6,
+      "total_allocated_bytes": 804004,
+      "total_freed_bytes": 804004
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_during": {
+      "active_allocations": 6,
+      "current_allocated_bytes": 804004,
+      "peak_allocated_bytes": 804004,
+      "peak_allocations": 6,
+      "total_allocated_bytes": 804004,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "selection": {
+    "argmax_arithmetic_or_tie_break_changed": false,
+    "candidate": "one page-backed HIP_HOST_REGISTER_MAPPED host owner with device-visible int64 +0 and FP32 +8 views; unchanged stage-2 writes those views before the same explicit device fence",
+    "current": "separate 8-byte ID and 4-byte value allocations followed by two synchronous D2H copies after the explicit fence",
+    "device_allocation_delta": -2,
+    "device_resident_bytes_delta": -12,
+    "explicit_fence_retained": true,
+    "fallback": "ordinary separate device outputs and two scalar D2H reads",
+    "future_capability": "LAGUNA_MAPPED_ARGMAX_OUTPUT=False",
+    "host_pinned_mapping_delta_bytes": 4096,
+    "kernel_registry_key_added": false,
+    "kernel_signature_changed": false,
+    "kernel_source_changed": false,
+    "profiled_dispatches_per_token": {
+      "candidate": 681,
+      "control": 683
+    },
+    "reason": "stage-2 writes its unchanged raw int64/FP32 outputs directly into HIP-registered mapped host memory, eliminating both D2H copies rather than merging them through a paired device owner",
+    "rows_prefill_verifier_changed": false,
+    "runtime_copies_per_token": {
+      "candidate": 3,
+      "control": 5
+    },
+    "selected": "mapped-host scalar argmax output",
+    "surface": "post-argmax-stage2 scalar output publication"
+  },
+  "status": "selected_design_only"
+}

@@ -1,0 +1,265 @@
+{
+  "schema": 1,
+  "date": "2026-07-24",
+  "kind": "laguna_q2_xl_dflash_profile_and_candidate_selection",
+  "status": "candidate_selected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "rocm": "7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "repo": {
+    "revision": "602335abd305a4a2605793c70b0100de43bf736b",
+    "branch": "main",
+    "tracked_clean_before_run": true,
+    "q3_k_m_merge": {
+      "merge_revision": "cd0e14b3c",
+      "merged_tip": "d47e63cd85fe2b06f242de23855bb932ca9f09ff",
+      "ancestor_of_main": true
+    }
+  },
+  "model": {
+    "target_path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "target_sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "target_quant": "UD-Q2_K_XL",
+    "drafter_path": "/models/hipengine/Laguna-S-2.1-DFlash",
+    "drafter_revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+    "drafter_safetensors_sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4",
+    "context_length": 4096,
+    "kv_dtype": "bf16"
+  },
+  "external_context": {
+    "source": "user-supplied llama-bench table in this session",
+    "backend": "Vulkan RADV NAVI31",
+    "pp512_tok_s": 57.32,
+    "tg128_tok_s": 93.67,
+    "use": "diagnostic context only; not a DFlash denominator or retained hipEngine claim",
+    "consistency": "within 0.9% of the independently reproduced 94.513 tok/s Vulkan row already recorded in the Laguna decode-gap artifact"
+  },
+  "canonical_h32": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_dflash_category_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf /models/hipengine/Laguna-S-2.1-DFlash --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --candidate-budget 4 --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 --output /tmp/laguna-q2-xl-dflash-current-602335abd.json",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": 4,
+    "heldouts": 4,
+    "repetitions": 2,
+    "decode_output_tokens": 620,
+    "ar_decode_tok_s": 48.98017861688135,
+    "dflash_decode_tok_s": 32.434444335404336,
+    "speedup_vs_true_ar": 0.6621953053520631,
+    "delta_vs_true_ar_pct": -33.7804694647937,
+    "dflash_e2e_output_tok_s": 12.134137101438274,
+    "ar_e2e_output_tok_s": 12.137744562541513,
+    "e2e_ratio": 0.9997027898317804,
+    "target_verify_rows_per_output": 1.7580645161290323,
+    "draft_acceptance": 0.48394495412844035,
+    "cycles": 218,
+    "acceptance_histogram": {
+      "0": 58,
+      "1": 40,
+      "2": 40,
+      "3": 18,
+      "4": 62
+    },
+    "category_decode_ratios": {
+      "code": 0.9222433139668753,
+      "general_en": 0.5127986274351317,
+      "general_ja": 0.6937622942150907,
+      "mixed_ja_en": 0.509396710847544
+    },
+    "heldout_decode_ratio": 0.5786410876796069,
+    "correctness": {
+      "paired_rows": 20,
+      "all_exact_generated_ids": true,
+      "all_finite": true,
+      "all_state_aligned": true,
+      "same_mode_repeat_deterministic": true,
+      "poolside_oracle_pass": true,
+      "tracked_returned_to_zero": true
+    },
+    "raw_sha256": "95ea8cdf63b7b2c57cd91435a675d1f9e8a307fa9dde9818f46875434e32ab9b"
+  },
+  "budget_screen_h32": {
+    "scope": "same canonical ten prompts and four categories, one counterbalanced repetition per fixed budget; selection diagnostic, not promotion evidence",
+    "command_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/laguna_dflash_budget_screen.py <same model/drafter/oracle args> --candidate-budget B --output-tokens 32 --repetitions 1 --direct-gguf --require-cached-build",
+    "rows": [
+      {
+        "budget": 1,
+        "ar_decode_tok_s": 49.48259057552239,
+        "dflash_decode_tok_s": 26.3477513313871,
+        "ratio": 0.5324650755940934,
+        "target_rows_per_output": 1.1483870967741936,
+        "average_accept_length": 0.7808988764044944,
+        "exact": true,
+        "raw_sha256": "a453cdff037e6686ec154c89c7d6c9ac2de31f42a2b27311670e1b1cde25fd08"
+      },
+      {
+        "budget": 2,
+        "ar_decode_tok_s": 49.122481224265684,
+        "dflash_decode_tok_s": 30.446989051635693,
+        "ratio": 0.6198178164623205,
+        "target_rows_per_output": 1.335483870967742,
+        "average_accept_length": 1.3043478260869565,
+        "exact": true,
+        "raw_sha256": "d9674c3b0f63bbdc9346e4014384ffeb672bb0b7b716696896cd7e048fc68f0e"
+      },
+      {
+        "budget": 3,
+        "ar_decode_tok_s": 48.951073600445476,
+        "dflash_decode_tok_s": 32.34227986098938,
+        "ratio": 0.6607062416031474,
+        "target_rows_per_output": 1.5354838709677419,
+        "average_accept_length": 1.680672268907563,
+        "exact": true,
+        "raw_sha256": "80f376eac6a2db8c86b9d8ba606ce4bd6f2095faee3c7b631833cbf67cfa121d"
+      },
+      {
+        "budget": 4,
+        "ar_decode_tok_s": 48.98017861688135,
+        "dflash_decode_tok_s": 32.434444335404336,
+        "ratio": 0.6621953053520631,
+        "target_rows_per_output": 1.7580645161290323,
+        "average_accept_length": 1.9357798165137614,
+        "exact": true,
+        "source": "canonical two-repetition row"
+      }
+    ],
+    "decision": "Keep B4 as the admitted fixed operating point. B1-B3 are exact but none closes the AR gap; B1 and B2 are decisively worse, and B3 is slightly below B4 while still regressing every category."
+  },
+  "long_horizon_h128": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/laguna_dflash_budget_screen.py <same model/drafter/oracle args> --candidate-budget 4 --output-tokens 128 --repetitions 1 --direct-gguf --require-cached-build --output /tmp/laguna-dflash-b4-h128.json",
+    "prompt_count": 10,
+    "decode_output_tokens": 1270,
+    "ar_decode_tok_s": 45.93766293136738,
+    "dflash_decode_tok_s": 27.91952924166598,
+    "ratio": 0.6077699094831799,
+    "target_rows_per_output": 1.952755905511811,
+    "average_accept_length": 1.5745967741935485,
+    "category_decode_ratios": {
+      "code": 0.9502662533732477,
+      "general_en": 0.5083940847608461,
+      "general_ja": 0.41502021745874135,
+      "mixed_ja_en": 0.5826795955750687
+    },
+    "correctness": {
+      "all_exact_generated_ids": true,
+      "all_finite": true,
+      "all_state_aligned": true,
+      "poolside_oracle_pass": true,
+      "tracked_returned_to_zero": true
+    },
+    "raw_sha256": "29192ce514c4ecbd343db9bf5843af7fb78d79791a424613706d419ae5131fc5"
+  },
+  "profile": {
+    "command": "rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/rocprof-laguna-dflash-current -o laguna-dflash-current -- env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/profile_laguna_dflash_current.py",
+    "prompt_id": "code_merge_intervals",
+    "sequential_full_accept_cycles": 4,
+    "generated_ids_exact": true,
+    "stage_means_ms": {
+      "proposal_wall": 11.98620475,
+      "proposal_kernel_sum": 11.06422125,
+      "target_verify_wall": 74.02761275,
+      "target_verify_kernel_sum": 64.96118975,
+      "draft_commit_wall": 2.18214675,
+      "draft_commit_kernel_sum": 1.690149
+    },
+    "target_verify_fraction_of_stage_wall": 0.8393537434452394,
+    "target_verify_top_kernel_families_ms_per_cycle": [
+      {
+        "family": "raw Q5/Q6 K rowtile projections",
+        "kernel_ms": 28.871,
+        "share_of_verify_kernel_pct": 44.44,
+        "note": "already uses exact weight-amortized rowtile5, local128, VGPR24"
+      },
+      {
+        "family": "IQ2_XS selected dual gate/up plus SiLU tile2",
+        "kernel_ms": 11.66,
+        "share_of_verify_kernel_pct": 17.95,
+        "note": "local64, VGPR136, LDS512, scratch0; further output tiling has high spill risk"
+      },
+      {
+        "family": "IQ3_XXS selected down tile1",
+        "kernel_ms": 11.646,
+        "share_of_verify_kernel_pct": 17.93,
+        "note": "45 launches/cycle, local128, VGPR32, LDS512, scratch0; 3072 output workgroups x 50 selected lanes per sparse layer"
+      },
+      {
+        "family": "SWA plus global attention prefill",
+        "kernel_ms": 6.407,
+        "share_of_verify_kernel_pct": 9.86
+      },
+      {
+        "family": "Q4_K target LM head rowtile",
+        "kernel_ms": 2.394,
+        "share_of_verify_kernel_pct": 3.69
+      }
+    ],
+    "trace_sha256": "1db081efe4fd646abe8d901fd63c6af974569066b43646e5a89af4614ca83825",
+    "profile_output_sha256": "83344a48d47a6df19ecc19c6be87a807af5552bc4339f3fa1b4ce2346215704c",
+    "harness_sha256": "7fb76e9cc2adde00327f37e374ed5b1aa05a343eff86fd83a9962b3671cb494b"
+  },
+  "candidate": {
+    "name": "Laguna DFlash IQ3_XXS selected-down output tiling",
+    "primary_variant": "selected_gemv_decode_tile2_bf16_bf16_out",
+    "bounded_probe_variant": "selected_gemv_decode_tile4_bf16_bf16_out",
+    "registry_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq3_xxs",
+      "selected_gemv_decode_tile{2,4}_bf16_bf16_out"
+    ],
+    "selection_scope": "Laguna rows>1 target verifier only; the registered tile1 primitive remains the mandatory fallback and target c=1 AR is unchanged",
+    "mechanism": "One local128 block computes two or four adjacent output columns for one selected lane. It loads each eight-value BF16 activation group once, applies the unchanged IQ3_XXS decode independently to each weight row, preserves every accumulator's group order, and uses the existing pair/quad reduction helpers whose per-accumulator wave and cross-wave addition order matches tile1.",
+    "why_selected": [
+      "The family is 11.646 ms/cycle and 17.93% of target-verifier kernel time.",
+      "Unlike the larger raw-K bucket, it still reloads the complete activation row independently for every output column and has no output-tiled sibling.",
+      "Tile2 halves activation-row reads and workgroups; tile4 quarters them while keeping weight bytes and each output's arithmetic unchanged.",
+      "Current tile1 has enough resource headroom (VGPR32, LDS512, scratch0) for a bounded tile2/tile4 screen.",
+      "Fixed-budget changes do not solve the economics: B1/B2/B3 are all below B4 and all fixed budgets remain below true AR."
+    ],
+    "not_selected": [
+      "Prompt/category/token-conditioned routing is forbidden benchmark gaming.",
+      "B1-B3 fixed budgets are exact but economics-negative.",
+      "Raw Q5/Q6 rowtile5 is larger but already weight-amortized and low-resource; there is no comparably direct exact reuse step without a new layout or arithmetic schedule.",
+      "IQ2 tile4 is deferred because the current tile2 already uses VGPR136; doubling accumulators risks spills.",
+      "Graph replay and stream overlap wait until device kernel work contracts; prior MTP graph/overlap attempts were neutral or negative and Laguna currently spends 64.96 ms in kernels."
+    ]
+  },
+  "frozen_admission": {
+    "red_green": [
+      "RED collection fails on missing tile2/tile4 wrappers and registry keys.",
+      "Synthetic IQ3 blocks cover codebook/sign/scale branches, invalid experts, odd output tails, association-sensitive activations, BF16 edges, and rows 2/3/4/5/8.",
+      "Tile2 and tile4 outputs must be BF16-bit exact against registered tile1 for every row and output; CPU dequant KL/top-1 gate remains <=0.05/>=90%.",
+      "Actual B4 verifier must match tile1 for all 48 post-layer hidden rows, six DFlash captures, full logits/top-1, staged and committed K/V, all KVLiveSpans fields, reset/reuse, address stability, and lifecycle."
+    ],
+    "resource": {
+      "threads": 128,
+      "tile2_max_vgpr": 48,
+      "tile4_max_vgpr": 64,
+      "max_lds_bytes": 2048,
+      "scratch_bytes": 0
+    },
+    "performance": [
+      "A 50-warmup, 15-repeat counterbalanced actual-weight layer screen must show positive HIP-event and synchronized-wall time at representative early/late IQ3 layers.",
+      "Choose tile4 only if it is bit-exact, within resource bounds, and faster than tile2 at both endpoints; otherwise retain tile2 only.",
+      "A clean cached trace must name the selected kernel and improve the complete 45-launch IQ3 family, target-verifier kernel sum, target-verifier span, and whole-cycle wall without changing launch ownership outside the selected family.",
+      "The canonical ten-prompt/category+heldout h32 gate and ten-prompt h128 gate must remain exact and improve aggregate plus every-category DFlash decode; true AR must remain byte/performance unchanged.",
+      "This candidate may be retained as an exact explicit-DFlash improvement even if DFlash remains below AR. It cannot promote automatic DFlash routing unless the pre-existing >1.10x full-suite true-AR and no-category-regression policy also passes."
+    ]
+  },
+  "decision": {
+    "task_318_complete": true,
+    "implement_next": true,
+    "candidate": "IQ3_XXS selected-down output tiling",
+    "automatic_dflash_route": false,
+    "reason": "Current B4 is exact but only 0.6622x true AR at h32 and 0.6078x at h128. The profile is device-bound, and IQ3 selected down is the largest clear missing exact reuse transform."
+  },
+  "source_lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "relevant_external_parent": null,
+    "note": "This is a new in-tree specialization of the registered IQ3 selected kernel and existing pair/quad reduction helpers; unrelated historical manifest drift was reviewed and not copied."
+  }
+}

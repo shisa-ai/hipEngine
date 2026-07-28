@@ -318,6 +318,196 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
+        # Exact single-page and P2 split attention are W7900-only until gfx1151
+        # receives independent crossover, full-state, and performance gates.
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "global_context_single_page_spans",
+        ),
+        (
+            "laguna_attention_decode+attention_gate",
+            "bf16",
+            "global_single_page_softplus_bf16_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "global_context_split_exact_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "global_context_split_exact_gated_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_exact_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_exact_gated_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_exact_gated_wave_local_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_exact_gated_wave_local_dim2_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_tile16_exact_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_tile16_exact_gated_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_tile16_exact_gated_wave_local_spans",
+        ),
+        (
+            "laguna_attention_decode",
+            "bf16",
+            "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
+        ),
+        # Current-P4 head/KV fusion and the global-only wave-0 tree are
+        # W7900-only until independently gated.
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "global_f32_bf16_spans",
+        ),
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "global_wave0_tree_f32_bf16_spans",
+        ),
+        (
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "swa_f32_bf16_spans",
+        ),
+        # D9, its wave-0 RMS tree, and its exact top-10 split sibling are
+        # W7900-only until gfx1151 receives independent correctness and
+        # performance gates.
+        (
+            "moe_tail+next_rmsnorm",
+            "bf16",
+            "laguna_aggregate_gguf_f32_weight_out",
+        ),
+        (
+            "moe_tail+next_rmsnorm",
+            "bf16",
+            "laguna_aggregate_wave0_tree_gguf_f32_weight_out",
+        ),
+        (
+            "weighted_sum+moe_tail",
+            "bf16",
+            "laguna_top10_routed_hidden_out",
+        ),
+        # Staged unrounded-F32 Laguna add+RMSNorm is W7900-only until an
+        # independent gfx1151 correctness and performance gate.
+        (
+            "add_rmsnorm",
+            "gguf_f32_weight",
+            "bf16_out_staged_f32_local256",
+        ),
+        # IQ2 fixed-local64 DPP reduction is W7900-only pending an independent gate.
+        (
+            "moe_linear",
+            "gguf_iq2_xs",
+            "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out",
+        ),
+        # IQ3 selected-down tiling is gfx1100-only pending independent gfx1151 gates.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_gemv_decode_tile4_bf16_bf16_out",
+        ),
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+        ),
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out",
+        ),
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_weighted_down_gemv_decode_k1024_wave10_signbit_bf16_bf16_out",
+        ),
+        # Laguna top-10/K1024 IQ4 weighted ownership is gfx1100-only pending an
+        # independent gfx1151 correctness and performance gate.
+        (
+            "moe_linear",
+            "gguf_iq4_xs",
+            "selected_weighted_down_gemv_decode_bf16_bf16_out",
+        ),
+        # Q4 local32 LM-head ownership is W7900-only pending an independent gate.
+        (
+            "linear",
+            "gguf_q4_k",
+            "local32_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
+        # Q6 local32 standalone ownership is likewise W7900-only pending a gate.
+        (
+            "linear",
+            "gguf_q6_k",
+            "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        # Paired-output SWAR Q5 reconstruction is W7900-only pending an independent gate.
+        (
+            "linear",
+            "gguf_q5_k",
+            "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        (
+            "linear_pair",
+            "gguf_q5_k",
+            "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out",
+        ),
+        (
+            "attention_projection_quad",
+            "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+            "mixed_local32_q5_swar_pair_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
+        # Heterogeneous Q5/Q6 pair reuse is W7900-only pending an independent gate.
+        (
+            "attention_projection_quad",
+            "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+            "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+        ),
+        # Laguna c=1 F32-router wave-0 reduction is W7900-only pending an
+        # independent gfx1151 correctness and performance gate.
+        (
+            "router_logits",
+            "f32",
+            "bf16_hidden_wave0_tree",
+        ),
+        # Laguna compact/persistent routing is W7900-only pending independent gates.
+        (
+            "laguna_sigmoid_router_topk",
+            "f32",
+            "correction_bias_compact_wave32",
+        ),
+        (
+            "laguna_router_topk",
+            "f32",
+            "bf16_hidden_correction_bias_persistent_wave_top10",
+        ),
         (
             "speculative_cycle",
             "w4_gguf",

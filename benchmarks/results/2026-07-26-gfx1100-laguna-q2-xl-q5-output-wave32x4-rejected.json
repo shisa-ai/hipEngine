@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q2_xl_q5_output_wave32x4_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "baseline": {
+    "name": "retained fixed-metadata Q5 attention-output wave32x2",
+    "revision": "d13cc8e1c",
+    "canonical_h16_decode_tok_s": 61.55420990315515,
+    "canonical_h32_decode_tok_s": 60.9422647734879,
+    "canonical_ms_per_token": 16.40897337368132,
+    "dispatches_per_token": 723,
+    "target_calls_per_token": 47,
+    "target_ms_per_token": 1.5622,
+    "vulkan_h32_tok_s": 64.41823922786776,
+    "additional_speedup_required_pct": 5.703717226951555
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "candidate": {
+    "description": "One local64 workgroup contains two independent retained fixed-metadata local32 waves, each owning one adjacent Q5 output pair",
+    "removed": true,
+    "global_shape": [3072, 6144],
+    "swa_shape": [3072, 9216],
+    "workgroups_per_call_control": 1536,
+    "workgroups_per_call_candidate": 768,
+    "launches_per_token_delta_if_integrated": 0,
+    "persistent_weight_copy_delta_bytes": 0,
+    "workspace_delta_bytes": 0,
+    "arithmetic_contract": "Per-wave metadata loads, eight accumulator chains, K order, four shuffle reductions, serial group additions, and BF16 stores are unchanged; there is no activation LDS sharing or barrier."
+  },
+  "red_green": {
+    "red": "Focused test collection fails only because the wave32x4 wrapper/key is absent.",
+    "red_sha256": "4f09506f29e12390c348c684e9fd819064986a4f58d0f66a672143115aa8ca72",
+    "green": "Two K6144/K9216 N3072 production-shape tests pass with complete BF16 byte identity and exact four-axis key resolution."
+  },
+  "codegen": {
+    "library_sha256": "649fab626754c430519c9d49f2c35c695852e51e3f1d73be17185452ad044a40",
+    "code_object_sha256": "b289b19aed8cad0e904106c4f897a217e304ba6fb3fc5db586727729f25503e9",
+    "metadata_sha256": "01c50fb581c842cc82e2d7de99453ce4fa867dae1c9e68c7d8389177bd8543d9",
+    "control": {
+      "threads": 32,
+      "wavefront_size": 32,
+      "logical_vgpr": 73,
+      "logical_sgpr": 59,
+      "group_segment_fixed_bytes": 0,
+      "private_segment_fixed_bytes": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0
+    },
+    "candidate": {
+      "threads": 64,
+      "wavefront_size": 32,
+      "logical_vgpr": 81,
+      "logical_sgpr": 62,
+      "group_segment_fixed_bytes": 0,
+      "private_segment_fixed_bytes": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0
+    },
+    "interpretation": "The candidate remains LDS- and spill-free but raises per-wave VGPR and SGPR pressure; actual-weight timing determines whether lower workgroup count offsets that cost."
+  },
+  "actual_weight_screen": {
+    "protocol": {
+      "layers": [0, 44, 1, 46],
+      "boundaries": ["global_first", "global_last", "swa_first", "swa_last"],
+      "out_features": 3072,
+      "global_in_features": 6144,
+      "swa_in_features": 9216,
+      "warmups": 50,
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "timers": ["HIP event", "synchronized wall"]
+    },
+    "all_bf16_outputs_exact": true,
+    "all_boundary_event_and_wall_improve": false,
+    "rows": [
+      {
+        "boundary": "global_first",
+        "layer_id": 0,
+        "control_event_us": 23.063526153564453,
+        "candidate_event_us": 25.00175952911377,
+        "event_regression_pct": 8.40389003244313,
+        "control_wall_us": 23.422164376825094,
+        "candidate_wall_us": 24.994739796966314,
+        "wall_regression_pct": 6.714048261471484,
+        "bf16_equal": true
+      },
+      {
+        "boundary": "global_last",
+        "layer_id": 44,
+        "control_event_us": 21.792330741882324,
+        "candidate_event_us": 24.004929065704346,
+        "event_regression_pct": 10.15310546645507,
+        "control_wall_us": 22.141600493341684,
+        "candidate_wall_us": 23.837725166231394,
+        "wall_regression_pct": 7.660352617236321,
+        "bf16_equal": true
+      },
+      {
+        "boundary": "swa_first",
+        "layer_id": 1,
+        "control_event_us": 32.65401601791382,
+        "candidate_event_us": 34.98183012008667,
+        "event_regression_pct": 7.128722240155172,
+        "control_wall_us": 32.91124594397843,
+        "candidate_wall_us": 35.055275075137615,
+        "wall_regression_pct": 6.514579043311697,
+        "bf16_equal": true
+      },
+      {
+        "boundary": "swa_last",
+        "layer_id": 46,
+        "control_event_us": 32.71162509918213,
+        "candidate_event_us": 34.89964008331299,
+        "event_regression_pct": 6.6887994023432595,
+        "control_wall_us": 32.874749740585685,
+        "candidate_wall_us": 35.09492613375187,
+        "wall_regression_pct": 6.75343967843276,
+        "bf16_equal": true
+      }
+    ]
+  },
+  "checks": {
+    "production_shape_oracle_pass": true,
+    "actual_first_last_global_event_improve": false,
+    "actual_first_last_global_wall_improve": false,
+    "actual_first_last_swa_event_improve": false,
+    "actual_first_last_swa_wall_improve": false,
+    "performance_precondition_pass": false,
+    "runtime_selector_added": false,
+    "full_model_state_gate_skipped_after_precondition_failure": true,
+    "kernel_trace_skipped_after_precondition_failure": true,
+    "clean_context_gate_skipped_after_precondition_failure": true,
+    "category_gate_skipped_after_precondition_failure": true,
+    "candidate_removed": true,
+    "retained_tests_restored": true
+  },
+  "provenance": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_q5_wave32x4_actual.py",
+    "harness_sha256": "4267bfd529ec1d67ee7065d7c4c3972eaa92b2b71e128c5bbd2e093a2809d5a3",
+    "raw_json_sha256": "a54e611d3d676dab1763dbcddca0a9987d552e10c91de48551795b71a4d838d6",
+    "raw_stdout_sha256": "83b6ae79ee1aca591866b90bfde5b67612ac36a53f4d9a1a96f823389ea636b1",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "candidate_python_sha256": "255a7ef0898ad20db665a82ba4a65fbcc109b171f9177a5142813d3fc2325e3f",
+    "candidate_hip_sha256": "63d7d4fb4f2968f855136b11169acc833f1c535b86aac1d4eb9ac011b4159a4c",
+    "candidate_test_sha256": "82c9e9f1e5b5d783bc464c9e76fb5fdced3a419dc19bae53ef50a834d353221a",
+    "restored_test_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_kernel_registry.py",
+    "restored_tests_passed": 20,
+    "restored_tests_sha256": "c66ef7936b32d2201bf6eb901cf69cbc8e71996669c38afe1f70ad40098e04a3"
+  },
+  "decision": {
+    "action": "reject and remove before runtime integration",
+    "reason": "Packing two exact wave owners into each local64 workgroup regresses both HIP event and synchronized wall at every global and SWA boundary; halving workgroup count does not offset the occupancy/codegen cost.",
+    "retained_default_unchanged": true,
+    "next": "Re-rank the retained 723-dispatch trace for a new exact premise; do not repeat Q5 output workgroup packing or activation-sharing tile schedules unchanged."
+  }
+}

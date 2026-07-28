@@ -1,0 +1,485 @@
+{
+  "acceptance_policy": {
+    "admitted": false,
+    "canonical": "positive aggregate and every-category h16/h32 decode and E2E versus retained D9, with prefill/TTFT inside 0.5%",
+    "canonical_pass": false,
+    "correctness": "exact output/state/KV/live spans/lifecycle",
+    "correctness_pass": true,
+    "profiles": "lower SWA, complete kernel sum, and dispatch span plus higher child throughput at short/512/1K/near-4K",
+    "profiles_pass": true
+  },
+  "candidate": {
+    "baseline_after_decision": "Laguna D9 at 47.132308286752306 h32 decode tok/s",
+    "candidate_source_retained": false,
+    "default_after_decision": "swa_context_token4_exact_spans",
+    "description": "local256 exact token8 SWA decode preserving token4 arithmetic and complete KVLiveSpans",
+    "registry_key": [
+      "hip_gfx1100",
+      "laguna_attention_decode",
+      "bf16",
+      "swa_context_token8_exact_spans"
+    ],
+    "revision": "aef8c082d70652da438b981fcfc5790e4ac9c4d5"
+  },
+  "canonical_full_suite": {
+    "aggregate": {
+      "baseline_d9": {
+        "h16_decode_tok_s": 47.5762814310924,
+        "h16_e2e_output_tok_s": 6.909168860306418,
+        "h32_decode_tok_s": 47.132308286752306,
+        "h32_e2e_output_tok_s": 12.038207197450902,
+        "prefill_tok_s": 43.18963030675214,
+        "ttft_median_seconds": 1.8708374230191112
+      },
+      "candidate_d10": {
+        "h16_decode_tok_s": 48.20940107730393,
+        "h16_e2e_output_tok_s": 6.905348778105385,
+        "h32_decode_tok_s": 47.871581460418625,
+        "h32_e2e_output_tok_s": 12.059691115267539,
+        "prefill_tok_s": 43.0728960232074,
+        "ttft_median_seconds": 1.874970605946146
+      },
+      "candidate_repetitions": [
+        {
+          "h16_decode_tok_s": 48.36452271732487,
+          "h16_e2e_output_tok_s": 6.93968099569996,
+          "h32_decode_tok_s": 48.10605354776773,
+          "h32_e2e_output_tok_s": 12.121917698665,
+          "prefill_tok_s": 43.29879071993584
+        },
+        {
+          "h16_decode_tok_s": 48.05527131278091,
+          "h16_e2e_output_tok_s": 6.871354587161724,
+          "h32_decode_tok_s": 47.63938395155304,
+          "h32_e2e_output_tok_s": 11.998100136241085,
+          "prefill_tok_s": 42.849346129825456
+        }
+      ],
+      "candidate_vs_d9_pct": {
+        "h16_decode_tok_s": 1.330746386996462,
+        "h16_e2e_output_tok_s": -0.05529003963096191,
+        "h32_decode_tok_s": 1.5685061914824772,
+        "h32_e2e_output_tok_s": 0.17846442966347187,
+        "prefill_tok_s": -0.27028312749066696,
+        "ttft_median_seconds": 0.22092688954045148
+      }
+    },
+    "categories": {
+      "code": {
+        "baseline_d9": {
+          "h16_decode_tok_s": 48.45800365573921,
+          "h16_e2e_output_tok_s": 7.718717394759739,
+          "h32_decode_tok_s": 48.00760774847672,
+          "h32_e2e_output_tok_s": 13.28314600742162,
+          "prefill_tok_s": 43.38365609103289
+        },
+        "candidate_d10": {
+          "h16_decode_tok_s": 49.09403523131148,
+          "h16_e2e_output_tok_s": 7.708833927764523,
+          "h32_decode_tok_s": 48.65375513078129,
+          "h32_e2e_output_tok_s": 13.293673158739383,
+          "prefill_tok_s": 43.220222090211436
+        },
+        "candidate_vs_d9_pct": {
+          "h16_decode_tok_s": 1.3125418456997107,
+          "h16_e2e_output_tok_s": -0.1280454574217993,
+          "h32_decode_tok_s": 1.3459270574153415,
+          "h32_e2e_output_tok_s": 0.07925194311559913,
+          "prefill_tok_s": -0.37671790611311096
+        }
+      },
+      "general_en": {
+        "baseline_d9": {
+          "h16_decode_tok_s": 49.01267816605781,
+          "h16_e2e_output_tok_s": 8.513733731084278,
+          "h32_decode_tok_s": 48.41780869760229,
+          "h32_e2e_output_tok_s": 14.456523998967334,
+          "prefill_tok_s": 43.22199084655778
+        },
+        "candidate_d10": {
+          "h16_decode_tok_s": 48.75046355361194,
+          "h16_e2e_output_tok_s": 8.492125501951547,
+          "h32_decode_tok_s": 48.71379401413922,
+          "h32_e2e_output_tok_s": 14.461452769364334,
+          "prefill_tok_s": 43.13601329390981
+        },
+        "candidate_vs_d9_pct": {
+          "h16_decode_tok_s": -0.5349934389577204,
+          "h16_e2e_output_tok_s": -0.25380438025490726,
+          "h32_decode_tok_s": 0.6113149778948612,
+          "h32_e2e_output_tok_s": 0.03409374478506866,
+          "prefill_tok_s": -0.19892085247344982
+        }
+      },
+      "general_ja": {
+        "baseline_d9": {
+          "h16_decode_tok_s": 46.82906091198691,
+          "h16_e2e_output_tok_s": 6.372976399859505,
+          "h32_decode_tok_s": 46.457317098738024,
+          "h32_e2e_output_tok_s": 11.198341106735892,
+          "prefill_tok_s": 43.145032011053154
+        },
+        "candidate_d10": {
+          "h16_decode_tok_s": 47.899568002486305,
+          "h16_e2e_output_tok_s": 6.383680190917022,
+          "h32_decode_tok_s": 47.50987479166951,
+          "h32_e2e_output_tok_s": 11.24491020144391,
+          "prefill_tok_s": 43.08701849545943
+        },
+        "candidate_vs_d9_pct": {
+          "h16_decode_tok_s": 2.285988806205963,
+          "h16_e2e_output_tok_s": 0.16795591864662285,
+          "h32_decode_tok_s": 2.2656445930668623,
+          "h32_e2e_output_tok_s": 0.4158570833318054,
+          "prefill_tok_s": -0.13446163530220767
+        }
+      },
+      "mixed_ja_en": {
+        "baseline_d9": {
+          "h16_decode_tok_s": 45.321902696155284,
+          "h16_e2e_output_tok_s": 5.257739468155716,
+          "h32_decode_tok_s": 44.95273398159995,
+          "h32_e2e_output_tok_s": 9.406839030422244,
+          "prefill_tok_s": 42.954580430941455
+        },
+        "candidate_d10": {
+          "h16_decode_tok_s": 46.3254124308338,
+          "h16_e2e_output_tok_s": 5.256844806302829,
+          "h32_decode_tok_s": 45.94958589397277,
+          "h32_e2e_output_tok_s": 9.426995147661197,
+          "prefill_tok_s": 42.833174285630676
+        },
+        "candidate_vs_d9_pct": {
+          "h16_decode_tok_s": 2.2141827129505076,
+          "h16_e2e_output_tok_s": -0.01701609329076703,
+          "h32_decode_tok_s": 2.2175556947901187,
+          "h32_e2e_output_tok_s": 0.2142708849781183,
+          "prefill_tok_s": -0.28263841502529363
+        }
+      }
+    },
+    "checks": {
+      "accepted_bulk_state": true,
+      "aggregate_decode_and_e2e_improve": false,
+      "aggregate_prefill_within_half_percent": true,
+      "aggregate_ttft_within_half_percent": true,
+      "all_category_decode_and_e2e_improve": false,
+      "all_category_prefill_within_half_percent": true,
+      "lifecycle": true,
+      "pass": false,
+      "quality_gate": true,
+      "same_mode_repeats_deterministic": true,
+      "serial_bulk_pairs_exact": true
+    },
+    "diagnostic_target_if_retained": {
+      "additional_speedup_required_pct": 4.446100326435221,
+      "candidate_h32_decode_tok_s": 47.871581460418625,
+      "candidate_ms_per_token": 20.889220065287045,
+      "decode_tok_s": 50.0,
+      "remaining_ms_to_20": 0.889220065287045
+    },
+    "protocol": {
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "context_length": 4096,
+      "decode_scope": "horizon-1 synchronized forward_token calls after first token",
+      "e2e_scope": "TTFT plus decode scope; model load excluded",
+      "f16_prefill": {
+        "backend_min_rows": null,
+        "backend_strategy": null,
+        "effective_min_rows": null,
+        "effective_strategy": "gemv",
+        "requested": "auto",
+        "rows_one_always_gemv": true
+      },
+      "fixed_horizon_after_stop": true,
+      "order": "alternating serial/bulk by repetition plus prompt index",
+      "output_horizons": [
+        16,
+        32
+      ],
+      "prefill_chunk_size": 128,
+      "prompt_count": 10,
+      "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompt_tokens_max": 122,
+      "prompt_tokens_min": 68,
+      "protocol_eligible": true,
+      "repetitions": 2,
+      "sampling": "greedy argmax",
+      "ttft_scope": "prefill start through synchronized first-token argmax",
+      "warmups": {
+        "bulk": 1,
+        "output_tokens": 2,
+        "serial": 1
+      }
+    }
+  },
+  "clean_profiles": {
+    "all_kernel_sum_improve": true,
+    "all_profiled_child_improve": true,
+    "all_span_improve": true,
+    "all_swa_improve": true,
+    "commands": [
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-short-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --swa-decode-variant swa_context_token4_exact_spans --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-short-control/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-short-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-short-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-512-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 512 --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-512-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-512-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 512 --swa-decode-variant swa_context_token4_exact_spans --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-512-control/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-1024-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 1024 --swa-decode-variant swa_context_token4_exact_spans --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-1024-control/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-1024-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 1024 --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-1024-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-3968-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 3968 --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-3968-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d10-clean-aef8c082d-3968-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 3968 --swa-decode-variant swa_context_token4_exact_spans --output /tmp/laguna-q2-xl-d10-clean-aef8c082d-3968-control/bench.json"
+    ],
+    "protocol": "matched cache-only rocprofv3 code_merge_intervals streams; two warmup rows excluded; candidate/control order alternated by context",
+    "rows": [
+      {
+        "candidate_bench_sha256": "05bc5e5844294a4561a6ff95540cfebf6e068d91c8192fe63da44aae0f361bad",
+        "candidate_resources": {
+          "calls_per_token": 36,
+          "dynamic_lds_bytes": 4136,
+          "median_us": 51.821,
+          "scratch_size_bytes": 0,
+          "sgpr_count": 128,
+          "static_lds_bytes": 0,
+          "vgpr_count": 24,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "9657c75341afe772fc2fccad680e95b18306b74671719a219df4e2e1f93f8e6a",
+        "control_bench_sha256": "e0ffeb7373f9a16c038e332ab77aeba12ee38ee252d5afa943d31a82a3cf6153",
+        "control_trace_sha256": "418211d200ac6bd7f08fca6374b345345d6c72acfc9b70e93e0c748707bb0557",
+        "dispatches_per_token": 775,
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_token8": 17.03933257142857,
+          "change_pct": -1.0547082837230937,
+          "control_token4": 17.2209635
+        },
+        "label": "short",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_token8": 45.46605557176211,
+          "change_pct": 0.9122333332351573,
+          "control_token4": 45.055048401934435
+        },
+        "prompt_tokens": 69,
+        "span_median_ms_per_token": {
+          "candidate_token8": 20.162999,
+          "change_pct": -0.6964326042444458,
+          "control_token4": 20.3044055
+        },
+        "stable_steps": 14,
+        "swa_ms_per_token": {
+          "candidate_token8": 1.8756493571428565,
+          "change_pct": -12.468266981693965,
+          "control_token4": 2.1428221428571406
+        }
+      },
+      {
+        "candidate_bench_sha256": "a1a4c7a3c936ff6660e9a7d2819038baa177857e0ed4acaa7d8de19b68d6cf00",
+        "candidate_resources": {
+          "calls_per_token": 36,
+          "dynamic_lds_bytes": 4136,
+          "median_us": 310.243,
+          "scratch_size_bytes": 0,
+          "sgpr_count": 128,
+          "static_lds_bytes": 0,
+          "vgpr_count": 24,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "66cb31af4595409d78fee0f73dc04ea288e40ee081cf79b8f2afebab11afdc86",
+        "control_bench_sha256": "34fb432b3c9d47f9f0c992a8e666acaf3b581c1ba7cdcf059859e295174a9e31",
+        "control_trace_sha256": "b648a22b87d81b66f76b85af9eac5c7009733c54155a2819078e5446485b8781",
+        "dispatches_per_token": 775,
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_token8": 28.602567,
+          "change_pct": -6.381327579000173,
+          "control_token4": 30.552203166666665
+        },
+        "label": "512",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_token8": 29.36682311228628,
+          "change_pct": 5.053216618524559,
+          "control_token4": 27.95423506062153
+        },
+        "prompt_tokens": 512,
+        "span_median_ms_per_token": {
+          "candidate_token8": 31.8870355,
+          "change_pct": -5.809280798816275,
+          "control_token4": 33.8536915
+        },
+        "stable_steps": 6,
+        "swa_ms_per_token": {
+          "candidate_token8": 11.171492333333333,
+          "change_pct": -14.811873963782984,
+          "control_token4": 13.11390783333333
+        }
+      },
+      {
+        "candidate_bench_sha256": "e38606e89e98a19ca22ceaa0c059d4564a276b33f8870f6f3c996c5d69dc334f",
+        "candidate_resources": {
+          "calls_per_token": 36,
+          "dynamic_lds_bytes": 4136,
+          "median_us": 310.684,
+          "scratch_size_bytes": 0,
+          "sgpr_count": 128,
+          "static_lds_bytes": 0,
+          "vgpr_count": 24,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "aa1adc3e99b02bff80683413241e5c2f1a46a3aa305a31d08243ec51075c36d7",
+        "control_bench_sha256": "9dc27fdd19491118ae58a8a5ac21468c7d3b912e17570749f036bc668163758a",
+        "control_trace_sha256": "257dad6766911ebc33a422b9bd25679e688ccfd41b070d00e48191aa36d98bcb",
+        "dispatches_per_token": 775,
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_token8": 31.576143833333333,
+          "change_pct": -5.663465106715071,
+          "control_token4": 33.471807999999996
+        },
+        "label": "1024",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_token8": 27.136776576224225,
+          "change_pct": 5.799629807005213,
+          "control_token4": 25.649216945017557
+        },
+        "prompt_tokens": 1024,
+        "span_median_ms_per_token": {
+          "candidate_token8": 34.8420375,
+          "change_pct": -5.323664557175345,
+          "control_token4": 36.801210499999996
+        },
+        "stable_steps": 6,
+        "swa_ms_per_token": {
+          "candidate_token8": 11.19299316666667,
+          "change_pct": -14.73762206817877,
+          "control_token4": 13.12770466666667
+        }
+      },
+      {
+        "candidate_bench_sha256": "06e3e7f26064a0f248452489816e85b81dcc6c030766d6475db6030ce63820a2",
+        "candidate_resources": {
+          "calls_per_token": 36,
+          "dynamic_lds_bytes": 4136,
+          "median_us": 310.6245,
+          "scratch_size_bytes": 0,
+          "sgpr_count": 128,
+          "static_lds_bytes": 0,
+          "vgpr_count": 24,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "fd2cd6d7b08d5263d95cc81d1f02a922e4759f4bb66bbf77f04de35cc8a680d6",
+        "control_bench_sha256": "cd10385e1a1f48202b54c1db51360f0dec6066465a9d7e9c11b5c07114cf8c83",
+        "control_trace_sha256": "8a965c38f473f806f3de17203fb2a89819a22bf14ed87bff9661d8c5020a2026",
+        "dispatches_per_token": 775,
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_token8": 48.29293633333333,
+          "change_pct": -3.8411942320968007,
+          "control_token4": 50.22206333333333
+        },
+        "label": "3968",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_token8": 18.57986337575198,
+          "change_pct": 3.930441912545679,
+          "control_token4": 17.877210020319527
+        },
+        "prompt_tokens": 3968,
+        "span_median_ms_per_token": {
+          "candidate_token8": 51.65087,
+          "change_pct": -3.69820536471388,
+          "control_token4": 53.6343795
+        },
+        "stable_steps": 6,
+        "swa_ms_per_token": {
+          "candidate_token8": 11.18733933333334,
+          "change_pct": -14.858852405406086,
+          "control_token4": 13.139756333333338
+        }
+      }
+    ],
+    "summary_sha256": "f32c0fb080b143991abf35724436658c5612fdd12e3443a4e34162826043246e"
+  },
+  "correctness": {
+    "accepted_bulk_state_artifact_pass": true,
+    "actual_model_all_layer_captures_exact": 48,
+    "actual_model_checkpoints": 18,
+    "complete_kv_payload_and_live_spans_exact": true,
+    "empty_short_adversarial_full_wrap_eviction_exact": true,
+    "focused_tests": "69 passed before measurement",
+    "full_logits_and_argmax_bits_exact": true,
+    "poolside_first_token_kl": 0.00015682291693663912,
+    "poolside_first_token_top1_agreement": 1.0,
+    "reset_exact": true,
+    "same_mode_repeats_deterministic": true,
+    "serial_bulk_pairs_exact": 20,
+    "tracked_peak_allocated_bytes": 40455911848,
+    "tracked_peak_allocations": 1496,
+    "tracked_returned_to_zero": true
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "candidate_kernel_wrapper_registry_tests_removed": true,
+    "d9_topline_unchanged": true,
+    "diagnostic_h32_change_pct": 1.5685061914824772,
+    "diagnostic_h32_tok_s": 47.871581460418625,
+    "failed_rows": {
+      "aggregate_h16_e2e_change_pct": -0.05529003963096191,
+      "code_h16_e2e_change_pct": -0.1280454574217993,
+      "general_en_h16_decode_change_pct": -0.5349934389577204,
+      "general_en_h16_e2e_change_pct": -0.25380438025490726,
+      "mixed_ja_en_h16_e2e_change_pct": -0.01701609329076703
+    },
+    "reason": "the predeclared complete-suite gate failed aggregate h16 E2E and every-category h16 non-regression despite positive clean profiles and h32 rows",
+    "runtime_default_changed_back": true,
+    "token16_followup_admitted": false,
+    "token4_and_baseline_fallbacks_retained": true
+  },
+  "evidence": {
+    "baseline_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json",
+    "baseline_artifact_sha256": "9e36ee9c7a9e46157f7cc1446405683f6853120d1861410658ec48211f6d0b54",
+    "candidate_tracked_clean": true,
+    "canonical_command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-d10-target-ar.json",
+    "category_comparison_sha256": "ec30c39ac2b676a0cf45bcb76cd5bece9d9d73aee17130730640de165dfb57ff",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "correctness_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-correctness.json",
+    "correctness_artifact_sha256": "3c8d00c1c23d533aaaf258c374fccec3568be7c99483c7e603765300e5d5a292",
+    "profile_summary_sha256": "f32c0fb080b143991abf35724436658c5612fdd12e3443a4e34162826043246e",
+    "raw_canonical_sha256": "9b631b49d4005f2cd94533579de57a03e8317a42bd85cccce32e54e1c9e2e98f",
+    "require_cached_build": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_d10_swa_token8_rejection",
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "pass": false,
+  "performance_claim": false,
+  "post_removal_validation": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_gguf_runner.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py",
+    "result": "69 passed (exit 0); 1 warning"
+  },
+  "schema": 1,
+  "status": "rejected_category_non_regression"
+}

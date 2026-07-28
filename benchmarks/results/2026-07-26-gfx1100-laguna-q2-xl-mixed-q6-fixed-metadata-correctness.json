@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "status": "correctness_admitted_pending_formal_performance_gate",
+  "baseline": {
+    "revision": "8e32ea05c",
+    "h32_decode_tok_s": 58.42484306154226,
+    "dispatches_per_token": 723,
+    "vulkan_matched_target_tok_s": 64.41823922786776
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "device": 0,
+    "queues": 1,
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "candidate": {
+    "layer": "attention_projection_quad",
+    "variant": "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+    "quant_keys": [
+      "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+      "gguf_q6_k+gguf_q8_0+gguf_q8_0+gguf_q6_k"
+    ],
+    "default": false,
+    "selector": "LagunaGGUFResidentSession(use_mixed_q6_fixed_meta_attention=True)",
+    "fallback": "retained exact mixed projection quad when explicitly disabled; registered Q5/Q6 pairs and layer-47 Q8 singletons remain the rows, registry, layout, shape, and unsupported-backend fallback",
+    "persistent_weight_copy_delta_bytes": 0,
+    "workspace_delta_bytes": 0,
+    "dataflow": {
+      "q5_blocks": "unchanged retained four-wave fixed-metadata Q5 owners",
+      "q6_blocks": "local128 cooperative publication of each pack's exact 8x16 d*scale coefficients followed by the retained [t,t+128] accumulator and reduction order",
+      "q8_blocks": "unchanged retained layer-47 singleton-equivalent arithmetic",
+      "rows": 1,
+      "output": "F32"
+    },
+    "library_sha256": "cf9d8db6f68ec42c475147915e0b92047522b53895c429604aae7c4be166ba1f",
+    "worktree_diff_sha256": "2c15af36135ab9e6ac1d92203d8331f7d802e8df455da2627b371e3f9c72c868"
+  },
+  "red": {
+    "q5_q6_wrapper_log_sha256": "88c8d0e7da97885bbcbb2d837809ae9b7e70ee09f9bbf9dec670694f6d2a3fc5",
+    "q6_q8_wrapper_log_sha256": "17b332595b9d051156871aded0375d2d827ce12fd34c1b4e60f71a9cde3756e7",
+    "runtime_selector_log_sha256": "2c4e41cd25016396603f1b0dd3a8ff0ee8668fbf218b8dfaf8dd7764c0be3c6f"
+  },
+  "actual_weight_screen": {
+    "protocol": {
+      "warmups": 50,
+      "repetitions": 15,
+      "launches_per_sample": 200,
+      "order": "counterbalanced",
+      "timers": ["HIP event", "synchronized wall"]
+    },
+    "rows": [
+      {
+        "layer": 0,
+        "quants": ["Q5_K", "Q6_K", "Q6_K", "Q5_K"],
+        "features": [6144, 1024, 1024, 48],
+        "control_event_us": 39.230051040649414,
+        "candidate_event_us": 35.460145473480225,
+        "event_delta_pct": -9.609739134070683,
+        "control_wall_us": 39.026105077937245,
+        "candidate_wall_us": 35.707009956240654,
+        "wall_delta_pct": -8.504807525804015,
+        "all_outputs_f32_bit_exact": true
+      },
+      {
+        "layer": 1,
+        "quants": ["Q5_K", "Q6_K", "Q6_K", "Q5_K"],
+        "features": [9216, 1024, 1024, 72],
+        "control_event_us": 50.191969871520996,
+        "candidate_event_us": 45.269927978515625,
+        "event_delta_pct": -9.806432992378223,
+        "control_wall_us": 50.19549513235688,
+        "candidate_wall_us": 45.360685326159,
+        "wall_delta_pct": -9.63195958810511,
+        "all_outputs_f32_bit_exact": true
+      },
+      {
+        "layer": 46,
+        "quants": ["Q5_K", "Q6_K", "Q6_K", "Q5_K"],
+        "features": [9216, 1024, 1024, 72],
+        "control_event_us": 50.27857303619385,
+        "candidate_event_us": 45.30253887176514,
+        "event_delta_pct": -9.896927983311365,
+        "control_wall_us": 50.624299328774214,
+        "candidate_wall_us": 45.54478917270899,
+        "wall_delta_pct": -10.033739179434132,
+        "all_outputs_f32_bit_exact": true
+      },
+      {
+        "layer": 47,
+        "quants": ["Q6_K", "Q8_0", "Q8_0", "Q6_K"],
+        "features": [9216, 1024, 1024, 72],
+        "control_event_us": 79.39597606658936,
+        "candidate_event_us": 46.431403160095215,
+        "event_delta_pct": -41.51919850301579,
+        "control_wall_us": 79.6155643183738,
+        "candidate_wall_us": 48.68734045885503,
+        "wall_delta_pct": -38.846956778250345,
+        "all_outputs_f32_bit_exact": true
+      }
+    ],
+    "q5_q6_raw_sha256": "4be4dce495dbad8e7ef624d054b688a427723600c9c70385e5f09adcc7c44a71",
+    "q5_q6_harness_sha256": "e310c71e0fa882fc17ac4f413638187aa975db1896f78e68345c87a12e9c209a",
+    "q6_q8_raw_sha256": "06c5089c2b1df9c5e86750d39fd06e8c61a1a752d56370a1b437991a7c678e95",
+    "q6_q8_harness_sha256": "ca028096ce067efd7d7207302d010a4cae8941e0449a0a185c08b9146d2dcf4d"
+  },
+  "full_state_gate": {
+    "passed": true,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "decode_transitions": 16,
+    "full_logits_exact": true,
+    "kl": 0.0,
+    "top1_agreement": 1.0,
+    "hidden_boundaries_exact": 48,
+    "routed_boundaries_exact": 47,
+    "active_kv_and_all_live_spans_exact": true,
+    "reset_exact": true,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_peak_allocations": 1500,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "1293268e673ed6f5aeb15ab4efc9f265d36e719d78648b1b6f8b173ce0207534",
+    "stdout_sha256": "9600d22705d2971d1f6e449035511cb080e6cb4254af642ec6e01ad5fc348c34",
+    "harness_sha256": "a397ca748f3908fbb06d29b64a23de40b5f8f38d09b1d3c28a6ec1b71a63c664"
+  },
+  "cached_trace": {
+    "decode_transitions": 2,
+    "dispatches_per_token": 723,
+    "candidate_calls_per_token": 48,
+    "q5_q6_calls_total": 94,
+    "q6_q8_calls_total": 2,
+    "q5_q6_resources": {
+      "workgroup": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0
+    },
+    "q6_q8_resources": {
+      "workgroup": 128,
+      "vgpr": 48,
+      "sgpr": 128,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0
+    },
+    "q5_q6_duration_us_range": [38.56, 49.481],
+    "q6_q8_duration_us_range": [52.321, 53.361],
+    "finite_logits": true,
+    "lifecycle_clean": true,
+    "trace_sha256": "426e757f39944dd3913076874f65e5eacbb3420738c6d4988a2f549e34fb57ab",
+    "child_sha256": "a2963c7575a54b588dabafc9e77d8cf5f60d11a7c1e6bc1f90f37848be277003",
+    "harness_sha256": "8af1763adfd2d5bf0fbe82a632764cad43063d1355616f1e0069ec2f22789e2d"
+  },
+  "focused_tests": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_q6_mixed_attention_decode.py tests/test_laguna_gguf_runner.py tests/test_laguna_target_ar_bench.py",
+    "passed": 33,
+    "log_sha256": "cb27fd7f42b6d224dfa05db3fc71777af0a383bcb32d6cfe1be44ebfcab22739"
+  },
+  "validation": {
+    "ruff": true,
+    "compileall": true,
+    "json": true,
+    "diff_check": true,
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "lineage_note": "Only the already catalogued unrelated Qwen/PARO/smoke parent drift is reported."
+  },
+  "commands": {
+    "actual_q5_q6": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_mixed_q6_fixed_actual.py",
+    "actual_q6_q8": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_mixed_q6q8_fixed_actual.py",
+    "state": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_mixed_q6_fixed_correctness.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-mixed-q6-fixed-trace --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_mixed_q6_fixed_model.py"
+  },
+  "next_gate": "Commit this default-off correctness admission, then run both clean process orders at short/512/1K/near-4K. Only if every mechanical row passes may both complete 18-prompt process orders run. Any failure removes the candidate."
+}

@@ -1,0 +1,644 @@
+{
+  "acceptance_policy": {
+    "admitted": false,
+    "canonical": "positive aggregate and every-category h16/h32 decode and E2E versus retained D12, with prefill/TTFT inside 0.5%",
+    "canonical_status": "skipped_after_mechanical_failure",
+    "correctness": "BF16-bit leaf equality plus exact full hidden/logit/argmax/KV/live-span/reset/lifecycle",
+    "correctness_pass": true,
+    "profiles": "lower fused family body and inclusive window, lower complete kernel sum and span, and higher profiled-child throughput at every short/512/1K/near-4K context",
+    "profiles_pass": false
+  },
+  "candidate": {
+    "baseline_after_decision": "Laguna D12 at 48.987 h32 decode tok/s and 20.414 ms/token",
+    "candidate_source_retained": false,
+    "default_after_decision": "registered Q5 pack8 linear_pair plus separate BF16 SiLU",
+    "description": "exact raw-Q5 shared gate/up pack8 pair plus BF16 SiLU composite",
+    "implementation_revision": "5ae231a49bb9dd6ea4988b94479bf4dbbfa9cf3f",
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair+activation",
+      "gguf_q5_k",
+      "pack8_gemv_decode_bf16_silu_bf16_out"
+    ]
+  },
+  "canonical_full_suite": {
+    "reason": "predeclared every-context mechanical gate failed before canonical admission",
+    "retained_baseline": {
+      "h32_decode_tok_s": 48.987,
+      "h32_e2e_output_tok_s": 12.117,
+      "ms_per_token": 20.414,
+      "prefill_tok_s": 43.028
+    },
+    "status": "not_run",
+    "target": {
+      "additional_speedup_required_pct": 2.068,
+      "decode_tok_s": 50.0,
+      "remaining_ms_to_20": 0.414
+    }
+  },
+  "clean_profiles": {
+    "checks": {
+      "all_family_body_improve": false,
+      "all_family_window_improve": true,
+      "all_kernel_sum_improve": false,
+      "all_profiled_child_improve": false,
+      "all_resource_gates_pass": true,
+      "all_span_improve": false,
+      "failed": [
+        "all contexts:targeted_family_body",
+        "all contexts:complete_kernel_sum",
+        "short:profiled_child_throughput",
+        "1024:dispatch_span"
+      ],
+      "pass": false
+    },
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+      "HIP_VISIBLE_DEVICES": "0",
+      "PYTHONPATH": "."
+    },
+    "exact_commands": [
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-short-control-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "16",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-short-control-v1/bench.json"
+        ],
+        "label": "short",
+        "mode": "control"
+      },
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-short-candidate-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "16",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--enable-d13",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-short-candidate-v1/bench.json"
+        ],
+        "label": "short",
+        "mode": "candidate"
+      },
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-512-candidate-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "8",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--prompt-length",
+          "512",
+          "--enable-d13",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-512-candidate-v1/bench.json"
+        ],
+        "label": "512",
+        "mode": "candidate"
+      },
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-512-control-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "8",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--prompt-length",
+          "512",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-512-control-v1/bench.json"
+        ],
+        "label": "512",
+        "mode": "control"
+      },
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-1024-control-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "8",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--prompt-length",
+          "1024",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-1024-control-v1/bench.json"
+        ],
+        "label": "1024",
+        "mode": "control"
+      },
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-1024-candidate-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "8",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--prompt-length",
+          "1024",
+          "--enable-d13",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-1024-candidate-v1/bench.json"
+        ],
+        "label": "1024",
+        "mode": "candidate"
+      },
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-3968-candidate-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "8",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--prompt-length",
+          "3968",
+          "--enable-d13",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-3968-candidate-v1/bench.json"
+        ],
+        "label": "3968",
+        "mode": "candidate"
+      },
+      {
+        "argv": [
+          "rocprofv3",
+          "--kernel-trace",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-3968-control-v1",
+          "--output-file",
+          "epyc",
+          "--",
+          ".venv/bin/python",
+          "-u",
+          "/tmp/laguna_d13_decode_profile_child.py",
+          "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+          "--prompts",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--prompt-id",
+          "code_merge_intervals",
+          "--backend",
+          "hip_gfx1100",
+          "--context-length",
+          "4096",
+          "--chunk-size",
+          "128",
+          "--decode-tokens",
+          "8",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+          "--prompt-length",
+          "3968",
+          "--output",
+          "/tmp/laguna-q2-xl-d13-clean-5ae231a49-3968-control-v1/bench.json"
+        ],
+        "label": "3968",
+        "mode": "control"
+      }
+    ],
+    "harness_sha256": {
+      "analyzer": "ee85ec3f0de3b5d5e304f696e86b1aff6a328297152088ac05f0554d04e2749b",
+      "matrix_runner": "b0ca305128ce94707d924fb7ae8c005bc4deeebb11a337abff5411b1793484c9",
+      "profile_child": "b5148aabf1b46b39fcad1b63b07306dc7bf5c795846ae18cfebd401644c97254"
+    },
+    "matrix_command": "bash /tmp/run_laguna_d13_clean_profiles.sh && PYTHONPATH=. uv run python /tmp/analyze_laguna_d13_clean_profiles.py",
+    "protocol": "matched cached rocprofv3 code_merge_intervals streams; two warmup rows excluded; candidate/control process order alternated by context",
+    "report_sha256": "256caae38b2f649e4e5b64adf1a88da3f8848c9266d0f3846746e1cf0038842c",
+    "revision": "5ae231a49",
+    "rows": [
+      {
+        "candidate_bench_sha256": "ec1e7ed961d40fe9644d43fb1571daf6da2c7379db25d3cc862b5349e6d45df2",
+        "candidate_kernel": {
+          "calls_per_token": 46,
+          "resource_gate_pass": true,
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_q5_k_pair_pack8_decode_silu_bf16_out_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int)",
+              256,
+              88,
+              128,
+              1536,
+              0
+            ]
+          ]
+        },
+        "candidate_trace_sha256": "ed8e83beb29f25965b13674a347ed38558f9b956f054047247d04ef198d068a2",
+        "control_bench_sha256": "fe64bd29f8d03d823b0895ba9299ff56b3ac038372733f2561ed35ed41a55657",
+        "control_trace_sha256": "59aa3d1173a406e2c68f9148222467747f99c9bc717f342817e0e3918a8782f4",
+        "dispatches_per_token": {
+          "candidate_d13": 729,
+          "change": -46,
+          "pair_plus_separate_silu": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d13": 16.61334792857143,
+          "change_pct": 0.5939264861338334,
+          "pair_plus_separate_silu": 16.51525942857143
+        },
+        "label": "short",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d13": 46.88440465950695,
+          "change_pct": -1.279749861773194,
+          "pair_plus_separate_silu": 47.49218584217525
+        },
+        "span_median_ms_per_token": {
+          "candidate_d13": 19.593941,
+          "change_pct": -0.5507209472691565,
+          "pair_plus_separate_silu": 19.7024465
+        },
+        "stable_steps": 14,
+        "targeted_family_body_ms_per_token": {
+          "candidate_d13": 1.1120475,
+          "change_pct": 11.068825557979679,
+          "pair_plus_separate_silu": 1.0012237857142856
+        },
+        "targeted_inclusive_window_ms_per_token": {
+          "candidate_d13": 1.1120475,
+          "change_pct": -5.4553021198957445,
+          "pair_plus_separate_silu": 1.1762135
+        }
+      },
+      {
+        "candidate_bench_sha256": "e858d3b897cc25ac0a651f579f18408bb24043ce8e7572c6378f32e8f7dc9f56",
+        "candidate_kernel": {
+          "calls_per_token": 46,
+          "resource_gate_pass": true,
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_q5_k_pair_pack8_decode_silu_bf16_out_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int)",
+              256,
+              88,
+              128,
+              1536,
+              0
+            ]
+          ]
+        },
+        "candidate_trace_sha256": "70c61ba32c25f22f016fc6529b5c1faaf0e0d7bd933133ebab5bf0d5d641d739",
+        "control_bench_sha256": "32d425f8990a31024772e3a4c8c2e3bf097808b4e4c1b1ea7789aa70e23f48a9",
+        "control_trace_sha256": "f939cf28b3b0515a62576be3f3d6e43e5129894a708d5fab4216afb096d6b1b8",
+        "dispatches_per_token": {
+          "candidate_d13": 729,
+          "change": -46,
+          "pair_plus_separate_silu": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d13": 29.793137666666667,
+          "change_pct": 0.38981504380461995,
+          "pair_plus_separate_silu": 29.6774505
+        },
+        "label": "512",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d13": 28.573154399293976,
+          "change_pct": 0.5922859183721929,
+          "pair_plus_separate_silu": 28.404916081219472
+        },
+        "span_median_ms_per_token": {
+          "candidate_d13": 32.8833765,
+          "change_pct": -0.39496550068299774,
+          "pair_plus_separate_silu": 33.0137695
+        },
+        "stable_steps": 6,
+        "targeted_family_body_ms_per_token": {
+          "candidate_d13": 1.0918295,
+          "change_pct": 9.284019504037989,
+          "pair_plus_separate_silu": 0.9990751666666666
+        },
+        "targeted_inclusive_window_ms_per_token": {
+          "candidate_d13": 1.0918295,
+          "change_pct": -6.925182843427891,
+          "pair_plus_separate_silu": 1.1730665
+        }
+      },
+      {
+        "candidate_bench_sha256": "11eb39327fac8214c1825d2a6b4442ce780542affcebef59794774884ca6a427",
+        "candidate_kernel": {
+          "calls_per_token": 46,
+          "resource_gate_pass": true,
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_q5_k_pair_pack8_decode_silu_bf16_out_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int)",
+              256,
+              88,
+              128,
+              1536,
+              0
+            ]
+          ]
+        },
+        "candidate_trace_sha256": "66f999143d2cf6b6e11823c6e2bffe4eeec8e3210495a21c6d405bc498c5cb96",
+        "control_bench_sha256": "c88bf68870673bc9fca9d6e734b805b8a9870a3a9219b790d3a22f479a2125e2",
+        "control_trace_sha256": "cedec0d876557deca9e4a4bc6adeedff12d777aa19e7f57f21acd74bc81e6418",
+        "dispatches_per_token": {
+          "candidate_d13": 729,
+          "change": -46,
+          "pair_plus_separate_silu": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d13": 32.894432333333334,
+          "change_pct": 0.7065566794185685,
+          "pair_plus_separate_silu": 32.66364516666667
+        },
+        "label": "1024",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d13": 26.350988476664874,
+          "change_pct": 0.42017170459376363,
+          "pair_plus_separate_silu": 26.240732344276044
+        },
+        "span_median_ms_per_token": {
+          "candidate_d13": 36.007699,
+          "change_pct": 0.02396033886817861,
+          "pair_plus_separate_silu": 35.999073499999994
+        },
+        "stable_steps": 6,
+        "targeted_family_body_ms_per_token": {
+          "candidate_d13": 1.0993225,
+          "change_pct": 9.661204057305017,
+          "pair_plus_separate_silu": 1.0024716666666666
+        },
+        "targeted_inclusive_window_ms_per_token": {
+          "candidate_d13": 1.0993225,
+          "change_pct": -6.594366746473868,
+          "pair_plus_separate_silu": 1.1769338333333335
+        }
+      },
+      {
+        "candidate_bench_sha256": "6f19db7280eb9e8597fb045b337b59bcfcdbae76a8edb499613a5226925fe148",
+        "candidate_kernel": {
+          "calls_per_token": 46,
+          "resource_gate_pass": true,
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_q5_k_pair_pack8_decode_silu_bf16_out_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int)",
+              256,
+              88,
+              128,
+              1536,
+              0
+            ]
+          ]
+        },
+        "candidate_trace_sha256": "52e60da2aa458659947b13b649e5973c787a4558636243488b5c73cc74b68806",
+        "control_bench_sha256": "37e2e7b96f1534214e9123aa8ea3752ee52aa9b144f30c95c5a697732f22552b",
+        "control_trace_sha256": "38380ec0b1c28bea40724975e02c89d1048026feed57f60a84d382d82114e6b4",
+        "dispatches_per_token": {
+          "candidate_d13": 729,
+          "change": -46,
+          "pair_plus_separate_silu": 775
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate_d13": 49.611669666666664,
+          "change_pct": 0.444027903738653,
+          "pair_plus_separate_silu": 49.39235383333333
+        },
+        "label": "3968",
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d13": 18.286752740313915,
+          "change_pct": 0.24226757639433938,
+          "pair_plus_separate_silu": 18.24255693974364
+        },
+        "span_median_ms_per_token": {
+          "candidate_d13": 52.7672335,
+          "change_pct": -0.043856470796177494,
+          "pair_plus_separate_silu": 52.7903855
+        },
+        "stable_steps": 6,
+        "targeted_family_body_ms_per_token": {
+          "candidate_d13": 1.0967483333333332,
+          "change_pct": 9.736358851862924,
+          "pair_plus_separate_silu": 0.9994393333333333
+        },
+        "targeted_inclusive_window_ms_per_token": {
+          "candidate_d13": 1.0967483333333332,
+          "change_pct": -6.639786223867661,
+          "pair_plus_separate_silu": 1.1747491666666667
+        }
+      }
+    ],
+    "summary_sha256": "e4bb8773b474095f9e1e8d69fb110c72a9421b0526da374136352fe20bb063ee"
+  },
+  "correctness": {
+    "artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-correctness.json",
+    "artifact_sha256": "dc1dbc3c50943fe5c2114994125449a6c8b7a1e81e521d9ef6941090b4c3dcff",
+    "design_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-design.json",
+    "design_artifact_sha256": "37b00c62caf4eab87cd540a265a39aef320d7c9edd14475796acfda7fbbd54cb",
+    "passed": true,
+    "summary": "synthetic/adversarial and actual endpoint BF16 bits exact; all 48 hidden rows, full logits/argmax, complete K/V and KVLiveSpans, reset, and lifecycle exact"
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "remove",
+    "fallback": "registered Q5 pack8 linear_pair plus separate BF16 SiLU",
+    "reason": "the local launch window contracts, but the fused body and complete kernel sum regress; frozen mechanical gate fails",
+    "removed": [
+      "HIP body and C export",
+      "ctypes wrapper and four-axis registration",
+      "generic pair+activation dispatch helper and cache",
+      "Laguna MoE plan/runtime branch",
+      "gfx1100 backend capability and resident-session selector",
+      "candidate unit/GPU/dispatch tests"
+    ]
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "kind": "hipengine_laguna_q2_xl_d13_q5_shared_silu_rejected",
+  "model": {
+    "id": "unsloth/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "status": "rejected_and_removed",
+  "validation_after_removal": {
+    "additional": [
+      "project-pinned Ruff passed",
+      "compileall passed",
+      "benchmark README export sync passed",
+      "JSON and git diff checks passed",
+      "D13 source/selector/test symbols absent",
+      "kernel lineage selected no external source"
+    ],
+    "cpu_reference_result": "14 passed",
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py",
+    "focused_result": "141 passed; one Starlette deprecation warning"
+  }
+}

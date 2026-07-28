@@ -1,0 +1,206 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_hip_vulkan_isa_attention_review",
+  "date": "2026-07-24",
+  "status": "analysis_and_preimplementation_plan",
+  "performance_claim": false,
+  "runtime_default_changed": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "hip_backend": "ROCm",
+    "vulkan_backend": "RADV NAVI31"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "size_bytes": 39684584480,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "history_review": {
+    "sources": [
+      "docs/HIP-vs-VULKAN-HISTORY.md",
+      "docs/HIP-vs-VULKAN.md",
+      "benchmarks/micro/results/gfx1100/w7900/2026-07-11-hip-vulkan-timing-v2-bounded.json"
+    ],
+    "transfer": {
+      "serialized_generic": "HIP wins every retained gfx1100 geometry, reduction, memory/waitcnt, VOPD, sampler, and two-stage-reduction serial row.",
+      "packed_dot_vulkan_over_hip": "1.052x-1.133x serialized; much smaller than the old gfx1151 3x-4x result.",
+      "dispatch_vulkan_over_hip": "2.437x-10.122x serialized for the bounded tiny-dispatch matrix; runtime/command-replay evidence, not compiler evidence.",
+      "production_slices": "Combined Q4 selected-dual, Q6 selected-down, and dense-Q8 production-shaped controls mostly favor HIP on gfx1100."
+    },
+    "decision": "Do not infer a broad ACO, wave64, VOPD, reduction, or memory-scheduling advantage. Laguna needs exact raw-IQ and attention production-slice attribution."
+  },
+  "llamacpp_hip_control": {
+    "source_commit": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "build": {
+      "location": "/tmp/llama-c0bc8591-hip-build",
+      "llama_bench_sha256": "882d3dd758d4c3076c68e61d9417205d7b5b1ede1506597b862ac0f8c1134e87",
+      "libggml_hip_sha256": "a3d9e7b85642ce753c1892a091b494a1f6194a9654df49f3938a3a0247f9faad",
+      "target": "gfx1100",
+      "note": "Clean temporary same-source build; the dirty read-only reference tree was not modified."
+    },
+    "controls": {
+      "short_fa_on": {
+        "tok_s": 55.620594,
+        "stddev_tok_s": 0.209888,
+        "ms_per_token": 17.978949,
+        "raw_sha256": "c7dfbb10d764de3ece6b2f0af31fe09ffe75c7e560a1278abe622f7ec7da2b54"
+      },
+      "depth86_n31_fa_on": {
+        "tok_s": 55.323919,
+        "stddev_tok_s": 0.777949,
+        "ms_per_token": 18.07534,
+        "raw_sha256": "61f337a245274202df4959ff10a064f9da03b0f9ac1681c5448210a13e640b73"
+      },
+      "short_fa_off": {
+        "tok_s": 52.200352,
+        "ms_per_token": 19.157153,
+        "raw_sha256": "5893ff80b9f4b0710329a8aca361f5bd027568a10c997e36c10986d47d55f5c5"
+      },
+      "short_graphs_off": {
+        "tok_s": 55.375793,
+        "ms_per_token": 18.058445,
+        "raw_sha256": "f19cfee233f66fcbdec1ed1f2d283984feeed837826c26fee362b907d58e11cd"
+      },
+      "same_source_vulkan_short": {
+        "tok_s": 94.513,
+        "ms_per_token": 10.581,
+        "vulkan_over_hip": 1.699
+      }
+    },
+    "depth_trace": {
+      "stable_c1_kernel_ms_per_token": 13.729,
+      "dispatches_per_token": 1874,
+      "summary_sha256": "aaa68007bdd55aef46b735707d73cd34f9b0b7fc0ca3f8950bb235dda3c34be7",
+      "family_comparison_ms_per_token": {
+        "selected_iq2": {
+          "hipengine_d12": 2.358,
+          "llamacpp_hip": 2.465
+        },
+        "selected_iq3_down": {
+          "hipengine_d12": 2.131,
+          "llamacpp_hip": 1.422
+        },
+        "q6_projection_families": {
+          "hipengine_d12": 1.546,
+          "llamacpp_hip": 1.618
+        },
+        "major_q5_families": {
+          "hipengine_d12": 4.929,
+          "llamacpp_hip": 4.199
+        },
+        "attention_context_bodies": {
+          "hipengine_d12": 2.671,
+          "llamacpp_hip": 0.558
+        }
+      },
+      "scope": "Diagnostic forced-token/F16-KV llama.cpp trace versus natural-greedy/BF16-KV hipEngine trace; family boundaries are aligned directionally, not a formal product-throughput A/B."
+    }
+  },
+  "raw_iq3": {
+    "shape": "selected top-10, K1024, N3072, 45 sparse layers/token",
+    "paths": [
+      {
+        "path": "hipEngine D12 exact weighted down",
+        "activation_math": "BF16 input, FP32 scalar FMA, BF16 per-route output, slot-order weighted FMA",
+        "ownership": "local128; one output block loops ten routes serially",
+        "resources": "VGPR32, LDS512 B, scratch0, two barriers",
+        "static_isa": "343 instructions, 24 waitcnt-family, 25 delay, 12 nop, no dot4",
+        "observed_ms_per_token": 2.131
+      },
+      {
+        "path": "llama.cpp HIP",
+        "activation_math": "Q8_1 activation plus eight dot4 operations, FP32 output",
+        "ownership": "one wave32 per route/output; routes are grid-parallel",
+        "resources": "VGPR72, LDS0, no barrier",
+        "static_isa": "547 instructions, eight dot4",
+        "observed_ms_per_token": 1.422
+      },
+      {
+        "path": "llama.cpp Vulkan MMVQ-off",
+        "activation_math": "raw IQ3 plus F32 activation/FMA",
+        "ownership": "subgroup64, four adjacent output rows/workgroup, routes grid-parallel",
+        "resources": "VGPR60, 2 KiB allocated LDS including the 1 KiB codebook, no barrier",
+        "static_isa": "1590 shaderstats instructions, 128 FMA",
+        "observed_warmed_logger_ms_per_token": 1.163,
+        "timing_scope": "instrumented warmed logger; directional only"
+      }
+    ],
+    "isa_sha256": {
+      "hipengine_clang22": "673bc2137406cd9f93828411a12d20ee6622a0c1c2075f4275402391c4ab5b90",
+      "hipengine_clang23": "48d8263db2e1b30f9ff3cff19649ff2497f01244d05770927e21c3b0418ebcea",
+      "llamacpp_hip": "9261c2836424cdb896dda0e3a5ea94517a96e8582d4645f6bd2e7d0063de5399"
+    },
+    "compiler_control": {
+      "clang23_vs_clang22": "329 vs 343 static instructions, 20 vs 24 waitcnt-family, 19 vs 25 delay, 1 vs 12 nop, but logical VGPR 33 vs 32",
+      "paired_median_change_pct": 4.799211316029273,
+      "direction": "clang23 slower",
+      "mismatches": 0,
+      "raw_sha256": "1d50dbdb92e7521497054ea6e6feea2ca2880dd850cc6ad876fb3b1f178ebbc9"
+    },
+    "decision": "The open mechanism is ownership/reuse and route parallelism, optionally Q8_1 dot4 under a quality contract; it is not shorter generic ISA or a compiler upgrade."
+  },
+  "quality_quant_plan": {
+    "experiment_order": [
+      "Exact IQ3 route-parallel producer plus slot-order weighted reducer.",
+      "Exact IQ3 four-output-row ownership while preserving per-row reduction and BF16 route boundaries.",
+      "IQ3-only Q8_1/dot4 path including activation quantization in timing.",
+      "Raw-IQ3 four-row Vulkan-association quality variant.",
+      "Raw-Q5 four-row quality variant.",
+      "Raw-IQ2 four-row quality variant; do not repeat the rejected inclusive IQ2 Q8_1 path."
+    ],
+    "correctness": "Primitive CPU plus exact-D12 dual oracle, actual weights/routes, frozen Poolside oracle, and 18-prompt train+heldout matched-history max KL <= 0.05 and top-1 >= 90%, followed by deterministic free-running/category gates.",
+    "abi": "Separate four-axis quality variants with exact D12 siblings and unsupported-shape fallback; no backend/quant branch in model or dispatch code.",
+    "resources": "Clang22 baseline, scratch0, no persistent duplicate weights, bounded reusable Q8_1 workspace, actual-weight inclusive wins, and family-specific VGPR/LDS limits.",
+    "promotion": "Promote one family at a time; bundle only after every independently admitted family remains positive in the complete suite."
+  },
+  "attention_plan": {
+    "current_ms_per_token": {
+      "short": {
+        "swa": 2.153,
+        "global": 0.518,
+        "total": 2.671
+      },
+      "512": {
+        "swa": 13.099,
+        "global": 2.987,
+        "total": 16.086
+      },
+      "1024": {
+        "swa": 13.118,
+        "global": 5.9,
+        "total": 19.018
+      },
+      "3968": {
+        "swa": 13.132,
+        "global": 22.637,
+        "total": 35.769
+      }
+    },
+    "llamacpp_hip_source": {
+      "files": [
+        "ggml/src/ggml-cuda/fattn-tile.cuh",
+        "ggml/src/ggml-cuda/fattn-common.cuh"
+      ],
+      "trace": "tile32, local (32,2), eight partial blocks at the depth-matched padded-256 cache, then local128 split combine",
+      "resources": "SWA tile VGPR136/LDS5632/scratch32 B per thread; global tile VGPR120/LDS5632/scratch0; combine VGPR24/LDS0/scratch0",
+      "timing_ms_per_token": "SWA tile 0.357 + global tile 0.090 + all combines 0.112 = 0.558"
+    },
+    "candidate_stages": [
+      "Exact split-score producer plus logical-slot-order reducer to test parallel topology without changing current arithmetic.",
+      "Quality-gated FP32 online producer emitting deterministic per-split (m, l, o), followed by ascending-split merge.",
+      "Global q-head tile2 for GQA6 after q-head1; SWA q-head1 first and q-head3 for GQA9 only after an independent win.",
+      "Fuse the existing softplus gate only into the admitted reducer; do not restore rejected head/KV D14-D17 bodies."
+    ],
+    "kvlivespans": "Every producer consumes base_offsets, live_counts, token_positions, evict_mask, and row_positions. Global retains 256-token page mapping; SWA retains physical ring wrap, absolute-window visibility, and eviction semantics.",
+    "scratch": {
+      "max_online_f32_bytes": 3194880,
+      "max_exact_score_slot_bytes": 1572864,
+      "policy": "One reusable session allocation sized to the largest selected mode; no per-token allocation, duplicated KV, or persistent weight copy."
+    },
+    "crossover": "Measure global and SWA separately. Start tile32, sweep live/tile boundaries, and select the lowest live count with three consecutive positive buckets and no later regression. Store thresholds in backend capability metadata; never key them to prompts or token IDs.",
+    "gates": "Existing primitive tolerance rtol/atol 3e-4, exact-lane byte parity, quality-lane 18-prompt KL/top-1, ring/page/eviction boundaries, balanced inclusive producer+reduce(+gate) timing, short/512/1K/near-4K profiles, cached rocprof resources, deterministic lifecycle, and complete category/heldout promotion."
+  },
+  "bottom_line": "llama.cpp HIP is a useful source and mechanism control, not a near-Vulkan HIP endpoint. The implementation loop should begin with exact IQ3 ownership and exact attention split topology, then open narrowly scoped quality lanes only where exact topology cannot recover the measured gap."
+}

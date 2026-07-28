@@ -1217,6 +1217,9 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
     )
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
+        laguna_global_attention_decode_split_exact_bf16_spans,
+        laguna_swa_attention_decode_split_exact_bf16_spans,
+        laguna_swa_attention_decode_split_tile16_exact_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
@@ -1275,8 +1278,23 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
         query_device = malloc(72 * 128 * 4, runtime=runtime)
         output_device = malloc(72 * 128 * 4, runtime=runtime)
         token4_output_device = malloc(72 * 128 * 4, runtime=runtime)
+        split_output_device = malloc(72 * 128 * 4, runtime=runtime)
+        tile16_output_device = malloc(72 * 128 * 4, runtime=runtime)
+        split_scratch_elements = max(48 * 1026, 72 * 512)
+        score_scratch_device = malloc(split_scratch_elements * 4, runtime=runtime)
+        physical_scratch_device = malloc(split_scratch_elements * 4, runtime=runtime)
         allocations.extend(
-            (key_device, value_device, query_device, output_device, token4_output_device)
+            (
+                key_device,
+                value_device,
+                query_device,
+                output_device,
+                token4_output_device,
+                split_output_device,
+                tile16_output_device,
+                score_scratch_device,
+                physical_scratch_device,
+            )
         )
 
         for position in range(total_tokens):
@@ -1337,9 +1355,45 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                 library=kv_library,
                 runtime=runtime,
             )
+            laguna_swa_attention_decode_split_exact_bf16_spans(
+                query_device.ptr,
+                swa_state.key_cache.ptr,
+                swa_state.value_cache.ptr,
+                split_output_device.ptr,
+                score_scratch_device.ptr,
+                physical_scratch_device.ptr,
+                swa_state.spans,
+                min(position + 1, 512),
+                swa_state.q_heads,
+                8,
+                128,
+                128**-0.5,
+                sliding_window=512,
+                library=kv_library,
+                runtime=runtime,
+            )
+            laguna_swa_attention_decode_split_tile16_exact_bf16_spans(
+                query_device.ptr,
+                swa_state.key_cache.ptr,
+                swa_state.value_cache.ptr,
+                tile16_output_device.ptr,
+                score_scratch_device.ptr,
+                physical_scratch_device.ptr,
+                swa_state.spans,
+                min(position + 1, 512),
+                swa_state.q_heads,
+                8,
+                128,
+                128**-0.5,
+                sliding_window=512,
+                library=kv_library,
+                runtime=runtime,
+            )
             runtime.device_synchronize()
             actual = np.empty((72, 128), dtype=np.float32)
             token4_actual = np.empty_like(actual)
+            split_actual = np.empty_like(actual)
+            tile16_actual = np.empty_like(actual)
             copy_device_to_host(
                 host_array_ptr(actual),
                 output_device,
@@ -1350,7 +1404,19 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                 token4_output_device,
                 runtime=runtime,
             )
+            copy_device_to_host(
+                host_array_ptr(split_actual),
+                split_output_device,
+                runtime=runtime,
+            )
+            copy_device_to_host(
+                host_array_ptr(tile16_actual),
+                tile16_output_device,
+                runtime=runtime,
+            )
             np.testing.assert_array_equal(token4_actual, actual)
+            np.testing.assert_array_equal(split_actual, token4_actual)
+            np.testing.assert_array_equal(tile16_actual, split_actual)
             visible = np.arange(max(0, position - 511), position + 1)
             if position == 1025:
                 visible = visible[visible != evicted_position]
@@ -1378,14 +1444,40 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                     output_device.ptr,
                     library=kv_library,
                 )
+                global_state = cache.layer(0)
+                laguna_global_attention_decode_split_exact_bf16_spans(
+                    query_device.ptr,
+                    global_state.key_cache.ptr,
+                    global_state.value_cache.ptr,
+                    split_output_device.ptr,
+                    score_scratch_device.ptr,
+                    physical_scratch_device.ptr,
+                    global_state.spans,
+                    position + 1,
+                    global_state.capacity,
+                    global_state.q_heads,
+                    8,
+                    128,
+                    128**-0.5,
+                    library=kv_library,
+                    runtime=runtime,
+                )
                 runtime.device_synchronize()
                 global_actual = np.empty((48, 128), dtype=np.float32)
+                global_split_actual = np.empty_like(global_actual)
                 copy_device_to_host(
                     host_array_ptr(global_actual),
                     output_device,
                     nbytes=global_actual.nbytes,
                     runtime=runtime,
                 )
+                copy_device_to_host(
+                    host_array_ptr(global_split_actual),
+                    split_output_device,
+                    nbytes=global_split_actual.nbytes,
+                    runtime=runtime,
+                )
+                np.testing.assert_array_equal(global_split_actual, global_actual)
                 global_visible = np.arange(position + 1)
                 global_visible = global_visible[global_visible != global_evicted_position]
                 global_expected = _attention_reference(
@@ -3024,3 +3116,192 @@ def _attention_reference(
     weights = np.exp(scores, dtype=np.float32)
     weights /= np.sum(weights, axis=1, keepdims=True, dtype=np.float32)
     return np.einsum("ht,thd->hd", weights, expanded_values, dtype=np.float32)
+
+
+def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback() -> None:
+    from hipengine.runtime.laguna_kv import (
+        allocate_laguna_kv_cache,
+        resolve_laguna_split_thresholds,
+        resolve_laguna_swa_split_tile16_threshold,
+    )
+
+    assert resolve_laguna_split_thresholds(
+        "hip_gfx1100",
+        context_length=4096,
+        sliding_window=512,
+    ) == (127, 65)
+    assert resolve_laguna_split_thresholds(
+        "hip_gfx1151",
+        context_length=4096,
+        sliding_window=512,
+    ) == (None, None)
+    assert resolve_laguna_swa_split_tile16_threshold(
+        "hip_gfx1100", sliding_window=512
+    ) == 257
+    assert resolve_laguna_swa_split_tile16_threshold(
+        "hip_gfx1100", sliding_window=512, use_swa_split_tile16=False
+    ) is None
+    assert resolve_laguna_swa_split_tile16_threshold(
+        "hip_gfx1151", sliding_window=512
+    ) is None
+
+    runtime = _FakeRuntime()
+    cache = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    split_elements = max(48 * 4096, 72 * 512)
+    try:
+        assert cache.global_split_min_live == 127
+        assert cache.swa_split_min_live == 65
+        assert cache.swa_split_tile16_min_live == 257
+        assert cache.split_gate_fusion
+        assert cache.swa_split_wave_local
+        assert cache.allocation_count == 245
+        assert cache.resident_nbytes == sum(runtime.allocations.values())
+        assert sorted(runtime.allocations.values()).count(split_elements * 4) == 2
+    finally:
+        cache.free()
+    assert runtime.allocations == {}
+
+    shared_reducer_runtime = _FakeRuntime()
+    shared_reducer = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=shared_reducer_runtime,
+        use_swa_split_wave_local=False,
+    )
+    try:
+        assert not shared_reducer.swa_split_wave_local
+        assert shared_reducer.split_gate_fusion
+        assert shared_reducer.allocation_count == 245
+    finally:
+        shared_reducer.free()
+    assert shared_reducer_runtime.allocations == {}
+
+    tile16_runtime = _FakeRuntime()
+    tile16 = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=tile16_runtime,
+        swa_split_tile16_min_live=257,
+    )
+    try:
+        assert tile16.swa_split_tile16_min_live == 257
+        assert tile16.split_gate_fusion
+        assert tile16.allocation_count == 245
+        assert sorted(tile16_runtime.allocations.values()).count(split_elements * 4) == 2
+    finally:
+        tile16.free()
+    assert tile16_runtime.allocations == {}
+
+    tile16_rollback_runtime = _FakeRuntime()
+    tile16_rollback = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=tile16_rollback_runtime,
+        use_swa_split_tile16=False,
+    )
+    try:
+        assert tile16_rollback.global_split_min_live == 127
+        assert tile16_rollback.swa_split_min_live == 65
+        assert tile16_rollback.swa_split_tile16_min_live is None
+        assert tile16_rollback.split_gate_fusion
+        assert tile16_rollback.allocation_count == 245
+    finally:
+        tile16_rollback.free()
+    assert tile16_rollback_runtime.allocations == {}
+
+    rollback_runtime = _FakeRuntime()
+    rollback = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=rollback_runtime,
+        use_split_attention=False,
+    )
+    try:
+        assert rollback.global_split_min_live is None
+        assert rollback.swa_split_min_live is None
+        assert rollback.swa_split_tile16_min_live is None
+        assert not rollback.split_gate_fusion
+        assert not rollback.swa_split_wave_local
+        assert rollback.allocation_count == 243
+        assert sorted(rollback_runtime.allocations.values()).count(split_elements * 4) == 0
+    finally:
+        rollback.free()
+    assert rollback_runtime.allocations == {}
+
+    with pytest.raises(ValueError, match="global_split_min_live"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            global_split_min_live=4097,
+        )
+    with pytest.raises(ValueError, match="cannot be combined"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            use_split_attention=False,
+            global_split_min_live=127,
+        )
+    with pytest.raises(ValueError, match="cannot be combined"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            use_split_attention=False,
+            use_swa_split_wave_local=True,
+        )
+    with pytest.raises(ValueError, match="requires exact split attention"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            use_split_gate_fusion=False,
+            use_swa_split_wave_local=True,
+        )
+    with pytest.raises(ValueError, match="unavailable.*hip_gfx1151"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1151",
+            runtime=_FakeRuntime(),
+            global_split_min_live=127,
+        )
+    with pytest.raises(ValueError, match="cannot be combined"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            swa_split_tile16_min_live=257,
+            use_swa_split_tile16=False,
+        )
+    with pytest.raises(ValueError, match="swa_split_tile16_min_live"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1100",
+            runtime=_FakeRuntime(),
+            swa_split_tile16_min_live=513,
+        )
+    with pytest.raises(ValueError, match="unavailable.*hip_gfx1151"):
+        allocate_laguna_kv_cache(
+            _production_config(),
+            context_length=4096,
+            backend="hip_gfx1151",
+            runtime=_FakeRuntime(),
+            swa_split_tile16_min_live=257,
+        )

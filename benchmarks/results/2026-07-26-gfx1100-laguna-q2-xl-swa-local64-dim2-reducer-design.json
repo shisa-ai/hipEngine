@@ -1,0 +1,324 @@
+{
+  "baseline": {
+    "additional_h32_speedup_required_pct": 4.350869291461135,
+    "dispatches_per_token": 723,
+    "h16_decode_tok_s": 62.35358698325803,
+    "h32_decode_tok_s": 61.73234556191569,
+    "h32_ms_per_token": 16.198963297077867,
+    "h32_wall_gap_ms_per_token": 0.6754095336370103,
+    "implementation_revision": "8f8e64ea88cc886bffe600430d091d71b1774e6f",
+    "matched_vulkan_h16_tok_s": 64.24521685437571,
+    "matched_vulkan_h32_ms_per_token": 15.523553763440857,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "retention_revision": "926823693a60c8393669009f9b7d7b72d4c7a52a",
+    "revision": "8d5d1f4c5df82ff6491904da6d2e8f769eea76c5"
+  },
+  "closed_mechanisms_respected": [
+    "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-output-wave32x4-rejected.json",
+    "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-iq2-q5-local64-rejected.json",
+    "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json",
+    "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-tile2-wave32-rejected.json",
+    "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-iq2-wave64-rejected.json",
+    "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-no-max-sync-rejected.json",
+    "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-online-rejected.json",
+    "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-aql-submission-rejected.json"
+  ],
+  "date": "2026-07-26",
+  "decision": {
+    "action": "implement RED-first exact SWA local64 packed-dim2 reducer",
+    "completion_claim": false,
+    "reason": "The post-local32 traces leave the exact SWA value reducer at 1.468 ms/token short and 8.723-8.741 ms/token long. Unlike rejected GQA3, local64 dim2 preserves all 72 head workgroups while halving replicated softmax-state and packed-load instruction work without changing per-dimension arithmetic."
+  },
+  "device_work_model": {
+    "candidate_gate_softplus_evaluations_per_call": 4608,
+    "candidate_packed_u32_value_load_instructions_per_live_slot_per_layer": 4608,
+    "candidate_softmax_state_replicas_per_head": 2,
+    "candidate_value_payload_bytes_per_live_slot_per_layer": 18432,
+    "candidate_wave32s_per_token": 5184,
+    "control_bf16_value_load_instructions_per_live_slot_per_layer": 9216,
+    "control_gate_softplus_evaluations_per_call": 9216,
+    "control_softmax_state_replicas_per_head": 4,
+    "control_value_payload_bytes_per_live_slot_per_layer": 18432,
+    "control_wave32s_per_token": 10368,
+    "interpretation": "This is a source-level instruction/work model, not a hardware-counter or throughput claim. Cache behavior, dual-accumulator register pressure, and reduced waves are decided only by actual-weight timing.",
+    "softmax_max_exp_denom_iterations": {
+      "128": {
+        "candidate_per_token": 663552,
+        "control_per_token": 1327104,
+        "reduction_pct": 50.0
+      },
+      "257": {
+        "candidate_per_token": 1332288,
+        "control_per_token": 2664576,
+        "reduction_pct": 50.0
+      },
+      "512": {
+        "candidate_per_token": 2654208,
+        "control_per_token": 5308416,
+        "reduction_pct": 50.0
+      },
+      "70": {
+        "candidate_per_token": 362880,
+        "control_per_token": 725760,
+        "reduction_pct": 50.0
+      }
+    },
+    "unchanged_value_fmas_and_output_bytes": true,
+    "value_load_instruction_reduction_pct": 50.0,
+    "value_payload_reduction_pct": 0.0,
+    "wave32_reduction_pct": 50.0
+  },
+  "frozen_gates": {
+    "actual_weight_precondition": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "layers": [
+        1,
+        46,
+        47
+      ],
+      "live_counts": [
+        70,
+        128,
+        257,
+        512
+      ],
+      "prompt_id": "code_merge_intervals",
+      "prompt_tokens": 69,
+      "requirement": "All F32/BF16 outputs remain byte-exact and candidate full score+reducer HIP-event and synchronized-wall medians improve at every layer/live row; remove the candidate on any failure.",
+      "score_producer_by_live_count": {
+        "128": "wave32",
+        "257": "tile16",
+        "512": "tile16",
+        "70": "wave32"
+      },
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "warmups_per_mode": 50
+    },
+    "after_actual_weight_pass_only": [
+      "Default-off backend-qualified selector with the retained local128 wave-local reducer as exact registry fallback.",
+      "Sixteen-transition full logits/IDs, all 48 hidden and 47 routed boundaries, active K/V and every span field, reset/re-prefill, ownership, and lifecycle identity.",
+      "Cached rocprofv3 proof of 36 candidate calls/token at local64/grid4608 with unchanged 723 model kernels/token and no compiler under profiling.",
+      "Two process orders at short/512/1K/near-4K: target reducer improves everywhere; total kernel/span regressions stay below 0.5%; equal-process child throughput stays above -0.5%; IDs/resources/lifecycle pass.",
+      "Both complete 18-prompt process orders: pooled h16/h32 and every train/heldout category decode improve; E2E/prefill/TTFT/state/lifecycle guards pass before promotion."
+    ],
+    "codegen": [
+      "local64 with wavefront size 32, grid X 4608, and exactly 72 query-head workgroups.",
+      "allocated VGPR <= 32 and logical SGPR <= 64.",
+      "zero LDS, zero private segment, zero VGPR/SGPR spills, and scratch0.",
+      "No persistent copy, workspace, score-producer change, or prefill route."
+    ],
+    "primitive_correctness": [
+      "F32 context and BF16 gated output byte identity versus the retained local128 wave-local reducer.",
+      "Normal and tile16 score scratch at live 65/70/127/128/256/257/511/512.",
+      "Reversed physical slots, SWA wrap, stale positions, sparse eviction, tied/extreme scores, invalid/empty spans, and denominator underflow.",
+      "Complete KVLiveSpans semantics remain owned by the unchanged score producer and scratch.",
+      "Packed BF16 low/high extraction is validated independently, including the final dimension pair."
+    ],
+    "red": "Add separately registered normal-score and tile16-score gfx1100 c=1 local64-dim2 wrappers/keys and a production reducer fixture before adding any runtime selector."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_swa_local64_dim2_reducer_design",
+  "model": {
+    "head_dim": 128,
+    "kv_dtype": "bf16",
+    "kv_heads_per_layer": 8,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "query_heads_per_kv_head": 9,
+    "query_heads_per_swa_layer": 72,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "swa_layers": 36
+  },
+  "pass": true,
+  "performance_claim": false,
+  "retained_trace": {
+    "analyzer": {
+      "path": "/tmp/analyze_laguna_post_local32_residual.py",
+      "sha256": "7c0f743bbe1e10241b9424035b35962f5226e799660e2b6d23d9a6a3c058688c"
+    },
+    "contexts": {
+      "1024": {
+        "bench_sha256": [
+          "4cd8010141427f7791f3b2aab1a4844b58940d73874314775a1fd1dc6d8114c0",
+          "d66e27dd4079a163f06ebffa643391c350adbaea5972e9adaacc6ab996a925e5"
+        ],
+        "global_total_ms_per_token": 4.665346083333333,
+        "iq2_selected_ms_per_token": 1.8642045,
+        "iq3_down_ms_per_token": 1.4483914166666667,
+        "kernel_sum_ms_per_token": 24.845057916666665,
+        "mixed_projection_ms_per_token": 1.972839,
+        "q5_attention_output_ms_per_token": 1.55873,
+        "stable_samples": 12,
+        "swa_reduce_ms_per_token": 8.7407915,
+        "swa_score_ms_per_token": 0.7952976666666667,
+        "swa_total_ms_per_token": 9.536089166666667,
+        "trace_sha256": [
+          "7b58a28fc402aa42d8fe4fad9af8ffa464be77c9159d9193a0ef9d976eace5a8",
+          "64d402718ac87230241f37b25853634c614b4cc0ead4e3a5fe245cf07adcaabf"
+        ]
+      },
+      "3968": {
+        "bench_sha256": [
+          "a87fc0aa75bc9af3fde34cf67f4f16a92b29f3113e373a7aa9f697925a8dca65",
+          "b94a01592ac0a3dad41ed2935a1130d02780dfe09bb460ed27f9064c216f4ea4"
+        ],
+        "global_total_ms_per_token": 17.796837916666668,
+        "iq2_selected_ms_per_token": 1.8465251666666667,
+        "iq3_down_ms_per_token": 1.4498055,
+        "kernel_sum_ms_per_token": 37.89571608333333,
+        "mixed_projection_ms_per_token": 1.9615826666666667,
+        "q5_attention_output_ms_per_token": 1.5317691666666666,
+        "stable_samples": 12,
+        "swa_reduce_ms_per_token": 8.724187583333334,
+        "swa_score_ms_per_token": 0.8076659166666667,
+        "swa_total_ms_per_token": 9.5318535,
+        "trace_sha256": [
+          "7ccaff763fe17733096f28b234a6e4ea7a496678b3d2226f8ffb430662505bc2",
+          "bcb19c8b83d67583c98be178027b44395036735ffb6415b40d110efba4e6a90f"
+        ]
+      },
+      "512": {
+        "bench_sha256": [
+          "70376262f125de5715af3541c2f2614c487e8c8aed90d774eb49240b3843d580",
+          "27e3a1a10ad916349c40b6e99bda5f02b0fce6c63f40e40896050be6542fb60c"
+        ],
+        "global_total_ms_per_token": 2.4015546666666667,
+        "iq2_selected_ms_per_token": 1.8608220833333333,
+        "iq3_down_ms_per_token": 1.4551673333333333,
+        "kernel_sum_ms_per_token": 22.549211416666665,
+        "mixed_projection_ms_per_token": 1.9799334166666667,
+        "q5_attention_output_ms_per_token": 1.5499908333333332,
+        "stable_samples": 12,
+        "swa_reduce_ms_per_token": 8.723387666666667,
+        "swa_score_ms_per_token": 0.7951449166666666,
+        "swa_total_ms_per_token": 9.518532583333334,
+        "trace_sha256": [
+          "6f2d1044760443fe56f942cdc6bdaf69823fe15ffaa8968bd8745e6a68cf3adf",
+          "846c1068af63699e7b68f05527d9106c503f0b6a60e9ff0f15f6ca29243a70a1"
+        ]
+      },
+      "short": {
+        "bench_sha256": [
+          "a0013f8353cb97dc0376c02367739b94886ddccfd2c11f0be1f3bcf5000e205e",
+          "8388e6f30f3b0aabadd1076aa52112d7e0a4a8be9990a4c9baebf48bda173e26"
+        ],
+        "global_total_ms_per_token": 0.5192505,
+        "iq2_selected_ms_per_token": 1.868013857142857,
+        "iq3_down_ms_per_token": 1.4606495714285714,
+        "kernel_sum_ms_per_token": 12.951632392857142,
+        "mixed_projection_ms_per_token": 1.9661940357142857,
+        "q5_attention_output_ms_per_token": 1.5581423214285715,
+        "stable_samples": 28,
+        "swa_reduce_ms_per_token": 1.4680506071428572,
+        "swa_score_ms_per_token": 0.23687507142857142,
+        "swa_total_ms_per_token": 1.7049256785714286,
+        "trace_sha256": [
+          "c30a43b41e286d02f8bb6e75ba3b8da3808e6f5bd96de23b0b011f1bebdd56be",
+          "2d27d4cfcb9dd80d3b199d3204b28dd0190cb5c0a5823f72771732f60e0b8361"
+        ]
+      }
+    },
+    "current_swa_reducer_resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 24,
+      "calls_per_token": 36,
+      "grid_threads_per_call": 9216,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "wave32s_per_call": 288,
+      "wave32s_per_token": 10368,
+      "workgroup_threads": 128,
+      "workgroups_per_call": 72
+    },
+    "note": "The immutable candidate traces are the exact default-off implementation later promoted unchanged; both process orders pass the retained ID, finite-logit, lifecycle, selector, resource, and 723-dispatch gates.",
+    "residual_report": {
+      "path": "/tmp/laguna-post-local32-residual.json",
+      "sha256": "8ba2dc0ae899c3bfd3b04e275c5c28dc193af3714099c9dedf15c27838edbc5f"
+    },
+    "source_revision": "8f8e64ea88cc886bffe600430d091d71b1774e6f"
+  },
+  "schema": 1,
+  "selection": {
+    "arithmetic_contract": "For every dimension, preserve the same visible logical slots, score scaling, max scan, expf and denominator order, slot-order FMA chain, denominator clamp/divide, F32 context store, FP32 softplus multiplication, and RNE BF16 gate store. Sharing one deterministic gate value and one packed source load across two dimensions changes no arithmetic association.",
+    "candidate": "exact SWA local64 packed-dim2 wave-local gated reducer",
+    "difference_from_other_closed_screens": [
+      "Not Q5 output wave packing, heterogeneous IQ2/shared-Q5 ownership, or another mixed-projection owner.",
+      "Not online-softmax reassociation or the rejected max-barrier-only edit.",
+      "Not launch-count-only graph, packet, or native-AQL work."
+    ],
+    "difference_from_rejected_gqa3": [
+      "Retains all 72 independent query-head workgroups instead of collapsing them to 24.",
+      "Keeps one head per workgroup instead of serializing three head states in one block.",
+      "Carries two adjacent dimensions for one head rather than reusing one value across different heads.",
+      "Does not claim a value-payload-byte reduction; the value source bytes and all per-dimension FMAs remain unchanged."
+    ],
+    "dispatches_per_token_delta": 0,
+    "geometry_change_per_call": {
+      "grid_threads": {
+        "candidate": 4608,
+        "control": 9216
+      },
+      "threads_per_workgroup": {
+        "candidate": 64,
+        "control": 128
+      },
+      "wave32s": {
+        "candidate": 144,
+        "control": 288
+      },
+      "workgroups": {
+        "candidate": 72,
+        "control": 72,
+        "removed": 0
+      }
+    },
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "ownership": "One local64 workgroup still owns exactly one query head. Thread t owns adjacent dimensions 2*t and 2*t+1; wave 0 covers dimensions 0..63 and wave 1 covers 64..127. Each wave leader replays the retained scalar max and denominator order, and one aligned packed BF16 load supplies two independent per-dimension accumulators.",
+    "scope": "Only the c=1 split SWA value reducer; existing normal/tile16 score producers, score and physical scratch, raw BF16 KVLiveSpans, prefill, global attention, and all retained fallbacks remain unchanged."
+  },
+  "selection_budget": {
+    "h32_wall_gap_ms_per_token": 0.6754095336370103,
+    "interpretation": "Closing the matched h32 gap from this family alone would require saving about 46% of its short-profile time. The source model removes half of replicated scalar/load instructions but not value bytes or FMAs, so no completion outcome is projected.",
+    "long_reducer_ms_per_token_range": [
+      8.723387666666667,
+      8.7407915
+    ],
+    "short_reducer_ms_per_token": 1.4680506071428572,
+    "short_reducer_share_of_kernel_sum_pct": 11.334869324676717,
+    "wall_gap_as_pct_of_short_reducer": 46.007237785317415,
+    "zero_reducer_ideal_h32_tok_s": 67.88445638424402
+  },
+  "source_audit": {
+    "catalog": {
+      "path": "docs/KERNELS.md",
+      "sha256": "9c3cd25bf376baaeb2c012c8021a70964243dc2ed3db2255f33d81831e152d0d"
+    },
+    "current_contract": "one local128 block per query head; four wave leaders independently replay max/denominator while one lane owns one dimension",
+    "current_kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip::laguna_swa_attention_split_exact_gated_wave_local_reduce_kernel",
+    "current_launcher": "laguna_launch_swa_attention_split_exact_gated_wave_local<TILE16_SCORES>",
+    "current_source": {
+      "path": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+      "sha256": "97ecdf5af109a39e3847c0d7ab90a683966b6f4a0ed993bb0f276d04377ec082"
+    },
+    "lineage_report": {
+      "path": "/tmp/laguna-post-local32-lineage.txt",
+      "result": "only already-catalogued unrelated drift",
+      "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+    },
+    "prior_gqa3_rejection": {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-gqa3-reducer-rejected.json",
+      "sha256": "56bf81136babfc71a1d0f18d8f02a376fc1e13da75e309129df012eb1ad85054"
+    }
+  },
+  "status": "selected_design"
+}

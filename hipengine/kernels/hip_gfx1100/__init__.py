@@ -1,9 +1,71 @@
 """gfx1100 / RDNA3 backend capabilities."""
 
-# Exact wrap/eviction and dirty full-model family screens admit the token4
-# score-parallel SWA decode candidate on W7900. The clean category gate follows
-# the atomic default commit; other backends retain the registered baseline.
+# Clean W7900 context/category gates retain the exact token4 score-parallel SWA
+# decode default. The wider token8 screen failed the every-category h16 gate and
+# was removed; other backends retain the separately registered baseline.
 LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
+# Clean W7900 D12 leaf/profile/category evidence admits the exact local32
+# two-output Q5 schedules for c=1 attention output and query/gate projection.
+# Other backends retain the separately registered pack8 fallbacks.
+LAGUNA_Q5_WAVE32X2_OUTPUT = True
+LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
+# Exact wave-uniform Q5 metadata loads pass first/last actual layers, full state,
+# both clean context orders, and both complete 18-prompt category orders.
+# Explicit role-scoped disables retain the registered coefficient-publication path.
+LAGUNA_Q5_FIXED_METADATA = True
+# The exact local32 BF16 pair for shared-Q5 gate/up passes first/last actual
+# weights, full state, both clean context orders, and both complete category
+# orders. Explicit disable restores the registered local128 pack8 pair.
+LAGUNA_Q5_SHARED_FIXED_METADATA = True
+# Exact mixed Q5/Q6 and corrected Q6/Q8 projection quads pass actual layers,
+# full state, both clean context orders, and both complete category orders.
+# Explicit disable retains the registered Q5/Q6 pair and Q8 singleton chain.
+LAGUNA_MIXED_ATTENTION_PROJECTIONS = True
+# Cooperative Q6 metadata publication inside the retained mixed quad is exact,
+# improves all clean contexts, and passes both complete category process orders.
+# Explicit disable restores the generic-Q6 mixed projection variant.
+LAGUNA_MIXED_Q6_FIXED_METADATA = True
+# Exact all-local32 Q5/Q6 ownership passes production bits, full state, both
+# clean context orders, and both complete category orders. Explicit disable
+# restores the retained local128 fixed-Q6 mixed projection; layer 47 stays there.
+LAGUNA_MIXED_LOCAL32_FIXED_METADATA = True
+# The exact Q4_K c=1 BF16-to-F32 LM-head sibling passes production bits,
+# full state, cached one-call tracing, both clean context orders, and both
+# complete category process orders. Explicit False restores registered local128.
+LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA = True
+# The registered wave4 producer plus slot-order reducer remains the explicit
+# rollback and exact-key-miss fallback for the retained fused schedule below.
+# Other backends retain their independently selected schedules.
+LAGUNA_IQ3_C1_DOWN_SCHEDULE = "wave4_reduce"
+# Exact local320 ten-wave IQ3 producer/reducer fusion passes full-state,
+# clean-context, and both complete 18-prompt category orders. Explicit wave4
+# or serial requests and exact-key misses retain the registered unfused chain.
+LAGUNA_IQ3_WAVE10_FUSED = True
+# The exact expanded-magnitude IQ2 grid contracts selector reconstruction and
+# passes actual-layer, full-state, clean-context, and complete-category gates.
+# Rows>1 and other backends retain the compact-grid tile2 fallback.
+LAGUNA_IQ2_GRID64 = True
+# Clean P2.1 exact split profiles and the complete category/heldout gate admit
+# independent global/SWA crossovers. Registered single-block readers remain the
+# below-threshold and explicit-disable fallback on gfx1100; other backends do
+# not inherit these architecture-local thresholds.
+LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
+LAGUNA_SWA_SPLIT_MIN_LIVE = 65
+# P2's exact post-online refinement reduces the retained SWA score-producer
+# sub-window at 257/511/512 without changing dispatches, memory, or arithmetic.
+LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
+# P4.1 exact actual-layer screens admit folding the existing softplus gate and
+# BF16 store into each retained split reducer. The unfused registered chain is
+# the explicit rollback and remains the below-threshold fallback.
+LAGUNA_SPLIT_GATE_FUSION = True
+# The retained SWA reducer replays exact scalar softmax statistics independently
+# in each logical wave. This removes all block barriers/LDS and improves every
+# clean context plus the complete two-order category suite.
+LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
+# Current-P4 first/last-layer, clean context, full-state, and complete two-order
+# category evidence admits exact c=1 head RMSNorm+RoPE+BF16 KV append fusion.
+# Rows/prefill and other backends retain the registered two-launch fallback.
+LAGUNA_HEAD_KV_FUSION = True
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -64,7 +126,24 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
+    "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
+    "LAGUNA_HEAD_KV_FUSION",
+    "LAGUNA_IQ2_GRID64",
+    "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
+    "LAGUNA_IQ3_WAVE10_FUSED",
+    "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
+    "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
+    "LAGUNA_MIXED_Q6_FIXED_METADATA",
+    "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
+    "LAGUNA_Q5_FIXED_METADATA",
+    "LAGUNA_Q5_SHARED_FIXED_METADATA",
+    "LAGUNA_Q5_WAVE32X2_OUTPUT",
+    "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
+    "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
+    "LAGUNA_SWA_SPLIT_MIN_LIVE",
+    "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
+    "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",

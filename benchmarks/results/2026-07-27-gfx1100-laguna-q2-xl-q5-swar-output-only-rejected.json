@@ -1,0 +1,332 @@
+{
+  "benchmark_rollup_changed": false,
+  "candidate": {
+    "key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q5_k",
+      "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out"
+    ],
+    "launch_delta": 0,
+    "mixed_shared_query_gate_candidates_excluded": true,
+    "model_kernels_per_token": 678,
+    "new_allocations": 0,
+    "scope": "47 c=1 direct-BF16 Q5 attention-output calls only",
+    "workspace_delta_bytes": 0
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "action": "reject unchanged output-only runtime owner and retain primitive only",
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank independent exact post-wave10 surfaces; do not retry any SWAR runtime owner unchanged.",
+    "required_relative_gain_to_beat_vulkan_pct": 1.8144711534139324,
+    "retry_allowed_without_materially_new_premise": false,
+    "throughput_claim": false
+  },
+  "frozen_contract": {
+    "analyzer_sha256": "4b0d609f17974c4697b6f61645ebc815eacd458153ee385cd5d40356ddb6418c",
+    "child_sha256": "af8e09ae0a0e1f5428d9b33603e72d5e93393f5d188da3951131376fdcaec3ec",
+    "path": "/tmp/laguna-q5-swar-output-clean-frozen-contract.json",
+    "revision": "8139316ceeb940b98db59cbea93231d325c016c7",
+    "runner_sha256": "bedfc88926fb564c8e348db6e67d800c1eae6fa26b21e8c474f99b9606a8664f",
+    "sha256": "f0a007fd160c2b94dd3b4a89f4777e075c8e0234daf8a273720bf9525001e290",
+    "stop_on_first_failed_context": true,
+    "third_order_or_pooled_waiver_allowed": false
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "idle_vram_used_bytes_after": 27959296,
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_q5_swar_output_only_runtime_rejection",
+  "model": {
+    "context_length": 4096,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "resident c=1 greedy target AR; code_merge_intervals; 16 decode transitions; first two excluded"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "all_owner_rejection_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-pair-rejected.json",
+    "all_owner_rejection_artifact_sha256": "9925465de622091d870f9fc46456b553bec79d3c157339eace1e5f321d7535ff",
+    "builder_sha256": "38c8eeeccbc9ea7b3bc44fc30f9804e7c2c922b6c511296b161ba73a8a1d453d",
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-output-only-design.json",
+    "design_artifact_sha256": "fffe9e2cd76408b9a3e3ac01fc29a04c2fea98777ce05af884fec23a7cdc919b",
+    "design_commit": "0e6fc5fa567778d4ef1d7dc4a9c6bde285327beb",
+    "dirty_files_at_build": [
+      " M docs/KERNELS.md",
+      " M docs/LAGUNA-decode.md",
+      " M docs/REFACTOR.md",
+      " M hipengine/kernels/hip_gfx1100/__init__.py",
+      " M hipengine/runtime/laguna_gguf_runner.py",
+      " M scripts/laguna_target_ar_bench.py",
+      " M tests/test_laguna_q5_swar_pair_runtime.py"
+    ],
+    "primitive_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q5-swar-pair-correctness.json",
+    "primitive_artifact_sha256": "f7b407cde6a42fff7d72fe5d6eaca34e03ee1e24061efb091df0aeec60580824",
+    "primitive_commit": "f75fe94b00dd90b8df691a1e958fdca269df3091",
+    "runtime_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-q5-swar-output-only-runtime-correctness.json",
+    "runtime_artifact_sha256": "df6b38d699d62a52ae396d9d582d14e628e7c40ab3703fc904d5653af4d0f3a4",
+    "runtime_commit": "8139316ceeb940b98db59cbea93231d325c016c7",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "41c44b980a0ae7d4f2e90aba49cee32d9202c304f67fd930c67123af3e53b231"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+      },
+      {
+        "path": "tests/test_laguna_q5_swar_pair_runtime.py",
+        "sha256": "8d03ed4c38267de5f31a590a6b8e19e941f4857eccb02f1210e86dc8d1988f01"
+      },
+      {
+        "path": "docs/KERNELS.md",
+        "sha256": "29b0f9be44145888efc36f9c3c53543a9b299aab8d27c6f0f7ff053e37dc0078"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "17a3048311189bfa83b8cceea9442fb898f0fbcfbb9b3e1b989482ff9a0bde86"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "c3ac6011a29596ba3a67272def3a19cc2d4de3ca05440c749259c13b6269ac55"
+      }
+    ]
+  },
+  "rejection_red_green": {
+    "command": "uv run pytest -q tests/test_laguna_q5_swar_pair_runtime.py",
+    "green_result": "4 passed",
+    "green_stdout_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "red_result": "3 failed / 1 passed only while output-only capability/session/CLI seams remained",
+    "red_stdout_sha256": "b47926547d84e276f8490ba1eb5a9e9eab99f912483666842d76137335e83ff4",
+    "test_sha256": "8d03ed4c38267de5f31a590a6b8e19e941f4857eccb02f1210e86dc8d1988f01"
+  },
+  "runtime_removal": {
+    "production_diff_empty": true,
+    "production_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "production_matches_design_commit": "0e6fc5fa567778d4ef1d7dc4a9c6bde285327beb",
+    "removed": [
+      "hip_gfx1100.LAGUNA_Q5_SWAR_OUTPUT",
+      "resolve_laguna_q5_swar_output",
+      "LagunaGGUFResidentSession(..., use_q5_swar_output=...)",
+      "laguna_target_ar_bench.py --enable-q5-swar-output and telemetry",
+      "temporary docs/REFACTOR.md row"
+    ],
+    "retained": [
+      "direct-BF16/F32 SWAR primitive wrappers",
+      "unequal-pair BF16/F32 SWAR primitive wrappers",
+      "mixed Q5/Q6 SWAR primitive wrapper",
+      "three gfx1100 four-axis production keys and primitive oracle",
+      "gfx1151 exclusions and historical runtime evidence"
+    ]
+  },
+  "schema": 1,
+  "short_clean_gate": {
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_attention_output_improve": true,
+      "all_order_child_inside_0_5pct": false,
+      "all_order_kernel_sum_improve": true,
+      "all_order_span_inside_0_5pct": true,
+      "all_resources_calls_dispatches_compiler_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "command": "bash /tmp/run_laguna_q5_swar_output_clean_profiles.sh",
+    "interpretation": "Both orders improve attention-output and complete kernel time and keep span inside guard, but profiled-child throughput regresses 1.061%/1.035%, beyond the frozen -0.5% floor. The pooled -0.101% child result cannot waive either per-order failure.",
+    "mechanical_topology": {
+      "candidate_or_control_output_calls_per_token": 47,
+      "candidate_resources": {
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 72,
+        "grid_x": 49152,
+        "lds_bytes": 0,
+        "scratch_bytes": 0,
+        "workgroup": 32
+      },
+      "compiler_spawned_under_profiler": false,
+      "excluded_swar_calls_per_token": {
+        "mixed_projection": 0,
+        "query_gate_direct_f32": 0,
+        "shared_gate_up": 0
+      },
+      "ids_finite_lifecycle_exact": true,
+      "model_kernels_per_token": 678,
+      "retained_control_calls_per_token": {
+        "mixed_projection": 47,
+        "shared_gate_up": 46
+      },
+      "wave10_calls_per_token": {
+        "fused": 45,
+        "reducers": 2
+      }
+    },
+    "order_a_delta_pct": {
+      "attention_output_pct": -4.000505323169678,
+      "kernel_sum_pct": -1.4522430071272185,
+      "mixed_control_pct": -0.5042549176901612,
+      "profiled_child_tok_s_pct": -1.0614546435867456,
+      "shared_control_pct": -3.224663497404401,
+      "span_pct": -0.6312018531902108
+    },
+    "order_b_delta_pct": {
+      "attention_output_pct": -3.7045686689403334,
+      "kernel_sum_pct": -0.5088484888512657,
+      "mixed_control_pct": -0.07091563369377996,
+      "profiled_child_tok_s_pct": -1.0353661395159808,
+      "shared_control_pct": -0.17221188851381797,
+      "span_pct": 0.369810456208719
+    },
+    "passed": false,
+    "pooled": {
+      "candidate": {
+        "attention_output_ms": 1.5127288571428572,
+        "kernel_sum_ms": 12.670726214285715,
+        "mixed_control_ms": 1.9439445714285715,
+        "profiled_child_tok_s": 58.79053394017398,
+        "shared_control_ms": 0.4862985714285714,
+        "span_median_ms": 15.523966999999999,
+        "stable_samples": 28
+      },
+      "control": {
+        "attention_output_ms": 1.573345357142857,
+        "kernel_sum_ms": 12.79632260714286,
+        "mixed_control_ms": 1.9495504285714285,
+        "profiled_child_tok_s": 58.849698267626394,
+        "shared_control_ms": 0.49470407142857137,
+        "span_median_ms": 15.55066,
+        "stable_samples": 28
+      },
+      "delta_pct": {
+        "attention_output_ms": -3.8527142006556936,
+        "kernel_sum_ms": -0.9815038016237398,
+        "mixed_control_ms": -0.28754614708605963,
+        "profiled_child_tok_s": -0.1005346317722089,
+        "shared_control_ms": -1.699096588335558,
+        "span_median_ms": -0.17165187844118135
+      }
+    },
+    "preflight": {
+      "passed": true,
+      "raw_sha256": "ceb445217969bb18e7fef23ca94f5d86a4eb4e2ae83c3468a3d5e40d0657ec89",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "ceb445217969bb18e7fef23ca94f5d86a4eb4e2ae83c3468a3d5e40d0657ec89"
+    },
+    "processes": [
+      {
+        "candidate": {
+          "bench_sha256": "bf189119c62af0de1cf16cc266546f9ab7fda998c89d1f03dbc97088bd3c30e0",
+          "stderr_sha256": "c45a8d3270ca3003dd24c57642208930c855813048a528dbbbcee071b74a5697",
+          "trace_sha256": "0b45eb7783b61308542344906bcbcb38073fbabc046d30483086cf11285c06c7"
+        },
+        "control": {
+          "bench_sha256": "074f8bb1ca771380fdca43c1d071c514edb4bc773b99e56553e9b9544fef230f",
+          "stderr_sha256": "a33412724692016297de3d3820601dc0ce5a5cccad03644b25fded0a18c1c6ae",
+          "trace_sha256": "376f8d0c36d909a6c2e9bbb4416d9ce570e0d200c44200614905080c239c32b4"
+        },
+        "generated_ids": [
+          605,
+          2825,
+          268,
+          1172,
+          7024,
+          69452,
+          56703,
+          1117,
+          268,
+          341,
+          558,
+          572,
+          9489,
+          95,
+          268,
+          370,
+          658
+        ],
+        "order": "a",
+        "pass": false
+      },
+      {
+        "candidate": {
+          "bench_sha256": "c87f1801b6e1737ce9ecb48bb412f3f49db968746b6c12f1d4c02e53c6a4169f",
+          "stderr_sha256": "25e1ac68b9c24012020316c780fbc64cf68011596da89721c8af5d71b19b524a",
+          "trace_sha256": "64d4e68348f2d19aaf8febf3e3cb7979a85aadd9969cb7eb5187e0edb098ed12"
+        },
+        "control": {
+          "bench_sha256": "c6376b4eb4eb9e2449358639ea4c5aa7880763a6a2a77cc3d6b3821b4499bb2e",
+          "stderr_sha256": "65ec7451c08fa54cb3425b1c603dc560ccef2020e86b52d78236844b547953ae",
+          "trace_sha256": "4f1fc412375104c060bfd53adb4304628721026e245d21f1cf3d312ca3442308"
+        },
+        "generated_ids": [
+          605,
+          2825,
+          268,
+          1172,
+          7024,
+          69452,
+          56703,
+          1117,
+          268,
+          341,
+          558,
+          572,
+          9489,
+          95,
+          268,
+          370,
+          658
+        ],
+        "order": "b",
+        "pass": false
+      }
+    ],
+    "report_sha256": "7c78ccb4dd06a939c5c5feb5a4030f1fb2bb5041410458c66ff8536dea7f4f1a",
+    "run_stdout_sha256": "7c78ccb4dd06a939c5c5feb5a4030f1fb2bb5041410458c66ff8536dea7f4f1a",
+    "stable_samples_per_arm": 28,
+    "summary_path": "/tmp/laguna-q2-xl-q5-swar-output-clean-profile-summary.json",
+    "summary_sha256": "bc99ef2e44a58b99577d9a29665610a6ab6386aaf626f0be03d204d5cbad66c9"
+  },
+  "source_revision": "8139316ceeb940b98db59cbea93231d325c016c7",
+  "status": "rejected_runtime_removed_primitive_retained",
+  "stop_proof": {
+    "category_gate_skipped": true,
+    "category_outputs": [],
+    "long_context_roots": [],
+    "manifest_path": "/tmp/laguna-q5-swar-output-rejection-stop-manifest.json",
+    "manifest_sha256": "e2cdab60ca1fc23d31fc292980f590e1e7afbdfd825be6bf1dce4614e30a7868",
+    "profile_root_count": 4,
+    "profile_roots": [
+      "laguna-q2-xl-q5-swar-output-clean-8139316ce-short-candidate-a",
+      "laguna-q2-xl-q5-swar-output-clean-8139316ce-short-candidate-b",
+      "laguna-q2-xl-q5-swar-output-clean-8139316ce-short-control-a",
+      "laguna-q2-xl-q5-swar-output-clean-8139316ce-short-control-b"
+    ],
+    "third_order_run": false
+  },
+  "validation": {
+    "adjacent_result": "135 passed",
+    "adjacent_sha256": "41570e04ac13e689665ce4b2d23126121f071af29e2d62f5736e98b0011789f8",
+    "adjacent_warning": "one unrelated Starlette httpx deprecation warning",
+    "cpu_reference_registry_build_result": "39 passed",
+    "cpu_reference_registry_build_sha256": "07c2eef926162e0090994bc913805aa08a8b2cbb5b21d2c933b937a10300713f",
+    "excluded_reason": "documented stale call omits three required _resolve_gguf_linear_pair_kind keyword arguments",
+    "excluded_unchanged_test": "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

@@ -1,0 +1,397 @@
+{
+  "actual_weight_precondition": {
+    "all_47_layers_exact": true,
+    "all_event_rows_improve": true,
+    "all_wall_rows_improve": true,
+    "event_improvement_range_pct": [
+      2.858420024447217,
+      7.162413607117147
+    ],
+    "harness_sha256": "0a56cfb16c2bf4531217a790bec9440b782efcb8d5c82fd7ae458a2a3493f4c0",
+    "library_sha256": "dca4ad1e530a1695dcf9033db6b203af11191aadc0e6d7c19d09e665c172a441",
+    "note": "isolated primitive precondition only; not a full-model throughput or default claim",
+    "passed": true,
+    "protocol": {
+      "device": "HIP_VISIBLE_DEVICES=0 / W7900 / one hardware queue",
+      "launches_per_sample": 200,
+      "order": "counterbalanced",
+      "repetitions": 15,
+      "warmups": 50
+    },
+    "raw_sha256": "eabe2ee53cba57cdb8eec4d753b2b42b504b9d1d05351af130b43ca408d3270c",
+    "stdout_sha256": "9a67194b47bf061ed344c0c78e6a05d01c9ac088b69e7ca3cc71c07582cd9b13",
+    "timing_rows": [
+      {
+        "all_four_outputs_f32_bit_exact": true,
+        "candidate_event_us": 29.582390785217285,
+        "candidate_grid_threads": 99072,
+        "candidate_wall_us": 29.93642003275454,
+        "control_event_us": 31.54104471206665,
+        "control_grid_threads": 131840,
+        "control_wall_us": 31.548839760944247,
+        "event_improvement_pct": 6.209857488011627,
+        "features": [
+          6144,
+          1024,
+          1024,
+          48
+        ],
+        "layer_id": 0,
+        "policy": "global",
+        "wall_improvement_pct": 5.110868546696268
+      },
+      {
+        "all_four_outputs_f32_bit_exact": true,
+        "candidate_event_us": 38.14027547836304,
+        "candidate_grid_threads": 148608,
+        "candidate_wall_us": 38.97744580172002,
+        "control_event_us": 40.45249938964844,
+        "control_grid_threads": 181376,
+        "control_wall_us": 39.95636012405157,
+        "event_improvement_pct": 5.715898760700766,
+        "features": [
+          9216,
+          1024,
+          1024,
+          72
+        ],
+        "layer_id": 1,
+        "policy": "swa",
+        "wall_improvement_pct": 2.449958703176003
+      },
+      {
+        "all_four_outputs_f32_bit_exact": true,
+        "candidate_event_us": 30.154519081115723,
+        "candidate_grid_threads": 99072,
+        "candidate_wall_us": 30.519275460392237,
+        "control_event_us": 31.04182481765747,
+        "control_grid_threads": 131840,
+        "control_wall_us": 31.7836448084563,
+        "event_improvement_pct": 2.858420024447217,
+        "features": [
+          6144,
+          1024,
+          1024,
+          48
+        ],
+        "layer_id": 44,
+        "policy": "global",
+        "wall_improvement_pct": 3.978050206902861
+      },
+      {
+        "all_four_outputs_f32_bit_exact": true,
+        "candidate_event_us": 39.74108934402466,
+        "candidate_grid_threads": 148608,
+        "candidate_wall_us": 40.14781094156206,
+        "control_event_us": 42.807111740112305,
+        "control_grid_threads": 181376,
+        "control_wall_us": 42.45084011927247,
+        "event_improvement_pct": 7.162413607117147,
+        "features": [
+          9216,
+          1024,
+          1024,
+          72
+        ],
+        "layer_id": 46,
+        "policy": "swa",
+        "wall_improvement_pct": 5.425167490772109
+      }
+    ],
+    "wall_improvement_range_pct": [
+      2.449958703176003,
+      5.425167490772109
+    ]
+  },
+  "cache_only_trace": {
+    "candidate_rows": [
+      {
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 96,
+        "duration_ns": 20480,
+        "grid_x": 99072,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+        "lds_bytes": 0,
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      },
+      {
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 96,
+        "duration_ns": 56440,
+        "grid_x": 99072,
+        "kernel_name": "void (anonymous namespace)::gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, float*, float*, float*, float*, int, int, int, int, int)",
+        "lds_bytes": 0,
+        "scratch_bytes": 0,
+        "workgroup_x": 32
+      }
+    ],
+    "command": "PYTHONPATH=/home/lhl/hipEngine-main HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-mixed-pair-reuse-repository-trace -- python3 /tmp/trace_laguna_mixed_pair_reuse_repository.py",
+    "compiler_executed_under_profiler": false,
+    "harness_sha256": "c2855b56db1d46d869c7024e3a626fcfb924c8f0e6105ba13d87f1fa8a2b81e0",
+    "nonprofiled_require_cached_warmup_preceded_trace": true,
+    "outputs_f32_bit_exact": true,
+    "outputs_finite": true,
+    "preflight_stdout_sha256": "f983b13df2c26318344ffd95ee56db88e93198af23dc58a63cc7b48ccb8ec2d4",
+    "stderr_sha256": "077ea99c9341ca9042f48b03defe7574959b791db44e446e2068515b3660dc5d",
+    "stdout_sha256": "f983b13df2c26318344ffd95ee56db88e93198af23dc58a63cc7b48ccb8ec2d4",
+    "trace_sha256": "4b7c3763c4bb2ae7dc76ba208636add6e84f9becdb74b415b5211785378ac256"
+  },
+  "codegen": {
+    "allocated_vgpr_ceiling": 96,
+    "barriers": 0,
+    "group_segment_bytes": 0,
+    "hashes": {
+      "gguf_k_gemv.so": "dca4ad1e530a1695dcf9033db6b203af11191aadc0e6d7c19d09e665c172a441",
+      "gguf_k_gemv.so.0.hipv4-amdgcn-amd-amdhsa--gfx1100": "e8ad1932f043a2b5cc4c248f97353c203141dcf6c9094b41e41034c83845b42e",
+      "objdump.txt": "b91659adbb790e1ea938503b76cb6ceffa9237860db5410dc2b14f946bb9d86d",
+      "offloading.txt": "a08aae36a03643455ed02e0f6d2a0165cf77a0177ee938b50e19f768a739eea2",
+      "readobj.txt": "b9ade733402e163ff326f804cc4af73e34af082b341f6ed02128cbab4388eb7c"
+    },
+    "instructions": 1245,
+    "kernel": "gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_decode_out_kernel<unsigned short, float>",
+    "logical_sgpr": 70,
+    "logical_vgpr": 92,
+    "private_bytes": 0,
+    "scratch_bytes": 0,
+    "sgpr_spills": 0,
+    "static_lds_bytes": 0,
+    "summary_sha256": "71d5c1f77655eb78375f7bca20c15abfa73caa597c588c970cfd03af3e547649",
+    "text_bytes": 7208,
+    "vgpr_spills": 0,
+    "wavefront": 32,
+    "within_frozen_ceiling": true,
+    "workgroup": 32
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "retain separately registered exact primitive; do not select at runtime yet",
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "completion_claim": false,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_gate": "In a separate commit, add only an explicit/default-off gfx1100 c=1 runtime owner, then require exact 16-transition state and cached 47-candidate + one-layer47 / 723-model-kernel tracing before clean context measurement.",
+    "reason": "RED/GREEN, synthetic and CPU correctness, all-47 actual-weight identity, all-positive isolated timing, frozen codegen, cache-only trace, backend exclusion, and adjacent tests pass"
+  },
+  "design": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-design.json",
+    "artifact_sha256": "dc75799e280b7bf794925f2b5678f7697cf541748ad4299dc371782a23bc8270",
+    "commit": "962370f5589c1dad13dd559f9ae05de0c9cf54fe",
+    "frozen_gate_satisfied": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "idle_vram_bytes_after_gates": 27959296,
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "arithmetic": [
+      "one local32 wave interleaves one retained fixed-metadata Q5 output pair and one retained fixed-metadata Q6 output pair",
+      "each loaded BF16 activation register feeds both independent quant decoders",
+      "all eight Q5 and all eight Q6 accumulator chains retain their K/FMA order, wave reductions, and final 0..3 additions",
+      "excess Q5 pairs call the retained fixed-metadata helper unchanged"
+    ],
+    "backend_capability_added": false,
+    "cli_changed": false,
+    "cuda_sm86_alias_absent": true,
+    "default_changed": false,
+    "dispatch_changed": false,
+    "export": "hipengine_gguf_q5_q6_mixed_pair_reuse_local32_fixed_meta_attention_pack8_gemv_decode_bf16_f32_out",
+    "fallback": "registered mixed_local32_fixed_meta Q5/Q6 projection; layer 47 remains registered Q6/Q8 fixed-Q6 mixed projection",
+    "four_axis_key": [
+      "hip_gfx1100",
+      "attention_projection_quad",
+      "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+      "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+    ],
+    "gfx1151_alias_excluded": true,
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "runtime_selector_added": false,
+    "session_changed": false,
+    "shape_contract": "rows == 1; BF16 activation; F32 outputs; K divisible by 256; all four output widths divisible by 8; total Q5 outputs >= total Q6 outputs; nine non-null pointers",
+    "validation_before_library_load": true,
+    "wrapper": "gguf_q5_q6_attention_q5_qg_mixed_pair_reuse_local32_fixed_meta_gemv_decode_bf16_f32_out"
+  },
+  "kind": "hipengine_laguna_q2_xl_mixed_pair_reuse_correctness",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "only already-catalogued unrelated drift",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "global_layers": 12,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "q5_q6_layers": 47,
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "swa_layers": 35
+  },
+  "pass": true,
+  "performance_claim": false,
+  "primitive_correctness": {
+    "actual_layer_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "all_actual_f32_bit_exact": true,
+    "all_actual_layers": 47,
+    "all_actual_outputs_checked": 188,
+    "cpu_reference_gate": {
+      "dimensions": [
+        64,
+        16,
+        16,
+        8
+      ],
+      "in_features": 1024,
+      "kl_max": 4.799468331082452e-37,
+      "kl_mean": -8.12981284767513e-18,
+      "passed": true,
+      "raw_sha256": "7e90ba7fd3e36fcfd1d80b92cf08af8253668ca661f9032c20c5281366f44365",
+      "required_max_kl": 0.05,
+      "required_min_top1_agreement": 0.9,
+      "rows": 10,
+      "top1_agreement": 1.0
+    },
+    "fixture_fields": [
+      "Q5 signed d/dmin plus packed scale/min and qh/ql metadata",
+      "Q6 signed int8 scales plus ql/qh metadata",
+      "BF16 signed zero, subnormal, normal, and finite-edge values"
+    ],
+    "synthetic_cases": [
+      {
+        "features": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "in_features": 256
+      },
+      {
+        "features": [
+          16,
+          8,
+          8,
+          8
+        ],
+        "in_features": 1024
+      },
+      {
+        "features": [
+          6144,
+          1024,
+          1024,
+          48
+        ],
+        "in_features": 3072
+      },
+      {
+        "features": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "in_features": 9216
+      }
+    ],
+    "synthetic_f32_bit_exact_to_retained_local32": true
+  },
+  "red_green": {
+    "adjacent": {
+      "result": "78 passed after excluding exactly two unchanged stale/order-sensitive tests",
+      "sha256": "ac495f87c93297f7a6b6576302f0c026457a444008c68b065caf82d3eed780d0"
+    },
+    "green": {
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_q5_q6_mixed_pair_reuse.py",
+      "result": "7 passed",
+      "sha256": "83a1593c5b5783693fe3006d1f6597bcb4f3a5968f23b59481ee09a0477f910a"
+    },
+    "red": {
+      "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_q5_q6_mixed_pair_reuse.py",
+      "result": "7 failed as expected, all on the absent selected wrapper",
+      "sha256": "ed59309dac7213547e70aae6337a48dc52420d7b44d085bde3147cfcf4965416"
+    },
+    "ruff_compile_diff": {
+      "passed": true,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    "unfiltered_known_failures": {
+      "candidate_related": false,
+      "result": "78 passed, 2 failed",
+      "sha256": "ec81fb045b33e9aaa1d57c8db31ff5385ac039986c2ca22ba2a12ce0ee8eb44e",
+      "tests": [
+        {
+          "reason": "unchanged stale call omits three required resolver arguments",
+          "test": "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend"
+        },
+        {
+          "reason": "unchanged generic-mixed absence assertion conflicts with package-wide gfx1151 alias registration performed during adjacent test collection; the new exact key remains excluded",
+          "test": "tests/test_gguf_q5_q6_mixed_attention_decode.py::test_mixed_q5_q6_attention_registry_is_role_specific_and_gfx1100_only"
+        }
+      ]
+    }
+  },
+  "schema": 1,
+  "source_hashes": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "12688abc783730b0aa91b17f6180500005959a376b0cf095a277fed897b7d711",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "9e673eead40ed35a0db3a13e721b937119bc410299b8396f338fbd45eeddc54d",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "8e3a65c6287430bc670b63f0bd9e4e991ddeebedf3990e2be553f10b36751075",
+    "tests/test_gguf_q5_q6_mixed_pair_reuse.py": "3b731c3bf6c7ad70120544c0abf5eaf5f4cee5c4622c85d65bcd1c63c7bbf558"
+  },
+  "status": "primitive_admitted_runtime_unselected"
+}

@@ -1,0 +1,198 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "dispatches_per_token": 723,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "primitive_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-correctness.json",
+    "primitive_artifact_sha256": "bb5a14ebf6ea53544e9dc38c1784f6a45f1e74ccb84282bc410bfb009c1d168d",
+    "primitive_revision": "92089a300"
+  },
+  "cached_full_model_trace": {
+    "analyzer_sha256": "da05446a6fec91d7e4a45b8ac9220a81a0ba9fa80a23f603a08fcb4557aad054",
+    "analyzer_stdout_sha256": "7a5745330eaa08f786e30efc3361079d6a51a944c1b9695d7131824d18cd344f",
+    "candidate_calls": 90,
+    "candidate_calls_per_token": 45,
+    "candidate_followed_by_weighted_reducer": true,
+    "child_sha256": "3cf71022e964725bc1c71717778a55ef196fe1eb463e0a926d5ccd69e50eb86c",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq3-signbit-runtime-trace-92089a300-a --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_iq3_signbit_model.py",
+    "compiler_spawned_under_profiler": false,
+    "decode_transitions": 2,
+    "dispatch_id_stride": 728,
+    "duration_ns": {
+      "max": 43120,
+      "median": 31100.0,
+      "min": 28960
+    },
+    "finite_final_logits": true,
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "harness_sha256": "df70af92325ccd32ae5a7773549287e99a29f16155146c158c3a4031bd9990d3",
+    "local128_calls_in_decode_window": 0,
+    "local128_prefill_calls": 45,
+    "model_kernels_per_token": 723,
+    "passed": true,
+    "resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 88,
+      "grid_x": 98304,
+      "grid_y": 10,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "workgroup": 32
+    },
+    "retained_wave4_calls": 0,
+    "runtime_copy_calls_in_stride": 5,
+    "stderr_sha256": "5e36ea072a7a098fbfa91138e1b62747b94b344fd428768e2683947f8ab421ca",
+    "trace_sha256": "f8e7bbead2d2342750732109ded27f266e9fb09cd8a8384fcac021fcbb10d1f2",
+    "tracked_returned_to_baseline": true,
+    "weighted_reducer_calls": 94,
+    "weighted_reducer_calls_per_token": 47
+  },
+  "correctness_gate": {
+    "exact_sibling_required": true,
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true,
+    "required_kl_max": 0.05,
+    "required_top1_min": 0.9
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "canonical_h32_decode_tok_s_unchanged": 61.73234556191569,
+    "completion_claim": false,
+    "next_gate": "Run both frozen process orders at short/512/1K/near-4K. Candidate producer and inclusive IQ3 family must improve everywhere; kernel sum/span regressions must remain below 0.5%; equal-process child throughput must remain above -0.5%; IDs/resources/lifecycle must pass. Run complete categories only after that mechanical pass.",
+    "retained_default_unchanged": true,
+    "runtime_admitted_default_off": true
+  },
+  "full_state_gate": {
+    "active_kv_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "candidate": "wave4_signbit_reduce",
+    "candidate_borrows_weights": true,
+    "checkpoint_count": 17,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_iq3_signbit_runtime_correctness.py",
+    "control": "wave4_reduce",
+    "control_owns_weights": true,
+    "decode_transitions": 16,
+    "final_kv_sha256": "a62f481c82cb6e079715dba11f133de003bf98d48ca162868b41b3555f8ce2b7",
+    "full_logits_and_ids_bit_exact": true,
+    "generated_token_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "harness_sha256": "b3440490ca09aae842f2b4adec21c99966cbf7ae412f08c8517b6436e82baed5",
+    "live_span_fields_exact": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true,
+    "prefill_kv_sha256": "82488fd827f4c18a4d72fd3a23051201a17e104b570380354ac12a3f17fdcb05",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "e6eb7dc953ad97d97ceb75bf30f674935c59cb046c78e5a0ff38557866feeb4f",
+    "reset_and_reprefill_exact": true,
+    "reset_kv_sha256": "388e741cf63a675aa17fc5fa7d391168f0b7d62ba8860c9ab1abc4c6db03521a",
+    "stdout_sha256": "d19a8138f796cc79b7fadac0c57821caba813844619a15b08771baea83bfb6c5",
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_returned_to_baseline": true,
+    "weights_shared": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_signbit_runtime_correctness",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "red_green": {
+    "narrow_green_result": "2 passed",
+    "narrow_green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "red_command": "uv run pytest -q tests/test_laguna_moe_gpu.py::test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes tests/test_laguna_target_ar_bench.py::test_iq3_signbit_schedule_cli_is_explicit_default_off",
+    "red_result": "2 failed only because the runtime schedule and CLI choice were absent",
+    "red_sha256": "5c47781b82fb09536d07329f279b4e755dc0f70e8d53e3ef1b6fde0b79a0d85e",
+    "regression_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_laguna_target_ar_bench.py",
+    "regression_result": "44 passed",
+    "regression_sha256": "70bd93f29a65727e5cc0991aac37bb59b433f6d667824853361ad51e262a38ec"
+  },
+  "runtime_selector": {
+    "benchmark_cli": "scripts/laguna_target_ar_bench.py --iq3-c1-down-schedule wave4_signbit_reduce",
+    "candidate_schedule": "wave4_signbit_reduce",
+    "candidate_variant": "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+    "constructor": "LagunaGGUFResidentSession(..., iq3_c1_down_schedule='wave4_signbit_reduce')",
+    "default_enabled": false,
+    "dispatch_delta": 0,
+    "gfx1100_capability_default": "wave4_reduce",
+    "gfx1151_candidate_alias_excluded": true,
+    "persistent_weight_copy_delta_bytes": 0,
+    "retained_fallback_schedule": "wave4_reduce",
+    "rows_greater_than_one_unchanged": true,
+    "serial_fallback_schedule": "serial_weighted",
+    "weighted_reducer_unchanged": true,
+    "workspace_delta_bytes": 0
+  },
+  "schema": 1,
+  "source_provenance": {
+    "files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ad29b26a2a48e4909af091d923ce2857ad78dae22c4097c541bc1c7b35a6acf5"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1151/__init__.py",
+        "sha256": "ea51421fbe53d40e2fb099d2340b5cddddb6bb53b6a9802bcef03c85847f0512"
+      },
+      {
+        "path": "hipengine/runtime/laguna_moe.py",
+        "sha256": "4df197f7c6232ba8f10960d005e88430127e359b08b6b5c5e6457d736873e551"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "4fba6b1a56a74a72458f4981f8703a66c7ff42c5b48757fe13233c7c927f6d13"
+      },
+      {
+        "path": "tests/test_laguna_moe_gpu.py",
+        "sha256": "1eaf6c976d88c0b3b91e807d0bcb552fde22d27fc44acb1437ae166321faf72a"
+      },
+      {
+        "path": "tests/test_laguna_target_ar_bench.py",
+        "sha256": "52854e847eaf45572f65c81b114e9ea078851a828203f3561b3993e0943f69d1"
+      }
+    ],
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_note": "Only already-catalogued unrelated Qwen/PARO/smoke parent drift is reported.",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "status": "runtime_admitted_default_off_pending_clean_context"
+}

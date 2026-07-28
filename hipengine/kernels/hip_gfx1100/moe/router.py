@@ -21,6 +21,10 @@ _SYMBOL_LOGITS_F32W_TOKEN_TILE_8 = (
 _SYMBOL_LOGITS_F32W_TOKEN_TILE_16 = (
     "hipengine_qwen35_router_logits_bf16_f32w_token_tile_16"
 )
+_SYMBOL_LOGITS_F32W_WAVE0_TREE = (
+    "hipengine_qwen35_router_logits_bf16_f32w_wave0_tree"
+)
+
 _SYMBOL_LOGITS_FP16_F32W = "hipengine_qwen35_router_logits_fp16_f32w"
 _SYMBOL_LOGITS_F32_F32W = "hipengine_qwen35_router_logits_f32_f32w"
 _SYMBOL_SELECT = "hipengine_qwen35_router_select"
@@ -255,6 +259,7 @@ def qwen35_router_logits_bf16_f32w_auto_256(
 
 def _qwen35_router_logits_bf16_f32w_token_tile(
     symbol: str,
+
     hidden_ptr: int,
     weight_ptr: int,
     logits_ptr: int,
@@ -271,11 +276,13 @@ def _qwen35_router_logits_bf16_f32w_token_tile(
     _check_positive(hidden_size, "hidden_size")
     _check_positive(num_rows, "num_rows")
     _check_threads(threads)
+
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
         symbol,
+
         _ARGTYPES_ROUTER_LOGITS,
         ctypes.c_int,
     )
@@ -350,6 +357,54 @@ def qwen35_router_logits_bf16_f32w_token_tile_16(
         library=library,
         runtime=runtime,
     )
+
+
+def qwen35_router_logits_bf16_f32w_wave0_tree(
+    hidden_ptr: int,
+    weight_ptr: int,
+    logits_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact c=1 F32-weight router wave-0 reduction tree."""
+
+    if tokens != 1:
+        raise ValueError("router wave-0 tree requires tokens == 1")
+    _check_positive(hidden_size, "hidden_size")
+    _check_positive(num_rows, "num_rows")
+    if threads != 256:
+        raise ValueError("router wave-0 tree requires threads == 256")
+    for pointer, name in (
+        (hidden_ptr, "hidden_ptr"),
+        (weight_ptr, "weight_ptr"),
+        (logits_ptr, "logits_ptr"),
+    ):
+        _check_nonzero_pointer(pointer, name)
+    library = library or build_qwen35_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_LOGITS_F32W_WAVE0_TREE,
+        _ARGTYPES_ROUTER_LOGITS,
+        ctypes.c_int,
+    )
+    err = fn(
+        hidden_ptr,
+        weight_ptr,
+        logits_ptr,
+        tokens,
+        hidden_size,
+        num_rows,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_router_logits_fp16_f32w(
@@ -869,6 +924,16 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "router_logits",
+            "f32",
+            "bf16_hidden_wave0_tree",
+        ),
+        qwen35_router_logits_bf16_f32w_wave0_tree,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "router_logits", "f32", "fp16_hidden"),
         qwen35_router_logits_fp16_f32w,
         replace=replace,
@@ -969,6 +1034,11 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
 def _check_positive(value: int, name: str) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be positive")
+
+
+def _check_nonzero_pointer(pointer: int, name: str) -> None:
+    if not isinstance(pointer, int) or pointer == 0:
+        raise ValueError(f"{name} must be a non-zero device pointer")
 
 
 def _check_threads(threads: int) -> None:

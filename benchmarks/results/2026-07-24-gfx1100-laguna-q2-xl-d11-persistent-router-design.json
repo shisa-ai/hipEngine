@@ -1,0 +1,340 @@
+{
+  "amdahl": {
+    "absolute_zero_cost_router_window": {
+      "modeled_ms_per_token": 20.321248989649188,
+      "modeled_tok_s": 49.20957370825775,
+      "remaining_ms_to_20": 0.32124898964918813,
+      "savings_ms": 0.8956197857142852
+    },
+    "additional_speedup_required_pct": 6.084343876817355,
+    "canonical_d9_h32_decode_tok_s": 47.132308286752306,
+    "canonical_d9_ms_per_token": 21.216868775363473,
+    "conclusion": "D11 should move D9 toward 50 if its fused actual-weight body is below the measured 19.06-us pair window, but cannot close the target alone: even deleting the complete measured router window reaches only about 49.21 tok/s and remains 0.321 ms above 20 ms.",
+    "measured_gap_only_planning_floor": {
+      "modeled_ms_per_token": 21.037659989649185,
+      "modeled_tok_s": 47.53380368786327,
+      "savings_ms": 0.17920878571428678
+    },
+    "planning_fused_body_range_not_claim": {
+      "12_us_per_layer": {
+        "fused_ms_per_token": 0.564,
+        "modeled_ms_per_token": 20.885248989649188,
+        "modeled_tok_s": 47.88068365838511
+      },
+      "15_us_per_layer": {
+        "fused_ms_per_token": 0.705,
+        "modeled_ms_per_token": 21.026248989649186,
+        "modeled_tok_s": 47.55960040672402
+      }
+    },
+    "remaining_ms_to_target": 1.2168687753634728,
+    "target_ms_per_token": 20.0
+  },
+  "closed_alternatives": [
+    "Q5 attention output is larger, but exact tile16 regressed both production shapes by 16.69%/19.04%; no new cache-visible premise justifies reopening it.",
+    "IQ2 tile2 and weighted IQ3 already retain their exact specialized schedules; prior IQ output tiling lost cold production-grid latency hiding.",
+    "Token8 SWA improved every mechanical context but failed the complete category h16 gate and was removed; token16 is not admitted from that rejected path.",
+    "Laguna graph replay and Q3 routed/shared multi-stream overlap already regressed or showed zero concurrent kernel time.",
+    "Attention-gate and KV-write fusion remain smaller follow-ups at 0.121 and 0.165 ms/token; near-4K global attention remains a separate context-specific campaign."
+  ],
+  "date": "2026-07-24",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_d11_persistent_router_design",
+  "measured_router_boundary": {
+    "description": "Every sparse layer has one adjacent exact BF16-hidden/F32-weight router projection followed immediately by the correction-only sigmoid top-k selector.",
+    "profiles": [
+      {
+        "adjacent_pair_window": {
+          "max_us_per_pair": 24.56,
+          "median_us_per_pair": 18.92,
+          "min_us_per_pair": 18.081,
+          "ms_per_token": 0.8956197857142852
+        },
+        "adjacent_pairs_per_token": 47.0,
+        "bench": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-short-candidate/bench.json",
+        "bench_sha256": "4d80755a92690984e0394b379b0302650ef99e69b9ad5a9bbb7615c311f374b6",
+        "dispatches_per_token": 775,
+        "inter_kernel_gap": {
+          "max_us_per_pair": 9.16,
+          "median_us_per_pair": 3.76,
+          "min_us_per_pair": 3.72,
+          "ms_per_token": 0.17920878571428678
+        },
+        "label": "short",
+        "prompt_tokens": 69,
+        "router_logits": {
+          "median_us_per_call": 6.84,
+          "ms_per_token": 0.32261071428571475,
+          "resources": {
+            "grid_size_x": 65536,
+            "lds_block_size": 0,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 24,
+            "workgroup_size_x": 256
+          }
+        },
+        "router_select": {
+          "median_us_per_call": 8.24,
+          "ms_per_token": 0.3938002857142845,
+          "resources": {
+            "grid_size_x": 256,
+            "lds_block_size": 512,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 32,
+            "workgroup_size_x": 256
+          }
+        },
+        "stable_steps": 14,
+        "trace": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-short-candidate/epyc_kernel_trace.csv",
+        "trace_sha256": "f05753a116363498cffeab41b13bb1ec81b8996186cb4300dbf1124d484caf5b"
+      },
+      {
+        "adjacent_pair_window": {
+          "max_us_per_pair": 20.72,
+          "median_us_per_pair": 18.641,
+          "min_us_per_pair": 18.16,
+          "ms_per_token": 0.8843138333333335
+        },
+        "adjacent_pairs_per_token": 47.0,
+        "bench": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-512-candidate/bench.json",
+        "bench_sha256": "7bbecca6dc2dfd3d5724479813e77d60dde0c69c4e88374eeeba588a7e33647f",
+        "dispatches_per_token": 775,
+        "inter_kernel_gap": {
+          "max_us_per_pair": 4.16,
+          "median_us_per_pair": 3.76,
+          "min_us_per_pair": 3.68,
+          "ms_per_token": 0.1774753333333335
+        },
+        "label": "512",
+        "prompt_tokens": 512,
+        "router_logits": {
+          "median_us_per_call": 6.7005,
+          "ms_per_token": 0.31660316666666666,
+          "resources": {
+            "grid_size_x": 65536,
+            "lds_block_size": 0,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 24,
+            "workgroup_size_x": 256
+          }
+        },
+        "router_select": {
+          "median_us_per_call": 8.16,
+          "ms_per_token": 0.3902353333333333,
+          "resources": {
+            "grid_size_x": 256,
+            "lds_block_size": 512,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 32,
+            "workgroup_size_x": 256
+          }
+        },
+        "stable_steps": 6,
+        "trace": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-512-candidate/epyc_kernel_trace.csv",
+        "trace_sha256": "e6f00b935866af25a64d365449b1bc1592118f314c869d519ff27a085c1d272b"
+      },
+      {
+        "adjacent_pair_window": {
+          "max_us_per_pair": 20.56,
+          "median_us_per_pair": 18.6605,
+          "min_us_per_pair": 17.52,
+          "ms_per_token": 0.8803508333333339
+        },
+        "adjacent_pairs_per_token": 47.0,
+        "bench": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-candidate/bench.json",
+        "bench_sha256": "b628cf552ea7ad767e976a006a4c89542b004b4e541834cc74c97937e1ec4505",
+        "dispatches_per_token": 775,
+        "inter_kernel_gap": {
+          "max_us_per_pair": 4.16,
+          "median_us_per_pair": 3.76,
+          "min_us_per_pair": 3.68,
+          "ms_per_token": 0.1778020000000001
+        },
+        "label": "1024",
+        "prompt_tokens": 1024,
+        "router_logits": {
+          "median_us_per_call": 6.72,
+          "ms_per_token": 0.31562433333333345,
+          "resources": {
+            "grid_size_x": 65536,
+            "lds_block_size": 0,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 24,
+            "workgroup_size_x": 256
+          }
+        },
+        "router_select": {
+          "median_us_per_call": 8.16,
+          "ms_per_token": 0.3869244999999998,
+          "resources": {
+            "grid_size_x": 256,
+            "lds_block_size": 512,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 32,
+            "workgroup_size_x": 256
+          }
+        },
+        "stable_steps": 6,
+        "trace": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-candidate/epyc_kernel_trace.csv",
+        "trace_sha256": "857b19467aa82fac7274eedd06bc7c12d34e4c67ee325b0d732bfbb693aa15ef"
+      },
+      {
+        "adjacent_pair_window": {
+          "max_us_per_pair": 20.481,
+          "median_us_per_pair": 18.700499999999998,
+          "min_us_per_pair": 17.76,
+          "ms_per_token": 0.8853255000000002
+        },
+        "adjacent_pairs_per_token": 47.0,
+        "bench": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-candidate/bench.json",
+        "bench_sha256": "6ba78f6fb2af9b72bcca5b97eea07680286e381a7ee8ec4446bab9bf79c13854",
+        "dispatches_per_token": 775,
+        "inter_kernel_gap": {
+          "max_us_per_pair": 4.2,
+          "median_us_per_pair": 3.76,
+          "min_us_per_pair": 3.72,
+          "ms_per_token": 0.17737666666666677
+        },
+        "label": "3968",
+        "prompt_tokens": 3968,
+        "router_logits": {
+          "median_us_per_call": 6.8,
+          "ms_per_token": 0.31985133333333327,
+          "resources": {
+            "grid_size_x": 65536,
+            "lds_block_size": 0,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 24,
+            "workgroup_size_x": 256
+          }
+        },
+        "router_select": {
+          "median_us_per_call": 8.1005,
+          "ms_per_token": 0.3880975000000003,
+          "resources": {
+            "grid_size_x": 256,
+            "lds_block_size": 512,
+            "scratch_size": 0,
+            "sgpr_count": 128,
+            "vgpr_count": 32,
+            "workgroup_size_x": 256
+          }
+        },
+        "stable_steps": 6,
+        "trace": "/tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-candidate/epyc_kernel_trace.csv",
+        "trace_sha256": "c1f1d8e8d93b4129d92991911574735ad1878d62f9491348afe962d1213bfbaf"
+      }
+    ],
+    "short_summary": {
+      "adjacent_window_ms_per_token": 0.8956197857142852,
+      "calls_per_token_each": 47,
+      "canonical_h32_wall_share_pct": 4.221262784800073,
+      "inter_kernel_gap_ms_per_token": 0.17920878571428678,
+      "kernel_bodies_ms_per_token": 0.7164109999999992,
+      "router_logits_ms_per_token": 0.32261071428571475,
+      "router_select_ms_per_token": 0.3938002857142845,
+      "short_kernel_sum_share_pct": 4.143763497230797,
+      "short_span_share_pct": 4.39275667159354
+    }
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "next_action": "Task #286 implements and correctness-gates only the D11 persistent cooperative router. Task #287 runs clean context/category retain-or-remove evidence; no throughput is claimed by this design artifact.",
+  "pass": true,
+  "performance_claim": false,
+  "red_green_gate": {
+    "green": [
+      "Actual Q2 XL all-47-layer router outputs and at least 16 decode steps match selected IDs/weights, full logits/argmax bits, final/post-layer hidden, complete K/V payloads, every KVLiveSpans field, reset, and lifecycle.",
+      "Cached rocprof names exactly 47 D11 calls/token, 728 total dispatches/token, local256, scratch0, bounded VGPR/LDS, no per-layer memset/fill, exact IDs, finite logits, and teardown.",
+      "Counterbalanced actual-weight router micro must beat the complete split projection+select window; otherwise remove the candidate before clean model runs.",
+      "Promotion requires clean short/512/1K/near-4K kernel-sum/span/profiled-child wins plus positive aggregate and every-category h16/h32 decode and E2E, prefill/TTFT inside 0.5%, exact state/KV/lifecycle, and the split rollback retained."
+    ],
+    "red": [
+      "Import and resolve the missing four-axis D11 wrapper; compare every FP32 logit/routing/selection score bit, every int64 selected ID, and every normalized/scaled routing-weight bit against the current two-kernel chain.",
+      "Cover hidden 17 and production hidden 3072; equal logits/lower-ID ties; positive/negative stable-sigmoid branches; correction-driven selection flips; adversarial normalization; poisoned outputs; and two consecutive launches with no host counter reset and counter==0 after each.",
+      "Prove rows>1, gfx1151, registry miss, shape mismatch, and explicit rollback execute the registered split fallback."
+    ]
+  },
+  "schema": 1,
+  "selected_candidate": {
+    "dispatch_change": {
+      "candidate_d11": 728,
+      "current_d9": 775,
+      "removed_per_token": 47
+    },
+    "exact_arithmetic_contract": [
+      "Each expert block reproduces qwen35_router_logits_kernel<uint16_t,float>: each lane accumulates its k=tid*8 + 2048*n groups in the same eight scalar F32 adds, then uses the same local256 stride-128..1 shared reduction and stores the identical FP32 logit.",
+      "After the logit store, threadfence plus one atomicAdd on the dedicated counter elects the last producer block without aliasing or clearing selected IDs.",
+      "The last block reproduces laguna_sigmoid_correction_topk_kernel: stable positive/negative sigmoid branches, separate unbiased routing_scores and correction-biased selection_scores, lower-ID tie order, ten serial selections, unbiased selected-probability sum normalization, and separate 2.5 scaling.",
+      "Thread 0 resets the dedicated counter only after logits, score arrays, selected IDs, normalized routing, and scaled routing are complete; a second same-stream launch needs no host memset."
+    ],
+    "fallback": "The separately registered router_logits/f32/bf16_hidden plus laguna_sigmoid_router_topk/f32/correction_bias chain remains mandatory for rows>1, gfx1151/unmeasured backends, registry/shape miss, explicit rollback, and any failed gate.",
+    "kernel_shape": {
+      "counter": "one session-local int32 initialized once and reset by last producer thread 0 after all output writes",
+      "expected_resources": "local256, dynamic LDS at least 1024 B, static LDS reported separately, VGPR <=48 preferred, scratch0",
+      "producer_blocks": 256,
+      "threads": 256
+    },
+    "name": "D11 exact persistent cooperative Laguna router",
+    "registry_key": [
+      "hip_gfx1100",
+      "laguna_router_topk",
+      "f32",
+      "bf16_hidden_correction_bias_persistent"
+    ],
+    "scope": "gfx1100 c=1, hidden=3072, experts=256, top_k=10, BF16 hidden, F32 router weights, correction-only stable sigmoid selection",
+    "why_selected": "This is the largest fresh adjacent exact launch-contraction boundary after D10 removal: 0.896 ms/token measured short across 47 pairs, with 0.179 ms/token measured inter-kernel gaps and an already-retained gfx1100 last-block/persistent-counter tactic using the same exact F32 projection reduction. It is lower risk than reopening rejected quant output tiling and materially larger than the 0.121-ms attention-gate or 0.165-ms KV-write leaves."
+  },
+  "source": {
+    "current_revision": "262bebe9210d9b07ade5c634c1d3392e93c4b3c0",
+    "d10_rejection_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-rejected.json",
+    "d10_rejection_artifact_sha256": "2d442789be32848f6a635dbf53d221e3a5da76f769416a39487a58685e3d83bc",
+    "d9_residual_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-residual-profile.json",
+    "d9_residual_artifact_sha256": "b9c66c5402f2e9a92d865ce1dae2ee0a70f5e8b3c9acb86ce5dde515c4c7dae7",
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "completed; only already-documented nano-vllm-amd drift",
+    "profiled_revision": "30cf6f0755ee53afc1c72e9106fbab887ea067bc",
+    "retained_d9_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json",
+    "retained_d9_artifact_sha256": "9e36ee9c7a9e46157f7cc1446405683f6853120d1861410658ec48211f6d0b54",
+    "runtime_code_identical": true,
+    "runtime_code_identity_note": "The only hipengine/scripts/tests diff is a backend-package comment documenting D10 rejection; executable D9 token4 code is identical."
+  },
+  "status": "selected_design",
+  "transfer_evidence": {
+    "caveat": "Qwen hidden=2048/top-8 includes a different selection rule and one shared row; these measurements prove the last-block/counter mechanism and resource class, not Laguna latency. Laguna actual-weight micro and full-model gates decide retention.",
+    "qwen_cooperative_router_artifact": "benchmarks/results/2026-07-14-gfx1100-gguf-f32w-cooperative-router.json",
+    "qwen_cooperative_router_sha256": "9c62ce87b0a2aaf1a305f9c9a6d974b3716a0ff99feb4de9d33d29c4e6bae615",
+    "qwen_persistent_counter_artifact": "benchmarks/results/2026-07-14-gfx1100-gguf-persistent-router-counter.json",
+    "qwen_persistent_counter_sha256": "e382a7e9c7dc58662d3586f1af69f3c6746e11e94f9336f81219000f4a1870d7",
+    "qwen_persistent_micro_us": 10.444180965423584,
+    "qwen_persistent_resources": {
+      "lds_block_size": 512,
+      "scratch": 0,
+      "threads": 256,
+      "vgpr": 40
+    },
+    "qwen_split_to_coop_micro_us": {
+      "candidate_with_memset": 14.666264653205872,
+      "control": 17.844810485839844,
+      "delta_pct": -17.81215796691258
+    }
+  }
+}

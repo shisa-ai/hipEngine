@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_q5_fixed_metadata_retained",
+  "date": "2026-07-25",
+  "status": "retained_default",
+  "performance_claim": true,
+  "performance_claim_scope": "Poolside Laguna S 2.1 UD-Q2_K_XL target-only c=1 greedy AR on Radeon Pro W7900/gfx1100, all 18 train+heldout prompts, h16/h32, two repetitions in both process orders; model load excluded",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "implementation_revision": "b271f1fdc",
+    "measurement_revision": "b271f1fdc",
+    "description": "Exact c=1 raw-Q5 wave32x2 siblings using two wave-uniform 128-bit metadata loads per superblock while retaining the D12 accumulator chains, reduction trees, group addition order, and BF16/F32 stores",
+    "registry_keys": [
+      "linear/gguf_q5_k/wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+      "linear_pair/gguf_q5_k/wave32x2_fixed_meta_gemv_decode_bf16_f32_out"
+    ],
+    "dispatches_per_token": {
+      "control": 772,
+      "candidate": 772
+    },
+    "workspace_delta_bytes": 0,
+    "persistent_weight_copy_delta_bytes": 0,
+    "default": "LAGUNA_Q5_FIXED_METADATA=True on hip_gfx1100",
+    "rollback": "LagunaGGUFResidentSession(..., use_q5_fixed_meta_output=False, use_q5_fixed_meta_query_gate=False) or scripts/laguna_target_ar_bench.py --disable-q5-fixed-meta-output --disable-q5-fixed-meta-query-gate",
+    "fallback": "Registered exact D12 coefficient-publication wave32x2 routes; pack8 remains the rows>1, disabled-D12-role, shape/registry-miss, gfx1151, and unsupported-backend fallback"
+  },
+  "correctness": {
+    "correctness_artifact": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q5-fixed-metadata-correctness.json",
+    "correctness_artifact_sha256": "90d919a89e9dc1a14e36f0bfc0e27f5a8fcb8f8b6a315774643c4e61942b3dcf",
+    "full_logits_and_argmax_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_bf16_kv_and_all_span_fields_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_returned_to_baseline": true,
+    "default_vs_rollback": {
+      "decode_steps": 16,
+      "passed": true,
+      "raw_sha256": "516a2c0dcfb352b2f587ce46a2cacbaebb6ae5204cc234b43e0321813550e29b",
+      "harness_sha256": "be3f0c6aaeec247c656909cb04ec391a7efb2acf7a560967e9aeacc41ebbd0da",
+      "stdout_sha256": "1f089c0754fc31f3ace08100a939117245853028f52d56305222c0bc0b3f295d"
+    }
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_q5_fixed_meta_clean_profiles.sh",
+    "revision": "b271f1fdc",
+    "summary_sha256": "c8cd59e0304ace98478531a06dba625e209430b1e5c8182458c1a511af721865",
+    "report_sha256": "ca6698a2bd0ba0d946fcc96cf2024ad290d9a3e30e226ebf893c19be710b3da5",
+    "contract_sha256": "abc41bd6f686f3c2b89c73620bdc9675872cb49a622b56f43a97ee2a8eea47cb",
+    "harness_sha256": {
+      "runner": "61d046c3f61f5ebeb0c7b30ef02c69b1ee3a5503c7dc6b830dbfb536d010c46b",
+      "child": "a648aee7fd03a41594edf99c787bcbd0ca7a6fda4902af54ea75eaa50e7841cb",
+      "analyzer": "679a9ba37d1ac440160c0c21112217c39ef57153e496d5e98e2b2c6b0ae5cee0"
+    },
+    "contexts": [
+      {
+        "label": "short",
+        "q5_delta_pct": -22.682232964408588,
+        "output_delta_pct": -29.03540708512181,
+        "query_gate_delta_pct": -15.009673644789013,
+        "kernel_sum_delta_pct": -6.339012217586937,
+        "span_delta_pct": -5.582965583336974,
+        "profiled_child_tok_s_delta_pct": 4.41326693549422
+      },
+      {
+        "label": "512",
+        "q5_delta_pct": -23.1047234745415,
+        "output_delta_pct": -29.60659262335352,
+        "query_gate_delta_pct": -15.11699839415106,
+        "kernel_sum_delta_pct": -4.039335934297972,
+        "span_delta_pct": -3.548779381042777,
+        "profiled_child_tok_s_delta_pct": 4.218771025522838
+      },
+      {
+        "label": "1024",
+        "q5_delta_pct": -22.723390772734533,
+        "output_delta_pct": -29.55942694902086,
+        "query_gate_delta_pct": -14.278437855236826,
+        "kernel_sum_delta_pct": -3.5341741499561152,
+        "span_delta_pct": -3.198368860556444,
+        "profiled_child_tok_s_delta_pct": 2.4450168028003594
+      },
+      {
+        "label": "3968",
+        "q5_delta_pct": -23.119450125608655,
+        "output_delta_pct": -29.750972243289254,
+        "query_gate_delta_pct": -15.010783493058078,
+        "kernel_sum_delta_pct": -2.3519892298731304,
+        "span_delta_pct": -2.1739238233566383,
+        "profiled_child_tok_s_delta_pct": 2.2620401802314394
+      }
+    ],
+    "ids_exact": true,
+    "finite": true,
+    "lifecycle": true,
+    "dispatches_per_token": 772,
+    "resource_gate": {
+      "candidate": {
+        "workgroup": 32,
+        "vgpr": 72,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "control": {
+        "workgroup": 32,
+        "vgpr": 96,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "passed": true
+    },
+    "mechanical_gate_pass": true
+  },
+  "category_gate": {
+    "commands": [
+      "bash /tmp/run_laguna_q5_fixed_meta_category.sh",
+      "bash /tmp/run_laguna_q5_fixed_meta_category_reverse.sh"
+    ],
+    "protocol": "all 18 train+heldout prompts; serial and bulk; h16/h32; two repetitions; process order retained wave32x2/fixed metadata then fixed metadata/retained wave32x2; pooled synchronized seconds",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "aggregate": {
+      "control": {
+        "h16_decode_tok_s": 54.964317769876686,
+        "h32_decode_tok_s": 54.47622919531831,
+        "h16_e2e_output_tok_s": 6.967424549041091,
+        "h32_e2e_output_tok_s": 12.343049854177803,
+        "prefill_tok_s": 42.96742851890869,
+        "ttft_median_seconds": 1.936678149504587
+      },
+      "candidate": {
+        "h16_decode_tok_s": 58.242535382096904,
+        "h32_decode_tok_s": 57.7109131212639,
+        "h16_e2e_output_tok_s": 7.007954732607942,
+        "h32_e2e_output_tok_s": 12.486654208172961,
+        "prefill_tok_s": 42.92331803552659,
+        "ttft_median_seconds": 1.937108115409501
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 5.964265081839781,
+        "h32_decode_tok_s": 5.9377896997018675,
+        "h16_e2e_output_tok_s": 0.5817096874400907,
+        "h32_e2e_output_tok_s": 1.1634430362974735,
+        "prefill_tok_s": -0.10266028222444268,
+        "ttft_median_seconds": 0.022201205968253035
+      }
+    },
+    "all_train_and_heldout_category_decode_improve": true,
+    "category_h16_decode_delta_range_pct": [
+      5.534228107251082,
+      6.482616167510469
+    ],
+    "category_h32_decode_delta_range_pct": [
+      5.5174276926286625,
+      6.468371329744493
+    ],
+    "category_h16_e2e_delta_range_pct": [
+      0.43324003788611787,
+      0.7238948399118428
+    ],
+    "category_h32_e2e_delta_range_pct": [
+      0.9255082423655692,
+      1.3750719396761202
+    ],
+    "category_prefill_delta_range_pct": [
+      -0.2245061355402811,
+      -0.0222792212712708
+    ],
+    "all_e2e_prefill_ttft_guards_pass": true,
+    "all_ids_oracles_and_lifecycle_exact": true,
+    "comparison_sha256": "999aaa52facccc34bac29d3a537819e201609a3c3b534b49f2ae5d420d71da68",
+    "report_sha256": "3e5b32f5d79939eb7ec6db4333315c4ff036cd1aab78f1f6be43dd93d6e11374",
+    "harness_sha256": {
+      "forward": "e5db67d6008a47dbb681908c180796f8e94b976e47273f79241ab02887cb0d4a",
+      "reverse": "3610a36d853de735a1a340b70e7f046c7465f758013e2d0088bea2c2074da6b0",
+      "benchmark": "864aff33618b2758bc3b66cf1e61bfb4aed580441197a3bbe12199c6c768c5cb",
+      "comparison": "4520cda0fdd1300418c61aa6a9d0cd9f3bbf5b28a29e4f581d1e4e9d514caffb"
+    },
+    "raw_sha256": {
+      "control_forward": "9865eaac05b1606ea267cea1403671a9c5e1b0943fcdf7688e33caf180e0ca81",
+      "candidate_forward": "33ef720a32a17c969d1b1b083e6d9d4c3cc816ebc2d49415aad925bb82bac58f",
+      "candidate_reverse": "c3c35e3262d80e2861acacfecaa4e8d3ddc2013abded3931fc002a32c02d95d2",
+      "control_reverse": "ccda92f0135356d1bf2632fc14c78f6658f9ad31e86efa2a748aff4af9ad1ec6"
+    },
+    "pass": true
+  },
+  "promotion_red": {
+    "result": "failed on absent gfx1100 LAGUNA_Q5_FIXED_METADATA capability and absent default-on role-scoped rollback CLI",
+    "log_sha256": "63b58ef49becdc8edc2a9a22d8bde68abe2b5c52de05bfdb396682ff11535519",
+    "green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87"
+  },
+  "topline": {
+    "previous_retained_h32_decode_tok_s": 54.54041693466998,
+    "paired_control_h32_decode_tok_s": 54.47622919531831,
+    "new_h32_decode_tok_s": 57.7109131212639,
+    "new_ms_per_token": 17.32774523769482,
+    "paired_improvement_pct": 5.9377896997018675,
+    "improvement_vs_previous_retained_pct": 5.813113219122589,
+    "matched_vulkan_h32_tok_s": 64.418,
+    "additional_speedup_required_pct": 11.621869272182494,
+    "objective_met": false
+  },
+  "acceptance": {
+    "correctness": true,
+    "mechanical": true,
+    "category": true,
+    "promote_gfx1100_default": true,
+    "matched_vulkan_beaten": false
+  }
+}

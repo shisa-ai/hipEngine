@@ -1,0 +1,361 @@
+{
+  "admission_plan": {
+    "codegen_and_trace": {
+      "compiler": "same AMD Clang 22 gfx1100 decode profile",
+      "required": {
+        "allocated_vgpr_max": 16,
+        "barriers": 2,
+        "fixed_lds_bytes": 1024,
+        "logical_sgpr_max": 24,
+        "logical_vgpr_max": 14,
+        "private_segment_fixed_size": 0,
+        "scratch_bytes": 0,
+        "sgpr_spills": 0,
+        "static_instructions_max": 225,
+        "text_bytes_max": 1276,
+        "vgpr_spills": 0,
+        "wavefront_size": 32,
+        "workgroup_x": 256
+      },
+      "trace": "After non-profiled exact-key prebuild, cache-only rocprofv3 must name the distinct candidate at grid/local 256/256, allocated VGPR<=16, LDS1024, scratch0, plausible duration, exact finite outputs, clean lifecycle, and no compiler under profiling."
+    },
+    "commit_boundaries": [
+      "Commit this design before repository implementation.",
+      "Commit the separately registered primitive after RED/GREEN, CPU, all-47-layer, codegen, repeated endpoint, and cache-only trace gates.",
+      "Commit a false/default-off runtime owner only after primitive admission and full-state correctness.",
+      "Commit retained default or rejection immediately after frozen clean/category adjudication."
+    ],
+    "correctness": [
+      "Synthetic hidden17/3072 random, signed-zero/subnormal/finite-edge, BF16 first-boundary-sensitive, and adversarial norm-weight/epsilon cases preserve both hidden and norm bytes versus retained D9 and the registered unfused chain.",
+      "Independent CPU reference must pass KL<=0.05 and top-1>=90%; candidate/control outputs remain BF16-bit exact.",
+      "All 47 actual sparse-layer hidden and norm outputs must be byte exact. Repeat the frozen layers1/47 50-warmup/15-counterbalanced/1000-launch event+wall gate once and require all four medians positive."
+    ],
+    "primitive_red_green": [
+      "Add one distinct HIP body/C export, strict wrapper/package export, and exact four-axis key without modifying the retained D9 body/key/default.",
+      "Prove the candidate body is mechanically the retained body plus only the frozen reduction replacement; require non-null pointers, rows=1, positive features, and local256 before launch.",
+      "Register only on hip_gfx1100 and prove gfx1151/cuda/cpu absence. Keep both retained D9 and registered add+add+RMSNorm fallbacks callable.",
+      "Primitive admission adds no backend capability, session/runner/CLI selector, allocation, workspace, sidecar, dispatch, or default change."
+    ],
+    "promotion": [
+      "Freeze two counterbalanced process orders at short/512/1K/3968. Every order must improve the complete D9 family and kernel sum, keep span<=+0.5%, child>=-0.5%, and preserve exact topology/resources/IDs/lifecycle/no-compiler. Stop on first failure; no third order or pooled waiver.",
+      "Only after all contexts pass, run both complete 18-prompt natural-completion category orders at h16/h32. Require aggregate and every train/heldout category decode positive, E2E>=-0.5%, prefill>=-0.5%, TTFT<=+0.5%, exact IDs/state/lifecycle, and no prompt-conditioned behavior.",
+      "Promote only if every gate passes; otherwise remove runtime ownership while retaining the exact separately registered diagnostic primitive."
+    ],
+    "runtime_correctness": [
+      "Add a separate false/default-off gfx1100 capability and explicit session/CLI opt-in only after primitive admission; no-argument default stays retained D9.",
+      "Shared-weight bulk prefill, all 48 hidden and 47 routed boundaries, 16 transitions, active K/V and every KVLiveSpans field, reset/re-prefill, ownership, lifecycle, KL0, and top-1 100% must match retained D9.",
+      "Cache-only two-transition tracing must show exactly 47 candidate calls/token, zero retained D9 decode calls, unchanged 678 model kernels/token, exact IDs/resources/lifecycle, and no compiler; rows/prefill/gfx1151/key-miss/explicit-disable must retain controls."
+    ]
+  },
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "canonical_ms_per_token": 15.805224168463194,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "post_gated_rejection_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-gated-rejected.json",
+    "post_gated_rejection_artifact_sha256": "1cf7e1c66dd6b0f9177aa6b53f9caded314ff6e4651916b9b32f8d5c3e40e49f",
+    "remaining_gap_pct": 1.8144711534139324,
+    "retained_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json",
+    "retained_artifact_sha256": "f1fd3c7d9f8d881d5699e1a77bfdf6fcbedb0322f2186b54d27642bf61a96ee2"
+  },
+  "builder_sha256": "9bda9a056f35aee22448c9a776ff52f58aa6e74f801621af4f729ddf24c41da9",
+  "codegen": {
+    "analyzer_path": "/tmp/analyze_laguna_moe_tail_wave0_tree_codegen.py",
+    "analyzer_sha256": "0a63d4ccabb4fea55532a7538a8b03e446caf3353c1bc4abc35616971cda27e9",
+    "baseline": {
+      "ds_bpermute_b32": 0,
+      "ds_load_2addr_b32": 6,
+      "ds_load_2addr_stride64_b32": 2,
+      "group_segment_fixed_size": 1024,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 9,
+      "sgpr_count": 24,
+      "sgpr_spill_count": 0,
+      "static_instructions": 266,
+      "text_bytes": 1404,
+      "vgpr_count": 13,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate": {
+      "ds_bpermute_b32": 5,
+      "ds_load_2addr_b32": 4,
+      "ds_load_2addr_stride64_b32": 0,
+      "group_segment_fixed_size": 1024,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 2,
+      "sgpr_count": 24,
+      "sgpr_spill_count": 0,
+      "static_instructions": 225,
+      "text_bytes": 1276,
+      "vgpr_count": 14,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22",
+    "delta": {
+      "barriers": -7,
+      "logical_sgpr": 0,
+      "logical_vgpr": 1,
+      "static_instructions": -41,
+      "text_bytes": -128
+    },
+    "disasm_sha256": "4892d1962c1d99dffb728e7d880d9c3071c847666b4c27be824f9ab795a8d0ed",
+    "fatbin_sha256": "6bead215bc7c07d64d3a0c5fcbb0cb266c74cfc04108d7a2a93211881957bcfe",
+    "hsaco_sha256": "fc1835e9260f8bcd6326ae38d64250a27e40c83e5d5ae77567903e3bd8e0a34a",
+    "interpretation": "The exact wave-0 tree removes seven barriers and 41 static instructions while keeping fixed LDS1024, private/spills0, SGPR24, and the same allocated-VGPR16 class expected from logical VGPR13->14. Repository admission must reproduce these ceilings and prove allocated resources under cache-only rocprof.",
+    "library_sha256": "477e81dffdb7d4c8beb738dcec3ac7a330166d55250ccce0810974052c28f189",
+    "readobj_sha256": "1ad133cc13c21a88e39773781a80d64d84660e853a3e7439dc8eae631029d56c",
+    "symbols_sha256": "e40519e8d2f024a23631e8572ea4aa620d14bb6430ee7a17c9983916963ddfa7"
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "default_changed": false,
+    "implemented": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Commit design only, then admit the primitive under RED/GREEN before any runtime owner.",
+    "performance_claim": false,
+    "runtime_owner_present": false,
+    "selected": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "kind": "hipengine_laguna_q2_xl_moe_tail_wave0_tree_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "path": "/tmp/laguna-moe-tail-wave0-tree-lineage.log",
+    "result": "Only already-catalogued unrelated external drift; the selected D9 body is in-tree and unchanged.",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "math_identity": {
+    "allowed_source_change": "replace only the baseline nine-barrier reduction block with the frozen two-barrier wave-0 block under a distinct kernel/export/key",
+    "exact_tree_mapping": [
+      "stride128: p[t]+p[t+128], p[t+32]+p[t+160], p[t+64]+p[t+192], p[t+96]+p[t+224]",
+      "stride64: the first pair plus the third; the second plus the fourth",
+      "stride32: those two values are added",
+      "stride16/8/4/2/1: wave32 shuffle-down additions preserve the baseline lane tree"
+    ],
+    "forbidden_source_changes": [
+      "input/output pointers, BF16 conversion or rounding boundaries",
+      "per-thread square accumulation, rsqrt/divide/epsilon, norm multiply association",
+      "thread/block geometry, LDS capacity, runtime allocation or producer ownership",
+      "retained D9 body/key or registered add+add+RMSNorm fallback"
+    ],
+    "unchanged_boundaries": [
+      "moe_bf16 = BF16(F32(routed_bf16) + F32(shared_bf16))",
+      "hidden_bf16 = BF16(F32(post_attention_bf16) + F32(moe_bf16))",
+      "hidden_out is stored before RMS accumulation and reloaded for normalization",
+      "each thread accumulates hidden[idx]^2 for idx=tid,tid+256,... in the same order",
+      "inv_rms = rsqrtf(total / features + eps)",
+      "norm_out = BF16(F32(hidden_bf16) * inv_rms * norm_weight_f32)"
+    ]
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "shape": {
+      "hidden_size": 3072,
+      "leading_dense_layers": 1,
+      "sparse_layers": 47
+    }
+  },
+  "modeled_ceiling": {
+    "canonical_h32_tok_s_before": 63.27021934907704,
+    "canonical_ms_per_token_before": 15.805224168463194,
+    "conservative_ratio": 0.027645820730995863,
+    "family_ms_per_token_before": 0.396687,
+    "interpretation": "Planning ceiling only; endpoint launch medians are not full-model throughput, and the small modeled gain cannot close Vulkan alone.",
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "method": "Apply only the smallest actual endpoint event-or-wall ratio to the immutable retained 47-call D9 family; leave every other kernel and host interval unchanged.",
+    "model_kernels_per_token_after": 678,
+    "model_kernels_per_token_before": 678,
+    "modeled_h32_delta_pct": 0.06943496860414289,
+    "modeled_h32_tok_s_after": 63.314151006017845,
+    "modeled_saving_ms_per_token": 0.010966737688316556,
+    "performance_claim": false,
+    "remaining_gap_after_model_pct": 1.7438253602183984
+  },
+  "performance_claim": false,
+  "residual_ranking": {
+    "clean_summary_path": "/tmp/laguna-q2-xl-global-single-page-gated-clean-profile-summary.json",
+    "clean_summary_sha256": "8ba7d30e8c605f022c8f3197195dbf8abe65a38dfcabdda00b2219e42585a5ae",
+    "excluded_before_selection": [
+      "mixed Q5/Q6, Q5 output/shared/query-gate, and all prior SWAR/pair-reuse/metadata/geometry premises",
+      "IQ2 reconstruction/reduction/geometry and activation-quantization premises",
+      "IQ3 sign-bit/two-output/wave/local-size and retained wave10 ownership premises",
+      "IQ4 selected+weighted composite and LM-head local-size premises",
+      "SWA barrier/staging/dim2/dim4/GQA/token8 and online-reassociation premises",
+      "add+RMSNorm staged-F32 premise",
+      "router projection/selector/persistent-composite premises",
+      "standalone Q6 and mixed-Q6 metadata/local32 premises",
+      "single-page address-only and gated-single-page global-attention premises",
+      "D8 graph replay, D16 host packets, native AQL, and prompt/token-conditioned policies"
+    ],
+    "interpretation": "The next independent exact surface is the already-retained D9 composite's internal RMS reduction, not another launch-owner composition. The current body still uses a full 256-thread LDS tree and nine barriers in every one of 47 calls.",
+    "method": "Re-rank all 28 stable token windows from the two immutable retained short control roots used by the gated-single-page adjudication after restoring runtime ownership to canonical.",
+    "rank_builder_path": "/tmp/rank_laguna_post_gated_control.py",
+    "rank_builder_sha256": "a750944ba0d2dcec56a3f9df1e3ae3e0c87a5c81cca4ce50dbe7964572f7a99a",
+    "rank_path": "/tmp/laguna-post-gated-control-rank.txt",
+    "rank_sha256": "774a839a690900ba1c632378709ad6209a19803d9d37b453b63f060a8e88b146",
+    "roots": [
+      "/tmp/laguna-q2-xl-global-single-page-gated-clean-6f5c78488-short-control-a",
+      "/tmp/laguna-q2-xl-global-single-page-gated-clean-6f5c78488-short-control-b"
+    ],
+    "selected_family": {
+      "calls_per_token": 47,
+      "kernel": "laguna_aggregate_moe_tail_next_rmsnorm_out_kernel",
+      "mean_ms_per_token": 0.396687,
+      "median_ms_per_token": 0.395643,
+      "rank": 10
+    },
+    "stable_samples": 28
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "reason": "design selection only; no repository primitive, runtime owner, default, or full-model throughput measurement"
+  },
+  "schema": 1,
+  "selection": {
+    "allocation_workspace_delta_bytes": 0,
+    "description": "Keep both BF16 add boundaries, hidden store, per-thread hidden-square accumulation, rsqrt, norm multiply order, outputs, one-block ownership, and 1 KiB LDS. After all 256 partials are published, wave 0 loads the eight lane-aligned wave values and reproduces the exact stride-128/64/32 tree, then reproduces stride-16/8/4/2/1 with five wave32 shuffles before publishing the identical scalar.",
+    "future_runtime_eligibility": "gfx1100 resident c=1 sparse layers 1..47 only, explicit/default-off until full-state and performance adjudication",
+    "launch_topology": {
+      "candidate_calls_per_token": 47,
+      "candidate_model_kernels_per_token": 678,
+      "control_calls_per_token": 47,
+      "control_model_kernels_per_token": 678,
+      "launch_delta_per_token": 0
+    },
+    "materially_distinct_from_rejections": [
+      "does not change quantized reconstruction, output geometry, or any Q5/Q6/IQ2/IQ3/IQ4 owner",
+      "does not alter router, selected weighting, shared SiLU, add+RMSNorm, attention, KV, or dispatch topology",
+      "does not fuse another producer/consumer boundary or restore D13-D17; it contracts only the retained D9 composite's internal exact reduction synchronization"
+    ],
+    "name": "exact Laguna MoE-tail wave-0 RMS tree",
+    "persistent_weight_copy_delta_bytes": 0,
+    "planned_key": [
+      "hip_gfx1100",
+      "moe_tail+next_rmsnorm",
+      "bf16",
+      "laguna_aggregate_wave0_tree_gguf_f32_weight_out"
+    ],
+    "planned_wrapper": "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out",
+    "primitive_validity": "one row, positive feature count, local256; production runtime eligibility remains Laguna hidden3072 sparse layers only",
+    "required_fallbacks": [
+      "retained laguna_aggregate_gguf_f32_weight_out D9 composite for explicit disable, exact-key miss, gfx1151, and unsupported runtime shape",
+      "registered BF16 routed+shared add, BF16 post-attention residual add, and F32-weight RMSNorm chain as the mandatory unfused fallback"
+    ]
+  },
+  "selection_probe": {
+    "candidate_library_path": "/tmp/hipengine-laguna-moe-tail-wave0-tree-cache/laguna_moe_tail_wave0_tree_probe-b9f5033304b0432c/laguna_moe_tail_wave0_tree_probe.so",
+    "candidate_library_sha256": "477e81dffdb7d4c8beb738dcec3ac7a330166d55250ccce0810974052c28f189",
+    "candidate_source_path": "/tmp/paro_combine_laguna_moe_tail_wave0_tree_probe.hip",
+    "candidate_source_sha256": "fc6c86f51e161b6235b6114488d16e3666a6ad5a01dcb59eb59d3788ea0d8d15",
+    "checks": {
+      "both_actual_hidden_outputs_bf16_exact": true,
+      "both_actual_norm_outputs_bf16_exact": true,
+      "both_event_medians_improve": true,
+      "both_wall_medians_improve": true,
+      "tracked_returned_to_baseline": true
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_moe_tail_wave0_tree_actual.py",
+    "harness_path": "/tmp/bench_laguna_moe_tail_wave0_tree_actual.py",
+    "harness_sha256": "83b2d4eb48817297fdd01db5ceabd8068c37b1869475171a89f3a4d58324303f",
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "favorable_rerun_allowed": false,
+      "launches_per_sample": 1000,
+      "layers": [
+        1,
+        47
+      ],
+      "measured_processes": 1,
+      "prompt_id": "code_merge_intervals",
+      "prompt_tokens": 69,
+      "timers": [
+        "HIP event",
+        "device-synchronized wall"
+      ],
+      "warmups_per_mode": 50
+    },
+    "raw_path": "/tmp/laguna-moe-tail-wave0-tree-actual.json",
+    "raw_sha256": "1d26eacd1cd242cfa4d0849f5f5a48342ef0fafed6b37ae3a1d719990b16f764",
+    "rows": [
+      {
+        "call_index": 0,
+        "event_delta_pct": -2.862256876713154,
+        "event_us": {
+          "control": 6.730413913726807,
+          "wave0_tree": 6.537772178649902
+        },
+        "hidden_bf16_exact": true,
+        "layer": 1,
+        "norm_bf16_exact": true,
+        "wall_delta_pct": -2.7645820730995863,
+        "wall_us": {
+          "control": 6.740367040038109,
+          "wave0_tree": 6.554024061188102
+        }
+      },
+      {
+        "call_index": 46,
+        "event_delta_pct": -2.8430337169317976,
+        "event_us": {
+          "control": 6.736574172973633,
+          "wave0_tree": 6.545051097869873
+        },
+        "hidden_bf16_exact": true,
+        "layer": 47,
+        "norm_bf16_exact": true,
+        "wall_delta_pct": -2.86365669953369,
+        "wall_us": {
+          "control": 6.746727041900158,
+          "wave0_tree": 6.553523940965533
+        }
+      }
+    ],
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "c0d05d1ec1de53e048d7dd92a46a51d4db7b1b0911a8dcf11361ec6beb5d0dad",
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40069978164,
+      "peak_allocations": 1161,
+      "total_allocated_bytes": 40069978164,
+      "total_freed_bytes": 40069978164
+    },
+    "tracked_peak": {
+      "active_allocations": 1161,
+      "current_allocated_bytes": 40069978164,
+      "peak_allocated_bytes": 40069978164,
+      "peak_allocations": 1161,
+      "total_allocated_bytes": 40069978164,
+      "total_freed_bytes": 0
+    }
+  },
+  "source_identity": {
+    "candidate_equals_baseline_plus_only_frozen_reduction_replacement": true,
+    "only_added_blocks": [
+      "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_out_kernel",
+      "hipengine_laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out"
+    ],
+    "probe_builder_path": "/tmp/build_laguna_moe_tail_wave0_tree_probe.py",
+    "probe_builder_sha256": "0ac844b0a81b28cb972d0487b0a3cfa0bddd94bb10ed17f92c5f211e85c743f0",
+    "production_recovered_exactly_after_removing_two_blocks": true,
+    "production_source": "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip",
+    "production_source_sha256": "42bb97dbe24a3fc8719842e587726bc58b5d1666a93a15241e7d2993c4f5e8f3"
+  },
+  "source_revision": "e545e2ac34f13258a9086b4828908f99c09bba87",
+  "status": "selected_design_only_not_implemented"
+}

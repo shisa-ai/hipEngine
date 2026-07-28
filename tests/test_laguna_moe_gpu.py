@@ -47,6 +47,16 @@ from hipengine.runtime.laguna_moe import (
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q6_k_weight
 from tests._laguna_synthetic import make_laguna_info, tensor_info
 
+from hipengine.runtime.laguna_moe import (
+    allocate_laguna_moe_scratch,
+    resolve_laguna_iq3_c1_down_schedule,
+    resolve_laguna_moe_plan,
+    resolve_laguna_selected_down_mode,
+    run_laguna_moe_c1,
+    run_laguna_moe_rows,
+    validate_laguna_moe_layer,
+)
+
 
 def _hip_available() -> bool:
     try:
@@ -1356,3 +1366,187 @@ def _runtime():
     from hipengine.core.hip import get_hip_runtime
 
     return get_hip_runtime()
+
+
+def test_laguna_persistent_wave_top10_router_is_not_runtime_selectable() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    key = KernelKey(
+        "hip_gfx1100",
+        "laguna_router_topk",
+        "f32",
+        "bf16_hidden_correction_bias_persistent_wave_top10",
+    )
+    plan = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert key not in plan.kernel_keys
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        resolve_laguna_moe_plan(
+            config,
+            backend="hip_gfx1100",
+            use_persistent_router_wave_top10=True,
+        )
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        allocate_laguna_moe_scratch(plan, allocate_router_counter=True)
+
+
+def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    baseline = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    tile4 = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_selected_down_tile=4,
+    )
+    assert baseline.selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_bf16_bf16_out"
+    )
+    assert tile4.selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_tile4_bf16_bf16_out"
+    )
+    with pytest.raises(ValueError, match="IQ3 selected-down output tile"):
+        resolve_laguna_moe_plan(
+            config,
+            backend="hip_gfx1100",
+            iq3_selected_down_tile=2,
+        )
+    with pytest.raises(LookupError, match="required Laguna kernel"):
+        resolve_laguna_moe_plan(
+            config,
+            backend="hip_gfx1151",
+            iq3_selected_down_tile=4,
+        )
+
+
+def test_laguna_iq2_grid64_route_is_c1_only_and_default_off() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    retained = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    candidate = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        use_iq2_grid64=True,
+    )
+    assert retained.selected_gate_up_keys["gguf_iq2_xs"].variant == (
+        "selected_dual_silu_gemv_decode_bf16_bf16_out"
+    )
+    assert retained.selected_gate_up_routes["gguf_iq2_xs"].library_key == (
+        "selected_gate_up_iq"
+    )
+    assert not retained.c1_selected_gate_up_keys
+    assert candidate.selected_gate_up_keys["gguf_iq2_xs"].variant == (
+        "selected_dual_silu_gemv_decode_bf16_bf16_out"
+    )
+    assert candidate.c1_selected_gate_up_keys["gguf_iq2_xs"].variant == (
+        "selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out"
+    )
+    assert candidate.c1_selected_gate_up_routes["gguf_iq2_xs"].library_key == (
+        "selected_gate_up_iq"
+    )
+
+
+def test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    serial_rollback = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="serial_weighted",
+    )
+    wave4_rollback = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="wave4_reduce",
+        iq3_selected_down_tile=4,
+    )
+    assert not serial_rollback.c1_selected_down_keys
+    assert default.iq3_c1_down_schedule == "wave10_fused"
+    assert not default.c1_selected_down_keys
+    assert default.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
+    )
+    assert wave4_rollback.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_k1024_wave4_bf16_bf16_out"
+    )
+    assert wave4_rollback.selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_tile4_bf16_bf16_out"
+    )
+    assert resolve_laguna_iq3_c1_down_schedule("hip_gfx1100") == "wave10_fused"
+    assert (
+        resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", "serial_weighted")
+        == "serial_weighted"
+    )
+    for rejected in ("wave4_signbit_reduce", "invalid"):
+        with pytest.raises(ValueError, match="IQ3 c=1 down schedule"):
+            resolve_laguna_iq3_c1_down_schedule("hip_gfx1100", rejected)
+
+
+def test_laguna_iq3_wave10_fused_schedule_is_default_on_and_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.kernels.hip_gfx1100 as backend
+    import hipengine.runtime.laguna_moe as laguna_moe
+
+    assert backend.LAGUNA_IQ3_WAVE10_FUSED is True
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    candidate = laguna_moe.resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="wave10_fused",
+    )
+    assert candidate.iq3_c1_down_schedule == "wave10_fused"
+    assert not candidate.c1_selected_down_keys
+    assert candidate.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
+    )
+    assert candidate.selected_weighted_down_routes["gguf_iq3_xxs"].abi == (
+        "raw_iq_weighted"
+    )
+
+    candidate_variant = candidate.selected_weighted_down_keys[
+        "gguf_iq3_xxs"
+    ].variant
+    monkeypatch.setattr(
+        laguna_moe,
+        "is_registered",
+        lambda key: key.variant != candidate_variant,
+    )
+    fallback = laguna_moe.resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+        iq3_c1_down_schedule="wave10_fused",
+    )
+    assert fallback.iq3_c1_down_schedule == "wave4_reduce"
+    assert fallback.c1_selected_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_gemv_decode_k1024_wave4_bf16_bf16_out"
+    )
+    assert fallback.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_weighted_down_gemv_decode_bf16_bf16_out"
+    )
+
+
+def test_laguna_iq3_wave10_signbit_runtime_selection_is_removed_but_primitive_remains() -> None:
+    from hipengine.kernels.backends import (
+        backend_package_capability,
+        load_backend_kernel_package,
+    )
+    from hipengine.kernels.registry import is_registered
+
+    load_backend_kernel_package("hip_gfx1100")
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "LAGUNA_IQ3_WAVE10_SIGNBIT_FUSED",
+        None,
+    ) is None
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_weighted_down_gemv_decode_k1024_"
+            "wave10_signbit_bf16_bf16_out",
+        )
+    )
+    assert resolve_laguna_iq3_c1_down_schedule("hip_gfx1100") == "wave10_fused"
+    with pytest.raises(ValueError, match="IQ3 c=1 down schedule"):
+        resolve_laguna_iq3_c1_down_schedule(
+            "hip_gfx1100",
+            "wave10_signbit_fused",
+        )

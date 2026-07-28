@@ -86,6 +86,7 @@ from hipengine.runtime.laguna_kv import (
     LagunaKVCache,
     allocate_laguna_kv_cache,
     resolve_laguna_global_prefill_variant,
+    resolve_laguna_split_thresholds,
     resolve_laguna_swa_decode_variant,
     resolve_laguna_swa_prefill_variant,
 )
@@ -96,11 +97,13 @@ from hipengine.runtime.laguna_moe import (
     laguna_moe_scratch_nbytes,
     resolve_laguna_dense_q4_prefill_mode,
     resolve_laguna_group_compact_mode,
+    resolve_laguna_iq3_c1_down_schedule,
     resolve_laguna_moe_plan,
     resolve_laguna_router_logits_mode,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
     run_laguna_moe_c1,
+    run_laguna_moe_c1_components,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
 )
@@ -122,6 +125,25 @@ _F32_NBYTES = DType.FP32.itemsize
 _I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
 _U8_NBYTES = DType.BOOL.itemsize
+_MIXED_ATTENTION_VARIANT = "mixed_pack8_gemv_decode_bf16_f32_out"
+_MIXED_ATTENTION_Q6_FIXED_META_VARIANT = (
+    "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+)
+_MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT = (
+    "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+)
+_Q5_WAVE32X2_OUTPUT_VARIANT = "wave32x2_gemv_decode_bf16_bf16_out"
+_Q5_WAVE32X2_QUERY_GATE_VARIANT = "wave32x2_gemv_decode_bf16_f32_out"
+_Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT = (
+    "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+)
+_Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT = (
+    "wave32x2_fixed_meta_gemv_decode_bf16_f32_out"
+)
+_Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+_Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
+    "local32_fixed_meta_gemv_decode_bf16_f32_out"
+)
 
 
 def _validate_laguna_context_length(
@@ -165,6 +187,7 @@ def resolve_laguna_moe_branch_concurrency(
             False,
         )
     )
+
 
 
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
@@ -246,6 +269,9 @@ class LagunaEagerKernelPlan:
     rmsnorm_fp16_via_bf16_key: KernelKey
     add_rmsnorm_key: KernelKey
     add_key: KernelKey
+    moe_tail_next_rmsnorm_key: KernelKey
+    global_head_kv_key: KernelKey
+    swa_head_kv_key: KernelKey
     attention_gate_key: KernelKey
     attention_gate_fp16_via_bf16_key: KernelKey
     dense_silu_key: KernelKey
@@ -258,6 +284,9 @@ class LagunaEagerKernelPlan:
     rmsnorm_fp16_via_bf16: Callable
     add_rmsnorm: Callable
     add: Callable
+    moe_tail_next_rmsnorm: Callable | None
+    global_head_kv: Callable | None
+    swa_head_kv: Callable | None
     attention_gate: Callable
     attention_gate_fp16_via_bf16: Callable
     dense_silu: Callable
@@ -265,11 +294,23 @@ class LagunaEagerKernelPlan:
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
+        optional_tail = (
+            (self.moe_tail_next_rmsnorm_key,)
+            if self.moe_tail_next_rmsnorm is not None
+            else ()
+        )
+        optional_head_kv = (
+            (self.global_head_kv_key, self.swa_head_kv_key)
+            if self.global_head_kv is not None and self.swa_head_kv is not None
+            else ()
+        )
         return (
             self.rmsnorm_key,
             self.rmsnorm_fp16_via_bf16_key,
             self.add_rmsnorm_key,
             self.add_key,
+            *optional_tail,
+            *optional_head_kv,
             self.attention_gate_key,
             self.attention_gate_fp16_via_bf16_key,
             self.dense_silu_key,
@@ -835,6 +876,9 @@ class LagunaEagerLibraries:
             "gguf_q4_k:pack8_gemv_decode_bf16_bf16_out": self.q4_decode_linear,
             "gguf_q4_k:pack8_gemv_decode_bf16_f32_out": self.q4_decode_linear,
             "gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
+            "gguf_q4_k:local32_fixed_meta_gemv_decode_bf16_f32_out": (
+                self.q4_decode_linear
+            ),
             "gguf_q5_k": self.q6_linear,
             "gguf_q6_k": self.q6_linear,
             "gguf_q6_k:wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
@@ -870,7 +914,14 @@ class LagunaEagerLibraries:
         }
 
 
-def _launch_laguna_f16_weight_linear(weight, *args, libraries, **kwargs) -> None:
+def _launch_laguna_f16_weight_linear(
+    weight,
+    *args,
+    libraries,
+    registered_variant=None,
+    **kwargs,
+) -> None:
+    del registered_variant
     launch_f16_weight_linear(weight, *args, libraries=libraries.f16_linear, **kwargs)
 
 
@@ -910,6 +961,7 @@ def launch_laguna_weight_linear(
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None = None,
     compensated_wmma_eligible: bool = False,
+    registered_variant: str | None = None,
 ) -> None:
     """Dispatch one Laguna projection from its validated resident layout."""
 
@@ -933,6 +985,7 @@ def launch_laguna_weight_linear(
         libraries=libraries,
         runtime=runtime,
         compensated_wmma_eligible=compensated_wmma_eligible,
+        registered_variant=registered_variant,
     )
 
 
@@ -1073,6 +1126,69 @@ def launch_laguna_qkv(
     )
 
 
+def launch_laguna_mixed_attention_projections(
+    q_weight,
+    k_weight,
+    v_weight,
+    gate_weight,
+    x_ptr: int,
+    q_ptr: int,
+    k_ptr: int,
+    v_ptr: int,
+    gate_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    k_features: int,
+    v_features: int,
+    gate_features: int,
+    *,
+    backend: str,
+    stream: int,
+    libraries: LagunaEagerLibraries,
+    runtime: HipRuntime | None,
+    variant: str = _MIXED_ATTENTION_VARIANT,
+) -> bool:
+    """Launch a registered c=1 mixed-quant projection quad or fail closed."""
+
+    weights = (q_weight, k_weight, v_weight, gate_weight)
+    if rows != 1 or any(weight.spec.layout != LAYOUT_RAW_GGUF for weight in weights):
+        return False
+    quant = "+".join(weight.spec.quant_key for weight in weights)
+    key = KernelKey(
+        backend,
+        "attention_projection_quad",
+        quant,
+        variant,
+    )
+    if not is_registered(key):
+        return False
+    fn = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    fn(
+        x_ptr,
+        *(weight.allocation("raw").tensor.ptr for weight in weights),
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        gate_ptr,
+        rows,
+        in_features,
+        q_features,
+        k_features,
+        v_features,
+        gate_features,
+        stream=stream,
+        library=libraries.linear.get(q_weight.spec.quant_key),
+        runtime=runtime,
+    )
+    return True
+
+
 def launch_laguna_attention_projections(
     q_weight,
     k_weight,
@@ -1095,13 +1211,54 @@ def launch_laguna_attention_projections(
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
     compensated_wmma_eligible: bool = False,
+    query_gate_decode_variant: str | None = None,
+    use_mixed_q5_q6_attention: bool = False,
+    use_mixed_q6_fixed_meta_attention: bool = False,
+    use_mixed_local32_fixed_meta_attention: bool = False,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
+    The optional registered mixed-Q5/Q6 quad is c=1-only and fail-closed.
     Registered query/gate and K/V pairs are decode-only and fail closed.
     Rows greater than one, registry/shape/quant misses, and unmeasured layouts
     retain the established fused-QKV or singleton fallbacks.
     """
+
+    retained_mixed_variant = (
+        _MIXED_ATTENTION_Q6_FIXED_META_VARIANT
+        if use_mixed_q6_fixed_meta_attention
+        else _MIXED_ATTENTION_VARIANT
+    )
+    mixed_variants = (
+        (_MIXED_ATTENTION_LOCAL32_FIXED_META_VARIANT, retained_mixed_variant)
+        if use_mixed_local32_fixed_meta_attention
+        else (retained_mixed_variant,)
+    )
+    if use_mixed_q5_q6_attention:
+        for variant in mixed_variants:
+            if launch_laguna_mixed_attention_projections(
+                q_weight,
+                k_weight,
+                v_weight,
+                gate_weight,
+                x_ptr,
+                q_ptr,
+                k_ptr,
+                v_ptr,
+                gate_ptr,
+                rows,
+                in_features,
+                q_features,
+                k_features,
+                v_features,
+                gate_features,
+                backend=backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                variant=variant,
+            ):
+                return True
 
     q_gate_fused = False
     if (
@@ -1126,6 +1283,7 @@ def launch_laguna_attention_projections(
             use_wmma_prefill=False,
             use_gemv_decode=rows == 1,
             registered_decode_only=True,
+            registered_decode_variant=query_gate_decode_variant,
         )
 
     kv_fused = False
@@ -1294,10 +1452,167 @@ class LagunaDFlashVerifyResult:
         return len(self.committed_input_ids)
 
 
+def resolve_laguna_iq2_grid64(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the architecture-qualified exact IQ2 grid64 candidate."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
+
+
+def resolve_laguna_head_kv_fusion(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the architecture-qualified head/KV candidate with explicit rollback."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(backend_package_capability(backend, "LAGUNA_HEAD_KV_FUSION", False))
+
+
+def resolve_laguna_mixed_attention_projections(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the architecture-qualified mixed projection quad with rollback."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
+            False,
+        )
+    )
+
+
+def resolve_laguna_mixed_local32_fixed_meta_attention(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the exact all-local32 mixed projection as a default-off screen."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
+            False,
+        )
+    )
+
+
+def resolve_laguna_mixed_q6_fixed_meta_attention(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the exact mixed-projection Q6 metadata schedule with rollback."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_MIXED_Q6_FIXED_METADATA",
+            False,
+        )
+    )
+
+
+def resolve_laguna_q4_lm_head_local32_fixed_meta(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the gfx1100 Q4_K c=1 LM-head default with explicit rollback."""
+
+    capability = backend_package_capability(
+        backend,
+        "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
+        None,
+    )
+    if capability is None:
+        return False
+    return bool(capability) if requested is None else bool(requested)
+
+
+def resolve_laguna_q5_shared_fixed_meta(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the exact shared-Q5 pair default with explicit rollback."""
+
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_Q5_SHARED_FIXED_METADATA",
+            False,
+        )
+    )
+
+
+def resolve_laguna_q5_wave32x2_variants(
+    backend: str,
+    *,
+    output: bool | None = None,
+    query_gate: bool | None = None,
+    fixed_meta_output: bool | None = None,
+    fixed_meta_query_gate: bool | None = None,
+) -> tuple[str | None, str | None]:
+    """Resolve architecture-qualified D12 role variants with exact rollback."""
+
+    output_enabled = (
+        bool(backend_package_capability(backend, "LAGUNA_Q5_WAVE32X2_OUTPUT", False))
+        if output is None
+        else bool(output)
+    )
+    query_gate_enabled = (
+        bool(backend_package_capability(backend, "LAGUNA_Q5_WAVE32X2_QUERY_GATE", False))
+        if query_gate is None
+        else bool(query_gate)
+    )
+    fixed_meta_default = bool(
+        backend_package_capability(backend, "LAGUNA_Q5_FIXED_METADATA", False)
+    )
+    fixed_meta_output_enabled = (
+        fixed_meta_default
+        if fixed_meta_output is None
+        else bool(fixed_meta_output)
+    )
+    fixed_meta_query_gate_enabled = (
+        fixed_meta_default
+        if fixed_meta_query_gate is None
+        else bool(fixed_meta_query_gate)
+    )
+    output_variant = (
+        _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT
+        if fixed_meta_output_enabled
+        else _Q5_WAVE32X2_OUTPUT_VARIANT
+    )
+    query_gate_variant = (
+        _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
+        if fixed_meta_query_gate_enabled
+        else _Q5_WAVE32X2_QUERY_GATE_VARIANT
+    )
+    return (
+        output_variant if output_enabled else None,
+        query_gate_variant if query_gate_enabled else None,
+    )
+
+
 def resolve_laguna_eager_kernel_plan(
     config: LagunaGGUFConfig,
     *,
     backend: str,
+    use_moe_tail_next_rmsnorm: bool = True,
+    use_head_kv_fusion: bool = False,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
 
@@ -1318,6 +1633,12 @@ def resolve_laguna_eager_kernel_plan(
     if config.leading_dense_block_count != 1:
         raise ValueError("Laguna S 2.1 eager execution requires one leading dense layer")
 
+    if bool(use_head_kv_fusion):
+        # Importing the family performs ordinary gfx1100 registration; backend
+        # packages may then alias or explicitly exclude these candidate keys.
+        from hipengine.kernels.hip_gfx1100.attention import laguna_kv as _laguna_kv
+
+        del _laguna_kv
     load_backend_kernel_package(backend)
     keys = {
         "rmsnorm": KernelKey(backend, "rmsnorm", "gguf_f32_weight", "bf16_out"),
@@ -1329,6 +1650,24 @@ def resolve_laguna_eager_kernel_plan(
         ),
         "add_rmsnorm": KernelKey(backend, "add_rmsnorm", "gguf_f32_weight", "bf16_out"),
         "add": KernelKey(backend, "elementwise", "bf16", "add"),
+        "moe_tail_next_rmsnorm": KernelKey(
+            backend,
+            "moe_tail+next_rmsnorm",
+            "bf16",
+            "laguna_aggregate_gguf_f32_weight_out",
+        ),
+        "global_head_kv": KernelKey(
+            backend,
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "global_f32_bf16_spans",
+        ),
+        "swa_head_kv": KernelKey(
+            backend,
+            "head_rmsnorm+partial_rotary+kv_write",
+            "laguna_f32_weight",
+            "swa_f32_bf16_spans",
+        ),
         "attention_gate": KernelKey(
             backend, "attention_gate", "f32", "softplus_broadcast_bf16_out"
         ),
@@ -1350,13 +1689,30 @@ def resolve_laguna_eager_kernel_plan(
             "positions_f32",
         ),
     }
-    functions = {name: _resolve_exact(key) for name, key in keys.items()}
+    optional_names = {"moe_tail_next_rmsnorm", "global_head_kv", "swa_head_kv"}
+    required = {name: key for name, key in keys.items() if name not in optional_names}
+    functions = {name: _resolve_exact(key) for name, key in required.items()}
+    tail_key = keys["moe_tail_next_rmsnorm"]
+    tail = (
+        _resolve_exact(tail_key)
+        if bool(use_moe_tail_next_rmsnorm) and is_registered(tail_key)
+        else None
+    )
+    head_kv_keys = (keys["global_head_kv"], keys["swa_head_kv"])
+    head_kv = (
+        tuple(_resolve_exact(key) for key in head_kv_keys)
+        if bool(use_head_kv_fusion) and all(is_registered(key) for key in head_kv_keys)
+        else (None, None)
+    )
     return LagunaEagerKernelPlan(
         backend=backend,
         rmsnorm_key=keys["rmsnorm"],
         rmsnorm_fp16_via_bf16_key=keys["rmsnorm_fp16_via_bf16"],
         add_rmsnorm_key=keys["add_rmsnorm"],
         add_key=keys["add"],
+        moe_tail_next_rmsnorm_key=tail_key,
+        global_head_kv_key=keys["global_head_kv"],
+        swa_head_kv_key=keys["swa_head_kv"],
         attention_gate_key=keys["attention_gate"],
         attention_gate_fp16_via_bf16_key=keys[
             "attention_gate_fp16_via_bf16"
@@ -1371,6 +1727,9 @@ def resolve_laguna_eager_kernel_plan(
         rmsnorm_fp16_via_bf16=functions["rmsnorm_fp16_via_bf16"],
         add_rmsnorm=functions["add_rmsnorm"],
         add=functions["add"],
+        moe_tail_next_rmsnorm=tail,
+        global_head_kv=head_kv[0],
+        swa_head_kv=head_kv[1],
         attention_gate=functions["attention_gate"],
         attention_gate_fp16_via_bf16=functions[
             "attention_gate_fp16_via_bf16"
@@ -1378,6 +1737,82 @@ def resolve_laguna_eager_kernel_plan(
         dense_silu=functions["dense_silu"],
         argmax=functions["argmax"],
     )
+
+
+def launch_laguna_moe_tail_next_rmsnorm(
+    routed_ptr: int,
+    shared_ptr: int,
+    post_attention_ptr: int,
+    moe_out_ptr: int,
+    hidden_out_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    fused: Callable | None,
+    add: Callable,
+    rmsnorm: Callable,
+    stream: int = 0,
+    fused_library=None,
+    gguf_ops_library=None,
+    runtime: HipRuntime | None = None,
+) -> bool:
+    """Launch D9 for c=1 or the exact add/add/RMSNorm fallback chain."""
+
+    parsed_rows = int(rows)
+    parsed_hidden = int(hidden_size)
+    if parsed_rows <= 0:
+        raise ValueError("Laguna MoE-tail rows must be positive")
+    if parsed_hidden <= 0:
+        raise ValueError("Laguna MoE-tail hidden_size must be positive")
+    if parsed_rows == 1 and fused is not None:
+        fused(
+            routed_ptr,
+            shared_ptr,
+            post_attention_ptr,
+            norm_weight_ptr,
+            norm_out_ptr,
+            hidden_out_ptr,
+            parsed_hidden,
+            eps,
+            stream=stream,
+            library=fused_library,
+            runtime=runtime,
+        )
+        return True
+
+    add(
+        routed_ptr,
+        shared_ptr,
+        moe_out_ptr,
+        parsed_rows * parsed_hidden,
+        stream=stream,
+        library=gguf_ops_library,
+        runtime=runtime,
+    )
+    add(
+        post_attention_ptr,
+        moe_out_ptr,
+        hidden_out_ptr,
+        parsed_rows * parsed_hidden,
+        stream=stream,
+        library=gguf_ops_library,
+        runtime=runtime,
+    )
+    rmsnorm(
+        hidden_out_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        parsed_rows,
+        parsed_hidden,
+        eps,
+        stream=stream,
+        library=gguf_ops_library,
+        runtime=runtime,
+    )
+    return False
 
 
 def capture_laguna_hidden_tap(
@@ -1644,6 +2079,27 @@ class LagunaGGUFResidentSession:
         moe_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
+        global_split_min_live: int | None = None,
+        swa_split_min_live: int | None = None,
+        swa_split_tile16_min_live: int | None = None,
+        use_swa_split_tile16: bool | None = None,
+        use_split_attention: bool | None = None,
+        use_split_gate_fusion: bool | None = None,
+        use_swa_split_wave_local: bool | None = None,
+        use_moe_tail_next_rmsnorm: bool = True,
+        use_head_kv_fusion: bool | None = None,
+        use_q5_wave32x2_output: bool | None = None,
+        use_q5_wave32x2_query_gate: bool | None = None,
+        use_q5_fixed_meta_output: bool | None = None,
+        use_q5_fixed_meta_query_gate: bool | None = None,
+        use_q5_shared_fixed_meta: bool | None = None,
+        use_mixed_q5_q6_attention: bool | None = None,
+        use_mixed_q6_fixed_meta_attention: bool | None = None,
+        use_mixed_local32_fixed_meta_attention: bool | None = None,
+        use_q4_lm_head_local32_fixed_meta: bool | None = None,
+        iq3_selected_down_tile: int = 1,
+        iq3_c1_down_schedule: str | None = None,
+        use_iq2_grid64: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1710,6 +2166,83 @@ class LagunaGGUFResidentSession:
         self.swa_prefill_variant = resolve_laguna_swa_prefill_variant(
             self.backend,
             swa_prefill_variant,
+        )
+        self.global_split_min_live = global_split_min_live
+        self.swa_split_min_live = swa_split_min_live
+        self.swa_split_tile16_min_live = swa_split_tile16_min_live
+        self.use_swa_split_tile16 = use_swa_split_tile16
+        self.use_split_attention = use_split_attention
+        self.use_split_gate_fusion = use_split_gate_fusion
+        self.use_swa_split_wave_local = use_swa_split_wave_local
+        requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
+            self.backend,
+            use_head_kv_fusion,
+        )
+        self._q5_output_variant, self._q5_query_gate_variant = (
+            resolve_laguna_q5_wave32x2_variants(
+                self.backend,
+                output=use_q5_wave32x2_output,
+                query_gate=use_q5_wave32x2_query_gate,
+                fixed_meta_output=use_q5_fixed_meta_output,
+                fixed_meta_query_gate=use_q5_fixed_meta_query_gate,
+            )
+        )
+        self.use_head_kv_fusion = False
+        self.use_q5_wave32x2_output = self._q5_output_variant is not None
+        self.use_q5_wave32x2_query_gate = self._q5_query_gate_variant is not None
+        self.use_q5_fixed_meta_output = (
+            self._q5_output_variant == _Q5_WAVE32X2_FIXED_META_OUTPUT_VARIANT
+        )
+        self.use_q5_fixed_meta_query_gate = (
+            self._q5_query_gate_variant
+            == _Q5_WAVE32X2_FIXED_META_QUERY_GATE_VARIANT
+        )
+        self.use_q5_shared_fixed_meta = resolve_laguna_q5_shared_fixed_meta(
+            self.backend,
+            use_q5_shared_fixed_meta,
+        )
+        self._q5_shared_pair_variant = (
+            _Q5_SHARED_FIXED_META_VARIANT
+            if self.use_q5_shared_fixed_meta
+            else None
+        )
+        self.use_mixed_q5_q6_attention = (
+            resolve_laguna_mixed_attention_projections(
+                self.backend,
+                use_mixed_q5_q6_attention,
+            )
+        )
+        self.use_mixed_q6_fixed_meta_attention = (
+            resolve_laguna_mixed_q6_fixed_meta_attention(
+                self.backend,
+                use_mixed_q6_fixed_meta_attention,
+            )
+        )
+        self.use_mixed_local32_fixed_meta_attention = (
+            resolve_laguna_mixed_local32_fixed_meta_attention(
+                self.backend,
+                use_mixed_local32_fixed_meta_attention,
+            )
+        )
+        self.use_q4_lm_head_local32_fixed_meta = (
+            resolve_laguna_q4_lm_head_local32_fixed_meta(
+                self.backend,
+                use_q4_lm_head_local32_fixed_meta,
+            )
+        )
+        self._q4_lm_head_variant = (
+            _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT
+            if self.use_q4_lm_head_local32_fixed_meta
+            else None
+        )
+        self.iq3_selected_down_tile = int(iq3_selected_down_tile)
+        self.iq3_c1_down_schedule = resolve_laguna_iq3_c1_down_schedule(
+            self.backend,
+            iq3_c1_down_schedule,
+        )
+        self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
+            self.backend,
+            use_iq2_grid64,
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2022,6 +2555,7 @@ class LagunaGGUFResidentSession:
             )
             if moe_shared_low_priority is None
             else moe_shared_low_priority
+
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -2079,6 +2613,12 @@ class LagunaGGUFResidentSession:
             self.kernel_plan = resolve_laguna_eager_kernel_plan(
                 config,
                 backend=self.backend,
+                use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
+                use_head_kv_fusion=requested_head_kv_fusion,
+            )
+            self.use_head_kv_fusion = (
+                self.kernel_plan.global_head_kv is not None
+                and self.kernel_plan.swa_head_kv is not None
             )
             self.libraries = load_laguna_eager_libraries(
                 backend=self.backend,
@@ -2096,6 +2636,14 @@ class LagunaGGUFResidentSession:
                 ),
                 q6_qmicro_permute=self.q6_qmicro_permute,
                 q6_qmicro_planar=self.q6_qmicro_planar,
+                iq3_selected_down_tile=self.iq3_selected_down_tile,
+                iq3_c1_down_schedule=self.iq3_c1_down_schedule,
+                use_iq2_grid64=self.use_iq2_grid64,
+            )
+            self.iq3_c1_down_schedule = getattr(
+                self.moe_plan,
+                "iq3_c1_down_schedule",
+                self.iq3_c1_down_schedule,
             )
             self.prefill_scratch_plan = LagunaPrefillScratchPlan.build(
                 config,
@@ -2124,6 +2672,7 @@ class LagunaGGUFResidentSession:
                 )
             else:
                 self.weights = resident_weights
+
             self._validate_resident_weights()
             if self.f16_prefill_mode == "hipblaslt_norm_direct":
                 self.set_f16_prefill_mode(self.f16_prefill_mode)
@@ -2141,6 +2690,20 @@ class LagunaGGUFResidentSession:
                 device=self.device,
                 runtime=self.runtime,
             )
+            self.global_split_min_live, self.swa_split_min_live = (
+                resolve_laguna_split_thresholds(
+                    self.backend,
+                    context_length=self.context_length,
+                    sliding_window=config.sliding_window,
+                    global_split_min_live=self.global_split_min_live,
+                    swa_split_min_live=self.swa_split_min_live,
+                    use_split_attention=self.use_split_attention,
+                )
+            )
+            self.use_split_attention = (
+                self.global_split_min_live is not None
+                or self.swa_split_min_live is not None
+            )
             self.kv_cache = allocate_laguna_kv_cache(
                 config,
                 context_length=self.context_length,
@@ -2153,6 +2716,27 @@ class LagunaGGUFResidentSession:
                 prefill_cached_meta=self.prefill_cached_meta,
                 prefill_global_qrow6=self.prefill_global_qrow6,
                 prefill_dense_initial=self.prefill_dense_initial,
+                global_split_min_live=self.global_split_min_live,
+                swa_split_min_live=self.swa_split_min_live,
+                swa_split_tile16_min_live=self.swa_split_tile16_min_live,
+                use_swa_split_tile16=self.use_swa_split_tile16,
+                use_split_attention=self.use_split_attention,
+                use_split_gate_fusion=self.use_split_gate_fusion,
+                use_swa_split_wave_local=self.use_swa_split_wave_local,
+            )
+            self.use_split_gate_fusion = bool(
+                getattr(
+                    self.kv_cache,
+                    "split_gate_fusion",
+                    self.use_split_gate_fusion,
+                )
+            )
+            self.use_swa_split_wave_local = bool(
+                getattr(
+                    self.kv_cache,
+                    "swa_split_wave_local",
+                    self.use_swa_split_wave_local,
+                )
             )
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
             self.moe_scratch = allocate_laguna_moe_scratch(
@@ -2876,7 +3460,9 @@ class LagunaGGUFResidentSession:
         self._check_open()
         self._check_no_staged_verifier()
         assert self.kv_cache is not None
+        assert self.scratch is not None
         self.kv_cache.reset()
+        _copy_i64(self.scratch.position, -1, self.runtime)
         self.position = -1
         self.last_result = None
 
@@ -3373,6 +3959,7 @@ class LagunaGGUFResidentSession:
             kv_width=kv_width,
             heads=heads,
             stream=stream,
+
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         attention_limit = (
@@ -3733,6 +4320,7 @@ class LagunaGGUFResidentSession:
             rows=rows,
             q_width=q_width,
             stream=stream,
+
         )
         self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,
@@ -4040,17 +4628,20 @@ class LagunaGGUFResidentSession:
         q_width = heads * config.key_length
         kv_width = config.head_count_kv * config.key_length
 
-        self.kernel_plan.rmsnorm(
-            scratch.hidden.ptr,
-            layer.weight("attn_norm").allocation("raw").tensor.ptr,
-            scratch.norm.ptr,
-            1,
-            config.hidden_size,
-            config.rms_norm_eps,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
-        )
+        # Sparse layer L precomputes layer L+1's input norm in its exact tail.
+        # Layer 0 and the first sparse layer still consume an unfused predecessor.
+        if layer_id <= config.leading_dense_block_count:
+            self.kernel_plan.rmsnorm(
+                scratch.hidden.ptr,
+                layer.weight("attn_norm").allocation("raw").tensor.ptr,
+                scratch.norm.ptr,
+                1,
+                config.hidden_size,
+                config.rms_norm_eps,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
         launch_laguna_attention_projections(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
@@ -4071,52 +4662,94 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            query_gate_decode_variant=self._q5_query_gate_variant,
+            use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
+            use_mixed_q6_fixed_meta_attention=(
+                self.use_mixed_q6_fixed_meta_attention
+            ),
+            use_mixed_local32_fixed_meta_attention=(
+                self.use_mixed_local32_fixed_meta_attention
+            ),
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
-        launch_laguna_head_rmsnorm_rope(
-            scratch.query.ptr,
-            scratch.key.ptr,
-            layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
-            layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
-            scratch.position.ptr,
-            scratch.query_rotated.ptr,
-            scratch.key_rotated.ptr,
-            config.rms_norm_eps,
-            1,
-            heads,
-            config.head_count_kv,
-            config.key_length,
-            rope,
-            backend=self.backend,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
+        head_kv = (
+            self.kernel_plan.global_head_kv
+            if layer.attention_type == FULL_ATTENTION
+            else self.kernel_plan.swa_head_kv
         )
-        self.kv_cache.append(
-            layer_id,
-            scratch.key_rotated.ptr,
-            scratch.value.ptr,
-            stream=stream,
-            library=self.libraries.kv_attention,
-        )
-        self.kv_cache.attend(
+        if head_kv is None:
+            launch_laguna_head_rmsnorm_rope(
+                scratch.query.ptr,
+                scratch.key.ptr,
+                layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
+                layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
+                scratch.position.ptr,
+                scratch.query_rotated.ptr,
+                scratch.key_rotated.ptr,
+                config.rms_norm_eps,
+                1,
+                heads,
+                config.head_count_kv,
+                config.key_length,
+                rope,
+                backend=self.backend,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
+            self.kv_cache.append(
+                layer_id,
+                scratch.key_rotated.ptr,
+                scratch.value.ptr,
+                stream=stream,
+                library=self.libraries.kv_attention,
+            )
+        else:
+            kv_state = self.kv_cache.layer(layer_id)
+            head_kv(
+                scratch.query.ptr,
+                scratch.key.ptr,
+                scratch.value.ptr,
+                layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
+                layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
+                rope.cos.tensor.ptr,
+                rope.sin.tensor.ptr,
+                scratch.query_rotated.ptr,
+                scratch.key_rotated.ptr,
+                kv_state.key_cache.ptr,
+                kv_state.value_cache.ptr,
+                kv_state.append_spans,
+                config.rms_norm_eps,
+                heads,
+                config.head_count_kv,
+                config.key_length,
+                rope.config.rotary_dim,
+                rope.max_positions,
+                stream=stream,
+                library=self.libraries.kv_attention,
+                runtime=self.runtime,
+            )
+        attention_gated = self.kv_cache.attend(
             layer_id,
             scratch.query_rotated.ptr,
             scratch.context.ptr,
+            gate_ptr=scratch.gate_logits.ptr,
+            gated_out_ptr=scratch.gated_context.ptr,
             stream=stream,
             library=self.libraries.kv_attention,
         )
-        self.kernel_plan.attention_gate(
-            scratch.context.ptr,
-            scratch.gate_logits.ptr,
-            scratch.gated_context.ptr,
-            1,
-            heads,
-            config.value_length,
-            stream=stream,
-            library=self.libraries.attention_gate,
-            runtime=self.runtime,
-        )
+        if not attention_gated:
+            self.kernel_plan.attention_gate(
+                scratch.context.ptr,
+                scratch.gate_logits.ptr,
+                scratch.gated_context.ptr,
+                1,
+                heads,
+                config.value_length,
+                stream=stream,
+                library=self.libraries.attention_gate,
+                runtime=self.runtime,
+            )
         launch_laguna_weight_linear(
             layer.weight("attn_output"),
             scratch.gated_context.ptr,
@@ -4128,6 +4761,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            registered_variant=self._q5_output_variant,
         )
         self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,
@@ -4145,7 +4779,7 @@ class LagunaGGUFResidentSession:
         if layer.mlp_type == DENSE_MLP:
             self._run_dense_ffn(layer, stream=stream)
         elif layer.mlp_type == SPARSE_MOE:
-            self._run_sparse_ffn(layer, stream=stream)
+            self._run_sparse_ffn(layer_id, layer, stream=stream)
         else:
             raise ValueError(f"unsupported Laguna MLP type {layer.mlp_type!r}")
 
@@ -4216,6 +4850,7 @@ class LagunaGGUFResidentSession:
 
     def _run_sparse_ffn(
         self,
+        layer_id: int,
         layer: LagunaGGUFResidentLayerWeights,
         *,
         stream: int,
@@ -4225,21 +4860,46 @@ class LagunaGGUFResidentSession:
         assert self.moe_scratch is not None
         assert self.kernel_plan is not None
         assert self.libraries is not None
-        output = run_laguna_moe_c1(
+        routed, shared = run_laguna_moe_c1_components(
             self.scratch.norm.ptr,
             layer,
             self.moe_scratch,
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,
+            shared_pair_decode_variant=self._q5_shared_pair_variant,
         )
-        self.kernel_plan.add(
+        config = self.weights.config
+        if layer_id + 1 < config.block_count:
+            next_norm_weight_ptr = (
+                self.weights.layer(layer_id + 1)
+                .weight("attn_norm")
+                .allocation("raw")
+                .tensor.ptr
+            )
+            next_norm_out_ptr = self.scratch.norm.ptr
+        else:
+            next_norm_weight_ptr = (
+                self.weights.root("output_norm").allocation("raw").tensor.ptr
+            )
+            next_norm_out_ptr = self.scratch.final_norm.ptr
+        launch_laguna_moe_tail_next_rmsnorm(
+            routed.ptr,
+            shared.ptr,
             self.scratch.post_attention.ptr,
-            output.ptr,
+            self.moe_scratch.output.ptr,
             self.scratch.hidden.ptr,
-            self.weights.config.hidden_size,
+            next_norm_weight_ptr,
+            next_norm_out_ptr,
+            1,
+            config.hidden_size,
+            config.rms_norm_eps,
+            fused=self.kernel_plan.moe_tail_next_rmsnorm,
+            add=self.kernel_plan.add,
+            rmsnorm=self.kernel_plan.rmsnorm,
             stream=stream,
-            library=self.libraries.gguf_ops,
+            fused_library=self.libraries.routed_sum,
+            gguf_ops_library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
 
@@ -4256,17 +4916,7 @@ class LagunaGGUFResidentSession:
         assert self.libraries is not None
         config = self.weights.config
         scratch = self.scratch
-        self.kernel_plan.rmsnorm(
-            scratch.hidden.ptr,
-            self.weights.root("output_norm").allocation("raw").tensor.ptr,
-            scratch.final_norm.ptr,
-            1,
-            config.hidden_size,
-            config.rms_norm_eps,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
-        )
+        # Sparse layer 47 emits the exact final output_norm into final_norm.
         launch_gguf_linear(
             self.weights.root("lm_head"),
             scratch.final_norm.ptr,
@@ -4281,6 +4931,7 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             use_wmma_prefill=False,
             use_gemv_decode=True,
+            registered_variant=self._q4_lm_head_variant,
         )
         self.kernel_plan.argmax(
             scratch.logits.ptr,
@@ -4730,6 +5381,16 @@ __all__ = [
     "LagunaVerifierScratch",
     "capture_laguna_hidden_rows",
     "capture_laguna_hidden_tap",
+    "launch_laguna_mixed_attention_projections",
+    "launch_laguna_moe_tail_next_rmsnorm",
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",
+    "resolve_laguna_head_kv_fusion",
+    "resolve_laguna_iq2_grid64",
+    "resolve_laguna_mixed_attention_projections",
+    "resolve_laguna_mixed_local32_fixed_meta_attention",
+    "resolve_laguna_mixed_q6_fixed_meta_attention",
+    "resolve_laguna_q4_lm_head_local32_fixed_meta",
+    "resolve_laguna_q5_shared_fixed_meta",
+    "resolve_laguna_q5_wave32x2_variants",
 ]

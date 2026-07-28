@@ -1,0 +1,98 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 52.514,
+    "canonical_ms_per_token": 19.042,
+    "name": "retained local64 exact IQ2 tile2 with current-P4 head/KV and wave-local SWA reducer"
+  },
+  "candidate": {
+    "description": "exact local32 reconstruction of the retained local64 IQ2 selected gate/up+SiLU tile2 body; one wave replays the original two wave32 K partitions sequentially and combines their totals in retained order",
+    "removed": true
+  },
+  "checks": {
+    "actual_layer_bf16_bit_equal": true,
+    "candidate_event_win_all_layers": false,
+    "candidate_wall_win_all_layers": false,
+    "full_model_gate_skipped_after_failed_precondition": true,
+    "selection_pass": false,
+    "source_wrapper_tests_removed": true
+  },
+  "date": "2026-07-25",
+  "decision": {
+    "action": "reject and remove before runtime selection, trace, or complete-model/category gates",
+    "reason": "Sequentially replaying both retained wave32 K partitions removes LDS and the block barrier but loses their parallel execution. It regresses first/last actual IQ2 layer events by 5.08-5.15% and synchronized wall by 4.50-5.27% despite byte equality.",
+    "next": "retain the local64 tile2 body and screen a genuinely different exact device-work or dispatch contraction from the current 772-dispatch profile"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0; GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq2_tile2_wave32_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "production_rows": [
+    {
+      "event_delta_pct": 5.15325250359242,
+      "event_us": {
+        "candidate_wave32_exact": 59.42042350769043,
+        "retained_tile2": 56.508402824401855
+      },
+      "layer_id": 1,
+      "quality": {
+        "bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "role": "iq2_selected_gate_up_silu",
+      "shape": [256, 1024, 3072],
+      "wall_delta_pct": 4.501337394508975,
+      "wall_us": {
+        "candidate_wave32_exact": 59.298009146004915,
+        "retained_tile2": 56.74378015100956
+      }
+    },
+    {
+      "event_delta_pct": 5.077824354760696,
+      "event_us": {
+        "candidate_wave32_exact": 59.7756290435791,
+        "retained_tile2": 56.887006759643555
+      },
+      "layer_id": 45,
+      "quality": {
+        "bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "role": "iq2_selected_gate_up_silu",
+      "shape": [256, 1024, 3072],
+      "wall_delta_pct": 5.265914698065899,
+      "wall_us": {
+        "candidate_wave32_exact": 59.919069753959775,
+        "retained_tile2": 56.92162550985813
+      }
+    }
+  ],
+  "protocol": {
+    "actual_layers": [1, 45],
+    "counterbalanced_repetitions": 15,
+    "launches_per_sample": 200,
+    "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+    "warmups_per_mode": 50
+  },
+  "provenance": {
+    "candidate_patch_sha256": "a86a174f7366a0b4c1e6e8fc8ec379765d41b0f7f3770bed831c5e00523ccad8",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "micro_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq2_wave32_actual.py",
+    "micro_harness_sha256": "210c710468f58e7f939c921647328f78eb2b9a725ad141eab549f98b5878fdef",
+    "micro_raw_sha256": "6b24da33644e350bd9f0e05a5f4e85d50c2f034c239ddb0dd8853a3f85ef0d64",
+    "trace_skipped_reason": "actual-weight event and wall precondition failed"
+  }
+}

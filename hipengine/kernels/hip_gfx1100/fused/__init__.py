@@ -3,6 +3,7 @@
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     build_gguf_ops,
     gguf_add_rmsnorm_bf16_f32_weight,
+    gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256,
     gguf_add_rmsnorm_f32_bf16_f32_weight,
     gguf_add_rmsnorm_f32_f32_f32_weight,
     gguf_bf16_add,
@@ -30,6 +31,9 @@ from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
+    laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out,
+    laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out,
+    laguna_weighted_top10_routed_hidden_bf16_out,
     plan_paro_combine_build,
     register_paro_combine_kernels,
     shared_gate_combine_out_bf16,
@@ -80,6 +84,7 @@ __all__ = [
     "build_paro_combine",
     "build_paro_silu",
     "gguf_add_rmsnorm_bf16_f32_weight",
+    "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_f32_f32_weight",
     "gguf_bf16_add",
@@ -94,8 +99,11 @@ __all__ = [
     "gguf_rmsnorm_bf16_f32_weight_out_f32",
     "gguf_rmsnorm_f32_f32_weight",
     "gguf_rmsnorm_f32_f32_weight_out_f32",
+    "laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out",
+    "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out",
     "laguna_softplus_head_gate_f32_bf16_out",
     "laguna_softplus_head_gate_f32_fp16_via_bf16_out",
+    "laguna_weighted_top10_routed_hidden_bf16_out",
     "laguna_softplus_head_gate_f32_out",
     "plan_gguf_ops_build",
     "plan_laguna_attention_build",

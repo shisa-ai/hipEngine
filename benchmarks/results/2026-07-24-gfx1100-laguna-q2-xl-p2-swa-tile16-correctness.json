@@ -1,0 +1,183 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 51.436,
+    "canonical_ms_per_token": 19.441,
+    "name": "P2.1 exact split attention",
+    "revision": "dd929660a"
+  },
+  "candidate": {
+    "description": "one local256 workgroup owns a 16-slot SWA score tile; eight wave32 units preserve each retained dot tree and feed the unchanged exact split reducer",
+    "default_enabled": false,
+    "global_candidate_retained": false,
+    "new_workspace_bytes": 0,
+    "persistent_weight_copy": false,
+    "reuses_exact_split_workspace_bytes": 1572864,
+    "runtime_argument": "swa_split_tile16_min_live=257",
+    "swa_min_live": 257,
+    "tile_tokens": 16
+  },
+  "checks": {
+    "actual_query_kv_event_win": true,
+    "actual_query_kv_wall_win": true,
+    "boundary_outputs_bit_exact": true,
+    "complete_state_bit_exact": true,
+    "global_candidate_selection_pass": false,
+    "kernel_trace_expected_grid": true,
+    "kernel_trace_scratch_free": true,
+    "selection_pass": true,
+    "swa_crossover_confirmed": true,
+    "tracked_lifecycle_clean": true
+  },
+  "crossover": {
+    "candidate": "SWA tile16 local256",
+    "decision_rule": "lowest live count with three consecutive positive measured buckets and no later regression",
+    "selected_min_live": 257,
+    "two_independent_screens": [
+      {
+        "rows": [
+          {
+            "event_delta_pct": -0.39000000000000001,
+            "live_count": 257,
+            "wall_delta_pct": -0.33000000000000002
+          },
+          {
+            "event_delta_pct": -0.29999999999999999,
+            "live_count": 511,
+            "wall_delta_pct": -0.28000000000000003
+          },
+          {
+            "event_delta_pct": -0.20000000000000001,
+            "live_count": 512,
+            "wall_delta_pct": -0.28000000000000003
+          }
+        ],
+        "sha256": "19754af971d01fe60a42a374d9f5c186a36cbd1a751b1013c6c22d06fe4fce28"
+      },
+      {
+        "rows": [
+          {
+            "event_delta_pct": -0.33000000000000002,
+            "live_count": 257,
+            "wall_delta_pct": -0.35999999999999999
+          },
+          {
+            "event_delta_pct": -0.33000000000000002,
+            "live_count": 511,
+            "wall_delta_pct": -0.39000000000000001
+          },
+          {
+            "event_delta_pct": -0.16,
+            "live_count": 512,
+            "wall_delta_pct": -0.39000000000000001
+          }
+        ],
+        "sha256": "5fddb4062a0ba1d27ff2493b7371b2d19d81dbf6bac9195c8404899e70c2acda"
+      }
+    ]
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "admit explicit/default-off correctness and execution path",
+    "next": "commit the clean implementation, then run matched 512/1K/near-4K profiles and the unchanged complete category/heldout promotion gate before setting backend capability metadata",
+    "reason": "The SWA-only tile16 schedule is exact, scratch-free, independently positive at every retained crossover bucket, and positive on actual first/last SWA layers. The global tiled candidate has later regressions and is removed."
+  },
+  "full_state": {
+    "active_kv_payload_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "decode_transitions": 150,
+    "final_kv_sha256": "e1fdd333ea2c5fa895f728d7316713637f1b9b5eab82e50ffb1a2c665a574f7b",
+    "full_logits_exact": true,
+    "hidden_bit_mismatch": 0,
+    "kv_metadata_exact": true,
+    "max_kl": 0.0,
+    "reset_exact": true,
+    "routed_bit_mismatch": 0,
+    "top1_agreement": 1.0,
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_returned_to_baseline": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p2_swa_tile16_correctness",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "production_rows_at_live_257": [
+    {
+      "event_delta_pct": -0.3616291014294726,
+      "event_us": {
+        "retained_exact_split": 171.93870544433594,
+        "tile16_exact": 171.31692504882812
+      },
+      "layer_id": 1,
+      "max_abs": 0.0,
+      "wall_delta_pct": -0.7817037686036032,
+      "wall_us": {
+        "retained_exact_split": 171.9128058757633,
+        "tile16_exact": 170.56895699352026
+      }
+    },
+    {
+      "event_delta_pct": -0.44262467057424315,
+      "event_us": {
+        "retained_exact_split": 171.92587280273438,
+        "tile16_exact": 171.16488647460938
+      },
+      "layer_id": 47,
+      "max_abs": 0.0,
+      "wall_delta_pct": -0.35798431530461583,
+      "wall_us": {
+        "retained_exact_split": 172.06567712128162,
+        "tile16_exact": 171.44970898516476
+      }
+    }
+  ],
+  "provenance": {
+    "actual_attention_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_p2_exact_tile16_actual_hot.py",
+    "actual_attention_harness_sha256": "8ccac3352921eb3f3a410dacd6b2117261bb4bf36faf5011aa11d7ce178e6bb3",
+    "actual_attention_raw_sha256": "fc79cb4a64c2c47d6caead7217c8e32ec34e15c5cb60e99218e21c3ddc1f36db",
+    "candidate_source_diff_sha256": "ac3f0555b2ce1091d723ab56149b6252854c9a28d87cc78b3c21a2558ed53e7d",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "full_state_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_p2_exact_tile16_correctness.py",
+    "full_state_harness_sha256": "aafe5e4d0b920338f9a7fc31cecf253800b17c1c0ccbf82a5d18d9153dc60bb0",
+    "full_state_raw_sha256": "dbab8149491b78440297dc6827862cdab204681fef527e7e4312808f12fb5f38",
+    "micro_harness_sha256": "476246a57ffe48efba6c48159d43adf91760e5eb484462d57b7738ab3ea32b9f",
+    "red_sha256": "fe8759e19c3d6f0e8f80d1fb716d7f914f87ee96c9d9dbf1cf47cd378587a6eb",
+    "trace_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-p2-exact-tile16-trace -- uv run python -u /tmp/trace_laguna_p2_exact_tile16.py",
+    "trace_csv_sha256": "375bac2a992b34b5ec7c66bb5ef4d4a2cc11a8aee7f2f906ea2fa9316ee292d9",
+    "trace_harness_sha256": "12549ab755b454ed39a9bf85cb6a137087382196d6bad974c977673399841d71"
+  },
+  "resource_trace": {
+    "reduce": {
+      "grid_workgroups": 72,
+      "lds_block_bytes": 512,
+      "scratch_bytes": 0,
+      "sgpr_count": 128,
+      "symbol": "laguna_swa_attention_split_exact_reduce_kernel",
+      "vgpr_count": 16,
+      "workgroup_size": 128
+    },
+    "score_producer": {
+      "grid": [
+        72,
+        17,
+        1
+      ],
+      "lds_block_bytes": 0,
+      "scratch_bytes": 0,
+      "sgpr_count": 128,
+      "symbol": "laguna_swa_attention_split_tile16_exact_scores_kernel",
+      "vgpr_count": 32,
+      "workgroup_size": 256
+    }
+  },
+  "source_revision": "254f8f77e"
+}

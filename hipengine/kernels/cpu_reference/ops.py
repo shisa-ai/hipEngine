@@ -102,6 +102,75 @@ def moe_tail_next_rmsnorm(
     return rounded_residual, norm_out
 
 
+def laguna_aggregate_moe_tail_next_rmsnorm(
+    routed: ArrayLike,
+    shared: ArrayLike,
+    post_attention: ArrayLike,
+    norm_weight: ArrayLike,
+    *,
+    eps: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Exact Laguna BF16 routed/shared tail plus F32-weight RMSNorm oracle.
+
+    Laguna rounds ``routed + shared`` to BF16, rounds the subsequent
+    ``post_attention + moe`` sum to BF16, and only then accumulates the next
+    RMSNorm. Returns both rounded BF16 boundaries represented as float32.
+    """
+
+    routed_arr = np.asarray(routed, dtype=np.float32)
+    shared_arr = np.asarray(shared, dtype=np.float32)
+    post_arr = np.asarray(post_attention, dtype=np.float32)
+    weight_arr = np.asarray(norm_weight, dtype=np.float32)
+    if routed_arr.ndim != 1:
+        raise ValueError("routed must have shape [hidden]")
+    if shared_arr.shape != routed_arr.shape or post_arr.shape != routed_arr.shape:
+        raise ValueError("shared and post_attention must match routed shape")
+    if weight_arr.shape != routed_arr.shape:
+        raise ValueError("norm_weight must have shape [hidden]")
+
+    moe = _round_to_bf16_float((routed_arr + shared_arr).astype(np.float32))
+    hidden = _round_to_bf16_float((post_arr + moe).astype(np.float32))
+    norm = _round_to_bf16_float(rmsnorm(hidden, weight_arr, eps))
+    return hidden, norm
+
+
+def laguna_weighted_top10_routed_hidden(
+    expert_down: ArrayLike,
+    routing_weights: ArrayLike,
+    shared: ArrayLike,
+    post_attention: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reference Laguna top-10 weighted sum and two rounded BF16 adds.
+
+    Returns ``(routed, hidden)`` as float32 arrays containing BF16-rounded
+    values. The HIP sibling uses fused multiply-adds; this independent NumPy
+    oracle intentionally provides the product-level KL/top-1 gate while the
+    registered unfused HIP chain provides the bit-exact arithmetic oracle.
+    """
+
+    expert_arr = np.asarray(expert_down, dtype=np.float32)
+    routing_arr = np.asarray(routing_weights, dtype=np.float32)
+    shared_arr = np.asarray(shared, dtype=np.float32)
+    post_arr = np.asarray(post_attention, dtype=np.float32)
+    if expert_arr.ndim != 2 or expert_arr.shape[0] != 10:
+        raise ValueError("expert_down must have shape [10, hidden]")
+    hidden = expert_arr.shape[1]
+    if routing_arr.shape != (10,):
+        raise ValueError("routing_weights must have shape [10]")
+    if shared_arr.shape != (hidden,) or post_arr.shape != (hidden,):
+        raise ValueError("shared and post_attention must have shape [hidden]")
+
+    selected = np.zeros(hidden, dtype=np.float32)
+    for row in range(10):
+        selected = (
+            selected + expert_arr[row] * routing_arr[row]
+        ).astype(np.float32)
+    routed = _round_to_bf16_float(selected)
+    moe = _round_to_bf16_float((routed + shared_arr).astype(np.float32))
+    hidden_out = _round_to_bf16_float((post_arr + moe).astype(np.float32))
+    return routed, hidden_out
+
+
 def linear(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     x_arr = np.asarray(x, dtype=np.float32)
     weight_arr = np.asarray(weight, dtype=np.float32)

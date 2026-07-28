@@ -1,0 +1,139 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 57.7109131212639,
+    "canonical_ms_per_token": 17.328,
+    "name": "retained expanded-grid IQ2 plus exact raw-Q5 fixed metadata",
+    "revision": "ae622d4f4"
+  },
+  "candidate": {
+    "admission_commit": "6dfc64418",
+    "description": "exact local128 raw-Q6 attention pair with cooperative fixed-metadata staging",
+    "removed": true,
+    "removed_surfaces": [
+      "HIP body and export",
+      "Python wrapper and four-axis key",
+      "runtime resolver and both attention-role selectors",
+      "session and benchmark opt-in",
+      "focused tests",
+      "refactor-ledger row"
+    ]
+  },
+  "correctness_admission": {
+    "actual_weight_event_improvement_pct_range": [
+      21.92383464559494,
+      40.51948546743712
+    ],
+    "actual_weight_wall_improvement_pct_range": [
+      22.604809858551988,
+      39.00513104580605
+    ],
+    "artifact": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q6-fixed-metadata-pair-correctness.json",
+    "artifact_sha256": "91e80ce0d0acf4bbe24c7f3710f55282c7ed0aa202bf3112b21a7f73cc67e4c2",
+    "bit_exact": true,
+    "full_state_exact": true,
+    "trace_resources": [128, 48, 128, 1024, 0]
+  },
+  "date": "2026-07-25",
+  "decision": {
+    "action": "reject and remove",
+    "category_gate_run": false,
+    "favorable_rerun_used": false,
+    "near_4k_completed": false,
+    "reason": "two-order short profiled-child throughput regressed 0.951%, beyond the frozen 0.5% limit",
+    "vulkan_target_tok_s": 64.41823922786776
+  },
+  "frozen_contract": {
+    "decision_rule": "promote only if every profile and complete-category requirement passes; otherwise remove without a favorable rerun or guard waiver",
+    "path": "/tmp/laguna-q6-fixed-meta-promotion-contract.json",
+    "profiled_child_regression_limit_pct": -0.5,
+    "sha256": "9d2d67e1714d95f3c2ad5b14d79eb86e0a3312a5555f96f0344d2286f4b7e429"
+  },
+  "kind": "hipengine_laguna_q2_xl_q6_fixed_metadata_pair_rejected",
+  "performance_claim": false,
+  "profile_checks": {
+    "all_child_inside_0_5pct": false,
+    "all_kernel_sum_inside_0_5pct": true,
+    "all_q6_pair_improve": true,
+    "all_resources_pass": true,
+    "all_span_inside_0_5pct": true,
+    "mechanical_gate_pass": false
+  },
+  "profile_rows": [
+    {
+      "candidate": {
+        "kernel_sum_ms": 13.813380964285717,
+        "profiled_child_tok_s": 53.24759132237715,
+        "q6_pair_ms": 0.8905890714285715,
+        "span_median_ms": 16.887483
+      },
+      "control": {
+        "kernel_sum_ms": 13.922408642857146,
+        "profiled_child_tok_s": 53.75874536701795,
+        "q6_pair_ms": 0.9383150357142857,
+        "span_median_ms": 16.988809
+      },
+      "delta_pct": {
+        "kernel_sum": -0.7831093122479649,
+        "profiled_child_tok_s": -0.9508295648477105,
+        "q6_pair": -5.086347598531571,
+        "span": -0.5964279191083999
+      },
+      "label": "short",
+      "stable_samples_per_arm": 28
+    },
+    {
+      "candidate": {
+        "kernel_sum_ms": 23.31460591666668,
+        "profiled_child_tok_s": 34.87567353592168,
+        "q6_pair_ms": 0.8821524999999999,
+        "span_median_ms": 26.5273155
+      },
+      "control": {
+        "kernel_sum_ms": 23.433735916666663,
+        "profiled_child_tok_s": 34.78670019849032,
+        "q6_pair_ms": 0.927477,
+        "span_median_ms": 26.683128
+      },
+      "delta_pct": {
+        "kernel_sum": -0.5083696446167463,
+        "profiled_child_tok_s": 0.25576825891413524,
+        "q6_pair": -4.886859728057957,
+        "span": -0.583936411053454
+      },
+      "label": "512",
+      "stable_samples_per_arm": 12
+    },
+    {
+      "candidate": {
+        "kernel_sum_ms": 25.673711083333334,
+        "profiled_child_tok_s": 32.2626387281572,
+        "q6_pair_ms": 0.879539,
+        "span_median_ms": 28.908020999999998
+      },
+      "control": {
+        "kernel_sum_ms": 25.728499916666674,
+        "profiled_child_tok_s": 32.4197659763739,
+        "q6_pair_ms": 0.9226831666666667,
+        "span_median_ms": 28.9717895
+      },
+      "delta_pct": {
+        "kernel_sum": -0.21294997186310782,
+        "profiled_child_tok_s": -0.4846649674498327,
+        "q6_pair": -4.675946004578324,
+        "span": -0.22010549262068135
+      },
+      "label": "1024",
+      "stable_samples_per_arm": 12
+    }
+  ],
+  "provenance": {
+    "analyzer_sha256": "91aaf4c84847d55c5d3fb2fbcd991e37f1962718eadaf60d0b8c74c07e0c01ae",
+    "child_sha256": "d0464b25a8fd23ca83cfe7980738864fdebe6ec5100210d6b8b497d457b5876f",
+    "command": "bash /tmp/run_laguna_q6_fixed_meta_clean_profiles.sh (stopped after frozen short failure; complete short/512/1024 rows analyzed)",
+    "profile_report_sha256": "61b2373605d01408f6efd157f07997fe897bb20de6647a5b79ed56da41354168",
+    "profile_summary_sha256": "5b7fbd7643c02fb6973f9971d286a9245d2d1c815c8da76c60cdd4c45368014c",
+    "runner_sha256": "ded0ef2fe735a5ac4280e5351b7a4dd400f97dc73ca5d33fc728a00767a85842"
+  },
+  "schema": 1,
+  "status": "rejected_removed"
+}

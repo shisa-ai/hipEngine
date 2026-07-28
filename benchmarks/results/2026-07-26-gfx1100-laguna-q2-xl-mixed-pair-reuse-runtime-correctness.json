@@ -1,0 +1,310 @@
+{
+  "cached_full_model_trace": {
+    "candidate_calls": 94,
+    "candidate_calls_per_token": 47,
+    "candidate_duration_ns": {
+      "max": 43840,
+      "median": 41520.5,
+      "min": 31440
+    },
+    "candidate_grid_counts": {
+      "global": 24,
+      "swa": 70
+    },
+    "candidate_prefill_calls": 0,
+    "candidate_resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 96,
+      "global_grid_x": 99072,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "swa_grid_x": 148608,
+      "workgroup": 32
+    },
+    "child_sha256": "8a8876b5c8a3c51f4867be4c7fa0aef5cc2e3e788d73531389127a56d57983f0",
+    "compiler_spawned_under_profiler": false,
+    "complete_first_window": {
+      "candidate_calls": 47,
+      "layer_47_fallback_calls": 1,
+      "model_kernels": 723,
+      "runtime_copy_calls": 5,
+      "start_dispatch_id": 1441
+    },
+    "decode_transitions": 2,
+    "dispatch_id_stride": 728,
+    "finite_final_logits": true,
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "layer_47_fallback_calls": 2,
+    "layer_47_fallback_calls_per_token": 1,
+    "layer_47_fallback_duration_ns": {
+      "max": 52960,
+      "median": 52820.5,
+      "min": 52681
+    },
+    "layer_47_fallback_resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 48,
+      "grid_x": 181376,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "workgroup": 128
+    },
+    "model_kernels_per_token": 723,
+    "passed": true,
+    "retained_local32_calls": 0,
+    "runtime_copy_calls_in_stride": 5,
+    "schema": 1,
+    "stderr_sha256": "08e3c32484c5aaa653db8ad5435e21438f1e21331383103c9aff399f42ade0fc",
+    "trace_sha256": "fc4dedb54e9407117c48e714ff5f730f5e5cd3d74dcd9fa203fdf386f776f4a0",
+    "tracked_peak": {
+      "active_allocations": 1157,
+      "current_allocated_bytes": 40069953588,
+      "peak_allocated_bytes": 40069953588,
+      "peak_allocations": 1157,
+      "total_allocated_bytes": 40069953588,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "correctness_gate": {
+    "byte_exact": true,
+    "kl": 0.0,
+    "kl_max": 0.05,
+    "passed": true,
+    "top1_agreement": 1.0,
+    "top1_min": 0.9
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "admit default-off runtime path only",
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "category_gate_allowed_only_after_clean_pass": true,
+    "clean_context_gate_allowed_next": true,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Commit runtime admission, freeze both clean process orders at short/512/1024/3968, and stop before categories on any projection/kernel/span/child failure.",
+    "throughput_claim": false
+  },
+  "frozen_next_gate": {
+    "category_after_clean_pass_only": "Both complete 18-prompt process orders require pooled h16/h32 and every train/heldout category decode improvement plus E2E/prefill/TTFT/state/lifecycle guards.",
+    "contexts": [
+      "short",
+      512,
+      1024,
+      3968
+    ],
+    "per_order_requirements": [
+      "Q5/Q6 projection family improves",
+      "complete kernel sum improves",
+      "dispatch span regression is below 0.5%",
+      "profiled child throughput regression is above -0.5%",
+      "47 candidate plus one unchanged layer-47 call",
+      "723 model kernels per token",
+      "IDs, finite logits, resources, and lifecycle pass"
+    ],
+    "process_orders": 2,
+    "stop_on_first_failed_context": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "integration": {
+    "backend_capability": "LAGUNA_MIXED_PAIR_REUSE=False",
+    "benchmark_option": "--enable-mixed-pair-reuse-attention",
+    "default_enabled": false,
+    "fallbacks": [
+      "default/no opt-in",
+      "rows and bulk prefill",
+      "candidate registry-key or shape miss",
+      "layer 47 Q6/Q8 tuple",
+      "unsupported backend including gfx1151"
+    ],
+    "four_axis_key": [
+      "hip_gfx1100",
+      "attention_projection_quad",
+      "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+      "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+    ],
+    "library": "existing gguf_k_gemv code object",
+    "model_kernels_per_token_unchanged": 723,
+    "new_allocations": 0,
+    "ownership": "candidate first, then retained Q5/Q6 local32, then retained fixed-Q6 local128; layer 47 remains fixed-Q6 Q6/Q8",
+    "registered_fallback_order": [
+      "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+      "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+      "registered pair/singleton chain"
+    ],
+    "session_option": "use_mixed_pair_reuse_attention=True"
+  },
+  "kind": "hipengine_laguna_q2_xl_mixed_pair_reuse_runtime_correctness",
+  "model": {
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "layer_47_quant_tuple": "Q6/Q8/Q8/Q6",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "q5_q6_layers": 47,
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "7d23dbbb85712c1acc04ad69a87746e2300269a3aef106d0ae62f30b672b92b9",
+    "design_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-design.json",
+    "design_artifact_sha256": "dc75799e280b7bf794925f2b5678f7697cf541748ad4299dc371782a23bc8270",
+    "design_commit": "962370f5589c1dad13dd559f9ae05de0c9cf54fe",
+    "dirty_files_at_build": [
+      " M WORKLOG.md",
+      " M docs/KERNELS.md",
+      " M docs/LAGUNA-decode.md",
+      " M docs/REFACTOR.md",
+      " M hipengine/kernels/hip_gfx1100/__init__.py",
+      " M hipengine/runtime/laguna_gguf_runner.py",
+      " M scripts/laguna_target_ar_bench.py",
+      "?? benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-runtime-correctness.json",
+      "?? tests/test_laguna_mixed_pair_reuse_runtime.py"
+    ],
+    "full_state_harness_sha256": "edaf7e3d4adbe850bbfa8741b45281983ec1572c2c37374c42e86795da778247",
+    "full_state_raw_sha256": "260314764f19d7c0c5c9aac4c3e8acd8523ac7bba6168eed0328eb0850e7efdc",
+    "full_state_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "full_state_stdout_sha256": "3dd4129f781e319b75e7de1bbc9e2918d35b07bd5602a51a1a48e0f5c34b1b6c",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "primitive_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-pair-reuse-correctness.json",
+    "primitive_artifact_sha256": "d644cda2222d95710f4530711311923f281db00f82f65e96b17f00644475925a",
+    "primitive_commit": "0de4f45d82723d0fc16f467a0171d6a4e0c14020",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "bd9559184ed75371dded16bc64f6808c10d1adb4bc45937a8ba9479f9b0659d7"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "6d7fcf826ce3768066a719951ff047e0c2338546454adb93d503b2860e57ed99"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "e5acb728bf6b6861ab34553083a677aab124d77d0db28e35b2badff57096c792"
+      },
+      {
+        "path": "tests/test_laguna_mixed_pair_reuse_runtime.py",
+        "sha256": "8b8db8c5b2da158d5e51a9e272ff763b75aa5fb27c4c359a87303c8770813db4"
+      },
+      {
+        "path": "docs/KERNELS.md",
+        "sha256": "7d1577e4130f803498e4186508c83047e502fe688773dd0ae77b93a7eb82a467"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "d151dd462da116c40b8a0834bcb6908affcf14628852c2daa1e62d232662c2d9"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "26d8605ea7d40d81207e706cbc7d8c5848dc9e2cc9d47e64699055e3ece2a317"
+      }
+    ],
+    "trace_analyzer_sha256": "c9b47618d37bebd68aca74d14ddf0553daab7d937c287e8825dfb65e4f78c9f0",
+    "trace_child_harness_sha256": "e099eb3ae096eb014750c3281d7c7d99e58dd248be617b91fcabc42513fb97a9",
+    "trace_child_sha256": "8a8876b5c8a3c51f4867be4c7fa0aef5cc2e3e788d73531389127a56d57983f0",
+    "trace_csv_sha256": "fc4dedb54e9407117c48e714ff5f730f5e5cd3d74dcd9fa203fdf386f776f4a0",
+    "trace_preflight_child_sha256": "b1eec8a7a7ca60f0a69f29f5bffc2e1a180eb4da4e021aad05923c274914ec67",
+    "trace_stderr_sha256": "08e3c32484c5aaa653db8ad5435e21438f1e21331383103c9aff399f42ade0fc",
+    "trace_summary_sha256": "8e4fafd3349502ae4cb158f6232e44c7777bd8866f3c53da3bac86d098be969e"
+  },
+  "red_green": {
+    "adjacent_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_mixed_pair_reuse_runtime.py tests/test_gguf_q5_q6_mixed_pair_reuse.py tests/test_gguf_q5_q6_mixed_attention_decode.py tests/test_laguna_gguf_runner.py tests/test_laguna_target_ar_bench.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py tests/test_gfx1151_backend.py -k 'not test_gguf_fused_linear_matching_uses_resident_backend and not test_mixed_q5_q6_attention_registry_is_role_specific_and_gfx1100_only'",
+    "adjacent_deselected": 2,
+    "adjacent_passed": 128,
+    "adjacent_sha256": "6d7a4d6e87d58fbec58eb7170f211edbca205f8c33e2f6919c90669275ac3660",
+    "adjacent_warning": "one unrelated Starlette httpx deprecation warning",
+    "candidate_exact_key_gfx1151_exclusion_passed": true,
+    "compileall_sha256": "71adaaade5aad0fd73f72619ce50c5c694c188823a3821459311b78ea7bf7846",
+    "excluded_unchanged_tests": [
+      "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend",
+      "tests/test_gguf_q5_q6_mixed_attention_decode.py::test_mixed_q5_q6_attention_registry_is_role_specific_and_gfx1100_only"
+    ],
+    "focused_green_passed": 3,
+    "focused_green_sha256": "cf426ab35f3b06fccef8290fde5325d90af130a79da1d1752031518df77c4236",
+    "red_command": "uv run pytest -q tests/test_laguna_mixed_pair_reuse_runtime.py",
+    "red_failure": "capability/resolver, candidate-first dispatch, and explicit CLI/session plumbing absent",
+    "red_failures": 3,
+    "red_sha256": "e8f6e7d9607a98cc64c205cefe6339ebbcb6b4f5f69e52040414563ed133ad27",
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "scoped_compileall_passed": true,
+    "scoped_ruff_passed": true
+  },
+  "schema": 1,
+  "shared_weight_full_state": {
+    "active_kv_and_live_spans_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "candidate_borrows_weights": true,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_mixed_pair_reuse_runtime_correctness.py",
+    "control_owns_weights": true,
+    "decode_steps": 16,
+    "final_hidden_exact": true,
+    "full_logits_exact": true,
+    "generated_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "kl_divergence": 0.0,
+    "layer_47_retained_fallback": "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+    "live_span_fields_checked": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "new_allocations": 0,
+    "passed": true,
+    "post_layer_hidden_exact": true,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "reset_and_reprefill_exact": true,
+    "rows_scratch_nbytes": 83662848,
+    "scratch_nbytes": 654804,
+    "top1_agreement": 1.0,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40459057576,
+      "peak_allocations": 1500,
+      "total_allocated_bytes": 40459057576,
+      "total_freed_bytes": 40459057576
+    },
+    "tracked_peak": {
+      "active_allocations": 1500,
+      "current_allocated_bytes": 40459057576,
+      "peak_allocated_bytes": 40459057576,
+      "peak_allocations": 1500,
+      "total_allocated_bytes": 40459057576,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true,
+    "weights_shared": true
+  },
+  "source_revision": "0de4f45d82723d0fc16f467a0171d6a4e0c14020",
+  "status": "default_off_runtime_admitted_pending_clean_gate"
+}

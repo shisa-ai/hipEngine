@@ -1,0 +1,431 @@
+{
+  "admission_plan": {
+    "clean_and_category_adjudication": [
+      "Freeze both process orders at short/512/1024/3968. Every order must improve inclusive IQ4 and complete kernel sum, keep span <=+0.5%, keep profiled-child throughput >=-0.5%, and preserve exact topology/resources/IDs/lifecycle/no-compiler. Stop on first failure; no third order or pooled waiver.",
+      "Only after all contexts pass, run both complete 18-prompt train+heldout category orders. Require aggregate and every category decode positive at h16/h32, E2E/prefill/TTFT within frozen guards, exact IDs/state/lifecycle, and no rerun/waiver.",
+      "Promote only if every gate passes; otherwise remove runtime ownership while retaining the previously existing generic primitive and Laguna-specific evidence."
+    ],
+    "commit_boundaries": [
+      "Commit this design before repository admission.",
+      "Commit Laguna-specific primitive certification before runtime ownership.",
+      "Commit default-off runtime correctness before clean measurement.",
+      "Commit retained default or mechanical rejection immediately after adjudication."
+    ],
+    "repository_validation": [
+      "Add a dedicated Laguna top-10/K1024 test without changing the existing generic kernel: strict shape/key/gfx1151 contracts, synthetic selected-single plus registered weighted-sum byte identity, independent CPU KL<=0.05/top-1>=90%, signed-zero/subnormal/finite BF16 and signed/zero routing edges, repeated/invalid experts, and both actual layer outputs.",
+      "Record why RED-first production implementation is inapplicable: the primitive/key predates Laguna and already exists; the new unit certifies this exact shape and must not alter device code unless the frozen test exposes a defect.",
+      "Repeat the two-layer 50-warmup/15-counterbalanced/300-window repository gate; both event and wall must improve with exact bytes. Freeze local256/wave32, logical/allocated VGPR<=78/80, SGPR<=44, fixed/allocated LDS<=32/512, private/spills/scratch0, <=492 instructions, <=2580 bytes, five ds_bpermutes, and two static barriers."
+    ],
+    "runtime_after_repository_commit": [
+      "Add a separate false/default-off gfx1100 capability at the existing selected-weighted route map; require exact key presence and only c=1 top_k=10/K1024 IQ4 ownership. No-argument retained wave10, IQ3 routing, rows/prefill, key miss, gfx1151, and unsupported shapes stay unchanged.",
+      "Fresh shared-weight mixed_ja_en_review must compare retained split IQ4 against explicit composite through bulk prefill, all 48 hidden + 47 routed boundaries, 16 transitions, active K/V and all KVLiveSpans fields, reset/re-prefill, ownership, lifecycle, KL0, and top-1 100%.",
+      "Cache-only two-transition full-model tracing must show two candidate calls/token, zero IQ4 selected-single/weighted-reducer decode calls, unchanged 45 IQ3 wave10 + two reducers, and exactly 676 model kernels/token with admitted resources/IDs/finite/lifecycle/no-compiler."
+    ]
+  },
+  "baseline": {
+    "additional_h32_speedup_required_pct": 1.8144711534139324,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "canonical_wall_ms_per_token": 15.805224168463194,
+    "commit": "0f7d17b686713f387e6b144dcf8a9918d5822fec",
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "retained_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json",
+    "retained_artifact_sha256": "f1fd3c7d9f8d881d5699e1a77bfdf6fcbedb0322f2186b54d27642bf61a96ee2",
+    "short_inclusive_iq4_ms_per_token": 0.134677,
+    "short_iq4_selected_ms_per_token": 0.128434,
+    "short_kernel_sum_ms_per_token": 12.736967071428571,
+    "short_two_reducers_ms_per_token": 0.006243,
+    "signbit_rejection_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-rejected.json",
+    "signbit_rejection_artifact_sha256": "be07157e69bfdca909ec630621dab3b90f3b6a078396a856d5246f10f02b634f"
+  },
+  "builder_sha256": "83cc79cdc46f86a47e625bb529674646535c03a4a31f9b75c569fcfa9f520ac7",
+  "cache_only_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "candidate_calls": 2,
+    "compiler_allowed_under_profiler": false,
+    "finite": true,
+    "harness_sha256": "33be2ff641262c3de78e6c43699e538f696af6237ee5c5b56cdf24f299323f29",
+    "kernel_rows": [
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 80,
+        "duration_ns": 399162,
+        "grid_x": 786432,
+        "kernel_name": "(anonymous namespace)::gguf_iq4_xs_weighted_selected_down_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      },
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 80,
+        "duration_ns": 80120,
+        "grid_x": 786432,
+        "kernel_name": "(anonymous namespace)::gguf_iq4_xs_weighted_selected_down_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 256
+      }
+    ],
+    "no_compiler_under_profiler": true,
+    "prebuilt_required": true,
+    "preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preflight_stdout_sha256": "81727aa3777e4d64dc1aa5a0185d961749c34e6e49d9f36efe916243a081174e",
+    "profile_stderr_sha256": "168fdec6453a4483dade490f652bd19b705e1380fde09033884d4e1632960ecd",
+    "profile_stdout_sha256": "81727aa3777e4d64dc1aa5a0185d961749c34e6e49d9f36efe916243a081174e",
+    "trace_sha256": "844faf885acf1b6edd471aff273d54d0ab99adf8df889efe593336bdefc1067d"
+  },
+  "closed_mechanisms_respected": [
+    "Do not retry sign-bit, SWAR, pair-reuse, staged-LDS, output-tiling, local-size, fixed-metadata, or K3072-specialization owners.",
+    "Do not alter IQ4 arithmetic, raw weights, BF16 boundaries, routing order, workspace, prompt/token behavior, or the retained IQ3 wave10 default.",
+    "Do not infer a topline win from the isolated two-layer result."
+  ],
+  "codegen": {
+    "barriers": 2,
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "ds_bpermute": 5,
+    "group_segment_fixed_size": 32,
+    "hsaco_sha256": "3bf5b9a5075795083a948cfc9e2a60e6fc0c80c860e1cd396d9cae7b8e9fdca3",
+    "isa_sha256": "123a01ee1fce0cde52055358883b696001375f4c5f4d5a4e18ba831a50fde954",
+    "objdump_sha256": "333cfb1cc563d84e038547a7bdcf5ea05b69faf2e26a9f6c6cbcbb2845f0fddb",
+    "private_segment_fixed_size": 0,
+    "private_spill_scratch": 0,
+    "readobj_sha256": "c9c385af7c0afbf9d7ab4095136b6ca68bfdb21390c4f664ace01fad8060a387",
+    "sgpr_count": 44,
+    "sgpr_spill_count": 0,
+    "static_instructions": 492,
+    "symbols_sha256": "b495eac7870c150a9006cd17d9d73aa2cb6f472df4a629d106f2125185ae79e2",
+    "text_bytes": 2580,
+    "vgpr_count": 78,
+    "vgpr_spill_count": 0,
+    "wavefront_size": 32
+  },
+  "date": "2026-07-27",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation_status": {
+    "benchmark_changelog_update": false,
+    "benchmark_scoreboard_update": false,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "default": "unchanged retained IQ3 wave10_fused plus split IQ4 selected-single/weighted-sum",
+    "generic_repository_primitive": "already registered from b4d488ea7e with exact fallback repair 31acdd3323",
+    "laguna_top10_certification": "pending",
+    "runtime_owner": "absent"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq4_weighted_composite_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "path": "/tmp/laguna-post-signbit-iq4-lineage.txt",
+    "result": "Only already-catalogued unrelated Qwen/PARO/smoke parent drift; the selected IQ4 body is in-tree and unchanged.",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "in_features": 1024,
+    "iq4_down_layers": [
+      46,
+      47
+    ],
+    "num_experts": 256,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "selected_experts": 10,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling": {
+    "canonical_h32_tok_s_before": 63.27021934907704,
+    "conservative_ratio": 0.28787970033252486,
+    "inclusive_iq4_ms_per_token_before": 0.134677,
+    "kernel_sum_ms_per_token_after": 12.698196297026888,
+    "kernel_sum_ms_per_token_before": 12.736967071428571,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "method": "Apply only the smallest actual layer event-or-wall improvement to the immutable two-IQ4-plus-two-reducer short family; leave all other kernel and host intervals unchanged.",
+    "model_kernels_per_token_after": 676,
+    "model_kernels_per_token_before": 678,
+    "modeled_h32_delta_pct": 0.24590675805560291,
+    "modeled_h32_tok_s_after": 63.42580509429302,
+    "modeled_saving_ms_per_token": 0.038770774401683444,
+    "note": "The modeled row remains below Vulkan and is planning evidence only.",
+    "performance_claim": false,
+    "remaining_gap_pct": 1.564716651368192
+  },
+  "performance_claim": false,
+  "production_shape_screen": {
+    "checks": {
+      "both_actual_outputs_exact": true,
+      "both_event_improve": true,
+      "both_wall_improve": true,
+      "tracked_returned_to_zero": true
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq4_weighted_composite_actual.py",
+    "decision": "advance to Laguna-specific repository admission",
+    "harness_sha256": "372b688b7e47cbcad68454c5bdb3b0939475e13c5138c9c97ae2817d891959ed",
+    "memory_stats": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 427913336,
+      "peak_allocations": 7,
+      "total_allocated_bytes": 855732344,
+      "total_freed_bytes": 855732344
+    },
+    "protocol": {
+      "launches_per_sample": 300,
+      "repetitions": 15,
+      "warmups": 50
+    },
+    "raw_path": "/tmp/laguna-iq4-weighted-composite-actual.json",
+    "raw_sha256": "751c3db277193a7bfd055f7b9326d4637d511bd88023bf64efb35f45f273078f",
+    "routing": [
+      0.6100000143051147,
+      0.49000000953674316,
+      0.3700000047683716,
+      0.28999999165534973,
+      0.23000000417232513,
+      0.1899999976158142,
+      0.12999999523162842,
+      0.09000000357627869,
+      0.07000000029802322,
+      0.029999999329447746
+    ],
+    "rows": [
+      {
+        "candidate_vs_control_pct": {
+          "event_pct": -32.940129360538194,
+          "wall_pct": -33.05732309430303
+        },
+        "event_samples_us": {
+          "candidate_weighted_composite": [
+            82.67868041992188,
+            81.18281682332356,
+            79.89738464355469,
+            79.46842829386394,
+            80.52087148030598,
+            79.57577387491862,
+            79.52691396077473,
+            79.98990376790364,
+            80.05622863769531,
+            79.686705271403,
+            79.49352264404297,
+            79.88259633382161,
+            81.36776606241862,
+            78.78990809122722,
+            77.6097043355306
+          ],
+          "control_selected_plus_weighted": [
+            127.95838673909505,
+            119.6865717569987,
+            119.08831278483073,
+            119.10099029541016,
+            119.12130991617839,
+            119.05287424723308,
+            119.06593322753906,
+            119.40930684407552,
+            119.0112813313802,
+            119.02304331461589,
+            118.97220611572266,
+            119.36044057210286,
+            119.1635513305664,
+            119.40223693847656,
+            119.20876820882161
+          ]
+        },
+        "event_us": {
+          "candidate_weighted_composite": 79.88259633382161,
+          "control_selected_plus_weighted": 119.12130991617839
+        },
+        "layer_id": 46,
+        "max_u16_delta": 0,
+        "mismatches": 0,
+        "wall_samples_us": {
+          "candidate_weighted_composite": [
+            81.27673684308927,
+            80.37042726452152,
+            79.90778734286626,
+            79.87695358072718,
+            79.82791711886723,
+            79.49807991584142,
+            78.85587013637026,
+            80.07475718234976,
+            79.01717365408938,
+            80.1158898199598,
+            79.88508325070143,
+            79.79441977416475,
+            78.37116718292236,
+            77.51722044001023,
+            78.83253662536542
+          ],
+          "control_selected_plus_weighted": [
+            126.84024327124159,
+            119.30980642015736,
+            119.13883655021588,
+            119.16076997295022,
+            119.12996647879481,
+            119.17103625213106,
+            119.32956986129284,
+            119.20286963383357,
+            119.24816993996501,
+            119.15793642401695,
+            119.26640678818028,
+            119.33487296725313,
+            119.47160664324959,
+            119.08370302990079,
+            119.33080619201064
+          ]
+        },
+        "wall_us": {
+          "candidate_weighted_composite": 79.82791711886723,
+          "control_selected_plus_weighted": 119.24816993996501
+        },
+        "weight_name": "blk.46.ffn_down_exps.weight",
+        "weight_nbytes": 427819008
+      },
+      {
+        "candidate_vs_control_pct": {
+          "event_pct": -28.787970033252485,
+          "wall_pct": -28.885273585262894
+        },
+        "event_samples_us": {
+          "candidate_weighted_composite": [
+            73.63904317220052,
+            71.66212717692058,
+            70.13824462890625,
+            70.17531712849934,
+            70.79622268676758,
+            70.8297856648763,
+            70.85756301879883,
+            70.70212046305339,
+            70.5084228515625,
+            70.66295623779297,
+            70.82038879394531,
+            70.68138758341472,
+            71.99659983317058,
+            72.27710088094075,
+            72.38334655761719
+          ],
+          "control_selected_plus_weighted": [
+            105.53996404012044,
+            98.46952438354492,
+            97.06334431966145,
+            98.9598019917806,
+            99.45003509521484,
+            99.3148676554362,
+            99.58066940307617,
+            99.37686920166016,
+            99.55026626586914,
+            99.35593287150066,
+            99.58390553792317,
+            99.35839970906575,
+            103.839906056722,
+            107.9572041829427,
+            107.83163706461589
+          ]
+        },
+        "event_us": {
+          "candidate_weighted_composite": 70.82038879394531,
+          "control_selected_plus_weighted": 99.45003509521484
+        },
+        "layer_id": 47,
+        "max_u16_delta": 0,
+        "mismatches": 0,
+        "wall_samples_us": {
+          "candidate_weighted_composite": [
+            72.56395028283198,
+            70.61275653541088,
+            70.14211655283968,
+            70.29968701923887,
+            70.7762564222018,
+            70.941427256912,
+            70.74486076210935,
+            70.96219342201948,
+            71.08043025558193,
+            70.89396007359028,
+            70.73202325652043,
+            70.77028974890709,
+            72.28494621813297,
+            72.28814608727892,
+            72.24974688142538
+          ],
+          "control_selected_plus_weighted": [
+            104.56226688499252,
+            98.00767293199897,
+            97.7396701152126,
+            99.7476667786638,
+            99.6478305508693,
+            99.73883007963498,
+            99.6308292572697,
+            99.62093007440369,
+            99.70359969884157,
+            99.68956311543782,
+            99.68739623824756,
+            99.65379644806187,
+            108.5422863252461,
+            107.98427974805236,
+            108.32944962506492
+          ]
+        },
+        "wall_us": {
+          "candidate_weighted_composite": 70.89396007359028,
+          "control_selected_plus_weighted": 99.68956311543782
+        },
+        "weight_name": "blk.47.ffn_down_exps.weight",
+        "weight_nbytes": 427819008
+      }
+    ],
+    "selected": [
+      193,
+      7,
+      89,
+      221,
+      3,
+      127,
+      44,
+      255,
+      18,
+      166
+    ],
+    "stdout_sha256": "f7b76889783a9b88054924f1a2919438a6daa7057ac5b3c0a29fbaa4ed7e17e0"
+  },
+  "retained_trace_rank": {
+    "interpretation": "Two remaining IQ4 selected-single calls and their two weighted reducers are the only unfused selected-down boundary after retained IQ3 wave10 ownership. Closed Q5/IQ2/IQ3/SWA/runtime-owner premises are excluded.",
+    "model_kernels_per_segment": 678,
+    "order_a_trace_sha256": "b7c73f63fffcb6c8f8388c8ba3311a2a137dfd3ef12745bb40c8f21efb1e0149",
+    "order_b_trace_sha256": "c415434f8b601c82760c3859e27953a2beca0015d6e1fdada4c44c3b33428f63",
+    "rank_path": "/tmp/laguna-post-signbit-retained-kernel-rank.txt",
+    "rank_sha256": "87a83048d88502e86038f2c523b7ea64960dfcf7402bba6a6947a2fc7a35bca8",
+    "ranker_path": "/tmp/rank_laguna_post_signbit_retained_trace.py",
+    "ranker_sha256": "3d78568fe8afeae3b61d845ec70fb2584655cc6f5738cfb07cefc4999cc9e80a",
+    "stable_segments": 28
+  },
+  "selected_candidate": {
+    "candidate_runtime": "Only c=1 top_k=10/K1024 IQ4 layers 46/47 may resolve the existing composite; rows/prefill/key miss/backends retain the registered split fallback.",
+    "current_runtime": "Laguna does not resolve this key; layers 46/47 execute selected-single plus weighted_sum.",
+    "exactness": "Each route projection retains the selected-single reduction and BF16 rounding boundary; routing accumulation retains slot order and final BF16 rounding.",
+    "existing_origin_commits": {
+      "exact_fallback_math": "31acdd3323",
+      "primitive": "b4d488ea7e"
+    },
+    "four_axis_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq4_xs",
+      "selected_weighted_down_gemv_decode_bf16_bf16_out"
+    ],
+    "name": "Laguna top-10 IQ4_XS routing-weighted composite",
+    "topology": {
+      "after": 676,
+      "before": 678,
+      "removed_calls_per_token": 2
+    }
+  },
+  "source_sha256": {
+    "hip": "b78198db6edee39099378d0adce3629dce020edddc67378b93716be90db6c87a",
+    "python": "981c78d5637f0b432fde53963beb3e6229f155cfdb2f866c550eca00d0e30a06"
+  }
+}

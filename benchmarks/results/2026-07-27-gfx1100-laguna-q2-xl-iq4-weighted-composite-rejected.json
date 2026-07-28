@@ -1,0 +1,562 @@
+{
+  "candidate": {
+    "candidate_calls_per_token": {
+      "composite": 2,
+      "reducers": 0
+    },
+    "control_calls_per_token": {
+      "reducers": 2,
+      "selected": 2
+    },
+    "key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq4_xs",
+      "selected_weighted_down_gemv_decode_bf16_bf16_out"
+    ],
+    "launch_delta_per_token": -2,
+    "model_kernels_per_token": {
+      "candidate": 676,
+      "control": 678
+    },
+    "new_allocations": 0,
+    "persistent_weight_copy_delta_bytes": 0,
+    "scope": "two c=1 E256/top-10/K1024/N3072 IQ4 expert-down layers",
+    "workspace_delta_bytes": 0
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "action": "reject unchanged runtime owner and retain certified primitive only",
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "categories_run": false,
+    "completion_claim": false,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank an independent exact residual surface; do not retry unchanged IQ4 composite ownership.",
+    "required_relative_gain_to_beat_vulkan_pct": 1.8144711534139324,
+    "retry_allowed_without_materially_new_premise": false,
+    "runtime_integration_removed": true,
+    "runtime_promoted": false
+  },
+  "frozen_contract": {
+    "command": "bash /tmp/run_laguna_iq4_weighted_clean_profiles.sh",
+    "harness_sha256": {
+      "analyzer": "34985df05e05b035dc2c4ccb4afcbd5d3e14529e62e936d506f1b02a1c040a87",
+      "child": "a8d9c6d17d646b991532d9887cae430106ce96c927eb7922519be4bb137a4c4d",
+      "runner": "f9d03a49a3520ef8badd7cfb39c80110edcd13e56be74aaf278df56b4be6c0ff"
+    },
+    "path": "/tmp/laguna-iq4-weighted-clean-frozen-contract.json",
+    "revision": "86891e00864eb9bfefefa7e6dd1724caa39b17f2",
+    "sha256": "114c0c9dba2326b4911a6d3dbcedd0d45a5502b9c745c6bd20501dd735d59e82",
+    "stop_on_first_failed_context": true,
+    "third_order_or_pooled_waiver_allowed": false
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "idle_vram_used_bytes_after": 27959296,
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq4_weighted_composite_runtime_rejection",
+  "model": {
+    "context_length": 4096,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "resident c=1 greedy target AR; code_merge_intervals; 16 decode transitions; first two excluded"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "dab1e4916d87cb54650d9fded8be8ef2cc60257934734032a36b9bb4ab479903",
+    "certification_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-correctness.json",
+    "certification_artifact_sha256": "0985cf25e668dbd942ad92c6c591c5b84fef97cd8f633a4c369dc455c9cac371",
+    "certification_commit": "30179e697",
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-design.json",
+    "design_artifact_sha256": "4cecfa077a2d5e2b70924fa0c39af07c6a78a28903d50f49abaf6817d8476cfc",
+    "dirty_files_at_build": [
+      " M WORKLOG.md",
+      " M docs/KERNELS.md",
+      " M docs/LAGUNA-decode.md",
+      " M docs/REFACTOR.md",
+      " M hipengine/kernels/hip_gfx1100/__init__.py",
+      " M hipengine/runtime/laguna_gguf_runner.py",
+      " M hipengine/runtime/laguna_moe.py",
+      " M scripts/laguna_target_ar_bench.py",
+      " M tests/test_laguna_iq4_weighted_runtime.py"
+    ],
+    "runtime_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq4-weighted-composite-runtime-correctness.json",
+    "runtime_artifact_sha256": "a1aed42059dc836d93342843d2c8fd0b53d5114a44ed3807f1a14c8ebc22a91d",
+    "runtime_commit": "86891e00864eb9bfefefa7e6dd1724caa39b17f2",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f"
+      },
+      {
+        "path": "hipengine/runtime/laguna_moe.py",
+        "sha256": "5b374f1fd9e1b557355d2293bd24fd049128bf4434f6857e4ad01f08dd6fd4ed"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "41c44b980a0ae7d4f2e90aba49cee32d9202c304f67fd930c67123af3e53b231"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+      },
+      {
+        "path": "tests/test_laguna_iq4_weighted_runtime.py",
+        "sha256": "1c4ad270c6fc8291406cb7ff7256b1c7e2e015bede877acaf4d1b8a151a21bb2"
+      }
+    ]
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "reason": "runtime rejected before categories; retained default and canonical measurement are unchanged"
+  },
+  "runtime_removal": {
+    "production_diff_empty": true,
+    "production_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "production_matches_certification_commit": "30179e697",
+    "production_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f",
+      "hipengine/runtime/laguna_gguf_runner.py": "41c44b980a0ae7d4f2e90aba49cee32d9202c304f67fd930c67123af3e53b231",
+      "hipengine/runtime/laguna_moe.py": "5b374f1fd9e1b557355d2293bd24fd049128bf4434f6857e4ad01f08dd6fd4ed",
+      "scripts/laguna_target_ar_bench.py": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+    },
+    "rejection_green_result": "4 passed",
+    "rejection_green_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "rejection_red_result": "3 failed / 1 passed only while capability/plan/session/CLI seams remained",
+    "rejection_red_sha256": "6475c0dd6b10d42109dbb7a75a89a59d48ffdb9a846d8bde68566a5dfd568f86",
+    "removed": [
+      "hip_gfx1100.LAGUNA_IQ4_WEIGHTED_COMPOSITE",
+      "resolve_laguna_iq4_weighted_composite and plan/session option",
+      "laguna_target_ar_bench.py --enable-iq4-weighted-composite and telemetry",
+      "temporary docs/REFACTOR.md row"
+    ],
+    "retained": [
+      "pre-existing gfx1100 HIP body/C export/Python wrapper/four-axis key",
+      "gfx1151 alias exclusion",
+      "generic explicit weighted-selected dispatch",
+      "Laguna design/certification/runtime-correctness evidence",
+      "registered selected-single plus weighted-reducer runtime fallback"
+    ]
+  },
+  "schema": 1,
+  "short_clean_gate": {
+    "acceptance": {
+      "candidate_calls_per_token": {
+        "iq3_wave10": 45,
+        "iq4_composite": 2,
+        "iq4_reducers": 0,
+        "iq4_selected": 0
+      },
+      "contexts": [
+        "short"
+      ],
+      "control_calls_per_token": {
+        "iq3_wave10": 45,
+        "iq4_reducers": 2,
+        "iq4_selected": 2
+      },
+      "iq4_family_and_kernel_sum_improve_each_order": true,
+      "model_kernels_per_token": {
+        "candidate": 676,
+        "control": 678
+      },
+      "process_orders": 2,
+      "profiled_child_throughput_regression_min_pct": -0.5,
+      "rerun_or_guard_waiver_allowed": false,
+      "span_regression_max_pct": 0.5,
+      "stable_samples_per_arm": {
+        "short": 28
+      },
+      "stop_on_first_failed_context": true
+    },
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_child_inside_0_5pct": true,
+      "all_order_iq4_family_improve": false,
+      "all_order_kernel_sum_improve": false,
+      "all_order_span_inside_0_5pct": false,
+      "all_resources_calls_dispatches_compiler_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "command": "bash /tmp/run_laguna_iq4_weighted_clean_profiles.sh",
+    "interpretation": "Both orders regress inclusive IQ4, complete kernel sum, and dispatch span. Profiled-child throughput improves but cannot waive any per-order device/span failure.",
+    "orders": [
+      {
+        "candidate": {
+          "bench_sha256": "e01d84f848e02a828c1252a7227c7fe455c407f3dea6d6fb5f2808069ed74d15",
+          "compiler_spawned_under_profiler": false,
+          "dispatches_per_token": 676,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq3_wave10_calls_per_token": 45,
+          "iq4_composite_calls_per_token": 2,
+          "iq4_reducer_calls_per_token": 0,
+          "iq4_selected_calls_per_token": 0,
+          "lifecycle": true,
+          "profiled_child_tok_s": 59.86923353046352,
+          "resources": {
+            "iq3_wave10": [
+              [
+                983040,
+                1,
+                320,
+                88,
+                128,
+                512,
+                0
+              ]
+            ],
+            "iq4_composite": [
+              [
+                786432,
+                1,
+                256,
+                80,
+                128,
+                512,
+                0
+              ]
+            ],
+            "iq4_reducer": [],
+            "iq4_selected": []
+          },
+          "stable_steps": 14,
+          "stderr_sha256": "0cbf32e8e8e273d47dc58ce79a1cb37717375c29790995525dc169d12214f614",
+          "trace_sha256": "1068f49f7ba5c8574c512528cd22ad15bb9c795205f57e79ca12943407a272a7"
+        },
+        "control": {
+          "bench_sha256": "21eca8216733d5c4c1bfab48b5578211f690164b03bd7181f84504b6266dae89",
+          "compiler_spawned_under_profiler": false,
+          "dispatches_per_token": 678,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq3_wave10_calls_per_token": 45,
+          "iq4_composite_calls_per_token": 0,
+          "iq4_reducer_calls_per_token": 2,
+          "iq4_selected_calls_per_token": 2,
+          "lifecycle": true,
+          "profiled_child_tok_s": 59.66853765193278,
+          "resources": {
+            "iq3_wave10": [
+              [
+                983040,
+                1,
+                320,
+                88,
+                128,
+                512,
+                0
+              ]
+            ],
+            "iq4_composite": [],
+            "iq4_reducer": [
+              [
+                3072,
+                1,
+                256,
+                8,
+                128,
+                0,
+                0
+              ]
+            ],
+            "iq4_selected": [
+              [
+                393216,
+                10,
+                128,
+                72,
+                128,
+                512,
+                0
+              ]
+            ]
+          },
+          "stable_steps": 14,
+          "stderr_sha256": "bad8de624f7d8c8b65cfc549684323b984d04f8bf75810f8f1726e5943bf1681",
+          "trace_sha256": "e9d642e7ec232c7fc2a4fd5385c8f7b58805c535d1d54289771266c3b53c1fd1"
+        },
+        "delta_pct": {
+          "iq3_wave10_pct": 0.6515570283379901,
+          "iq4_composite_vs_selected_pct": 31.436055694656375,
+          "iq4_family_pct": 25.515350842749275,
+          "iq4_reducer_pct": -100.0,
+          "iq4_selected_pct": -100.0,
+          "kernel_sum_pct": 0.2016610348217318,
+          "profiled_child_tok_s_pct": 0.3363512605277341,
+          "span_pct": 0.6808666264180863
+        },
+        "order": "a",
+        "pass": false
+      },
+      {
+        "candidate": {
+          "bench_sha256": "48022674e9eaa358d0af518c4ad4d04533a1477d8dc632ba766e6a651ca803eb",
+          "compiler_spawned_under_profiler": false,
+          "dispatches_per_token": 676,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq3_wave10_calls_per_token": 45,
+          "iq4_composite_calls_per_token": 2,
+          "iq4_reducer_calls_per_token": 0,
+          "iq4_selected_calls_per_token": 0,
+          "lifecycle": true,
+          "profiled_child_tok_s": 59.76850439680366,
+          "resources": {
+            "iq3_wave10": [
+              [
+                983040,
+                1,
+                320,
+                88,
+                128,
+                512,
+                0
+              ]
+            ],
+            "iq4_composite": [
+              [
+                786432,
+                1,
+                256,
+                80,
+                128,
+                512,
+                0
+              ]
+            ],
+            "iq4_reducer": [],
+            "iq4_selected": []
+          },
+          "stable_steps": 14,
+          "stderr_sha256": "72390eb00be68ddac2e658e64004f74117fe29ad53e9c34049656f3103103b1d",
+          "trace_sha256": "67923dd1d2f144d4bacf4be2f388a87adc7f4ed2e192c02d7e6cba01682e8571"
+        },
+        "control": {
+          "bench_sha256": "25140adbd12f43dffcc9d6b4af56cc9f2c5ddb056c07076d6150f89b453e42b4",
+          "compiler_spawned_under_profiler": false,
+          "dispatches_per_token": 678,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq3_wave10_calls_per_token": 45,
+          "iq4_composite_calls_per_token": 0,
+          "iq4_reducer_calls_per_token": 2,
+          "iq4_selected_calls_per_token": 2,
+          "lifecycle": true,
+          "profiled_child_tok_s": 58.658285583486396,
+          "resources": {
+            "iq3_wave10": [
+              [
+                983040,
+                1,
+                320,
+                88,
+                128,
+                512,
+                0
+              ]
+            ],
+            "iq4_composite": [],
+            "iq4_reducer": [
+              [
+                3072,
+                1,
+                256,
+                8,
+                128,
+                0,
+                0
+              ]
+            ],
+            "iq4_selected": [
+              [
+                393216,
+                10,
+                128,
+                72,
+                128,
+                512,
+                0
+              ]
+            ]
+          },
+          "stable_steps": 14,
+          "stderr_sha256": "96b6269005928221b9b2b48296de9142ebe7533a93c5040d56afbf3811672ec5",
+          "trace_sha256": "c3330b90727cb352a88ce2c4185bec2bebe0640bdd5a1e1d81e648d8f1070e92"
+        },
+        "delta_pct": {
+          "iq3_wave10_pct": -0.07193412143001732,
+          "iq4_composite_vs_selected_pct": 31.245559204943984,
+          "iq4_family_pct": 25.190998510224905,
+          "iq4_reducer_pct": -100.0,
+          "iq4_selected_pct": -100.0,
+          "kernel_sum_pct": 0.30320986396126237,
+          "profiled_child_tok_s_pct": 1.8926888201277636,
+          "span_pct": 2.1978848030137943
+        },
+        "order": "b",
+        "pass": false
+      }
+    ],
+    "passed": false,
+    "pooled": {
+      "candidate": {
+        "iq3_wave10_ms": 1.4369123214285713,
+        "iq4_composite_ms": 0.16986557142857142,
+        "iq4_family_ms": 0.16986557142857142,
+        "iq4_reducer_ms": 0.0,
+        "iq4_selected_ms": 0.0,
+        "kernel_sum_ms": 12.798352500000002,
+        "profiled_child_tok_s": 59.7761140762408,
+        "span_median_ms": 15.5393955,
+        "stable_samples": 28
+      },
+      "control": {
+        "iq3_wave10_ms": 1.4327821428571428,
+        "iq4_composite_ms": 0.0,
+        "iq4_family_ms": 0.13550839285714286,
+        "iq4_reducer_ms": 0.006177178571428571,
+        "iq4_selected_ms": 0.12933121428571429,
+        "kernel_sum_ms": 12.766108749999999,
+        "profiled_child_tok_s": 58.9453765093914,
+        "span_median_ms": 15.481031999999999,
+        "stable_samples": 28
+      },
+      "delta_pct": {
+        "iq3_wave10_ms": 0.28826284526357604,
+        "iq4_family_ms": 25.3542809024744,
+        "kernel_sum_ms": 0.25257304814987336,
+        "profiled_child_tok_s": 1.4093345670920243,
+        "span_median_ms": 0.3770000604610857
+      }
+    },
+    "preflight": {
+      "json_sha256": "fb96da539c8efd575cf94487034d629e29b681e28b87c24ff2939ca30a017ddd",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "fb96da539c8efd575cf94487034d629e29b681e28b87c24ff2939ca30a017ddd"
+    },
+    "report_sha256": "1b9b4cf402bffadcb0b03f573519b007c257fc62d0df8e69f265d1293ae670c5",
+    "summary_path": "/tmp/laguna-q2-xl-iq4-weighted-clean-profile-summary.json",
+    "summary_sha256": "ead1e6061c825d138c0b0100ed884b4e0ef0ee545c2578d50d0b517ffe15c3a8"
+  },
+  "source_revision": "86891e00864eb9bfefefa7e6dd1724caa39b17f2",
+  "status": "rejected_runtime_removed_primitive_retained",
+  "stop_proof": {
+    "category_gate_skipped": true,
+    "category_outputs": [],
+    "failed_context": "short",
+    "gpu0_used_vram_bytes_after": 27959296,
+    "long_context_roots": [],
+    "manifest_path": "/tmp/laguna-iq4-weighted-rejection-stop-manifest.json",
+    "manifest_sha256": "1fc91da0256c9b20b61682a803c6362650847034e3d12a4dbceb4267b2ad89da",
+    "profile_root_count": 4,
+    "profile_roots": [
+      "laguna-q2-xl-iq4-weighted-clean-86891e008-short-candidate-a",
+      "laguna-q2-xl-iq4-weighted-clean-86891e008-short-candidate-b",
+      "laguna-q2-xl-iq4-weighted-clean-86891e008-short-control-a",
+      "laguna-q2-xl-iq4-weighted-clean-86891e008-short-control-b"
+    ],
+    "revision": "86891e00864eb9bfefefa7e6dd1724caa39b17f2",
+    "runner_exit_status": 3,
+    "schema": 1,
+    "stop_on_first_failed_context": true,
+    "third_order_or_rerun_performed": false
+  },
+  "validation": {
+    "adjacent_result": "139 passed after excluding exactly the unchanged stale resolver test",
+    "adjacent_sha256": "8f0afdc4b9cd95ac45e5240f62e83419e5e6e592406eb0fd59e65767d3909773",
+    "adjacent_unfiltered_result": "139 passed plus one unchanged stale gfx1151 resolver failure",
+    "adjacent_unfiltered_sha256": "8b5ea44b6321c66f34758bd8b3e0330dc6a910476ca169ca8e890b2d1661fb73",
+    "adjacent_warning": "one unrelated Starlette httpx deprecation warning",
+    "cpu_reference_registry_build_result": "27 passed",
+    "cpu_reference_registry_build_sha256": "a82a0b51cd86fa0131904e08c34ef556963104f0e3677f688117e093ebf2d3fe",
+    "fixtures_registry_passed": true,
+    "fixtures_registry_sha256": "6347cbffe67f3480b12162fbbbcb7cac1410a6ff08ccde8025f53c55e96c4bab",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

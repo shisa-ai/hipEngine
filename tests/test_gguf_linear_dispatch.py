@@ -1613,6 +1613,288 @@ def test_registered_q5_f32_decode_pair_accepts_unequal_widths_only_at_c1() -> No
     assert kwargs["stream"] == 0
 
 
+def test_registered_q5_wave32x2_singleton_is_explicit_and_fails_closed() -> None:
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_bf16_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "pack8_gemv_decode_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, fallback_key)
+    }
+    calls: list[str] = []
+
+    register(candidate_key, lambda *args, **kwargs: calls.append("candidate"), replace=True)
+    register(fallback_key, lambda *args, **kwargs: calls.append("fallback"), replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=6144,
+            out_features=3072,
+            use_gemv_decode=True,
+            registered_variant=candidate_key.variant,
+        )
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=6144,
+            out_features=3072,
+            use_gemv_decode=True,
+            registered_variant="missing_wave32x2_variant",
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert calls == ["candidate", "fallback"]
+
+
+def test_registered_q4_lm_head_local32_is_explicit_and_fails_closed() -> None:
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "local32_fixed_meta_gemv_decode_bf16_f32_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_gemv_decode_bf16_f32_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, fallback_key)
+    }
+    calls: list[str] = []
+
+    register(candidate_key, lambda *args, **kwargs: calls.append("candidate"), replace=True)
+    register(fallback_key, lambda *args, **kwargs: calls.append("fallback"), replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=3072,
+            out_features=100_352,
+            output_dtype=GGUF_OUTPUT_F32,
+            use_gemv_decode=True,
+            registered_variant=candidate_key.variant,
+        )
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=3072,
+            out_features=100_352,
+            output_dtype=GGUF_OUTPUT_F32,
+            use_gemv_decode=True,
+            registered_variant="missing_local32_fixed_meta_variant",
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert calls == ["candidate", "fallback"]
+
+
+def test_registered_q5_wave32x2_pair_is_c1_only_with_pack8_fallback() -> None:
+    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
+    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_f32_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "pack8_gemv_decode_bf16_f32_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, fallback_key)
+    }
+    calls: list[tuple[str, tuple]] = []
+
+    def candidate(*args, **kwargs):
+        calls.append(("candidate", args))
+
+    def fallback(*args, **kwargs):
+        calls.append(("fallback", args))
+
+    register(candidate_key, candidate, replace=True)
+    register(fallback_key, fallback, replace=True)
+    try:
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=9216,
+            out_features_b=72,
+            output_dtype=GGUF_OUTPUT_F32,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+            registered_decode_variant=candidate_key.variant,
+        )
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=9216,
+            out_features_b=72,
+            output_dtype=GGUF_OUTPUT_F32,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+            registered_decode_variant="missing_wave32x2_variant",
+        )
+        assert not launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=2,
+            in_features=3072,
+            out_features=9216,
+            out_features_b=72,
+            output_dtype=GGUF_OUTPUT_F32,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+            registered_decode_variant=candidate_key.variant,
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert [name for name, _ in calls] == ["candidate", "fallback"]
+    assert calls[0][1] == (100, 10, 10, 200, 300, 1, 3072, 9216, 72)
+
+
+def test_registered_q5_fixed_meta_bf16_pair_is_c1_only_with_pack8_fallback() -> None:
+    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
+    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "pack8_gemv_decode_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, fallback_key)
+    }
+    calls: list[tuple[str, tuple]] = []
+
+    def candidate(*args, **kwargs):
+        calls.append(("candidate", args))
+
+    def fallback(*args, **kwargs):
+        calls.append(("fallback", args))
+
+    register(candidate_key, candidate, replace=True)
+    register(fallback_key, fallback, replace=True)
+    try:
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+            registered_decode_variant=candidate_key.variant,
+        )
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+            registered_decode_variant="missing_wave32x2_variant",
+        )
+        assert not launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=2,
+            in_features=3072,
+            out_features=1024,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+            registered_decode_variant=candidate_key.variant,
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert [name for name, _ in calls] == ["candidate", "fallback"]
+    assert calls[0][1] == (100, 10, 10, 200, 300, 1, 3072, 1024, 1024)
+
+
 def test_registered_q6_f32_decode_pair_is_c1_only_and_fail_closed() -> None:
     weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
     weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
