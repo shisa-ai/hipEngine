@@ -7,6 +7,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import statistics
@@ -190,6 +191,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="screen the exact gfx11 global/SWA split-attention bundle",
     )
+    parser.add_argument(
+        "--compare-f16-decode-onebarrier",
+        action="store_true",
+        help="counterbalance exact source-F16 GEMV against the one-barrier sibling",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -285,10 +291,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_block_attention_hipblaslt,
             args.compare_dense_contiguous_cache,
             args.compare_swa_attention_hipblaslt,
+            args.compare_f16_decode_onebarrier,
         )
     )
     if active_comparisons > 1:
-        raise ValueError("only one long-attention comparison may be active")
+        raise ValueError("only one Laguna comparison may be active")
     if (
         args.compare_block_attention_hipblaslt
         and args.block_attention_hipblaslt
@@ -315,6 +322,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_block_attention_hipblaslt
         or args.compare_dense_contiguous_cache
         or args.compare_swa_attention_hipblaslt
+        or args.compare_f16_decode_onebarrier
     )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
@@ -385,6 +393,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_attention_rows = 128
     active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
+    original_f16_decode_mode = os.environ.get("HIPENGINE_LAGUNA_F16_DECODE")
+    if args.compare_f16_decode_onebarrier:
+        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = "gemv"
     load_started = time.perf_counter()
     try:
         owner = LagunaGGUFResidentSession(
@@ -510,6 +521,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_prefill_dense_contiguous_cache(
                             mode == "candidate"
                         )
+                    if args.compare_f16_decode_onebarrier:
+                        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
+                            "onebarrier" if mode == "candidate" else "gemv"
+                        )
                     owner.reset_state()
                     started = time.perf_counter()
                     result = owner.prefill(token_stream[:length], use_bulk=True)
@@ -572,6 +587,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         if owner is not None:
             owner.close()
+        if args.compare_f16_decode_onebarrier:
+            if original_f16_decode_mode is None:
+                os.environ.pop("HIPENGINE_LAGUNA_F16_DECODE", None)
+            else:
+                os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
+                    original_f16_decode_mode
+                )
     tracked_after = memory_stats()
     gpu_free_after, gpu_total_after = runtime.mem_get_info()
     if gpu_total_after != gpu_total:
@@ -704,6 +726,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "head_kv_fusion": active_head_kv_fusion,
             "head_kv_fusion_requested": args.head_kv_fusion,
             "decode_split_attention_requested": args.decode_split_attention,
+            "compare_f16_decode_onebarrier": (
+                args.compare_f16_decode_onebarrier
+            ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,
             "swa_split_tile16_min_live": active_swa_split_tile16_min_live,
