@@ -12,6 +12,7 @@ import pytest
 from hipengine.benchmark.correctness import evaluate_logits
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
+    gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
@@ -22,12 +23,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.registry import resolve
-from tests.test_gguf_iq2_xs_gemv import _make_iq2_xs_weight
+from tests.test_gguf_iq2_xs_gemv import _make_iq2_xs_weight, _run_dual
 from tests.test_gguf_iq_gemv import _f32_to_bf16_u16, _make_x, _run_selected
 from tests.test_gguf_iq_selected_prefill import (
     _bf16_u16_to_f32,
@@ -95,6 +98,12 @@ def test_iq2_xs_prefill_registry_contract() -> None:
         ),
         "selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out": (
             gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out
+        ),
+        "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out": (
+            gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out
+        ),
+        "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out": (
+            gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out
         ),
         "selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out": (
             gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out
@@ -255,6 +264,39 @@ def test_iq2_xs_grouped_fused_silu_preserves_projection_boundaries(libraries) ->
         gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
         gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
         gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out,
+    ):
+        actual = _run_dual_grouped(
+            wrapper,
+            grouped_library,
+            x_bf16=x,
+            meta=meta,
+            gate=gate,
+            up=up,
+            wmma=False,
+            fused_silu=True,
+        )
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_iq2_xs_pair16_grouped_fused_silu_matches_production_local64(libraries) -> None:
+    grouped_library, direct_library = libraries
+    meta = _compact_meta([0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31])
+    in_features = 3072
+    out_features = 23
+    x = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
+    gate, up = _weights(meta.num_experts, out_features, in_features)
+    expected = _run_dual(
+        direct_library,
+        x,
+        meta.selected,
+        gate,
+        up,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out,
+    )
+    for wrapper in (
+        gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out,
+        gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out,
     ):
         actual = _run_dual_grouped(
             wrapper,

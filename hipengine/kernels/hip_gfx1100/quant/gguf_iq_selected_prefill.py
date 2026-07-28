@@ -38,6 +38,14 @@ _SYMBOL_IQ2_GROUPED_DUAL_SILU_ROWBATCH4 = (
 _SYMBOL_IQ2_GROUPED_DUAL_SILU_ROWBATCH8 = (
     "hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
 )
+_SYMBOL_IQ2_GROUPED_DUAL_SILU_PAIR16_ROWBATCH4 = (
+    "hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_"
+    "rowbatch4_bf16_bf16_out"
+)
+_SYMBOL_IQ2_GROUPED_DUAL_SILU_PAIR16_ROWBATCH8 = (
+    "hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_"
+    "rowbatch8_bf16_bf16_out"
+)
 _SYMBOL_IQ2_GROUPED_DUAL_ADAPTIVE = (
     "hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out"
 )
@@ -281,6 +289,70 @@ def gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_o
 ) -> None:
     _launch_grouped_dual(
         _SYMBOL_IQ2_GROUPED_DUAL_SILU_ROWBATCH8,
+        x_ptr,
+        expert_start_compact_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_grouped_dual(
+        _SYMBOL_IQ2_GROUPED_DUAL_SILU_PAIR16_ROWBATCH4,
+        x_ptr,
+        expert_start_compact_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_grouped_dual(
+        _SYMBOL_IQ2_GROUPED_DUAL_SILU_PAIR16_ROWBATCH8,
         x_ptr,
         expert_start_compact_ptr,
         gate_weight_ptr,
@@ -1258,6 +1330,16 @@ def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq2_xs",
+            "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq2_xs",
+            "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq2_xs",
             "selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out",
             gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out,
         ),
@@ -1375,6 +1457,8 @@ __all__ = [
     "gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out",

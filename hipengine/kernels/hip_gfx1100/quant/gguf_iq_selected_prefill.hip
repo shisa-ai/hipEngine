@@ -18,6 +18,11 @@ struct IQ2Segment {
   float scale;
 };
 
+struct IQ2Pair16 {
+  float magnitude[16];
+  float scale;
+};
+
 struct IQ3Segment {
   float magnitude[8];
   float scale;
@@ -64,6 +69,56 @@ __device__ inline float dot_iq2_segment(
     sum += segment.magnitude[j] * bf16_bits_to_float(x[j]);
   }
   return segment.scale * sum;
+}
+
+// Decode the same adjacent two-group unit as production's local64 pair16
+// selected kernel, but keep the decoded magnitudes live across routed rows.
+__device__ inline IQ2Pair16 load_iq2_pair16(
+    const uint8_t* __restrict__ weight_row,
+    int pair16) {
+  IQ2Pair16 segment;
+  const int block_idx = pair16 >> 4;
+  const int group8_even = (pair16 & 15) * 2;
+  const int group32 = group8_even >> 2;
+  const int local8 = group8_even & 3;
+  const uint8_t* __restrict__ block =
+      weight_row + static_cast<int64_t>(block_idx) * IQ2_XS_BLOCK_BYTES;
+  const uint32_t packed_q =
+      load_u32_le(block + 2 + 2 * (4 * group32 + local8));
+  const uint16_t q0 = static_cast<uint16_t>(packed_q);
+  const uint16_t q1 = static_cast<uint16_t>(packed_q >> 16);
+  const uint8_t scale_byte = block[66 + group32];
+  const uint32_t scale =
+      (static_cast<uint32_t>(scale_byte) >> (4 * (local8 >> 1))) & 0x0FU;
+  const uint32_t signs0 = iq3_sign_byte(static_cast<uint32_t>(q0 >> 9));
+  const uint32_t signs1 = iq3_sign_byte(static_cast<uint32_t>(q1 >> 9));
+  const uint16_t grid0 = IQ2_XS_GRID_PACKED[q0 & 511U];
+  const uint16_t grid1 = IQ2_XS_GRID_PACKED[q1 & 511U];
+  segment.scale = fp16_bytes_to_float(block) *
+                  (0.5f + static_cast<float>(scale)) * 0.25f;
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const uint32_t code0 = (static_cast<uint32_t>(grid0) >> (2 * j)) & 3U;
+    const uint32_t code1 = (static_cast<uint32_t>(grid1) >> (2 * j)) & 3U;
+    segment.magnitude[j] =
+        iq2_xs_signed_magnitude(code0, (signs0 >> j) & 1U);
+    segment.magnitude[8 + j] =
+        iq2_xs_signed_magnitude(code1, (signs1 >> j) & 1U);
+  }
+  return segment;
+}
+
+__device__ inline float dot_iq2_pair16(
+    const IQ2Pair16& segment,
+    const uint16_t* __restrict__ x) {
+  float sum0 = 0.0f;
+  float sum1 = 0.0f;
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    sum0 += segment.magnitude[j] * bf16_bits_to_float(x[j]);
+    sum1 += segment.magnitude[8 + j] * bf16_bits_to_float(x[8 + j]);
+  }
+  return segment.scale * sum0 + segment.scale * sum1;
 }
 
 __device__ inline IQ3Segment load_iq3_segment(
@@ -212,6 +267,43 @@ __device__ inline void reduce_block_pairs_batched(
         value_a[row] += wave_sums_a[row * 8 + wave_idx];
         value_b[row] += wave_sums_b[row * 8 + wave_idx];
       }
+    }
+  }
+}
+
+template <int ROW_BATCH>
+__device__ inline void reduce_local64_pairs_batched(
+    float (&value_a)[ROW_BATCH],
+    float (&value_b)[ROW_BATCH],
+    float* __restrict__ wave_sums_a,
+    float* __restrict__ wave_sums_b) {
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      value_a[row] += __shfl_down(value_a[row], offset);
+      value_b[row] += __shfl_down(value_b[row], offset);
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      wave_sums_a[row * 2 + wave] = value_a[row];
+      wave_sums_b[row * 2 + wave] = value_b[row];
+    }
+  }
+  __syncthreads();
+  if (tid == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      value_a[row] = 0.0f;
+      value_b[row] = 0.0f;
+      value_a[row] += wave_sums_a[row * 2];
+      value_b[row] += wave_sums_b[row * 2];
+      value_a[row] += wave_sums_a[row * 2 + 1];
+      value_b[row] += wave_sums_b[row * 2 + 1];
     }
   }
 }
@@ -401,6 +493,79 @@ __global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kerne
       weight_offset,
       wave_sums_gate,
       wave_sums_up);
+}
+
+// Pair16/local64 WPF-2b candidate. One block owns one output column so the
+// screen isolates routed-row reuse from output tiling. Every row preserves the
+// production pair16 loop, two-wave shuffle tree, serial wave sum, BF16 gate/up
+// projection boundaries, and fused SiLU boundary.
+template <int ROW_BATCH>
+__launch_bounds__(256, 2)
+__global__ void gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const uint8_t* __restrict__ gate_weight,
+    const uint8_t* __restrict__ up_weight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int in_features,
+    int out_features,
+    int num_experts) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= num_experts) return;
+  const int64_t begin = expert_start_compact[expert];
+  const int64_t end = expert_start_compact[expert + 1];
+  if (begin >= end) return;
+
+  const int pairs16 = in_features / 16;
+  const int row_bytes = (in_features / QK_K) * IQ2_XS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int64_t weight_offset =
+      static_cast<int64_t>(expert) * expert_bytes +
+      static_cast<int64_t>(out_col) * row_bytes;
+  const uint8_t* __restrict__ gate_row = gate_weight + weight_offset;
+  const uint8_t* __restrict__ up_row = up_weight + weight_offset;
+  __shared__ float wave_sums_gate[ROW_BATCH * 2];
+  __shared__ float wave_sums_up[ROW_BATCH * 2];
+
+  for (int64_t row_base = begin; row_base < end; row_base += ROW_BATCH) {
+    float gate_acc[ROW_BATCH] = {};
+    float up_acc[ROW_BATCH] = {};
+    for (int pair16 = threadIdx.x; pair16 < pairs16;
+         pair16 += blockDim.x) {
+      const IQ2Pair16 gate_segment = load_iq2_pair16(gate_row, pair16);
+      const IQ2Pair16 up_segment = load_iq2_pair16(up_row, pair16);
+#pragma unroll
+      for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+          const uint16_t* __restrict__ x_pair =
+              x + row * in_features + pair16 * 16;
+          gate_acc[row_idx] += dot_iq2_pair16(gate_segment, x_pair);
+          up_acc[row_idx] += dot_iq2_pair16(up_segment, x_pair);
+        }
+      }
+    }
+    reduce_local64_pairs_batched(
+        gate_acc, up_acc, wave_sums_gate, wave_sums_up);
+    if (threadIdx.x == 0) {
+#pragma unroll
+      for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+          const float gate =
+              bf16_bits_to_float(float_to_bf16_bits(gate_acc[row_idx]));
+          const float up =
+              bf16_bits_to_float(float_to_bf16_bits(up_acc[row_idx]));
+          const float sig = 1.0f / (1.0f + expf(-gate));
+          out[row * out_features + out_col] =
+              float_to_bf16_bits(gate * sig * up);
+        }
+      }
+    }
+    __syncthreads();
+  }
 }
 
 // Every block sees one expert's row count, so this decision is wave-uniform and
@@ -1402,6 +1567,58 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_
       out_features,
       num_experts,
       256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_kernel<4>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      64,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      (gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_kernel<8>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      64,
       stream);
 }
 
