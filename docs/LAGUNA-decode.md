@@ -3532,6 +3532,7 @@ Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained fused-GQA2 SWA owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
 [`rejected fused-GQA2 shared-V owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json) ·
+[`rejected GQA9 K64 split-K family`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json) ·
 [`retained fused one-head global owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
@@ -3675,6 +3676,38 @@ instead regressed the complete saturated leaf
 same-workgroup paired-V serialization; it strengthens the llama.cpp-shaped
 requirement to regain breadth with independent K64 splits.
 
+The source-faithful GQA9/K64 screen then validates the performance premise but
+rejects all three realizations. The online variant launches **8 KV heads x 8
+K64 splits = 64 local256 workgroups**, reuses every K/V slice across all nine
+query heads, and merges bounded online-softmax state. Its saturated leaf moves
+**0.083713 -> 0.035521 ms/layer (-57.57%)**; cached tracing records the
+intended local256/VGPR56/LDS5120/scratch0 main body plus a one-block merge.
+Seven resident-model pairs move **17.089951 -> 19.292150 tok/s (+12.886%,
+-6.679 ms/token)**, with every candidate sample faster. Changed association is
+not admissible: the 128-token trajectory changes, and a same-stream
+teacher-forced comparison reaches max KL **0.314247** despite
+**125/128 (97.66%)** top-1.
+
+The exact repair materializes the original score plane, replays one retained
+slot-order softmax per head, and assigns 64 wave32 PV owners while preserving
+every output FMA. It is F32/BF16 byte-exact and wins the leaf
+**0.083382 -> 0.061297 ms (-26.49%)**, but its two extra dispatch boundaries
+reverse the result in production: **17.081531 -> 16.451712 tok/s (-3.687%,
++2.241 ms/token)**, with all seven pairs losing. Fusing those phases into one
+64-block cooperative local256 kernel remains byte-exact but regresses the leaf
+**0.083669 -> 0.148301 ms (+77.25%)** because the score phase's block footprint
+forces the scalar softmax/PV phases to carry seven idle waves. All GQA9
+candidate code, registration, runtime selection, tests, and comparison plumbing
+are removed. Production remains exact fused-GQA2 at **17.097044 tok/s**.
+
+The next bounded LD-1 screen stays inside that retained one-dispatch,
+40-workgroup topology: stage BF16 V in LDS in 32- or 64-slot batches, keep all
+eight waves active on their original query/dimension ownership, and reuse each
+V element across the adjacent query pair. This targets the same **14 -> 10**
+modeled K+V row-read reduction as shared-V without halving active PV waves or
+changing arithmetic. It must be byte-exact and beat the complete leaf before
+another resident-model screen.
+
 LD-1e applies the same fusion to global attention while preserving breadth.
 One local256 workgroup remains assigned to each of 48 query heads, so the
 layer keeps **48 workgroups / 384 wave32s**. It fuses QK, the existing
@@ -3750,13 +3783,15 @@ and shape/backend fallbacks.
    above the **3.0 ms/token** target. LD-1b's full-F32 and exact-QK/
    tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
    reducer, SWA one-head fusion, and paired shared-V GQA2 owner are
-   performance-rejected; shared-V alone is **49.070%** slower. The next screen
-   is therefore an SWA **GQA9 x K64 split-K** body with 64 main workgroups,
-   bounded online-state merge, and full `KVLiveSpans` visibility. It follows
-   llama.cpp's reuse/breadth topology while retaining hipEngine's independent
-   correctness contract. Changed association must enter the full KL/top-1 and
-   category gates. Re-profile attention launch and persistent-fusion
-   opportunities only after this algorithmic screen.
+   performance-rejected; shared-V alone is **49.070%** slower. LD-1f's
+   source-faithful SWA **GQA9 x K64 split-K** proves the missing topology with a
+   **57.57%** leaf and **12.89%** production speedup, but max KL **0.314247**
+   rejects its online merge. The exact three-dispatch repair wins the leaf
+   **26.49%** but regresses production **3.69%**; exact cooperative fusion
+   regresses the leaf **77.25%**. All three are removed. Next test only
+   batched-LDS V staging inside retained fused-GQA2: preserve 40 workgroups,
+   eight active waves, the one-dispatch boundary, and exact arithmetic while
+   reducing pairwise V traffic.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

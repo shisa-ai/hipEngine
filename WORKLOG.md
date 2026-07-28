@@ -188003,3 +188003,41 @@ Vulkan local sizes verbatim will close the measured gap.
   therefore GQA9 x K64 split-K with full `KVLiveSpans`; changed association
   enters the full KL/top-1/category gate. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json`.
+
+## 2026-07-29 00:12 JST — Reject GQA9 K64 split-K SWA decode
+
+- Review clean llama.cpp Vulkan `c0bc8591e`. On gfx1151 its subgroup64
+  cooperative-matrix decode FlashAttention uses Br16/Bc64/local256; live512
+  selects eight K64 splits per KV head. The resulting 64 main workgroups plus
+  merge reuse K/V across all nine SWA query heads while recovering breadth
+  across 40 CUs. The required lineage audit remains blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; this unit ports no
+  external source.
+- A source-shaped online GQA9/K64 split-K screen validates the performance
+  premise. The saturated leaf improves **0.083713 -> 0.035521 ms/layer
+  (-57.57%)**; cached tracing records 64 local256 main blocks at
+  VGPR56/SGPR128/LDS5120/scratch0 and one local256 merge block at
+  VGPR32/LDS4608/scratch0. Seven resident-model p512/d128 pairs all improve
+  **17.089951 -> 19.292150 tok/s (+12.886%, -6.679 ms/token)**.
+- Reject the changed association. The next token remains 2930, but the
+  128-token generated hash diverges and final token changes **74107 -> 83**.
+  A same-stream 128-step control-top1 teacher-forced gate measures max KL
+  **0.314247**, mean KL **0.005964**, and **125/128 (97.66%)** top-1, failing
+  the required max-KL <=0.05 contract.
+- The exact three-stage repair materializes the original score plane, replays
+  one retained slot-order softmax per head, and gives 64 wave32 PV owners the
+  original output FMA order. It is F32/BF16 byte-exact and improves the leaf
+  **0.083382 -> 0.061297 ms (-26.49%)**, but the two extra dispatch boundaries
+  make all seven production pairs lose:
+  **17.081531 -> 16.451712 tok/s (-3.687%, +2.241 ms/token)**.
+- Exact cooperative one-kernel fusion is also byte-exact, but regresses the
+  leaf **0.083669 -> 0.148301 ms (+77.25%)**: the local256 score footprint
+  leaves seven waves idle through the scalar-softmax/PV phases. Remove all
+  GQA9 candidate kernels, wrappers, registrations, runtime selectors, tests,
+  and benchmark plumbing. The restored focused bundle passes **36/36**;
+  production remains **17.097044 tok/s / 58.490 ms/token**.
+- Next: stage BF16 V in 32/64-slot LDS batches inside the retained exact
+  one-dispatch GQA2 body. Keep 40 workgroups/eight waves and every query's
+  scalar/FMA order while targeting the same modeled KV-head row-read reduction
+  **14 -> 10** without serializing the two query heads. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json`.

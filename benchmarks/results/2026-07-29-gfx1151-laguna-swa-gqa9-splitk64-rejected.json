@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T00:08:56+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa9_splitk64_rejected",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "08b4a832dc3cbdeb86f79732ca6fd0d9a637aeb1",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "runtime": "hipengine/runtime/laguna_kv.py",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "comparator_audit": {
+    "device_subgroup_size": 64,
+    "vulkan_path": "cooperative-matrix FlashAttention Br16 x Bc64/local256",
+    "decode_mapping": "nine SWA query heads folded into the row tile; eight KV heads by eight K64 splits gives 64 main workgroups plus bounded-state merge",
+    "reason_fast": "K/V reuse spans the full query group while key splitting restores breadth across 40 CUs"
+  },
+  "online_splitk64": {
+    "shape": "72Q/8KV/D128/SWA512, 8 KV heads x 8 K64 splits, local256",
+    "optimization": "reuse each K/V slice across all nine query heads; merge per-split online-softmax state through existing bounded scratch",
+    "primitive": {
+      "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-splitk64 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa9-splitk64-leaf.json",
+      "raw_sha256": "1b815a8f9fac85bc29f77c1bd1c137692d9336e917249e26af63883642c92f87",
+      "control_median_ms": 0.08371268272399902,
+      "candidate_median_ms": 0.035520880222320556,
+      "latency_change_percent": -57.56810190944064,
+      "fixture_context_f32_byte_exact": true,
+      "fixture_gated_bf16_byte_exact": true
+    },
+    "trace": {
+      "raw_sha256": "854cb482fa4c41a226115d5947da6bab78b20de22c2981113592b76987d71bbb",
+      "main": {
+        "grid_blocks": 64,
+        "workgroup_size": 256,
+        "vgpr": 56,
+        "sgpr": 128,
+        "lds_bytes": 5120,
+        "scratch_bytes": 0
+      },
+      "merge": {
+        "grid_blocks": 1,
+        "workgroup_size": 256,
+        "vgpr": 32,
+        "sgpr": 128,
+        "lds_bytes": 4608,
+        "scratch_bytes": 0
+      }
+    },
+    "production": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gqa9-splitk64 --allow-dirty --output /tmp/laguna-p512-d128-swa-gqa9-splitk64-ab.json",
+      "raw_sha256": "6bb0e4e51374015b2c9f8de7eb532a2eda06b8f6cc588b7a13444e97f82dcb0a",
+      "control_decode_tok_s": 17.089951330354907,
+      "candidate_decode_tok_s": 19.292150066121543,
+      "throughput_change_percent": 12.88592748567472,
+      "saving_ms_per_token": 6.679363078511074,
+      "all_candidate_samples_faster_than_all_controls": true,
+      "next_token_ids_match": true,
+      "generated_ids_match": false,
+      "control_final_token": 74107,
+      "candidate_final_token": 83
+    },
+    "teacher_forced_quality": {
+      "protocol": "same 512-token mixed_ja_en_review stream, 128 control-top1 teacher-forced transitions, retained fused-GQA2 versus online GQA9 split-K64",
+      "maximum_kl": 0.31424705764961913,
+      "mean_kl": 0.005964044816650214,
+      "top1_matches": 125,
+      "steps": 128,
+      "top1_agreement": 0.9765625,
+      "maximum_kl_limit": 0.05,
+      "minimum_top1_agreement": 0.9,
+      "pass": false
+    }
+  },
+  "exact_three_stage_repair": {
+    "description": "materialize exact GQA9 scores, replay one retained slot-order softmax per head, then use 64 wave32 PV owners with exact per-output FMA order",
+    "primitive": {
+      "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-exact-pipeline --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa9-exact-pipeline-leaf.json",
+      "raw_sha256": "9078119d79457aee0adac7adb4fa0376d62ae06933b71f08a5e35c7660d62166",
+      "control_median_ms": 0.0833824634552002,
+      "candidate_median_ms": 0.061297001838684084,
+      "latency_change_percent": -26.48693826176317,
+      "context_f32_byte_exact": true,
+      "gated_bf16_byte_exact": true
+    },
+    "production": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gqa9-exact-pipeline --allow-dirty --output /tmp/laguna-p512-d128-swa-gqa9-exact-pipeline-ab.json",
+      "raw_sha256": "495d8f2a240ee9450b4250c2d72311d38440b624934dee276eff719dd57c8f85",
+      "control_decode_tok_s": 17.081531339622767,
+      "candidate_decode_tok_s": 16.45171234561207,
+      "throughput_change_percent": -3.6871342591501377,
+      "regression_ms_per_token": 2.2411857086314484,
+      "complete_trajectory_exact": true,
+      "all_candidate_samples_slower_than_all_controls": true
+    }
+  },
+  "exact_cooperative_repair": {
+    "description": "one 64-block local256 cooperative kernel with two grid-wide barriers fuses the exact score, softmax, and PV phases",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-exact-cooperative --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa9-exact-cooperative-leaf.json",
+    "raw_sha256": "e38c6196dd36243f5e7399a5d88af7cb919346de22a7dcbd174dff2a15e04ca3",
+    "control_median_ms": 0.08366939544677734,
+    "candidate_median_ms": 0.14830076217651367,
+    "latency_change_percent": 77.24612611889702,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "decision": {
+    "retained": false,
+    "all_candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 17.097043759837383,
+    "production_wall_ms_per_token": 58.48964382656007,
+    "closed": [
+      "full-GQA9 online split-K with changed softmax association",
+      "exact three-dispatch GQA9 score/softmax/PV",
+      "exact local256 cooperative fusion of those three phases"
+    ],
+    "next": "Preserve the retained 40-workgroup fused-GQA2 breadth and arithmetic while staging V in LDS by slot batches, so both query waves remain active and each V element is fetched once per query pair."
+  }
+}
