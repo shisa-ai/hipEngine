@@ -187544,3 +187544,21 @@ Vulkan local sizes verbatim will close the measured gap.
   GEMV. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-local32-rejected.json`;
   trace SHA-256 `92e85fc6...57d39`.
+
+## 2026-07-28 17:44 JST — Remove rejected tensorized SWA decode surface
+
+- The exact local32 comparator no longer needs the two quality-rejected
+  tensorized paths. Remove `LAGUNA_DECODE_SWA_ATTENTION_HIPBLASLT`, its
+  constructor argument/session setter/lazy runtime owner/dispatch/teardown,
+  `LagunaSwaDecodeHipblasLt`, and the decode-only category comparison.
+- Remove the now-unreferenced chronological cache widening, exact score
+  rotation, wave/exact softmax, denominator, and normalize HIP exports plus
+  Python wrappers. Remove their diagnostic tests and kernel-catalog row while
+  preserving all rejection/candidate artifacts and the historical decode
+  analysis. The independent retained M128 rolling-SWA **prefill** hipBLASLt
+  route is untouched.
+- Focused validation passes **48 tests**: rolling-SWA prefill shape/wrap,
+  retained exact GQA3 scalar/tile16 ring boundaries, session close/lifecycle,
+  category harness, and gfx1151 backend contracts. `compileall` and
+  `git diff --check` pass. Production decode remains the retained exact
+  **14.740486 tok/s** route with no dead selector.
