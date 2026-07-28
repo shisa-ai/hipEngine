@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-29
+
+- [rejected gfx1151 Laguna GQA9 K64 split-K SWA decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / saturated 72Q/8KV/D128/SWA512 online split-K improves the leaf **0.083713 -> 0.035521 ms (-57.57%)** and seven-pair p512/d128 production **17.089951 -> 19.292150 tok/s (+12.886%, -6.679 ms/token)**, but fails the quality contract at max KL **0.314247** despite **97.66%** top-1; an exact three-dispatch repair wins the leaf **26.49%** but regresses production **3.687%**, while exact cooperative fusion regresses the leaf **77.25%**, so all candidate code is removed and production stays **17.097044 tok/s**; `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json`.
+
 ## 2026-07-28
 
 - [rejected exact gfx1151 Laguna paired shared-V SWA decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / saturated 72Q/8KV/D128/SWA512 leaf keeps the retained 40-workgroup GQA2 score phase and reduces modeled K+V row reads per KV head **14 -> 10**, but halving active PV waves regresses complete attention **0.083029 -> 0.123772 ms (+49.070%)** despite F32/BF16 byte identity; all candidate code/registry/test surfaces are removed, and llama.cpp Vulkan source review selects GQA9 x K64 split-K as the next algorithmic screen; `benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json`.
