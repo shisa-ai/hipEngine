@@ -4106,6 +4106,20 @@ llama.cpp Vulkan remains at **0.909 ms**, so attention still leaves
 Evidence:
 [`post-exp4 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp4-wall-reprofile.json).
 
+The exact exp8 successor is retained. Lanes 0..7 issue one independent
+compiler `expf` per eight-slot batch and shuffle the weights back to every
+lane. Lane 0 still accumulates the denominator in original item order and
+every dimension retains the original PV FMA order; no LDS, barrier, launch,
+or repair plane is added. Wrapped/evicted F32/BF16 output is byte-exact. The
+leaf improves **0.089191 -> 0.083755 ms (-6.09%)**, and the stable cached
+kernel window improves **83.557 -> 78.667 us (-5.85%)** at unchanged
+**32 local384 blocks, VGPR104/SGPR128/LDS24576/scratch0**. All seven resident
+p512/d128 pairs improve
+**19.427449 -> 19.510986 tok/s (+0.430%, -0.220 ms/token)**; every candidate
+beats every control with exact trajectory/state/lifecycle. gfx1151 selects
+exp8 only inside the already-qualified exp4/mixed32 route. Evidence:
+[`retained mixed32 exp8`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-retained.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

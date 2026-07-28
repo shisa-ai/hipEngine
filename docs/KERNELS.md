@@ -1394,6 +1394,20 @@ The clean post-exp4 census keeps **816 compute dispatches/token** and measures
 **44.3%** of the clean wall gap. Evidence:
 [`post-exp4 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp4-wall-reprofile.json).
 
+The exact exp8 successor is retained. Lanes 0..7 issue one independent
+compiler `expf` for each eight-slot batch, then shuffle the weights back to
+the original ordered denominator and PV chains. There is no new LDS, barrier,
+launch, or repair phase. Wrapped/evicted F32/BF16 output is byte-exact. The
+leaf improves **0.089191 -> 0.083755 ms (-6.09%)** and the stable cached
+kernel window improves **83.557 -> 78.667 us (-5.85%)** at unchanged
+32 local384 blocks and VGPR104/SGPR128/LDS24576/scratch0. All seven resident
+p512/d128 pairs improve
+**19.427449 -> 19.510986 tok/s (+0.430%, -0.220 ms/token)** with complete
+sample separation and exact trajectories/state/lifecycle. gfx1151 selects
+exp8 only inside the qualified exp4/mixed32 route; exp4 remains rollback.
+Evidence:
+[`retained mixed32 exp8`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-retained.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.

@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+    laguna_swa_attention_decode_fused_exact_gated_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
@@ -63,6 +64,7 @@ def _parse_args() -> argparse.Namespace:
             "fused-gqa3-vstage64-vec16-direct-assume-exp",
             "mixed32-vstage64-vec16-direct-assume-exp",
             "mixed32-exp4-vstage64-vec16-direct-assume-exp",
+            "mixed32-exp8-vstage64-vec16-direct-assume-exp",
         ),
         default="fixed512",
     )
@@ -231,6 +233,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "fused-gqa3-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_fixed512_bf16_spans,
             "mixed32-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp4-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+            "mixed32-exp8-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         }[args.candidate]
         candidate_kernel = {
             "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
@@ -242,6 +245,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "fused-gqa3-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp4-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+            "mixed32-exp8-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         }[args.candidate]
 
         def control() -> None:

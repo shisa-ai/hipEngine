@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T08:00:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed32_exp8_retained",
+  "status": "retained_default",
+  "performance_claim": true,
+  "source": {
+    "base_revision": "797c7d4a149c40cba3cfad162b6ad836e0456248",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "change": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "geometry": "unchanged 32 local384 workgroups; four owners per KV head partition nine query heads as 2+2+2+3",
+    "mechanism": "for each eight-slot softmax batch, lanes 0..7 issue one independent compiler expf concurrently and shuffle the eight weights back to every lane",
+    "arithmetic": "lane 0 accumulates the denominator in the original item order and every dimension retains the original PV FMA order",
+    "synchronization": "no new LDS, barrier, launch, or repair phase"
+  },
+  "correctness": {
+    "red": "wrapped/evicted oracle failed because the exp8 wrapper did not exist",
+    "first_green_failure": "the first implementation placed a constexpr declaration between pragma unroll and its loop and failed compilation",
+    "repair": "move the constexpr batch size before pragma unroll without changing device arithmetic",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py -k swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "positions": "512-519 with explicit eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0,
+    "production_generated_ids_match": true,
+    "production_next_token_id": 2930,
+    "production_final_token_id": 74107,
+    "production_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "production_final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp8-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-mixed32-exp8-leaf.json",
+    "raw_sha256": "09098fb5657deb7dc34575ef3130bb64b9f44e0dbf55feb4ca346f4135029ad4",
+    "control_median_ms": 0.08919094085693359,
+    "candidate_median_ms": 0.08375514030456543,
+    "latency_change_percent": -6.094565771076943,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "trace": {
+    "raw_path": "/tmp/laguna-mixed32-exp8-trace.a4HfaH/exp8_kernel_trace.csv",
+    "raw_sha256": "519db9a1f21372a8782399a71fe819fdce04c19427acc5e7359b3d042278d06b",
+    "control_stable_mean_us": 83.557,
+    "candidate_stable_mean_us": 78.667,
+    "latency_change_percent": -5.8522924470720605,
+    "candidate": {
+      "grid_blocks": 32,
+      "workgroup_size": 384,
+      "allocated_vgpr": 104,
+      "allocated_sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    },
+    "resources_unchanged": true,
+    "expected_kernel_observed": true
+  },
+  "production": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-mixed32-exp8 --allow-dirty --output /tmp/laguna-p512-d128-swa-exp8-ab.json",
+    "raw_sha256": "59ccb2afcd27c5c38724aa64f83de7729be70b50ab14155e7f4a2a903f1792a6",
+    "control_decode_tok_s": 19.427448899105563,
+    "candidate_decode_tok_s": 19.510986266598373,
+    "throughput_change_percent": 0.4299965884694945,
+    "saving_ms_per_token": 0.220386905404997,
+    "all_seven_candidate_samples_faster_than_all_controls": true,
+    "cumulative_change_from_sprint_start_percent": 70.15364827345833
+  },
+  "validation": {
+    "focused_runtime_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback tests/test_laguna_gguf_runner.py::test_laguna_swa_mixed32_switch_is_session_scoped tests/test_laguna_gguf_runner.py::test_laguna_swa_mixed32_exp4_switch_is_session_scoped tests/test_laguna_gguf_runner.py::test_laguna_swa_mixed32_exp8_switch_is_session_scoped tests/test_laguna_long_context_profile.py",
+    "focused_runtime_result": "38 passed"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_capability_default": true,
+    "qualified_scope": "gated saturated natural-shape 72Q/8KV/D128/SWA512 decode",
+    "rollback": "retained mixed32 exp4 sibling",
+    "peer_backends_unchanged": true,
+    "reason": "Eight-lane exact exponential issue improves the leaf, cached kernel, and every resident-model pair without changing resources or arithmetic order."
+  }
+}
