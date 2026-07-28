@@ -1161,6 +1161,19 @@ that softmax inputs cannot exercise. Evidence:
 [`fast-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-candidate.json) ·
 [`fast-exp rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-rejected.json).
 
+The bounded-domain successor keeps the accurate high/low `log2(e)` range
+reduction, hardware `exp2`, and `ldexp`; it deletes only generic overflow,
+NaN, and positive-domain guards that finite score-minus-max inputs cannot
+exercise. Positions 512-519 plus eviction and the leaf are F32/BF16
+byte-exact. Nine leaf samples improve **0.105985 -> 0.101133 ms (-4.58%)**.
+Generated ISA removes 128 compares and 128 conditional masks, shrinks text
+**17,920 -> 16,628 B (-7.21%)**, and keeps logical
+VGPR138/SGPR33/LDS24576/scratch0. Three steady trace observations improve
+**106.199 -> 95.620 us (-9.96%)** with unchanged profiler resources. This is
+again a primitive admission, not production; next require an exact
+resident-model wall win. Evidence:
+[`bounded-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-candidate.json).
+
 Tracked-clean selector-unset production measures
 **19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is
 **+0.1015% / -0.0532 ms/token** versus the preceding clean 19.065940 packet

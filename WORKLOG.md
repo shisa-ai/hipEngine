@@ -188570,3 +188570,23 @@ Vulkan local sizes verbatim will close the measured gap.
   deep-underflow, and NaN handling that shifted softmax scores cannot reach.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-rejected.json`.
+
+## 2026-07-29 05:05 JST — Admit exact bounded-domain SWA exponential
+
+- Reproduce accurate `expf`'s high/low `log2(e)` range reduction plus hardware
+  `exp2`/`ldexp`, but omit generic overflow, NaN, and positive-domain guards:
+  every visible softmax input is finite QK*scale minus its finite maximum and
+  is therefore non-positive. The first compile exposed that HIP's `__exp2f`
+  name resolves to a host declaration; use the architecture builtin
+  `__builtin_amdgcn_exp2f` directly.
+- RED fails on the absent wrapper. GREEN is F32/BF16 byte-exact against
+  accurate `expf` across positions 512-519 plus explicit eviction and against
+  the leaf fixture. The CPU tolerance oracle also passes.
+- Nine leaf samples improve **0.105985 -> 0.101133 ms (-4.58%)**. ISA removes
+  128 compares and 128 conditional masks, shrinks text **7.21%**, and keeps
+  logical VGPR138/SGPR33/LDS24576/scratch0. Three steady trace observations
+  improve **106.199 -> 95.620 us (-9.96%)** with unchanged profiler resources.
+- Admit the primitive only. Next point the default-off resident selector at
+  this exact candidate and require a positive seven-pair p512/d128 wall before
+  production promotion. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-candidate.json`.
