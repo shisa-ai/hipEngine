@@ -1280,6 +1280,20 @@ vec16 remains rollback and GQA1 remains fallback above the LDS bound. Evidence:
 [`retained global direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json) ·
 [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-production.json).
 
+The exact global exp-domain sibling applies the same proven softmax invariant
+as the retained SWA specialization without changing compiler `expf` or any
+QK/softmax/PV arithmetic. Live513/576/639 with explicit eviction remains
+F32/BF16 byte-exact to the direct-store route and the CPU oracle. Nine-sample
+leaves improve **2.34%/1.86%/1.92%**. Both code objects keep three native
+exponential instructions, logical VGPR28/SGPR34, static LDS64, and no
+private/spill storage; the candidate changes scheduling around the softmax
+loop and contracts **830 -> 829** static instructions. Cached tracing names
+both local256/24-block templates at allocated VGPR32/scratch0 and improves
+aggregate median **90.490 -> 88.526 us (-2.17%)**. This is an admitted
+primitive only; production remains on the generic-domain direct-store body
+until a counterbalanced resident-model A/B is positive. Evidence:
+[`global assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json).
+
 Tracked-clean selector-unset production measures
 **19.136600/19.146417/19.153280 tok/s**, median **19.146417**. This is
 **+0.3203% / -0.1673 ms/token** versus the preceding clean 19.085294 packet

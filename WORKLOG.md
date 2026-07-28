@@ -188689,3 +188689,27 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked bytes after teardown. Production is now **+67.810%** over the
   11.466687 sprint start. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-production.json`.
+
+## 2026-07-29 05:53 JST — Admit exact global exp-domain primitive
+
+- Apply the retained SWA compiler fact to the global direct-store GQA2 body:
+  keep compiler `expf` and every QK/softmax/PV operation unchanged, and expose
+  only the exact `score - maximum <= 0` invariant through
+  `__builtin_assume`.
+- RED fails on the absent wrapper. GREEN passes the existing live
+  513/576/639 CPU oracle and explicit position-200 eviction fixture; context
+  F32 and gated BF16 outputs are byte-exact to the retained direct-store
+  route, hence derived KL is zero and top-1 agreement is 100%.
+- Nine-sample leaves improve **0.085172 -> 0.083183 ms (-2.34%)**,
+  **0.096506 -> 0.094706 ms (-1.86%)**, and
+  **0.106377 -> 0.104332 ms (-1.92%)**. Cached tracing names both expected
+  local256/24-block templates and improves aggregate median
+  **90.490 -> 88.526 us (-2.17%)** at allocated VGPR32/SGPR128/scratch0.
+  Codegen retains three native exponentials, logical VGPR28/SGPR34, and
+  4,448-byte text while contracting **830 -> 829** static instructions.
+- Admit the primitive only. Global attention appears in 12/48 layers, so
+  require a counterbalanced resident-model wall screen before production
+  promotion. `scripts/check_lineage.py --kind kernel --diff stat` could not
+  complete because the read-only `reference/atlas` checkout is absent; this
+  is an in-tree specialization, not a port. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json`.
