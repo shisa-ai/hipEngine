@@ -1840,26 +1840,3 @@ should be boring.
   127 calls, and preserves the complete trajectory/lifecycle. Keep the
   explicit serial rollback until a short context-crossover check confirms the
   inherited **127/65/257** thresholds on gfx1151.
-
-## Laguna gfx1151 tensorized SWA decode rollback
-
-- Added 2026-07-28 as a gfx1151 full-ring C1 candidate behind
-  `LAGUNA_DECODE_SWA_ATTENTION_HIPBLASLT`, the
-  `decode_swa_attention_hipblaslt` constructor argument, and the matching
-  session setter. It leaves short contexts, global attention, gfx1100, and
-  explicit false on the exact split path.
-- The complete wrap-plus-eviction leaf improves
-  **0.251302 -> 0.073779 ms (3.406x)** within the numerical gate, but runtime
-  promotion failed the complete category gate. The clean p512/d128 screen
-  improved **14.754991 -> 16.526335 tok/s (+12.005%)**, and the 18-prompt
-  category lane improved decode **11.86-11.95%**, but teacher-forced max KL
-  reached **1.218229** versus the **0.05** limit. Production therefore defaults
-  false and remains on exact split attention.
-- Keep the selector only while the bounded exact-score/tensorized-PV repair is
-  active. That repair preserves exact scores and denominator order and improves
-  **14.751829 -> 16.547822 tok/s (+12.175%)**, but still fails max KL at
-  **2.678710**. The final exact local32 GQA3 reducer comparator is also closed:
-  despite byte identity and local32/VGPR24/LDS0/scratch0, live-512 regresses
-  **237.661 -> 391.161 us (+64.6%)**. Remove the capability, runtime route,
-  session selector, leaf, and decode-specific benchmark mode before LD-2
-  integration.

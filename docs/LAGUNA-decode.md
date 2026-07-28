@@ -3444,7 +3444,11 @@ decides whether the remaining PV association is admissible. The answer is no:
 clean p512/d128 improves **14.751829 -> 16.547822 tok/s (+12.175%)**, but the
 complete lane reaches max KL **2.678710** at **566/576 (98.26%)** top-1.
 PV accumulation association alone is enough to violate the contract. Close
-tensorized all-layer attention and keep production exact.
+tensorized all-layer attention and keep production exact. After the exact
+local32 comparator also loses, remove the decode capability, session/runtime
+owner, HIP widening/softmax/normalize helpers, and decode-specific category
+mode. The retained rolling-SWA prefill hipBLASLt route is independent and
+unchanged.
 
 LD-1c then tested a new grid without changing an arithmetic operation: one
 local32 workgroup owned 32 output dimensions for three adjacent query heads,
