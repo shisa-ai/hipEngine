@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T05:05:38+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_bounded_exp_candidate",
+  "status": "candidate_primitive_admitted",
+  "pass": true,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "1b65b9ac3ac4e13112fd8cf15500063d0bf73112",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": "72Q/8KV/D128/SWA512; 24 local384 GQA3 workgroups; 64-slot direct vec16 V staging",
+  "optimization": {
+    "changed": "Reproduce accurate expf high/low log2(e) range reduction and hardware exp2/ldexp for the finite score-minus-max domain, omitting generic overflow, NaN, and positive-domain guards.",
+    "domain": "Every visible input is finite QK*scale minus its finite wave maximum and is therefore <= 0.",
+    "unchanged": [
+      "QK products and wave32 reduction tree",
+      "slot-order maximum and denominator additions",
+      "slot-order PV FMA sequence",
+      "context divide, softplus gate, BF16 rounding, and stores",
+      "KVLiveSpans visibility and ring addressing"
+    ]
+  },
+  "correctness": {
+    "red": "focused GPU test failed on the absent bounded-exp wrapper",
+    "green": "wrapped positions 512-519 with explicit position-200 eviction are F32/BF16 byte-exact against accurate expf and pass the CPU attention tolerance",
+    "focused_result": "1 passed",
+    "leaf_context_f32_byte_exact": true,
+    "leaf_context_max_abs_error": 0.0,
+    "leaf_gated_bf16_byte_exact": true,
+    "leaf_gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct-bounded-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-gqa3-bounded-exp-leaf.json",
+    "raw_sha256": "2f644def3136fa1b3ff83c09db8c2459f24ff81e8e83b040f96ed4c344b07d75",
+    "control_median_ms": 0.10598480224609375,
+    "candidate_median_ms": 0.10113258361816406,
+    "latency_change_percent": -4.578221145955408
+  },
+  "isa": {
+    "code_object_sha256": "da73354cfb2f26143a82f97b5af0f4dd0733efe12876c25af61216a8491567e9",
+    "control_template": "<64,true,true,false,false>",
+    "candidate_template": "<64,true,true,false,true>",
+    "control_text_bytes": 17920,
+    "candidate_text_bytes": 16628,
+    "text_change_percent": -7.209821428571428,
+    "control_static_compare_instructions": 290,
+    "candidate_static_compare_instructions": 162,
+    "control_static_cndmask_instructions": 138,
+    "candidate_static_cndmask_instructions": 10,
+    "native_exp_instructions_each": 65,
+    "logical_resources_unchanged": {
+      "vgpr": 138,
+      "sgpr": 33,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-bounded-exp-trace.E2fpat --output-file bounded-exp -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct-bounded-exp --samples 1 --warmups 0 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-bounded-exp-trace.E2fpat/leaf.json",
+    "raw_sha256": "a3496e6ec03bcff44395696126487ee78dc473a30e29099e599a1a32f1605045",
+    "steady_observations_each": 3,
+    "control_median_us": 106.199,
+    "candidate_median_us": 95.62,
+    "latency_change_percent": -9.96148739630316,
+    "workgroup_threads": 384,
+    "grid_blocks": 24,
+    "profiler_resources_unchanged": {
+      "vgpr": 144,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": {
+    "retained": false,
+    "production_default_unchanged": true,
+    "next": "Wire the existing resident-model selector to bounded exponential and require positive exact p512/d128 wall before promotion."
+  }
+}
