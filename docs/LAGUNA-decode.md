@@ -3535,6 +3535,7 @@ Evidence:
 [`rejected GQA9 K64 split-K family`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json) ·
 [`rejected GQA2 LDS-V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json) ·
 [`rejected rebalanced cooperative GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-cooperative-rebalanced-rejected.json) ·
+[`rejected GQA2 LDS weight cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-weightcache-rejected.json) ·
 [`retained fused one-head global owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
@@ -3728,12 +3729,21 @@ rather than idle PV waves as the remaining failure. `rocprofv3` crashes in
 `hsa_signal_store_screlease` while tracing this cooperative launch and emits no
 CSV, so no resource claim is made. Remove the candidate.
 
-The next bounded exact screen remains inside the retained ordinary GQA2 block.
-Each owned query head currently recomputes the same 512 exponentials and
-denominator in all four dimension waves. Have one leader per head write the
-exact weights and denominator to LDS, synchronize once, then let the original
-four dimension waves replay the unchanged slot-order PV FMA. This attacks
-redundant scalar work without a global phase boundary or KV reassociation.
+The next bounded exact screen remained inside the retained ordinary GQA2
+block. One leader per head wrote the exact 512 weights and denominator to LDS;
+the original four dimension waves then replayed the unchanged PV FMA sequence.
+It is F32/BF16 byte-exact but neutral:
+**0.084066 -> 0.083985 ms (-0.097%)**. The four redundant scalar chains already
+execute concurrently, and exchanging them for one extra LDS barrier changes no
+resident-model traffic. Remove it without a production screen.
+
+The next ordinary-launch geometry is fused GQA3/local384. Nine query heads
+divide exactly into three owners per KV head, and each workgroup's 12 waves map
+directly to three heads x four dimension partitions. The layer therefore keeps
+**24 x 12 = 288 active PV waves** versus retained GQA2's **40 x 8 = 320**, while
+reducing K owners/reads per KV head **5 -> 3**. It preserves the local score
+plane, one ordinary dispatch, exact arithmetic, and avoids all global phase
+boundaries.
 
 LD-1e applies the same fusion to global attention while preserving breadth.
 One local256 workgroup remains assigned to each of 48 query heads, so the
@@ -3820,9 +3830,10 @@ and shape/backend fallbacks.
    eight waves and reducing pairwise V traffic. Rebalancing cooperative GQA9
    from one to four/five active PV waves per block restores cache-hot parity
    (**+0.44%**) but still regresses production **3.963%**; the global
-   score/grid phase boundary is the blocker. Next test one exact LDS weight/
-   denominator preparation per head inside the retained ordinary GQA2 block,
-   followed by the unchanged four PV dimension waves.
+   score/grid phase boundary is the blocker. Exact per-head LDS weight/
+   denominator caching is then neutral at **-0.097%** in the leaf. Next test
+   fused GQA3/local384: 24 ordinary blocks retain 288 active PV waves while
+   reducing K ownership **5 -> 3** without a global phase.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

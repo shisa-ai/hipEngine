@@ -188091,3 +188091,23 @@ Vulkan local sizes verbatim will close the measured gap.
   retained ordinary fused-GQA2 workgroup, publish it to LDS, and retain the
   original four dimension-wave PV FMA sequences. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-cooperative-rebalanced-rejected.json`.
+
+## 2026-07-29 00:45 JST — Reject exact GQA2 LDS weight cache
+
+- RED fails on the absent weight-cache registry key. GREEN remains inside the
+  retained 40 local256 fused-GQA2 blocks: one leader per owned head computes
+  the exact 512 weights and denominator into F32 LDS, then the original four
+  dimension waves replay every PV FMA, divide, gate, and store. Saturated wrap
+  plus explicit eviction is F32/BF16 byte-exact; the focused file passes
+  **2/2**.
+- Reject before production integration. Nine counterbalanced cache-hot samples
+  move **0.084066 -> 0.083985 ms (-0.097%)**, a noise-level result. The four
+  repeated scalar chains already execute concurrently; replacing them with one
+  chain plus an LDS barrier changes no resident-model traffic. Remove the
+  kernel, wrapper, registry key, test, and leaf-harness option. Production
+  remains **17.097044 tok/s / 58.490 ms/token**.
+- Next test exact fused GQA3/local384. Three owners per KV head give 24 ordinary
+  workgroups and **288 active PV waves**, close to retained GQA2's 320, while
+  reducing K owners/reads **5 -> 3** without global scratch or cooperative
+  synchronization. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-weightcache-rejected.json`.
