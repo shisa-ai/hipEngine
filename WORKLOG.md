@@ -187624,3 +187624,22 @@ Vulkan local sizes verbatim will close the measured gap.
   Production remains the retained GEMV route. Next run one same-session
   full-state/performance gate, then cache-only trace the complete model before
   promoting the capability.
+
+## 2026-07-28 18:20 JST — Retain exact source-F16 one-barrier decode
+
+- Seven same-session counterbalanced p512/d128 pairs improve exact GEMV
+  **14.758912 -> 14.800191 tok/s (+0.280%)**, saving
+  **0.189 ms/token**. Every candidate sample beats every control; all runs
+  produce final token 74107 at position 638 with the same complete 128-token
+  SHA-256, deterministic repeats, and exact allocation recovery.
+- Cache-only whole-model tracing records exactly
+  **18,288 = 144 source-F16 calls/token x 127 transitions**:
+  **6,096 triple + 12,192 single** one-barrier calls and zero retained decode
+  GEMVs. Resources remain local256/VGPR16/SGPR128/LDS512/scratch0; trace
+  SHA-256 `2ab7d4af...775d`.
+- Promote `LAGUNA_F16_DECODE_ONEBARRIER=True` for gfx1151 rows==1 only.
+  gfx1100 remains unchanged and `HIPENGINE_LAGUNA_F16_DECODE=gemv` is the
+  exact rollback through LD-2. Production is now **14.800191 tok/s /
+  67.567 ms/token**, **+0.405%** over the previous 14.740486 canonical row.
+  Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json`.

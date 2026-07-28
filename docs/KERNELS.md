@@ -351,8 +351,13 @@ Laguna gfx1151 source-F16 decode also has separately registered rows==1
 arithmetic, and VGPR16/LDS512/scratch0 resources while removing the generic
 reducer's second broadcast barrier. All six natural roles are byte-exact and
 improve **0.57-1.71%** at the leaf; the weighted family moves
-**31.316 -> 31.097 ms/token (-0.698%)**. Runtime ownership remains default-off
-pending exact full-state, cached production-trace, and clean decode gates.
+**31.316 -> 31.097 ms/token (-0.698%)**. gfx1151 rows==1 runtime ownership is
+default-on after seven exact same-session p512/d128 pairs improve
+**14.758912 -> 14.800191 tok/s (+0.280%)** and cached whole-model tracing
+records all **18,288 = 144 x 127** expected candidate calls with zero retained
+decode GEMVs. `HIPENGINE_LAGUNA_F16_DECODE=gemv` remains the exact LD-2
+rollback. Evidence:
+[`retained one-barrier decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 

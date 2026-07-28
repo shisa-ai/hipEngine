@@ -334,7 +334,7 @@ def test_laguna_f16_projection_runtime_uses_gfx1151_onebarrier_decode(
 ) -> None:
     from hipengine.runtime import f16_weight_linear as dispatch
 
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_DECODE", "onebarrier")
+    monkeypatch.delenv("HIPENGINE_LAGUNA_F16_DECODE", raising=False)
     calls = []
 
     def fake_resolve(key):

@@ -264,7 +264,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
     assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_range_direct"
     assert LAGUNA_F16_BOUNDARY_FUSION is True
-    assert LAGUNA_F16_DECODE_ONEBARRIER is False
+    assert LAGUNA_F16_DECODE_ONEBARRIER is True
     assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
     assert LAGUNA_MOE_BRANCH_CONCURRENCY is True
     assert LAGUNA_MOE_SHARED_AFTER_ROUTER is True
@@ -328,7 +328,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_F16_DECODE_ONEBARRIER", None
         )
-        is False
+        is True
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_F16_DECODE_ONEBARRIER", None
