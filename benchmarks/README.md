@@ -3,18 +3,19 @@
 Last updated: **2026-07-29**
 
 The current W7900 Laguna UD-Q2_K_XL short-prefill packet is
-[`2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json`](results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json).
-Exact matrix512/attention128 keeps retained route-major IQ gate/up arithmetic,
-compacts post-SiLU rows once, and reuses IQ3/IQ4 down weights by expert. Clean
-package-resolved publication moves the preceding M256/RB32 headline
-**86.239/80.452 -> 99.230/91.559 tok/s** at 512/1K
-(**+15.064%/+13.806%**). Complete logits, all 48 hidden boundaries,
+[`2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json`](results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json).
+Exact matrix512/attention128 now gathers source hidden rows once, reuses each
+local64/pair16 IQ2 gate/up decode across up to eight expert-major rows, and
+retains grouped IQ3/IQ4 down. Clean package-resolved publication moves the
+preceding exact packet **99.230/91.559 -> 118.705/107.804 tok/s** at 512/1K
+(**+19.626%/+17.743%**). Complete logits, all 48 hidden boundaries,
 shared-prefix routing, active K/V, every `KVLiveSpans` field, repeats, and
-lifecycle are exact. Cached tracing cuts selected IQ **27.160%/27.122%** and
-kernel span **12.269%/11.560%**; IQ3 rowbatch8 is
-local128/VGPR48/LDS512B/scratch0 and grouped IQ4 is
-local128/VGPR64/LDS512B/scratch0. Both rates remain below 150 tok/s, so 4K and
-longer prefill remain intentionally unopened.
+lifecycle are exact at KL 0. Cached tracing cuts gate/up **62.549%/62.850%**,
+total selected IQ **45.021%/45.343%**, and kernel span
+**16.309%/15.133%** without changing **1,479/2,962** dispatches. The new body
+is local64/VGPR104/SGPR128/LDS512B/scratch0; c=1 and unsupported quant keys
+retain exact route-major fallbacks. Both rates remain below 150 tok/s, so 4K
+and longer prefill remain intentionally unopened.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

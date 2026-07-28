@@ -1320,18 +1320,17 @@ work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
 
-The active W7900 / gfx1100 UD-Q2_K_XL short-prefill sequence now starts with
-runtime admission for the exact WPF-2b expert-major IQ2 gate/up primitive. Its
-local64/pair16 rowbatch8 body is BF16-bit exact on all 46 actual M512 layers
-and cuts the inclusive diagnostic leaf **1343.915 -> 482.040 ms (2.788x)**;
-full-state and clean 512/1K gates remain. Next comes cleanup of rejected
-raw-Q5/Q6 MMQ and obsolete local256/group8 surfaces; WPF-3 targeted at the SWA
-family that owns **0.792/2.358 seconds** versus global attention's
-**0.074/0.307 seconds** at 512/1K; then an exact dense/shared Q5/Q6
-output-column-tiling product screen. WPF-2b is a distinct exact premise, not a
-retry of P6 changed arithmetic or the rejected local256/group8 body. P6 and
-WPF-1R remain closed. The detailed gates and 150-tok/s short-only stop rule are
-owned by `LAGUNA-prefill.md`.
+The active W7900 / gfx1100 UD-Q2_K_XL short-prefill sequence has retained the
+exact WPF-2b expert-major IQ2 gate/up owner. Its local64/pair16 rowbatch8 body
+is BF16-bit exact on all 46 actual M512 layers; clean package-resolved 512/1K
+moves **99.230/91.559 -> 118.705/107.804 tok/s (+19.626%/+17.743%)**, and
+cached tracing cuts gate/up **62.549%/62.850%** without changing dispatch
+count. Next comes cleanup of rejected raw-Q5/Q6 MMQ and obsolete
+local256/group8/rowbatch4 surfaces; WPF-3 targeted at the SWA family that still
+owns **0.795/2.363 seconds** versus global attention's **0.074/0.308 seconds**
+at 512/1K; then an exact dense/shared Q5/Q6 output-column-tiling product
+screen. P6 and WPF-1R remain closed. The detailed gates and 150-tok/s
+short-only stop rule are owned by `LAGUNA-prefill.md`.
 
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
 source-arithmetic packed-dot body, live-row schedule, and direct resident-T16

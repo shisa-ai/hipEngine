@@ -378,8 +378,8 @@ row's group order, FMA sequence, wave shuffle tree, serial wave accumulation,
 BF16 projection boundary, and arbitrary tails. The grouped gate/up K partition
 is not the production owner: actual tiny activations exposed 11/30,720 values
 where local256/group8 differed from retained local64/pair16 arithmetic. The
-retained route-major gate/up therefore remains canonical, then one stable
-expert compaction/gather feeds the dominant exact expert-major down stage.
+WPF-2 therefore retained route-major gate/up at that checkpoint, then one
+stable expert compaction/gather fed the dominant exact expert-major down stage.
 Laguna uses IQ3 rowbatch8 down and the existing IQ4 auto single/down key before
 the registered sorted-lane weighted reducer restores token order.
 
@@ -389,11 +389,11 @@ preserves all 48 hidden boundaries, logits, K/V and every `KVLiveSpans` field,
 routing, repeats, and lifecycle at KL0/top-1 100%. Direct -> grouped improves
 M256 **86.175/79.924 -> 96.643/89.049 tok/s (+12.147%/+11.417%)** and M512
 **86.129/79.887 -> 98.289/90.555 (+14.118%/+13.354%)** at 512/1K. M512 beats
-the independently measured grouped M256 rows by **1.703%/1.691%**, so gfx1100
-now defaults to matrix512/attention128 plus `grouped_exact`; explicit
-M128/M256 and `direct` remain exact rollbacks, while unsupported quant/key
-misses fail closed to the registered exact route-major chain. Clean
-package-resolved publication reaches **99.230/91.559 tok/s** at 512/1K,
+the independently measured grouped M256 rows by **1.703%/1.691%**, so the
+WPF-2 checkpoint selected matrix512/attention128 plus `grouped_exact`;
+explicit M128/M256 and `direct` remain exact rollbacks, while unsupported
+quant/key misses fail closed to the registered exact route-major chain. Its
+clean package-resolved publication reached **99.230/91.559 tok/s** at 512/1K,
 **+15.064%/+13.806%** over the preceding M256/RB32 packet. The complete cached
 trace names 180 IQ3 rowbatch8 calls at local128/VGPR48/SGPR128/LDS512/scratch0
 and eight IQ4 calls at local128/VGPR64/SGPR128/LDS512/scratch0 across both
@@ -412,13 +412,20 @@ exact to the production local64/pair16 tile2 body. Across all 46 actual M512
 IQ2 gate/up layers, the inclusive route-major gate/up + post-SiLU gather
 control totals **1343.915 ms**; rowbatch4/8 total **603.706/482.040 ms
 (2.226x/2.788x)**, every layer wins, and every output is BF16-bit exact.
-Cached tracing names both candidates at local64/SGPR128/LDS512/scratch0;
-rowbatch4/8 use VGPR112/104 versus production tile2 VGPR136, so their
-resource-limited occupancy cannot be lower. This is exact primitive admission,
-not a runtime/default claim. Next wire the rowbatch8 key through the
-registry-resolved grouped-exact owner and require complete-state plus clean
-512/1K gates. Evidence:
-[`WPF-2b pair16 grouped gate/up candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json).
+Cached primitive tracing names rowbatch8 at
+local64/VGPR104/SGPR128/LDS512/scratch0 versus production tile2 VGPR136.
+
+The registry-driven rowbatch8 owner is now the gfx1100 package default for
+bulk rows; c=1 and unsupported gate/up quant keys retain route-major exact
+fallbacks, and `grouped_exact` remains the preceding explicit rollback.
+Complete state matches at KL 0 through all 48 hidden boundaries and full
+K/V/`KVLiveSpans`. Clean 512/1K publication improves
+**99.230/91.559 -> 118.705/107.804 tok/s (+19.626%/+17.743%)**. Cached tracing
+cuts gate/up **62.549%/62.850%**, total selected IQ **45.021%/45.343%**, and
+kernel span **16.309%/15.133%** with unchanged **1,479/2,962** dispatches.
+Evidence:
+[`WPF-2b primitive`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) ·
+[`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json).
 
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its
