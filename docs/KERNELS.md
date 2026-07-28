@@ -1434,6 +1434,17 @@ Tracked-clean selector-unset production measures
 selector and all three trajectories/state/lifecycle are exact. Evidence:
 [`clean mixed32 exp16 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-production.json).
 
+The bounded issue-width screen closes with an exact wave32 successor. Every
+lane issues one compiler `expf` for each thirty-two-slot batch, then returns
+the weights to the unchanged ordered denominator/PV chains. The leaf improves
+**0.082313 -> 0.081551 ms (-0.93%)** and the stable cached window improves
+**77.185 -> 76.838 us (-0.45%)** at unchanged
+VGPR104/SGPR128/LDS24576/scratch0. All seven resident p512/d128 pairs improve
+**19.524103 -> 19.538164 tok/s (+0.0720%, -0.0369 ms/token)** with complete
+sample separation and exact state. gfx1151 selects exp32 only inside the
+qualified exp16 route; exp16 remains rollback. Evidence:
+[`retained mixed32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-retained.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.

@@ -257,6 +257,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance retained exp8 against exact sixteen-lane expf",
     )
     parser.add_argument(
+        "--compare-swa-mixed32-exp32",
+        action="store_true",
+        help="counterbalance retained exp16 against exact wave-wide expf",
+    )
+    parser.add_argument(
         "--compare-global-fixedshape-reduce",
         action="store_true",
         help="counterbalance exact global reduction against its natural shape",
@@ -404,6 +409,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_swa_mixed32_exp4,
             args.compare_swa_mixed32_exp8,
             args.compare_swa_mixed32_exp16,
+            args.compare_swa_mixed32_exp32,
             args.compare_global_fixedshape_reduce,
             args.compare_global_fused_fixedshape,
             args.compare_global_gqa2_vstage64,
@@ -455,6 +461,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_swa_mixed32_exp4
         or args.compare_swa_mixed32_exp8
         or args.compare_swa_mixed32_exp16
+        or args.compare_swa_mixed32_exp32
         or args.compare_global_fixedshape_reduce
         or args.compare_global_fused_fixedshape
         or args.compare_global_gqa2_vstage64
@@ -657,6 +664,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512 = (
             owner.kv_cache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512
         )
+        active_swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512 = (
+            owner.kv_cache.swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512
+        )
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
         )
@@ -760,6 +770,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_decode_swa_mixed32_exp8(mode == "candidate")
                     if args.compare_swa_mixed32_exp16:
                         owner.set_decode_swa_mixed32_exp16(mode == "candidate")
+                    if args.compare_swa_mixed32_exp32:
+                        owner.set_decode_swa_mixed32_exp32(mode == "candidate")
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
@@ -1017,6 +1029,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_swa_mixed32_exp4": args.compare_swa_mixed32_exp4,
             "compare_swa_mixed32_exp8": args.compare_swa_mixed32_exp8,
             "compare_swa_mixed32_exp16": args.compare_swa_mixed32_exp16,
+            "compare_swa_mixed32_exp32": args.compare_swa_mixed32_exp32,
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
@@ -1074,6 +1087,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512": (
                 active_swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512
+            ),
+            "swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512": (
+                active_swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512
             ),
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce

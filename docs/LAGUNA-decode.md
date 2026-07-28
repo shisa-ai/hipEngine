@@ -4146,6 +4146,18 @@ Three tracked-clean selector-unset runs confirm
 selector; IDs, state, and lifecycle remain exact. Evidence:
 [`clean mixed32 exp16 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-production.json).
 
+The bounded issue-width screen closes with exact wave32 issue. All lanes
+compute one compiler `expf` per thirty-two-slot batch while lane 0 and each
+dimension retain the original denominator/PV order. The leaf improves
+**0.082313 -> 0.081551 ms (-0.93%)**, and the stable cached window improves
+**77.185 -> 76.838 us (-0.45%)** with unchanged
+**32 local384 blocks, VGPR104/SGPR128/LDS24576/scratch0**. All seven resident
+p512/d128 pairs improve
+**19.524103 -> 19.538164 tok/s (+0.0720%, -0.0369 ms/token)**; every candidate
+beats every control with exact state. gfx1151 selects exp32 only inside the
+qualified exp16 route. Evidence:
+[`retained mixed32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-retained.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

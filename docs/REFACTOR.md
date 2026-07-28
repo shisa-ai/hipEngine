@@ -1997,6 +1997,21 @@ should be boring.
   mixed32 dispatch while retaining registered exp8 for compiler/codegen
   bisection.
 
+## Laguna gfx1151 mixed32 exact exp32 selector
+
+- Added 2026-07-29 as the session-scoped
+  `LagunaKVCache.swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512`
+  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp32(...)`, and
+  `--compare-swa-mixed32-exp32`. False restores retained exp16.
+- Promotion gate satisfied: exact wave32 issue improves the leaf
+  **0.082313 -> 0.081551 ms (-0.93%)**, stable trace
+  **77.185 -> 76.838 us (-0.45%)**, and all seven resident pairs
+  **19.524103 -> 19.538164 tok/s (+0.0720%, -0.0369 ms/token)** with complete
+  separation and exact state.
+- Keep false rollback through clean publication and the next wall census.
+  Then collapse positive selector semantics while retaining exp16 as the
+  compiler/codegen rollback. Wave32 closes the natural issue-width screen.
+
 ## Laguna gfx1151 exact global exp-domain selector
 
 - Added 2026-07-29 as the default-off
