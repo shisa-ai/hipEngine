@@ -1806,3 +1806,15 @@ should be boring.
   the runtime setter, multi-arm harness mode, both category
   comparisons/configurations, and focused tests are removed. Production
   remains model-declared top-10 for prefill and decode.
+
+## Laguna gfx1151 head/KV transfer selector
+
+- Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100
+  current-P4 head-RMSNorm + partial-RoPE + BF16 KV-write composites. The
+  registry aliases and `--head-kv-fusion` profiler selector exist only to run
+  the architecture-local p512/d128 and trace gates.
+- If the candidate is exact and improves the complete decode median, promote
+  `LAGUNA_HEAD_KV_FUSION` and keep explicit False as the unfused rollback
+  through the next decode campaign. If it is neutral or negative, restore the
+  gfx1151 alias exclusions and remove the profiler selector and candidate
+  tests instead of carrying a dead backend path.

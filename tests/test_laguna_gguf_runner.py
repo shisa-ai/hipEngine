@@ -1118,14 +1118,16 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
 
 
-def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
+def test_laguna_p4_head_kv_is_gfx1151_screenable_and_rollbackable() -> None:
     assert resolve_laguna_head_kv_fusion("hip_gfx1100")
     assert not resolve_laguna_head_kv_fusion("hip_gfx1100", False)
     assert not resolve_laguna_head_kv_fusion("hip_gfx1151")
+    assert resolve_laguna_head_kv_fusion("hip_gfx1151", True)
+    assert not resolve_laguna_head_kv_fusion("hip_gfx1151", False)
 
     candidate = resolve_laguna_eager_kernel_plan(
         _config(),
-        backend="hip_gfx1100",
+        backend="hip_gfx1151",
         use_head_kv_fusion=True,
     )
     assert candidate.global_head_kv is not None
@@ -1135,22 +1137,13 @@ def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
 
     rollback = resolve_laguna_eager_kernel_plan(
         _config(),
-        backend="hip_gfx1100",
+        backend="hip_gfx1151",
         use_head_kv_fusion=False,
     )
     assert rollback.global_head_kv is None
     assert rollback.swa_head_kv is None
     assert rollback.global_head_kv_key not in rollback.kernel_keys
     assert rollback.swa_head_kv_key not in rollback.kernel_keys
-
-    unsupported = resolve_laguna_eager_kernel_plan(
-        _config(),
-        backend="hip_gfx1151",
-        use_head_kv_fusion=True,
-    )
-    assert unsupported.global_head_kv is None
-    assert unsupported.swa_head_kv is None
-
 
 def test_laguna_mixed_attention_projection_default_is_gfx1100_only_and_rollbackable() -> None:
     assert backend_package_capability(

@@ -26,6 +26,23 @@ See also:
 
 This is the authoritative list of kernels/oracles that exist in this repo today. Empty backend family packages under `hipengine/kernels/hip_gfx1100/*/` are placeholders, not implemented kernels.
 
+### Laguna gfx1151 decode transfer screen
+
+The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16
+KV-write composites are now registered under the peer `hip_gfx1151` key. The
+shared gfx11 source is compiled as a native gfx1151 code object; the global and
+SWA variants retain the complete `KVLiveSpans` ABI and the registered unfused
+head-RMSNorm/RoPE then KV-write chain. Automatic gfx1151 selection remains off
+until a clean p512/d128 performance gate passes; the long-context profiler
+exposes `--head-kv-fusion` / `--no-head-kv-fusion` for that bounded screen.
+
+The native gfx1151 fixture is bit-exact at global positions 0/255/256/4095 and
+SWA positions 0/511/512/1023, including F32 query/key outputs, BF16 K/V bytes,
+and all live-span metadata. `rocprofv3 --kernel-trace` observes both composite
+specializations at local256, VGPR16, SGPR128, LDS0, and scratch0. The separately
+registered global wave-0 reduction remains excluded on gfx1151 because its
+gfx1100 full-model gate was rejected.
+
 ### Laguna gfx1151 exact cached-only qrow4 prefill
 
 The global/SWA `laguna_attention_prefill` family now registers cached-only

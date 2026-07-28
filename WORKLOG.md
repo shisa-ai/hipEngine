@@ -187101,3 +187101,33 @@ Vulkan local sizes verbatim will close the measured gap.
 - The semantic zipper combines gfx1151 prefill controls with gfx1100 c=1 decode controls in `LagunaGGUFResidentSession`, MoE planning, KV allocation, GGUF linear dispatch, and the target benchmark. Preserve local T16/MMQ/prefill routes while adding IQ3 wave10 fail-closed fallback, IQ2 grid64, fixed-metadata Q5/Q6/Q4 dispatch, split-attention/head-KV controls, router wave0-tree, and global/SWA head-RMSNorm/RoPE/KV wrappers.
 - Initial focused merge validation ran 174 tests and exposed five zipper defects plus one unrelated gfx1151 Q6 test failure. Repair missing arguments/fallbacks and test-double-safe KV capability reads; the five failed merge nodes pass **5/5**. Newly joined router/head-KV and split/global-attention bundles pass **24/24** and **17/17**. The remaining Q6 assertion reproduces unchanged at pre-merge `d2a69e61b`, so it is recorded as pre-existing and is not changed in this merge.
 - Python imports/compilation, incoming top-level symbol/signature coverage, HIP extern-symbol coverage, conflict-marker scan, and `git diff --check` pass. No performance/default claim is changed by the merge itself and no expensive benchmark is repeated.
+
+## 2026-07-28 — Open gfx1151 current-P4 head/KV transfer screen
+
+- Audit the merged backend capabilities against Poolside Laguna S 2.1
+  Q4_K_M. No gfx1100 decode default fires on gfx1151: every incoming capability
+  is absent or false and the head/KV and split-attention registry variants are
+  explicitly excluded. The IQ2/IQ3/Q5/Q4-head schedules do not match the
+  actual Q4_K_M tensor roles; exact head/KV fusion and split decode attention
+  are the first credible model-structural transfers.
+- Refresh the unchanged cache-only p512/d128 baseline at merge
+  `47e3d7472`: median decode is **11.466687 tok/s** over 127 synchronized
+  calls versus the pre-merge **11.471210 tok/s (-0.0394%)**. All three runs
+  retain first/final IDs **2930/74107**, generated trajectory SHA-256
+  `94f803f7...ebda32`, exact final position 638, deterministic repeats, and
+  zero tracked allocations after teardown. The first attempt emitted no
+  measurement because the merged HIP source hash correctly required a fresh
+  cache warmup.
+- Add default-off native gfx1151 aliases for the retained scalar current-P4
+  global/SWA head-RMSNorm + partial-RoPE + BF16 KV-write composites and a
+  profiler selector. RED fails both missing aliases/default seams; focused
+  GREEN passes **4/4**. The native gfx1151 fixture is bit-exact to the unfused
+  registered chain at all global/SWA boundary positions and metadata fields.
+  Cached `rocprofv3 --kernel-trace` records both composite specializations at
+  local256/VGPR16/SGPR128/LDS0/scratch0; trace SHA-256 is
+  `a7589b16...9d35`. Automatic selection remains false pending the clean
+  complete-model p512/d128 gate.
+- Required lineage audit is blocked before source inspection by the missing
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Direct
+  in-tree lineage, catalog, capability, registry, and prior retained/rejected
+  evidence inspection is complete; no external reference tree is modified.

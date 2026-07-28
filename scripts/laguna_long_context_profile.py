@@ -172,6 +172,12 @@ def _parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=None,
     )
+    parser.add_argument(
+        "--head-kv-fusion",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="select the exact decode-only head-RMSNorm+RoPE+KV-write composite",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -353,6 +359,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_moe_shared_after_router = False
     active_moe_shared_low_priority = False
     active_moe_shared_priority_range: tuple[int, int] | None = None
+    active_head_kv_fusion = False
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
@@ -379,6 +386,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
+            use_head_kv_fusion=args.head_kv_fusion,
             prefill_long_attention_hipblaslt=(
                 False
                 if args.compare_long_attention_hipblaslt
@@ -406,6 +414,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_moe_shared_after_router = owner.moe_shared_after_router
         active_moe_shared_low_priority = owner.moe_shared_low_priority
         active_moe_shared_priority_range = owner.moe_shared_priority_range
+        active_head_kv_fusion = owner.use_head_kv_fusion
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
@@ -642,6 +651,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "moe_shared_after_router": active_moe_shared_after_router,
             "moe_shared_low_priority": active_moe_shared_low_priority,
             "moe_shared_priority_range": active_moe_shared_priority_range,
+            "head_kv_fusion": active_head_kv_fusion,
+            "head_kv_fusion_requested": args.head_kv_fusion,
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (
                 args.long_attention_hipblaslt
