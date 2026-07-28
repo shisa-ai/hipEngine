@@ -1408,6 +1408,13 @@ exp8 only inside the qualified exp4/mixed32 route; exp4 remains rollback.
 Evidence:
 [`retained mixed32 exp8`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-retained.json).
 
+Tracked-clean selector-unset production measures
+**19.496106/19.515697/19.519033 tok/s**, median **19.515697**. This is
+**+0.470% / -0.241 ms/token** over clean exp4 and **+70.195%** over the
+11.466687 sprint start. The exp8 capability is active without a comparison
+selector and all three trajectories/state/lifecycle are exact. Evidence:
+[`clean mixed32 exp8 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-production.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.
