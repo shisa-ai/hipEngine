@@ -122,6 +122,9 @@ _SYMBOL_DENSE_INITIAL_CACHE_BF16_TO_F32 = (
 _SYMBOL_SWA_DECODE_CACHE_BF16_TO_F32 = (
     "hipengine_laguna_swa_decode_cache_bf16_to_f32_spans"
 )
+_SYMBOL_SWA_DECODE_TILE16_EXACT_GQA3_CHRONOLOGICAL_SCORES_F32 = (
+    "hipengine_laguna_swa_decode_tile16_exact_gqa3_chronological_scores_f32_spans"
+)
 _SYMBOL_DENSE_INITIAL_CACHE_BLOCK_BF16_TO_F32 = (
     "hipengine_laguna_dense_initial_cache_block_bf16_to_f32_spans"
 )
@@ -140,6 +143,10 @@ _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_WAVE_ROWS_F32 = (
 _SYMBOL_SWA_DECODE_SOFTMAX_WAVE_F32 = (
     "hipengine_laguna_swa_decode_softmax_wave_f32_spans"
 )
+_SYMBOL_SWA_DECODE_SOFTMAX_EXACT_WEIGHTS_F32 = (
+    "hipengine_laguna_swa_decode_softmax_exact_weights_f32_spans"
+)
+_SYMBOL_SWA_DECODE_NORMALIZE_F32 = "hipengine_laguna_swa_decode_normalize_f32"
 _SYMBOL_DENSE_INITIAL_CAUSAL_SOFTMAX_TILE_WAVE_ROWS_F32 = (
     "hipengine_laguna_dense_initial_causal_softmax_tile_wave_rows_f32_spans"
 )
@@ -2984,6 +2991,61 @@ def laguna_swa_decode_cache_bf16_to_f32_spans(
     _check_launch(runtime, err)
 
 
+def laguna_swa_decode_tile16_exact_gqa3_chronological_scores_f32_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    scores_ptr: int,
+    spans: KVLiveSpans,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    sliding_window: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Emit retained exact GQA3 QK scores in chronological ring order."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    if (
+        int(capacity) != 512
+        or int(sliding_window) != 512
+        or int(num_q_heads) != 72
+    ):
+        raise ValueError(
+            "exact chronological SWA scores require [72,512,128]"
+        )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_SWA_DECODE_TILE16_EXACT_GQA3_CHRONOLOGICAL_SCORES_F32,
+    )
+    fn.argtypes = [ctypes.c_void_p] * 8 + [ctypes.c_int64] * 5 + [
+        ctypes.c_void_p
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(scores_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(sliding_window),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_dense_initial_cache_block_bf16_to_f32_spans(
     key_cache_ptr: int,
     value_cache_ptr: int,
@@ -3305,6 +3367,79 @@ def laguna_swa_decode_softmax_wave_f32_spans(
         ctypes.c_int64(capacity),
         ctypes.c_int64(num_q_heads),
         ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_decode_softmax_exact_weights_f32_spans(
+    scores_ptr: int,
+    denominators_ptr: int,
+    spans: KVLiveSpans,
+    num_q_heads: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Prepare unnormalized weights and exact slot-order denominators."""
+
+    capacity = _check_swa_spans(spans, _LAGUNA_KV_HEADS, _LAGUNA_HEAD_DIM)
+    if int(capacity) != 512 or int(num_q_heads) != 72:
+        raise ValueError("exact SWA weights require [72,512]")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_DECODE_SOFTMAX_EXACT_WEIGHTS_F32)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 2 + [
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(scores_ptr),
+        ctypes.c_void_p(denominators_ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_decode_normalize_f32(
+    head_major_ptr: int,
+    denominators_ptr: int,
+    output_ptr: int,
+    num_q_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply exact per-head denominators to one tensorized PV row."""
+
+    _check_laguna_attention_shape(num_q_heads, _LAGUNA_KV_HEADS, head_dim)
+    if int(num_q_heads) != 72:
+        raise ValueError("tensorized SWA normalization requires 72 query heads")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_DECODE_NORMALIZE_F32)
+    fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 2 + [
+        ctypes.c_void_p
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(head_major_ptr),
+        ctypes.c_void_p(denominators_ptr),
+        ctypes.c_void_p(output_ptr),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(head_dim),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
@@ -3935,6 +4070,9 @@ __all__ = [
     "laguna_swa_attention_prefill_qrow4_m128_online_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
     "laguna_swa_decode_cache_bf16_to_f32_spans",
+    "laguna_swa_decode_normalize_f32",
+    "laguna_swa_decode_softmax_exact_weights_f32_spans",
+    "laguna_swa_decode_tile16_exact_gqa3_chronological_scores_f32_spans",
     "laguna_swa_decode_softmax_wave_f32_spans",
     "laguna_swa_union_bf16_to_f32_spans",
     "laguna_swa_union_softmax_wave_rows_f32",

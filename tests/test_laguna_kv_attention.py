@@ -403,6 +403,8 @@ def test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap() -> Non
     )
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
+        laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
+        laguna_swa_decode_tile16_exact_gqa3_chronological_scores_f32_spans,
     )
     from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
         build_laguna_attention,
@@ -439,6 +441,7 @@ def test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap() -> Non
         runtime=runtime,
     )
     route = LagunaSwaDecodeHipblasLt(runtime=runtime)
+    assert route.exact_qk
     rng = np.random.default_rng(0x1C3)
     keys = rng.normal(0.0, 0.12, size=(513, 8, 128)).astype(np.float32)
     values = rng.normal(0.0, 0.12, size=keys.shape).astype(np.float32)
@@ -454,6 +457,9 @@ def test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap() -> Non
         candidate_context = malloc(query.nbytes, runtime=runtime)
         baseline_gated = malloc(query.size * 2, runtime=runtime)
         candidate_gated = malloc(query.size * 2, runtime=runtime)
+        baseline_scores = malloc(72 * 512 * 4, runtime=runtime)
+        baseline_physical = malloc(72 * 512 * 4, runtime=runtime)
+        chronological_scores = malloc(72 * 512 * 4, runtime=runtime)
         allocations.extend(
             (
                 key_rows,
@@ -464,6 +470,9 @@ def test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap() -> Non
                 candidate_context,
                 baseline_gated,
                 candidate_gated,
+                baseline_scores,
+                baseline_physical,
+                chronological_scores,
             )
         )
         for buffer, array in (
@@ -505,6 +514,37 @@ def test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap() -> Non
             library=kv_library,
         )
         state = cache.layer(0)
+        laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans(
+            query_row.ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            baseline_context.ptr,
+            gate_row.ptr,
+            baseline_gated.ptr,
+            baseline_scores.ptr,
+            baseline_physical.ptr,
+            state.spans,
+            512,
+            72,
+            8,
+            128,
+            128**-0.5,
+            sliding_window=512,
+            library=kv_library,
+            runtime=runtime,
+        )
+        laguna_swa_decode_tile16_exact_gqa3_chronological_scores_f32_spans(
+            query_row.ptr,
+            state.key_cache.ptr,
+            chronological_scores.ptr,
+            state.spans,
+            72,
+            8,
+            128,
+            sliding_window=512,
+            library=kv_library,
+            runtime=runtime,
+        )
         route.launch(
             query_row.ptr,
             state.key_cache.ptr,
@@ -535,11 +575,15 @@ def test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap() -> Non
         candidate_context_host = np.empty_like(query)
         baseline_gated_host = np.empty(query.shape, dtype=np.uint16)
         candidate_gated_host = np.empty_like(baseline_gated_host)
+        baseline_scores_host = np.empty((72, 512), dtype=np.float32)
+        chronological_scores_host = np.empty_like(baseline_scores_host)
         for host, buffer in (
             (baseline_context_host, baseline_context),
             (candidate_context_host, candidate_context),
             (baseline_gated_host, baseline_gated),
             (candidate_gated_host, candidate_gated),
+            (baseline_scores_host, baseline_scores),
+            (chronological_scores_host, chronological_scores),
         ):
             copy_device_to_host(
                 host_array_ptr(host),
@@ -558,11 +602,19 @@ def test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap() -> Non
         rtol=2e-3,
         atol=2e-4,
     )
+    assert int(np.count_nonzero(candidate_gated_host != baseline_gated_host)) <= 1
     np.testing.assert_allclose(
         bf16_to_float32(candidate_gated_host),
         bf16_to_float32(baseline_gated_host),
         rtol=2e-3,
         atol=2e-4,
+    )
+    np.testing.assert_array_equal(
+        chronological_scores_host,
+        np.concatenate(
+            (baseline_scores_host[:, 1:], baseline_scores_host[:, :1]),
+            axis=1,
+        ),
     )
 
 

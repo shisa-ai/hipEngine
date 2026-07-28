@@ -187479,3 +187479,25 @@ Vulkan local sizes verbatim will close the measured gap.
   leaf remains faster. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-category-rejected.json`;
   raw SHA-256 `41eb13e7...ab4`.
+
+## 2026-07-28 17:02 JST — Admit exact-QK/tensorized-PV repair primitive
+
+- Add a full-ring score producer that keeps the retained tile16 GQA3 ordered
+  products and reconstructed 128-thread reduction tree, changing only its
+  output index from logical ring slot to chronological slot. Against the
+  retained producer, all **72 x 512** F32 scores are bit-identical after wrap
+  and explicit eviction.
+- Restore the retained softmax boundaries around tensorized PV: compute each
+  exponential in parallel, replay the denominator's logical-slot F32 add order
+  exactly, leave weights unnormalized for the hipBLASLt contraction, then
+  apply the exact denominator after PV. This isolates the remaining numerical
+  change to PV accumulation association.
+- The deterministic gate now differs at only **1/9,216** BF16 output elements
+  and passes `rtol=0.002, atol=0.0002`; the exact-QK plus parallel-softmax
+  intermediate had three mismatches and the original full-F32 leaf had two.
+  Focused shape/wrap/GQA3 tests pass **4/4**.
+- Cached trace SHA-256 `680cfcb2...2851` names the local256/VGPR32 exact
+  chronological score owner, local256/VGPR16/LDS512 exact-weight owner,
+  hipBLASLt PV, and local256/VGPR24 normalizer, all scratch-free. The session
+  capability remains production-default false pending a clean p512/d128
+  matched rollback.

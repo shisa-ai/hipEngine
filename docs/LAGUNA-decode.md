@@ -3434,6 +3434,13 @@ contract, and only **36/54** free-running pairs remain exact. Production
 therefore reverts to the exact split route and **14.740486 tok/s** retained
 topline. The next bounded repair preserves the exact GQA3 QK reduction tree
 and tests tensorized PV independently; no full-F32 QK default is admissible.
+That repair is now implemented default-off: its chronological score plane is
+F32-bit identical to the retained producer through wrap and explicit eviction,
+and it computes exponentials in parallel while replaying the exact logical-slot
+denominator order before tensorized PV. Only **1/9,216** deterministic gated
+BF16 values differs from exact, versus three for exact-QK/wave-softmax and two
+for the original full-F32 leaf. A clean whole-model speed and category screen
+decides whether the remaining PV association is admissible.
 
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
