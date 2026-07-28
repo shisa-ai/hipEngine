@@ -67,6 +67,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+    raw_k_mmq_prefill_session,
     raw_k_prefill_rowbatch_session,
 )
 from hipengine.runtime.f16_weight_linear import (
@@ -1496,6 +1497,30 @@ def resolve_laguna_raw_k_prefill_rowbatch(
     return row_batch
 
 
+def resolve_laguna_raw_k_prefill_mmq(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the changed-arithmetic raw-K MMQ candidate fail-closed."""
+
+    selected = bool(
+        backend_package_capability(
+            backend,
+            "GGUF_RAW_K_PREFILL_MMQ",
+            False,
+        )
+        if requested is None
+        else requested
+    )
+    if selected and not backend_package_capability(
+        backend,
+        "GGUF_RAW_K_PREFILL_MMQ_SUPPORTED",
+        False,
+    ):
+        raise ValueError(f"Laguna raw-K prefill MMQ is not supported on {backend!r}")
+    return selected
+
+
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -2134,6 +2159,7 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
+        raw_k_prefill_mmq: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2281,6 +2307,10 @@ class LagunaGGUFResidentSession:
         self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
             self.backend,
             raw_k_prefill_rowbatch,
+        )
+        self.raw_k_prefill_mmq = resolve_laguna_raw_k_prefill_mmq(
+            self.backend,
+            raw_k_prefill_mmq,
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2621,6 +2651,9 @@ class LagunaGGUFResidentSession:
         self._compiler_version = compiler_version
         self._require_cached_build = bool(require_cached_build)
         self._dflash_accept_library = None
+        self._raw_k_prefill_mmq_library = None
+        self._raw_k_prefill_mmq_workspace: DeviceBuffer | None = None
+        self._raw_k_prefill_mmq_workspace_nbytes = 0
         self._staged_verifier_tokens: tuple[int, ...] | None = None
         self._moe_shared_stream = 0
         self.moe_shared_priority_range: tuple[int, int] | None = None
@@ -2688,9 +2721,21 @@ class LagunaGGUFResidentSession:
                 self.moe_plan,
                 policy=self.prefill_chunk_policy,
             )
+            if self.raw_k_prefill_mmq:
+                from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+                    q8_1_d4s4_f32_nbytes,
+                )
+
+                self._raw_k_prefill_mmq_workspace_nbytes = (
+                    q8_1_d4s4_f32_nbytes(
+                        self.prefill_chunk_size,
+                        max(config.hidden_size, config.feed_forward_length),
+                    )
+                )
             self.prefill_scratch_admission_nbytes = max(
                 DEFAULT_LAGUNA_SCRATCH_BYTES,
-                self.prefill_scratch_plan.total_nbytes,
+                self.prefill_scratch_plan.total_nbytes
+                + self._raw_k_prefill_mmq_workspace_nbytes,
             )
             if resident_weights is None:
                 self.weights = materialize_laguna_gguf_weights(
@@ -2791,6 +2836,8 @@ class LagunaGGUFResidentSession:
                 max_rows=self.prefill_chunk_size,
                 runtime=self.runtime,
             )
+            if self.raw_k_prefill_mmq:
+                self._ensure_raw_k_prefill_mmq_resources()
             if self.moe_branch_concurrency:
                 if self.moe_shared_low_priority:
                     priority_range = self.runtime.stream_priority_range()
@@ -2904,6 +2951,52 @@ class LagunaGGUFResidentSession:
         self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
             self.backend,
             row_batch,
+        )
+
+    def _ensure_raw_k_prefill_mmq_resources(self) -> None:
+        """Lazily materialize the bounded WPF-1B workspace and library."""
+
+        if self._raw_k_prefill_mmq_workspace is not None:
+            return
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+            build_gguf_k_mmq_prefill,
+            q8_1_d4s4_f32_nbytes,
+        )
+
+        nbytes = int(self._raw_k_prefill_mmq_workspace_nbytes)
+        if nbytes <= 0:
+            config = self.config
+            nbytes = q8_1_d4s4_f32_nbytes(
+                self.prefill_chunk_size,
+                max(config.hidden_size, config.feed_forward_length),
+            )
+        target_arch = hip_target_arch_for_backend(self.backend)
+        with hip_target_arch_environment(target_arch):
+            library = build_gguf_k_mmq_prefill(
+                load=True,
+                compiler_version=self._compiler_version,
+                require_cached=self._require_cached_build,
+            )
+        workspace = malloc(nbytes, runtime=self.runtime)
+        self._raw_k_prefill_mmq_library = library
+        self._raw_k_prefill_mmq_workspace = workspace
+        self._raw_k_prefill_mmq_workspace_nbytes = nbytes
+
+    def set_raw_k_prefill_mmq(self, enabled: bool) -> None:
+        """Select WPF-1B MMQ for subsequent bulk prefill with exact fallback."""
+
+        selected = resolve_laguna_raw_k_prefill_mmq(self.backend, enabled)
+        if selected:
+            self._ensure_raw_k_prefill_mmq_resources()
+        self.raw_k_prefill_mmq = selected
+
+    def _raw_k_prefill_mmq_context(self):
+        workspace = self._raw_k_prefill_mmq_workspace
+        return raw_k_mmq_prefill_session(
+            workspace_ptr=0 if workspace is None else workspace.ptr,
+            workspace_nbytes=0 if workspace is None else workspace.nbytes,
+            library=self._raw_k_prefill_mmq_library,
+            enabled=self.raw_k_prefill_mmq,
         )
 
     def set_f16_prefill_mode(self, mode: str) -> None:
@@ -3621,7 +3714,10 @@ class LagunaGGUFResidentSession:
                 libraries=self.libraries.embedding_libraries,
                 runtime=self.runtime,
             )
-            with raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch):
+            with (
+                raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch),
+                self._raw_k_prefill_mmq_context(),
+            ):
                 for layer_id in range(config.block_count):
                     self._run_layer_rows(
                         layer_id,
@@ -5147,6 +5243,11 @@ class LagunaGGUFResidentSession:
             scratch = self.rows_moe_scratch
             self.rows_moe_scratch = None
             release(lambda: scratch.free(runtime=self.runtime))
+        if self._raw_k_prefill_mmq_workspace is not None:
+            workspace = self._raw_k_prefill_mmq_workspace
+            self._raw_k_prefill_mmq_workspace = None
+            release(lambda: free(workspace, runtime=self.runtime))
+        self._raw_k_prefill_mmq_library = None
         if self.rows_scratch is not None:
             scratch = self.rows_scratch
             self.rows_scratch = None
@@ -5437,6 +5538,7 @@ __all__ = [
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
+    "resolve_laguna_raw_k_prefill_mmq",
     "resolve_laguna_raw_k_prefill_rowbatch",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",

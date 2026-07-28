@@ -23,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     register_gguf_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+    RawKMMQPrefillPolicy,
     build_gguf_k_mmq_prefill,
     gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out,
     gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_f32_out,
@@ -157,6 +158,7 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
 )
 
 __all__ = [
+    "RawKMMQPrefillPolicy",
     "awq_fusedw4_prefill_dual_fp16",
     "awq_fusedw4_prefill_fp16",
     "awq_fusedw4_prefill_strided_fp16",

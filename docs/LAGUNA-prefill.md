@@ -117,8 +117,10 @@ metadata feeds a raw-resident 32-column x 32-row Q5/Q6 packed-dot tile. On the
 actual M128 role screen, inclusive quantize+MMQ improves every N>=1024 role by
 **4.798-16.452x** versus rowbatch8, while N48/N72 lose and stay on the exact
 fallback. Maximum role KL is **5.6163e-5** and minimum top-1 is **96.094%**.
-Runtime ownership and the complete quality lane remain mandatory before any
-default change.
+A gfx1100-only default-off runtime owner now lazily allocates one bounded Q8_1
+workspace and reuses each `(pointer, rows, K, stream)` producer pack across its
+registered Q5/Q6 consumers; gfx1151 fails closed. Full state, 512/1K wall, and
+the complete quality lane remain mandatory before any default change.
 
 The actual GGUF inventory gives this active linear ledger:
 
@@ -191,7 +193,7 @@ The relevant lesson is dataflow, not API or literal constants:
 | WPF-0 profile + roofline | Complete | Clean 512/4K wall and all-family trace, actual tensor/FLOP ledger, 729.067-GB/s read ceiling, llama.cpp HIP/Vulkan audit, and compact artifact published. |
 | WPF-C0 shared-source capacity transfer | Rejected/removed | The bundle was performance-positive but failed the mandatory 576-step quality gate at max KL 1.11869; no copied capability default is retained. |
 | WPF-1 exact dense/shared row reuse | **Complete; rowbatch8 retained gfx1100 default** | Full state is bit-exact. Scalar **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K; selector-unset publication is **79.585/74.512**. rowbatch4 and scalar remain explicit rollback/crossover routes; gfx1151 is fail-closed. |
-| WPF-1B dense/shared Q8_1 MMQ | **Primitive admitted; runtime/quality next** | Raw-resident MMQ32 plus one range-safe Q8_1 producer pack passes synthetic and ten actual-role gates. Inclusive N>=1024 leaves improve **4.798-16.452x**; N48/N72 remain exact rowbatch8 fallbacks. Next add a default-off N>=1024 workspace owner, full-state gate, 512/1K A/B, and complete 18-prompt quality lane before promotion. |
+| WPF-1B dense/shared Q8_1 MMQ | **Default-off runtime admitted; full-model gates next** | Raw-resident MMQ32 plus one range-safe Q8_1 producer pack passes synthetic and ten actual-role gates. The bounded owner reuses each producer across registered Q5/Q6 N>=1024 consumers; N48/N72 and gfx1151 remain exact/fail-closed. Next run full state, 512/1K A/B, and the complete 18-prompt quality lane before promotion. |
 | WPF-2 routed IQ MMQ | Pending WPF-1B reprofile | Compact by expert, quantize gate/up before top-10 expansion, pack down rows after SiLU, and tile raw IQ2/IQ3/IQ4 weights across routed rows. Publish distinct-expert and physical traffic. |
 | WPF-3 short attention | Deferred | Start only if the fresh post-WPF-2 profile makes attention the largest or gives it a >=5% perfect-removal ceiling at both active 512/1K shapes. |
 | WPF-4 launch/fusion | Deferred | Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |

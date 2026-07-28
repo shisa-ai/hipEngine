@@ -1143,6 +1143,59 @@ def test_laguna_raw_k_prefill_rowbatch8_is_gfx1100_default_and_rollbackable() ->
     assert session.raw_k_prefill_rowbatch == 0
 
 
+def test_laguna_raw_k_prefill_mmq_is_default_off_and_gfx1100_only() -> None:
+    from hipengine.runtime.laguna_gguf_runner import (
+        resolve_laguna_raw_k_prefill_mmq,
+    )
+
+    assert not resolve_laguna_raw_k_prefill_mmq("hip_gfx1100")
+    assert resolve_laguna_raw_k_prefill_mmq("hip_gfx1100", True)
+    assert not resolve_laguna_raw_k_prefill_mmq("hip_gfx1100", False)
+    assert not resolve_laguna_raw_k_prefill_mmq("hip_gfx1151")
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_laguna_raw_k_prefill_mmq("hip_gfx1151", True)
+
+
+def test_laguna_raw_k_prefill_mmq_resources_are_lazy_and_bounded(monkeypatch) -> None:
+    from hipengine.kernels.hip_gfx1100.quant import gguf_k_mmq_prefill
+
+    library = object()
+    monkeypatch.setattr(
+        gguf_k_mmq_prefill,
+        "build_gguf_k_mmq_prefill",
+        lambda **kwargs: library,
+    )
+    runtime = _FakeRuntime()
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session.backend = "hip_gfx1100"
+    session.runtime = runtime
+    session.weights = SimpleNamespace(config=_config())
+    session.prefill_chunk_size = 128
+    session._closed = False
+    session._compiler_version = "test"
+    session._require_cached_build = True
+    session._raw_k_prefill_mmq_library = None
+    session._raw_k_prefill_mmq_workspace = None
+    session._raw_k_prefill_mmq_workspace_nbytes = 0
+    session.raw_k_prefill_mmq = False
+
+    session.set_raw_k_prefill_mmq(True)
+
+    assert session.raw_k_prefill_mmq
+    assert session._raw_k_prefill_mmq_library is library
+    assert session._raw_k_prefill_mmq_workspace is not None
+    assert session._raw_k_prefill_mmq_workspace.nbytes == 1_966_080
+    assert tuple(runtime.allocations.values()) == (1_966_080,)
+    session.set_raw_k_prefill_mmq(False)
+    assert not session.raw_k_prefill_mmq
+
+    workspace = session._raw_k_prefill_mmq_workspace
+    assert workspace is not None
+    runner_module.free(workspace, runtime=runtime)
+    session._raw_k_prefill_mmq_workspace = None
+    assert runtime.allocations == {}
+
+
 def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
     assert resolve_laguna_head_kv_fusion("hip_gfx1100")
     assert not resolve_laguna_head_kv_fusion("hip_gfx1100", False)

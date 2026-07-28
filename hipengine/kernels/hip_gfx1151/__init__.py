@@ -299,6 +299,8 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
 # admitted Q4_K_M/T16 matrix schedules and must not inherit this selector.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
 GGUF_RAW_K_PREFILL_ROWBATCH = 0
+GGUF_RAW_K_PREFILL_MMQ_SUPPORTED = False
+GGUF_RAW_K_PREFILL_MMQ = False
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
@@ -471,6 +473,14 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         # WPF-1B producer quantization and raw-Q5/Q6 MMQ32 are likewise
         # gfx1100-only until an independent gfx1151 gate.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),
+        *(
+            (
+                "linear_prefill_policy",
+                quant,
+                "raw_k_q8_1_mmq32",
+            )
+            for quant in ("gguf_q5_k", "gguf_q6_k")
+        ),
         *(
             (
                 "linear",
@@ -659,6 +669,8 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+    "GGUF_RAW_K_PREFILL_MMQ",
+    "GGUF_RAW_K_PREFILL_MMQ_SUPPORTED",
     "GGUF_RAW_K_PREFILL_ROWBATCH",
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",

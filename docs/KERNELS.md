@@ -350,9 +350,13 @@ finite at maximum KL **5.6163e-5** and minimum top-1 **96.094%** versus retained
 rowbatch8. Inclusive quantize+MMQ improves every N>=1024 role by
 **4.798-16.452x**; the N48/N72 gates lose and remain fallback-only. Cached
 W7900 tracing records the producer at local256/VGPR24/LDS0/scratch0 and Q5/Q6
-MMQ at local128/VGPR48/56/SGPR128/LDS3072/scratch0. gfx1151 excludes all five
-keys. No runtime owner/default exists yet; exact rowbatch8 remains the
-mandatory fallback until full-state and the complete quality lane pass.
+MMQ at local128/VGPR48/56/SGPR128/LDS3072/scratch0. A default-off
+`raw_k_prefill_mmq` execution owner now lazily allocates one bounded Q8_1
+workspace, caches one `(pointer, rows, K, stream)` producer pack, and consults
+registered Q5/Q6 crossover policies. It selects only N>=1024; N48/N72 and all
+key/shape/backend misses retain exact rowbatch8. gfx1151 excludes all seven
+producer/policy/MMQ keys. No package default or end-to-end claim exists yet;
+full-state and the complete quality lane remain mandatory before promotion.
 Evidence: [`WPF-1B primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
