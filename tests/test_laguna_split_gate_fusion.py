@@ -39,6 +39,7 @@ def test_laguna_split_exact_gated_reducers_match_unfused_chain() -> None:
     )
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
+        laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
         laguna_global_attention_decode_split_exact_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
@@ -87,9 +88,11 @@ def test_laguna_split_exact_gated_reducers_match_unfused_chain() -> None:
         unfused_context_device = malloc(width * 4, runtime=runtime)
         fused_context_device = malloc(width * 4, runtime=runtime)
         fixedshape_context_device = malloc(width * 4, runtime=runtime)
+        fused_gqa1_context_device = malloc(width * 4, runtime=runtime)
         unfused_gated_device = malloc(width * 2, runtime=runtime)
         fused_gated_device = malloc(width * 2, runtime=runtime)
         fixedshape_gated_device = malloc(width * 2, runtime=runtime)
+        fused_gqa1_gated_device = malloc(width * 2, runtime=runtime)
         score_scratch_device = malloc(max_heads * 4096 * 4, runtime=runtime)
         physical_scratch_device = malloc(max_heads * 4096 * 4, runtime=runtime)
         allocations.extend(
@@ -101,9 +104,11 @@ def test_laguna_split_exact_gated_reducers_match_unfused_chain() -> None:
                 unfused_context_device,
                 fused_context_device,
                 fixedshape_context_device,
+                fused_gqa1_context_device,
                 unfused_gated_device,
                 fused_gated_device,
                 fixedshape_gated_device,
+                fused_gqa1_gated_device,
                 score_scratch_device,
                 physical_scratch_device,
             )
@@ -196,6 +201,20 @@ def test_laguna_split_exact_gated_reducers_match_unfused_chain() -> None:
                     library=kv_library,
                     runtime=runtime,
                 )
+                laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans(
+                    *common,
+                    fused_gqa1_context_device.ptr,
+                    gate_device.ptr,
+                    fused_gqa1_gated_device.ptr,
+                    *split_tail,
+                    state.capacity,
+                    heads,
+                    8,
+                    128,
+                    128**-0.5,
+                    library=kv_library,
+                    runtime=runtime,
+                )
             else:
                 laguna_swa_attention_decode_split_tile16_exact_bf16_spans(
                     *common,
@@ -239,9 +258,11 @@ def test_laguna_split_exact_gated_reducers_match_unfused_chain() -> None:
             unfused_context = np.empty(context_elements, dtype=np.float32)
             fused_context = np.empty_like(unfused_context)
             fixedshape_context = np.empty_like(unfused_context)
+            fused_gqa1_context = np.empty_like(unfused_context)
             unfused_gated = np.empty(context_elements, dtype=np.uint16)
             fused_gated = np.empty_like(unfused_gated)
             fixedshape_gated = np.empty_like(unfused_gated)
+            fused_gqa1_gated = np.empty_like(unfused_gated)
             copy_device_to_host(
                 host_array_ptr(unfused_context),
                 unfused_context_device,
@@ -276,6 +297,18 @@ def test_laguna_split_exact_gated_reducers_match_unfused_chain() -> None:
                     runtime=runtime,
                 )
                 copy_device_to_host(
+                    host_array_ptr(fused_gqa1_context),
+                    fused_gqa1_context_device,
+                    nbytes=fused_gqa1_context.nbytes,
+                    runtime=runtime,
+                )
+                copy_device_to_host(
+                    host_array_ptr(fused_gqa1_gated),
+                    fused_gqa1_gated_device,
+                    nbytes=fused_gqa1_gated.nbytes,
+                    runtime=runtime,
+                )
+                copy_device_to_host(
                     host_array_ptr(fixedshape_gated),
                     fixedshape_gated_device,
                     nbytes=fixedshape_gated.nbytes,
@@ -287,6 +320,14 @@ def test_laguna_split_exact_gated_reducers_match_unfused_chain() -> None:
                 )
                 np.testing.assert_array_equal(
                     fixedshape_gated,
+                    fused_gated,
+                )
+                np.testing.assert_array_equal(
+                    fused_gqa1_context,
+                    fused_context,
+                )
+                np.testing.assert_array_equal(
+                    fused_gqa1_gated,
                     fused_gated,
                 )
     finally:

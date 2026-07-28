@@ -258,6 +258,9 @@ LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
 # dynamic-live score ABI and local256 arithmetic. Three production live points
 # and seven exact p512/d128 pairs admit it on gfx1151 only.
 LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE = True
+# The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
+# removes the score plane/launch while preserving reduction association.
+LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
 LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 LAGUNA_SPLIT_GATE_FUSION = True
@@ -640,6 +643,7 @@ __all__ = [
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",
+    "LAGUNA_GLOBAL_FUSED_FIXEDSHAPE",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
     "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",

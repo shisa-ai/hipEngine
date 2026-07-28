@@ -3180,6 +3180,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.swa_split_tile16_min_live == 257
         assert gfx1151_cache.split_gate_fusion
         assert gfx1151_cache.global_split_fixedshape_reduce
+        assert gfx1151_cache.global_fused_fixedshape
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.swa_split_fixed512_reduce
@@ -3192,11 +3193,17 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             return lambda *args, **kwargs: None
 
         gfx1151_cache._resolve = resolve_probe
+        gfx1151_cache.position = 256
+        gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.position = 64
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.position = 511
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         assert resolved_variants == [
+            (
+                "laguna_attention_decode",
+                "global_context_fused_exact_gated_gqa1_fixedshape_spans",
+            ),
             (
                 "laguna_attention_decode",
                 "swa_context_split_exact_gated_gqa3_scores_spans",
