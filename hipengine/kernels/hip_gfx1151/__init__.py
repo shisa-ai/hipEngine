@@ -301,6 +301,9 @@ LAGUNA_SWA_GQA3_VSTAGE64_VEC16_FIXED512 = True
 # Avoid the compiler-generated per-thread LDS aggregate used by the retained
 # vec16 copy and write each valid vector directly into the real V tile.
 LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_FIXED512 = True
+# The exact compiler-expf sibling exposes the finite non-positive
+# score-minus-maximum domain and removes generic exponential guard work.
+LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -697,6 +700,7 @@ __all__ = [
     "LAGUNA_SWA_GQA3_VSTAGE64_FIXED512",
     "LAGUNA_SWA_GQA3_VSTAGE64_VEC16_FIXED512",
     "LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_FIXED512",
+    "LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
     "LAGUNA_SWA_SPLIT_FIXED512_REDUCE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
